@@ -2,8 +2,7 @@ import { cast, sleep, spawn } from "bouy";
 
 // Fairness: 8 actors run CPU-bound loops for 2 s while the top-level code pings another
 // actor, sleeps 1 ms, and pings again until the 2 s end. A sample is the round trip of
-// one ping in whole milliseconds, because Date.now() is the finest Bouy clock: 0 means
-// under 1 ms.
+// one ping, timed with performance.now() as in the Node program.
 
 const SPINNERS = 8;
 const WINDOW_MS = 2000;
@@ -11,7 +10,7 @@ const WINDOW_MS = 2000;
 class Spinner {
   spin(until: number): number {
     let turns = 0;
-    while (Date.now() < until) {
+    while (performance.now() < until) {
       turns++;
     }
     return turns;
@@ -32,15 +31,15 @@ function percentile(sorted: number[], fraction: number): number {
 async function measure(): Promise<object> {
   const spinners = Array.from({ length: SPINNERS }, () => spawn(Spinner));
   const echo = spawn(Echo);
-  const until = Date.now() + WINDOW_MS;
+  const until = performance.now() + WINDOW_MS;
   for (const spinner of spinners) {
     cast(spinner).spin(until);
   }
   const samples: number[] = [];
-  while (Date.now() < until) {
-    const sent = Date.now();
+  while (performance.now() < until) {
+    const sent = performance.now();
     await echo.ping(1);
-    samples.push(Date.now() - sent);
+    samples.push(performance.now() - sent);
     sleep(1);
   }
   const sorted = samples.toSorted((a, b) => a - b);

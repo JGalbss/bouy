@@ -1,7 +1,7 @@
 {application, bouy, [
     {description, "The OTP runtime for actor programs that Bouy compiles from TypeScript"},
     {vsn, "0.1.0"},
-    {registered, [bouy_root_sup]},
+    {registered, [bouy_root_sup, bouy_keeper, bouy_groups]},
     {applications, [kernel, stdlib, compiler]},
     {mod, {bouy_app, []}},
     {env, []}

@@ -19,18 +19,30 @@ globals(Args) ->
     Parsed@1 = bouy_number:parseInt([Text@1, 10]),
     bouy:sleep([1]),
     All@1 = bouy_task:all([fun() -> bouy_task:resolve([1]) end, fun() -> bouy_task:resolve([2]) end]),
-    Mapped@1 = bouy_task:map([1, 2], fun(Args@1) ->
-        X@1 = bouy_rt:arg(1, Args@1),
-        bouy_rt:mul(X@1, 2)
-    end),
-    Settled@1 = bouy_task:map_settled([1, 2], fun(Args@2) ->
-        X@2 = bouy_rt:arg(1, Args@2),
-        bouy_rt:mul(X@2, 2)
-    end),
-    First@1 = bouy_task:map_race([1, 2], fun(Args@3) ->
-        X@3 = bouy_rt:arg(1, Args@3),
-        X@3
-    end),
+    Mapped@1 = bouy_task:map(
+        [1, 2],
+        fun(Args@1) ->
+            X@1 = bouy_rt:arg(1, Args@1),
+            bouy_rt:mul(X@1, 2)
+        end,
+        1
+    ),
+    Settled@1 = bouy_task:map_settled(
+        [1, 2],
+        fun(Args@2) ->
+            X@2 = bouy_rt:arg(1, Args@2),
+            bouy_rt:mul(X@2, 2)
+        end,
+        1
+    ),
+    First@1 = bouy_task:map_race(
+        [1, 2],
+        fun(Args@3) ->
+            X@3 = bouy_rt:arg(1, Args@3),
+            X@3
+        end,
+        1
+    ),
     [
         Parsed@1,
         bouy_number:'$isNaN'([Parsed@1]),

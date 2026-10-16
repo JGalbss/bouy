@@ -3,12 +3,14 @@
 %% Boots a compiled program (section 1 of docs/design/beam-runtime.md).
 %%
 %% The CLI starts one VM with
-%%   erl -noshell -noinput -pa <runtime ebin> -eval 'bouy_main:start()'
-%%       -extra <build dir> <entry module> <entry path> <module,...> [args...]
+%%   erl +Bd -noshell -noinput -mode minimal -boot no_dot_erlang -pa <runtime ebin>
+%%       -eval 'bouy_main:start()' -extra <build dir> <entry module> <entry path> <module,...> [args...]
 %% start/0 compiles each changed module of <build dir>/src into <build dir>/ebin,
 %% starts the bouy application, runs the top-level code of the entry module, and halts.
 
 -export([start/0, import/1]).
+
+-include_lib("kernel/include/file.hrl").
 
 -spec start() -> no_return().
 start() ->
@@ -35,7 +37,7 @@ boot() ->
     case init:get_plain_arguments() of
         [Build, Entry, EntryPath, Modules | Args] ->
             persistent_term:put({bouy, argv}, [<<"bouy">> | [unicode:characters_to_binary(Arg) || Arg <- [EntryPath | Args]]]),
-            case compile_modules(Build, string:lexemes(Modules, ",")) of
+            case compile_modules(Build, split(Modules)) of
                 ok -> run(list_to_atom(Entry));
                 {error, Report} -> stop(2, Report)
             end;
@@ -69,18 +71,13 @@ run(Entry) ->
         Class:Reason:Stack -> stop(1, uncaught(Class, Reason, Stack))
     end.
 
-%% Section 8: the application when bouy.app is on the code path, else bouy_app:start/2
-%% directly. The root supervisor is unlinked so that its exit cannot kill this process.
+%% Section 8: bouy_app:start/2 directly. The application controller would also load
+%% bouy.app and the apps it names, and start application masters, which the program does
+%% not need. The root supervisor is unlinked so that its exit cannot kill this process.
 start_runtime() ->
-    Started = case code:where_is_file("bouy.app") of
-        non_existing -> bouy_app:start(normal, []);
-        _ -> application:ensure_all_started(bouy)
-    end,
-    case Started of
-        {ok, Pid} when is_pid(Pid) ->
+    case bouy_app:start(normal, []) of
+        {ok, Pid} ->
             true = unlink(Pid),
-            ok;
-        {ok, _Applications} ->
             ok;
         {error, Reason} ->
             stop(1, io_lib:format("bouy: cannot start the runtime: ~p~n", [Reason]))
@@ -106,10 +103,26 @@ describe(Value) ->
         _:_ -> io_lib:format("Uncaught ~p~n", [Value])
     end.
 
+%% The module names of the `,`-separated list. The string module would load
+%% unicode_util, a large module, on each start.
+split(Modules) ->
+    Names = lists:foldr(
+        fun
+            ($,, Later) -> [[] | Later];
+            (Char, [Name | Later]) -> [[Char | Name] | Later]
+        end,
+        [[]],
+        Modules
+    ),
+    [Name || Name <- Names, Name =/= []].
+
+%% The CLI has written <build dir>/src, so only ebin may be missing. The file
+%% module is loaded at boot, and filelib is not.
 compile_modules(Build, Modules) ->
     Ebin = filename:join(Build, "ebin"),
-    case filelib:ensure_path(Ebin) of
+    case file:make_dir(Ebin) of
         ok -> ok;
+        {error, eexist} -> ok;
         {error, Reason} -> stop(1, io_lib:format("bouy: cannot write ~ts: ~ts~n", [Ebin, file:format_error(Reason)]))
     end,
     true = code:add_patha(Ebin),
@@ -127,9 +140,9 @@ compile_module(Build, Ebin, Module) ->
     Hash = erlang:md5([Text, erlang:system_info(otp_release)]),
     case file:read_file(Stamp) of
         {ok, Hash} ->
-            case filelib:is_regular(Beam) of
-                true -> [];
-                false -> compile_source(Source, Beam, Stamp, Hash)
+            case file:read_file_info(Beam) of
+                {ok, #file_info{type = regular}} -> [];
+                _ -> compile_source(Source, Beam, Stamp, Hash)
             end;
         _ ->
             compile_source(Source, Beam, Stamp, Hash)

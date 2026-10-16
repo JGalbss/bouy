@@ -12,6 +12,7 @@ supervision_test_() ->
         {"rest-for-one restarts the failed child and the later ones", fun rest_for_one_restarts_rest/0},
         {"a used-up tree budget stops every child", fun tree_budget_stops_children/0},
         {"a temporary child is not restarted", fun temporary_child_stops/0},
+        {"a temporary child that a sibling restart ends is stopped", fun temporary_sibling_stops/0},
         {"a stopped child stays stopped when a sibling restarts", fun stopped_child_stays_stopped/0},
         {"each top-level actor has its own budget", fun budgets_are_separate/0},
         {"a throwing child constructor fails supervise", fun throwing_child_fails_supervise/0},
@@ -64,7 +65,10 @@ tree_budget_stops_children() ->
     fail(A),
     ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:call(A, <<"get">>, []) end)),
     await(fun() -> status(B) =:= <<"stopped">> end),
-    ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:call(B, <<"get">>, []) end)).
+    ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:call(B, <<"get">>, []) end)),
+    %% The keeper marks the actors of the ended group, so a cast throws too.
+    await(fun() -> bouy_registry:mode(element(2, B)) =:= stopped end),
+    ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:cast(bouy:cast([B]), <<"inc">>, []) end)).
 
 temporary_child_stops() ->
     #{<<"a">> := A, <<"b">> := B} = bouy:supervise([
@@ -83,6 +87,24 @@ temporary_child_stops() ->
     %% OTP never restarts a temporary child, so its exit does not touch siblings.
     ?assertEqual(2, bouy_actor:call(B, <<"get">>, [])),
     ?assertEqual(0, restarts(B)).
+
+%% OTP ends a temporary child when a sibling restarts under one-for-all, and
+%% never restarts it.
+temporary_sibling_stops() ->
+    #{<<"a">> := A, <<"b">> := B} = bouy:supervise([
+        #{
+            <<"strategy">> => <<"one-for-all">>,
+            <<"children">> => #{
+                <<"a">> => bouy:child([counter(), #{<<"restart">> => <<"temporary">>}]),
+                <<"b">> => bouy:child([counter()])
+            }
+        }
+    ]),
+    fail(B),
+    await(fun() -> bouy_registry:mode(element(2, A)) =:= stopped end),
+    ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:call(A, <<"get">>, []) end)),
+    ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:cast(bouy:cast([A]), <<"inc">>, []) end)),
+    ?assertEqual(0, bouy_actor:call(B, <<"get">>, [])).
 
 stopped_child_stays_stopped() ->
     #{<<"a">> := A, <<"b">> := B} = tree(<<"one-for-all">>, [<<"a">>, <<"b">>]),
@@ -160,4 +182,4 @@ groups_end_with_actors() ->
     await(fun() -> active_groups() =:= Before end).
 
 active_groups() ->
-    proplists:get_value(active, supervisor:count_children(bouy_root_sup)).
+    proplists:get_value(active, supervisor:count_children(bouy_groups)).

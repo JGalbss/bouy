@@ -125,6 +125,7 @@ pub fn global(name: &str) -> Option<Binding> {
         "Number" => Binding::Namespace("bouy_number"),
         "String" => Binding::Namespace("bouy_string"),
         "Date" => Binding::Namespace("bouy_date"),
+        "performance" => Binding::Namespace("bouy_performance"),
         "Promise" => Binding::Namespace("bouy_task"),
         "Map" => Binding::Namespace("bouy_map"),
         "Set" => Binding::Namespace("bouy_set"),
@@ -212,6 +213,7 @@ const GLOBAL_FUNCTIONS: &[(&str, &str, &[&str])] = &[
     ),
     ("bouy_string", "String", &["fromCharCode", "fromCodePoint"]),
     ("bouy_date", "Date", &["now"]),
+    ("bouy_performance", "performance", &["now"]),
     (
         "bouy_task",
         "Promise",

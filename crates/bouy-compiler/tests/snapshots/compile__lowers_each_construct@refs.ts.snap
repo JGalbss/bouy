@@ -39,10 +39,14 @@ input_file: crates/bouy-compiler/tests/fixtures/refs.ts
 'Router#route'(This, Args) ->
     Items@1 = bouy_rt:arg(1, Args),
     {
-        bouy_task:map(Items@1, fun(Args@1) ->
-            Item@1 = bouy_rt:arg(1, Args@1),
-            bouy_rt:call_method(maps:get('#items', This, undefined), <<"add">>, [Item@1])
-        end),
+        bouy_task:map(
+            Items@1,
+            fun(Args@1) ->
+                Item@1 = bouy_rt:arg(1, Args@1),
+                bouy_rt:call_method(maps:get('#items', This, undefined), <<"add">>, [Item@1])
+            end,
+            1
+        ),
         This
     }.
 
@@ -63,10 +67,14 @@ fill(Args) ->
     Store@1 = bouy_rt:arg(1, Args),
     Items@1 = bouy_rt:arg(2, Args),
     Target@1 = Store@1,
-    bouy_task:map(Items@1, fun(Args@1) ->
-        Item@1 = bouy_rt:arg(1, Args@1),
-        bouy_rt:call_method(Target@1, <<"add">>, [Item@1])
-    end).
+    bouy_task:map(
+        Items@1,
+        fun(Args@1) ->
+            Item@1 = bouy_rt:arg(1, Args@1),
+            bouy_rt:call_method(Target@1, <<"add">>, [Item@1])
+        end,
+        1
+    ).
 
 collect(Args) ->
     Items@1 = bouy_rt:arg(1, Args),

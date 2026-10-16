@@ -77,8 +77,8 @@ fn run(entry: &Path, args: &[OsString]) -> ExitCode {
         Ok(build) => build,
         Err(error) => return fail(&error),
     };
-    let ebin = match runtime::ebin() {
-        Ok(ebin) => ebin,
+    let runtime = match runtime::locate() {
+        Ok(runtime) => runtime,
         Err(error) => return fail(&error),
     };
     let entry_path = project
@@ -90,20 +90,31 @@ fn run(entry: &Path, args: &[OsString]) -> ExitCode {
         .iter()
         .map(|module| module.name.as_str())
         .collect();
-    let mut vm = Command::new(runtime::erl());
+    let mut vm = runtime.vm();
     // `+Bd`: Ctrl-C ends the VM, as it ends Node, instead of opening the BREAK menu. A
-    // failure to boot leaves no erl_crash.dump in the working directory.
-    vm.args(["+Bd", "-noshell", "-noinput", "-pa"])
-        .arg(&ebin)
-        .args(["-eval", "bouy_main:start()", "-extra"])
-        .arg(&build)
-        .arg(&project.entry)
-        // Node reads each invalid UTF-8 sequence of `process.argv` as one U+FFFD, as
-        // `to_string_lossy` does. OTP would hand the VM a tuple in place of the string.
-        .arg(&*entry_path.to_string_lossy())
-        .arg(modules.join(","))
-        .args(args.iter().map(|arg| arg.to_string_lossy().into_owned()))
-        .env("ERL_CRASH_DUMP_SECONDS", "0");
+    // failure to boot leaves no erl_crash.dump in the working directory. `-mode minimal`
+    // starts the kernel without distribution and the resolver, which bouy_ai_openai starts
+    // on its first request, and `no_dot_erlang` skips the `.erlang` files of the user.
+    vm.args([
+        "+Bd",
+        "-noshell",
+        "-noinput",
+        "-mode",
+        "minimal",
+        "-boot",
+        "no_dot_erlang",
+        "-pa",
+    ])
+    .arg(&runtime.ebin)
+    .args(["-eval", "bouy_main:start()", "-extra"])
+    .arg(&build)
+    .arg(&project.entry)
+    // Node reads each invalid UTF-8 sequence of `process.argv` as one U+FFFD, as
+    // `to_string_lossy` does. OTP would hand the VM a tuple in place of the string.
+    .arg(&*entry_path.to_string_lossy())
+    .arg(modules.join(","))
+    .args(args.iter().map(|arg| arg.to_string_lossy().into_owned()))
+    .env("ERL_CRASH_DUMP_SECONDS", "0");
     start(vm)
 }
 

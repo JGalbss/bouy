@@ -246,12 +246,31 @@ post(Url, Headers, Body) ->
                "application/json", bouy_json:stringify([Body])},
     httpc:request(post, Request, http_options(Url), [{body_format, binary}]).
 
-start_http(<<"https:", _/binary>>) ->
+start_http(Url) ->
+    ok = start_inet_db(),
+    start_http_apps(Url).
+
+start_http_apps(<<"https:", _/binary>>) ->
     {ok, _} = application:ensure_all_started([inets, ssl]),
     ok;
-start_http(_Url) ->
+start_http_apps(_Url) ->
     {ok, _} = application:ensure_all_started(inets),
     ok.
+
+%% The CLI boots the kernel with `-mode minimal` (section 1), which leaves out
+%% inet_db, the resolver configuration that httpc needs. It joins the kernel
+%% supervisor on the first request, as in a full boot.
+start_inet_db() ->
+    case whereis(inet_db) of
+        undefined ->
+            Spec = #{id => inet_db, start => {inet_db, start_link, []}, restart => permanent, shutdown => 2000},
+            case supervisor:start_child(kernel_sup, Spec) of
+                {ok, _} -> ok;
+                {error, {already_started, _}} -> ok
+            end;
+        _Running ->
+            ok
+    end.
 
 http_options(<<"https:", _/binary>>) -> [{ssl, httpc:ssl_verify_host_options(true)}];
 http_options(_Url) -> [].

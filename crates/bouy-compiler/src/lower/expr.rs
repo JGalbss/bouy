@@ -1326,6 +1326,7 @@ impl<'a> Lowerer<'a, '_> {
                 let Some((items, fun)) = mapped_items(mapped) else {
                     return Expr::undefined();
                 };
+                let params = literal_params(fun);
                 let mut values = self.ordered(&[items, fun]).into_iter();
                 let items = values.next().unwrap_or_else(Expr::undefined);
                 let fun = values.next().unwrap_or_else(Expr::undefined);
@@ -1335,7 +1336,13 @@ impl<'a> Lowerer<'a, '_> {
                     "any" => "map_any",
                     _ => "map",
                 };
-                Expr::call("bouy_task", function, vec![items, fun])
+                let mut arguments = vec![items, fun];
+                // A function literal with at most two parameters cannot read the array, so no
+                // worker gets a copy of it (section 7).
+                if let Some(params) = params.filter(|params| *params < 3) {
+                    arguments.push(Expr::Integer(params));
+                }
+                Expr::call("bouy_task", function, arguments)
             }
             _ if name == "all" => {
                 let value = self.expr(argument);
@@ -1974,6 +1981,20 @@ fn mapped_items<'a>(
         }
         _ => None,
     }
+}
+
+/// The count of parameters of an arrow or function literal without a rest parameter, which
+/// is all that it can read of its arguments: Bouy has no `arguments` object.
+fn literal_params(expression: &Expression<'_>) -> Option<i64> {
+    let params = match strip(expression) {
+        Expression::ArrowFunctionExpression(arrow) => &arrow.params,
+        Expression::FunctionExpression(function) => &function.params,
+        _ => return None,
+    };
+    if params.rest.is_some() {
+        return None;
+    }
+    i64::try_from(params.items.len()).ok()
 }
 
 pub fn argument_expression<'e, 'a>(argument: &'e Argument<'a>) -> &'e Expression<'a> {

@@ -1,20 +1,23 @@
 -module(bouy_sup).
 -behaviour(supervisor).
 
-%% `bouy_root_sup` supervises one group supervisor for each top-level spawn and
-%% one for each supervise() call. A group supervisor supervises actors, so one
-%% actor's crash loop cannot use up the restart budget of another group.
+%% `bouy_root_sup` owns the actor tables and supervises bouy_keeper, which
+%% restarts the actors that spawn() starts, and `bouy_groups`, which
+%% supervises one group supervisor for each supervise() call. A group
+%% supervisor supervises actors, so the crash loop of one group cannot use up
+%% the restart budget of another.
 %%
 %% A group starts empty and receives its actors through supervisor:start_child/2.
-%% An actor runs its constructor in init/1, so the root supervisor never waits
-%% on user code, and a constructor can spawn other actors. To stop a group, a
-%% process kills it instead of asking the root, which would wait for a
+%% An actor runs its constructor in init/1, so `bouy_groups` never waits on
+%% user code, and a constructor can spawn other actors. To stop a group, a
+%% process kills it instead of asking `bouy_groups`, which would wait for a
 %% constructor that the group runs.
 
--export([start_root/0, start_group/1, new_group/1, stop_group/1, stop_when_empty/1, stop_when_empty/2, own/3]).
+-export([start_root/0, start_group/1, new_group/1, stop_group/1, stop_when_empty/1, stop_when_empty/2]).
 -export([init/1]).
 
 -define(ROOT, bouy_root_sup).
+-define(GROUPS, bouy_groups).
 
 -spec start_root() -> supervisor:startlink_ret().
 start_root() ->
@@ -26,7 +29,7 @@ start_group(Flags) ->
 
 -spec new_group(supervisor:sup_flags()) -> pid().
 new_group(Flags) ->
-    {ok, Group} = supervisor:start_child(?ROOT, [Flags]),
+    {ok, Group} = supervisor:start_child(?GROUPS, [Flags]),
     Group.
 
 %% Stops a group and every actor in it, and returns when the group is gone.
@@ -69,27 +72,26 @@ is_empty(Group) ->
         exit:_ -> false
     end.
 
-%% Ties the group to the actor process Owner, whose constructor started it:
-%% when Owner ends, by a restart or a stop, the group and its actors stop.
--spec own(pid(), pid(), [pos_integer()]) -> ok.
-own(Group, Owner, Ids) ->
-    _ = spawn(fun() ->
-        OwnerMonitor = monitor(process, Owner),
-        GroupMonitor = monitor(process, Group),
-        receive
-            {'DOWN', OwnerMonitor, process, Owner, _} ->
-                lists:foreach(fun bouy_registry:mark_stopped/1, Ids),
-                stop_group(Group);
-            {'DOWN', GroupMonitor, process, Group, _} ->
-                ok
-        end
-    end),
-    ok.
-
--spec init(root | {group, supervisor:sup_flags()}) ->
+-spec init(root | groups | {group, supervisor:sup_flags()}) ->
     {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init(root) ->
     ok = bouy_registry:create(),
+    Keeper = #{
+        id => bouy_keeper,
+        start => {bouy_keeper, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker
+    },
+    Groups = #{
+        id => ?GROUPS,
+        start => {supervisor, start_link, [{local, ?GROUPS}, ?MODULE, groups]},
+        restart => permanent,
+        shutdown => infinity,
+        type => supervisor
+    },
+    {ok, {#{strategy => one_for_all, intensity => 0, period => 1}, [Keeper, Groups]}};
+init(groups) ->
     Group = #{
         id => group,
         start => {?MODULE, start_group, []},

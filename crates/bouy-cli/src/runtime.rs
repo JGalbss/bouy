@@ -8,8 +8,58 @@ use std::{env, fs, process};
 
 include!(concat!(env!("OUT_DIR"), "/runtime_sources.rs"));
 
-/// The directory of compiled runtime `.beam` files, building it when needed.
-pub fn ebin() -> Result<PathBuf, String> {
+/// The compiled runtime that a program runs on.
+#[derive(Debug)]
+pub struct Runtime {
+    /// The directory of compiled runtime `.beam` files.
+    pub ebin: PathBuf,
+    /// The OTP release of `erl`, which the cache records when it builds the runtime.
+    release: Option<Release>,
+}
+
+/// The OTP release that `erl` starts: its root directory and its erts version, and the
+/// real path of the `erl` in use.
+#[derive(Debug)]
+struct Release {
+    root: String,
+    erts: String,
+    erl: OsString,
+}
+
+impl Runtime {
+    /// The command that starts the VM. The `erl` script searches for its root directory
+    /// with a chain of shell commands on each start, so the command passes the recorded
+    /// root in `ERL_ROOTDIR`. When `erl` is the script of that release, `<root>/bin/erl`,
+    /// the command starts its `erlexec` with the environment that the script would set.
+    pub fn vm(&self) -> Command {
+        let Some(Release {
+            root,
+            erts,
+            erl: real,
+        }) = &self.release
+        else {
+            return Command::new(erl());
+        };
+        let root_path = Path::new(root);
+        let bin = root_path.join(format!("erts-{erts}")).join("bin");
+        if Path::new(real) == root_path.join("bin").join("erl") && bin.join("erlexec").is_file() {
+            let mut vm = Command::new(bin.join("erlexec"));
+            vm.env("ROOTDIR", root)
+                .env("BINDIR", &bin)
+                .env("EMU", "beam")
+                .env("PROGNAME", "erl");
+            return vm;
+        }
+        let mut vm = Command::new(erl());
+        if env::var_os("ERL_ROOTDIR").is_none() {
+            vm.env("ERL_ROOTDIR", root);
+        }
+        vm
+    }
+}
+
+/// The compiled runtime, building it when needed.
+pub fn locate() -> Result<Runtime, String> {
     if let Some(directory) = env::var_os("BOUY_RUNTIME").filter(|value| !value.is_empty()) {
         let directory = PathBuf::from(directory);
         if !directory.join("bouy_main.beam").is_file() {
@@ -18,17 +68,34 @@ pub fn ebin() -> Result<PathBuf, String> {
                 directory.display()
             ));
         }
-        return Ok(directory);
+        return Ok(Runtime {
+            ebin: directory,
+            release: None,
+        });
     }
     let cache = cache_root().ok_or("cannot find a cache directory: set HOME or XDG_CACHE_HOME")?;
-    let directory = cache.join(format!("runtime-{:016x}", hash()));
+    let real = installed_otp();
+    let directory = cache.join(format!("runtime-{:016x}", hash(&real)));
     let ebin = directory.join("ebin");
-    if ebin.is_dir() {
-        return Ok(ebin);
+    if !ebin.is_dir() {
+        build(&cache, &directory)?;
     }
-    build(&cache, &directory)?;
-    Ok(ebin)
+    let release = fs::read_to_string(directory.join(RELEASE))
+        .ok()
+        .and_then(|text| {
+            let (root, erts) = text.split_once('\n')?;
+            Some(Release {
+                root: root.to_owned(),
+                erts: erts.to_owned(),
+                erl: real,
+            })
+        });
+    Ok(Runtime { ebin, release })
 }
+
+/// The file in a runtime directory that holds the root directory of the OTP release and
+/// its erts version, one on each line.
+const RELEASE: &str = "release";
 
 /// The program that starts the VM: `BOUY_ERL`, or `erl` on `PATH`.
 pub fn erl() -> OsString {
@@ -128,14 +195,41 @@ fn compile(staging: &Path) -> Result<(), String> {
             String::from_utf8_lossy(&output.stderr)
         ));
     }
+    record_release(staging);
     Ok(())
+}
+
+/// Writes the root directory and the erts version of the OTP release that `erl` starts to
+/// `staging/release`. A runtime without the file still runs: `erl` then finds its root
+/// itself.
+fn record_release(staging: &Path) {
+    let probe = r#"io:format("~ts~n~ts", [code:root_dir(), erlang:system_info(version)]), halt()."#;
+    let Ok(output) = Command::new(erl())
+        .args([
+            "-noshell",
+            "-noinput",
+            "-boot",
+            "no_dot_erlang",
+            "-eval",
+            probe,
+        ])
+        .output()
+    else {
+        return;
+    };
+    let release = String::from_utf8_lossy(&output.stdout);
+    let complete = release
+        .split_once('\n')
+        .is_some_and(|(root, erts)| Path::new(root).join("bin").is_dir() && !erts.is_empty());
+    if output.status.success() && complete {
+        let _ = fs::write(staging.join(RELEASE), release.as_bytes());
+    }
 }
 
 /// FNV-1a over the names and contents of the runtime sources and the installed OTP, so
 /// that the `.beam` files always match the OTP release that runs them.
-fn hash() -> u64 {
+fn hash(otp: &OsString) -> u64 {
     const PRIME: u64 = 0x0100_0000_01b3;
-    let otp = installed_otp();
     SOURCES
         .iter()
         .flat_map(|(name, text)| name.bytes().chain([0]).chain(text.bytes()).chain([0]))

@@ -10,7 +10,8 @@
 %% Workers reply to an alias. After the caller stops listening, it removes the
 %% alias, and the runtime drops any late reply.
 
--export([all/1, map/2, all_settled/1, map_settled/2, race/1, map_race/2, any/1, map_any/2, with_timeout/2]).
+-export([all/1, map/2, map/3, all_settled/1, map_settled/2, map_settled/3]).
+-export([race/1, map_race/2, map_race/3, any/1, map_any/2, map_any/3, with_timeout/2]).
 -export([resolve/1, reject/1, wait/1]).
 
 -type thunk() :: fun(() -> term()).
@@ -26,10 +27,16 @@ all(Thunks) ->
     [value(Outcome) || Outcome <- settle(Thunks)].
 
 %% `Promise.all(items.map(f))`: f gets the arguments that `map` passes.
+%% Params is the parameter count of a function literal f, which the compiler
+%% passes when f cannot read the array (section 7).
 -spec map(term(), term()) -> list().
-map(Items, Fun) when is_list(Items) ->
-    all(thunks(Items, Fun));
 map(Items, Fun) ->
+    map(Items, Fun, 3).
+
+-spec map(term(), term(), non_neg_integer()) -> list().
+map(Items, Fun, Params) when is_list(Items) ->
+    all(thunks(Items, Fun, Params));
+map(Items, Fun, _Params) ->
     mapped(Items, Fun).
 
 -spec all_settled([thunk()]) -> [#{binary() => term()}].
@@ -38,31 +45,48 @@ all_settled(Thunks) ->
 
 %% `Promise.allSettled(items.map(f))`.
 -spec map_settled(term(), term()) -> [#{binary() => term()}].
-map_settled(Items, Fun) when is_list(Items) ->
-    all_settled(thunks(Items, Fun));
 map_settled(Items, Fun) ->
+    map_settled(Items, Fun, 3).
+
+-spec map_settled(term(), term(), non_neg_integer()) -> [#{binary() => term()}].
+map_settled(Items, Fun, Params) when is_list(Items) ->
+    all_settled(thunks(Items, Fun, Params));
+map_settled(Items, Fun, _Params) ->
     [settled({ok, Value}) || Value <- mapped(Items, Fun)].
 
 %% `Promise.race(items.map(f))`.
 -spec map_race(term(), term()) -> term().
-map_race(Items, Fun) when is_list(Items) ->
-    race(thunks(Items, Fun));
 map_race(Items, Fun) ->
+    map_race(Items, Fun, 3).
+
+-spec map_race(term(), term(), non_neg_integer()) -> term().
+map_race(Items, Fun, Params) when is_list(Items) ->
+    race(thunks(Items, Fun, Params));
+map_race(Items, Fun, _Params) ->
     first(mapped(Items, Fun)).
 
 %% `Promise.any(items.map(f))`.
 -spec map_any(term(), term()) -> term().
-map_any(Items, Fun) when is_list(Items) ->
-    any(thunks(Items, Fun));
 map_any(Items, Fun) ->
+    map_any(Items, Fun, 3).
+
+-spec map_any(term(), term(), non_neg_integer()) -> term().
+map_any(Items, Fun, Params) when is_list(Items) ->
+    any(thunks(Items, Fun, Params));
+map_any(Items, Fun, _Params) ->
     case mapped(Items, Fun) of
         [] -> aggregate([]);
         [Value | _] -> Value
     end.
 
-%% Each item runs `Fun(item, index, items)`, as `map` calls it.
-thunks(Items, Fun) ->
-    [fun() -> bouy_rt:call(Fun, [Item, Index, Items]) end || {Index, Item} <- lists:enumerate(0, Items)].
+%% Each item runs `Fun(item, index, items)`, as `map` calls it. A worker
+%% copies what its thunk holds, so a function that cannot read the array
+%% gets only its item and index: each worker then copies one item, not the
+%% whole array.
+thunks(Items, Fun, Params) when Params >= 3 ->
+    [fun() -> bouy_rt:call(Fun, [Item, Index, Items]) end || {Index, Item} <- lists:enumerate(0, Items)];
+thunks(Items, Fun, _Params) ->
+    [fun() -> bouy_rt:call(Fun, [Item, Index]) end || {Index, Item} <- lists:enumerate(0, Items)].
 
 %% `x.map(f)` of a value that is not an array runs its own `map`, whose
 %% result holds values that are already settled.
