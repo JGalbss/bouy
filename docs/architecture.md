@@ -4,7 +4,7 @@ This is the living design document for Bouy. It covers the code in this reposito
 
 Two decision records explain the large choices:
 
-- [ADR 0001: Execution architecture](adr/0001-execution-architecture.md) chooses many light actors in one isolate on Node and Bun now. Its target is a pool of worker-thread schedulers (option D1).
+- [ADR 0001: Execution architecture](adr/0001-execution-architecture.md) chooses many actors on one thread on Node and Bun now. Its target is a pool of worker-thread schedulers (option D1).
 - [ADR 0002: Language and runtime split](adr/0002-language-and-runtime-split.md) records why the compiler front end is Rust, and why all code that runs in the JavaScript engine is TypeScript with Effect.
 
 [benchmarks.md](benchmarks.md) and `bench/results/` hold the measurements. [npm-compatibility.md](npm-compatibility.md) lists the npm packages that the tests prove.
@@ -18,7 +18,7 @@ Two decision records explain the large choices:
 | `bouy`           | `packages/bouy`             | TypeScript, Effect 4.0.5, tsdown            | The runtime, the public API, the loader, the `bouy` CLI, and `bouy/std`.                                                                          |
 | `@bouy/checker`  | `packages/checker`          | TypeScript 6.0.3 compiler API, Effect 4.0.5 | The `bouy check` diagnostics.                                                                                                                     |
 
-The `bouy` package has four entry points. Programs import `bouy`, `bouy/std`, and `bouy/register`. Compiled code imports `bouy/intrinsics`. tsdown bundles these entry points, the CLI, and the thread host into `packages/bouy/dist/`, with Effect tree-shaken and bundled. `@bouy/compiler`, `@bouy/checker`, and `typescript` stay external. The CLI loads the checker and TypeScript only when a check runs.
+The `bouy` package has four entry points. Programs import `bouy`, `bouy/std`, and `bouy/register`. Compiled code imports `bouy/intrinsics`. tsdown bundles these entry points, the CLI, and the thread host into `packages/bouy/dist/`. The bundle holds only the parts of Effect that Bouy uses. `@bouy/compiler`, `@bouy/checker`, and `typescript` stay external. The CLI loads the checker and TypeScript only when a check runs.
 
 The public API uses classes, promises, async iterables, and `AbortSignal`s. A program does not need to use Effect.
 
@@ -26,11 +26,11 @@ The public API uses classes, promises, async iterables, and `AbortSignal`s. A pr
 
 1. `bouy run app.ts a b` starts `dist/cli.mjs`. With `--check`, the CLI runs the checker first, and an error stops the run with exit status 1.
 2. The CLI installs the loader: `module.registerHooks` on Node, or `Bun.plugin` on Bun. `node --import bouy/register` and `bun --preload bouy/register` install the same loader without the CLI.
-3. The CLI sets `process.argv` to the runtime, the entry path, and the program arguments. Then it loads the entry with `import()`.
+3. The CLI sets `process.argv` to the path of the `node` or `bun` executable, the entry path, and the program arguments. Then it loads the entry with `import()`.
 4. The loader sends each user source file to `compile()` and returns the result with an inline source map. A user source file ends in `.ts`, `.mts`, or `.tsx`, is not a `.d.ts` file, and lies outside `node_modules` and the Bouy runtime. Other files load unchanged. A compile error throws `CompileFailed`, which lists each diagnostic as `file:line:column`.
-5. The first call into the actor system, usually `spawn()`, builds it: an Effect `ManagedRuntime` over the `ActorSystem` layer. The layer adds the process fault listeners (5.10).
+5. The first call into the actor system, usually `spawn()`, builds the system as an Effect `ManagedRuntime` over the `ActorSystem` layer. The layer adds the process fault listeners (5.10).
 6. `spawn()` reads the blueprint of the class (section 3), copies the constructor arguments, and creates the mailbox. Then it forks the fiber of the actor on the fair scheduler.
-7. For a default actor, the fiber constructs the instance inside a start turn before `spawn()` returns the ref. If the first construction throws, `spawn()` throws `ActorFailed` for the method `start`. The fiber then serves the mailbox.
+7. For a default actor, which runs on the shared thread (`isolation: "shared"`), the fiber constructs the instance inside a start turn before `spawn()` returns the ref. If the first construction throws, `spawn()` throws `ActorFailed` for the method `start`. The fiber then serves the mailbox.
 8. `ref.method(...args)` copies the arguments into an envelope with the call chain and the cancellation signal of the caller, and it delivers the envelope. The fiber takes the envelope and calls the method inside the `AsyncLocalStorage` context of the turn. When the method's promise settles, the fiber copies the result and settles the caller's promise.
 
 A program also runs under plain `node app.ts` or `bun app.ts`, without the compiler. Then no loop yields, and `isolation: "thread"` fails with `ActorClassInvalid`, because no class has a recorded location.
@@ -42,18 +42,20 @@ An actor is an ordinary class. Bouy has no base class, decorator, or keyword for
 | Option      | Default                                                    | Meaning                                                                                  |
 | ----------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `args`      | `[]`                                                       | The constructor arguments. The runtime copies them at spawn and again at each restart.   |
-| `name`      | the class name                                             | A label for `inspect()` and for errors, shown as `name#id`. It does not register a name. |
+| `name`      | the class name; for `child()`, the key in `children`       | A label for `inspect()` and for errors, shown as `name#id`. It does not register a name. |
 | `mailbox`   | `{ capacity: 1024, overflow: "backpressure" }`             | The mailbox size and its overflow policy (5.6).                                          |
 | `restart`   | `{ restart: "permanent", maxRestarts: 3, withinMs: 5000 }` | The restart type, the intensity limit, and an optional `backoff` (5.4).                  |
 | `isolation` | `"shared"`                                                 | `"thread"` runs the actor in its own worker thread (5.12).                               |
 | `thread`    | `{ stallMs: 5000 }`                                        | The watchdog timeout and an optional `maxHeapMb` for a thread actor.                     |
+
+A default actor uses `isolation: "shared"` and shares one thread with the other default actors. A thread actor uses `isolation: "thread"` (5.12). An incarnation is one instance of the class, from its construction to its restart or stop.
 
 The runtime builds one blueprint for each class (`packages/bouy/src/runtime/Blueprint.ts`). It walks the prototype chain:
 
 - Each string-keyed function on a prototype becomes a ref method, and inherited methods count. Fields, accessors, `#private` methods, symbol-keyed methods, and static methods do not become ref methods.
 - An `async *` method becomes a stream method. Every other method becomes a call method.
 - A method named `then` makes the class invalid (`ActorClassInvalid`), because every ref to the class would look like a promise.
-- A `[Symbol.asyncDispose]()` or `[Symbol.dispose]()` method becomes the dispose hook. The runtime calls it when an incarnation ends by restart or stop, and it waits up to 5 s.
+- A `[Symbol.asyncDispose]()` or `[Symbol.dispose]()` method becomes the dispose hook. The runtime calls the hook when an incarnation ends, and it waits up to 5 s for the hook.
 
 A ref is a frozen object with one function for each method. It has no path to the fields of the instance (`packages/bouy/test/isolation.test.ts`). Its type derives from the class. On the ref, a method that returns `R` returns `Promise<Awaited<R>>`, and an `async *` method returns an `AsyncIterable`. A method that returns `never` returns `Promise<never>`.
 
@@ -87,7 +89,7 @@ The compiler strips TypeScript syntax with the oxc transformer. Then it puts thi
 if (__bouy.tick()) await __bouy.pause();
 ```
 
-It covers `for`, `for...in`, `for...of`, `while`, and `do...while` loops. Loops in synchronous functions and static blocks get no point, because `await` is not valid there. That includes a synchronous callback inside an async function. The snapshot test `places_preemption_points_only_in_async_code` in `crates/bouy-compiler/tests/compile.rs` covers each shape.
+It covers `for`, `for...in`, `for...of`, `while`, and `do...while` loops. Loops in synchronous functions and static blocks get no preemption point, because `await` is not valid there. A loop in a synchronous callback inside an async function also gets none. The snapshot tests in `crates/bouy-compiler/tests/compile.rs` cover `for`, `for...of`, `for await`, `while`, and `do...while` loops, synchronous callbacks, and static blocks. No test covers `for...in` yet.
 
 `tick()` decrements a counter that all compiled loops share, and it reads the clock once every 1,024 calls. It returns `true` only when the 4 ms scheduler slice is spent and an actor turn is running. `pause()` waits for one `setImmediate` callback and starts a new slice (5.11).
 
@@ -107,16 +109,16 @@ The compiler finds `export class`, `export { Local as Exported }`, and a named `
 
 `bouy check <entry>` builds a TypeScript 6.0.3 program from the entry. It uses the nearest `tsconfig.json`, or strict defaults when it finds none. It finds each class that the program passes to `spawn` or `child` from `bouy`, or to `pool` from `bouy/std`. It follows named, renamed, namespace, and re-exported imports. Then it checks those classes and their base classes in your own files:
 
-| Code         | Severity                           | Rule                                                                                                                                                                                                                  |
-| ------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BOUY101`    | error                              | Each parameter of a public method must be Sendable. The message names the part of the type that fails.                                                                                                                |
-| `BOUY102`    | error                              | Each return value, and each value that an `async *` method yields, must be Sendable.                                                                                                                                  |
-| `BOUY103`    | error                              | Instance members must not read or write mutable module state: a module-level `let` or `var`, or a module-level `const` array, object, `Map`, or `Set` that some code mutates. Calls to functions in your files count. |
-| `BOUY104`    | warning                            | Instance members must not drop a promise. Await it, return it, or discard it with `void`. They also must not pass an async function to a caller that ignores its result, such as `forEach`.                           |
-| `BOUY105`    | error                              | A class must not have a method named `then`.                                                                                                                                                                          |
-| `BOUY106`    | warning                            | A method that returns an async iterable must be an `async *` method, or its ref cannot stream the result.                                                                                                             |
-| `BOUY107`    | warning                            | Instance members must not use a module-level value with `on` and `emit` methods, because a listener runs in the turn of the actor that emits.                                                                         |
-| `TS<number>` | error, or warning for a TS warning | Each TypeScript pre-emit diagnostic.                                                                                                                                                                                  |
+| Code         | Severity                           | Rule                                                                                                                                                                                                                                          |
+| ------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOUY101`    | error                              | Each parameter of a public method must be Sendable. The message names the part of the type that fails.                                                                                                                                        |
+| `BOUY102`    | error                              | Each return value, and each value that an `async *` method yields, must be Sendable.                                                                                                                                                          |
+| `BOUY103`    | error                              | Instance members must not read or write mutable module state. Mutable module state is a module-level `let` or `var`, or a module-level `const` array, object, `Map`, or `Set` that some code mutates. Calls to functions in your files count. |
+| `BOUY104`    | warning                            | Instance members must not drop a promise. Await it, return it, or discard it with `void`. They also must not pass an async function to a function that ignores its return value, such as `forEach`.                                           |
+| `BOUY105`    | error                              | A class must not have a method named `then`.                                                                                                                                                                                                  |
+| `BOUY106`    | warning                            | A method that returns an async iterable must be an `async *` method, or its ref cannot stream the result.                                                                                                                                     |
+| `BOUY107`    | warning                            | Instance members must not use a module-level value with `on` and `emit` methods, because a listener runs in the turn of the actor that emits.                                                                                                 |
+| `TS<number>` | error, or warning for a TS warning | Each TypeScript pre-emit diagnostic.                                                                                                                                                                                                          |
 
 An error makes `bouy check` and `bouy run --check` exit with status 1. The rules are static, so the runtime still copies and checks every message (5.3). BOUY103 reads only your own files, so module state inside npm packages stays unchecked.
 
@@ -128,18 +130,18 @@ An actor takes one message at a time. A turn starts when the actor takes a messa
 
 ### 5.2 Ordering
 
-Messages from one sender arrive in send order (`packages/bouy/test/messaging.test.ts`). The mailbox is one queue, so messages from different senders interleave in arrival order. A message that an incarnation takes just as it faults moves to the next incarnation, which keeps the order.
+Messages from one sender arrive in send order (`packages/bouy/test/messaging.test.ts`). The mailbox is one queue, so messages from different senders interleave in arrival order. If an incarnation has a pending fault when it takes a message, the next incarnation takes that message first, so the order stays the same.
 
 ### 5.3 Copies
 
 Every value that crosses an actor boundary is a copy: constructor arguments, call arguments, results, stream items, and error causes. An Effect Schema decode builds the copy (`copyArguments` and `copyValue` in `packages/bouy/src/runtime/Sendable.ts`). These values are Sendable:
 
 - `string`, `number`, `boolean`, `bigint`, `null`, and `undefined`. They skip the Schema walk, because a primitive cannot share state.
-- `Date` and `Uint8Array`. The copy clones them.
+- `Date` and `Uint8Array`. The copy clones them, except a Node `Buffer` (section 8).
 - Actor refs. A ref crosses as the same frozen object.
 - Arrays, `Map`s, `Set`s, and plain objects built from Sendable values. A plain object has the prototype `Object.prototype` or `null`.
 
-Any other value fails with `NotSendable`, and the message gives the path of the value, for example `a function at [0][meta][render]`. Functions, class instances, symbols, and promises fail. Pass a callback as an actor ref, and keep a library object inside the actor that created it. The error appears in three places:
+Any other value fails with `NotSendable`, and the error message gives the path of the value, for example `a function at [0][meta][render]`. Functions, symbols, promises, and instances of other classes fail. Pass a callback as an actor ref, and keep a library object inside the actor that created it. The error appears in three places:
 
 - A call with an argument that is not Sendable rejects with `NotSendable`.
 - `cast()` and stream methods throw `NotSendable` at the call site.
@@ -147,7 +149,7 @@ Any other value fails with `NotSendable`, and the message gives the path of the 
 
 Errors cross as copies too. The copy is a plain `Error` with the original name, message, stack, and `cause` chain (`copyError`). An `instanceof` check against a library error class fails on the copy.
 
-The sender pays for the argument copy inside the call, and the actor pays for the result copy at the end of its turn. The copy is synchronous, so a large copy blocks every actor on the thread. In `bench/results/node-2026-10-16-m5pro.json`, the Schema copy took 3.01 µs for a 77-byte record and 22.2 ms for 10,000 records (813,891 bytes of JSON). `structuredClone` took 0.819 µs and 5.93 ms. Section 8 lists a defect with cyclic values.
+The sender pays for the argument copy inside the call, and the actor pays for the result copy at the end of its turn. The copy is synchronous, so a large copy blocks every actor on the thread. In `bench/results/node-2026-10-16-m5pro.json`, the Schema copy took 3.01 µs for a 77-byte record and 22.2 ms for 10,000 records (813,891 bytes of JSON). `structuredClone` took 0.819 µs and 5.93 ms. The 1-minute load average was 7.1 to 37.0 during those runs. Section 8 lists the defects with cyclic values, a Node `Buffer`, and subclasses of built-in types.
 
 ### 5.4 Failure and restart
 
@@ -161,7 +163,7 @@ When a method throws, or its promise rejects, the actor fails:
 The `restart` option sets the policy:
 
 - `"permanent"` (the default) and `"transient"` restart the actor after a fault. An actor has no normal exit today, so the two types behave the same. `"temporary"` never restarts, so the first fault stops the actor.
-- Intensity: by default, an actor can restart 3 times within 5,000 ms (`maxRestarts`, `withinMs`). The next fault in that window stops it for good with the exit `{ kind: "failed", cause }`. Later calls reject with `ActorStopped`.
+- Intensity: by default, an actor can restart 3 times within 5,000 ms (`maxRestarts`, `withinMs`). The next fault in that window stops the actor permanently, with the exit `{ kind: "failed", cause }`. Later calls reject with `ActorStopped`.
 - Backoff: with `backoff: { initialMs, maxMs }`, restart number n in the window waits `min(maxMs, initialMs × 2^(n−1))` ms.
 - A constructor that throws during a restart counts as another fault.
 
@@ -193,11 +195,11 @@ Delivery is at most once. The runtime never retries the message whose turn faile
 
 Each actor has a bounded mailbox, with a default capacity of 1,024 messages. The `overflow` policy decides what happens to a message that arrives when the mailbox is full:
 
-| Policy                   | Result                                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `backpressure` (default) | The message waits for room. The caller's promise stays pending, and the thread of the sender is not blocked. |
-| `reject`                 | The message fails with `MailboxFull`.                                                                        |
-| `drop-oldest`            | The oldest queued message fails with `MessageDropped`, and the new message joins the queue.                  |
+| Policy                   | Result                                                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `backpressure` (default) | The message waits for room. The caller's promise stays pending, and the sender's thread keeps running other work. |
+| `reject`                 | The message fails with `MailboxFull`.                                                                             |
+| `drop-oldest`            | The oldest queued message fails with `MessageDropped`, and the new message joins the queue.                       |
 
 `cast(ref).method()` resolves to `true` when the mailbox accepts the message. It resolves to `false` when the actor has stopped or a `reject` mailbox is full. The sender of a cast never sees the result or the failure of the method.
 
@@ -216,7 +218,7 @@ When the signal aborts:
 - In the callee, `signal()` aborts. Code that passes it on, for example to `fetch` or `generateText`, stops.
 - If the turn of the callee then fails, the callee does not restart.
 
-Bouy cannot interrupt a running promise, so the turn of the callee ends only when its promise settles. Outside any turn, `signal()` returns a signal that never aborts. In `ai` 7.0.142, a `textStream` loop ends without an error after an abort ([actor-models A.4](research/actor-models.md)). Code that relays such a stream must check `signal().aborted` to tell an abort from a complete answer.
+Bouy cannot interrupt a running promise, so the turn of the callee ends only when its promise settles. Outside any turn and outside `withSignal`, `signal()` returns a signal that never aborts. In `ai` 7.0.142, a `textStream` loop ends without an error after an abort ([actor-models A.4](research/actor-models.md)). Code that relays such a stream must check `signal().aborted` to tell an abort from a complete answer.
 
 ### 5.8 Streams
 
@@ -229,7 +231,7 @@ An `async *` method streams. Its ref method returns an `AsyncIterable` in place 
 - A generator that throws ends the stream with `ActorFailed`, and the actor restarts.
 - Only `async *` methods stream. A method that returns another async iterable rejects the call with an `Error` named `NotSendable`, and BOUY106 warns about it.
 
-In `bench/results/node-2026-10-16-m5pro.json`, an `async *` actor method delivered 0.933 million items per second. A plain async generator delivered 12.4 million.
+In `bench/results/node-2026-10-16-m5pro.json`, an `async *` actor method delivered 0.933 million items per second. A plain async generator delivered 12.4 million. The 1-minute load average was 7.0 to 38.5 during those runs.
 
 ### 5.9 Call cycles
 
@@ -244,9 +246,14 @@ Each turn runs inside an `AsyncLocalStorage` context that holds the actor and it
 - If the context holds a live incarnation, the actor fails as in 5.4. If a turn is running, its caller gets `ActorFailed`.
 - If the context holds no turn, or an incarnation that already stopped or restarted, Bouy logs the error and sets `process.exitCode` to 1. The process keeps running.
 
-On Node 25.9.0, a fault from a timer, a `queueMicrotask` callback, a floating promise, or an `EventEmitter` listener that the actor triggers restarts that actor (`e2e/faults.test.ts`). An `fs` callback also keeps the context ([measurements-node E6](research/measurements-node.md)). `e2e/late-fault.test.ts` covers a fault from a stopped actor.
+On Node 25.9.0, these faults restart the actor that triggered them (`e2e/faults.test.ts`):
 
-A listener runs in the async context of `emit()`. A throw in a listener on an emitter that another actor triggers therefore restarts the emitting actor (`e2e/faults.test.ts`). Two actors can reach one emitter only through module state, and BOUY107 warns about that.
+- a throw in a timer callback, a `queueMicrotask` callback, or an `EventEmitter` listener
+- a floating promise that rejects
+
+An `fs` callback also keeps the context ([measurements-node E6](research/measurements-node.md)). `e2e/late-fault.test.ts` covers a fault from a stopped actor.
+
+A listener runs in the async context of `emit()`. If actor A registers a listener and actor B calls `emit()`, a throw in that listener restarts B (`e2e/faults.test.ts`). Two actors can reach one emitter only through module state, and BOUY107 warns about that.
 
 On Bun 1.3.11, the process listeners lose the context of a `queueMicrotask`, floating-promise, or `fs` fault. Bouy treats those faults as faults with no turn: it logs them, sets exit status 1, and does not restart the actor.
 
@@ -257,10 +264,10 @@ Node warns that a process is not safe to resume after `uncaughtException` ([js-e
 All actor fibers on a thread use one Effect scheduler, `FairScheduler` (`packages/bouy/src/runtime/FairScheduler.ts`):
 
 - It runs fiber tasks in batches on resolved-promise microtasks.
-- It checks the clock between batches. When the current 4 ms slice is spent, it runs the next batch from a `setImmediate` callback, so timers and I/O run between slices. To save clock reads, it skips the check for the first 64 batches after each of these yields.
+- It checks the clock between batches. When the current 4 ms slice is spent, it runs the next batch from a `setImmediate` callback, so timers and I/O run between slices. To save clock reads, it skips this check for the first 63 batches after each of these yields.
 - Compiled loops use the same slice through `tick()` and `pause()` (4.1).
 
-Each actor runs on one Effect fiber. The fiber waits for the promise of a turn through a callback that a fault can interrupt. An idle actor wakes on a marker message.
+Each actor runs on one Effect fiber. The fiber waits for the promise of a turn through a callback that a fault can interrupt. When a fault arrives, Bouy also puts a `WAKE` marker in the mailbox, so an idle fiber wakes and handles the fault.
 
 Effect's default scheduler hops through `setImmediate`. In [measurements-node E2](research/measurements-node.md), one `setImmediate` hop per scheduler pass raised the p50 of a round trip on Node from 0.167 µs to 13.4 µs. A scheduler that used only microtasks let no timer callback run during a 6.5 ms window. `FairScheduler` keeps the microtask path inside a slice and yields to the event loop between slices. ADR 0002 records this choice.
 
@@ -270,7 +277,7 @@ The fairness suite in `bench/results/node-2026-10-16-m5pro.json` spins one actor
 
 `spawn(Class, { isolation: "thread", thread: { stallMs, maxHeapMb } })` runs the actor in its own worker thread. The ref, the mailbox, and the supervisor stay on the main thread, so turns and restarts follow 5.1 and 5.4.
 
-- The class must be exported from a compiled module, so that the worker can import it by its module URL and export name. Otherwise `spawn()` fails with `ActorClassInvalid`.
+- Export the class from a compiled module, so that the worker can import it by URL and export name. Otherwise `spawn()` fails with `ActorClassInvalid`.
 - The worker imports that module, so the top-level code of the module runs again in the worker. Keep the class of a thread actor in a module without side effects.
 - `spawn()` returns before the worker is ready, and the first call waits for it.
 - Each message crosses a `MessagePort` as a structured clone, and the receiving side decodes it with the Schema.
@@ -296,7 +303,7 @@ A thread actor differs from a default actor:
 
 ## 6. Host support
 
-Node is the primary host on its long-term support (LTS) lines: Node 24 now, and Node 26 when it becomes LTS on 2026-10-28. The root `package.json` declares `node >=24`. Development and every measurement used Node 25.9.0 with V8 14.1. ADR 0001 lists a rerun of the key checks on Node 24 and 26 as validation item 11. Bun 1.3.11 is the second host. Deno is not supported, because no Bouy test runs on it.
+Node is the primary host on its long-term support (LTS) lines: Node 24 now, and Node 26 when it becomes LTS on 2026-10-28. The root `package.json` declares `node >=24`. Development and every Node run in `bench/` used Node 25.9.0 with V8 14.1. Some research measurements, including Gap 1 (section 8), also ran on Node 24.2.0 with V8 13.6. ADR 0001 lists a rerun of the key checks on Node 24 and 26 as validation item 11. Bun 1.3.11 is the second host. Bouy does not support Deno, because no Bouy test runs on it.
 
 | Behavior                                                            | Node 25.9.0                                                   | Bun 1.3.11                                            |
 | ------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
@@ -311,7 +318,7 @@ Node is the primary host on its long-term support (LTS) lines: Node 24 now, and 
 | `import.meta.main` under `bouy run`                                 | `false`                                                       | `false`                                               |
 | CI                                                                  | `pnpm check` on Node 24 and 25                                | Not installed                                         |
 
-Bun 1.4.3 stopped a spinning worker in a Linux VM research run ([js-engines-and-isolates §7](research/js-engines-and-isolates.md)). The loader hooks keep `import.meta.main` true, because they load the entry as the main module.
+Bun 1.4.3 stopped a spinning worker in a research run on a Linux virtual machine (VM) ([js-engines-and-isolates §7](research/js-engines-and-isolates.md)). The loader hooks keep `import.meta.main` true, because they load the entry as the main module.
 
 ## 7. npm compatibility
 
@@ -333,16 +340,18 @@ Preemption and hangs:
 Isolation and memory:
 
 - Default actors on a thread use one heap, one module graph, and one set of built-in prototypes. In the research runs, prototype pollution in one actor broke `z.object()` in the other actors ([js-engines-and-isolates §8.1](research/js-engines-and-isolates.md)). BOUY103 checks module state in your own files only.
-- Bouy sets no memory limit for one default actor, and heap exhaustion ends the process.
-- A native addon crash ends the process. Containment in a thread actor is unverified.
-- An idle actor holds 8,669 bytes of heap on Node at 100,000 actors (`bench/results/node-2026-10-16-m5pro.json`). That is 68 times a hand-written actor (128 bytes) and about 3.3 times an idle BEAM process (2,632 bytes, measured in a Linux VM, [measurements-beam-quickjs](research/measurements-beam-quickjs.md)). Commit `16b86fd` cut this cost from 15.1 KiB to 8.9 KiB in a 20,000-actor measurement. It runs each actor on one fiber and keeps `spawn` untraced.
+- Bouy sets no memory limit per default actor, and heap exhaustion ends the process.
+- A native addon crash ends the process. No test checks whether a thread actor contains a native addon crash.
+- An idle actor holds 8,669 bytes of heap on Node at 100,000 actors (`bench/results/node-2026-10-16-m5pro.json`). That is 67.7 times a hand-written actor (128 bytes) and about 3.3 times an idle process on BEAM, the Erlang virtual machine (2,632 bytes, measured in a Linux VM, [measurements-beam-quickjs](research/measurements-beam-quickjs.md)). Commit `16b86fd` cut this cost from 15.1 KiB to 8.9 KiB in a 20,000-actor measurement. That commit runs each actor on one fiber and turns off Effect tracing for `spawn`.
 
 Messages and errors:
 
-- Delivery is at most once. A restart discards in-memory state until durable actors exist.
+- Delivery is at most once. A restart discards in-memory state. Durable actors (milestone 5) are the planned fix.
 - Errors cross as copies, so an `instanceof` check against a library error class fails. Return library failures as data, as zod's `safeParse` does.
-- A throw in a listener on an emitter that another actor triggers restarts the emitting actor (5.10).
-- The copy does not detect a cyclic value. On Node 25.9.0, a call that sends one keeps the Schema decode allocating until the heap is exhausted, and the process ends. The guard in `Sendable.ts` expects a `RangeError` that the decode never raises, and no test covers this case.
+- A throw in an `EventEmitter` listener restarts the actor that called `emit()`, even when another actor registered the listener (5.10).
+- A Node `Buffer` passes as a `Uint8Array`, and its copy shares memory with the original, because `Buffer.prototype.slice` returns a view. The sender can change the data after the send. Send `new Uint8Array(buffer)` instead.
+- A subclass of `Map`, `Set`, `Array`, or `Date` passes the check and crosses as the base type without its own fields.
+- The copy does not detect a cyclic value. On Node 25.9.0, if a call sends a cyclic value, the Schema decode allocates until it exhausts the heap, and the process ends. The guard in `Sendable.ts` expects a `RangeError` that the decode never raises, and no test covers this case.
 
 Tooling:
 
@@ -352,35 +361,35 @@ Tooling:
 
 The table below states each property of a default actor and a thread actor today. It repeats the current columns of the ADR 0001 table (section 4).
 
-| Property                                                    | Default actor                                                                                                                                                                                              | Thread actor                                                                                        |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| The sender cannot change a value after it sends the value   | Yes                                                                                                                                                                                                        | Yes                                                                                                 |
-| A fault restarts only its actor                             | Yes on Node 25.9.0, except a throw in an `EventEmitter` listener, which restarts the actor that called `emit()`. Faults inside streams are untested. Bun 1.3.11 loses microtask, promise, and `fs` faults. | Yes for thrown errors                                                                               |
-| A fault with no owning turn is reported                     | Logged with exit status 1, and the process keeps running. A late fault from a stopped or restarted actor takes the same path.                                                                              | An uncaught fault ends the worker, and the actor restarts (untested)                                |
-| Messages from one sender arrive in send order               | Yes                                                                                                                                                                                                        | Unverified across `MessagePort`                                                                     |
-| Loops inside compiled `async` functions yield               | Yes                                                                                                                                                                                                        | No. The worker runs no turn, so the watchdog restarts an actor whose loop outlasts `stallMs`.       |
-| Package code, synchronous functions, and native calls yield | No. A runaway call hangs every actor, and nothing stops it.                                                                                                                                                | No. The watchdog restarts the actor, except in Gap 1. On Bun 1.3.11, the old thread keeps spinning. |
-| Actor refs cross                                            | Yes                                                                                                                                                                                                        | No. The call fails with `NotSendable`, and the actor keeps serving.                                 |
-| Cancellation reaches the callee                             | Yes, for code that accepts an `AbortSignal`                                                                                                                                                                | No                                                                                                  |
-| Streaming methods work                                      | Yes                                                                                                                                                                                                        | No. The call fails.                                                                                 |
-| Memory limit                                                | None. Heap exhaustion ends the process.                                                                                                                                                                    | Opt-in on Node. Gap 1 escapes it.                                                                   |
-| Package state and built-in prototypes are isolated          | No                                                                                                                                                                                                         | Yes                                                                                                 |
-| A native addon crash is contained                           | No                                                                                                                                                                                                         | Unverified                                                                                          |
+| Property                                                    | Default actor                                                                                                                                                                                                                                                   | Thread actor                                                                                        |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| The sender cannot change a value after it sends the value   | Yes, except a Node `Buffer`                                                                                                                                                                                                                                     | Yes, except a Node `Buffer`                                                                         |
+| A fault restarts only its actor                             | Yes on Node 25.9.0, except a throw in an `EventEmitter` listener, which restarts the actor that called `emit()`. Faults inside streams are untested. On Bun 1.3.11, a microtask, promise, or `fs` fault restarts no actor. Bouy logs it and sets exit status 1. | Yes for thrown errors                                                                               |
+| A fault with no owning turn is reported                     | Logged with exit status 1, and the process keeps running. A late fault from a stopped or restarted actor takes the same path.                                                                                                                                   | An uncaught fault ends the worker, and the actor restarts (untested)                                |
+| Messages from one sender arrive in send order               | Yes                                                                                                                                                                                                                                                             | Unverified across `MessagePort`                                                                     |
+| Loops inside compiled `async` functions yield               | Yes                                                                                                                                                                                                                                                             | No. The worker runs no turn, so the watchdog restarts an actor whose loop outlasts `stallMs`.       |
+| Package code, synchronous functions, and native calls yield | No. A runaway call hangs every actor, and nothing stops it.                                                                                                                                                                                                     | No. The watchdog restarts the actor, except in Gap 1. On Bun 1.3.11, the old thread keeps spinning. |
+| Actor refs cross                                            | Yes                                                                                                                                                                                                                                                             | No. The call fails with `NotSendable`, and the actor keeps serving.                                 |
+| Cancellation reaches the callee                             | Yes, for code that accepts an `AbortSignal`                                                                                                                                                                                                                     | No                                                                                                  |
+| Streaming methods work                                      | Yes                                                                                                                                                                                                                                                             | No. The call fails.                                                                                 |
+| Memory limit                                                | None. Heap exhaustion ends the process.                                                                                                                                                                                                                         | Opt-in on Node. Gap 1 escapes it.                                                                   |
+| Package state and built-in prototypes are isolated          | No                                                                                                                                                                                                                                                              | Yes                                                                                                 |
+| A native addon crash is contained                           | No                                                                                                                                                                                                                                                              | Unverified                                                                                          |
 
 ## 9. Next milestones
 
 1. D1: a pool of worker-thread schedulers that run turns. A supervisor restarts a failed worker, then its actors from their specs (ADR 0001).
-2. A process backstop: a parent process that kills a scheduler process stuck in a native call or a Gap 1 loop.
+2. A watchdog process: a parent process that kills a scheduler process stuck in a native call or a Gap 1 loop.
 3. A ref wire format, cancellation, and streams across threads, so actor code can move between placements.
-4. Distribution across machines on the host-neutral boundary that ADR 0001 names: spawn, send, link, and monitor. `effect/cluster` is a candidate.
+4. Distribution across machines on the host-neutral boundary from ADR 0001 (spawn, send, receive, link, monitor, exit). `effect/cluster` is a candidate.
 5. Durable actors with journaled turns and checkpointed state, so a restart keeps state. `effect/workflow` is a candidate.
-6. Effect-native actor methods.
+6. Actor methods that return an `Effect` in place of a promise.
 7. Opt-in reentrancy for calls on the call chain of an actor, which fail with `CallCycle` today.
-8. A TypeScript language-service plugin that shows `bouy check` diagnostics in the editor (section 10).
+8. A plugin for the TypeScript language service that shows `bouy check` diagnostics in the editor (section 10).
 9. Lower memory per actor.
 10. More npm packages in `e2e/npm-equivalence.test.ts`.
 11. Verification runs on Node 24 and 26.
 
 ## 10. Editor support
 
-Bouy adds no syntax. A Bouy program is TypeScript, so every editor that highlights TypeScript already highlights Bouy code, and a new grammar would add nothing. Completion, navigation, and type errors work as in any TypeScript project, because the type of a ref derives from its class. The useful editor work is a TypeScript language-service plugin that shows the `bouy check` diagnostics inline (milestone 8).
+Bouy adds no syntax. A Bouy program is TypeScript, so every editor that highlights TypeScript already highlights Bouy code, and a new grammar would add nothing. Completion, navigation, and type errors work as in any TypeScript project, because the type of a ref derives from its class. The planned editor work is a plugin for the TypeScript language service that shows the `bouy check` diagnostics inline (milestone 8).
