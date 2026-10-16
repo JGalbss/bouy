@@ -19,9 +19,11 @@ export type MethodName<T> = {
 }[keyof T];
 
 export type Remote<F> = F extends (...args: infer A) => infer R
-  ? [R] extends [AsyncIterable<infer Y>]
-    ? (...args: A) => AsyncIterable<Y>
-    : (...args: A) => Promise<Awaited<R>>
+  ? [R] extends [never]
+    ? (...args: A) => Promise<never>
+    : [R] extends [AsyncIterable<infer Y>]
+      ? (...args: A) => AsyncIterable<Y>
+      : (...args: A) => Promise<Awaited<R>>
   : never;
 
 type Delivery<F> = F extends (...args: infer A) => void ? (...args: A) => Promise<boolean> : never;
