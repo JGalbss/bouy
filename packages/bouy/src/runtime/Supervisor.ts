@@ -1,14 +1,4 @@
-import {
-  Data,
-  Deferred,
-  Duration,
-  Effect,
-  Fiber,
-  Option,
-  Queue,
-  Schedule,
-  type Scope,
-} from "effect";
+import { Cause, Data, Deferred, Effect, Exit, Fiber, Option, Queue, type Scope } from "effect";
 import type { ActorExit } from "./Actor.ts";
 import type { Crash } from "./errors.ts";
 import { copyError } from "./Sendable.ts";
@@ -42,6 +32,11 @@ export class Intensity {
     this.#withinMs = policy.withinMs ?? DEFAULT_WITHIN_MS;
   }
 
+  backoffMs(backoff: Backoff | undefined): number {
+    if (backoff === undefined) return 0;
+    return Math.min(backoff.maxMs, backoff.initialMs * 2 ** Math.max(0, this.#restarts.length - 1));
+  }
+
   admits(now: number): boolean {
     const recent = this.#restarts.filter((at) => now - at < this.#withinMs);
     this.#restarts = recent;
@@ -62,27 +57,26 @@ export interface Supervisable {
 
 export const superviseAlone = (child: Supervisable, policy: RestartPolicy): Effect.Effect<void> => {
   const intensity = new Intensity(policy);
-  const restarts = policy.restart !== "temporary";
-  const delays = Option.fromUndefinedOr(policy.backoff).pipe(
-    Option.match({
-      onNone: (): Schedule.Schedule<unknown, Crash> => Schedule.forever,
-      onSome: (backoff) =>
-        Schedule.exponential(Duration.millis(backoff.initialMs)).pipe(
-          Schedule.modifyDelay(({ duration }) =>
-            Effect.succeed(Duration.min(duration, Duration.millis(backoff.maxMs))),
-          ),
-        ),
-    }),
-  );
-  return child.incarnate().pipe(
-    Effect.tapError((crash) => Effect.sync(() => child.restarting(crash))),
-    Effect.retry({
-      schedule: delays,
-      while: () => restarts && child.hasStarted && intensity.admits(Date.now()),
-    }),
-    Effect.catch((crash) => child.terminate({ kind: "failed", cause: copyError(crash.cause) })),
-    Effect.onInterrupt(() => child.terminate({ kind: "stopped" })),
-  );
+  return Effect.gen(function* () {
+    while (true) {
+      const exit = yield* Effect.exit(child.incarnate());
+      if (Exit.isSuccess(exit)) return;
+      const crash = Cause.findErrorOption(exit.cause);
+      if (Option.isNone(crash)) {
+        yield* child.terminate({ kind: "failed", cause: copyError(Cause.squash(exit.cause)) });
+        return;
+      }
+      child.restarting(crash.value);
+      const admitted =
+        policy.restart !== "temporary" && child.hasStarted && intensity.admits(Date.now());
+      if (!admitted) {
+        yield* child.terminate({ kind: "failed", cause: copyError(crash.value.cause) });
+        return;
+      }
+      const delay = intensity.backoffMs(policy.backoff);
+      if (delay > 0) yield* Effect.sleep(delay);
+    }
+  }).pipe(Effect.onInterrupt(() => child.terminate({ kind: "stopped" })));
 };
 
 export interface TreeChild {

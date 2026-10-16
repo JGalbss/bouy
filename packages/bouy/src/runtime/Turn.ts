@@ -24,7 +24,7 @@ export class TurnContext {
   }
 
   get isCancelled(): boolean {
-    return this.origin.signal?.aborted === true || this.incarnation.signal.aborted;
+    return this.origin.signal?.aborted === true || this.incarnation.isRetired;
   }
 }
 

@@ -2,7 +2,7 @@ import { Deferred, Effect, type Scope } from "effect";
 import type { Behavior, Blueprint, Outcome } from "./Blueprint.ts";
 import type { Body } from "./Body.ts";
 import { ActorFailed, ActorStopped, CallCycle, Crash, NotSendable } from "./errors.ts";
-import { Envelope, refuse, type Mailbox } from "./Mailbox.ts";
+import { Envelope, refuse, WAKE, type Mailbox } from "./Mailbox.ts";
 import { copyArguments, copyError, copyValue, type Reference, type Sendable } from "./Sendable.ts";
 import type { StreamChannel } from "./Streaming.ts";
 import { runTurn, TurnContext } from "./Turn.ts";
@@ -48,23 +48,48 @@ const constructorCrash = (cause: unknown): Crash => new Crash({ site: "the const
 const isAsyncIterable = (value: Outcome): value is AsyncIterable<Sendable> =>
   Object(value) === value && Symbol.asyncIterator in Object(value);
 
+export interface IncarnationSpec {
+  readonly generation: number;
+  readonly scope: Scope.Scope;
+  readonly blueprint: Blueprint;
+  readonly wake: () => void;
+}
+
 export class Incarnation {
   readonly generation: number;
   readonly scope: Scope.Scope;
-  readonly fault = Deferred.makeUnsafe<never, Crash>();
   readonly #blueprint: Blueprint;
-  readonly #controller = new AbortController();
+  readonly #wake: () => void;
+  #controller: AbortController | undefined;
+  #retired = false;
   #body: Body | undefined;
+  #fault: Crash | undefined;
   #faultCause: Error | undefined;
+  #interruptWait: ((crash: Crash) => void) | undefined;
 
-  constructor(generation: number, scope: Scope.Scope, blueprint: Blueprint) {
-    this.generation = generation;
-    this.scope = scope;
-    this.#blueprint = blueprint;
+  constructor(spec: IncarnationSpec) {
+    this.generation = spec.generation;
+    this.scope = spec.scope;
+    this.#blueprint = spec.blueprint;
+    this.#wake = spec.wake;
   }
 
   get signal(): AbortSignal {
+    this.#controller ??= new AbortController();
+    if (this.#retired) this.#controller.abort(new DOMException("The actor stopped", "AbortError"));
     return this.#controller.signal;
+  }
+
+  get isRetired(): boolean {
+    return this.#retired;
+  }
+
+  get fault(): Crash | undefined {
+    return this.#fault;
+  }
+
+  get faultCause(): Error | undefined {
+    return this.#faultCause;
   }
 
   bind(body: Body): void {
@@ -81,17 +106,39 @@ export class Incarnation {
     return this.#body.invoke(method, args);
   }
 
-  get faultCause(): Error | undefined {
-    return this.#faultCause;
+  crash(cause: unknown): void {
+    if (this.#fault !== undefined) return;
+    this.#fault = new Crash({ site: "an async callback", cause });
+    this.#faultCause = copyError(cause);
+    this.#interruptWait?.(this.#fault);
+    this.#wake();
   }
 
-  crash(cause: unknown): void {
-    this.#faultCause ??= copyError(cause);
-    Deferred.doneUnsafe(this.fault, Effect.fail(new Crash({ site: "an async callback", cause })));
+  wait<A>(pending: PromiseLike<A>, site: string): Effect.Effect<A, Crash> {
+    return Effect.callback<A, Crash>((resume) => {
+      const fault = this.#fault;
+      if (fault !== undefined) {
+        resume(Effect.fail(fault));
+        return;
+      }
+      const outcome = { settled: false };
+      const settle = (result: Effect.Effect<A, Crash>): void => {
+        if (outcome.settled) return;
+        outcome.settled = true;
+        this.#interruptWait = undefined;
+        resume(result);
+      };
+      this.#interruptWait = (crash) => settle(Effect.fail(crash));
+      pending.then(
+        (value) => settle(Effect.succeed(value)),
+        (cause: unknown) => settle(Effect.fail(new Crash({ site, cause }))),
+      );
+    });
   }
 
   retire(): Effect.Effect<void> {
-    this.#controller.abort(new DOMException("The actor stopped", "AbortError"));
+    this.#retired = true;
+    this.#controller?.abort(new DOMException("The actor stopped", "AbortError"));
     const body = this.#body;
     if (body === undefined) return Effect.void;
     return Effect.tryPromise(() => body.dispose()).pipe(
@@ -124,6 +171,7 @@ export class Actor {
   #processed = 0;
   #restarts = 0;
   #lastFailure: string | undefined;
+  #carried: Envelope | undefined;
 
   constructor(spec: ActorSpec) {
     this.id = spec.id;
@@ -170,7 +218,7 @@ export class Actor {
         const scope = yield* Effect.scope;
         const incarnation = yield* this.#begin(scope);
         yield* Effect.addFinalizer(() => incarnation.retire());
-        return yield* Effect.raceFirst(this.#serve(incarnation), Deferred.await(incarnation.fault));
+        return yield* this.#serve(incarnation);
       }),
     ).pipe(Effect.tapError((crash) => Deferred.fail(this.started, crash)));
   }
@@ -210,7 +258,12 @@ export class Actor {
   }
 
   #begin(scope: Scope.Scope): Effect.Effect<Incarnation, Crash> {
-    const incarnation = new Incarnation(this.#generation + 1, scope, this.blueprint);
+    const incarnation = new Incarnation({
+      generation: this.#generation + 1,
+      scope,
+      blueprint: this.blueprint,
+      wake: () => this.mailbox.wake(),
+    });
     const turn = new TurnContext(this, incarnation, {
       chain: Symbol("bouy.start"),
       signal: undefined,
@@ -239,8 +292,28 @@ export class Actor {
 
   #serve(incarnation: Incarnation): Effect.Effect<never, Crash> {
     return Effect.forever(
-      Effect.flatMap(this.mailbox.take, (envelope) => this.#turnFor(incarnation, envelope)),
+      Effect.flatMap(
+        Effect.suspend(() => this.#next()),
+        (envelope) => this.#dispatch(incarnation, envelope),
+      ),
     );
+  }
+
+  #next(): Effect.Effect<Envelope> {
+    const carried = this.#carried;
+    if (carried === undefined) return this.mailbox.take;
+    this.#carried = undefined;
+    return Effect.succeed(carried);
+  }
+
+  #dispatch(incarnation: Incarnation, envelope: Envelope): Effect.Effect<void, Crash> {
+    const fault = incarnation.fault;
+    if (fault !== undefined) {
+      if (envelope !== WAKE) this.#carried = envelope;
+      return Effect.fail(fault);
+    }
+    if (envelope === WAKE) return Effect.void;
+    return this.#turnFor(incarnation, envelope);
   }
 
   #turnFor(incarnation: Incarnation, envelope: Envelope): Effect.Effect<void, Crash> {
@@ -281,10 +354,7 @@ export class Actor {
     }).pipe(
       Effect.flatMap((outcome): Effect.Effect<Settled, Crash> => {
         if (!(outcome instanceof Promise)) return Effect.succeed(outcome);
-        return Effect.tryPromise({
-          try: (): Promise<Sendable> => outcome,
-          catch: (cause) => new Crash({ site: message.method, cause }),
-        });
+        return turn.incarnation.wait<Sendable>(outcome, message.method);
       }),
     );
   }
@@ -342,10 +412,10 @@ export class Actor {
     return Effect.gen(function* () {
       const iterator = runTurn(turn, () => iterable[Symbol.asyncIterator]());
       while (true) {
-        const step = yield* Effect.tryPromise({
-          try: () => runTurn(turn, () => iterator.next()),
-          catch: (cause) => new Crash({ site: "a stream", cause }),
-        });
+        const step = yield* turn.incarnation.wait(
+          runTurn(turn, () => iterator.next()),
+          "a stream",
+        );
         if (step.done === true) return;
         const item = yield* Effect.try({
           try: () => copyValue(step.value),

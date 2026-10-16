@@ -238,14 +238,12 @@ export class ActorSystem extends Context.Service<
       yield* containFaults;
       const actors = new Actors(yield* Effect.scope);
       return ActorSystem.of({
-        spawn: Effect.fn("ActorSystem.spawn")(
-          (actorClass: ActorClass, options: SpawnOptions) => actors.spawn(actorClass, options),
-          Effect.provideService(Scheduler.Scheduler, fairScheduler),
-        ),
-        supervise: Effect.fn("ActorSystem.supervise")(
-          (spec: TreeSpec) => actors.supervise(spec),
-          Effect.provideService(Scheduler.Scheduler, fairScheduler),
-        ),
+        spawn: (actorClass: ActorClass, options: SpawnOptions) =>
+          actors
+            .spawn(actorClass, options)
+            .pipe(Effect.provideService(Scheduler.Scheduler, fairScheduler)),
+        supervise: (spec: TreeSpec) =>
+          actors.supervise(spec).pipe(Effect.provideService(Scheduler.Scheduler, fairScheduler)),
         stop: Effect.fn("ActorSystem.stop")((ref: Reference) => actors.stopping(ref)),
         inspect: Effect.sync(() => actors.snapshots),
       });

@@ -76,6 +76,14 @@ describe("supervision", () => {
     await expect(counter.increment()).rejects.toBeInstanceOf(ActorStopped);
   });
 
+  it("waits for the backoff before it restarts a crashed actor", async () => {
+    const counter = spawn(Counter, { restart: { backoff: { initialMs: 60, maxMs: 200 } } });
+    await expect(counter.explode("first")).rejects.toBeInstanceOf(ActorFailed);
+    const askedAt = performance.now();
+    expect(await counter.increment()).toBe(1);
+    expect(performance.now() - askedAt).toBeGreaterThanOrEqual(50);
+  });
+
   it("fails spawn when the first construction throws", () => {
     expect(() => spawn(Fragile, { args: [{ valid: false }] })).toThrow("bad configuration");
     expect(spawn(Fragile, { args: [{ valid: true }] })).toBeDefined();

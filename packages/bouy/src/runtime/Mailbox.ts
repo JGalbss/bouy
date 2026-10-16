@@ -80,6 +80,16 @@ export type Envelope = Data.TaggedEnum<{
 
 export const Envelope = Data.taggedEnum<Envelope>();
 
+const delivered = new Reply<boolean>(undefined);
+delivered.succeed(true);
+
+export const WAKE: Envelope = Envelope.Cast({
+  method: "",
+  args: [],
+  origin: { chain: Symbol("bouy.wake"), signal: undefined },
+  delivered,
+});
+
 export const refuse = (envelope: Envelope, cause: Error): void =>
   Envelope.$match(envelope, {
     Call: (call) => call.reply.fail(cause),
@@ -116,6 +126,10 @@ export class Mailbox {
 
   get take(): Effect.Effect<Envelope> {
     return Queue.take(this.#queue);
+  }
+
+  wake(): void {
+    Queue.offerUnsafe(this.#queue, WAKE);
   }
 
   admit(envelope: Envelope): void {
