@@ -4,16 +4,29 @@
   "description": "Actors as the execution primitive for TypeScript AI agents.",
   "license": "MIT",
   "bin": {
-    "bouy": "./src/cli/main.ts"
+    "bouy": "./dist/cli.mjs"
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./intrinsics": "./src/intrinsics.ts",
-    "./register": "./src/register.ts",
-    "./std": "./src/std.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./register": {
+      "types": "./src/register.ts",
+      "default": "./dist/register.mjs"
+    },
+    "./intrinsics": {
+      "types": "./src/intrinsics.ts",
+      "default": "./dist/intrinsics.mjs"
+    },
+    "./std": {
+      "types": "./src/std.ts",
+      "default": "./dist/std.mjs"
+    }
   },
   "scripts": {
+    "build": "tsdown",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run"
   },
@@ -27,6 +40,7 @@
     "@effect/vitest": "4.0.5",
     "@types/bun": "1.4.3",
     "@types/node": "26.6.5",
+    "tsdown": "0.23.1",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   }

@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Worker, type WorkerOptions } from "node:worker_threads";
 import { Match, Schema } from "effect";
 import type { Location, Outcome } from "../runtime/Blueprint.ts";
@@ -19,7 +21,10 @@ export interface ThreadLaunch {
 
 export const DEFAULT_STALL_MS = 5_000;
 
-const HOST = new URL("./host.ts", import.meta.url);
+const HOST = [
+  new URL("./thread-host.mjs", import.meta.url),
+  new URL("./host.ts", import.meta.url),
+].find((candidate) => existsSync(fileURLToPath(candidate)));
 const decode = Schema.decodeUnknownSync(FromWorker);
 
 export class ThreadBody implements Body {
@@ -47,6 +52,7 @@ export class ThreadBody implements Body {
     if (launch.options.maxHeapMb !== undefined) {
       options.resourceLimits = { maxOldGenerationSizeMb: launch.options.maxHeapMb };
     }
+    if (HOST === undefined) throw new Error("bouy cannot find its thread host next to the runtime");
     this.#worker = new Worker(HOST, options);
     this.#worker.on("message", (raw) => this.#receive(decode(raw)));
     this.#worker.on("error", (cause) => this.#fault(copyError(cause)));

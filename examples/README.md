@@ -22,9 +22,9 @@ Node, through the Bouy CLI:
 Bun, through the Bouy CLI:
 
 ```sh
-bun ../packages/bouy/src/cli/main.ts run hello.ts
-bun ../packages/bouy/src/cli/main.ts run research-team.ts
-bun ../packages/bouy/src/cli/main.ts run zod-validation.ts
+bun ../packages/bouy/dist/cli.mjs run hello.ts
+bun ../packages/bouy/dist/cli.mjs run research-team.ts
+bun ../packages/bouy/dist/cli.mjs run zod-validation.ts
 ```
 
 Without the CLI, register the compiler as a loader hook. Replace `hello.ts` with any example:

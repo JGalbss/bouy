@@ -10,13 +10,13 @@ This command runs Vitest directly. Turborepo, which runs the tests for `pnpm tes
 
 ## Hosts
 
-| Host                          | Command                                                |
-| ----------------------------- | ------------------------------------------------------ |
-| `node via bouy run`           | `e2e/node_modules/.bin/bouy run <file>`                |
-| `node --import bouy/register` | `node --import bouy/register <file>`                   |
-| `bun via bouy run`            | `bun e2e/node_modules/bouy/src/cli/main.ts run <file>` |
-| `bun --preload bouy/register` | `bun --preload bouy/register <file>`                   |
-| `plain node`                  | `node <file>`, with no compiler, as the baseline       |
+| Host                          | Command                                             |
+| ----------------------------- | --------------------------------------------------- |
+| `node via bouy run`           | `e2e/node_modules/.bin/bouy run <file>`             |
+| `node --import bouy/register` | `node --import bouy/register <file>`                |
+| `bun via bouy run`            | `bun e2e/node_modules/bouy/dist/cli.mjs run <file>` |
+| `bun --preload bouy/register` | `bun --preload bouy/register <file>`                |
+| `plain node`                  | `node <file>`, with no compiler, as the baseline    |
 
 The Bun cases need `bun` on the `PATH`. Without it, Vitest reports them as skipped. The CI workflow in `.github/workflows/ci.yml` does not install Bun, so CI runs only the Node cases.
 
@@ -60,4 +60,4 @@ Each test has a 60 s timeout, and the harness kills a child process after 50 s. 
 These tests assert the behavior that the runtime should have, and they fail until the runtime changes.
 
 - `faults.test.ts`, "restarts the actor whose EventEmitter listener throws, not the actor that emits", on all four hosts. The `faulty` actor registers a listener that throws on a module-level `EventEmitter`, and the `steady` actor emits from a timer. The run reports `faultyRestarts: 0`, `steadyRestarts: 1`, and exit code 0: `steady` restarts and loses its count of answered pings, and `faulty` keeps its state and its listener. `attributeFault` in `packages/bouy/src/runtime/ActorSystem.ts` crashes the turn that `currentTurn()` returns, and a listener runs in the async context of `emit()`.
-- `argv.test.ts` on `node via bouy run` and `bun via bouy run`. `bouy run argv.ts a b` exits 1 with `Unexpected positional arguments: "a", "b"`. Without arguments, the program sees the argv of the CLI, `[".../bouy/src/cli/main.ts", "run", "argv.ts"]`, so its entry-point check is false. `Cli.run` in `packages/bouy/src/cli/main.ts` accepts one entry argument and imports the entry without setting `process.argv`.
+- `argv.test.ts` on `node via bouy run` and `bun via bouy run`. `bouy run argv.ts a b` exits 1 with `Unexpected positional arguments: "a", "b"`. Without arguments, the program sees the argv of the CLI, `[".../bouy/dist/cli.mjs", "run", "argv.ts"]`, so its entry-point check is false. `Cli.run` in `packages/bouy/dist/cli.mjs` accepts one entry argument and imports the entry without setting `process.argv`.

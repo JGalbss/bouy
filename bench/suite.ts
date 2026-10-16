@@ -24,7 +24,7 @@ export const resultsFileName = (prefix: string, recordedAt: Date): string => {
 
 export const bouyRun = (entry: string): Command => ({
   file: process.execPath,
-  args: [benchPath("node_modules/bouy/src/cli/main.ts"), "run", entry],
+  args: [benchPath("node_modules/bouy/dist/cli.mjs"), "run", entry],
 });
 
 export const readMetrics = Schema.decodeUnknownSync(

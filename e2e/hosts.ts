@@ -31,7 +31,7 @@ export const PROGRAMS = fileURLToPath(new URL("test/", import.meta.url));
 export const EXAMPLES = fileURLToPath(new URL("../examples/", import.meta.url));
 
 const BOUY_BIN = fileURLToPath(new URL("node_modules/.bin/bouy", import.meta.url));
-const BOUY_CLI = fileURLToPath(new URL("node_modules/bouy/src/cli/main.ts", import.meta.url));
+const BOUY_CLI = fileURLToPath(new URL("node_modules/bouy/dist/cli.mjs", import.meta.url));
 
 const hasBun = spawnSync("bun", ["--version"]).status === 0;
 
