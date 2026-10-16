@@ -47,6 +47,12 @@ const run = Command.make(
   "run",
   {
     entry,
+    args: Argument.String("args").pipe(
+      Argument.withDescription(
+        "Arguments for the program; put -- before arguments that start with -",
+      ),
+      Argument.variadic(),
+    ),
     check: Flag.Boolean("check").pipe(
       Flag.withDescription("Run the actor isolation checks before the program starts"),
       Flag.withDefault(false),
@@ -56,6 +62,7 @@ const run = Command.make(
     const path = resolve(options.entry);
     if (options.check) yield* checkEntry(path);
     installLoader();
+    process.argv = [process.argv[0] ?? process.execPath, path, ...options.args];
     yield* Effect.tryPromise({
       try: () => import(entryUrl(path)),
       catch: (cause) => new EntryFailed({ entry: path, cause }),
