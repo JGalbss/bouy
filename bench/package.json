@@ -2,9 +2,6 @@
   "name": "@bouy/bench",
   "private": true,
   "type": "module",
-  "scripts": {
-    "typecheck": "tsc --noEmit -p ."
-  },
   "dependencies": {
     "@ai-sdk/openai": "4.0.95",
     "ai": "7.0.142",
