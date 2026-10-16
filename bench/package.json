@@ -2,6 +2,10 @@
   "name": "@bouy/bench",
   "private": true,
   "type": "module",
+  "scripts": {
+    "bench": "node run.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
   "dependencies": {
     "@ai-sdk/openai": "4.0.95",
     "ai": "7.0.142",
