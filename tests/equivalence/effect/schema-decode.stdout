@@ -1,0 +1,45 @@
+{
+  age: 31,
+  kind: 'person',
+  name: 'Ann',
+  tags: [ 'admin' ],
+  verified: true
+}
+{
+  age: 4,
+  kind: 'person',
+  name: 'Bo',
+  nickname: 'B',
+  tags: [],
+  verified: false
+}
+not an object: SchemaError SchemaError
+Expected object
+an array: SchemaError SchemaError
+Expected object
+null: SchemaError SchemaError
+Expected object
+missing key: SchemaError SchemaError
+Missing key
+  at ["kind"]
+wrong type: SchemaError SchemaError
+Expected number
+  at ["age"]
+wrong literal: SchemaError SchemaError
+Expected "person"
+  at ["kind"]
+wrong item: SchemaError SchemaError
+Expected string
+  at ["tags"][1]
+wrong optional: SchemaError SchemaError
+Expected string | undefined
+  at ["nickname"]
+1.5
+[ 1, 2, 3 ]
+3
+Expected string
+Expected number
+Expected boolean
+Expected "on"
+Expected 1
+Expected array

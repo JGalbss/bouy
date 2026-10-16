@@ -1,0 +1,12 @@
+charging 10
+{
+  customer: 'ann',
+  receipt: 'receipt for 10',
+  reserved: [ '3 x apple', '4 x plum' ]
+}
+sorry, pear is sold out
+charging 120
+charging 120
+payment of 120 declined
+bad order: Expected string
+[ 'sorry, pear is sold out', 'bad order: Expected string' ]

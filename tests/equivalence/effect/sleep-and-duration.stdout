@@ -1,0 +1,10 @@
+50 slept long enough
+"100 millis" slept long enough
+"0.2 seconds" slept long enough
+{"_id":"Duration","_tag":"Millis","millis":60} slept long enough
+{ _id: 'Duration', _tag: 'Millis', millis: 250 }
+{ _id: 'Duration', _tag: 'Millis', millis: 2000 }
+1500 120000 90
+2s 500ms 3h 0
+sleeps add up: true
+an invalid duration is a defect: Error: Invalid Input: soon

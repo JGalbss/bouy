@@ -1,0 +1,27 @@
+recurs: attempt
+recurs: attempt
+recurs: attempt
+recurs(2): Failure recurs failed
+times: attempt
+times: attempt
+times: attempt
+times: attempt
+times 3: Failure times failed
+once: attempt
+recurs(0): Failure once failed
+spaced: attempt
+spaced: attempt
+spaced: attempt
+spaced: Failure spaced failed
+spaced waited between attempts: true
+exponential: attempt
+exponential: attempt
+exponential: attempt
+exponential: attempt
+exponential: Failure exponential failed
+exponential waited 20 + 40 + 80 ms: true
+while: attempt
+while: Failure while failed
+until it succeeds: Success ready
+succeeds at once
+success needs no retry: Success 1

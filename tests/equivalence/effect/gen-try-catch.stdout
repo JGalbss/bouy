@@ -1,0 +1,8 @@
+Failure typed
+the defect reached runSync: Error: a defect
+caught Error: plain JavaScript after 1 attempt
+finally runs for a JavaScript throw
+try body ok
+finally runs after a normal end
+2
+a throw in the body is a defect, which catch and result let through: Error: escapes the generator

@@ -1,0 +1,5 @@
+unbounded: [ 'a', 'b', 'c' ] in parallel
+forEach: [ '#0', '#1', '#2', '#3' ] in parallel
+record: { left: 'L', right: 'R' } in parallel
+two at a time: bounded
+Failure fast failure without waiting

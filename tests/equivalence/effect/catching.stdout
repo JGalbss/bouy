@@ -1,0 +1,14 @@
+catch -> recovered NotFound
+catch data-last -> Forbidden
+catchTag -> no missing
+catchTag other tag -> failure Forbidden
+catchTag several -> handled Timeout
+catchTag orElse -> orElse Forbidden
+catchTag data-first -> 7
+catchTags -> forbidden for guest
+catchTags unmatched -> failure Timeout
+catchTags success -> value of open
+mapError -> failure mapped NotFound
+orElseSucceed -> fallback after Timeout
+catch rethrows -> failure again NotFound
+plain failure -> failure not tagged

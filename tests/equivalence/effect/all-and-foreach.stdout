@@ -1,0 +1,21 @@
+run a
+run b
+run c
+[ 1, 2, 3 ]
+[]
+run alpha
+run beta
+{ alpha: 1, beta: 2 }
+run discarded
+undefined
+run first
+Failure second failed
+[ 10, 21, 32 ]
+[ 'X', 'Y' ]
+[ 8, 10 ]
+run each 1
+run each 2
+undefined
+even 2
+even 4
+Failure odd 5

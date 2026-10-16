@@ -1,0 +1,10 @@
+{ a: 1 }
+Failure cannot parse {oops: SyntaxError
+UnknownError UnknownError An error occurred in Effect.try
+Error: tried and failed
+5
+42
+8
+UnknownError An error occurred in Effect.tryPromise Error: negative: -1
+Failure { reason: 'Error: negative: -2' }
+a rejected Effect.promise is a defect: Error: negative: -3

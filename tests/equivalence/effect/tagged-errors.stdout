@@ -1,0 +1,9 @@
+70
+InsufficientFunds 10 30
+true true false
+"InsufficientFunds" ""
+AccountLocked the account is locked AccountLocked: the account is locked
+short by 45
+PORT true false
+Failure used as an Effect
+runSync throws the error itself: InsufficientFunds

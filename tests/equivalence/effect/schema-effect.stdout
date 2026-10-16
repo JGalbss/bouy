@@ -1,0 +1,6 @@
+order 1 has 5 items
+order 2 is empty
+invalid order: Expected number   at ["items"][0]["quantity"]
+invalid order: Missing key   at ["id"]
+SchemaError Expected object
+{ id: 9, items: [] }

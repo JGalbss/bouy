@@ -1,0 +1,13 @@
+Success 3
+Failure bad
+succeeded with 3
+failed with bad
+undefined
+undefined
+[ 3, 'x' ]
+[ 3, true ]
+Failure bad
+running first
+running second
+[ 'first', 'second' ]
+[ 'a', 'b' ] concurrent

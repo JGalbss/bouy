@@ -1,0 +1,11 @@
+the Effect is built but has not printed yet
+hello from Console 42 { nested: [ 1, 'two' ] }
+hello from Console 42 { nested: [ 1, 'two' ] }
+first
+second, from console.log
+third, from Console.info
+the list has 3 items
+the value of Console.log is undefined
+undefined
+item a
+item b

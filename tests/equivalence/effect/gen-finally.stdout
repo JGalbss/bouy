@@ -1,0 +1,12 @@
+body 1
+finally 1, seen 1
+finally 2, seen 3
+finally 3, seen 6
+returned at 3 after 6
+caught Error: attempt 1
+finally after 1
+caught Error: attempt 2
+finally after 2
+finally after 3
+3
+[ 3, 7 ]

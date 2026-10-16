@@ -1,0 +1,11 @@
+work succeeds
+finalizer of success
+value
+work fails
+finalizer of failure
+Failure failure
+finalizer of defect
+the defect still escapes: defect
+finalizer of inner
+finalizer of outer
+Failure 2

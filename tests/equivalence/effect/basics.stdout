@@ -1,0 +1,14 @@
+42
+computed lazily
+undefined
+Success [ 1, 2 ]
+Failure boom
+runSync threw the failure: { code: 7 }
+runSync threw the defect: defect
+a throw in sync is a defect: Error: thrown in sync
+built, not run
+the thunk runs when the Effect runs
+the thunk runs when the Effect runs
+2
+from runPromise
+runPromise rejected with: rejected
