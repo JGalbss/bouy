@@ -1,0 +1,36 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: output.code
+---
+import * as __bouy from "bouy/intrinsics";
+import { spawn } from "bouy";
+export class ResearchAgent {
+	#notes = [];
+	async research(topic) {
+		for (const word of topic.name.split(" ")) {
+			if (__bouy.tick()) await __bouy.pause();
+			this.#notes.push(word);
+		}
+		let total = 0;
+		while (total < 10) {
+			if (__bouy.tick()) await __bouy.pause();
+			total += 1;
+		}
+		const sync = () => {
+			for (let i = 0; i < 3; i += 1) total += i;
+		};
+		sync();
+		return this.#notes.join(",");
+	}
+	count() {
+		let n = 0;
+		for (const _ of this.#notes) n += 1;
+		return n;
+	}
+}
+__bouy.locate(ResearchAgent, import.meta.url, "ResearchAgent");
+class Hidden {}
+__bouy.locate(Hidden, import.meta.url, "Visible");
+export { Hidden as Visible };
+const agent = spawn(ResearchAgent);
+console.log(await agent.research({ name: "a b" }));

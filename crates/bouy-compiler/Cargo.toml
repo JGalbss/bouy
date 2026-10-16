@@ -1,0 +1,17 @@
+[package]
+name = "bouy-compiler"
+description = "Per-file compiler that lowers TypeScript into actor-aware JavaScript for the Bouy runtime."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+oxc = { version = "0.154", features = ["transformer", "codegen", "semantic", "ast_visit"] }
+
+[dev-dependencies]
+insta = "1"
+
+[lints]
+workspace = true

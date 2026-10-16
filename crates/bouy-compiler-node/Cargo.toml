@@ -1,0 +1,23 @@
+[package]
+name = "bouy-compiler-node"
+description = "napi-rs binding that exposes the Bouy compiler to Node.js."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+bouy-compiler.workspace = true
+napi = { version = "3", default-features = false, features = ["napi9"] }
+napi-derive = "3"
+
+[build-dependencies]
+napi-build = "2"
+
+[lints]
+workspace = true
