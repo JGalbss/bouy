@@ -9,6 +9,7 @@ export default defineConfig({
     ...(preset.ignorePatterns ?? []),
     "dist/**",
     ".bouy/**",
+    ".claude/**",
     "target/**",
     "**/fixtures/**",
     // Compiler inputs: these programs exercise every construct the compiler lowers.
