@@ -1,0 +1,4402 @@
+{
+  "environment": {
+    "host_model": "Mac17,8",
+    "host_cpu": "Apple M5 Pro",
+    "host_cores": "18",
+    "host_memory_bytes": "68719476736",
+    "macos": "26.6.1 (25G76), Darwin 25.6.0",
+    "node_native": "v25.9.0",
+    "docker_context": "orbstack",
+    "docker_server": "29.4.0",
+    "docker_vm": "OrbStack; kernel 7.0.14-orbstack-00380-ga7e0a2dc9535; 18 CPUs; 16817172480 bytes",
+    "erlang_image": "erlang@sha256:563a62a5a6dae274c2a95679a5364cad79f655ed484e6620f98911b4dc773692",
+    "node_image": "node@sha256:78839ac448c23517f8eab2e8f7943d9b4f73979eb7f8bed2c73dbf72ff869e7b",
+    "alpine_image": "alpine@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8",
+    "quickjs_emscripten": "0.32.0",
+    "alpine_quickjs": "quickjs-0.20250426-r0 aarch64 {quickjs} (MIT) [installed]"
+  },
+  "host_load": [
+    {
+      "label": "beam-start",
+      "at": "2026-10-16T14:00:54Z",
+      "host_loadavg": "11.75 15.30 19.11"
+    },
+    {
+      "label": "node-docker-start",
+      "at": "2026-10-16T14:02:35Z",
+      "host_loadavg": "11.38 14.01 18.15"
+    },
+    {
+      "label": "node-native-start",
+      "at": "2026-10-16T14:02:52Z",
+      "host_loadavg": "11.10 13.82 18.01"
+    },
+    {
+      "label": "quickjs-native-start",
+      "at": "2026-10-16T14:03:12Z",
+      "host_loadavg": "13.45 14.12 18.02"
+    },
+    {
+      "label": "quickjs-docker-start",
+      "at": "2026-10-16T14:03:39Z",
+      "host_loadavg": "19.96 15.68 18.45"
+    },
+    {
+      "label": "fib-start",
+      "at": "2026-10-16T14:04:02Z",
+      "host_loadavg": "17.75 15.45 18.30"
+    },
+    {
+      "label": "end",
+      "at": "2026-10-16T14:04:07Z",
+      "host_loadavg": "17.69 15.47 18.29"
+    }
+  ],
+  "summary": {
+    "beam_docker": {
+      "gen-server-call schedulers_online=1": {
+        "untimed_mean_ns": {
+          "median": 847.501457,
+          "min": 809.905252,
+          "max": 895.885103,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 1179938.9744293974,
+          "min": 1116214.5644026855,
+          "max": 1234712.3290416691,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 833,
+          "min": 792,
+          "max": 917,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 1459,
+          "min": 1208,
+          "max": 1792,
+          "runs": 5
+        },
+        "p999_ns": {
+          "median": 16542,
+          "min": 12959,
+          "max": 24542,
+          "runs": 5
+        },
+        "timer_only_mean_ns": {
+          "median": 17.221604,
+          "min": 16.258007,
+          "max": 19.461545,
+          "runs": 5
+        }
+      },
+      "gen-server-call schedulers_online=18": {
+        "untimed_mean_ns": {
+          "median": 908.473741,
+          "min": 802.543539,
+          "max": 1076.426622,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 1100747.2807075884,
+          "min": 928999.6917226003,
+          "max": 1246038.3161841142,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 750,
+          "min": 750,
+          "max": 791,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 1833,
+          "min": 1333,
+          "max": 3459,
+          "runs": 5
+        },
+        "p999_ns": {
+          "median": 26042,
+          "min": 20167,
+          "max": 30501,
+          "runs": 5
+        },
+        "timer_only_mean_ns": {
+          "median": 17.773137,
+          "min": 16.889613,
+          "max": 18.509832,
+          "runs": 5
+        }
+      },
+      "ring schedulers_online=1": {
+        "setup_ns": {
+          "median": 5913230,
+          "min": 5635975,
+          "max": 6218610,
+          "runs": 5
+        },
+        "ns_per_hop": {
+          "median": 304.892423,
+          "min": 299.043278,
+          "max": 342.302207,
+          "runs": 5
+        },
+        "hops_per_s": {
+          "median": 3279845.363687506,
+          "min": 2921395.1284865653,
+          "max": 3343997.586864333,
+          "runs": 5
+        }
+      },
+      "ring schedulers_online=18": {
+        "setup_ns": {
+          "median": 6679868,
+          "min": 5085798,
+          "max": 9273789,
+          "runs": 5
+        },
+        "ns_per_hop": {
+          "median": 272.537393,
+          "min": 256.462526,
+          "max": 287.516449,
+          "runs": 5
+        },
+        "hops_per_s": {
+          "median": 3669221.272693395,
+          "min": 3478061.876035482,
+          "max": 3899205.1415730026,
+          "runs": 5
+        }
+      },
+      "round-trip schedulers_online=1": {
+        "untimed_mean_ns": {
+          "median": 529.654098,
+          "min": 518.050018,
+          "max": 561.26953,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 1888024.663220863,
+          "min": 1781675.1962288064,
+          "max": 1930315.5395315518,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 500,
+          "min": 459,
+          "max": 542,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 834,
+          "min": 792,
+          "max": 1417,
+          "runs": 5
+        },
+        "p999_ns": {
+          "median": 11916,
+          "min": 4166,
+          "max": 12792,
+          "runs": 5
+        },
+        "timer_only_mean_ns": {
+          "median": 17.022693,
+          "min": 16.015564,
+          "max": 17.432433,
+          "runs": 5
+        }
+      },
+      "round-trip schedulers_online=18": {
+        "untimed_mean_ns": {
+          "median": 505.439754,
+          "min": 454.359352,
+          "max": 572.349185,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 1978475.1636294918,
+          "min": 1747185.1558590059,
+          "max": 2200901.10525556,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 458,
+          "min": 417,
+          "max": 458,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 875,
+          "min": 708,
+          "max": 1166,
+          "runs": 5
+        },
+        "p999_ns": {
+          "median": 17292,
+          "min": 7709,
+          "max": 24084,
+          "runs": 5
+        },
+        "timer_only_mean_ns": {
+          "median": 17.404491,
+          "min": 15.586203,
+          "max": 17.956482,
+          "runs": 5
+        }
+      },
+      "spawn schedulers_online=1": {
+        "spawn_ns_per_process": {
+          "median": 1466.910597,
+          "min": 1238.864156,
+          "max": 1564.465276,
+          "runs": 5
+        },
+        "processes_bytes_per_process": {
+          "median": 2632.021544,
+          "min": 2632.02152,
+          "max": 2632.021544,
+          "runs": 5
+        },
+        "processes_used_bytes_per_process": {
+          "median": 2631.991448,
+          "min": 2631.991424,
+          "max": 2631.991448,
+          "runs": 5
+        },
+        "process_info_bytes_per_process": {
+          "median": 2624.0,
+          "min": 2624.0,
+          "max": 2624.0,
+          "runs": 5
+        },
+        "total_bytes_per_process": {
+          "median": 2640.016817,
+          "min": 2640.016561,
+          "max": 2640.016841,
+          "runs": 5
+        }
+      },
+      "spawn schedulers_online=18": {
+        "spawn_ns_per_process": {
+          "median": 1211.546131,
+          "min": 1101.24656,
+          "max": 1517.295944,
+          "runs": 5
+        },
+        "processes_bytes_per_process": {
+          "median": 2632.108656,
+          "min": 2631.992336,
+          "max": 2632.247808,
+          "runs": 5
+        },
+        "processes_used_bytes_per_process": {
+          "median": 2631.885672,
+          "min": 2631.75812,
+          "max": 2631.950064,
+          "runs": 5
+        },
+        "process_info_bytes_per_process": {
+          "median": 2624.0,
+          "min": 2624.0,
+          "max": 2624.0,
+          "runs": 5
+        },
+        "total_bytes_per_process": {
+          "median": 2639.870673,
+          "min": 2639.832297,
+          "max": 2639.943777,
+          "runs": 5
+        }
+      },
+      "spawn-hibernate schedulers_online=1": {
+        "spawn_ns_per_process": {
+          "median": 1024.054281,
+          "min": 933.997317,
+          "max": 1090.807834,
+          "runs": 5
+        },
+        "processes_bytes_per_process": {
+          "median": 824.049304,
+          "min": 824.048784,
+          "max": 824.049728,
+          "runs": 5
+        },
+        "processes_used_bytes_per_process": {
+          "median": 824.019208,
+          "min": 824.018688,
+          "max": 824.019632,
+          "runs": 5
+        },
+        "process_info_bytes_per_process": {
+          "median": 800.0,
+          "min": 800.0,
+          "max": 800.0,
+          "runs": 5
+        },
+        "total_bytes_per_process": {
+          "median": 832.044281,
+          "min": 832.044081,
+          "max": 832.044993,
+          "runs": 5
+        }
+      },
+      "spawn-hibernate schedulers_online=18": {
+        "spawn_ns_per_process": {
+          "median": 875.891125,
+          "min": 767.706215,
+          "max": 1044.331014,
+          "runs": 5
+        },
+        "processes_bytes_per_process": {
+          "median": 824.171312,
+          "min": 823.899088,
+          "max": 824.521584,
+          "runs": 5
+        },
+        "processes_used_bytes_per_process": {
+          "median": 823.929232,
+          "min": 823.805464,
+          "max": 824.020784,
+          "runs": 5
+        },
+        "process_info_bytes_per_process": {
+          "median": 800.0,
+          "min": 800.0,
+          "max": 800.0,
+          "runs": 5
+        },
+        "total_bytes_per_process": {
+          "median": 831.89476,
+          "min": 831.85768,
+          "max": 832.007009,
+          "runs": 5
+        }
+      }
+    },
+    "node_docker": {
+      "ring": {
+        "setup_ns": {
+          "median": 6441530,
+          "min": 6099982.000000005,
+          "max": 8376231.000000005,
+          "runs": 5
+        },
+        "ns_per_hop": {
+          "median": 79.907535,
+          "min": 77.553494,
+          "max": 109.88360599999999,
+          "runs": 5
+        },
+        "hops_per_s": {
+          "median": 12514464.374354683,
+          "min": 9100538.619018383,
+          "max": 12894325.560625289,
+          "runs": 5
+        }
+      },
+      "round-trip": {
+        "untimed_mean_ns": {
+          "median": 159.07601599999998,
+          "min": 121.368767,
+          "max": 167.51004,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 6286302.769865699,
+          "min": 5969791.422651443,
+          "max": 8239352.056695113,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 166,
+          "min": 125,
+          "max": 167,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 250,
+          "min": 167,
+          "max": 291,
+          "runs": 5
+        },
+        "p999_ns": {
+          "median": 3042,
+          "min": 1708,
+          "max": 5125,
+          "runs": 5
+        },
+        "timer_only_mean_ns": {
+          "median": 24.371643,
+          "min": 13.017081,
+          "max": 27.45393,
+          "runs": 5
+        }
+      },
+      "spawn-async": {
+        "spawn_ns_per_actor": {
+          "median": 499.580733,
+          "min": 476.240488,
+          "max": 513.038929,
+          "runs": 5
+        },
+        "heap_used_bytes_per_actor": {
+          "median": 752.120392,
+          "min": 752.120296,
+          "max": 752.126544,
+          "runs": 5
+        },
+        "rss_bytes_per_actor": {
+          "median": 915.091456,
+          "min": 907.685888,
+          "max": 916.271104,
+          "runs": 5
+        }
+      },
+      "spawn-async-als": {
+        "spawn_ns_per_actor": {
+          "median": 742.862985,
+          "min": 647.613554,
+          "max": 783.944544,
+          "runs": 5
+        },
+        "heap_used_bytes_per_actor": {
+          "median": 936.142592,
+          "min": 936.137472,
+          "max": 936.142592,
+          "runs": 5
+        },
+        "rss_bytes_per_actor": {
+          "median": 1075.310592,
+          "min": 1068.838912,
+          "max": 1077.358592,
+          "runs": 5
+        }
+      },
+      "spawn-object": {
+        "spawn_ns_per_actor": {
+          "median": 103.803499,
+          "min": 77.52482699999999,
+          "max": 109.956483,
+          "runs": 5
+        },
+        "heap_used_bytes_per_actor": {
+          "median": 216.118432,
+          "min": 216.118432,
+          "max": 216.1234,
+          "runs": 5
+        },
+        "rss_bytes_per_actor": {
+          "median": 248.27904,
+          "min": 243.654656,
+          "max": 251.052032,
+          "runs": 5
+        }
+      }
+    },
+    "node_native": {
+      "ring": {
+        "setup_ns": {
+          "median": 5815040.9999999935,
+          "min": 4735833.999999997,
+          "max": 8275000.000000006,
+          "runs": 5
+        },
+        "ns_per_hop": {
+          "median": 102.328042,
+          "min": 83.051958,
+          "max": 150.64675,
+          "runs": 5
+        },
+        "hops_per_s": {
+          "median": 9772492.275382344,
+          "min": 6638045.626606614,
+          "max": 12040655.320853483,
+          "runs": 5
+        }
+      },
+      "round-trip": {
+        "untimed_mean_ns": {
+          "median": 111.27737499999999,
+          "min": 92.63366599999999,
+          "max": 347.941833,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 8986552.747133011,
+          "min": 2874043.6048688632,
+          "max": 10795211.321983092,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 125,
+          "min": 125,
+          "max": 167,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 250,
+          "min": 167,
+          "max": 292,
+          "runs": 5
+        },
+        "p999_ns": {
+          "median": 3167,
+          "min": 500,
+          "max": 8791,
+          "runs": 5
+        },
+        "timer_only_mean_ns": {
+          "median": 11.80845,
+          "min": 8.739243,
+          "max": 48.198083,
+          "runs": 5
+        }
+      },
+      "spawn-async": {
+        "spawn_ns_per_actor": {
+          "median": 402.07875,
+          "min": 343.788167,
+          "max": 786.773709,
+          "runs": 5
+        },
+        "heap_used_bytes_per_actor": {
+          "median": 752.11564,
+          "min": 752.115184,
+          "max": 752.11564,
+          "runs": 5
+        },
+        "rss_bytes_per_actor": {
+          "median": 913.620992,
+          "min": 904.495104,
+          "max": 918.749184,
+          "runs": 5
+        }
+      },
+      "spawn-async-als": {
+        "spawn_ns_per_actor": {
+          "median": 625.102292,
+          "min": 544.999459,
+          "max": 1616.4270410000001,
+          "runs": 5
+        },
+        "heap_used_bytes_per_actor": {
+          "median": 936.140832,
+          "min": 936.140832,
+          "max": 936.140832,
+          "runs": 5
+        },
+        "rss_bytes_per_actor": {
+          "median": 1083.8016,
+          "min": 1083.621376,
+          "max": 1084.096512,
+          "runs": 5
+        }
+      },
+      "spawn-object": {
+        "spawn_ns_per_actor": {
+          "median": 97.491917,
+          "min": 87.078166,
+          "max": 183.186375,
+          "runs": 5
+        },
+        "heap_used_bytes_per_actor": {
+          "median": 216.11412,
+          "min": 216.114096,
+          "max": 216.11416,
+          "runs": 5
+        },
+        "rss_bytes_per_actor": {
+          "median": 248.676352,
+          "min": 248.2176,
+          "max": 248.87296,
+          "runs": 5
+        }
+      }
+    },
+    "quickjs_wasm_native": {
+      "runtimes": {
+        "create_us_per_item": {
+          "median": 12.237416999999994,
+          "min": 11.579083999999995,
+          "max": 17.092332999999996,
+          "runs": 5
+        },
+        "quickjs_used_bytes": {
+          "median": 11778,
+          "min": 11778,
+          "max": 11778,
+          "runs": 5
+        },
+        "rss_bytes_per_item": {
+          "median": 19726.336,
+          "min": 19546.112,
+          "max": 19775.488,
+          "runs": 5
+        },
+        "wasm_growth_bytes_per_item": {
+          "median": 3407.872,
+          "min": 3407.872,
+          "max": 3407.872,
+          "runs": 5
+        },
+        "host_heap_bytes_per_item": {
+          "median": 1907.808,
+          "min": 1907.528,
+          "max": 1912.496,
+          "runs": 5
+        }
+      },
+      "contexts_in_one_runtime": {
+        "create_us_per_item": {
+          "median": 137.923917,
+          "min": 112.903042,
+          "max": 240.65070799999998,
+          "runs": 5
+        },
+        "quickjs_used_bytes": {
+          "median": 33568.852,
+          "min": 33568.852,
+          "max": 33568.852,
+          "runs": 5
+        },
+        "rss_bytes_per_item": {
+          "median": 42319.872,
+          "min": 42172.416,
+          "max": 42516.48,
+          "runs": 5
+        },
+        "wasm_growth_bytes_per_item": {
+          "median": 40239.104,
+          "min": 40239.104,
+          "max": 40239.104,
+          "runs": 5
+        },
+        "host_heap_bytes_per_item": {
+          "median": 1725.976,
+          "min": 1707.872,
+          "max": 1736.488,
+          "runs": 5
+        }
+      },
+      "runtime_context_pairs": {
+        "create_us_per_item": {
+          "median": 92.730458,
+          "min": 80.45370799999998,
+          "max": 337.128333,
+          "runs": 5
+        },
+        "quickjs_used_bytes": {
+          "median": 52654,
+          "min": 52654,
+          "max": 52654,
+          "runs": 5
+        },
+        "rss_bytes_per_item": {
+          "median": 66240.512,
+          "min": 66093.056,
+          "max": 66600.96,
+          "runs": 5
+        },
+        "wasm_growth_bytes_per_item": {
+          "median": 65011.712,
+          "min": 65011.712,
+          "max": 65011.712,
+          "runs": 5
+        },
+        "host_heap_bytes_per_item": {
+          "median": 3417.616,
+          "min": 2867.616,
+          "max": 3440.376,
+          "runs": 5
+        }
+      },
+      "wasm_modules": {
+        "create_ms_per_module": {
+          "median": 3.3558170800000005,
+          "min": 2.2302333300000003,
+          "max": 5.126451669999999,
+          "runs": 5
+        },
+        "wasm_memory_bytes_per_module": {
+          "median": 16777216,
+          "min": 16777216,
+          "max": 16777216,
+          "runs": 5
+        },
+        "rss_bytes_per_module": {
+          "median": 440074.24,
+          "min": 425656.32,
+          "max": 513146.88,
+          "runs": 5
+        },
+        "host_heap_bytes_per_module": {
+          "median": 86029.44,
+          "min": 85790.4,
+          "max": 91656.48,
+          "runs": 5
+        }
+      },
+      "round_trip_between_runtimes": {
+        "untimed_mean_ns": {
+          "median": 1660.8962499999998,
+          "min": 1445.0033749999998,
+          "max": 2435.9812920000004,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 602084.5672931107,
+          "min": 410512.18385136913,
+          "max": 692039.9061351675,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 1042,
+          "min": 792,
+          "max": 1208,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 2375,
+          "min": 1541,
+          "max": 2833,
+          "runs": 5
+        }
+      },
+      "fib27_warm_ms": {
+        "median": 22.96983299999988,
+        "min": 15.54829200000006,
+        "max": 29.568875000000162,
+        "runs": 5
+      }
+    },
+    "quickjs_wasm_docker": {
+      "runtimes": {
+        "create_us_per_item": {
+          "median": 11.920334999999998,
+          "min": 10.346516000000001,
+          "max": 12.678639999999998,
+          "runs": 5
+        },
+        "quickjs_used_bytes": {
+          "median": 11778,
+          "min": 11778,
+          "max": 11778,
+          "runs": 5
+        },
+        "rss_bytes_per_item": {
+          "median": 22470.656,
+          "min": 21966.848,
+          "max": 22564.864,
+          "runs": 5
+        },
+        "wasm_growth_bytes_per_item": {
+          "median": 3407.872,
+          "min": 3407.872,
+          "max": 3407.872,
+          "runs": 5
+        },
+        "host_heap_bytes_per_item": {
+          "median": 1909.768,
+          "min": 1909.544,
+          "max": 1909.84,
+          "runs": 5
+        }
+      },
+      "contexts_in_one_runtime": {
+        "create_us_per_item": {
+          "median": 104.524429,
+          "min": 93.126102,
+          "max": 109.620643,
+          "runs": 5
+        },
+        "quickjs_used_bytes": {
+          "median": 33568.852,
+          "min": 33568.852,
+          "max": 33568.852,
+          "runs": 5
+        },
+        "rss_bytes_per_item": {
+          "median": 42778.624,
+          "min": 42213.376,
+          "max": 42950.656,
+          "runs": 5
+        },
+        "wasm_growth_bytes_per_item": {
+          "median": 40239.104,
+          "min": 40239.104,
+          "max": 40239.104,
+          "runs": 5
+        },
+        "host_heap_bytes_per_item": {
+          "median": 1725.336,
+          "min": 1708.68,
+          "max": 1726.04,
+          "runs": 5
+        }
+      },
+      "runtime_context_pairs": {
+        "create_us_per_item": {
+          "median": 76.81268900000003,
+          "min": 66.29296099999999,
+          "max": 81.70935799999998,
+          "runs": 5
+        },
+        "quickjs_used_bytes": {
+          "median": 52654,
+          "min": 52654,
+          "max": 52654,
+          "runs": 5
+        },
+        "rss_bytes_per_item": {
+          "median": 66060.288,
+          "min": 65617.92,
+          "max": 66207.744,
+          "runs": 5
+        },
+        "wasm_growth_bytes_per_item": {
+          "median": 65011.712,
+          "min": 65011.712,
+          "max": 65011.712,
+          "runs": 5
+        },
+        "host_heap_bytes_per_item": {
+          "median": 3417.544,
+          "min": 3417.544,
+          "max": 3440.272,
+          "runs": 5
+        }
+      },
+      "wasm_modules": {
+        "create_ms_per_module": {
+          "median": 2.5123901699999998,
+          "min": 2.1984071400000005,
+          "max": 2.7068961099999997,
+          "runs": 5
+        },
+        "wasm_memory_bytes_per_module": {
+          "median": 16777216,
+          "min": 16777216,
+          "max": 16777216,
+          "runs": 5
+        },
+        "rss_bytes_per_module": {
+          "median": 340459.52,
+          "min": 311787.52,
+          "max": 390307.84,
+          "runs": 5
+        },
+        "host_heap_bytes_per_module": {
+          "median": 82511.36,
+          "min": 82410.16,
+          "max": 82578.24,
+          "runs": 5
+        }
+      },
+      "round_trip_between_runtimes": {
+        "untimed_mean_ns": {
+          "median": 1579.847632,
+          "min": 1463.279243,
+          "max": 1794.528256,
+          "runs": 5
+        },
+        "round_trips_per_s": {
+          "median": 632972.4333821074,
+          "min": 557249.5148273665,
+          "max": 683396.5593264416,
+          "runs": 5
+        },
+        "p50_ns": {
+          "median": 1125,
+          "min": 1041,
+          "max": 1333,
+          "runs": 5
+        },
+        "p99_ns": {
+          "median": 8792,
+          "min": 8000,
+          "max": 9626,
+          "runs": 5
+        }
+      },
+      "fib27_warm_ms": {
+        "median": 18.70024699999999,
+        "min": 17.36351400000001,
+        "max": 18.915250000000015,
+        "runs": 5
+      }
+    },
+    "fib27_ms": {
+      "v8_jit_native": {
+        "first_ms": {
+          "median": 1.6244159999999965,
+          "min": 1.5857079999999968,
+          "max": 1.644833999999996,
+          "runs": 5
+        },
+        "warm_ms": {
+          "median": 1.2814580000000007,
+          "min": 1.272750000000002,
+          "max": 1.359499999999997,
+          "runs": 5
+        }
+      },
+      "v8_jitless_native": {
+        "first_ms": {
+          "median": 11.054749999999999,
+          "min": 10.623000000000005,
+          "max": 12.424749999999996,
+          "runs": 5
+        },
+        "warm_ms": {
+          "median": 11.299374999999998,
+          "min": 10.575375000000008,
+          "max": 12.066125,
+          "runs": 5
+        }
+      },
+      "v8_jit_docker": {
+        "first_ms": {
+          "median": 2.2069139999999994,
+          "min": 2.068453,
+          "max": 6.346987000000002,
+          "runs": 5
+        },
+        "warm_ms": {
+          "median": 1.3771909999999998,
+          "min": 1.2691049999999997,
+          "max": 1.4536920000000002,
+          "runs": 5
+        }
+      },
+      "v8_jitless_docker": {
+        "first_ms": {
+          "median": 11.985836999999998,
+          "min": 11.147072000000001,
+          "max": 12.675974,
+          "runs": 5
+        },
+        "warm_ms": {
+          "median": 12.19134,
+          "min": 11.430577,
+          "max": 12.764682999999998,
+          "runs": 5
+        }
+      },
+      "quickjs_native_alpine_docker": {
+        "first_ms": {
+          "median": 13.886619985103607,
+          "min": 13.324818015098572,
+          "max": 15.285645008087158,
+          "runs": 5
+        },
+        "warm_ms": {
+          "median": 14.026206016540527,
+          "min": 13.284025996923447,
+          "max": 15.530481994152069,
+          "runs": 5
+        }
+      },
+      "quickjs_wasm_native": {
+        "warm_ms": {
+          "median": 22.96983299999988,
+          "min": 15.54829200000006,
+          "max": 29.568875000000162,
+          "runs": 5
+        }
+      },
+      "quickjs_wasm_docker": {
+        "warm_ms": {
+          "median": 18.70024699999999,
+          "min": 17.36351400000001,
+          "max": 18.915250000000015,
+          "runs": 5
+        }
+      }
+    }
+  },
+  "raw": {
+    "beam_docker": [
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22436712,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2631.992336,
+        "processes_used_bytes_per_process": 2631.885672,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1300.018609,
+        "spawn_ns_total": 1300018609,
+        "total_bytes_per_process": 2639.943777
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 27921992,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.088624,
+        "processes_used_bytes_per_process": 823.929232,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 875.891125,
+        "spawn_ns_total": 875891125,
+        "total_bytes_per_process": 831.857985
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3586230,
+          "min": 333,
+          "mean": 549.941432,
+          "p50": 458,
+          "p90": 500,
+          "p99": 958,
+          "p999": 19000
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1978475.1636294918,
+        "timer_only_ns": {
+          "max": 105294,
+          "min": 0,
+          "mean": 17.927954,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 505.439754,
+        "untimed_total_ns": 505439754,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 5099257,
+          "min": 625,
+          "mean": 1038.356396,
+          "p50": 750,
+          "p90": 917,
+          "p99": 3459,
+          "p999": 30501
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1092033.7939860579,
+        "timer_only_ns": {
+          "max": 70626,
+          "min": 0,
+          "mean": 18.283736,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 83
+        },
+        "untimed_mean_ns": 915.722577,
+        "untimed_total_ns": 915722577,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3669221.272693395,
+        "laps": 100,
+        "ns_per_hop": 272.537393,
+        "run_ns": 272537393,
+        "setup_ns": 6087732
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 27805568,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.133992,
+        "processes_used_bytes_per_process": 2631.792064,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1101.71911,
+        "spawn_ns_total": 1101719110,
+        "total_bytes_per_process": 2639.871273
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 19013256,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.171312,
+        "processes_used_bytes_per_process": 824.008688,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 767.706215,
+        "spawn_ns_total": 767706215,
+        "total_bytes_per_process": 831.89476
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3468436,
+          "min": 333,
+          "mean": 497.651515,
+          "p50": 417,
+          "p90": 459,
+          "p99": 1166,
+          "p999": 17292
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 2175161.449020255,
+        "timer_only_ns": {
+          "max": 50126,
+          "min": 0,
+          "mean": 17.404491,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 459.735989,
+        "untimed_total_ns": 459735989,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3936403,
+          "min": 625,
+          "mean": 982.837012,
+          "p50": 791,
+          "p90": 875,
+          "p99": 1833,
+          "p999": 26042
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1100747.2807075884,
+        "timer_only_ns": {
+          "max": 73543,
+          "min": 0,
+          "mean": 17.773137,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 908.473741,
+        "untimed_total_ns": 908473741,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3478061.876035482,
+        "laps": 100,
+        "ns_per_hop": 287.516449,
+        "run_ns": 287516449,
+        "setup_ns": 6679868
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 27809192,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.108656,
+        "processes_used_bytes_per_process": 2631.75812,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1517.295944,
+        "spawn_ns_total": 1517295944,
+        "total_bytes_per_process": 2639.835857
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 27847488,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.174344,
+        "processes_used_bytes_per_process": 823.805464,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 1044.331014,
+        "spawn_ns_total": 1044331014,
+        "total_bytes_per_process": 831.898889
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 6974665,
+          "min": 333,
+          "mean": 622.509546,
+          "p50": 458,
+          "p90": 500,
+          "p99": 875,
+          "p999": 24084
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1943618.0806642398,
+        "timer_only_ns": {
+          "max": 142544,
+          "min": 0,
+          "mean": 17.956482,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 514.504372,
+        "untimed_total_ns": 514504372,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3556187,
+          "min": 583,
+          "mean": 960.868789,
+          "p50": 750,
+          "p90": 917,
+          "p99": 1750,
+          "p999": 23334
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 928999.6917226003,
+        "timer_only_ns": {
+          "max": 80627,
+          "min": 0,
+          "mean": 18.509832,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 1076.426622,
+        "untimed_total_ns": 1076426622,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3689020.02404127,
+        "laps": 100,
+        "ns_per_hop": 271.074701,
+        "run_ns": 271074701,
+        "setup_ns": 9273789
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22406512,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.02592,
+        "processes_used_bytes_per_process": 2631.950064,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1101.24656,
+        "spawn_ns_total": 1101246560,
+        "total_bytes_per_process": 2639.870673
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22582168,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 823.899088,
+        "processes_used_bytes_per_process": 823.814,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 903.474654,
+        "spawn_ns_total": 903474654,
+        "total_bytes_per_process": 831.85768
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3095221,
+          "min": 333,
+          "mean": 477.242112,
+          "p50": 458,
+          "p90": 459,
+          "p99": 708,
+          "p999": 8084
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 2200901.10525556,
+        "timer_only_ns": {
+          "max": 14875,
+          "min": 0,
+          "mean": 15.586203,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 454.359352,
+        "untimed_total_ns": 454359352,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 39455280,
+          "min": 583,
+          "mean": 1044.177561,
+          "p50": 750,
+          "p90": 875,
+          "p99": 2250,
+          "p999": 27834
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1176311.7238772442,
+        "timer_only_ns": {
+          "max": 45209,
+          "min": 0,
+          "mean": 16.889613,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 850.114795,
+        "untimed_total_ns": 850114795,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3664027.2553210785,
+        "laps": 100,
+        "ns_per_hop": 272.923734,
+        "run_ns": 272923734,
+        "setup_ns": 5085798
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22137904,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.247808,
+        "processes_used_bytes_per_process": 2631.905976,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1211.546131,
+        "spawn_ns_total": 1211546131,
+        "total_bytes_per_process": 2639.832297
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22303296,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.521584,
+        "processes_used_bytes_per_process": 824.020784,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 826.858176,
+        "spawn_ns_total": 826858176,
+        "total_bytes_per_process": 832.007009
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3319975,
+          "min": 333,
+          "mean": 486.481914,
+          "p50": 458,
+          "p90": 500,
+          "p99": 708,
+          "p999": 7709
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1747185.1558590059,
+        "timer_only_ns": {
+          "max": 61959,
+          "min": 0,
+          "mean": 17.275688,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 572.349185,
+        "untimed_total_ns": 572349185,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 5878229,
+          "min": 583,
+          "mean": 992.85097,
+          "p50": 791,
+          "p90": 875,
+          "p99": 1333,
+          "p999": 20167
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1246038.3161841142,
+        "timer_only_ns": {
+          "max": 42251,
+          "min": 0,
+          "mean": 16.98582,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 802.543539,
+        "untimed_total_ns": 802543539,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 18,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3899205.1415730026,
+        "laps": 100,
+        "ns_per_hop": 256.462526,
+        "run_ns": 256462526,
+        "setup_ns": 8441399
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.02152,
+        "processes_used_bytes_per_process": 2631.991424,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1564.465276,
+        "spawn_ns_total": 1564465276,
+        "total_bytes_per_process": 2640.016817
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.048784,
+        "processes_used_bytes_per_process": 824.018688,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 933.997317,
+        "spawn_ns_total": 933997317,
+        "total_bytes_per_process": 832.044081
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3376726,
+          "min": 333,
+          "mean": 567.984626,
+          "p50": 542,
+          "p90": 625,
+          "p99": 875,
+          "p999": 8375
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1888024.663220863,
+        "timer_only_ns": {
+          "max": 117627,
+          "min": 0,
+          "mean": 17.37864,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 529.654098,
+        "untimed_total_ns": 529654098,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3764900,
+          "min": 625,
+          "mean": 1021.069994,
+          "p50": 875,
+          "p90": 1042,
+          "p99": 1459,
+          "p999": 16542
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1179938.9744293974,
+        "timer_only_ns": {
+          "max": 56335,
+          "min": 0,
+          "mean": 19.461545,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 847.501457,
+        "untimed_total_ns": 847501457,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3338340.4433975765,
+        "laps": 100,
+        "ns_per_hop": 299.550036,
+        "run_ns": 299550036,
+        "setup_ns": 6218610
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.021544,
+        "processes_used_bytes_per_process": 2631.991448,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1238.864156,
+        "spawn_ns_total": 1238864156,
+        "total_bytes_per_process": 2640.016561
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.049696,
+        "processes_used_bytes_per_process": 824.0196,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 1032.14059,
+        "spawn_ns_total": 1032140590,
+        "total_bytes_per_process": 832.044993
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 5256301,
+          "min": 333,
+          "mean": 525.712032,
+          "p50": 459,
+          "p90": 584,
+          "p99": 1417,
+          "p999": 4166
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1781675.1962288064,
+        "timer_only_ns": {
+          "max": 28834,
+          "min": 0,
+          "mean": 16.015564,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 561.26953,
+        "untimed_total_ns": 561269530,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 2991553,
+          "min": 583,
+          "mean": 918.632846,
+          "p50": 833,
+          "p90": 1000,
+          "p99": 1250,
+          "p999": 15292
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1215345.7143372241,
+        "timer_only_ns": {
+          "max": 17626,
+          "min": 0,
+          "mean": 16.984804,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 822.811146,
+        "untimed_total_ns": 822811146,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3279845.363687506,
+        "laps": 100,
+        "ns_per_hop": 304.892423,
+        "run_ns": 304892423,
+        "setup_ns": 5991439
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.021544,
+        "processes_used_bytes_per_process": 2631.991448,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1483.164967,
+        "spawn_ns_total": 1483164967,
+        "total_bytes_per_process": 2640.016841
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.049728,
+        "processes_used_bytes_per_process": 824.019632,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 956.880678,
+        "spawn_ns_total": 956880678,
+        "total_bytes_per_process": 832.044745
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3341975,
+          "min": 333,
+          "mean": 555.462412,
+          "p50": 500,
+          "p90": 625,
+          "p99": 834,
+          "p999": 12792
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1915969.0977635994,
+        "timer_only_ns": {
+          "max": 74293,
+          "min": 0,
+          "mean": 17.022693,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 521.929086,
+        "untimed_total_ns": 521929086,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3594855,
+          "min": 583,
+          "mean": 909.14547,
+          "p50": 833,
+          "p90": 1000,
+          "p99": 1208,
+          "p999": 12959
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1234712.3290416691,
+        "timer_only_ns": {
+          "max": 27084,
+          "min": 0,
+          "mean": 16.258007,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 809.905252,
+        "untimed_total_ns": 809905252,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3343997.586864333,
+        "laps": 100,
+        "ns_per_hop": 299.043278,
+        "run_ns": 299043278,
+        "setup_ns": 5891937
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.021544,
+        "processes_used_bytes_per_process": 2631.991448,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1363.305643,
+        "spawn_ns_total": 1363305643,
+        "total_bytes_per_process": 2640.016841
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.049224,
+        "processes_used_bytes_per_process": 824.019128,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 1024.054281,
+        "spawn_ns_total": 1024054281,
+        "total_bytes_per_process": 832.044241
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 3273516,
+          "min": 333,
+          "mean": 557.849105,
+          "p50": 500,
+          "p90": 625,
+          "p99": 792,
+          "p999": 11916
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1930315.5395315518,
+        "timer_only_ns": {
+          "max": 75584,
+          "min": 0,
+          "mean": 17.432433,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 518.050018,
+        "untimed_total_ns": 518050018,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 28235665,
+          "min": 583,
+          "mean": 1289.604911,
+          "p50": 917,
+          "p90": 1125,
+          "p99": 1542,
+          "p999": 24542
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1140772.1750644813,
+        "timer_only_ns": {
+          "max": 59292,
+          "min": 0,
+          "mean": 17.221604,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 876.599221,
+        "untimed_total_ns": 876599221,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 3240019.5393914348,
+        "laps": 100,
+        "ns_per_hop": 308.640114,
+        "run_ns": 308640114,
+        "setup_ns": 5635975
+      },
+      {
+        "count": 1000000,
+        "entry": "idle",
+        "mode": "spawn",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 2624.0,
+        "processes_bytes_per_process": 2632.021544,
+        "processes_used_bytes_per_process": 2631.991448,
+        "sample": {
+          "heap_size": 233,
+          "memory": 2624,
+          "stack_size": 1,
+          "total_heap_size": 233
+        },
+        "spawn_ns_per_process": 1466.910597,
+        "spawn_ns_total": 1466910597,
+        "total_bytes_per_process": 2640.016561
+      },
+      {
+        "count": 1000000,
+        "entry": "hibernating_idle",
+        "mode": "spawn-hibernate",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "measuring_process_bytes_delta": 22390520,
+        "process_info_bytes_per_process": 800.0,
+        "processes_bytes_per_process": 824.049304,
+        "processes_used_bytes_per_process": 824.019208,
+        "sample": {
+          "heap_size": 5,
+          "memory": 800,
+          "stack_size": 1,
+          "total_heap_size": 5
+        },
+        "spawn_ns_per_process": 1090.807834,
+        "spawn_ns_total": 1090807834,
+        "total_bytes_per_process": 832.044281
+      },
+      {
+        "mode": "round-trip",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 2748715,
+          "min": 333,
+          "mean": 565.584009,
+          "p50": 500,
+          "p90": 625,
+          "p99": 834,
+          "p999": 12459
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1818362.4245500513,
+        "timer_only_ns": {
+          "max": 45459,
+          "min": 0,
+          "mean": 16.922944,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 549.945372,
+        "untimed_total_ns": 549945372,
+        "warmup_round_trips": 100000
+      },
+      {
+        "mode": "gen-server-call",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "latency_ns": {
+          "max": 5402137,
+          "min": 583,
+          "mean": 992.853745,
+          "p50": 792,
+          "p90": 1000,
+          "p99": 1792,
+          "p999": 19667
+        },
+        "round_trips": 1000000,
+        "round_trips_per_s": 1116214.5644026855,
+        "timer_only_ns": {
+          "max": 73210,
+          "min": 0,
+          "mean": 17.233209,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42
+        },
+        "untimed_mean_ns": 895.885103,
+        "untimed_total_ns": 895885103,
+        "warmup_round_trips": 100000
+      },
+      {
+        "size": 10000,
+        "mode": "ring",
+        "vm": {
+          "emu_flavor": "jit",
+          "process_limit": 2097152,
+          "schedulers_online": 1,
+          "wordsize": 8,
+          "otp_release": "29",
+          "erts_version": "17.1.1"
+        },
+        "hops": 1000000,
+        "hops_per_s": 2921395.1284865653,
+        "laps": 100,
+        "ns_per_hop": 342.302207,
+        "run_ns": 342302207,
+        "setup_ns": 5913230
+      }
+    ],
+    "node_docker": [
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 513038929.00000006,
+        "spawn_ns_per_actor": 513.038929,
+        "heap_used_bytes_per_actor": 752.126544,
+        "rss_bytes_per_actor": 907.685888,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 659432721,
+        "spawn_ns_per_actor": 659.432721,
+        "heap_used_bytes_per_actor": 936.137472,
+        "rss_bytes_per_actor": 1077.358592,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 77524826.99999999,
+        "spawn_ns_per_actor": 77.52482699999999,
+        "heap_used_bytes_per_actor": 216.118432,
+        "rss_bytes_per_actor": 248.27904,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 129327157,
+        "untimed_mean_ns": 129.327157,
+        "round_trips_per_s": 7732328.021406981,
+        "timed_total_ns": 173374727,
+        "latency_ns": {
+          "min": 41,
+          "p50": 125,
+          "p90": 166,
+          "p99": 209,
+          "p999": 3292,
+          "max": 1106186,
+          "mean": 148.680207
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 41,
+          "p90": 42,
+          "p99": 42,
+          "p999": 83,
+          "max": 1061768,
+          "mean": 27.45393
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 6099982.000000005,
+        "run_ns": 77553494,
+        "ns_per_hop": 77.553494,
+        "hops_per_s": 12894325.560625289,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 499580733,
+        "spawn_ns_per_actor": 499.580733,
+        "heap_used_bytes_per_actor": 752.126544,
+        "rss_bytes_per_actor": 916.271104,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 746006749,
+        "spawn_ns_per_actor": 746.006749,
+        "heap_used_bytes_per_actor": 936.142592,
+        "rss_bytes_per_actor": 1076.809728,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 106702091,
+        "spawn_ns_per_actor": 106.702091,
+        "heap_used_bytes_per_actor": 216.118432,
+        "rss_bytes_per_actor": 251.052032,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 161132635,
+        "untimed_mean_ns": 161.132635,
+        "round_trips_per_s": 6206067.442514051,
+        "timed_total_ns": 216888744.99999997,
+        "latency_ns": {
+          "min": 83,
+          "p50": 166,
+          "p90": 167,
+          "p99": 250,
+          "p999": 3042,
+          "max": 5176550,
+          "mean": 189.419403
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 41,
+          "p90": 42,
+          "p99": 42,
+          "p999": 83,
+          "max": 2657714,
+          "mean": 26.026114
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 7136458.999999995,
+        "run_ns": 95239639,
+        "ns_per_hop": 95.239639,
+        "hops_per_s": 10499829.803008808,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 476240488,
+        "spawn_ns_per_actor": 476.240488,
+        "heap_used_bytes_per_actor": 752.120344,
+        "rss_bytes_per_actor": 915.091456,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 783944544,
+        "spawn_ns_per_actor": 783.944544,
+        "heap_used_bytes_per_actor": 936.142592,
+        "rss_bytes_per_actor": 1075.310592,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 109956483,
+        "spawn_ns_per_actor": 109.956483,
+        "heap_used_bytes_per_actor": 216.118432,
+        "rss_bytes_per_actor": 243.654656,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 159076015.99999997,
+        "untimed_mean_ns": 159.07601599999998,
+        "round_trips_per_s": 6286302.769865699,
+        "timed_total_ns": 230031852,
+        "latency_ns": {
+          "min": 83,
+          "p50": 167,
+          "p90": 167,
+          "p99": 291,
+          "p999": 5125,
+          "max": 504259,
+          "mean": 196.995464
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 41,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42,
+          "max": 81418,
+          "mean": 24.371643
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 8376231.000000005,
+        "run_ns": 109883605.99999999,
+        "ns_per_hop": 109.88360599999999,
+        "hops_per_s": 9100538.619018383,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 507901964,
+        "spawn_ns_per_actor": 507.901964,
+        "heap_used_bytes_per_actor": 752.120296,
+        "rss_bytes_per_actor": 915.369984,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 647613554,
+        "spawn_ns_per_actor": 647.613554,
+        "heap_used_bytes_per_actor": 936.142592,
+        "rss_bytes_per_actor": 1068.838912,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 103803499,
+        "spawn_ns_per_actor": 103.803499,
+        "heap_used_bytes_per_actor": 216.1234,
+        "rss_bytes_per_actor": 248.160256,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 167510040,
+        "untimed_mean_ns": 167.51004,
+        "round_trips_per_s": 5969791.422651443,
+        "timed_total_ns": 202153192.00000003,
+        "latency_ns": {
+          "min": 83,
+          "p50": 166,
+          "p90": 167,
+          "p99": 250,
+          "p999": 1708,
+          "max": 122127,
+          "mean": 171.570106
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 41,
+          "p90": 42,
+          "p99": 42,
+          "p999": 83,
+          "max": 109502,
+          "mean": 24.058632
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 6420071.999999997,
+        "run_ns": 79907535,
+        "ns_per_hop": 79.907535,
+        "hops_per_s": 12514464.374354683,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 485708989.00000006,
+        "spawn_ns_per_actor": 485.7089890000001,
+        "heap_used_bytes_per_actor": 752.120392,
+        "rss_bytes_per_actor": 907.812864,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 742862985,
+        "spawn_ns_per_actor": 742.862985,
+        "heap_used_bytes_per_actor": 936.142592,
+        "rss_bytes_per_actor": 1070.395392,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 83445180.99999999,
+        "spawn_ns_per_actor": 83.44518099999999,
+        "heap_used_bytes_per_actor": 216.118432,
+        "rss_bytes_per_actor": 248.848384,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 121368767,
+        "untimed_mean_ns": 121.368767,
+        "round_trips_per_s": 8239352.056695113,
+        "timed_total_ns": 157431570.00000003,
+        "latency_ns": {
+          "min": 41,
+          "p50": 125,
+          "p90": 125,
+          "p99": 167,
+          "p999": 2209,
+          "max": 1314857,
+          "mean": 134.143777
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42,
+          "max": 38084,
+          "mean": 13.017081
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 6441530,
+        "run_ns": 78326674,
+        "ns_per_hop": 78.326674,
+        "hops_per_s": 12767042.808430752,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "linux",
+          "arch": "arm64"
+        }
+      }
+    ],
+    "node_native": [
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 365436833,
+        "spawn_ns_per_actor": 365.436833,
+        "heap_used_bytes_per_actor": 752.11564,
+        "rss_bytes_per_actor": 912.637952,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 626495625,
+        "spawn_ns_per_actor": 626.495625,
+        "heap_used_bytes_per_actor": 936.140832,
+        "rss_bytes_per_actor": 1083.8016,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 87078166,
+        "spawn_ns_per_actor": 87.078166,
+        "heap_used_bytes_per_actor": 216.11412,
+        "rss_bytes_per_actor": 248.676352,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 92633665.99999999,
+        "untimed_mean_ns": 92.63366599999999,
+        "round_trips_per_s": 10795211.321983092,
+        "timed_total_ns": 134056249.99999997,
+        "latency_ns": {
+          "min": 41,
+          "p50": 125,
+          "p90": 125,
+          "p99": 167,
+          "p999": 500,
+          "max": 145375,
+          "mean": 114.015078
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 42,
+          "max": 45667,
+          "mean": 8.739243
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 4735833.999999997,
+        "run_ns": 83051958,
+        "ns_per_hop": 83.051958,
+        "hops_per_s": 12040655.320853483,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 343788167,
+        "spawn_ns_per_actor": 343.788167,
+        "heap_used_bytes_per_actor": 752.11564,
+        "rss_bytes_per_actor": 914.915328,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 583571584,
+        "spawn_ns_per_actor": 583.571584,
+        "heap_used_bytes_per_actor": 936.140832,
+        "rss_bytes_per_actor": 1083.621376,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 97491917,
+        "spawn_ns_per_actor": 97.491917,
+        "heap_used_bytes_per_actor": 216.11412,
+        "rss_bytes_per_actor": 248.87296,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 106140875,
+        "untimed_mean_ns": 106.140875,
+        "round_trips_per_s": 9421441.080074007,
+        "timed_total_ns": 154237792,
+        "latency_ns": {
+          "min": 41,
+          "p50": 125,
+          "p90": 125,
+          "p99": 209,
+          "p999": 8791,
+          "max": 205916,
+          "mean": 132.560826
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 125,
+          "max": 66291,
+          "mean": 11.80845
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 5815040.9999999935,
+        "run_ns": 93191709,
+        "ns_per_hop": 93.191709,
+        "hops_per_s": 10730568.31697335,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 461074084,
+        "spawn_ns_per_actor": 461.074084,
+        "heap_used_bytes_per_actor": 752.11564,
+        "rss_bytes_per_actor": 904.495104,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 544999459,
+        "spawn_ns_per_actor": 544.999459,
+        "heap_used_bytes_per_actor": 936.140832,
+        "rss_bytes_per_actor": 1083.981824,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 87659167,
+        "spawn_ns_per_actor": 87.659167,
+        "heap_used_bytes_per_actor": 216.114096,
+        "rss_bytes_per_actor": 248.2176,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 111277374.99999999,
+        "untimed_mean_ns": 111.27737499999999,
+        "round_trips_per_s": 8986552.747133011,
+        "timed_total_ns": 158121125,
+        "latency_ns": {
+          "min": 41,
+          "p50": 125,
+          "p90": 125,
+          "p99": 250,
+          "p999": 8667,
+          "max": 159750,
+          "mean": 136.620513
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 125,
+          "max": 41041,
+          "mean": 13.458669
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 5404583.000000003,
+        "run_ns": 102328042,
+        "ns_per_hop": 102.328042,
+        "hops_per_s": 9772492.275382344,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 402078750,
+        "spawn_ns_per_actor": 402.07875,
+        "heap_used_bytes_per_actor": 752.11564,
+        "rss_bytes_per_actor": 913.620992,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 625102292,
+        "spawn_ns_per_actor": 625.102292,
+        "heap_used_bytes_per_actor": 936.140832,
+        "rss_bytes_per_actor": 1083.752448,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 177597958,
+        "spawn_ns_per_actor": 177.597958,
+        "heap_used_bytes_per_actor": 216.11416,
+        "rss_bytes_per_actor": 248.659968,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 131322875.00000001,
+        "untimed_mean_ns": 131.322875,
+        "round_trips_per_s": 7614819.581127811,
+        "timed_total_ns": 169642459.00000003,
+        "latency_ns": {
+          "min": 41,
+          "p50": 125,
+          "p90": 167,
+          "p99": 250,
+          "p999": 1792,
+          "max": 157083,
+          "mean": 147.463016
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 83,
+          "max": 81417,
+          "mean": 11.348109
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 6290165.999999999,
+        "run_ns": 124145834.00000001,
+        "ns_per_hop": 124.14583400000002,
+        "hops_per_s": 8055042.749159025,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async",
+        "kind": "async",
+        "count": 1000000,
+        "spawn_ns_total": 786773709,
+        "spawn_ns_per_actor": 786.773709,
+        "heap_used_bytes_per_actor": 752.115184,
+        "rss_bytes_per_actor": 918.749184,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-async-als",
+        "kind": "async-als",
+        "count": 1000000,
+        "spawn_ns_total": 1616427041.0000002,
+        "spawn_ns_per_actor": 1616.4270410000001,
+        "heap_used_bytes_per_actor": 936.140832,
+        "rss_bytes_per_actor": 1084.096512,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "spawn-object",
+        "kind": "object",
+        "count": 1000000,
+        "spawn_ns_total": 183186375,
+        "spawn_ns_per_actor": 183.186375,
+        "heap_used_bytes_per_actor": 216.11412,
+        "rss_bytes_per_actor": 248.692736,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "round-trip",
+        "round_trips": 1000000,
+        "warmup_round_trips": 100000,
+        "untimed_total_ns": 347941833,
+        "untimed_mean_ns": 347.941833,
+        "round_trips_per_s": 2874043.6048688632,
+        "timed_total_ns": 494696916,
+        "latency_ns": {
+          "min": 83,
+          "p50": 167,
+          "p90": 208,
+          "p99": 292,
+          "p999": 3167,
+          "max": 87956375,
+          "mean": 453.373007
+        },
+        "timer_only_ns": {
+          "min": 0,
+          "p50": 0,
+          "p90": 42,
+          "p99": 42,
+          "p999": 125,
+          "max": 29850208,
+          "mean": 48.198083
+        },
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      },
+      {
+        "mode": "ring",
+        "size": 10000,
+        "laps": 100,
+        "hops": 1000000,
+        "setup_ns": 8275000.000000006,
+        "run_ns": 150646750,
+        "ns_per_hop": 150.64675,
+        "hops_per_s": 6638045.626606614,
+        "vm": {
+          "node": "v25.9.0",
+          "v8": "14.1.146.11-node.25",
+          "platform": "darwin",
+          "arch": "arm64"
+        }
+      }
+    ],
+    "quickjs_wasm_native": [
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 17092.332999999995,
+          "create_us_per_item": 17.092332999999996,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 19546.112,
+          "host_heap_bytes_per_item": 1907.528,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 240650.70799999998,
+          "create_us_per_item": 240.65070799999998,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42319.872,
+          "host_heap_bytes_per_item": 1736.488,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 337128.333,
+          "create_us_per_item": 337.128333,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66093.056,
+          "host_heap_bytes_per_item": 3417.616,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 3.3558170800000005,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 497582.08,
+          "host_heap_bytes_per_module": 85872.08
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 36,
+            "warm_ms": [18, 46, 50, 39, 18]
+          },
+          "host_timed_first_ms": 18.087125000000015,
+          "host_timed_warm_ms": [
+            28.796125000000075, 20.65408400000001, 127.84166600000003, 17.96616700000004, 71.398416
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 2435.9812920000004,
+          "round_trips_per_s": 410512.18385136913,
+          "latency_ns": {
+            "p50": 1208,
+            "p90": 1458,
+            "p99": 2833,
+            "p999": 50791
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 11789.583000000008,
+          "create_us_per_item": 11.789583000000007,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 19775.488,
+          "host_heap_bytes_per_item": 1912.496,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 190959.75000000003,
+          "create_us_per_item": 190.95975000000004,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42270.72,
+          "host_heap_bytes_per_item": 1709.056,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 97046.333,
+          "create_us_per_item": 97.046333,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66125.824,
+          "host_heap_bytes_per_item": 3440.376,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 5.126451669999999,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 513146.88,
+          "host_heap_bytes_per_module": 85790.4
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 38,
+            "warm_ms": [18, 18, 79, 17, 26]
+          },
+          "host_timed_first_ms": 17.73433399999999,
+          "host_timed_warm_ms": [
+            71.51666599999999, 25.147292000000107, 24.757624999999962, 29.568875000000162,
+            30.45554100000004
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 2268.8281669999997,
+          "round_trips_per_s": 440756.1641489442,
+          "latency_ns": {
+            "p50": 1167,
+            "p90": 1417,
+            "p99": 2375,
+            "p999": 76542
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 14774.58399999999,
+          "create_us_per_item": 14.77458399999999,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 19628.032,
+          "host_heap_bytes_per_item": 1907.568,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 137923.917,
+          "create_us_per_item": 137.923917,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42516.48,
+          "host_heap_bytes_per_item": 1725.976,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 92730.458,
+          "create_us_per_item": 92.730458,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66355.2,
+          "host_heap_bytes_per_item": 3417.824,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 4.24037083,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 440074.24,
+          "host_heap_bytes_per_module": 86061.2
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 41,
+            "warm_ms": [19, 18, 17, 18, 22]
+          },
+          "host_timed_first_ms": 17.153999999999996,
+          "host_timed_warm_ms": [
+            56.69820800000002, 58.45404200000007, 22.96983299999988, 17.27454200000011,
+            17.17533400000002
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1660.8962499999998,
+          "round_trips_per_s": 602084.5672931107,
+          "latency_ns": {
+            "p50": 1042,
+            "p90": 1292,
+            "p99": 2541,
+            "p999": 46208
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 12237.416999999994,
+          "create_us_per_item": 12.237416999999994,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 19726.336,
+          "host_heap_bytes_per_item": 1907.808,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 112903.042,
+          "create_us_per_item": 112.903042,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42418.176,
+          "host_heap_bytes_per_item": 1726.304,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 82870.95800000003,
+          "create_us_per_item": 82.87095800000003,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66240.512,
+          "host_heap_bytes_per_item": 3417.616,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 2.450440419999999,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 437944.32,
+          "host_heap_bytes_per_module": 86029.44
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 35,
+            "warm_ms": [16, 15, 19, 16, 15]
+          },
+          "host_timed_first_ms": 22.399084000000016,
+          "host_timed_warm_ms": [
+            20.885125000000016, 30.66491599999995, 16.924584000000095, 33.0685840000001,
+            16.38383399999998
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1576.0948750000002,
+          "round_trips_per_s": 634479.5709078108,
+          "latency_ns": {
+            "p50": 1042,
+            "p90": 1250,
+            "p99": 1875,
+            "p999": 27834
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 11579.083999999995,
+          "create_us_per_item": 11.579083999999995,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 19759.104,
+          "host_heap_bytes_per_item": 1908.568,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 116706.54199999999,
+          "create_us_per_item": 116.70654199999998,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42172.416,
+          "host_heap_bytes_per_item": 1707.872,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 80453.70799999998,
+          "create_us_per_item": 80.45370799999998,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66600.96,
+          "host_heap_bytes_per_item": 2867.616,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 2.2302333300000003,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 425656.32,
+          "host_heap_bytes_per_module": 91656.48
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 30,
+            "warm_ms": [15, 15, 15, 17, 15]
+          },
+          "host_timed_first_ms": 15.573875000000044,
+          "host_timed_warm_ms": [
+            15.242999999999938, 16.801874999999995, 15.771749999999997, 15.54829200000006,
+            15.329332999999906
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1445.0033749999998,
+          "round_trips_per_s": 692039.9061351675,
+          "latency_ns": {
+            "p50": 792,
+            "p90": 1125,
+            "p99": 1541,
+            "p999": 18625
+          }
+        }
+      }
+    ],
+    "quickjs_wasm_docker": [
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 12678.639999999998,
+          "create_us_per_item": 12.678639999999998,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 22560.768,
+          "host_heap_bytes_per_item": 1909.768,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 109620.643,
+          "create_us_per_item": 109.620643,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42213.376,
+          "host_heap_bytes_per_item": 1726.016,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 81709.35799999998,
+          "create_us_per_item": 81.70935799999998,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66207.744,
+          "host_heap_bytes_per_item": 3417.544,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 2.5123901699999998,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 340459.52,
+          "host_heap_bytes_per_module": 82523.44
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 35,
+            "warm_ms": [19, 19, 21, 22, 20]
+          },
+          "host_timed_first_ms": 18.298031000000037,
+          "host_timed_warm_ms": [
+            19.830142000000023, 19.786182999999937, 17.59435200000007, 17.491225999999983,
+            18.915250000000015
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1758.53787,
+          "round_trips_per_s": 568654.2309151408,
+          "latency_ns": {
+            "p50": 1167,
+            "p90": 1916,
+            "p99": 8000,
+            "p999": 30834
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 12113.672,
+          "create_us_per_item": 12.113672000000001,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 21966.848,
+          "host_heap_bytes_per_item": 1909.768,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 104524.429,
+          "create_us_per_item": 104.524429,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42913.792,
+          "host_heap_bytes_per_item": 1725.336,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 76812.68900000003,
+          "create_us_per_item": 76.81268900000003,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 65617.92,
+          "host_heap_bytes_per_item": 3417.544,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 2.7011210100000005,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 390307.84,
+          "host_heap_bytes_per_module": 82478.88
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 39,
+            "warm_ms": [22, 21, 20, 20, 20]
+          },
+          "host_timed_first_ms": 19.104795999999965,
+          "host_timed_warm_ms": [
+            18.808498999999983, 18.638162999999963, 18.84662400000002, 18.785290000000032,
+            18.627661999999987
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1573.0343040000002,
+          "round_trips_per_s": 635714.0447968259,
+          "latency_ns": {
+            "p50": 1125,
+            "p90": 2083,
+            "p99": 8792,
+            "p999": 30709
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 11920.334999999997,
+          "create_us_per_item": 11.920334999999998,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 22339.584,
+          "host_heap_bytes_per_item": 1909.84,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 102701.60499999998,
+          "create_us_per_item": 102.70160499999999,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42950.656,
+          "host_heap_bytes_per_item": 1708.68,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 80396.25199999998,
+          "create_us_per_item": 80.39625199999998,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66060.288,
+          "host_heap_bytes_per_item": 3440.272,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 2.3926239000000002,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 336527.36,
+          "host_heap_bytes_per_module": 82410.16
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 38,
+            "warm_ms": [20, 20, 18, 19, 19]
+          },
+          "host_timed_first_ms": 18.428741999999943,
+          "host_timed_warm_ms": [
+            18.53020200000003, 18.49107600000002, 18.70024699999999, 19.030836000000022,
+            19.800723999999946
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1794.528256,
+          "round_trips_per_s": 557249.5148273665,
+          "latency_ns": {
+            "p50": 1041,
+            "p90": 2084,
+            "p99": 8333,
+            "p999": 29459
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 10936.484999999997,
+          "create_us_per_item": 10.936484999999998,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 22564.864,
+          "host_heap_bytes_per_item": 1909.768,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 93126.102,
+          "create_us_per_item": 93.126102,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42778.624,
+          "host_heap_bytes_per_item": 1725.176,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 66292.961,
+          "create_us_per_item": 66.29296099999999,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 65765.376,
+          "host_heap_bytes_per_item": 3417.576,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 2.7068961099999997,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 341770.24,
+          "host_heap_bytes_per_module": 82578.24
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 36,
+            "warm_ms": [18, 19, 18, 17, 19]
+          },
+          "host_timed_first_ms": 17.127594000000045,
+          "host_timed_warm_ms": [
+            17.76860499999998, 17.162635999999907, 17.412724000000026, 16.965674000000035,
+            17.36351400000001
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1463.279243,
+          "round_trips_per_s": 683396.5593264416,
+          "latency_ns": {
+            "p50": 1125,
+            "p90": 2000,
+            "p99": 8916,
+            "p999": 27876
+          }
+        }
+      },
+      {
+        "node": "v25.9.0",
+        "v8": "14.1.146.11-node.25",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtimes": {
+          "count": 1000,
+          "create_us_total": 10346.516000000001,
+          "create_us_per_item": 10.346516000000001,
+          "wasm_memory_before_bytes": 16777216,
+          "wasm_memory_after_bytes": 20185088,
+          "wasm_growth_bytes_per_item": 3407.872,
+          "rss_bytes_per_item": 22470.656,
+          "host_heap_bytes_per_item": 1909.544,
+          "quickjs_used_bytes_per_runtime_mean": 11778
+        },
+        "contexts_in_one_runtime": {
+          "count": 1000,
+          "create_us_total": 109196.88600000001,
+          "create_us_per_item": 109.196886,
+          "wasm_memory_before_bytes": 20185088,
+          "wasm_memory_after_bytes": 60424192,
+          "wasm_growth_bytes_per_item": 40239.104,
+          "rss_bytes_per_item": 42377.216,
+          "host_heap_bytes_per_item": 1726.04,
+          "quickjs_used_bytes_empty_runtime": 11778,
+          "quickjs_used_bytes_per_context": 33568.852
+        },
+        "runtime_context_pairs": {
+          "count": 1000,
+          "create_us_total": 68690.337,
+          "create_us_per_item": 68.690337,
+          "wasm_memory_before_bytes": 60424192,
+          "wasm_memory_after_bytes": 125435904,
+          "wasm_growth_bytes_per_item": 65011.712,
+          "rss_bytes_per_item": 66060.288,
+          "host_heap_bytes_per_item": 3417.544,
+          "quickjs_used_bytes_per_pair_mean": 52654
+        },
+        "wasm_modules": {
+          "count": 100,
+          "create_ms_per_module": 2.1984071400000005,
+          "wasm_memory_bytes_per_module": 16777216,
+          "rss_bytes_per_module": 311787.52,
+          "host_heap_bytes_per_module": 82511.36
+        },
+        "fib_quickjs_wasm": {
+          "guest_timed": {
+            "argument": 27,
+            "value": 196418,
+            "clock": "Date.now",
+            "first_ms": 35,
+            "warm_ms": [19, 17, 18, 17, 17]
+          },
+          "host_timed_first_ms": 17.55847700000004,
+          "host_timed_warm_ms": [
+            17.53672599999993, 18.16886199999999, 18.050235000000043, 17.76022999999998, 17.844606
+          ]
+        },
+        "round_trip_between_runtimes": {
+          "round_trips": 1000000,
+          "warmup_round_trips": 100000,
+          "untimed_mean_ns": 1579.847632,
+          "round_trips_per_s": 632972.4333821074,
+          "latency_ns": {
+            "p50": 1333,
+            "p90": 2167,
+            "p99": 9626,
+            "p999": 43251
+          }
+        }
+      }
+    ],
+    "fib_v8_native": [
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 1.5857079999999968,
+        "warm_ms": [
+          1.277791999999998, 1.2737499999999997, 1.272750000000002, 1.2703330000000008,
+          1.2718750000000014
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 1.6369589999999974,
+        "warm_ms": [
+          1.294000000000004, 1.2767079999999993, 1.281958000000003, 1.2767079999999993,
+          1.2814580000000007
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 1.6244159999999965,
+        "warm_ms": [
+          1.2709580000000003, 1.2788339999999963, 1.3811249999999973, 1.4853329999999971,
+          1.2779579999999982
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 1.596749999999993,
+        "warm_ms": [
+          1.359499999999997, 1.5382079999999974, 1.2765419999999992, 1.2792499999999976,
+          1.4559169999999995
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 1.644833999999996,
+        "warm_ms": [
+          1.2783329999999964, 1.2744169999999997, 1.352250000000005, 1.3019999999999996,
+          1.6525419999999968
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 11.054749999999999,
+        "warm_ms": [
+          11.615541999999998, 11.013958000000002, 10.902541999999997, 11.731832999999995,
+          11.299374999999998
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 12.273375000000001,
+        "warm_ms": [
+          10.809540999999996, 11.232916000000003, 11.360084, 11.487375, 10.77195900000001
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 10.709457999999998,
+        "warm_ms": [
+          11.15175, 11.180916999999994, 11.795000000000002, 11.799333000000004, 12.149791000000008
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 10.623000000000005,
+        "warm_ms": [
+          10.862874999999995, 12.268959000000002, 11.948458000000002, 12.590958999999998, 12.066125
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "macos-native"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 12.424749999999996,
+        "warm_ms": [
+          12.146874999999994, 10.571042000000006, 10.562375000000003, 10.575375000000008,
+          10.577791999999988
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "macos-native"
+      }
+    ],
+    "fib_v8_docker": [
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 6.346987000000002,
+        "warm_ms": [
+          1.2828559999999989, 1.2823969999999996, 1.2761479999999992, 1.4374000000000002,
+          1.2752310000000016
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 3.3604339999999997,
+        "warm_ms": [
+          1.532319000000001, 1.5609440000000028, 1.3427320000000016, 1.3450649999999982,
+          1.4536920000000002
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 2.123913,
+        "warm_ms": [
+          1.2701890000000002, 1.2664389999999983, 1.2691049999999997, 1.2676890000000007,
+          1.2762300000000018
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 2.068453,
+        "warm_ms": [
+          1.7422389999999996, 1.4202339999999989, 1.5849030000000006, 1.3167310000000008,
+          1.2565220000000004
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 2.2069139999999994,
+        "warm_ms": [
+          1.4183590000000006, 1.358356999999998, 1.3771909999999998, 1.8315739999999998,
+          1.376691000000001
+        ],
+        "engine": "v8",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 11.985836999999998,
+        "warm_ms": [
+          12.926478, 12.764682999999998, 12.202799000000006, 12.947687000000009, 11.921793999999991
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 11.147072000000001,
+        "warm_ms": [
+          11.426327000000004, 12.552221000000003, 12.045963, 12.307383999999999, 11.690123
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 11.493328,
+        "warm_ms": [
+          12.436678000000004, 12.063505, 12.489595000000001, 12.627806000000007, 13.116482000000005
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 12.675974,
+        "warm_ms": [
+          11.703873000000002, 11.321658, 11.291199999999996, 11.430577, 11.513412000000002
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 12.439635999999998,
+        "warm_ms": [
+          12.19134, 11.768249000000004, 12.359967999999995, 11.804790999999994, 12.435970000000012
+        ],
+        "engine": "v8",
+        "node_flags": "--jitless",
+        "host": "docker"
+      }
+    ],
+    "fib_quickjs_native_alpine_docker": [
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 13.53898897767067,
+        "warm_ms": [
+          13.198942005634308, 13.309609979391098, 13.938288003206253, 14.127374023199081,
+          14.320252001285553
+        ],
+        "engine": "quickjs-native",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 13.886619985103607,
+        "warm_ms": [
+          14.026206016540527, 14.289876997470856, 13.501987993717194, 13.086231023073196,
+          14.710718005895615
+        ],
+        "engine": "quickjs-native",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 13.324818015098572,
+        "warm_ms": [
+          13.184732973575592, 13.19402500987053, 15.072724014520645, 13.284025996923447,
+          13.847826987504959
+        ],
+        "engine": "quickjs-native",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 15.285645008087158,
+        "warm_ms": [
+          14.132873982191086, 13.832744002342224, 13.28031799197197, 14.161792010068893,
+          14.7571359872818
+        ],
+        "engine": "quickjs-native",
+        "node_flags": "",
+        "host": "docker"
+      },
+      {
+        "argument": 27,
+        "value": 196418,
+        "clock": "performance.now",
+        "first_ms": 14.286960005760193,
+        "warm_ms": [
+          15.361063003540039, 15.530481994152069, 17.077134013175964, 13.92195400595665,
+          15.846112996339798
+        ],
+        "engine": "quickjs-native",
+        "node_flags": "",
+        "host": "docker"
+      }
+    ]
+  }
+}
