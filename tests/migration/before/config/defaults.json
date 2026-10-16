@@ -1,0 +1,15 @@
+{
+  "service": "research-assistant",
+  "logLevel": "info",
+  "models": {
+    "planner": "gpt-4o-mini",
+    "worker": "gpt-4o-mini",
+    "summarizer": "gpt-4o-mini",
+    "fallback": "gpt-4o-mini"
+  },
+  "queue": { "concurrency": 4, "jobTimeoutMs": 10000 },
+  "retry": { "retries": 2, "baseDelayMs": 10, "maxDelayMs": 80 },
+  "rateLimit": { "capacity": 2, "refillEveryMs": 30 },
+  "cache": { "ttlMs": 60000, "maxEntries": 100 },
+  "heartbeatMs": 20
+}

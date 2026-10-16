@@ -1,0 +1,79 @@
+== research-assistant: Four requests: a clean run, a failing step, a model outage, and a bad plan ==
+service=research-assistant log=info models=gpt-4o-mini/gpt-4o-mini/gpt-4o-mini fallback=gpt-4o-mini concurrency=2 retries=2 web=2/30ms
+{"time":"2026-01-01T09:00:01.000Z","level":"info","msg":"starting","service":"research-assistant","scenario":"default","requests":4}
+{"time":"2026-01-01T09:00:02.000Z","level":"info","msg":"planning","service":"research-assistant","request":"req-1","topic":"How does the BEAM scheduler keep latency low?","priority":"Normal"}
+{"time":"2026-01-01T09:00:03.000Z","level":"info","msg":"planned","service":"research-assistant","request":"req-1","steps":"1:search 2:calc 3:summarize"}
+{"time":"2026-01-01T09:00:04.000Z","level":"info","msg":"planning","service":"research-assistant","request":"req-2","topic":"How do Node timers interact with the event loop?","priority":"High"}
+{"time":"2026-01-01T09:00:05.000Z","level":"info","msg":"planned","service":"research-assistant","request":"req-2","steps":"1:search 2:fetch 3:calc 4:summarize"}
+{"time":"2026-01-01T09:00:06.000Z","level":"info","msg":"planning","service":"research-assistant","request":"req-3","topic":"Which OTP restart strategy fits a worker pool?","priority":"Low"}
+{"time":"2026-01-01T09:00:07.000Z","level":"info","msg":"planned","service":"research-assistant","request":"req-3","steps":"1:search 2:summarize"}
+{"time":"2026-01-01T09:00:08.000Z","level":"info","msg":"planning","service":"research-assistant","request":"req-4","topic":"Draft a tweet about actors","priority":"Low"}
+{"time":"2026-01-01T09:00:09.000Z","level":"error","msg":"planning failed","service":"research-assistant","request":"req-4","error":{"name":"AgentError","code":"EMPTY_PLAN","message":"no steps in the plan for \"Draft a tweet about actors\""}}
+{"time":"2026-01-01T09:00:10.000Z","level":"info","msg":"research steps queued","service":"research-assistant","steps":6,"concurrency":2}
+{"time":"2026-01-01T09:00:11.000Z","level":"warn","msg":"primary model unavailable, using fallback","service":"research-assistant","agent":"researcher-fake-500","model":"fake-500","fallback":"gpt-4o-mini","attempts":3,"error":"The server had an error while processing your request."}
+{"time":"2026-01-01T09:00:12.000Z","level":"info","msg":"summarized","service":"research-assistant","request":"req-1","status":"complete","findings":2,"failures":0}
+{"time":"2026-01-01T09:00:13.000Z","level":"info","msg":"summarized","service":"research-assistant","request":"req-2","status":"partial","findings":2,"failures":1}
+{"time":"2026-01-01T09:00:14.000Z","level":"info","msg":"summarized","service":"research-assistant","request":"req-3","status":"complete","findings":1,"failures":0}
+report store holds 3 reports
+== requests ==
+-- req-1 [Normal] How does the BEAM scheduler keep latency low?: complete
+   plan      1.search 2.calc 3.summarize
+   step 1    search via gpt-4o-mini (1 attempt)
+             search -> [{"url":"https://docs.example.org/beam/scheduler","title":"The BEAM scheduler","score":...
+             take_note -> {"saved":true}
+   step 2    calc via gpt-4o-mini (1 attempt)
+             calculate -> {"expression":"4000 * 2","value":8000}
+   summary   System: You write short executive summaries for engineers. You said: Topic: How does the BEAM scheduler keep latency low?
+   sources   https://docs.example.org/beam/scheduler | https://docs.example.org/beam/processes
+-- req-2 [High] How do Node timers interact with the event loop?: partial
+   plan      1.search 2.fetch 3.calc 4.summarize
+   step 1    search via gpt-4o-mini (1 attempt)
+             search -> [{"url":"https://docs.example.org/node/timers","title":"Timers in Node.js","score":4},{...
+             take_note -> {"saved":true}
+   step 2    fetch via gpt-4o-mini (1 attempt)
+             fetch_page -> {"url":"https://docs.example.org/v8/event-loop","title":"The event loop","excerpt":"The...
+             fetch_page -> {"url":"https://docs.example.org/node/timers","title":"Timers in Node.js","excerpt":"se...
+             fetch_page -> {"url":"https://docs.example.org/node/microtasks","title":"Microtasks and promises","ex...
+   step 3    FAILED ToolError[TOOL_FAILED]: calculate: division by zero
+   summary   System: You write short executive summaries for engineers. You said: Topic: How do Node timers interact with the event loop?
+   sources   Timers in Node.js <https://docs.example.org/node/timers> | Microtasks and promises <https://docs.example.org/node/microtasks> | The event loop <https://docs.example.org/v8/event-loop>
+-- req-3 [Low] Which OTP restart strategy fits a worker pool?: complete
+   plan      1.search 2.summarize
+   step 1    search via gpt-4o-mini (fallback after 3 attempts)
+             search -> [{"url":"https://docs.example.org/otp/pools","title":"Worker pools","score":3},{"url":"...
+             take_note -> {"saved":true}
+   summary   System: You write short executive summaries for engineers. You said: Topic: Which OTP restart strategy fits a worker pool?
+   sources   https://docs.example.org/otp/pools | https://docs.example.org/otp/supervisors
+-- req-4 [Low] Draft a tweet about actors: failed
+   plan      FAILED AgentError[EMPTY_PLAN]: no steps in the plan for "Draft a tweet about actors"
+== queue ==
+   started   job-3(req-2#1,High) job-4(req-2#2,High) job-5(req-2#3,High) job-1(req-1#1,Normal) job-2(req-1#2,Normal) job-6(req-3#1,Low)
+   statuses  job-1=done job-2=done job-3=done job-4=done job-5=failed job-6=done
+   counters  jobs.queued=6 jobs.done=5 jobs.failed=1
+== tools ==
+   search      3 calls
+   fetch_page  3 calls
+   take_note   3 calls
+   calculate   2 calls
+   cache       hits=5 misses=10 size=6 hit rate 33.3%
+   cached      page:https://docs.example.org/node/microtasks, page:https://docs.example.org/node/timers, page:https://docs.example.org/v8/event-loop, search:beam scheduler reductions, search:node event loop timers, search:otp restart strategy pool
+   web limit   acquired=3 throttled=1
+== notebook ==
+   req-1: searched "beam scheduler reductions"
+   req-2: searched "node event loop timers"
+   req-3: searched "otp restart strategy pool"
+== agents ==
+   planner planner-1 on gpt-4o-mini
+   researcher researcher-gpt-4o-mini on gpt-4o-mini with 4 tools
+   researcher researcher-fake-500 on fake-500 with 4 tools
+   summarizer summarizer-1 on gpt-4o-mini
+   4 agents, calls=13 inputTokens=1000 outputTokens=382 totalTokens=1382
+== reports ==
+   published req-1 to #research on attempt 2
+   published req-2 to #research on attempt 2
+   published req-3 to #research on attempt 2
+   rejected req-4: Expected "complete" | "partial" at ["status"]
+   heartbeat alive
+{"time":"2026-01-01T09:00:15.000Z","level":"info","msg":"shutting down","service":"research-assistant","reason":"finished"}
+{"time":"2026-01-01T09:00:16.000Z","level":"info","msg":"closed","service":"research-assistant","resources":"metrics,queue,web-limiter,heartbeat"}
+{"time":"2026-01-01T09:00:17.000Z","level":"info","msg":"process exit","service":"research-assistant","code":0}
