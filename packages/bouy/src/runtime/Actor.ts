@@ -3,7 +3,14 @@ import type { Behavior, Blueprint, Outcome } from "./Blueprint.ts";
 import type { Body } from "./Body.ts";
 import { ActorFailed, ActorStopped, CallCycle, Crash, NotSendable } from "./errors.ts";
 import { Envelope, refuse, WAKE, type Mailbox } from "./Mailbox.ts";
-import { copyArguments, copyError, copyValue, type Reference, type Sendable } from "./Sendable.ts";
+import {
+  copyArguments,
+  copyError,
+  copyValue,
+  holdsReference,
+  type Reference,
+  type Sendable,
+} from "./Sendable.ts";
 import type { StreamChannel } from "./Streaming.ts";
 import { runTurn, TurnContext } from "./Turn.ts";
 
@@ -35,6 +42,7 @@ export interface ActorSpec {
   readonly embody: Embody;
   readonly args: ReadonlyArray<Sendable>;
   readonly mailbox: Mailbox;
+  readonly isolation: "shared" | "thread";
 }
 
 type Settled = Sendable | AsyncIterable<Sendable>;
@@ -161,6 +169,7 @@ export class Actor {
   readonly ref: Reference;
   readonly started = Deferred.makeUnsafe<void, Crash>();
   readonly #embody: Embody;
+  readonly #isolation: "shared" | "thread";
   readonly #args: ReadonlyArray<Sendable>;
   readonly #exited = Promise.withResolvers<ActorExit>();
   #status: ActorStatus = "starting";
@@ -180,6 +189,7 @@ export class Actor {
     this.blueprint = spec.blueprint;
     this.mailbox = spec.mailbox;
     this.#embody = spec.embody;
+    this.#isolation = spec.isolation;
     this.#args = spec.args;
     this.ref = spec.blueprint.refFor(this);
   }
@@ -207,6 +217,13 @@ export class Actor {
     }
     if (!Envelope.$is("Cast")(envelope) && envelope.origin.chain === this.#turn?.origin.chain) {
       refuse(envelope, new CallCycle({ actor: this.label }));
+      return;
+    }
+    if (this.#isolation === "thread" && envelope.args.some(holdsReference)) {
+      refuse(
+        envelope,
+        new NotSendable({ value: "an actor ref, which cannot reach a thread actor yet" }),
+      );
       return;
     }
     this.mailbox.admit(envelope);

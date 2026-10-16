@@ -23,6 +23,10 @@ export class Calculator {
     return spins;
   }
 
+  count(items: ReadonlyArray<unknown>): number {
+    return items.length;
+  }
+
   explode(): never {
     throw new RangeError("calculator exploded");
   }

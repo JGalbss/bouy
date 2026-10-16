@@ -151,6 +151,15 @@ export const copyValue = (result: Sendable): Sendable => {
   return sendableOrFailure(result, decodeValue);
 };
 
+export const holdsReference = (value: Sendable): boolean => {
+  if (value instanceof Reference) return true;
+  if (isPrimitive(value) || value instanceof Date || value instanceof Uint8Array) return false;
+  if (value instanceof Map)
+    return [...value].some(([key, item]) => holdsReference(key) || holdsReference(item));
+  if (value instanceof Set) return [...value].some(holdsReference);
+  return Object.values(value).some(holdsReference);
+};
+
 export const copyError = (cause: unknown): Error => {
   if (!(cause instanceof Error)) return new Error(inspect(cause));
   const twin = new Error(cause.message);

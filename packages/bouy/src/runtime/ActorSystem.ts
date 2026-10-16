@@ -66,12 +66,16 @@ const awaitStart = (node: Supervisable): Effect.Effect<void, ActorFailed> =>
 
 const attributeFault = (cause: unknown): void => {
   const turn = currentTurn();
+  if (turn !== undefined && !turn.incarnation.isRetired) {
+    turn.incarnation.crash(cause);
+    return;
+  }
+  process.exitCode = 1;
   if (turn === undefined) {
-    process.exitCode = 1;
     console.error("bouy: an error escaped outside any actor turn", cause);
     return;
   }
-  turn.incarnation.crash(cause);
+  console.error(`bouy: ${turn.actor.label} raised an error after it stopped or restarted`, cause);
 };
 
 const containFaults = Effect.acquireRelease(
@@ -165,7 +169,15 @@ class Actors {
       const id = this.#nextId();
       const name = options.name ?? blueprint.name;
       const mailbox = yield* Mailbox.make(options.mailbox ?? {}, `${name}#${id}`);
-      return new Actor({ id, name, blueprint, embody, args, mailbox });
+      return new Actor({
+        id,
+        name,
+        blueprint,
+        embody,
+        args,
+        mailbox,
+        isolation: options.isolation ?? "shared",
+      });
     });
   }
 

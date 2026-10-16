@@ -1,6 +1,6 @@
 import { threadId } from "node:worker_threads";
 import { afterEach, describe, expect, it } from "vitest";
-import { ActorFailed, inspect, shutdown, spawn } from "../src/index.ts";
+import { ActorFailed, inspect, NotSendable, shutdown, spawn } from "../src/index.ts";
 import { Calculator } from "./fixtures/threaded.ts";
 
 class Bystander {
@@ -28,6 +28,13 @@ describe("thread isolation", () => {
     expect(await calculator.square(3)).toBe(9);
     expect(await calculator.calls()).toBe(1);
     expect(inspect().find((actor) => actor.name === "Calculator")?.restarts).toBe(1);
+  }, 15_000);
+
+  it("refuses an actor ref sent to a thread actor and keeps serving", async () => {
+    const calculator = spawn(Calculator, { isolation: "thread" });
+    const bystander = spawn(Bystander);
+    await expect(calculator.count([bystander])).rejects.toBeInstanceOf(NotSendable);
+    expect(await calculator.count([1, 2, 3])).toBe(3);
   }, 15_000);
 
   it("rejects the caller and restarts after a thrown error", async () => {
