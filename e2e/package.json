@@ -2,6 +2,10 @@
   "name": "@bouy/e2e",
   "private": true,
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.95",
     "@effect/vitest": "4.0.5",
