@@ -2,6 +2,10 @@
   "name": "@bouy/examples",
   "private": true,
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "hello": "bouy run hello.ts"
+  },
   "dependencies": {
     "@ai-sdk/openai": "4.0.95",
     "ai": "7.0.142",
