@@ -28,6 +28,9 @@ const STEPS: ReadonlySet<ts.SyntaxKind> = new Set([
 ]);
 const SHARED_STATE =
   "That binding is mutable state, and every actor in a thread shares module state, so actors see each other's changes. Keep the state in an actor field.";
+const SHARED_EMITTER =
+  "A listener runs inside the turn of whichever actor emits, so a listener that one actor registers can crash or change another actor. Send events between actors as messages with cast().";
+const EMITTER_METHODS: ReadonlyArray<string> = ["on", "emit"];
 
 type Verb = "reads" | "writes";
 
@@ -46,6 +49,7 @@ type Callable = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpressio
 export class ModuleState {
   readonly #project: Project;
   readonly #mutable: ReadonlySet<ts.Symbol>;
+  readonly #emitters: ReadonlySet<ts.Symbol>;
   readonly #touchesByFunction = new Map<Callable, ReadonlyArray<Touch>>();
 
   constructor(project: Project) {
@@ -63,7 +67,14 @@ export class ModuleState {
         .flatMap((node) => this.#mutationTargets(node))
         .flatMap((target) => Arr.fromNullishOr(project.symbolAt(target))),
     );
+    this.#emitters = new Set(
+      constants
+        .flatMap((list) => list.declarations)
+        .filter((declaration) => this.#holdsEmitter(declaration))
+        .flatMap((declaration) => this.#bindings(declaration.name)),
+    );
     this.#mutable = new Set([
+      ...this.#emitters,
       ...variables
         .flatMap((list) => list.declarations)
         .flatMap((declaration) => this.#bindings(declaration.name)),
@@ -79,13 +90,20 @@ export class ModuleState {
     return actor.classes.flatMap((declaration) =>
       instanceMembers(declaration).flatMap((member) => {
         const label = memberLabel(declaration, member);
-        return this.#findUses(descendants(member)).map((use) =>
-          diagnosticAt(use.node, {
+        return this.#findUses(descendants(member)).map((use) => {
+          if (this.#emitters.has(use.binding)) {
+            return diagnosticAt(use.node, {
+              code: "BOUY107",
+              severity: "warning",
+              message: this.#explain(label, use, { noun: "event emitter", reason: SHARED_EMITTER }),
+            });
+          }
+          return diagnosticAt(use.node, {
             code: "BOUY103",
             severity: "error",
-            message: this.#explain(label, use),
-          }),
-        );
+            message: this.#explain(label, use, { noun: "binding", reason: SHARED_STATE }),
+          });
+        });
       }),
     );
   }
@@ -161,8 +179,12 @@ export class ModuleState {
     return touches;
   }
 
-  #explain(label: string, use: Use): string {
-    const access = `${use.verb} the module-level binding ${use.binding.name}. ${SHARED_STATE}`;
+  #explain(
+    label: string,
+    use: Use,
+    sharing: { readonly noun: string; readonly reason: string },
+  ): string {
+    const access = `${use.verb} the module-level ${sharing.noun} ${use.binding.name}. ${sharing.reason}`;
     return Option.match(use.callee, {
       onNone: () => `${label} ${access}`,
       onSome: (callee) => `${label} calls ${callee}, which ${access}`,
@@ -173,6 +195,18 @@ export class ModuleState {
     if (ts.isIdentifier(name)) return Arr.fromNullishOr(this.#project.symbolAt(name));
     const elements: ReadonlyArray<ts.ArrayBindingElement> = name.elements;
     return elements.filter(ts.isBindingElement).flatMap((element) => this.#bindings(element.name));
+  }
+
+  #holdsEmitter(declaration: ts.VariableDeclaration): boolean {
+    const checker = this.#project.checker;
+    const type = checker.getTypeAtLocation(declaration.name);
+    return EMITTER_METHODS.every((name) => {
+      const method = type.getProperty(name);
+      return (
+        method !== undefined &&
+        checker.getTypeOfSymbolAtLocation(method, declaration).getCallSignatures().length > 0
+      );
+    });
   }
 
   #holdsContainer(initializer: ts.Expression | undefined): boolean {
