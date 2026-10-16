@@ -45,7 +45,7 @@ export type Options<C extends ActorClass> = Omit<SpawnOptions, "args"> &
     ? { readonly args?: Arguments<C> }
     : { readonly args: Arguments<C> });
 
-type OptionsArgument<C extends ActorClass> =
+export type OptionsArgument<C extends ActorClass> =
   Partial<Arguments<C>> extends Arguments<C> ? [options?: Options<C>] : [options: Options<C>];
 
 export interface Child<C extends ActorClass> extends ChildSpec {

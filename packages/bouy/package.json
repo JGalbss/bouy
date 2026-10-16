@@ -9,7 +9,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./intrinsics": "./src/intrinsics.ts"
+    "./intrinsics": "./src/intrinsics.ts",
+    "./register": "./src/register.ts",
+    "./std": "./src/std.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "4.0.5",
+    "@types/bun": "1.4.3",
     "@types/node": "26.6.5",
     "typescript": "7.0.2",
     "vitest": "5.0.5"

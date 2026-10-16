@@ -1,5 +1,6 @@
 import { Deferred, Effect, type Scope } from "effect";
 import type { Behavior, Blueprint, Outcome } from "./Blueprint.ts";
+import type { Body } from "./Body.ts";
 import { ActorFailed, ActorStopped, CallCycle, Crash, NotSendable } from "./errors.ts";
 import { Envelope, refuse, type Mailbox } from "./Mailbox.ts";
 import { copyArguments, copyError, copyValue, type Reference, type Sendable } from "./Sendable.ts";
@@ -22,13 +23,16 @@ export interface ActorSnapshot {
   readonly lastFailure: string | undefined;
 }
 
-export type Construct = (args: ReadonlyArray<Sendable>) => Behavior;
+export type Embody = (
+  args: ReadonlyArray<Sendable>,
+  incarnation: Incarnation,
+) => Body | Promise<Body>;
 
 export interface ActorSpec {
   readonly id: string;
   readonly name: string;
   readonly blueprint: Blueprint;
-  readonly construct: Construct;
+  readonly embody: Embody;
   readonly args: ReadonlyArray<Sendable>;
   readonly mailbox: Mailbox;
 }
@@ -39,6 +43,8 @@ const DISPOSE_GRACE_MS = 5_000;
 
 const STATUS_BY_EXIT = { stopped: "stopped", failed: "failed" } as const;
 
+const constructorCrash = (cause: unknown): Crash => new Crash({ site: "the constructor", cause });
+
 const isAsyncIterable = (value: Outcome): value is AsyncIterable<Sendable> =>
   Object(value) === value && Symbol.asyncIterator in Object(value);
 
@@ -48,7 +54,8 @@ export class Incarnation {
   readonly fault = Deferred.makeUnsafe<never, Crash>();
   readonly #blueprint: Blueprint;
   readonly #controller = new AbortController();
-  #behavior: Behavior | undefined;
+  #body: Body | undefined;
+  #faultCause: Error | undefined;
 
   constructor(generation: number, scope: Scope.Scope, blueprint: Blueprint) {
     this.generation = generation;
@@ -60,34 +67,37 @@ export class Incarnation {
     return this.#controller.signal;
   }
 
-  bind(behavior: Behavior): void {
-    this.#behavior = behavior;
+  bind(body: Body): void {
+    this.#body = body;
   }
 
   owns(behavior: Behavior): boolean {
-    return this.#behavior === behavior;
+    if (this.#body === undefined) return behavior instanceof this.#blueprint.actorClass;
+    return this.#body.owns(behavior);
   }
 
   invoke(method: string, args: ReadonlyArray<Sendable>): Outcome {
-    const entry = this.#blueprint.methods.get(method);
-    if (entry === undefined || this.#behavior === undefined) {
-      throw new TypeError(`${this.#blueprint.name} has no method ${method}`);
-    }
-    return entry.invoke.call(this.#behavior, ...args);
+    if (this.#body === undefined) throw new TypeError(`${this.#blueprint.name} has not started`);
+    return this.#body.invoke(method, args);
+  }
+
+  get faultCause(): Error | undefined {
+    return this.#faultCause;
   }
 
   crash(cause: unknown): void {
+    this.#faultCause ??= copyError(cause);
     Deferred.doneUnsafe(this.fault, Effect.fail(new Crash({ site: "an async callback", cause })));
   }
 
   retire(): Effect.Effect<void> {
     this.#controller.abort(new DOMException("The actor stopped", "AbortError"));
-    const behavior = this.#behavior;
-    const dispose = this.#blueprint.disposer;
-    if (behavior === undefined || dispose === undefined) return Effect.void;
-    return Effect.tryPromise(async () => {
-      await dispose.call(behavior);
-    }).pipe(Effect.timeout(DISPOSE_GRACE_MS), Effect.ignore);
+    const body = this.#body;
+    if (body === undefined) return Effect.void;
+    return Effect.tryPromise(() => body.dispose()).pipe(
+      Effect.timeout(DISPOSE_GRACE_MS),
+      Effect.ignore,
+    );
   }
 }
 
@@ -103,7 +113,7 @@ export class Actor {
   readonly mailbox: Mailbox;
   readonly ref: Reference;
   readonly started = Deferred.makeUnsafe<void, Crash>();
-  readonly #construct: Construct;
+  readonly #embody: Embody;
   readonly #args: ReadonlyArray<Sendable>;
   readonly #exited = Promise.withResolvers<ActorExit>();
   #status: ActorStatus = "starting";
@@ -121,7 +131,7 @@ export class Actor {
     this.label = `${spec.name}#${spec.id}`;
     this.blueprint = spec.blueprint;
     this.mailbox = spec.mailbox;
-    this.#construct = spec.construct;
+    this.#embody = spec.embody;
     this.#args = spec.args;
     this.ref = spec.blueprint.refFor(this);
   }
@@ -136,6 +146,10 @@ export class Actor {
 
   get hasStarted(): boolean {
     return this.#generation > 0 && this.#incarnation !== undefined;
+  }
+
+  get load(): number {
+    return this.mailbox.size + Number(this.#turn !== undefined);
   }
 
   deliver(envelope: Envelope): void {
@@ -196,22 +210,31 @@ export class Actor {
   }
 
   #begin(scope: Scope.Scope): Effect.Effect<Incarnation, Crash> {
+    const incarnation = new Incarnation(this.#generation + 1, scope, this.blueprint);
+    const turn = new TurnContext(this, incarnation, {
+      chain: Symbol("bouy.start"),
+      signal: undefined,
+    });
     return Effect.try({
       try: () => {
-        const incarnation = new Incarnation(this.#generation + 1, scope, this.blueprint);
-        const turn = new TurnContext(this, incarnation, {
-          chain: Symbol("bouy.start"),
-          signal: undefined,
-        });
-        incarnation.bind(runTurn(turn, () => this.#construct(copyArguments(this.#args))));
-        this.#generation = incarnation.generation;
         this.#incarnation = incarnation;
+        return runTurn(turn, () => this.#embody(copyArguments(this.#args), incarnation));
+      },
+      catch: constructorCrash,
+    }).pipe(
+      Effect.flatMap((body) => {
+        if (body instanceof Promise)
+          return Effect.tryPromise({ try: () => body, catch: constructorCrash });
+        return Effect.succeed(body);
+      }),
+      Effect.map((body) => {
+        incarnation.bind(body);
+        this.#generation = incarnation.generation;
         this.#status = "idle";
         Deferred.doneUnsafe(this.started, Effect.void);
         return incarnation;
-      },
-      catch: (cause) => new Crash({ site: "the constructor", cause }),
-    });
+      }),
+    );
   }
 
   #serve(incarnation: Incarnation): Effect.Effect<never, Crash> {
@@ -232,10 +255,16 @@ export class Actor {
     });
     return work.pipe(
       Effect.onInterrupt(() =>
-        Effect.sync(() => refuse(envelope, new ActorStopped({ actor: this.label }))),
+        Effect.sync(() => refuse(envelope, this.#interruptedError(incarnation, envelope))),
       ),
       Effect.ensuring(Effect.sync(() => this.#endTurn(turn))),
     );
+  }
+
+  #interruptedError(incarnation: Incarnation, envelope: Envelope): Error {
+    const cause = incarnation.faultCause;
+    if (cause === undefined) return new ActorStopped({ actor: this.label });
+    return new ActorFailed({ actor: this.label, method: envelope.method, cause });
   }
 
   #endTurn(turn: TurnContext): void {

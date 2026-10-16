@@ -14,11 +14,11 @@ export interface Location {
   readonly exportName: string;
 }
 
-type MethodName<T> = {
+export type MethodName<T> = {
   [K in keyof T]-?: K extends string ? (T[K] extends (...args: never) => void ? K : never) : never;
 }[keyof T];
 
-type Remote<F> = F extends (...args: infer A) => infer R
+export type Remote<F> = F extends (...args: infer A) => infer R
   ? [R] extends [AsyncIterable<infer Y>]
     ? (...args: A) => AsyncIterable<Y>
     : (...args: A) => Promise<Awaited<R>>
@@ -26,7 +26,11 @@ type Remote<F> = F extends (...args: infer A) => infer R
 
 type Delivery<F> = F extends (...args: infer A) => void ? (...args: A) => Promise<boolean> : never;
 
-export type Ref<T> = Reference & { readonly [K in MethodName<T>]: Remote<T[K]> };
+export type RemoteMethods<T> = { readonly [K in MethodName<T>]: Remote<T[K]> };
+
+export type Ref<T> = Reference & RemoteMethods<T>;
+
+export type Arguments<F> = F extends (...args: infer A) => void ? A : never;
 
 export type Cast<T> = { readonly [K in MethodName<T>]: Delivery<T[K]> };
 
@@ -43,6 +47,8 @@ type Send<A> = (ref: Reference, method: string, args: ReadonlyArray<unknown>) =>
 
 type CastView = Readonly<Record<string, (...args: ReadonlyArray<unknown>) => Promise<boolean>>>;
 
+type Members = Readonly<Record<string, (...args: ReadonlyArray<never>) => void>>;
+
 export interface Dispatch {
   readonly call: Send<Promise<Sendable>>;
   readonly stream: Send<AsyncIterable<Sendable>>;
@@ -57,6 +63,9 @@ const KIND_BY_GENERATOR = new Map<boolean, MethodKind>([
 ]);
 
 export const isMethod = (value: unknown): value is Method => Predicate.isFunction(value);
+
+export const isActorClass = (value: unknown): value is ActorClass =>
+  Predicate.isFunction(value) && Predicate.isObject(value.prototype);
 
 export class Blueprint {
   readonly actorClass: ActorClass;
@@ -134,10 +143,22 @@ export class Blueprint {
     return Object.freeze(Object.create(this.#refPrototype, { [actorKey]: { value: actor } }));
   }
 
+  routerFor<T>(pick: () => Ref<T>, dispatch: Dispatch): RemoteMethods<T> {
+    const router: Record<
+      string,
+      (...args: ReadonlyArray<unknown>) => Promise<Sendable> | AsyncIterable<Sendable>
+    > = Object.create(null);
+    for (const [name, { kind }] of this.methods) {
+      router[name] = (...args: ReadonlyArray<unknown>) => dispatch[kind](pick(), name, args);
+    }
+    if (this.#isRouterFor(router, pick)) return Object.freeze(router);
+    throw new TypeError(`${this.name} has no router for this pool`);
+  }
+
   castFor<T>(ref: Ref<T>, dispatch: Dispatch): Cast<T> {
     const view = this.#castViews.get(ref) ?? this.#buildCastView(ref, dispatch);
     this.#castViews.set(ref, view);
-    if (this.#isCastView<T>(view)) return view;
+    if (this.#isCastViewFor(view, ref)) return view;
     throw new TypeError(`${this.name} has no cast view for this ref`);
   }
 
@@ -150,8 +171,16 @@ export class Blueprint {
     return Object.freeze(view);
   }
 
-  #isCastView<T>(view: CastView): view is CastView & Cast<T> {
-    return [...this.methods.keys()].every((name) => name in view);
+  #isCastViewFor<T>(view: CastView, ref: Ref<T>): view is CastView & Cast<T> {
+    return ref[actorKey].blueprint === this && this.#coversEveryMethod(view);
+  }
+
+  #isRouterFor<T>(router: Members, pick: () => Ref<T>): router is Members & RemoteMethods<T> {
+    return pick()[actorKey].blueprint === this && this.#coversEveryMethod(router);
+  }
+
+  #coversEveryMethod(candidate: Members): boolean {
+    return [...this.methods.keys()].every((name) => name in candidate);
   }
 }
 
