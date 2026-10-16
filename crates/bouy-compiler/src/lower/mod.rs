@@ -4,6 +4,7 @@ mod capture;
 pub mod class;
 mod expr;
 pub mod function;
+mod hoist;
 mod place;
 mod rebind;
 mod scope;
@@ -12,16 +13,16 @@ mod stmt;
 use std::collections::{HashMap, HashSet};
 
 use oxc::ast::ast::{
-    BindingPattern, Class, Declaration, Expression, FormalParameter, ImportDeclarationSpecifier,
-    Program, PropertyDefinition, Statement, TSType, TSTypeAnnotation, TSTypeName,
-    VariableDeclarationKind, VariableDeclarator,
+    BindingPattern, Class, Declaration, ExportDefaultDeclarationKind, Expression, FormalParameter,
+    Function, ImportDeclarationSpecifier, Program, PropertyDefinition, Statement, TSType,
+    TSTypeAnnotation, TSTypeName, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc::semantic::{Semantic, SymbolId};
 use oxc::span::{GetSpan, Span};
 
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::erlang::{self, Clause, Expr};
-use crate::graph::{self, Export, Graph};
+use crate::graph::{self, ExportKind, Graph};
 use crate::library;
 use crate::parse::with_program;
 
@@ -71,13 +72,17 @@ pub struct ModuleContext {
     pub persisted: HashSet<SymbolId>,
     /// Symbols that are never places: library and module namespace imports, and actor refs.
     pub opaque: HashSet<SymbolId>,
+    /// Variables and parameters declared with the type `Promise<T>`.
+    pub promises: HashSet<SymbolId>,
+    /// The local names of `Data` from "effect", for error class bases.
+    pub data: HashSet<SymbolId>,
     /// The fields that hold actor refs (section 6), such as `#store` in
     /// `#store: Ref<Store>`, for the class at each span.
     pub ref_fields: Vec<(Span, HashSet<String>)>,
     /// The Bouy modules this module imports, in import order.
     pub imports: Vec<String>,
     /// The export table of each imported Bouy module.
-    pub exports: HashMap<String, HashMap<String, Export>>,
+    pub exports: HashMap<String, HashMap<String, graph::Export>>,
 }
 
 /// How the function being lowered returns a value (section 9).
@@ -154,11 +159,21 @@ pub struct Lowerer<'a, 'c> {
     pub rests: Vec<String>,
     /// The enclosing `try` statements that record their variables (section 7).
     pub checkpoints: Vec<Checkpoint>,
+    /// The nested function declarations already created, by span.
+    pub hoisted: HashSet<Span>,
+    /// The nested function declarations that a group creates later in their block.
+    pub pending: HashSet<Span>,
+    /// The spans of the closures being lowered, innermost last.
+    pub closures: Vec<Span>,
+    /// Whether the module needs the `'$construct'/2` helper for `new` on a class value.
+    pub constructs: bool,
+    /// Whether the code being lowered is directly in the body of a generator function, an
+    /// Effect body (section 13).
+    pub generator: bool,
 }
 
 /// A `try` whose `catch` and `finally` must see the variables as they were when the body
-/// threw. The body records them under `key` in the process dictionary after each
-/// statement that rebinds one.
+/// threw. The body records them under `key` in the process dictionary at each rebinding.
 #[derive(Debug, Clone)]
 pub struct Checkpoint {
     pub key: String,
@@ -188,6 +203,11 @@ pub fn lower_module(module: &graph::Module, graph: &Graph) -> Result<String, Vec
             class: None,
             rests: Vec::new(),
             checkpoints: Vec::new(),
+            hoisted: HashSet::new(),
+            pending: HashSet::new(),
+            closures: Vec::new(),
+            constructs: false,
+            generator: false,
         };
         let functions = lowerer.module_functions(program);
         if lowerer.reporter.diagnostics.is_empty() {
@@ -214,12 +234,17 @@ impl ModuleContext {
             bindings: HashMap::new(),
             persisted: HashSet::new(),
             opaque: HashSet::new(),
+            promises: HashSet::new(),
+            data: class::data_imports(program),
             ref_fields: Vec::new(),
             imports: Vec::new(),
             exports: HashMap::new(),
         };
         for statement in &program.body {
             context.declare(statement, semantic, module, graph, reporter);
+        }
+        for declaration in graph::module_declarations(program) {
+            context.declare_declaration(declaration, semantic, reporter);
         }
         context.persisted = persisted(program, semantic, &context, module);
         let ref_types = ref_types(program);
@@ -228,12 +253,19 @@ impl ModuleContext {
             scoping: semantic.scoping(),
             ref_types: &ref_types,
             found: HashSet::new(),
+            promises: HashSet::new(),
             classes: Vec::new(),
             open: Vec::new(),
         };
         oxc::ast_visit::Visit::visit_program(&mut refs, program);
-        let ActorRefs { found, classes, .. } = refs;
+        let ActorRefs {
+            found,
+            promises,
+            classes,
+            ..
+        } = refs;
         context.opaque.extend(found);
+        context.promises = promises;
         context.ref_fields = classes
             .into_iter()
             .filter(|(_, fields)| !fields.is_empty())
@@ -271,59 +303,34 @@ impl ModuleContext {
             Statement::ImportDeclaration(import) if import.import_kind.is_value() => {
                 self.import(import, semantic, module, graph, reporter);
             }
-            Statement::ExportDeclaration(export) => {
-                self.declare_declaration(&export.declaration, reporter);
-            }
-            Statement::ExportDefaultDeclaration(export) => reporter.report(
-                export.span,
-                Code::Unsupported,
-                "`export default` is not supported; use a named export",
-            ),
-            Statement::ExportAllDeclaration(export) => reporter.report(
-                export.span,
-                Code::Unsupported,
-                "re-exports are not supported; import from the module that declares the name",
-            ),
-            Statement::ExportFromDeclaration(export) if export.export_kind.is_value() => reporter
-                .report(
+            Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+                ExportDefaultDeclarationKind::FunctionDeclaration(function)
+                    if function.id.is_some() =>
+                {
+                    self.declare_function(function, reporter);
+                }
+                ExportDefaultDeclarationKind::ClassDeclaration(class) if class.id.is_some() => {
+                    self.declare_class(class, semantic);
+                }
+                _ => reporter.report(
                     export.span,
                     Code::Unsupported,
-                    "re-exports are not supported; import from the module that declares the name",
+                    "`export default` is supported only on a named function or class declaration; declare the value with a name and export that",
                 ),
-            other => {
-                if let Some(declaration) = other.as_declaration() {
-                    self.declare_declaration(declaration, reporter);
-                }
-            }
+            },
+            _ => {}
         }
     }
 
-    fn declare_declaration(&mut self, declaration: &Declaration<'_>, reporter: &mut Reporter<'_>) {
+    fn declare_declaration(
+        &mut self,
+        declaration: &Declaration<'_>,
+        semantic: &Semantic<'_>,
+        reporter: &mut Reporter<'_>,
+    ) {
         match declaration {
-            Declaration::FunctionDeclaration(function) => {
-                if let Some(id) = &function.id
-                    && function.body.is_some()
-                    && let Some(symbol) = id.symbol_id.get()
-                {
-                    reserved(id.name.as_str(), id.span, reporter);
-                    self.bindings
-                        .insert(symbol, Binding::Function(id.name.to_string()));
-                }
-            }
-            Declaration::ClassDeclaration(class) => {
-                if let Some(id) = &class.id
-                    && let Some(symbol) = id.symbol_id.get()
-                {
-                    let kind = class::classify(class).unwrap_or(ClassKind::Actor);
-                    self.bindings.insert(
-                        symbol,
-                        Binding::Class {
-                            name: id.name.to_string(),
-                            kind,
-                        },
-                    );
-                }
-            }
+            Declaration::FunctionDeclaration(function) => self.declare_function(function, reporter),
+            Declaration::ClassDeclaration(class) => self.declare_class(class, semantic),
             Declaration::VariableDeclaration(variables) if !variables.declare => {
                 if variables.kind != VariableDeclarationKind::Const {
                     reporter.report(
@@ -336,7 +343,7 @@ impl ModuleContext {
                     );
                 }
                 for declarator in &variables.declarations {
-                    self.declare_const(&declarator.id, declarator.init.as_ref(), reporter);
+                    self.declare_const(declarator, reporter);
                 }
             }
             Declaration::TSEnumDeclaration(enumeration) if !enumeration.declare => reporter.report(
@@ -354,23 +361,56 @@ impl ModuleContext {
         }
     }
 
-    fn declare_const(
-        &mut self,
-        pattern: &BindingPattern<'_>,
-        init: Option<&Expression<'_>>,
-        reporter: &mut Reporter<'_>,
-    ) {
-        if let BindingPattern::BindingIdentifier(id) = pattern
+    fn declare_function(&mut self, function: &Function<'_>, reporter: &mut Reporter<'_>) {
+        if let Some(id) = &function.id
+            && function.body.is_some()
             && let Some(symbol) = id.symbol_id.get()
-            && init.is_some_and(function::is_function_value)
         {
             reserved(id.name.as_str(), id.span, reporter);
             self.bindings
                 .insert(symbol, Binding::Function(id.name.to_string()));
+        }
+    }
+
+    fn declare_class(&mut self, class: &Class<'_>, semantic: &Semantic<'_>) {
+        if let Some(id) = &class.id
+            && let Some(symbol) = id.symbol_id.get()
+        {
+            let kind = class::classify(class, semantic.scoping(), &self.data)
+                .unwrap_or(ClassKind::Unsupported);
+            self.bindings.insert(
+                symbol,
+                Binding::Class {
+                    name: id.name.to_string(),
+                    kind,
+                },
+            );
+        }
+    }
+
+    fn declare_const(&mut self, declarator: &VariableDeclarator<'_>, reporter: &mut Reporter<'_>) {
+        let pattern = &declarator.id;
+        if let BindingPattern::BindingIdentifier(id) = pattern
+            && let Some(symbol) = id.symbol_id.get()
+            && graph::is_function_const(declarator)
+        {
+            reserved(id.name.as_str(), id.span, reporter);
+            self.bindings
+                .insert(symbol, Binding::Function(id.name.to_string()));
+            // `const g = function f() {...}`: `f` names the same function inside its body.
+            if let Some(Expression::FunctionExpression(function)) =
+                declarator.init.as_ref().map(rebind::strip)
+                && let Some(own) = function.id.as_ref().and_then(|id| id.symbol_id.get())
+            {
+                self.bindings
+                    .insert(own, Binding::Function(id.name.to_string()));
+            }
             return;
         }
         let literal = match pattern {
-            BindingPattern::BindingIdentifier(_) => init.and_then(expr::literal),
+            BindingPattern::BindingIdentifier(_) => {
+                declarator.init.as_ref().and_then(expr::literal)
+            }
             _ => None,
         };
         for id in pattern.get_binding_identifiers() {
@@ -428,27 +468,34 @@ impl ModuleContext {
                 (Some(target), ImportDeclarationSpecifier::ImportNamespaceSpecifier(_)) => {
                     Some(Binding::ImportedModule(target.name.clone()))
                 }
-                (_, ImportDeclarationSpecifier::ImportDefaultSpecifier(_)) => {
-                    reporter.report(
-                        item.span(),
-                        Code::BadImport,
-                        "default imports are not supported; use a named import",
-                    );
-                    continue;
+                (Some(target), ImportDeclarationSpecifier::ImportDefaultSpecifier(_)) => {
+                    imported(target, "default")
                 }
+                (None, ImportDeclarationSpecifier::ImportDefaultSpecifier(_)) => None,
             };
-            match binding {
-                Some(binding) => {
-                    if matches!(binding, Binding::Library(_) | Binding::ImportedModule(_)) {
-                        self.opaque.insert(symbol);
-                    }
-                    self.bindings.insert(symbol, binding);
+            let name = match item {
+                ImportDeclarationSpecifier::ImportSpecifier(named) => {
+                    named.imported.name().to_string()
                 }
-                None => reporter.report(
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => "default".to_owned(),
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => "*".to_owned(),
+            };
+            if let Some(binding) = binding {
+                if matches!(binding, Binding::Library(_) | Binding::ImportedModule(_)) {
+                    self.opaque.insert(symbol);
+                }
+                self.bindings.insert(symbol, binding);
+            } else {
+                reporter.report(
                     item.span(),
                     Code::BadImport,
-                    format!("\"{specifier}\" does not export `{}`", local.name),
-                ),
+                    format!("\"{specifier}\" does not export `{name}`"),
+                );
+                // The name reads as `undefined`, so its uses report nothing more.
+                self.bindings.insert(
+                    symbol,
+                    Binding::Library(library::Binding::Constant("undefined")),
+                );
             }
         }
     }
@@ -461,7 +508,7 @@ impl ModuleContext {
 
 /// Reports a module-level function whose name is one that every Erlang module defines.
 fn reserved(name: &str, span: Span, reporter: &mut Reporter<'_>) {
-    if matches!(name, "module_info" | "__init__") {
+    if matches!(name, "module_info" | "__init__" | "$construct") {
         reporter.report(
             span,
             Code::Unsupported,
@@ -502,6 +549,8 @@ struct ActorRefs<'c> {
     scoping: &'c oxc::semantic::Scoping,
     ref_types: &'c HashSet<SymbolId>,
     found: HashSet<SymbolId>,
+    /// The bindings declared with the type `Promise<T>`.
+    promises: HashSet<SymbolId>,
     /// The span of each class and its fields of type `Ref`.
     classes: Vec<(Span, HashSet<String>)>,
     /// The classes that enclose the visit, as indexes into `classes`.
@@ -549,6 +598,30 @@ impl ActorRefs<'_> {
                 .filter_map(|id| id.symbol_id.get()),
         );
     }
+
+    /// Records the bindings of `pattern` when `annotation` is the global `Promise<T>`.
+    fn add_promises(
+        &mut self,
+        pattern: &BindingPattern<'_>,
+        annotation: Option<&TSTypeAnnotation<'_>>,
+    ) {
+        let promise = annotation.is_some_and(|annotation| {
+            matches!(
+                &annotation.type_annotation,
+                TSType::TSTypeReference(reference)
+                    if matches!(&reference.type_name, TSTypeName::IdentifierReference(name)
+                        if name.name == "Promise" || name.name == "PromiseLike")
+            )
+        });
+        if promise {
+            self.promises.extend(
+                pattern
+                    .get_binding_identifiers()
+                    .iter()
+                    .filter_map(|id| id.symbol_id.get()),
+            );
+        }
+    }
 }
 
 impl<'a> oxc::ast_visit::Visit<'a> for ActorRefs<'_> {
@@ -556,6 +629,7 @@ impl<'a> oxc::ast_visit::Visit<'a> for ActorRefs<'_> {
         if self.declares_ref(it.type_annotation.as_deref()) {
             self.add_bindings(&it.id);
         }
+        self.add_promises(&it.id, it.type_annotation.as_deref());
         oxc::ast_visit::walk::walk_variable_declarator(self, it);
     }
 
@@ -563,6 +637,7 @@ impl<'a> oxc::ast_visit::Visit<'a> for ActorRefs<'_> {
         if self.declares_ref(it.type_annotation.as_deref()) {
             self.add_bindings(&it.pattern);
         }
+        self.add_promises(&it.pattern, it.type_annotation.as_deref());
         oxc::ast_visit::walk::walk_formal_parameter(self, it);
     }
 
@@ -595,12 +670,9 @@ impl<'a> oxc::ast_visit::Visit<'a> for ActorRefs<'_> {
                 };
                 if let Some(Expression::CallExpression(call)) = init
                     && self.context.spawns(&call.callee, self.scoping)
-                    && let Some(symbol) = declarator
-                        .id
-                        .get_binding_identifier()
-                        .and_then(|id| id.symbol_id.get())
                 {
-                    self.found.insert(symbol);
+                    // `const { a, b } = supervise(...)` binds a ref to each name.
+                    self.add_bindings(&declarator.id);
                 }
             }
         }
@@ -609,40 +681,42 @@ impl<'a> oxc::ast_visit::Visit<'a> for ActorRefs<'_> {
 }
 
 fn imported(target: &graph::Module, name: &str) -> Option<Binding> {
-    let module = target.name.clone();
-    Some(match target.exports.get(name)? {
-        Export::Function(local) => Binding::ImportedFunction {
+    let export = target.exports.get(name)?;
+    let module = export.module.clone();
+    let local = export.local.clone();
+    Some(match &export.kind {
+        ExportKind::Function => Binding::ImportedFunction {
             module,
-            name: local.clone(),
+            name: local,
         },
-        Export::Const(local) => Binding::ImportedConst {
+        ExportKind::Const => Binding::ImportedConst {
             module,
-            name: local.clone(),
+            name: local,
         },
-        Export::Class(local, kind) => Binding::ImportedClass {
+        ExportKind::Class(kind) => Binding::ImportedClass {
             module,
-            name: local.clone(),
+            name: local,
             kind: kind.clone(),
         },
+        ExportKind::Namespace => Binding::ImportedModule(module),
     })
 }
 
 /// The module-level consts that functions read or other modules import. `'__init__'/0`
-/// stores them in `persistent_term`.
+/// stores them in `persistent_term`. A function here is any code that can run after the
+/// top-level code, such as a closure in the initializer of the const it reads.
 fn persisted(
     program: &Program<'_>,
     semantic: &Semantic<'_>,
     context: &ModuleContext,
     module: &graph::Module,
 ) -> HashSet<SymbolId> {
-    let units = function_units(program);
+    let units = deferred_code(program);
     let exported: HashSet<&str> = module
         .exports
         .values()
-        .filter_map(|export| match export {
-            Export::Const(local) => Some(local.as_str()),
-            _ => None,
-        })
+        .filter(|export| export.kind == ExportKind::Const && export.module == module.name)
+        .map(|export| export.local.as_str())
         .collect();
     context
         .bindings
@@ -668,32 +742,27 @@ fn persisted(
         .collect()
 }
 
-/// The spans of module-level code that becomes named Erlang functions.
-fn function_units(program: &Program<'_>) -> Vec<Span> {
-    let mut units = Vec::new();
-    for statement in &program.body {
-        let declaration = match statement {
-            Statement::ExportDeclaration(export) => &export.declaration,
-            other => match other.as_declaration() {
-                Some(declaration) => declaration,
-                None => continue,
-            },
-        };
-        match declaration {
-            Declaration::FunctionDeclaration(function) => units.push(function.span),
-            Declaration::ClassDeclaration(class) => units.push(class.span),
-            Declaration::VariableDeclaration(variables) => units.extend(
-                variables
-                    .declarations
-                    .iter()
-                    .filter_map(|declarator| declarator.init.as_ref())
-                    .filter(|init| function::is_function_value(init))
-                    .map(GetSpan::span),
-            ),
-            _ => {}
+/// The spans of the code that runs later than the top-level statements around it: every
+/// function, arrow function, and class.
+fn deferred_code(program: &Program<'_>) -> Vec<Span> {
+    struct Deferred(Vec<Span>);
+    impl<'a> oxc::ast_visit::Visit<'a> for Deferred {
+        fn visit_function(&mut self, it: &Function<'a>, _: oxc::syntax::scope::ScopeFlags) {
+            self.0.push(it.span);
+        }
+        fn visit_arrow_function_expression(
+            &mut self,
+            it: &oxc::ast::ast::ArrowFunctionExpression<'a>,
+        ) {
+            self.0.push(it.span);
+        }
+        fn visit_class(&mut self, it: &Class<'a>) {
+            self.0.push(it.span);
         }
     }
-    units
+    let mut deferred = Deferred(Vec::new());
+    oxc::ast_visit::Visit::visit_program(&mut deferred, program);
+    deferred.0
 }
 
 impl<'a> Lowerer<'a, '_> {
@@ -730,8 +799,10 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// Binds `value` to `pattern` in the sequence.
+    /// Binds `value` to `pattern` in the sequence, and records each open checkpoint whose
+    /// variables the pattern rebinds.
     pub fn push_match(&mut self, pattern: Expr, value: Expr) {
+        let records = self.records(&pattern);
         match value {
             Expr::Block(mut body) => {
                 let last = body.pop().unwrap_or_else(Expr::undefined);
@@ -740,6 +811,34 @@ impl<'a> Lowerer<'a, '_> {
             }
             other => self.seq.push(Expr::matches(pattern, other)),
         }
+        self.seq.extend(records);
+    }
+
+    /// `erlang:put(Key, {Vars})` for each open checkpoint (section 7) that `pattern` gives a
+    /// new version. Recording at each rebinding, and not after each statement, lets `catch`
+    /// and `finally` see a rebinding that a later part of the same statement follows with a
+    /// throw, and a rebinding inside a loop header or a jumping `if`.
+    fn records(&self, pattern: &Expr) -> Vec<Expr> {
+        self.checkpoints
+            .iter()
+            .filter(|checkpoint| {
+                checkpoint.vars.iter().any(|target| {
+                    self.scope
+                        .current(*target)
+                        .is_some_and(|name| pattern.binds(name))
+                })
+            })
+            .map(|checkpoint| {
+                Expr::call(
+                    "erlang",
+                    "put",
+                    vec![
+                        Expr::var(&checkpoint.key),
+                        self.scope.tuple(&checkpoint.vars),
+                    ],
+                )
+            })
+            .collect()
     }
 
     /// `value` as a variable or literal, binding it to a temporary when it is neither.
@@ -806,14 +905,18 @@ impl<'a> Lowerer<'a, '_> {
 
     fn module_functions(&mut self, program: &'a Program<'a>) -> Vec<erlang::Function> {
         let mut functions = vec![self.init(program)];
-        for statement in &program.body {
-            let declaration = match statement {
-                Statement::ExportDeclaration(export) => &export.declaration,
-                other => match other.as_declaration() {
-                    Some(declaration) => declaration,
-                    None => continue,
-                },
-            };
+        match graph::default_export(program) {
+            Some(graph::DefaultExport::Function(function)) => {
+                if let Some(id) = &function.id {
+                    functions.push(
+                        self.named_function(&id.name, function::Callable::Function(function)),
+                    );
+                }
+            }
+            Some(graph::DefaultExport::Class(class)) => functions.extend(self.class(class)),
+            None => {}
+        }
+        for declaration in graph::module_declarations(program) {
             match declaration {
                 Declaration::FunctionDeclaration(function) => {
                     if let Some(id) = &function.id
@@ -837,6 +940,9 @@ impl<'a> Lowerer<'a, '_> {
                 Declaration::ClassDeclaration(class) => functions.extend(self.class(class)),
                 _ => {}
             }
+        }
+        if self.constructs {
+            functions.push(expr::construct_function());
         }
         functions
     }

@@ -1,0 +1,17 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy206-unavailable.ts
+---
+bouy206-unavailable.ts:2:3: BOUY206: `console.table` is not available in Bouy
+bouy206-unavailable.ts:3:15: BOUY206: `Object.own_entries` is not available in Bouy
+bouy206-unavailable.ts:9:3: BOUY206: this call changes a value that no variable holds, so the change is lost; store the value in a variable or a property first
+bouy206-unavailable.ts:10:3: BOUY206: this call changes a value that no variable holds, so the change is lost; store the value in a variable or a property first
+bouy206-unavailable.ts:15:3: BOUY206: `undeclaredName` is not declared; declare it with `let` or `const`
+bouy206-unavailable.ts:16:3: BOUY206: `console` is a global of Bouy and cannot change
+bouy206-unavailable.ts:20:8: BOUY206: `var` is not supported; use `let` or `const`
+bouy206-unavailable.ts:23:3: BOUY206: a mutating method after an optional link is supported only as `place?.method(...)`; check for null with an if statement
+bouy206-unavailable.ts:24:12: BOUY206: `__proto__` in an object literal sets a prototype, and Bouy objects have no prototype chain; copy the properties with a spread instead
+bouy206-unavailable.ts:28:8: BOUY206: class inheritance is supported only for error classes: extends Error, TypeError, RangeError, or SyntaxError, or Data.TaggedError("Tag") or Data.Error with `Data` from "effect"
+bouy206-unavailable.ts:29:8: BOUY206: class inheritance is supported only for error classes: extends Error, TypeError, RangeError, or SyntaxError, or Data.TaggedError("Tag") or Data.Error with `Data` from "effect"
+bouy206-unavailable.ts:31:1: BOUY206: `export default` is supported only on a named function or class declaration; declare the value with a name and export that

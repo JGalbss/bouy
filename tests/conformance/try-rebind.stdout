@@ -1,0 +1,9 @@
+2 ok, 2 failed, last error
+start > inner > inner-done > inner-finally > after-inner > end
+start > inner > inner-finally > caught boom > end
+done after 3
+cleanup 0
+cleanup -1
+cleanup 4
+zero caught negative positive
+102

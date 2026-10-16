@@ -1,4 +1,5 @@
 //! Embeds the runtime sources, `runtime/src/*.erl`, `*.hrl`, and `*.app.src`, in the binary.
+//! The build fails when they are missing, because a binary without them cannot run a program.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -10,14 +11,16 @@ fn main() {
     let runtime = manifest.join("../../runtime/src");
     println!("cargo:rerun-if-changed={}", runtime.display());
     let mut sources: Vec<PathBuf> = fs::read_dir(&runtime)
-        .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| is_runtime_source(path))
-                .collect()
-        })
-        .unwrap_or_default();
+        .unwrap_or_else(|error| panic!("{} holds the runtime sources: {error}", runtime.display()))
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| is_runtime_source(path))
+        .collect();
+    assert!(
+        !sources.is_empty(),
+        "{} holds no runtime sources",
+        runtime.display()
+    );
     sources.sort();
     let mut table = String::from(
         "/// The runtime sources: file name and contents.\npub const SOURCES: &[(&str, &str)] = &[\n",
@@ -26,8 +29,10 @@ fn main() {
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
-            .unwrap_or_default();
-        let absolute = path.canonicalize().unwrap_or_else(|_| path.clone());
+            .expect("a runtime source has a UTF-8 name");
+        let absolute = path
+            .canonicalize()
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
         let _ = writeln!(
             table,
             "    ({name:?}, include_str!({:?})),",

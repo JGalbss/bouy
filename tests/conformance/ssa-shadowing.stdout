@@ -1,0 +1,5 @@
+inner 12, outer 1, loop 0, loop 1, shadowed, final 7
+9 18 big | 2 0 small | 0 -1 unset
+11,22,33
+4 42 18
+Infinity -Infinity 0

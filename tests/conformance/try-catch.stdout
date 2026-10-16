@@ -1,0 +1,13 @@
+ok 4 | caught RangeError: negative: -1
+finally for 1
+early
+finally for 0
+try,after-if
+outer wraps inner
+attempt 0 failed
+attempt 1 failed
+succeeded after 3
+attempt 0 failed
+gave up after 1
+thrown value: a plain string
+done

@@ -52,15 +52,26 @@ impl<'a> Callable<'a> {
         }
     }
 
-    fn generator(self) -> Option<Span> {
+    fn is_generator(self) -> bool {
+        matches!(self, Self::Function(function) if function.generator)
+    }
+
+    fn is_async(self) -> bool {
         match self {
-            Self::Function(function) if function.generator => Some(function.span),
-            _ => None,
+            Self::Function(function) => function.r#async,
+            Self::Arrow(arrow) => arrow.r#async,
         }
     }
 
     fn is_arrow(self) -> bool {
         matches!(self, Self::Arrow(_))
+    }
+
+    fn span(self) -> Span {
+        match self {
+            Self::Function(function) => function.span,
+            Self::Arrow(arrow) => arrow.span,
+        }
     }
 }
 
@@ -91,22 +102,37 @@ impl<'a> Lowerer<'a, '_> {
     /// A function value: an Erlang fun that closes over the current versions. A named fun
     /// can call itself.
     pub fn closure(&mut self, name: Option<String>, callable: Callable<'a>) -> Expr {
+        self.closure_with(name, callable, |_| {})
+    }
+
+    /// A function value whose body starts with the statements that `prelude` pushes.
+    pub fn closure_with(
+        &mut self,
+        name: Option<String>,
+        callable: Callable<'a>,
+        prelude: impl FnOnce(&mut Self),
+    ) -> Expr {
         let versions = self.scope.versions();
         let outer_seq = std::mem::take(&mut self.seq);
         let outer_frame = std::mem::replace(&mut self.frame, Frame::Function);
         let outer_targets = std::mem::take(&mut self.targets);
         let outer_rests = std::mem::take(&mut self.rests);
         let outer_checkpoints = std::mem::take(&mut self.checkpoints);
+        let outer_generator = std::mem::replace(&mut self.generator, false);
         if !callable.is_arrow() {
             self.scope.forget(Target::This);
         }
         let args = self.scope.fresh("Args");
+        prelude(self);
+        self.closures.push(callable.span());
         let body = self.function_body(&args, callable);
+        self.closures.pop();
         self.seq = outer_seq;
         self.frame = outer_frame;
         self.targets = outer_targets;
         self.rests = outer_rests;
         self.checkpoints = outer_checkpoints;
+        self.generator = outer_generator;
         self.scope.restore(versions);
         Expr::Fun {
             name,
@@ -116,11 +142,8 @@ impl<'a> Lowerer<'a, '_> {
 
     /// The body of a function whose argument list is the variable `args`.
     pub fn function_body(&mut self, args: &str, callable: Callable<'a>) -> Vec<Expr> {
-        if let Some(span) = callable.generator() {
-            self.unsupported(
-                span,
-                "generators are not supported yet; Effect.gen and async * methods come in a later stage",
-            );
+        if callable.is_generator() {
+            return self.generator_body(args, callable);
         }
         self.bind_params(callable.params(), args);
         match callable.body() {
@@ -135,6 +158,48 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         std::mem::take(&mut self.seq)
+    }
+
+    /// A generator function returns an Effect: `bouy_effect:generator(fun() -> Body end)`,
+    /// whose body binds the parameters and runs when the Effect runs (section 13).
+    fn generator_body(&mut self, args: &str, callable: Callable<'a>) -> Vec<Expr> {
+        let span = callable.span();
+        if callable.is_async() {
+            self.unsupported(
+                span,
+                "async generators are not supported; a generator function is the body of an Effect, so drop `async` and run asynchronous work with `yield*`",
+            );
+        }
+        if matches!(self.frame, Frame::Method | Frame::Constructor) {
+            self.unsupported(
+                span,
+                "a generator method is not supported; return `Effect.gen(function* () { ... })` from a plain method",
+            );
+        }
+        let outer = std::mem::replace(&mut self.generator, true);
+        self.bind_params(callable.params(), args);
+        if let Body::Block(statements) = callable.body() {
+            let statements: Vec<&'a Statement<'a>> = statements.iter().collect();
+            self.block_of(&statements, &Tail::Function);
+        }
+        self.generator = outer;
+        let body = std::mem::take(&mut self.seq);
+        vec![Expr::call(
+            "bouy_effect",
+            "generator",
+            vec![Expr::Fun {
+                name: None,
+                clauses: vec![Clause {
+                    patterns: Vec::new(),
+                    guards: Vec::new(),
+                    body: if body.is_empty() {
+                        vec![Expr::undefined()]
+                    } else {
+                        body
+                    },
+                }],
+            }],
+        )]
     }
 
     /// Binds each parameter from the argument list (section 4).

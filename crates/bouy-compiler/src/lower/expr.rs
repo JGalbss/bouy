@@ -10,18 +10,22 @@ use oxc::ast::ast::{
     ChainElement, ChainExpression, ConditionalExpression, Expression, IdentifierReference,
     LogicalExpression, NewExpression, ObjectExpression, ObjectPropertyKind, PropertyKey,
     PropertyKind, SequenceExpression, StringLiteral, TemplateLiteral, UnaryExpression,
+    YieldExpression,
 };
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 use oxc::syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 
+use super::class::ClassKind;
 use super::function::Callable;
-use super::rebind::{MUTATORS, strip};
+use super::place::arithmetic_function;
+use super::rebind::{MUTATORS, chain_base, method_callee, strip};
 use super::scope::{Target, base_name};
 use super::stmt::boolean_case;
 use super::{Binding, Lowerer};
 use crate::diagnostic::Code;
 use crate::erlang::{Clause, Expr};
+use crate::graph::ExportKind;
 use crate::library;
 
 /// What the object of `X.m(...)` or `X.p` names, when it is not an ordinary value.
@@ -123,7 +127,7 @@ impl<'a> Lowerer<'a, '_> {
             Expression::RegExpLiteral(literal) => {
                 self.unsupported(literal.span, "regular expressions are not supported yet")
             }
-            Expression::YieldExpression(_) => Expr::undefined(),
+            Expression::YieldExpression(expression) => self.yield_effect(expression),
             Expression::ClassExpression(class) => self.unsupported(
                 class.span,
                 "class expressions are not supported; declare the class at module level",
@@ -141,6 +145,22 @@ impl<'a> Lowerer<'a, '_> {
             ),
             other => self.unsupported(other.span(), "this syntax has no BEAM lowering"),
         }
+    }
+
+    /// `yield* effect` in a generator body runs the Effect: `bouy_effect:bind(Effect)`
+    /// (section 13).
+    fn yield_effect(&mut self, expression: &'a YieldExpression<'a>) -> Expr {
+        if !expression.delegate {
+            return self.unsupported(
+                expression.span,
+                "`yield` without `*` is not supported: a generator function is the body of an Effect, and `yield* effect` runs an Effect",
+            );
+        }
+        let effect = expression
+            .argument
+            .as_ref()
+            .map_or_else(Expr::undefined, |argument| self.expr(argument));
+        Expr::call("bouy_effect", "bind", vec![effect])
     }
 
     fn conditional(&mut self, conditional: &'a ConditionalExpression<'a>) -> Expr {
@@ -183,6 +203,15 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Lowers `expression` for its effects. The value is dropped.
     pub fn effect(&mut self, expression: &'a Expression<'a>) {
+        if let Expression::CallExpression(call) = strip(expression)
+            && let Some(receiver) = self.mutated_temporary(call)
+        {
+            self.report(
+                receiver.span(),
+                Code::Unsupported,
+                "this call changes a value that no variable holds, so the change is lost; store the value in a variable or a property first",
+            );
+        }
         match strip(expression) {
             Expression::AssignmentExpression(assignment) => {
                 self.assign(assignment, false);
@@ -209,9 +238,33 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// Turns the unused result variable of the last `{Result, R1} = ...` into `_`.
+    /// The receiver of a mutator call, or the target of `Object.assign`, when it is a value
+    /// that no variable holds, such as the result of a call.
+    fn mutated_temporary(&self, call: &'a CallExpression<'a>) -> Option<&'a Expression<'a>> {
+        let receiver = if let Some(target) = self.roots.assigned_object(call) {
+            target
+        } else {
+            let (object, name) = method_callee(&call.callee)?;
+            if !MUTATORS.contains(&name.as_str()) || call.optional {
+                return None;
+            }
+            object
+        };
+        let temporary = self.roots.receiver(receiver).is_none()
+            && !matches!(
+                chain_base(receiver),
+                Expression::Identifier(_) | Expression::ThisExpression(_)
+            );
+        temporary.then_some(receiver)
+    }
+
+    /// Turns the unused result variable of the last `{Result, R1} = ...` into `_`. The
+    /// checkpoint records that follow a binding are skipped.
     fn discard_result(&mut self, name: &str) -> bool {
-        let Some(Expr::Match(pattern, _)) = self.seq.last_mut() else {
+        let last = self.seq.iter_mut().rev().find(|expr| {
+            !matches!(expr, Expr::Call { module: Some(module), function, .. } if module == "erlang" && function == "put")
+        });
+        let Some(Expr::Match(pattern, _)) = last else {
             return false;
         };
         let Expr::Tuple(items) = pattern.as_mut() else {
@@ -378,14 +431,49 @@ impl<'a> Lowerer<'a, '_> {
         match self.module.bindings.get(&symbol).cloned() {
             Some(binding) => self.binding_value(&binding, ident.span),
             None if self.declared_unsupported(symbol) => Expr::undefined(),
-            None => self.unsupported(
-                ident.span,
-                format!(
-                    "`{}` is used before its declaration; declare it first",
-                    ident.name
-                ),
-            ),
+            None => self.unbound(symbol, ident),
         }
+    }
+
+    /// Reports a variable that has no value where it is read: a closure created before its
+    /// declaration or inside its own initializer (`BOUY205`), or a read before the
+    /// declaration (`BOUY206`).
+    fn unbound(&mut self, symbol: SymbolId, ident: &IdentifierReference<'_>) -> Expr {
+        let scoping = self.semantic.scoping();
+        let name = &ident.name;
+        let declared = scoping.symbol_span(symbol);
+        let declaration = self
+            .semantic
+            .nodes()
+            .get_node(scoping.symbol_declaration(symbol))
+            .kind()
+            .span();
+        let closure = self
+            .closures
+            .iter()
+            .rev()
+            .find(|closure| !(closure.start <= declared.start && declared.end <= closure.end))
+            .copied();
+        let message = match closure {
+            Some(closure) if declared.start >= closure.end => format!(
+                "this closure reads `{name}`, which is declared after the closure is created; an Erlang fun copies the values it captures, so declare `{name}` before the closure"
+            ),
+            Some(closure)
+                if declaration.start <= closure.start && closure.end <= declaration.end =>
+            {
+                format!(
+                    "this closure reads `{name}`, which its own declaration assigns after the closure is created; an Erlang fun copies the values it captures, so create the closure from values that exist first"
+                )
+            }
+            _ => {
+                return self.unsupported(
+                    ident.span,
+                    format!("`{name}` is used before its declaration; declare it first"),
+                );
+            }
+        };
+        self.report(ident.span, Code::Capture, message);
+        Expr::undefined()
     }
 
     /// Whether `symbol` is an enum or a namespace, whose declaration is already reported.
@@ -446,6 +534,7 @@ impl<'a> Lowerer<'a, '_> {
 
     fn library_value(&mut self, binding: library::Binding, span: Span) -> Expr {
         match binding {
+            library::Binding::Namespace(DATA) => self.data_use(span),
             library::Binding::Namespace(module) => {
                 Expr::Tuple(vec![Expr::atom("$namespace"), Expr::atom(module)])
             }
@@ -460,21 +549,38 @@ impl<'a> Lowerer<'a, '_> {
                 self.unary_fun(|value| Expr::rt("structured_clone", vec![value]))
             }
             library::Binding::Constant(name) => Expr::atom(name),
-            library::Binding::Process => self.host_api(span, "`process`"),
+            library::Binding::Process => self.host_api(span, "process"),
             library::Binding::HostApi => {
                 let name = self.reporter.text(span).to_owned();
-                self.host_api(span, &format!("`{name}`"))
+                self.host_api(span, &name)
             }
         }
     }
 
-    fn host_api(&mut self, span: Span, name: &str) -> Expr {
+    /// Reports a use of `Data` from "effect" other than an error class base.
+    fn data_use(&mut self, span: Span) -> Expr {
+        self.report(
+            span,
+            Code::BadImport,
+            "`Data` from \"effect\" is implemented only as an error class base, `extends Data.TaggedError(\"Tag\")` or `extends Data.Error`; the rest of it is planned",
+        );
+        Expr::undefined()
+    }
+
+    /// Reports a host API (`BOUY207`), such as `process.exit` or `setTimeout`, with the
+    /// alternative for its kind.
+    pub fn host_api(&mut self, span: Span, name: &str) -> Expr {
+        let alternative = match name.split('.').next().unwrap_or(name) {
+            "process" => {
+                "read process.env.NAME or process.argv, and throw an error to exit with status 1"
+            }
+            "globalThis" => "import the value or pass it as an argument",
+            _ => "use sleep or schedule from \"bouy\" for timers",
+        };
         self.report(
             span,
             Code::HostApi,
-            format!(
-                "{name} is not available in Bouy; read process.env.NAME or process.argv, and use sleep or schedule from \"bouy\" for timers"
-            ),
+            format!("`{name}` is not available in Bouy; {alternative}"),
         );
         Expr::undefined()
     }
@@ -547,8 +653,21 @@ impl<'a> Lowerer<'a, '_> {
                     if property.kind != PropertyKind::Init {
                         self.unsupported(property.span, "getters and setters are not supported");
                     }
+                    if !property.computed
+                        && !property.shorthand
+                        && !property.method
+                        && property
+                            .key
+                            .static_name()
+                            .is_some_and(|name| name == "__proto__")
+                    {
+                        self.unsupported(
+                            property.span,
+                            "`__proto__` in an object literal sets a prototype, and Bouy objects have no prototype chain; copy the properties with a spread instead",
+                        );
+                    }
                     if property.computed
-                        && property.key.static_name().is_none()
+                        && static_key(&property.key).is_none()
                         && let Some(key) = property.key.as_expression()
                     {
                         operands.push(key);
@@ -563,8 +682,8 @@ impl<'a> Lowerer<'a, '_> {
         for property in &object.properties {
             match property {
                 ObjectPropertyKind::ObjectProperty(property) => {
-                    let key = if let Some(name) = property.key.static_name() {
-                        Expr::binary(name.as_ref())
+                    let key = if let Some(name) = static_key(&property.key) {
+                        Expr::binary(name)
                     } else if let PropertyKey::PrivateIdentifier(private) = &property.key {
                         Expr::binary(format!("#{}", private.name))
                     } else {
@@ -614,20 +733,17 @@ impl<'a> Lowerer<'a, '_> {
             BinaryOperator::LessEqualThan => "le",
             BinaryOperator::GreaterThan => "gt",
             BinaryOperator::GreaterEqualThan => "ge",
-            BinaryOperator::Addition => "add",
-            BinaryOperator::Subtraction => "sub",
-            BinaryOperator::Multiplication => "mul",
-            BinaryOperator::Division => "divide",
-            BinaryOperator::Remainder => "remainder",
-            BinaryOperator::Exponential => "power",
-            BinaryOperator::ShiftLeft => "shift_left",
-            BinaryOperator::ShiftRight => "shift_right",
-            BinaryOperator::ShiftRightZeroFill => "shift_right_unsigned",
-            BinaryOperator::BitwiseOR => "bit_or",
-            BinaryOperator::BitwiseXOR => "bit_xor",
-            BinaryOperator::BitwiseAnd => "bit_and",
-            BinaryOperator::In => return Expr::rt("has", vec![right, left]),
+            BinaryOperator::In => {
+                // `has/2` takes the object first, so the key runs first through a temporary.
+                let left = if right.is_trivial() {
+                    left
+                } else {
+                    self.trivial(left)
+                };
+                return Expr::rt("has", vec![right, left]);
+            }
             BinaryOperator::Instanceof => "instance_of",
+            arithmetic => arithmetic_function(arithmetic).unwrap_or("add"),
         };
         Expr::rt(function, vec![left, right])
     }
@@ -636,7 +752,7 @@ impl<'a> Lowerer<'a, '_> {
         let left = self.expr(&logical.left);
         if self.emits(&logical.right) {
             let left = self.trivial(left);
-            return self.logical_rebinding(logical, &left);
+            return self.short_circuit(logical.operator, &left, &logical.right, logical.span);
         }
         let right = self.sub_expr(&logical.right);
         if logical.operator == LogicalOperator::Coalesce {
@@ -664,19 +780,25 @@ impl<'a> Lowerer<'a, '_> {
         })
     }
 
-    /// `a || (b = c)`: the left value when it decides the result, else the right side,
-    /// which rebinds variables.
-    fn logical_rebinding(&mut self, logical: &'a LogicalExpression<'a>, left: &Expr) -> Expr {
+    /// `a || (b = c)` and `a ??= (b++, c)`: the left value when it decides the result, else
+    /// the right side, which rebinds variables.
+    pub fn short_circuit(
+        &mut self,
+        operator: LogicalOperator,
+        left: &Expr,
+        right: &'a Expression<'a>,
+        span: Span,
+    ) -> Expr {
         use oxc::ast_visit::Visit;
-        let vars = self.rebound(logical.span, |found| found.visit_expression(&logical.right));
+        let vars = self.rebound(span, |found| found.visit_expression(right));
         let keep = vec![Expr::Tuple(vec![left.clone(), self.scope.tuple(&vars)])];
         let evaluate = self.branch(|lowerer| {
-            let value = lowerer.expr(&logical.right);
+            let value = lowerer.expr(right);
             let tuple = lowerer.scope.tuple(&vars);
             lowerer.seq.push(Expr::Tuple(vec![value, tuple]));
         });
         let truthy = || Expr::rt("truthy", vec![left.clone()]);
-        let choice = match logical.operator {
+        let choice = match operator {
             LogicalOperator::Or => boolean_case(truthy(), keep, evaluate),
             LogicalOperator::And => boolean_case(truthy(), evaluate, keep),
             LogicalOperator::Coalesce => {
@@ -868,7 +990,7 @@ impl<'a> Lowerer<'a, '_> {
             }
             Some(Binding::ImportedModule(_)) => self.unsupported(span, "a module namespace cannot be called"),
             Some(Binding::Library(library::Binding::Process | library::Binding::HostApi)) => {
-                self.host_api(ident.span, &format!("`{}`", ident.name))
+                self.host_api(ident.span, &ident.name)
             }
             Some(other @ (Binding::Const { .. } | Binding::ImportedConst { .. })) => {
                 let fun = self.binding_value(&other, span);
@@ -879,11 +1001,10 @@ impl<'a> Lowerer<'a, '_> {
                 let arguments = self.arguments(arguments);
                 Expr::rt("call", vec![Expr::undefined(), arguments])
             }
-            None if symbol.is_some() => self.unsupported(
-                ident.span,
-                format!("`{}` is used before its declaration; declare it first", ident.name),
-            ),
-            None => self.unknown_global(&ident.name, ident.span),
+            None => match symbol {
+                Some(symbol) => self.unbound(symbol, ident),
+                None => self.unknown_global(&ident.name, ident.span),
+            },
         }
     }
 
@@ -932,6 +1053,14 @@ impl<'a> Lowerer<'a, '_> {
         arguments: &'a [Argument<'a>],
         call: &'a CallExpression<'a>,
     ) -> Expr {
+        // A string literal key names the method as a static key does: `xs["push"](1)`.
+        let key = match key {
+            Key::Computed(expression) => match strip(expression) {
+                Expression::StringLiteral(literal) => Key::Static(literal.value.as_str()),
+                _ => key,
+            },
+            other => other,
+        };
         let name = match key {
             Key::Static(name) => Some(name.to_owned()),
             Key::Private(name) => Some(format!("#{name}")),
@@ -939,6 +1068,18 @@ impl<'a> Lowerer<'a, '_> {
         };
         if let (Some(namespace), Some(name)) = (self.namespace(object), &name) {
             return self.call_namespace(namespace, name, arguments, call);
+        }
+        // `this.m(a).n(b)` where `m` returns `this`: `n` runs on `this` after `m`.
+        if let Expression::CallExpression(inner) = strip(object)
+            && let Expression::StaticMemberExpression(member) = strip(&inner.callee)
+            && matches!(strip(&member.object), Expression::ThisExpression(_))
+            && self
+                .class
+                .as_ref()
+                .is_some_and(|class| class.fluent.contains(member.property.name.as_str()))
+        {
+            self.effect(object);
+            return self.call_method(&member.object, key, arguments, call);
         }
         if let Some(name) = &name {
             if matches!(strip(object), Expression::ThisExpression(_))
@@ -951,15 +1092,27 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 return self.call_reading_method(&function, arguments, call.span);
             }
-            if matches!(name.as_str(), "then" | "catch" | "finally") {
+            // Every call returns its result, so a promise chain has nothing to chain on.
+            if matches!(name.as_str(), "then" | "catch" | "finally") && self.is_promise(object) {
                 return self.unsupported(
                     call.span,
                     format!("`.{name}()` chains are not supported; use `await` and try/catch"),
                 );
             }
-            if MUTATORS.contains(&name.as_str()) && self.roots.place(object).is_some() {
-                return self.mutate(object, name, arguments);
+            if MUTATORS.contains(&name.as_str()) {
+                if self.roots.receiver(object).is_some() {
+                    return self.mutate(object, name, arguments);
+                }
+                if !matches!(strip(object), Expression::Identifier(_)) {
+                    self.unwritable_root(object);
+                }
             }
+        }
+        if let Key::Computed(method) = key
+            && matches!(strip(object), Expression::ThisExpression(_))
+            && self.class.is_some()
+        {
+            return self.dispatch_own(method, arguments, call.span);
         }
         let arguments_emit = self.arguments_emit(arguments);
         let key_emits = matches!(key, Key::Computed(key) if self.emits(key));
@@ -984,6 +1137,18 @@ impl<'a> Lowerer<'a, '_> {
         Expr::rt("call_method", vec![receiver, method, arguments])
     }
 
+    /// Whether `object` is a promise in TypeScript: a call, a `new` expression, or a
+    /// variable declared with the type `Promise<T>`.
+    fn is_promise(&self, object: &Expression<'_>) -> bool {
+        match strip(object) {
+            Expression::CallExpression(_) | Expression::NewExpression(_) => true,
+            Expression::Identifier(ident) => self
+                .symbol_of(ident)
+                .is_some_and(|symbol| self.module.promises.contains(&symbol)),
+            _ => false,
+        }
+    }
+
     /// `this.m(args)` for a method that leaves `this` as it was: the result of the direct
     /// call, `erlang:element(1, 'C#m'(This, Args))`.
     fn call_reading_method(
@@ -1006,6 +1171,36 @@ impl<'a> Lowerer<'a, '_> {
         )
     }
 
+    /// `this[name](args)` inside a class: the call goes through `'C#dispatch'/3`, which
+    /// returns `{Result, This1}`, so it rebinds `This` like a call of a method that changes
+    /// `this`.
+    fn dispatch_own(
+        &mut self,
+        method: &'a Expression<'a>,
+        arguments: &'a [Argument<'a>],
+        span: Span,
+    ) -> Expr {
+        let name = self.expr(method);
+        let name = self.trivial(Expr::rt("to_string", vec![name]));
+        let arguments = self.arguments(arguments);
+        let (Some(this), Some(class)) = (
+            self.scope.current(Target::This).map(str::to_owned),
+            self.class.as_ref().map(|class| class.name.clone()),
+        ) else {
+            return self.this(span);
+        };
+        let result = self.scope.temp();
+        let next = self.scope.bind(Target::This, "This");
+        self.push_match(
+            Expr::Tuple(vec![Expr::var(&result), Expr::Var(next)]),
+            Expr::local_call(
+                &format!("{class}#dispatch"),
+                vec![name, Expr::Var(this), arguments],
+            ),
+        );
+        Expr::Var(result)
+    }
+
     /// `this.m(args)` inside a class: a direct call that returns `{Result, This1}`.
     fn call_own_method(
         &mut self,
@@ -1019,10 +1214,10 @@ impl<'a> Lowerer<'a, '_> {
         };
         let result = self.scope.temp();
         let next = self.scope.bind(Target::This, "This");
-        self.seq.push(Expr::matches(
+        self.push_match(
             Expr::Tuple(vec![Expr::var(&result), Expr::Var(next)]),
             Expr::local_call(function, vec![Expr::Var(this), arguments]),
-        ));
+        );
         Expr::Var(result)
     }
 
@@ -1034,35 +1229,63 @@ impl<'a> Lowerer<'a, '_> {
         call: &'a CallExpression<'a>,
     ) -> Expr {
         match namespace {
-            Namespace::Module("bouy_task") if matches!(name, "all" | "allSettled" | "race") => {
+            Namespace::Module("bouy_task")
+                if matches!(name, "all" | "allSettled" | "race" | "any") =>
+            {
                 self.promise_form(name, arguments, call.span)
             }
+            Namespace::Module("bouy_object")
+                if name == "assign"
+                    && let Some(target) = self.roots.assigned_object(call)
+                    && self.roots.place(target).is_some()
+                    && let Some(merged) = self.assign_object(target, &arguments[1..]) =>
+            {
+                merged
+            }
+            Namespace::Module("bouy_object")
+                if name == "assign"
+                    && let Some(target) = self.roots.assigned_object(call) =>
+            {
+                self.unwritable_root(target);
+                let arguments = self.arguments(arguments);
+                Expr::call("bouy_object", "assign", vec![arguments])
+            }
+            Namespace::Module(DATA) => self.data_use(call.span),
             Namespace::Module(module) => {
+                if let Some(global) = library::missing_global_function(module, name) {
+                    return self.unsupported(
+                        call.span,
+                        format!("`{global}.{name}` is not available in Bouy"),
+                    );
+                }
                 let arguments = self.arguments(arguments);
                 Expr::call(module, name, vec![arguments])
             }
             Namespace::Bouy(module) => {
                 let export = self.export_of(&module, name);
-                match export {
-                    Some(crate::graph::Export::Function(function)) => {
+                match export.map(|export| (export.module, export.local, export.kind)) {
+                    Some((module, function, ExportKind::Function)) => {
                         let arguments = self.arguments(arguments);
                         Expr::call(&module, &function, vec![arguments])
                     }
-                    Some(crate::graph::Export::Const(key)) => {
+                    Some((module, key, ExportKind::Const)) => {
                         let arguments = self.arguments(arguments);
                         Expr::rt("call", vec![persisted(&module, &key), arguments])
                     }
-                    Some(crate::graph::Export::Class(..)) => self.unsupported(
+                    Some((_, _, ExportKind::Class(_))) => self.unsupported(
                         call.span,
                         "a class cannot be called; use `spawn` for an actor class or `new` for an error class",
                     ),
+                    Some((_, _, ExportKind::Namespace)) => {
+                        self.unsupported(call.span, "a module namespace cannot be called")
+                    }
                     None => {
                         self.report(call.span, Code::BadImport, format!("the imported module has no export `{name}`"));
                         Expr::undefined()
                     }
                 }
             }
-            Namespace::Process => self.host_api(call.span, &format!("`process.{name}`")),
+            Namespace::Process => self.host_api(call.span, &format!("process.{name}")),
         }
     }
 
@@ -1109,6 +1332,7 @@ impl<'a> Lowerer<'a, '_> {
                 let function = match name {
                     "allSettled" => "map_settled",
                     "race" => "map_race",
+                    "any" => "map_any",
                     _ => "map",
                 };
                 Expr::call("bouy_task", function, vec![items, fun])
@@ -1156,19 +1380,45 @@ impl<'a> Lowerer<'a, '_> {
             if let Some(value) = self.process_member(object, name, span) {
                 return value;
             }
+            // `This` of an actor is a map of its fields, so the class comes from the lowering.
+            if name == "constructor"
+                && matches!(strip(object), Expression::ThisExpression(_))
+                && let Some(class) = &self.class
+            {
+                return class_value(&self.module.name, &class.name);
+            }
+        }
+        if let Some(name) = own_method(key)
+            && matches!(strip(object), Expression::ThisExpression(_))
+            && self
+                .class
+                .as_ref()
+                .is_some_and(|class| class.methods.contains(&name))
+        {
+            return self.method_value(&name, span);
+        }
+        if let Key::Static(name) = key {
             match self.namespace(object) {
+                Some(Namespace::Module(DATA)) => return self.data_use(span),
                 Some(Namespace::Module(module)) => {
                     return Expr::call(module, "$member", vec![Expr::binary(name)]);
                 }
                 Some(Namespace::Bouy(module)) => {
-                    return match self.export_of(&module, name) {
-                        Some(crate::graph::Export::Function(function)) => Expr::FunRef {
+                    return match self
+                        .export_of(&module, name)
+                        .map(|export| (export.module, export.local, export.kind))
+                    {
+                        Some((module, function, ExportKind::Function)) => Expr::FunRef {
                             module: Some(module),
                             function,
                             arity: 1,
                         },
-                        Some(crate::graph::Export::Const(key)) => persisted(&module, &key),
-                        Some(crate::graph::Export::Class(local, _)) => class_value(&module, &local),
+                        Some((module, key, ExportKind::Const)) => persisted(&module, &key),
+                        Some((module, local, ExportKind::Class(_))) => class_value(&module, &local),
+                        Some((_, _, ExportKind::Namespace)) => self.unsupported(
+                            span,
+                            "a module namespace can only be used to read or call its exports",
+                        ),
                         None => {
                             self.report(
                                 span,
@@ -1179,7 +1429,7 @@ impl<'a> Lowerer<'a, '_> {
                         }
                     };
                 }
-                Some(Namespace::Process) => return self.host_api(span, "`process`"),
+                Some(Namespace::Process) => return self.host_api(span, "process"),
                 None => {}
             }
         }
@@ -1191,10 +1441,46 @@ impl<'a> Lowerer<'a, '_> {
         let receiver = values.next().unwrap_or_else(Expr::undefined);
         let key = match key {
             Key::Static(name) => Expr::binary(name),
-            Key::Private(name) => Expr::binary(format!("#{name}")),
+            Key::Private(name) => return private_read(receiver, name),
             Key::Computed(_) => values.next().unwrap_or_else(Expr::undefined),
         };
         Expr::rt("get", vec![receiver, key])
+    }
+
+    /// `this.m` read as a value: a fun over the current `This`, which sees the fields as they
+    /// are now. A method that changes `this` has no such value, because the change would be
+    /// lost (`BOUY205`).
+    fn method_value(&mut self, name: &str, span: Span) -> Expr {
+        let Some(class) = &self.class else {
+            return Expr::undefined();
+        };
+        let function = format!("{}#{name}", class.name);
+        if class.mutating.contains(name) {
+            self.report(
+                span,
+                Code::Capture,
+                format!(
+                    "`this.{name}` changes `this`, so it cannot be a value: a function value keeps a copy of `this` and would lose the change; call `this.{name}(...)` instead"
+                ),
+            );
+            return Expr::undefined();
+        }
+        let this = self.this(span);
+        let args = self.scope.fresh("Args");
+        Expr::Fun {
+            name: None,
+            clauses: vec![Clause::new(
+                Expr::var(&args),
+                vec![Expr::call(
+                    "erlang",
+                    "element",
+                    vec![
+                        Expr::Integer(1),
+                        Expr::local_call(&function, vec![this, Expr::Var(args)]),
+                    ],
+                )],
+            )],
+        }
     }
 
     /// `process.env.NAME` and `process.argv`.
@@ -1213,7 +1499,7 @@ impl<'a> Lowerer<'a, '_> {
         if matches!(self.namespace(object), Some(Namespace::Process)) {
             return Some(match name {
                 "argv" => Expr::rt("argv", Vec::new()),
-                _ => self.host_api(span, &format!("`process.{name}`")),
+                _ => self.host_api(span, &format!("process.{name}")),
             });
         }
         None
@@ -1221,7 +1507,7 @@ impl<'a> Lowerer<'a, '_> {
 
     fn new_expression(&mut self, new: &'a NewExpression<'a>) -> Expr {
         let Expression::Identifier(ident) = strip(&new.callee) else {
-            return self.unsupported(new.span, "`new` is supported only on a class name");
+            return self.construct(new);
         };
         let binding = match self.symbol_of(ident) {
             Some(symbol) if self.scope.current(Target::Symbol(symbol)).is_some() => None,
@@ -1255,16 +1541,71 @@ impl<'a> Lowerer<'a, '_> {
                 let arguments = self.arguments(&new.arguments);
                 Expr::call(&module, &format!("{name}#new"), vec![arguments])
             }
+            Some(
+                Binding::Class {
+                    kind: ClassKind::Unsupported,
+                    ..
+                }
+                | Binding::ImportedClass {
+                    kind: ClassKind::Unsupported,
+                    ..
+                },
+            ) => Expr::undefined(),
             Some(Binding::Class { .. } | Binding::ImportedClass { .. }) => {
                 let message = actor();
                 self.report(new.span, Code::NewActor, message);
                 Expr::undefined()
             }
-            _ => self.unsupported(new.span, "`new` is supported only on a class name"),
+            _ => self.construct(new),
         }
     }
 
+    /// `new C(args)` where `C` is a value, such as a parameter that holds a class: the call
+    /// `'$construct'(C, Args)` of the module helper, which `module_functions` adds.
+    fn construct(&mut self, new: &'a NewExpression<'a>) -> Expr {
+        let class = self.expr(&new.callee);
+        let class = if self.arguments_emit(&new.arguments) {
+            self.trivial(class)
+        } else {
+            class
+        };
+        let arguments = self.arguments(&new.arguments);
+        self.constructs = true;
+        Expr::local_call(CONSTRUCT, vec![class, arguments])
+    }
+
     fn chain(&mut self, chain: &'a ChainExpression<'a>) -> Expr {
+        // `this.m?.()` and `this?.m()`: `this` and its methods always exist.
+        if let ChainElement::CallExpression(call) = &chain.expression
+            && let Expression::StaticMemberExpression(member) = &call.callee
+            && matches!(strip(&member.object), Expression::ThisExpression(_))
+            && self
+                .class
+                .as_ref()
+                .is_some_and(|class| class.methods.contains(member.property.name.as_str()))
+        {
+            return self.call_method(
+                &member.object,
+                Key::Static(&member.property.name),
+                &call.arguments,
+                call,
+            );
+        }
+        if let ChainElement::CallExpression(call) = &chain.expression
+            && !call.optional
+            && let Expression::StaticMemberExpression(member) = &call.callee
+            && member.optional
+            && MUTATORS.contains(&member.property.name.as_str())
+            && self.roots.receiver(&member.object).is_some()
+            && let Some(value) = self.optional_mutate(
+                &member.object,
+                &member.property.name,
+                &call.arguments,
+                chain.span,
+            )
+        {
+            return value;
+        }
         let mut links = Vec::new();
         let base = match &chain.expression {
             ChainElement::CallExpression(call) => chain_call(call, &mut links),
@@ -1323,6 +1664,10 @@ impl<'a> Lowerer<'a, '_> {
 
     fn apply_link(&mut self, value: Expr, link: &Link<'a>, rooted: bool, span: Span) -> Expr {
         match link {
+            Link::Get {
+                key: Key::Private(name),
+                ..
+            } => private_read(value, name),
             Link::Get { key, .. } => {
                 let key = self.key_value(*key);
                 Expr::rt("get", vec![value, key])
@@ -1343,7 +1688,7 @@ impl<'a> Lowerer<'a, '_> {
                 {
                     return self.unsupported(
                         span,
-                        "a mutating method in an optional chain is not supported; check for null with an if statement",
+                        "a mutating method after an optional link is supported only as `place?.method(...)`; check for null with an if statement",
                     );
                 }
                 let method = self.key_value(*key);
@@ -1461,6 +1806,147 @@ fn chain_links<'a>(
     }
 }
 
+/// The key of the field `key`: a binary, or for a private field `#name`, the atom `'#name'`.
+/// JSON and object literals make only binary keys, and reflection lists only binary keys,
+/// so a private field stays private (section 9).
+pub fn field_key(key: &str) -> Expr {
+    if key.starts_with('#') {
+        Expr::atom(key)
+    } else {
+        Expr::binary(key)
+    }
+}
+
+/// `object.#name`.
+pub fn private_read(object: Expr, name: &str) -> Expr {
+    Expr::call(
+        "maps",
+        "get",
+        vec![field_key(&format!("#{name}")), object, Expr::undefined()],
+    )
+}
+
+/// `object.key = value` for a field key: `maps:put/3` for a private field, else
+/// `bouy_rt:set/3`.
+pub fn field_write(object: Expr, key: &Expr, value: Expr) -> Expr {
+    match key {
+        Expr::Atom(_) => Expr::call("maps", "put", vec![key.clone(), value, object]),
+        _ => Expr::rt("set", vec![object, key.clone(), value]),
+    }
+}
+
+/// The namespace of `Data` from "effect", which exists only as an error class base.
+const DATA: &str = "bouy_data";
+
+/// The module helper that runs `new` on a class value (section 5).
+pub const CONSTRUCT: &str = "$construct";
+
+/// `'$construct'(Class, Args)`: `'C#new'(Args)` of an error class value, `Module:new(Args)` of
+/// a global namespace such as `Map`, and a `TypeError` for an actor class or any other value.
+pub fn construct_function() -> crate::erlang::Function {
+    let var = Expr::var;
+    let name_with = |suffix: &str| {
+        Expr::call(
+            "erlang",
+            "binary_to_atom",
+            vec![
+                Expr::call(
+                    "erlang",
+                    "iolist_to_binary",
+                    vec![Expr::List(vec![var("Name"), Expr::binary(suffix)])],
+                ),
+                Expr::atom("utf8"),
+            ],
+        )
+    };
+    let throw = |message: Expr| {
+        Expr::call(
+            "bouy_error",
+            "throw",
+            vec![Expr::binary("TypeError"), message],
+        )
+    };
+    let actor = Expr::call(
+        "erlang",
+        "function_exported",
+        vec![var("Module"), name_with("#dispatch"), Expr::Integer(3)],
+    );
+    let class = vec![boolean_case(
+        actor,
+        vec![throw(Expr::rt(
+            "concat",
+            vec![Expr::List(vec![
+                Expr::binary("`new "),
+                var("Name"),
+                Expr::binary("` creates an actor; use spawn() from \"bouy\""),
+            ])],
+        ))],
+        vec![Expr::call(
+            "erlang",
+            "apply",
+            vec![
+                var("Module"),
+                name_with("#new"),
+                Expr::List(vec![var("Args")]),
+            ],
+        )],
+    )];
+    let namespace = vec![Expr::call(
+        "erlang",
+        "apply",
+        vec![
+            var("Module"),
+            Expr::atom("new"),
+            Expr::List(vec![var("Args")]),
+        ],
+    )];
+    let other = vec![throw(Expr::rt(
+        "concat",
+        vec![Expr::List(vec![
+            var("Other"),
+            Expr::binary(" is not a constructor"),
+        ])],
+    ))];
+    let clause = |patterns: Vec<Expr>, body: Vec<Expr>| Clause {
+        patterns,
+        guards: Vec::new(),
+        body,
+    };
+    crate::erlang::Function {
+        name: CONSTRUCT.to_owned(),
+        clauses: vec![
+            clause(
+                vec![
+                    Expr::Tuple(vec![Expr::atom("$class"), var("Module"), var("Name")]),
+                    var("Args"),
+                ],
+                class,
+            ),
+            clause(
+                vec![
+                    Expr::Tuple(vec![Expr::atom("$namespace"), var("Module")]),
+                    var("Args"),
+                ],
+                namespace,
+            ),
+            clause(vec![var("Other"), var("_Args")], other),
+        ],
+    }
+}
+
+/// The name of a method that `key` reads on `this`: `m` for `this.m`, `#m` for `this.#m`,
+/// and `m` for `this["m"]`.
+fn own_method(key: Key<'_>) -> Option<String> {
+    match key {
+        Key::Static(name) => Some(name.to_owned()),
+        Key::Private(name) => Some(format!("#{name}")),
+        Key::Computed(expression) => match strip(expression) {
+            Expression::StringLiteral(literal) => Some(literal.value.to_string()),
+            _ => None,
+        },
+    }
+}
+
 /// `case Value of null -> undefined; undefined -> undefined; Name -> Present end`.
 fn absent_or(value: Expr, name: &str, present: Expr) -> Expr {
     Expr::case(
@@ -1507,6 +1993,25 @@ fn entry(value: Expr, spread: bool, item: &str) -> Expr {
 
 fn bool_atom(value: bool) -> Expr {
     Expr::atom(if value { "true" } else { "false" })
+}
+
+/// The property name of a key that is not computed, or of a computed literal key, as
+/// JavaScript converts it: the number key `1e21` names `"1e+21"`.
+pub fn static_key(key: &PropertyKey<'_>) -> Option<String> {
+    match key {
+        PropertyKey::NumericLiteral(number) => Some(number_key(number.value)),
+        other => other.static_name().map(std::borrow::Cow::into_owned),
+    }
+}
+
+/// `String(value)` for a number, as a property key.
+fn number_key(value: f64) -> String {
+    use oxc::syntax::number::ToJsString;
+    if value == 0.0 {
+        "0".to_owned()
+    } else {
+        value.to_js_string()
+    }
 }
 
 /// A number literal: an integer when it is integral and exactly representable.
@@ -1608,9 +2113,9 @@ pub fn literal(expression: &Expression<'_>) -> Option<Expr> {
                 ObjectPropertyKind::ObjectProperty(property)
                     if property.kind == PropertyKind::Init && !property.method =>
                 {
-                    let key = property.key.static_name()?;
+                    let key = static_key(&property.key)?;
                     let value = literal(&property.value)?;
-                    Some((Expr::binary(key.as_ref()), value))
+                    Some((Expr::binary(key), value))
                 }
                 _ => None,
             })

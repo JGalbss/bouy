@@ -3,14 +3,16 @@
 use std::collections::HashSet;
 
 use oxc::ast::ast::{
-    Argument, Class, ClassElement, Expression, Function, MethodDefinition, MethodDefinitionKind,
+    Argument, Class, ClassElement, Expression, Function, IdentifierReference,
+    ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionKind, Program,
     PropertyDefinition, PropertyKey, Statement, TSAccessibility, ThisExpression,
 };
 use oxc::ast_visit::Visit;
+use oxc::semantic::{Scoping, SymbolId};
 use oxc::span::Span;
 use oxc::syntax::scope::ScopeFlags;
 
-use super::expr::argument_expression;
+use super::expr::{argument_expression, class_value, field_key, field_write};
 use super::function::Callable;
 use super::rebind::{Rebound, Roots, strip};
 use super::scope::{Scope, Target};
@@ -23,6 +25,8 @@ pub enum ClassKind {
     /// A class without `extends`: an actor class.
     Actor,
     Error(ErrorBase),
+    /// A class with a base that Bouy cannot lower, already reported (`BOUY206`).
+    Unsupported,
 }
 
 /// The base of an error class.
@@ -51,38 +55,88 @@ pub struct ClassContext {
     /// The methods that rebind `this`, directly or through `this.m()` calls. A call to
     /// another method leaves `This` as it was.
     pub mutating: HashSet<String>,
+    /// The methods that always end with `return this`, so that `this.m(a).n(b)` calls `n`
+    /// on `this` too.
+    pub fluent: HashSet<String>,
 }
 
-/// The kind of `class`, or `None` when it extends something Bouy cannot lower.
-pub fn classify(class: &Class<'_>) -> Option<ClassKind> {
+/// The kind of `class`, or `None` when it extends something Bouy cannot lower. A base
+/// resolves as a name does: `Error` is the global only when no declaration shadows it, and
+/// `Data.TaggedError("Tag")` needs `Data` from "effect", whose local names are `data`.
+pub fn classify(
+    class: &Class<'_>,
+    scoping: &Scoping,
+    data: &HashSet<SymbolId>,
+) -> Option<ClassKind> {
     let Some(heritage) = &class.heritage else {
         return Some(ClassKind::Actor);
     };
-    let heritage = &heritage.expression;
-    match strip(heritage) {
+    let symbol = |ident: &IdentifierReference<'_>| {
+        ident
+            .reference_id
+            .get()
+            .and_then(|id| scoping.get_reference(id).symbol_id())
+    };
+    let is_data = |expression: &Expression<'_>| {
+        matches!(strip(expression), Expression::Identifier(ident)
+            if symbol(ident).is_some_and(|symbol| data.contains(&symbol)))
+    };
+    match strip(&heritage.expression) {
         Expression::Identifier(ident)
             if matches!(
                 ident.name.as_str(),
                 "Error" | "TypeError" | "RangeError" | "SyntaxError"
-            ) =>
+            ) && symbol(ident).is_none() =>
         {
             Some(ClassKind::Error(ErrorBase::Global(ident.name.to_string())))
         }
         Expression::CallExpression(call) => {
             match (strip(&call.callee), call.arguments.as_slice()) {
                 (Expression::StaticMemberExpression(member), [Argument::StringLiteral(tag)])
-                    if member.property.name == "TaggedError" =>
+                    if member.property.name == "TaggedError" && is_data(&member.object) =>
                 {
                     Some(ClassKind::Error(ErrorBase::Tagged(tag.value.to_string())))
                 }
                 _ => None,
             }
         }
-        Expression::StaticMemberExpression(member) if member.property.name == "Error" => {
+        Expression::StaticMemberExpression(member)
+            if member.property.name == "Error" && is_data(&member.object) =>
+        {
             Some(ClassKind::Error(ErrorBase::Data))
         }
         _ => None,
     }
+}
+
+/// The local names of `Data` from "effect": `import { Data } from "effect"` and
+/// `import * as Data from "effect/Data"`.
+pub fn data_imports(program: &Program<'_>) -> HashSet<SymbolId> {
+    program
+        .body
+        .iter()
+        .filter_map(|statement| match statement {
+            Statement::ImportDeclaration(import) => Some(import),
+            _ => None,
+        })
+        .flat_map(|import| {
+            let specifier = import.source.value.as_str();
+            import
+                .specifiers
+                .iter()
+                .flatten()
+                .filter(move |item| match item {
+                    ImportDeclarationSpecifier::ImportSpecifier(named) => {
+                        specifier == "effect" && named.imported.name() == "Data"
+                    }
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                        specifier == "effect/Data"
+                    }
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => false,
+                })
+                .filter_map(|item| item.local().symbol_id.get())
+        })
+        .collect()
 }
 
 /// The methods of `class` that rebind `this`: they assign to, update, delete, or call a
@@ -169,10 +223,10 @@ impl<'a> Lowerer<'a, '_> {
             return Vec::new();
         }
         let name = id.name.to_string();
-        let Some(kind) = classify(class) else {
+        let Some(kind) = classify(class, self.semantic.scoping(), &self.module.data) else {
             self.unsupported(
                 class.span,
-                "class inheritance is supported only for error classes: extends Error, Data.TaggedError(\"Tag\"), or Data.Error",
+                "class inheritance is supported only for error classes: extends Error, TypeError, RangeError, or SyntaxError, or Data.TaggedError(\"Tag\") or Data.Error with `Data` from \"effect\"",
             );
             return Vec::new();
         };
@@ -183,6 +237,7 @@ impl<'a> Lowerer<'a, '_> {
         let functions = match kind {
             ClassKind::Actor => self.actor_class(class, &name),
             ClassKind::Error(base) => vec![self.error_class(class, &name, &base)],
+            ClassKind::Unsupported => Vec::new(),
         };
         self.class = None;
         functions
@@ -276,10 +331,17 @@ impl<'a> Lowerer<'a, '_> {
             .filter_map(|method| key_name(&method.key))
             .collect();
         let mutating = mutating_methods(class, &self.roots);
+        let fluent = methods
+            .iter()
+            .zip(&names)
+            .filter(|(method, _)| returns_this(&method.value))
+            .map(|(_, name)| name.clone())
+            .collect();
         self.class = Some(ClassContext {
             name: name.to_owned(),
             methods: names.iter().cloned().collect(),
             mutating,
+            fluent,
         });
         let mut functions = vec![self.actor_constructor(class, name)];
         for (method, key) in methods.iter().zip(&names) {
@@ -298,14 +360,6 @@ impl<'a> Lowerer<'a, '_> {
             .map(|(_, key)| key)
             .collect();
         functions.push(dispatch(name, &public));
-        functions.push(erlang::Function {
-            name: format!("{name}#streams"),
-            clauses: vec![Clause {
-                patterns: Vec::new(),
-                guards: Vec::new(),
-                body: vec![Expr::List(Vec::new())],
-            }],
-        });
         functions
     }
 
@@ -347,7 +401,7 @@ impl<'a> Lowerer<'a, '_> {
                         Some(_) => values.next().unwrap_or_else(Expr::undefined),
                         None => Expr::undefined(),
                     };
-                    key_name(&field.key).map(|key| (Expr::binary(key), value))
+                    key_name(&field.key).map(|key| (field_key(&key), value))
                 })
                 .collect();
             self.scope.set(Target::This, "This".to_owned());
@@ -390,10 +444,7 @@ impl<'a> Lowerer<'a, '_> {
             .current(Target::This)
             .map_or_else(Expr::undefined, Expr::var);
         let next = self.scope.bind(Target::This, "This");
-        self.push_match(
-            Expr::Var(next),
-            Expr::rt("set", vec![this, Expr::binary(key), value]),
-        );
+        self.push_match(Expr::Var(next), field_write(this, &field_key(key), value));
     }
 
     /// TypeScript parameter properties: `constructor(private name: string)`.
@@ -441,7 +492,8 @@ impl<'a> Lowerer<'a, '_> {
         let body: Vec<&'a Statement<'a>> = match constructor(class) {
             None => {
                 let first = Expr::rt("arg", vec![Expr::Integer(1), Expr::var("Args")]);
-                self.build_error(name, base, first);
+                let options = Expr::rt("arg", vec![Expr::Integer(2), Expr::var("Args")]);
+                self.build_error(name, base, first, options);
                 Vec::new()
             }
             Some(constructor) => {
@@ -459,27 +511,27 @@ impl<'a> Lowerer<'a, '_> {
                         constructor.span,
                         "an error class constructor must call `super(...)` as its first statement",
                     );
-                    return self.finish_error(name, fields, &[]);
+                    return self.finish_error(name, fields, None, &[]);
                 };
                 let operands: Vec<&'a Expression<'a>> =
                     arguments.iter().map(argument_expression).collect();
-                let first = self
-                    .ordered(&operands)
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(Expr::undefined);
-                self.build_error(name, base, first);
-                rest.to_vec()
+                let mut values = self.ordered(&operands).into_iter();
+                let first = values.next().unwrap_or_else(Expr::undefined);
+                let options = values.next().unwrap_or_else(Expr::undefined);
+                self.build_error(name, base, first, options);
+                return self.finish_error(name, fields, Some(constructor), rest);
             }
         };
-        self.finish_error(name, fields, &body)
+        self.finish_error(name, fields, None, &body)
     }
 
-    /// Sets the initialized fields, then runs the rest of the constructor body.
+    /// Sets the initialized fields and the parameter properties, then runs the rest of the
+    /// constructor body.
     fn finish_error(
         &mut self,
         name: &str,
         fields: Vec<&'a PropertyDefinition<'a>>,
+        constructor: Option<&'a Function<'a>>,
         body: &[&'a Statement<'a>],
     ) -> erlang::Function {
         let initialized: Vec<&'a PropertyDefinition<'a>> = fields
@@ -487,6 +539,9 @@ impl<'a> Lowerer<'a, '_> {
             .filter(|field| field.value.is_some())
             .collect();
         self.set_fields(&initialized);
+        if let Some(constructor) = constructor {
+            self.parameter_properties(constructor);
+        }
         self.block_of(body, &Tail::Function);
         erlang::Function {
             name: format!("{name}#new"),
@@ -497,10 +552,37 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// Binds `This` to the error value that `super(first)` builds.
-    fn build_error(&mut self, name: &str, base: &ErrorBase, first: Expr) {
+    /// Binds `This` to the error value that `super(first, options)` builds. The `cause` of
+    /// `options` becomes a field, as the global error classes do.
+    fn build_error(&mut self, name: &str, base: &ErrorBase, first: Expr, options: Expr) {
         let (message, fields) = match base {
-            ErrorBase::Global(_) => (self.message(first), Expr::Map(Vec::new())),
+            ErrorBase::Global(_) => {
+                let message = self.message(first);
+                let fields = if options == Expr::undefined() {
+                    Expr::Map(Vec::new())
+                } else {
+                    let given = self.scope.temp();
+                    let key = || Expr::binary("cause");
+                    let has_cause = Expr::op(
+                        "andalso",
+                        Expr::call("erlang", "is_map", vec![Expr::var(&given)]),
+                        Expr::call("erlang", "is_map_key", vec![key(), Expr::var(&given)]),
+                    );
+                    let cause = Expr::call("maps", "get", vec![key(), Expr::var(&given)]);
+                    Expr::case(
+                        options,
+                        vec![
+                            Clause::guarded(
+                                Expr::var(&given),
+                                vec![has_cause],
+                                vec![Expr::Map(vec![(key(), cause)])],
+                            ),
+                            Clause::new(Expr::var("_"), vec![Expr::Map(Vec::new())]),
+                        ],
+                    )
+                };
+                (message, fields)
+            }
             ErrorBase::Tagged(_) | ErrorBase::Data => {
                 let props = self.scope.temp();
                 let given = self.scope.temp();
@@ -532,15 +614,19 @@ impl<'a> Lowerer<'a, '_> {
                 (message, fields)
             }
         };
+        let global = match base {
+            ErrorBase::Global(global) => global.as_str(),
+            ErrorBase::Tagged(_) | ErrorBase::Data => "Error",
+        };
+        let classes = Expr::List(vec![
+            class_value(&self.module.name, name),
+            class_value("bouy_error", global),
+        ]);
         let this = self.scope.bind(Target::This, "This");
-        self.seq.push(Expr::matches(
+        self.push_match(
             Expr::Var(this),
-            Expr::call(
-                "bouy_error",
-                "new",
-                vec![Expr::binary(name), message, fields],
-            ),
-        ));
+            Expr::call("bouy_error", "new", vec![classes, message, fields]),
+        );
     }
 
     /// The message of an error: `<<>>` for `undefined`, else the value as a string.
@@ -605,10 +691,12 @@ fn dispatch(class: &str, methods: &[&String]) -> erlang::Function {
     }
 }
 
+/// The constructor implementation: the constructor with a body, after any overload
+/// signatures.
 fn constructor<'a>(class: &'a Class<'a>) -> Option<&'a Function<'a>> {
     class.body.body.iter().find_map(|element| match element {
         ClassElement::MethodDefinition(method)
-            if method.kind == MethodDefinitionKind::Constructor =>
+            if method.kind == MethodDefinitionKind::Constructor && method.value.body.is_some() =>
         {
             Some(&*method.value)
         }
@@ -643,6 +731,34 @@ fn super_arguments<'a>(statement: &'a Statement<'a>) -> Option<&'a [Argument<'a>
         }
         _ => None,
     }
+}
+
+/// Whether every way out of `function` is `return this`.
+fn returns_this(function: &Function<'_>) -> bool {
+    struct Returns {
+        this: bool,
+    }
+    impl<'a> Visit<'a> for Returns {
+        fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+        fn visit_arrow_function_expression(
+            &mut self,
+            _it: &oxc::ast::ast::ArrowFunctionExpression<'a>,
+        ) {
+        }
+        fn visit_return_statement(&mut self, it: &oxc::ast::ast::ReturnStatement<'a>) {
+            self.this &= it
+                .argument
+                .as_ref()
+                .is_some_and(|value| matches!(strip(value), Expression::ThisExpression(_)));
+        }
+    }
+    let Some(body) = &function.body else {
+        return false;
+    };
+    let ends = matches!(body.statements.last(), Some(Statement::ReturnStatement(_)));
+    let mut returns = Returns { this: true };
+    returns.visit_function_body(body);
+    ends && returns.this
 }
 
 /// Whether `expression` reads `this`, outside nested non-arrow functions.

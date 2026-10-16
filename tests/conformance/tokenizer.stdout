@@ -1,0 +1,3 @@
+11
+ident:price op:* paren:( ident:qty op:+ number:2.5 paren:) op:- ident:discount_1 op:% number:3
+unexpected character $ at 4

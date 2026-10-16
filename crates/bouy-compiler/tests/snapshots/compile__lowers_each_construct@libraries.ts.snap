@@ -46,7 +46,5 @@ globals(Args) ->
         All@1,
         Mapped@1,
         Settled@1,
-        First@1,
-        bouy_effect:succeed([1]),
-        fun bouy_effect:pipe/1
+        First@1
     ].

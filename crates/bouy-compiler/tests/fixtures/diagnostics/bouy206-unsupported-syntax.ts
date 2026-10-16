@@ -15,6 +15,14 @@ export function* numbers(): Generator<number> {
   yield 1;
 }
 
+export async function* stream(): AsyncGenerator<number> {
+  yield* [1];
+}
+
+export class Steps {
+  *each(): Generator<number> {}
+}
+
 export function legacy(): number {
   var x = 1;
   outer: for (const y of [1]) {

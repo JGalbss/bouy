@@ -6,6 +6,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Command;
+use std::sync::OnceLock;
 
 struct Outcome<'a> {
     stdout: &'a str,
@@ -38,18 +39,28 @@ fn check(command: &mut Command, expected: &Outcome) {
     );
 }
 
-/// Like `check`, for a program that runs on the VM: it skips with a notice when Erlang is
-/// not installed.
+/// Whether the VM tests can run. A machine without Erlang fails the test unless
+/// `BOUY_SKIP_VM_TESTS` is set.
+fn vm_installed() -> bool {
+    static INSTALLED: OnceLock<bool> = OnceLock::new();
+    let installed = *INSTALLED.get_or_init(|| {
+        Command::new("erl")
+            .args(["-noshell", "-eval", "halt()."])
+            .output()
+            .is_ok()
+    });
+    assert!(
+        installed || std::env::var_os("BOUY_SKIP_VM_TESTS").is_some(),
+        "erl is not installed; set BOUY_SKIP_VM_TESTS=1 to skip the VM tests"
+    );
+    installed
+}
+
+/// Like `check`, for a program that runs on the VM.
 fn check_on_vm(command: &mut Command, expected: &Outcome) {
-    let installed = Command::new("erl")
-        .args(["-noshell", "-eval", "halt()."])
-        .output()
-        .is_ok();
-    if !installed {
-        eprintln!("skipping {command:?}: erl is not installed");
-        return;
+    if vm_installed() {
+        check(command, expected);
     }
-    check(command, expected);
 }
 
 #[test]
@@ -88,6 +99,23 @@ fn a_crash_restarts_only_the_failed_actor() {
                      alice: running, restarts 1\n\
                      bob: running, restarts 0\n",
             stderr: "bouy: Account alice crashed: Error: negative deposit\n",
+            status: 0,
+        },
+    );
+}
+
+#[test]
+fn an_actor_runs_the_effect_that_a_method_returns() {
+    check_on_vm(
+        &mut bouy("effect-actor.ts"),
+        &Outcome {
+            stdout: "withdrew 30, left 70\n\
+                     typed failure at the caller: InsufficientFunds, balance 70\n\
+                     the state stays: balance 70, refusals 1\n\
+                     a defect crashes the actor: ActorFailed\n\
+                     after the restart: balance 100, refusals 0\n\
+                     main: running, restarts 1\n",
+            stderr: "bouy: Wallet main crashed: Error: corrupt ledger\n",
             status: 0,
         },
     );
@@ -143,6 +171,92 @@ fn a_call_cycle_throws_instead_of_a_deadlock() {
             stdout: "CallCycle: Client client is busy with a call that waits on this call. \
                      Use cast() or pass the data in the first call.\n\
                      the client still answers: hello\n",
+            stderr: "",
+            status: 0,
+        },
+    );
+}
+
+#[test]
+fn turns_that_wait_on_each_other_at_once_do_not_deadlock() {
+    check_on_vm(
+        &mut bouy("wait-cycles.ts"),
+        &Outcome {
+            stdout: "crossing calls end: true\n\
+                     crossing backpressure casts end\n\
+                     a call that waits on a restart that waits on it: CallCycle\n\
+                     the restart then completes: pong 42\n\
+                     stop returns before the restart constructor ends: true\n\
+                     a spawn after the stop works\n",
+            stderr: "bouy: Worker #6 crashed: Error: boom\n\
+                     bouy: Parent #8 crashed: Error: parent boom\n",
+            status: 0,
+        },
+    );
+}
+
+#[test]
+fn concurrent_senders_cannot_pass_the_capacity() {
+    check_on_vm(
+        &mut bouy("mailbox-bounds.ts"),
+        &Outcome {
+            stdout: "reject: accepted 5, MailboxFull 45\n\
+                     backpressure: the mailbox stayed within capacity plus blocked senders: true\n",
+            stderr: "",
+            status: 0,
+        },
+    );
+}
+
+#[test]
+fn schedules_cancel_skip_and_end_with_their_actor() {
+    check_on_vm(
+        &mut bouy("schedules.ts"),
+        &Outcome {
+            stdout: "a 60-day timer: plans 2, restarts 0\n\
+                     withTimeout beyond 2^32 ms: fast\n\
+                     ticks after cancelSchedule returned: 0\n\
+                     [Schedule]\n\
+                     a full mailbox skips ticks: mailbox 1, ticks 1\n\
+                     a timer from Promise.all ends with its actor: 0 ticks\n",
+            stderr: "bouy: Owner #5 crashed: Error: owner boom\n",
+            status: 0,
+        },
+    );
+}
+
+#[test]
+fn actors_end_cleanly_and_keep_their_labels() {
+    check_on_vm(
+        &mut bouy("actor-lifecycle.ts"),
+        &Outcome {
+            stdout: "running leaves after 3 restarts: 1\n\
+                     status during the restart constructor: restarting\n\
+                     ActorStopped | Doomed doomed is stopped\n\
+                     TypeError: spawn() needs an actor class\n\
+                     fast\n\
+                     [ 'late' ]\n\
+                     integral floats as options: pong pong\n\
+                     Cell ready\n\
+                     [ 'cast threw ActorStopped', 'stopped' ]\n\
+                     stopped actors kept: 1000\n",
+            stderr: "bouy: Team team crashed: Error: team boom\n\
+                     bouy: Team team crashed: Error: team boom\n\
+                     bouy: Team team crashed: Error: team boom\n\
+                     bouy: SlowStart slow crashed: Error: slow boom\n\
+                     bouy: Doomed doomed crashed: Error: constructor failed after registering\n",
+            status: 0,
+        },
+    );
+}
+
+/// Top-level code traps no exits, so its finished workers leave no messages to scan.
+#[test]
+fn top_level_promise_all_stays_fast() {
+    check_on_vm(
+        &mut bouy("top-level-workers.ts"),
+        &Outcome {
+            stdout: "top-level Promise.all stays fast\n",
             stderr: "",
             status: 0,
         },
@@ -261,6 +375,204 @@ fn program_arguments_reach_process_argv() {
     );
 }
 
+/// `bouy run` passes each argument after the entry as it is, as `node` does: `--help`, `-h`,
+/// `--`, and invalid UTF-8, where each invalid sequence becomes one U+FFFD.
+#[cfg(unix)]
+#[test]
+fn every_argument_after_the_entry_reaches_the_program() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    check_on_vm(
+        bouy("arguments.ts").args([
+            OsStr::new("--help"),
+            OsStr::new("--"),
+            OsStr::new("-h"),
+            OsStr::from_bytes(b"a\xffb"),
+            OsStr::from_bytes(b"c\xe2\x82d"),
+        ]),
+        &Outcome {
+            stdout: "[ '--help', '--', '-h', 'a\u{FFFD}b', 'c\u{FFFD}d' ]\n",
+            stderr: "",
+            status: 0,
+        },
+    );
+}
+
+#[test]
+fn actor_state_survives_finally_and_methods_work_as_values() {
+    check_on_vm(
+        &mut bouy("actor-values.ts"),
+        &Outcome {
+            stdout: "3 after 1 runs\n\
+                     4 after 2 runs\n\
+                     2,3 function hi bo 5 5\n\
+                     dark a,b\n\
+                     1 2\n\
+                     {\"owner\":\"ann\"} owner false 4\n\
+                     label:5\n\
+                     missing 404\n\
+                     1,3\n",
+            stderr: "",
+            status: 0,
+        },
+    );
+}
+
+#[test]
+fn modules_re_export_and_export_defaults() {
+    check_on_vm(
+        &mut bouy("modules/main.ts"),
+        &Outcome {
+            stdout: "20 20 true\n10 8 10 6\n",
+            stderr: "",
+            status: 0,
+        },
+    );
+}
+
+/// The CLI becomes the VM, so SIGTERM ends the program as it ends Node: by the signal, with
+/// nothing more on stdout, and with no VM left behind.
+#[cfg(unix)]
+#[test]
+fn sigterm_ends_the_program() {
+    use std::io::{BufRead, BufReader, Read};
+    use std::os::unix::process::ExitStatusExt;
+    if !vm_installed() {
+        return;
+    }
+    let mut child = bouy("sleeper.ts")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("bouy runs");
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout is piped"));
+    let mut first = String::new();
+    stdout.read_line(&mut first).expect("the program prints");
+    assert_eq!(first, "start\n");
+    let killed = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("kill runs");
+    assert!(killed.success());
+    let status = child.wait().expect("the program ends");
+    let mut rest = String::new();
+    stdout.read_to_string(&mut rest).expect("stdout reads");
+    assert_eq!(status.signal(), Some(15), "{status:?}");
+    assert_eq!(rest, "");
+}
+
+/// A reader that closes stdout early ends the program, as `node app.ts | head -1` does.
+#[test]
+fn a_closed_stdout_ends_the_program() {
+    use std::io::{BufRead, BufReader};
+    use std::time::{Duration, Instant};
+    if !vm_installed() {
+        return;
+    }
+    let mut child = bouy("closed-stdout.ts")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("bouy runs");
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout is piped"));
+    let mut first = String::new();
+    stdout.read_line(&mut first).expect("the program prints");
+    assert_eq!(first, "line 0\n");
+    drop(stdout);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("the status reads") {
+            break status;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("the program kept running after its stdout closed");
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn a_runtime_directory_without_the_runtime_fails_before_the_vm_starts() {
+    let empty = std::env::temp_dir().join(format!("bouy-empty-runtime-{}", std::process::id()));
+    std::fs::create_dir_all(&empty).expect("the temporary directory is writable");
+    check(
+        bouy("hello.ts").env("BOUY_RUNTIME", &empty),
+        &Outcome {
+            stdout: "",
+            stderr: &format!(
+                "bouy: BOUY_RUNTIME={} holds no bouy_main.beam\n",
+                empty.display()
+            ),
+            status: 1,
+        },
+    );
+    let _ = std::fs::remove_dir_all(&empty);
+}
+
+/// A runtime build that fails, here because `erlc` is missing, leaves no private build
+/// directory in the cache.
+#[test]
+fn a_failed_runtime_build_leaves_nothing_behind() {
+    let cache = std::env::temp_dir().join(format!("bouy-cache-{}", std::process::id()));
+    std::fs::create_dir_all(&cache).expect("the temporary directory is writable");
+    let output = bouy("hello.ts")
+        .env("XDG_CACHE_HOME", &cache)
+        .env("PATH", "/nonexistent")
+        .env_remove("BOUY_RUNTIME")
+        .env_remove("BOUY_ERL")
+        .output()
+        .expect("bouy runs");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.starts_with("bouy: cannot run erlc"), "{stderr}");
+    assert_eq!(output.status.code(), Some(1));
+    let left: Vec<_> = std::fs::read_dir(cache.join("bouy"))
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(left.is_empty(), "{left:?}");
+    let _ = std::fs::remove_dir_all(&cache);
+}
+
+/// An error that writes the build names the path and the cause.
+#[cfg(unix)]
+#[test]
+fn a_build_that_cannot_be_written_names_the_path() {
+    use std::os::unix::fs::PermissionsExt;
+    let project = std::env::temp_dir().join(format!("bouy-read-only-{}", std::process::id()));
+    std::fs::create_dir_all(&project).expect("the temporary directory is writable");
+    std::fs::write(project.join("package.json"), "{}").expect("the project is writable");
+    std::fs::write(project.join("app.ts"), "console.log(1);\n").expect("the project is writable");
+    let build = project
+        .canonicalize()
+        .expect("the project exists")
+        .join(".bouy/build/src");
+    std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o555))
+        .expect("the permissions change");
+    let output = Command::new(env!("CARGO_BIN_EXE_bouy"))
+        .arg("run")
+        .arg(project.join("app.ts"))
+        .output()
+        .expect("bouy runs");
+    std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o755))
+        .expect("the permissions change");
+    let _ = std::fs::remove_dir_all(&project);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with(&format!(
+            "bouy: cannot write the build in {}: ",
+            build.display()
+        )),
+        "{stderr}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}
+
 #[test]
 fn a_missing_file_exits_with_status_2() {
     check(
@@ -315,8 +627,8 @@ fn diagnostics_stop_the_program_before_the_vm_starts() {
         (
             "bouy207-set-timeout.ts",
             &[
-                "10:1: BOUY207: `setTimeout` is not available in Bouy; read process.env.NAME or \
-               process.argv, and use sleep or schedule from \"bouy\" for timers",
+                "10:1: BOUY207: `setTimeout` is not available in Bouy; use sleep or schedule \
+               from \"bouy\" for timers",
             ],
         ),
     ];

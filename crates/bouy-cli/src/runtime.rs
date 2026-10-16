@@ -10,13 +10,15 @@ include!(concat!(env!("OUT_DIR"), "/runtime_sources.rs"));
 
 /// The directory of compiled runtime `.beam` files, building it when needed.
 pub fn ebin() -> Result<PathBuf, String> {
-    if let Some(directory) = env::var_os("BOUY_RUNTIME") {
-        return Ok(PathBuf::from(directory));
-    }
-    if SOURCES.is_empty() {
-        return Err(
-            "this bouy binary was built without the runtime sources in runtime/src".to_owned(),
-        );
+    if let Some(directory) = env::var_os("BOUY_RUNTIME").filter(|value| !value.is_empty()) {
+        let directory = PathBuf::from(directory);
+        if !directory.join("bouy_main.beam").is_file() {
+            return Err(format!(
+                "BOUY_RUNTIME={} holds no bouy_main.beam",
+                directory.display()
+            ));
+        }
+        return Ok(directory);
     }
     let cache = cache_root().ok_or("cannot find a cache directory: set HOME or XDG_CACHE_HOME")?;
     let directory = cache.join(format!("runtime-{:016x}", hash()));
@@ -42,14 +44,22 @@ fn erlc() -> OsString {
 }
 
 fn cache_root() -> Option<PathBuf> {
-    env::var_os("XDG_CACHE_HOME")
+    cache_root_in(env::var_os("XDG_CACHE_HOME"), env::var_os("HOME"))
+}
+
+/// `$XDG_CACHE_HOME/bouy`, or `$HOME/.cache/bouy`. The XDG Base Directory specification
+/// ignores a value that is empty or relative.
+fn cache_root_in(xdg_cache_home: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
+    xdg_cache_home
         .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .filter(|path| path.is_absolute())
+        .or_else(|| home.map(|home| PathBuf::from(home).join(".cache")))
         .map(|cache| cache.join("bouy"))
 }
 
 /// Compiles the runtime into a private directory, then renames it into place, so that
-/// concurrent first runs never see a half-built runtime.
+/// concurrent first runs never see a half-built runtime. A failure removes the private
+/// directory.
 fn build(cache: &Path, directory: &Path) -> Result<(), String> {
     let staging = cache.join(format!(
         "{}.tmp-{}",
@@ -59,6 +69,25 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
             .unwrap_or("runtime"),
         process::id()
     ));
+    let built = compile(&staging);
+    if built.is_err() {
+        let _ = fs::remove_dir_all(&staging);
+        return built;
+    }
+    if let Err(error) = fs::rename(&staging, directory) {
+        let _ = fs::remove_dir_all(&staging);
+        if !directory.join("ebin").is_dir() {
+            return Err(format!(
+                "cannot move the runtime into {}: {error}",
+                directory.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Writes the runtime sources to `staging/src` and compiles them into `staging/ebin`.
+fn compile(staging: &Path) -> Result<(), String> {
     let source = staging.join("src");
     let ebin = staging.join("ebin");
     let failed = |error: std::io::Error| {
@@ -75,49 +104,82 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
             fs::write(ebin.join(application), text).map_err(failed)?;
         }
     }
-    let modules = SOURCES
+    let modules: Vec<&Path> = SOURCES
         .iter()
-        .filter(|(name, _)| {
-            Path::new(name)
-                .extension()
-                .is_some_and(|extension| extension == "erl")
-        })
-        .map(|(name, _)| source.join(name));
+        .map(|(name, _)| Path::new(*name))
+        .filter(|name| name.extension().is_some_and(|extension| extension == "erl"))
+        .collect();
     let output = Command::new(erlc())
         .arg("-o")
         .arg(&ebin)
         .arg("-I")
         .arg(&source)
-        .args(modules)
+        .args(modules.iter().map(|module| source.join(module)))
         .output()
         .map_err(|error| format!("cannot run erlc: {error}; install Erlang/OTP or set BOUY_ERL"))?;
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&staging);
+    // A signal can end erlc with a success status before it writes every file.
+    let complete = modules
+        .iter()
+        .all(|module| ebin.join(module.with_extension("beam")).is_file());
+    if !output.status.success() || !complete {
         return Err(format!(
             "erlc could not compile the runtime:\n{}{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    if fs::rename(&staging, directory).is_err() {
-        let _ = fs::remove_dir_all(&staging);
-        if !directory.join("ebin").is_dir() {
-            return Err(format!(
-                "cannot move the runtime into {}",
-                directory.display()
-            ));
-        }
-    }
     Ok(())
 }
 
-/// FNV-1a over the names and contents of the runtime sources.
+/// FNV-1a over the names and contents of the runtime sources and the installed OTP, so
+/// that the `.beam` files always match the OTP release that runs them.
 fn hash() -> u64 {
     const PRIME: u64 = 0x0100_0000_01b3;
+    let otp = installed_otp();
     SOURCES
         .iter()
         .flat_map(|(name, text)| name.bytes().chain([0]).chain(text.bytes()).chain([0]))
+        .chain(otp.as_encoded_bytes().iter().copied())
         .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
             (hash ^ u64::from(byte)).wrapping_mul(PRIME)
         })
+}
+
+/// The real path of the `erl` that runs the program. Installations such as Homebrew,
+/// asdf, and kerl keep each OTP release in a directory named after its version.
+fn installed_otp() -> OsString {
+    let erl = PathBuf::from(erl());
+    let found = if erl.components().count() > 1 {
+        Some(erl)
+    } else {
+        env::var_os("PATH").and_then(|path| {
+            env::split_paths(&path)
+                .map(|directory| directory.join(&erl))
+                .find(|candidate| candidate.is_file())
+        })
+    };
+    found
+        .and_then(|path| path.canonicalize().ok())
+        .map_or_else(OsString::new, PathBuf::into_os_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_cache_ignores_an_empty_or_relative_xdg_cache_home() {
+        let home = || Some(OsString::from("/home/ann"));
+        let expected = Some(PathBuf::from("/home/ann/.cache/bouy"));
+        assert_eq!(cache_root_in(Some(OsString::new()), home()), expected);
+        assert_eq!(
+            cache_root_in(Some(OsString::from("relcache")), home()),
+            expected
+        );
+        assert_eq!(
+            cache_root_in(Some(OsString::from("/cache")), home()),
+            Some(PathBuf::from("/cache/bouy"))
+        );
+        assert_eq!(cache_root_in(None, None), None);
+    }
 }

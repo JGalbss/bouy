@@ -1,0 +1,6 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy202-namespace-import.ts
+---
+bouy202-namespace-import.ts:4:3: BOUY202: `registry` is another module, whose module-level values cannot change after initialization; call a function of that module instead

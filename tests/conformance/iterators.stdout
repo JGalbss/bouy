@@ -1,0 +1,15 @@
+LRU eviction: a false
+not arrays: false undefined object
+[Map Iterator] { 'a', 'b', 'c' } [Map Iterator] { 1, 2, 3 } [Map Entries] { [ 'a', 1 ], [ 'b', 2 ], [ 'c', 3 ] }
+[Set Iterator] { 'x', 'y' } [Set Entries] { [ 'x', 'x' ] } [Map Iterator] {  }
+Object [Array Iterator] {} Object [Array Iterator] {} [object Map Iterator]
+next advances: 1 false 2 3 true undefined
+rest after next: [Map Iterator] { 'b', 'c' }
+spread of the rest: [ 'b', 'c' ]
+manual loop: a=1 b=2 c=3
+entries: 0 p
+entries: 1 q
+spread: [ 'a', 'b', 'c' ] [ 1, 2, 3 ] 3
+helpers: [ 'a!', 'b!', 'c!' ] [ 2, 3 ]
+helper values: 6 true b
+Object [Iterator Helper] {}

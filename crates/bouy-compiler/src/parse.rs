@@ -40,8 +40,19 @@ fn syntax_errors(path: &Path, source: &str, diagnostics: &Diagnostics) -> Vec<Di
     diagnostics
         .errors()
         .map(|error| {
-            let offset = error.labels.first().map_or(0, LabeledSpan::offset);
-            reporter.at(offset as usize, Code::Syntax, error.message.to_string())
+            let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
+            // oxc rejects `yield` outside a generator as a reserved word. In Bouy that is a
+            // `yield*` in a function nested in an Effect body (section 13).
+            if error.message.contains("reserved")
+                && source.get(offset..).is_some_and(|rest| rest.starts_with("yield"))
+            {
+                return reporter.at(
+                    offset,
+                    Code::Unsupported,
+                    "`yield*` runs an Effect only directly in a generator function; a nested function cannot yield, so make it return an Effect, such as `Effect.gen(function* () { ... })`, and `yield*` that".to_owned(),
+                );
+            }
+            reporter.at(offset, Code::Syntax, error.message.to_string())
         })
         .collect()
 }

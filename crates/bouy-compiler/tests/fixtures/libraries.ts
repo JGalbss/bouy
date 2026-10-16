@@ -1,5 +1,4 @@
 import { sleep } from "bouy";
-import { Effect, pipe } from "effect";
 
 export async function globals(text: string): Promise<unknown[]> {
   console.log(Math.max(1, 2), Math.PI, JSON.stringify({ a: 1 }));
@@ -25,7 +24,5 @@ export async function globals(text: string): Promise<unknown[]> {
     mapped,
     settled,
     first,
-    Effect.succeed(1),
-    pipe,
   ];
 }

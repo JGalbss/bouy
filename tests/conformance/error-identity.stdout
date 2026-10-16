@@ -1,0 +1,12 @@
+renamed error: true http HTTPError
+same name, other class: false error
+subclass of RangeError: true true false range
+constructor name: AppError true true
+setPrototypeOf idiom: true old style
+forged: false false data
+forged keys: $error,extra,message,name
+forged round trip: true [object Object]
+literal: false {"$error":true,"code":7}
+borrowed hasOwnProperty: true false
+object tags: [object Array] [object Null] [object String]
+constructors: true true true Object

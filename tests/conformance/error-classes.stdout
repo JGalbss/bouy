@@ -1,0 +1,8 @@
+ok: 3
+invalid age: age is required
+invalid age: age must be positive
+ok: ann
+NotFound: user 7 not found
+true true false
+ValidationError bad name name
+Error plain false

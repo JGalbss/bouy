@@ -4,23 +4,23 @@ expression: lower(path)
 input_file: crates/bouy-compiler/tests/fixtures/classes.ts
 ---
 -module(bouy@classes).
--export(['__init__'/0, 'Account#new'/1, 'Account#deposit'/2, 'Account##log'/2, 'Account#balance'/2, 'Account#labels'/2, 'Account##label'/2, 'Account#dispatch'/3, 'Account#streams'/0, 'Overdrawn#new'/1, 'Plain#new'/1, 'Missing#new'/1, open/1]).
+-export(['__init__'/0, 'Account#new'/1, 'Account#deposit'/2, 'Account##log'/2, 'Account#balance'/2, 'Account#labels'/2, 'Account##label'/2, 'Account#dispatch'/3, 'Overdrawn#new'/1, 'Plain#new'/1, 'Missing#new'/1, open/1]).
 -compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
 
 '__init__'() -> ok.
 
 'Account#new'(Args) ->
     Owner@1 = bouy_rt:arg(1, Args),
-    This = #{<<"#balance">> => 0, <<"owner">> => undefined, <<"history">> => []},
+    This = #{'#balance' => 0, <<"owner">> => undefined, <<"history">> => []},
     This@1 = bouy_rt:set(This, <<"owner">>, Owner@1),
     This@1.
 
 'Account#deposit'(This, Args) ->
     Amount@1 = bouy_rt:arg(1, Args),
-    T@1 = bouy_rt:get(This, <<"#balance">>),
-    This@1 = bouy_rt:set(This, <<"#balance">>, bouy_rt:add(T@1, Amount@1)),
+    T@1 = maps:get('#balance', This, undefined),
+    This@1 = maps:put('#balance', bouy_rt:add(T@1, Amount@1), This),
     {_, This@2} = 'Account##log'(This@1, [Amount@1]),
-    {bouy_rt:get(This@2, <<"#balance">>), This@2}.
+    {maps:get('#balance', This@2, undefined), This@2}.
 
 'Account##log'(This, Args) ->
     Amount@1 = bouy_rt:arg(1, Args),
@@ -29,7 +29,7 @@ input_file: crates/bouy-compiler/tests/fixtures/classes.ts
     This@1 = bouy_rt:set(This, <<"history">>, T@3),
     {undefined, This@1}.
 
-'Account#balance'(This, Args) -> {bouy_rt:get(This, <<"#balance">>), This}.
+'Account#balance'(This, Args) -> {maps:get('#balance', This, undefined), This}.
 
 'Account#labels'(This, Args) ->
     {
@@ -53,23 +53,28 @@ input_file: crates/bouy-compiler/tests/fixtures/classes.ts
         bouy_rt:concat([<<"Account.">>, Method, <<" is not a function">>])
     ).
 
-'Account#streams'() -> [].
-
 'Overdrawn#new'(Args) ->
     Needed@1 = bouy_rt:arg(1, Args),
-    This@1 = bouy_error:new(<<"Overdrawn">>, bouy_rt:concat([<<"needs ">>, Needed@1, <<" more">>]), #{}),
+    This@1 = bouy_error:new(
+        [{'$class', bouy@classes, <<"Overdrawn">>}, {'$class', bouy_error, <<"Error">>}],
+        bouy_rt:concat([<<"needs ">>, Needed@1, <<" more">>]),
+        #{}
+    ),
     This@2 = bouy_rt:set(This@1, <<"name">>, <<"Overdrawn">>),
     This@3 = bouy_rt:set(This@2, <<"needed">>, Needed@1),
     This@3.
 
 'Plain#new'(Args) ->
     This@1 = bouy_error:new(
-        <<"Plain">>,
+        [{'$class', bouy@classes, <<"Plain">>}, {'$class', bouy_error, <<"Error">>}],
         case bouy_rt:arg(1, Args) of
             undefined -> <<>>;
             T@1 -> bouy_rt:to_string(T@1)
         end,
-        #{}
+        case bouy_rt:arg(2, Args) of
+            T@2 when erlang:is_map(T@2) andalso erlang:is_map_key(<<"cause">>, T@2) -> #{<<"cause">> => maps:get(<<"cause">>, T@2)};
+            _ -> #{}
+        end
     ),
     This@1.
 
@@ -79,7 +84,7 @@ input_file: crates/bouy-compiler/tests/fixtures/classes.ts
         T@2 -> T@2
     end,
     This@1 = bouy_error:new(
-        <<"Missing">>,
+        [{'$class', bouy@classes, <<"Missing">>}, {'$class', bouy_error, <<"Error">>}],
         case bouy_rt:get(T@1, <<"message">>) of
             undefined -> <<>>;
             T@3 -> bouy_rt:to_string(T@3)

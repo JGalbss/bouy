@@ -1,0 +1,6 @@
+number number string boolean
+undefined object object object
+function function number
+object object
+undefined object function
+number,string,null,array,object

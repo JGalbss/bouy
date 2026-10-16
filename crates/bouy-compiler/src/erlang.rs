@@ -136,6 +136,18 @@ impl Expr {
         Self::Tuple(vec![Self::atom(tag), value])
     }
 
+    /// Whether this pattern binds the variable `name`.
+    pub fn binds(&self, name: &str) -> bool {
+        match self {
+            Self::Var(var) => var == name,
+            Self::Tuple(items) | Self::List(items) => items.iter().any(|item| item.binds(name)),
+            Self::Cons(heads, tail) => {
+                heads.iter().any(|item| item.binds(name)) || tail.binds(name)
+            }
+            _ => false,
+        }
+    }
+
     /// A value that has no side effects and costs nothing to repeat.
     pub fn is_trivial(&self) -> bool {
         match self {
@@ -282,7 +294,7 @@ impl Printer {
 
     fn expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Var(name) => self.out.push_str(name),
+            Expr::Var(name) => self.out.push_str(&shorten(name, NAME_LIMIT)),
             Expr::Atom(name) => self.out.push_str(&atom(name)),
             Expr::Integer(value) => {
                 let _ = write!(self.out, "{value}");
@@ -513,8 +525,26 @@ const RESERVED: &[&str] = &[
     "orelse", "receive", "rem", "try", "when", "xor",
 ];
 
+/// The longest atom and variable name Erlang accepts, in characters.
+const NAME_LIMIT: usize = 255;
+
+/// `name`, or when it has more than `limit` characters, a prefix of it and a hash of the
+/// whole name, so that two long names stay apart.
+pub fn shorten(name: &str, limit: usize) -> String {
+    if name.chars().count() <= limit {
+        return name.to_owned();
+    }
+    let hash = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    });
+    let prefix: String = name.chars().take(limit - 17).collect();
+    format!("{prefix}_{hash:016x}")
+}
+
 /// An atom in source form, quoted when it needs quotes.
 pub fn atom(name: &str) -> String {
+    let name = shorten(name, NAME_LIMIT);
+    let name = name.as_str();
     let mut chars = name.chars();
     let plain = chars.next().is_some_and(|first| first.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
@@ -589,6 +619,15 @@ mod tests {
         assert_eq!(atom("__init__"), "'__init__'");
         assert_eq!(atom("end"), "'end'");
         assert_eq!(atom("it's"), "'it\\'s'");
+    }
+
+    #[test]
+    fn shortens_names_erlang_cannot_hold() {
+        let long = "f".repeat(300);
+        let other = format!("{}g", "f".repeat(299));
+        assert_eq!(atom(&long).chars().count(), 255);
+        assert_ne!(atom(&long), atom(&other));
+        assert_eq!(shorten("short", 10), "short");
     }
 
     #[test]

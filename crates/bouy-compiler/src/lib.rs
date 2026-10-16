@@ -14,7 +14,7 @@ mod parse;
 use std::path::{Path, PathBuf};
 
 pub use diagnostic::{Code, Diagnostic};
-pub use graph::{module_name, project_root};
+use graph::{module_name, project_root};
 
 /// The Erlang modules of a program.
 #[derive(Debug, Clone)]

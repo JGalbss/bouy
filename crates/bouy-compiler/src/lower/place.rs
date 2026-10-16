@@ -1,5 +1,5 @@
-//! Places and mutation (section 6): assignment, update, `delete`, mutator calls, and
-//! destructuring.
+//! Places and mutation (section 6): assignment, update, `delete`, mutator calls,
+//! `Object.assign`, and destructuring.
 //!
 //! A write reads the property chain from the root variable, sets the new value from the
 //! innermost key outward with `bouy_rt:set/3`, and gives the root a new version.
@@ -10,25 +10,88 @@ use oxc::ast::ast::{
     PropertyKey, SimpleAssignmentTarget, UpdateExpression,
 };
 use oxc::span::{GetSpan, Span};
-use oxc::syntax::operator::{AssignmentOperator, BinaryOperator, UpdateOperator};
+use oxc::syntax::operator::{AssignmentOperator, BinaryOperator, LogicalOperator, UpdateOperator};
 
-use super::Lowerer;
-use super::expr::Key;
-use super::rebind::strip;
+use super::expr::{Key, argument_expression, field_key, field_write, static_key};
+use super::rebind::{RETURNS_RECEIVER, chain_base, map_entry, method_callee, strip};
 use super::scope::{Target, base_name};
 use super::stmt::boolean_case;
+use super::{Binding, Lowerer};
+use crate::diagnostic::Code;
 use crate::erlang::{Clause, Expr};
+use crate::library;
 
-/// A variable or `this`, followed by property keys.
+/// A variable or `this`, followed by the steps to the place.
 pub struct Place<'a> {
     root: Target,
-    keys: Vec<Key<'a>>,
+    steps: Vec<Step<'a>>,
 }
 
-/// The left side of an assignment.
-enum Lhs<'a> {
-    Variable(Target),
-    Place(Place<'a>),
+/// One step of a place: a property, or the entry `m.get(key)` of a Map.
+#[derive(Clone, Copy)]
+enum Step<'a> {
+    Property(Key<'a>),
+    Entry(&'a Expression<'a>),
+}
+
+/// A place whose keys are evaluated, each once.
+struct Path {
+    root: Target,
+    accesses: Vec<Access>,
+}
+
+#[derive(Clone)]
+enum Access {
+    Property(Expr),
+    /// A private field `#name`, under the atom key `'#name'` (section 9).
+    Private(Expr),
+    /// A Map entry: read with `get` and written with `set`.
+    Entry(Expr),
+}
+
+impl Access {
+    fn read(&self, object: Expr) -> Expr {
+        match self {
+            Self::Property(key) => Expr::rt("get", vec![object, key.clone()]),
+            Self::Private(key) => {
+                Expr::call("maps", "get", vec![key.clone(), object, Expr::undefined()])
+            }
+            Self::Entry(key) => Expr::rt(
+                "call_method",
+                vec![object, Expr::binary("get"), Expr::List(vec![key.clone()])],
+            ),
+        }
+    }
+
+    fn write(&self, object: Expr, value: Expr) -> Expr {
+        match self {
+            Self::Property(key) | Self::Private(key) => field_write(object, key, value),
+            Self::Entry(key) => Expr::call(
+                "erlang",
+                "element",
+                vec![
+                    Expr::Integer(2),
+                    Expr::rt(
+                        "mutate",
+                        vec![
+                            object,
+                            Expr::binary("set"),
+                            Expr::List(vec![key.clone(), value]),
+                        ],
+                    ),
+                ],
+            ),
+        }
+    }
+}
+
+/// What a call does to its receiver.
+#[derive(Clone, Copy)]
+enum Mutation<'n> {
+    /// A mutator method: `bouy_rt:mutate(R, <<"m">>, Args)` returns `{Result, R1}`.
+    Method(&'n str),
+    /// `Object.assign(R, ...)`: the merged object is the result and the new receiver.
+    Assign,
 }
 
 impl<'a> Lowerer<'a, '_> {
@@ -43,39 +106,75 @@ impl<'a> Lowerer<'a, '_> {
             self.assign_target(&assignment.left, value.clone());
             return value;
         }
-        let Some(lhs) = self.lhs(&assignment.left) else {
+        let Some(place) = self.lhs(&assignment.left) else {
+            if let Some(target) = assignment.left.as_simple_assignment_target() {
+                self.unwritable(target);
+            }
             return self.expr(&assignment.right);
         };
-        match lhs {
-            Lhs::Variable(target) => {
-                let current = self.current(target);
-                let value = self.assigned_value(assignment.operator, current, &assignment.right);
-                let name = self.scope.bind(target, &self.base(target));
-                self.push_match(Expr::var(&name), value);
-                Expr::Var(name)
-            }
-            Lhs::Place(place) => {
-                let keys = self.place_keys(&place);
-                let depth = keys.len();
-                if assignment.operator == AssignmentOperator::Assign {
-                    let value = self.expr(&assignment.right);
-                    let value = self.trivial(value);
-                    let objects = self.chain_reads(place.root, &keys, depth - 1);
-                    self.write_chain(place.root, &objects, &keys, value.clone());
+        let path = self.path(&place);
+        self.assign_path(
+            &path,
+            assignment.operator,
+            &assignment.right,
+            assignment.span,
+            want_value,
+        )
+    }
+
+    /// `path op= right`, with the keys of `path` already evaluated.
+    fn assign_path(
+        &mut self,
+        path: &Path,
+        operator: AssignmentOperator,
+        right: &'a Expression<'a>,
+        span: Span,
+        want_value: bool,
+    ) -> Expr {
+        let depth = path.accesses.len();
+        if depth == 0 {
+            let current = self.current(path.root);
+            let value = self.assigned_value(operator, current, right, span);
+            let name = self.scope.bind(path.root, &self.base(path.root));
+            self.push_match(Expr::var(&name), value);
+            return Expr::Var(name);
+        }
+        // JavaScript fixes the object before the right side runs: when the right side
+        // assigns the root variable, the write lands in the old object, which no variable
+        // holds any more.
+        let orphaned = self.reassigns(path.root, right.span());
+        if operator == AssignmentOperator::Assign {
+            let before = orphaned.then(|| self.read_path(path, depth - 1));
+            let value = self.expr(right);
+            let value = self.trivial(value);
+            let objects = match before {
+                Some(objects) => {
+                    self.drop_write(path, &objects, value.clone());
                     return value;
                 }
-                let objects = self.chain_reads(place.root, &keys, depth);
-                let current = objects[depth].clone();
-                let value = self.assigned_value(assignment.operator, current, &assignment.right);
-                let value = if want_value {
-                    self.trivial(value)
-                } else {
-                    value
-                };
-                self.write_chain(place.root, &objects[..depth], &keys, value.clone());
-                value
-            }
+                None => self.read_path(path, depth - 1),
+            };
+            self.write_path(path, &objects, value.clone());
+            return value;
         }
+        let objects = self.read_path(path, depth);
+        let current = objects[depth].clone();
+        let rebinds = self.emits(right);
+        let value = self.assigned_value(operator, current, right, span);
+        let value = if want_value {
+            self.trivial(value)
+        } else {
+            value
+        };
+        if orphaned {
+            self.drop_write(path, &objects[..depth], value.clone());
+        } else if rebinds {
+            let objects = self.read_path(path, depth - 1);
+            self.write_path(path, &objects, value.clone());
+        } else {
+            self.write_path(path, &objects[..depth], value.clone());
+        }
+        value
     }
 
     /// The value an assignment operator stores, given the current value.
@@ -84,21 +183,37 @@ impl<'a> Lowerer<'a, '_> {
         operator: AssignmentOperator,
         current: Expr,
         right: &'a Expression<'a>,
+        span: Span,
     ) -> Expr {
-        match operator {
-            AssignmentOperator::Assign => self.expr(right),
-            AssignmentOperator::LogicalOr => {
-                let right = self.sub_expr(right);
+        let logical = match operator {
+            AssignmentOperator::Assign => return self.expr(right),
+            AssignmentOperator::LogicalOr => LogicalOperator::Or,
+            AssignmentOperator::LogicalAnd => LogicalOperator::And,
+            AssignmentOperator::LogicalNullish => LogicalOperator::Coalesce,
+            arithmetic => {
+                let right = self.expr(right);
+                let function = arithmetic
+                    .to_binary_operator()
+                    .and_then(arithmetic_function)
+                    .unwrap_or("add");
+                return Expr::rt(function, vec![current, right]);
+            }
+        };
+        if self.emits(right) {
+            let current = self.trivial(current);
+            return self.short_circuit(logical, &current, right, span);
+        }
+        let right = self.sub_expr(right);
+        match logical {
+            LogicalOperator::Or => {
                 let truthy = Expr::rt("truthy", vec![current.clone()]);
                 boolean_case(truthy, vec![current], vec![right])
             }
-            AssignmentOperator::LogicalAnd => {
-                let right = self.sub_expr(right);
+            LogicalOperator::And => {
                 let truthy = Expr::rt("truthy", vec![current.clone()]);
                 boolean_case(truthy, vec![right], vec![current])
             }
-            AssignmentOperator::LogicalNullish => {
-                let right = self.sub_expr(right);
+            LogicalOperator::Coalesce => {
                 let absent = self.scope.temp();
                 let guards = ["null", "undefined"]
                     .map(|name| Expr::op("=:=", Expr::var(&absent), Expr::atom(name)))
@@ -111,31 +226,19 @@ impl<'a> Lowerer<'a, '_> {
                     ],
                 )
             }
-            arithmetic => {
-                let right = self.expr(right);
-                let function = arithmetic
-                    .to_binary_operator()
-                    .and_then(arithmetic_function)
-                    .unwrap_or("add");
-                Expr::rt(function, vec![current, right])
-            }
         }
     }
 
     pub fn update(&mut self, update: &'a UpdateExpression<'a>, want_value: bool) -> Expr {
-        let Some(lhs) = self.simple_lhs(&update.argument) else {
+        let Some(place) = self.simple_lhs(&update.argument) else {
+            self.unwritable(&update.argument);
             return Expr::undefined();
         };
+        let path = self.path(&place);
+        let depth = path.accesses.len();
+        let objects = self.read_path(&path, depth);
+        let current = objects[depth].clone();
         let increment = update.operator == UpdateOperator::Increment;
-        let (current, place) = match lhs {
-            Lhs::Variable(target) => (self.current(target), Err(target)),
-            Lhs::Place(place) => {
-                let keys = self.place_keys(&place);
-                let objects = self.chain_reads(place.root, &keys, keys.len());
-                let current = objects[keys.len()].clone();
-                (current, Ok((place.root, objects, keys)))
-            }
-        };
         let (next, result) = if want_value && !update.prefix {
             let old = self.trivial(Expr::rt("to_number", vec![current]));
             let operator = if increment { "add" } else { "sub" };
@@ -147,17 +250,14 @@ impl<'a> Lowerer<'a, '_> {
             let step = if increment { -1 } else { 1 };
             (Expr::rt("sub", vec![current, Expr::Integer(step)]), None)
         };
-        let written = match place {
-            Err(target) => {
-                let name = self.scope.bind(target, &self.base(target));
-                self.push_match(Expr::var(&name), next);
-                Expr::Var(name)
-            }
-            Ok((root, objects, keys)) => {
-                let next = self.trivial(next);
-                self.write_chain(root, &objects[..keys.len()], &keys, next.clone());
-                next
-            }
+        let written = if depth == 0 {
+            let name = self.scope.bind(path.root, &self.base(path.root));
+            self.push_match(Expr::var(&name), next);
+            Expr::Var(name)
+        } else {
+            let next = self.trivial(next);
+            self.write_path(&path, &objects[..depth], next.clone());
+            next
         };
         result.unwrap_or(written)
     }
@@ -173,61 +273,211 @@ impl<'a> Lowerer<'a, '_> {
                 "`delete` is supported only on a property of a variable or of `this`",
             );
         };
-        let keys = self.place_keys(&place);
-        let depth = keys.len();
-        let objects = self.chain_reads(place.root, &keys, depth - 1);
-        let removed = Expr::rt(
-            "delete",
-            vec![objects[depth - 1].clone(), keys[depth - 1].clone()],
-        );
-        self.write_chain(
-            place.root,
-            &objects[..depth - 1],
-            &keys[..depth - 1],
-            removed,
-        );
+        let path = self.path(&place);
+        let depth = path.accesses.len();
+        let objects = self.read_path(&path, depth - 1);
+        let Some(Access::Property(key)) = path.accesses.last() else {
+            return self.unsupported(span, "`delete` is supported only on a property");
+        };
+        let removed = Expr::rt("delete", vec![objects[depth - 1].clone(), key.clone()]);
+        let outer = Path {
+            root: path.root,
+            accesses: path.accesses[..depth - 1].to_vec(),
+        };
+        self.write_path(&outer, &objects[..depth - 1], removed);
         Expr::atom("true")
     }
 
-    /// `place.m(args)` for a mutator name: `{Result, R1} = bouy_rt:mutate(R, <<"m">>, Args)`,
-    /// then `R1` is written back to the place.
+    /// `r.m(args)` for a mutator name: `{Result, R1} = bouy_rt:mutate(R, <<"m">>, Args)`,
+    /// then `R1` is written back to the place that `r` denotes.
     pub fn mutate(
         &mut self,
         object: &'a Expression<'a>,
         name: &str,
         arguments: &'a [Argument<'a>],
     ) -> Expr {
-        let Some(place) = self.place_of(object) else {
+        let Some(path) = self.receiver_path(object) else {
             let receiver = self.expr(object);
             let arguments = self.arguments(arguments);
             return Expr::rt("call_method", vec![receiver, Expr::binary(name), arguments]);
         };
-        let keys = self.place_keys(&place);
+        self.mutate_path(&path, Mutation::Method(name), arguments)
+    }
+
+    /// `Object.assign(target, ...sources)` where `target` is a place: the merged object is
+    /// written back to the place.
+    pub fn assign_object(
+        &mut self,
+        target: &'a Expression<'a>,
+        sources: &'a [Argument<'a>],
+    ) -> Option<Expr> {
+        let place = self.place_of(target)?;
+        let path = self.path(&place);
+        Some(self.mutate_path(&path, Mutation::Assign, sources))
+    }
+
+    /// The evaluated place that a mutator call on `expression` writes back (section 6). A
+    /// mutator that returns its receiver, such as `m.set(k, v)` or `xs.sort()`, and an
+    /// assignment, such as `(groups[k] ??= [])`, denote the place they change, after their
+    /// own effects.
+    fn receiver_path(&mut self, expression: &'a Expression<'a>) -> Option<Path> {
+        self.roots.receiver(expression)?;
+        match strip(expression) {
+            Expression::CallExpression(call) if map_entry(call).is_none() => {
+                let (object, name) = method_callee(&call.callee)?;
+                let name = RETURNS_RECEIVER.iter().find(|known| **known == name)?;
+                let path = self.receiver_path(object)?;
+                self.mutate_path(&path, Mutation::Method(name), &call.arguments);
+                Some(path)
+            }
+            Expression::AssignmentExpression(assignment) => {
+                let place = self.lhs(&assignment.left)?;
+                let path = self.path(&place);
+                self.assign_path(
+                    &path,
+                    assignment.operator,
+                    &assignment.right,
+                    assignment.span,
+                    false,
+                );
+                Some(path)
+            }
+            other => {
+                let place = self.place_of(other)?;
+                Some(self.path(&place))
+            }
+        }
+    }
+
+    /// The call that applies `mutation` to `receiver`: an expression of `{Result, Receiver1}`.
+    fn mutation_call(&mut self, mutation: Mutation<'_>, receiver: Expr, arguments: Expr) -> Expr {
+        match mutation {
+            Mutation::Method(name) => {
+                Expr::rt("mutate", vec![receiver, Expr::binary(name), arguments])
+            }
+            Mutation::Assign => {
+                let arguments = match arguments {
+                    Expr::List(mut sources) => {
+                        sources.insert(0, receiver);
+                        Expr::List(sources)
+                    }
+                    spread => Expr::Cons(vec![receiver], Box::new(spread)),
+                };
+                let merged = self.trivial(Expr::call("bouy_object", "assign", vec![arguments]));
+                Expr::Tuple(vec![merged.clone(), merged])
+            }
+        }
+    }
+
+    /// Runs `mutation` on the value at `path` and writes the new value back.
+    fn mutate_path(
+        &mut self,
+        path: &Path,
+        mutation: Mutation<'_>,
+        arguments: &'a [Argument<'a>],
+    ) -> Expr {
+        let depth = path.accesses.len();
+        let orphaned = arguments
+            .iter()
+            .any(|argument| self.reassigns(path.root, argument.span()));
+        let before = orphaned.then(|| self.read_path(path, depth));
         let arguments = self.arguments(arguments);
-        let objects = self.chain_reads(place.root, &keys, keys.len());
-        let receiver = objects[keys.len()].clone();
+        let objects = match before {
+            Some(objects) => {
+                // The arguments assigned the root variable: the call changes the old value,
+                // which no variable holds any more.
+                let call = self.mutation_call(mutation, objects[depth].clone(), arguments);
+                return Expr::call("erlang", "element", vec![Expr::Integer(1), call]);
+            }
+            None => self.read_path(path, depth),
+        };
+        let call = self.mutation_call(mutation, objects[depth].clone(), arguments);
         let result = self.scope.temp();
-        let call = Expr::rt("mutate", vec![receiver, Expr::binary(name), arguments]);
-        if keys.is_empty() {
-            let next = self.scope.bind(place.root, &self.base(place.root));
-            self.seq.push(Expr::matches(
-                Expr::Tuple(vec![Expr::var(&result), Expr::Var(next)]),
-                call,
-            ));
+        if depth == 0 {
+            let next = self.scope.bind(path.root, &self.base(path.root));
+            self.push_match(Expr::Tuple(vec![Expr::var(&result), Expr::Var(next)]), call);
         } else {
             let updated = self.scope.temp();
-            self.seq.push(Expr::matches(
+            self.push_match(
                 Expr::Tuple(vec![Expr::var(&result), Expr::var(&updated)]),
                 call,
-            ));
-            self.write_chain(
-                place.root,
-                &objects[..keys.len()],
-                &keys,
-                Expr::Var(updated),
             );
+            self.write_path(path, &objects[..depth], Expr::Var(updated));
         }
         Expr::Var(result)
+    }
+
+    /// `r?.m(args)` for a mutator name, where `r` is a place: `undefined` when the value at
+    /// the place is `null` or `undefined`, else the mutator call, written back.
+    pub fn optional_mutate(
+        &mut self,
+        object: &'a Expression<'a>,
+        name: &str,
+        arguments: &'a [Argument<'a>],
+        span: Span,
+    ) -> Option<Expr> {
+        use oxc::ast_visit::Visit;
+        let path = self.receiver_path(object)?;
+        let depth = path.accesses.len();
+        let objects = self.read_path(&path, depth);
+        let receiver = self.trivial(objects[depth].clone());
+        let mut vars = self.rebound(span, |found| {
+            for argument in arguments {
+                found.visit_expression(argument_expression(argument));
+            }
+        });
+        if !vars.contains(&path.root) {
+            vars.push(path.root);
+        }
+        let absent = vec![Expr::Tuple(vec![
+            Expr::undefined(),
+            self.scope.tuple(&vars),
+        ])];
+        let present = self.branch(|lowerer| {
+            let arguments = lowerer.arguments(arguments);
+            let call = Expr::rt(
+                "mutate",
+                vec![receiver.clone(), Expr::binary(name), arguments],
+            );
+            let result = lowerer.scope.temp();
+            let updated = lowerer.scope.temp();
+            lowerer.push_match(
+                Expr::Tuple(vec![Expr::var(&result), Expr::var(&updated)]),
+                call,
+            );
+            lowerer.write_path(&path, &objects[..depth], Expr::Var(updated));
+            let tuple = lowerer.scope.tuple(&vars);
+            lowerer
+                .seq
+                .push(Expr::Tuple(vec![Expr::Var(result), tuple]));
+        });
+        let present_name = self.scope.temp();
+        let choice = Expr::case(
+            receiver,
+            vec![
+                Clause::new(Expr::atom("null"), absent.clone()),
+                Clause::new(Expr::undefined(), absent),
+                Clause::new(Expr::var(&present_name), present),
+            ],
+        );
+        let result = self.scope.temp();
+        let tuple = self.rebind_tuple(&vars);
+        self.push_match(Expr::Tuple(vec![Expr::var(&result), tuple]), choice);
+        Some(Expr::Var(result))
+    }
+
+    /// Whether code in `span` assigns the variable `root` itself, rather than a property.
+    fn reassigns(&self, root: Target, span: Span) -> bool {
+        let Target::Symbol(symbol) = root else {
+            return false;
+        };
+        self.semantic
+            .scoping()
+            .get_resolved_references(symbol)
+            .any(|reference| {
+                let at = self.semantic.reference_span(reference);
+                reference.is_write() && span.start <= at.start && at.end <= span.end
+            })
     }
 
     /// Binds a declaration pattern to `value` (section 5).
@@ -326,16 +576,22 @@ impl<'a> Lowerer<'a, '_> {
                 }
             }
             simple => match self.lhs(simple) {
-                Some(Lhs::Variable(target)) => {
-                    let name = self.scope.bind(target, &self.base(target));
-                    self.push_match(Expr::Var(name), value);
+                Some(place) => {
+                    let path = self.path(&place);
+                    let depth = path.accesses.len();
+                    if depth == 0 {
+                        let name = self.scope.bind(path.root, &self.base(path.root));
+                        self.push_match(Expr::Var(name), value);
+                    } else {
+                        let objects = self.read_path(&path, depth - 1);
+                        self.write_path(&path, &objects, value);
+                    }
                 }
-                Some(Lhs::Place(place)) => {
-                    let keys = self.place_keys(&place);
-                    let objects = self.chain_reads(place.root, &keys, keys.len() - 1);
-                    self.write_chain(place.root, &objects, &keys, value);
+                None => {
+                    if let Some(target) = simple.as_simple_assignment_target() {
+                        self.unwritable(target);
+                    }
                 }
-                None => {}
             },
         }
     }
@@ -355,21 +611,24 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     fn assign_identifier(&mut self, ident: &'a IdentifierReference<'a>, value: Expr) {
-        if let Some(Lhs::Variable(target)) = self.variable_lhs(ident) {
-            let name = self.scope.bind(target, &self.base(target));
-            self.push_match(Expr::Var(name), value);
+        match self.variable_lhs(ident) {
+            Some(place) => {
+                let name = self.scope.bind(place.root, &self.base(place.root));
+                self.push_match(Expr::Var(name), value);
+            }
+            None => self.unwritable_identifier(ident),
         }
     }
 
     /// A key of a destructuring pattern.
     fn pattern_key(&mut self, key: &'a PropertyKey<'a>, computed: bool) -> Expr {
-        if let Some(name) = key.static_name()
+        if let Some(name) = static_key(key)
             && (!computed
                 || key
                     .as_expression()
                     .is_some_and(|key| super::expr::literal(key).is_some()))
         {
-            return Expr::binary(name.as_ref());
+            return Expr::binary(name);
         }
         match key.as_expression() {
             Some(expression) => {
@@ -386,23 +645,14 @@ impl<'a> Lowerer<'a, '_> {
             .map_or_else(Expr::undefined, Expr::var)
     }
 
-    fn lhs(&mut self, target: &'a AssignmentTarget<'a>) -> Option<Lhs<'a>> {
-        match target {
-            AssignmentTarget::AssignmentTargetIdentifier(ident) => self.variable_lhs(ident),
-            AssignmentTarget::TSAsExpression(inner) => self.expression_lhs(&inner.expression),
-            AssignmentTarget::TSSatisfiesExpression(inner) => {
-                self.expression_lhs(&inner.expression)
-            }
-            AssignmentTarget::TSNonNullExpression(inner) => self.expression_lhs(&inner.expression),
-            AssignmentTarget::TSTypeAssertion(inner) => self.expression_lhs(&inner.expression),
-            other => other
-                .as_member_expression()
-                .and_then(|member| self.member_place(member))
-                .map(Lhs::Place),
+    fn lhs(&mut self, target: &'a AssignmentTarget<'a>) -> Option<Place<'a>> {
+        match target.as_simple_assignment_target() {
+            Some(simple) => self.simple_lhs(simple),
+            None => None,
         }
     }
 
-    fn simple_lhs(&mut self, target: &'a SimpleAssignmentTarget<'a>) -> Option<Lhs<'a>> {
+    fn simple_lhs(&mut self, target: &'a SimpleAssignmentTarget<'a>) -> Option<Place<'a>> {
         match target {
             SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => self.variable_lhs(ident),
             SimpleAssignmentTarget::TSAsExpression(inner) => self.expression_lhs(&inner.expression),
@@ -417,27 +667,28 @@ impl<'a> Lowerer<'a, '_> {
             }
             other => other
                 .as_member_expression()
-                .and_then(|member| self.member_place(member))
-                .map(Lhs::Place),
+                .and_then(|member| self.member_place(member)),
         }
     }
 
-    fn expression_lhs(&mut self, expression: &'a Expression<'a>) -> Option<Lhs<'a>> {
+    fn expression_lhs(&mut self, expression: &'a Expression<'a>) -> Option<Place<'a>> {
         match strip(expression) {
             Expression::Identifier(ident) => self.variable_lhs(ident),
             other => other
                 .as_member_expression()
-                .and_then(|member| self.member_place(member))
-                .map(Lhs::Place),
+                .and_then(|member| self.member_place(member)),
         }
     }
 
     /// A local variable as an assignment target. Writes to module-level names are
     /// reported by the capture check (`BOUY202`).
-    fn variable_lhs(&mut self, ident: &IdentifierReference<'_>) -> Option<Lhs<'a>> {
+    fn variable_lhs(&mut self, ident: &IdentifierReference<'_>) -> Option<Place<'a>> {
         let symbol = self.symbol_of(ident)?;
-        let target = Target::Symbol(symbol);
-        self.scope.current(target).map(|_| Lhs::Variable(target))
+        let root = Target::Symbol(symbol);
+        self.scope.current(root).map(|_| Place {
+            root,
+            steps: Vec::new(),
+        })
     }
 
     fn member_place(&mut self, member: &'a MemberExpression<'a>) -> Option<Place<'a>> {
@@ -447,25 +698,23 @@ impl<'a> Lowerer<'a, '_> {
             MemberExpression::PrivateFieldExpression(member) => Key::Private(&member.field.name),
         };
         let mut place = self.place_of(member.object())?;
-        place.keys.push(key);
+        place.steps.push(Step::Property(key));
         Some(place)
     }
 
     /// The place `expression` names, when its root is a local variable or `this`.
     pub fn place_of(&mut self, expression: &'a Expression<'a>) -> Option<Place<'a>> {
         match strip(expression) {
-            Expression::Identifier(ident) => {
-                let symbol = self.symbol_of(ident)?;
-                let root = Target::Symbol(symbol);
-                self.scope.current(root).map(|_| Place {
-                    root,
-                    keys: Vec::new(),
-                })
-            }
+            Expression::Identifier(ident) => self.variable_lhs(ident),
             Expression::ThisExpression(_) => self.scope.current(Target::This).map(|_| Place {
                 root: Target::This,
-                keys: Vec::new(),
+                steps: Vec::new(),
             }),
+            Expression::CallExpression(call) if let Some((object, key)) = map_entry(call) => {
+                let mut place = self.place_of(object)?;
+                place.steps.push(Step::Entry(key));
+                Some(place)
+            }
             other => match other.as_member_expression() {
                 Some(member) if !member.optional() => self.member_place(member),
                 _ => {
@@ -479,46 +728,157 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// The lowered keys of a place, each evaluated once.
-    fn place_keys(&mut self, place: &Place<'a>) -> Vec<Expr> {
-        place
-            .keys
+    /// Evaluates the keys of a place, each once.
+    fn path(&mut self, place: &Place<'a>) -> Path {
+        let accesses = place
+            .steps
             .iter()
-            .map(|key| match key {
-                Key::Static(name) => Expr::binary(*name),
-                Key::Private(name) => Expr::binary(format!("#{name}")),
-                Key::Computed(expression) => {
+            .map(|step| match step {
+                Step::Property(Key::Static(name)) => Access::Property(Expr::binary(*name)),
+                Step::Property(Key::Private(name)) => {
+                    Access::Private(field_key(&format!("#{name}")))
+                }
+                Step::Property(Key::Computed(expression)) => {
                     let value = self.expr(expression);
-                    self.trivial(value)
+                    Access::Property(self.trivial(value))
+                }
+                Step::Entry(expression) => {
+                    let value = self.expr(expression);
+                    Access::Entry(self.trivial(value))
                 }
             })
-            .collect()
+            .collect();
+        Path {
+            root: place.root,
+            accesses,
+        }
     }
 
-    /// The objects along a place: the root's current value, then each property read down to
-    /// `depth` keys.
-    fn chain_reads(&mut self, root: Target, keys: &[Expr], depth: usize) -> Vec<Expr> {
-        let mut objects = vec![self.current(root)];
-        for key in &keys[..depth] {
+    /// The objects along a path: the root's current value, then each read down to `depth`
+    /// steps.
+    fn read_path(&mut self, path: &Path, depth: usize) -> Vec<Expr> {
+        let mut objects = vec![self.current(path.root)];
+        for access in &path.accesses[..depth] {
             let holder = objects.last().cloned().unwrap_or_else(Expr::undefined);
-            let read = self.trivial(Expr::rt("get", vec![holder, key.clone()]));
+            let read = self.trivial(access.read(holder));
             objects.push(read);
         }
         objects
     }
 
-    /// Sets `value` at `keys` from the innermost object outward and rebinds the root.
-    fn write_chain(&mut self, root: Target, objects: &[Expr], keys: &[Expr], value: Expr) {
-        let updated = objects
-            .iter()
-            .zip(keys)
-            .rev()
-            .fold(value, |inner, (object, key)| {
-                Expr::rt("set", vec![object.clone(), key.clone(), inner])
-            });
-        let name = self.scope.bind(root, &self.base(root));
+    /// Sets `value` at the end of `path` from the innermost object outward, and rebinds the
+    /// root.
+    fn write_path(&mut self, path: &Path, objects: &[Expr], value: Expr) {
+        let updated = nested_write(path, objects, value);
+        let name = self.scope.bind(path.root, &self.base(path.root));
         self.push_match(Expr::Var(name), updated);
     }
+
+    /// A write to an object that no variable holds any more: it runs for its errors, and the
+    /// root keeps its version.
+    fn drop_write(&mut self, path: &Path, objects: &[Expr], value: Expr) {
+        let updated = nested_write(path, objects, value);
+        self.push(updated);
+    }
+
+    /// Reports a write to a target that no place reaches: a global, an import, an actor
+    /// ref, or `this` outside a class. A module-level `const` of this module is `BOUY202`,
+    /// which the capture check reports, and a root that is not a variable is reported where
+    /// the place is resolved.
+    fn unwritable(&mut self, target: &'a SimpleAssignmentTarget<'a>) {
+        match target {
+            SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
+                self.unwritable_identifier(ident);
+            }
+            SimpleAssignmentTarget::TSAsExpression(inner) => {
+                self.unwritable_root(&inner.expression);
+            }
+            SimpleAssignmentTarget::TSSatisfiesExpression(inner) => {
+                self.unwritable_root(&inner.expression);
+            }
+            SimpleAssignmentTarget::TSNonNullExpression(inner) => {
+                self.unwritable_root(&inner.expression);
+            }
+            SimpleAssignmentTarget::TSTypeAssertion(inner) => {
+                self.unwritable_root(&inner.expression);
+            }
+            member => {
+                if let Some(member) = member.as_member_expression() {
+                    self.unwritable_root(member.object());
+                }
+            }
+        }
+    }
+
+    /// Reports a mutation of the value that `expression` reads when its root is not a place.
+    pub fn unwritable_root(&mut self, expression: &'a Expression<'a>) {
+        match chain_base(expression) {
+            Expression::Identifier(ident) => self.unwritable_identifier(ident),
+            Expression::ThisExpression(this) if self.scope.current(Target::This).is_none() => {
+                self.unsupported(
+                    this.span,
+                    "`this` is supported only inside class methods and the arrow functions in them",
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn unwritable_identifier(&mut self, ident: &IdentifierReference<'_>) {
+        let name = ident.name.as_str();
+        let Some(symbol) = self.symbol_of(ident) else {
+            if name == "process" {
+                self.report(
+                    ident.span,
+                    Code::HostApi,
+                    "`process` cannot change in Bouy; read process.env.NAME or process.argv, and throw an error to exit with status 1",
+                );
+            } else if library::global(name).is_some() {
+                self.unsupported(
+                    ident.span,
+                    format!("`{name}` is a global of Bouy and cannot change"),
+                );
+            } else {
+                self.unsupported(
+                    ident.span,
+                    format!("`{name}` is not declared; declare it with `let` or `const`"),
+                );
+            }
+            return;
+        };
+        match self.module.bindings.get(&symbol) {
+            Some(Binding::ImportedModule(_)) => self.report(
+                ident.span,
+                Code::ModuleState,
+                format!(
+                    "`{name}` is another module, whose module-level values cannot change after initialization; call a function of that module instead"
+                ),
+            ),
+            Some(Binding::Library(_)) => {
+                self.unsupported(ident.span, format!("the import `{name}` cannot change"));
+            }
+            None if self.module.opaque.contains(&symbol) => {
+                self.unsupported(
+                    ident.span,
+                    format!(
+                        "`{name}` is an actor ref, which has no fields to change; call a method of the actor instead"
+                    ),
+                );
+            }
+            Some(_) | None => {}
+        }
+    }
+}
+
+/// `bouy_rt:set/3` from the innermost object of `path` outward.
+fn nested_write(path: &Path, objects: &[Expr], value: Expr) -> Expr {
+    objects
+        .iter()
+        .zip(&path.accesses)
+        .rev()
+        .fold(value, |inner, (object, access)| {
+            access.write(object.clone(), inner)
+        })
 }
 
 /// The `bouy_rt` function of an arithmetic or bitwise operator.

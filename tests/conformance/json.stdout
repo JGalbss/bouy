@@ -1,0 +1,11 @@
+{"a":1,"b":"two","c":[true,null]}
+[1,"x",{"nested":[]}]
+"quote\"and\\slash"
+{
+  "z": 1
+}
+bouy 2 1.5 true null
+3 3
+"text"
+undefined null 42
+parse failed: true

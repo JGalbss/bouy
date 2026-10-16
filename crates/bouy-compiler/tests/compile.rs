@@ -48,7 +48,10 @@ fn lowers_each_construct() {
 #[test]
 fn generated_erlang_compiles_with_erlc() {
     if Command::new("erlc").arg("-help").output().is_err() {
-        eprintln!("skipping the erlc check: erlc is not installed");
+        assert!(
+            std::env::var_os("BOUY_SKIP_VM_TESTS").is_some(),
+            "erlc is not installed; set BOUY_SKIP_VM_TESTS=1 to skip the VM tests"
+        );
         return;
     }
     let output = std::env::temp_dir().join(format!("bouy-compiler-erlc-{}", std::process::id()));

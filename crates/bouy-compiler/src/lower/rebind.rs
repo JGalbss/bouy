@@ -6,7 +6,8 @@ use std::collections::{BTreeSet, HashSet};
 use oxc::ast::ast::{ArrowFunctionExpression, Class, Function};
 use oxc::ast::ast::{
     AssignmentExpression, AssignmentTarget, AssignmentTargetMaybeDefault, AssignmentTargetProperty,
-    CallExpression, Expression, IdentifierReference, Statement, TSType, TSTypeAnnotation,
+    CallExpression, Expression, ForInStatement, ForOfStatement, ForStatementLeft,
+    IdentifierReference, SimpleAssignmentTarget, Statement, TSType, TSTypeAnnotation,
     TSTypeParameterDeclaration, TSTypeParameterInstantiation, UnaryExpression, UpdateExpression,
 };
 use oxc::ast_visit::{Visit, walk};
@@ -32,7 +33,61 @@ pub const MUTATORS: &[&str] = &[
     "add",
     "delete",
     "clear",
+    "next",
 ];
+
+/// Mutators that return their receiver, so that `m.set(a, 1).set(b, 2)` and
+/// `xs.sort().reverse()` change the place `m` or `xs` twice (section 6).
+pub const RETURNS_RECEIVER: &[&str] = &["set", "add", "sort", "reverse", "fill", "copyWithin"];
+
+/// The receiver and the name of a method call: `r.m(...)`, `r.#m(...)`, or `r["m"](...)`
+/// with a string literal key.
+pub fn method_callee<'e, 'a>(callee: &'e Expression<'a>) -> Option<(&'e Expression<'a>, String)> {
+    match strip(callee) {
+        Expression::StaticMemberExpression(member) if !member.optional => {
+            Some((&member.object, member.property.name.to_string()))
+        }
+        Expression::PrivateFieldExpression(member) if !member.optional => {
+            Some((&member.object, format!("#{}", member.field.name)))
+        }
+        Expression::ComputedMemberExpression(member) if !member.optional => {
+            match strip(&member.expression) {
+                Expression::StringLiteral(name) => Some((&member.object, name.value.to_string())),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// `m.get(key)`: the entry of a Map, which a write changes through `m.set(key, value)`.
+pub fn map_entry<'e, 'a>(
+    call: &'e CallExpression<'a>,
+) -> Option<(&'e Expression<'a>, &'e Expression<'a>)> {
+    let Expression::StaticMemberExpression(member) = strip(&call.callee) else {
+        return None;
+    };
+    match call.arguments.as_slice() {
+        [key] if !call.optional && !member.optional && member.property.name == "get" => {
+            key.as_expression().map(|key| (&member.object, key))
+        }
+        _ => None,
+    }
+}
+
+/// The expression at the start of a chain of property reads and Map entry reads.
+pub fn chain_base<'e, 'a>(expr: &'e Expression<'a>) -> &'e Expression<'a> {
+    match strip(expr) {
+        Expression::StaticMemberExpression(member) => chain_base(&member.object),
+        Expression::ComputedMemberExpression(member) => chain_base(&member.object),
+        Expression::PrivateFieldExpression(member) => chain_base(&member.object),
+        Expression::CallExpression(call) => match map_entry(call) {
+            Some((object, _)) => chain_base(object),
+            None => strip(expr),
+        },
+        other => other,
+    }
+}
 
 /// Finds the root variable of places, which section 6 rebinds on a write.
 #[derive(Debug)]
@@ -70,7 +125,35 @@ impl Roots<'_> {
                 }
                 self.place(&member.object)
             }
+            Expression::CallExpression(call) => {
+                map_entry(call).and_then(|(object, _)| self.place(object))
+            }
             _ => None,
+        }
+    }
+
+    /// The root of the place that a mutator call on `expr` writes back: a place, a call of a
+    /// mutator that returns its receiver on such a place, such as `m.set(a, 1)`, or an
+    /// assignment to a place, such as `(groups[k] ??= [])`.
+    pub fn receiver(&self, expr: &Expression<'_>) -> Option<Target> {
+        match strip(expr) {
+            Expression::CallExpression(call) if !call.optional => {
+                match method_callee(&call.callee) {
+                    Some((object, name)) if RETURNS_RECEIVER.contains(&name.as_str()) => {
+                        self.receiver(object)
+                    }
+                    _ => self.place(expr),
+                }
+            }
+            Expression::AssignmentExpression(assignment) => {
+                match assignment.left.as_simple_assignment_target()? {
+                    SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
+                        self.symbol(ident).map(Target::Symbol)
+                    }
+                    target => self.place(target.as_member_expression()?.object()),
+                }
+            }
+            _ => self.place(expr),
         }
     }
 
@@ -150,29 +233,55 @@ impl Roots<'_> {
         }
     }
 
-    /// The root that a call rebinds: a mutator on a place, or `this.m()` for a class method.
+    /// The root that a call rebinds: a mutator on a place, `Object.assign(place, ...)`, or
+    /// `this.m()` for a class method.
     pub fn called(
         &self,
         call: &CallExpression<'_>,
         methods: Option<&HashSet<String>>,
     ) -> Option<Target> {
-        let (object, name) = match strip(&call.callee) {
-            Expression::StaticMemberExpression(member) if !member.optional => {
-                (&member.object, member.property.name.to_string())
-            }
-            Expression::PrivateFieldExpression(member) if !member.optional => {
-                (&member.object, format!("#{}", member.field.name))
-            }
-            _ => return None,
-        };
+        if let Some(target) = self.assigned_object(call) {
+            return self.place(target);
+        }
+        // `this[name](args)` may call any method, so it may change `this`.
+        if let Expression::ComputedMemberExpression(member) = strip(&call.callee)
+            && matches!(strip(&member.object), Expression::ThisExpression(_))
+            && !matches!(strip(&member.expression), Expression::StringLiteral(_))
+            && methods.is_some()
+        {
+            return Some(Target::This);
+        }
+        let (object, name) = method_callee(&call.callee)?;
         let is_this = matches!(strip(object), Expression::ThisExpression(_));
         if is_this && methods.is_some_and(|methods| methods.contains(&name)) {
             return Some(Target::This);
         }
         if MUTATORS.contains(&name.as_str()) && !call.optional {
-            return self.place(object);
+            return self.receiver(object);
         }
         None
+    }
+
+    /// The target of `Object.assign(target, ...sources)` with the global `Object`, which
+    /// changes its first argument.
+    pub fn assigned_object<'e, 'a>(
+        &self,
+        call: &'e CallExpression<'a>,
+    ) -> Option<&'e Expression<'a>> {
+        let Expression::StaticMemberExpression(member) = strip(&call.callee) else {
+            return None;
+        };
+        let Expression::Identifier(object) = strip(&member.object) else {
+            return None;
+        };
+        let global = object
+            .reference_id
+            .get()
+            .is_some_and(|id| self.scoping.get_reference(id).symbol_id().is_none());
+        if !(global && object.name == "Object" && member.property.name == "assign") {
+            return None;
+        }
+        call.arguments.first()?.as_expression()
     }
 }
 
@@ -287,6 +396,25 @@ impl<'a> Visit<'a> for Rebound<'_> {
             self.add(root);
         }
         walk::walk_call_expression(self, it);
+    }
+
+    fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+        self.head(&it.left);
+        walk::walk_for_of_statement(self, it);
+    }
+
+    fn visit_for_in_statement(&mut self, it: &ForInStatement<'a>) {
+        self.head(&it.left);
+        walk::walk_for_in_statement(self, it);
+    }
+}
+
+impl Rebound<'_> {
+    /// A `for...of` or `for...in` head such as `this.cur` writes its place on each iteration.
+    fn head(&mut self, left: &ForStatementLeft<'_>) {
+        if let Some(target) = left.as_assignment_target() {
+            self.assigned(target);
+        }
     }
 }
 

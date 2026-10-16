@@ -1,0 +1,8 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy205-closure-stored-by-its-write.ts
+---
+bouy205-closure-stored-by-its-write.ts:3:51: BOUY205: this closure reads `fact`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument
+bouy205-closure-stored-by-its-write.ts:10:37: BOUY205: this closure reads `commands`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument
+bouy205-closure-stored-by-its-write.ts:16:46: BOUY205: this closure reads `table`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument

@@ -14,9 +14,11 @@ use oxc::ast_visit::Visit;
 use oxc::span::{GetSpan, Span};
 
 use super::function::Callable;
+use super::hoist;
 use super::rebind::{self, Escapes, escapes, escapes_all, falls_through, strip};
 use super::scope::{Target, base_name};
 use super::{Binding, Checkpoint, Flow, JumpTarget, Lowerer, Next, Tail};
+use crate::diagnostic::Code;
 use crate::erlang::{CatchClause, Clause, Expr};
 
 /// The value a construct yields when it completes normally.
@@ -43,14 +45,103 @@ impl<'a> Lowerer<'a, '_> {
     /// Lowers `statements` into the current sequence and ends it as `tail` requires.
     pub fn block_of(&mut self, statements: &[&'a Statement<'a>], tail: &Tail<'_>) {
         let flat = flatten(statements);
+        let groups = hoist::groups(&flat, self.semantic, |function| self.is_nested(function));
+        for group in &groups {
+            self.pending
+                .extend(group.functions.iter().map(|function| function.span));
+        }
         for (index, statement) in flat.iter().enumerate() {
-            let before = self.checkpointed();
+            for group in groups.iter().filter(|group| group.position == index) {
+                self.create_group(group);
+            }
             if self.statement(statement, &flat[index + 1..], tail) == Flow::Ended {
                 return;
             }
-            self.record_checkpoints(&before);
         }
         self.fall_through(tail);
+    }
+
+    /// Whether `function` is a nested function declaration that no group has created yet.
+    fn is_nested(&self, function: &Function<'_>) -> bool {
+        !self.hoisted.contains(&function.span)
+            && function
+                .id
+                .as_ref()
+                .and_then(|id| id.symbol_id.get())
+                .is_some_and(|symbol| !self.module.is_module_scope(symbol))
+    }
+
+    /// Creates the functions of a group (section 12): one named fun, or for functions that
+    /// call each other, a named fun that returns all of them, so that each one can reach the
+    /// others:
+    ///
+    /// ```erlang
+    /// Group@1 = fun Group@1() -> {fun(Args@1) -> {Even@2, Odd@2} = Group@1(), ... end, ...} end,
+    /// {Even@1, Odd@1} = Group@1()
+    /// ```
+    fn create_group(&mut self, group: &hoist::Group<'a>) {
+        if let Some((variable, at)) = group.declared_late {
+            let scoping = self.semantic.scoping();
+            let function = group
+                .functions
+                .first()
+                .and_then(|function| function.id.as_ref());
+            let message = format!(
+                "`{}` reads `{}`, which is declared after this first use of `{}`; declare `{}` before it",
+                function.map_or("", |id| id.name.as_str()),
+                scoping.symbol_name(variable),
+                function.map_or("", |id| id.name.as_str()),
+                scoping.symbol_name(variable),
+            );
+            self.report(at, Code::Capture, message);
+            // The functions cannot be created: bind them to `undefined` to report nothing more.
+            for function in &group.functions {
+                self.hoisted.insert(function.span);
+                if let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get()) {
+                    let name = self.scope.bind(Target::Symbol(symbol), "Undefined");
+                    self.push_match(Expr::Var(name), Expr::undefined());
+                }
+            }
+            return;
+        }
+        for function in &group.functions {
+            self.hoisted.insert(function.span);
+        }
+        let targets: Vec<Target> = group
+            .functions
+            .iter()
+            .filter_map(|function| function.id.as_ref()?.symbol_id.get())
+            .map(Target::Symbol)
+            .collect();
+        if let ([function], [target]) = (group.functions.as_slice(), targets.as_slice()) {
+            let name = self.scope.bind(*target, &self.base(*target));
+            let fun = self.closure(Some(name.clone()), Callable::Function(function));
+            self.push_match(Expr::Var(name), fun);
+            return;
+        }
+        let group_name = self.scope.fresh("Group");
+        let create = || Expr::Apply(Box::new(Expr::var(&group_name)), Vec::new());
+        let funs = group
+            .functions
+            .iter()
+            .map(|function| {
+                self.closure_with(None, Callable::Function(function), |lowerer| {
+                    let members = lowerer.rebind_tuple(&targets);
+                    lowerer.push_match(members, create());
+                })
+            })
+            .collect();
+        let definition = Expr::Fun {
+            name: Some(group_name.clone()),
+            clauses: vec![Clause {
+                patterns: Vec::new(),
+                guards: Vec::new(),
+                body: vec![Expr::Tuple(funs)],
+            }],
+        };
+        self.push_match(Expr::var(&group_name), definition);
+        let members = self.rebind_tuple(&targets);
+        self.push_match(members, create());
     }
 
     fn statement(
@@ -230,6 +321,12 @@ impl<'a> Lowerer<'a, '_> {
                     let name = self
                         .scope
                         .bind(Target::Symbol(symbol), &base_name(&id.name));
+                    // `const g = function f() {...}`: `f` names the same fun inside its body.
+                    if let Callable::Function(function) = callable
+                        && let Some(own) = function.id.as_ref().and_then(|id| id.symbol_id.get())
+                    {
+                        self.scope.set(Target::Symbol(own), name.clone());
+                    }
                     let fun = self.closure(Some(name.clone()), callable);
                     self.push_match(Expr::Var(name), fun);
                     continue;
@@ -264,6 +361,7 @@ impl<'a> Lowerer<'a, '_> {
         )
     }
 
+    /// A nested function declaration that `block_of` did not create in a group.
     fn function_declaration(&mut self, function: &'a Function<'a>) {
         let (Some(id), Some(_)) = (&function.id, &function.body) else {
             return;
@@ -271,7 +369,10 @@ impl<'a> Lowerer<'a, '_> {
         let Some(symbol) = id.symbol_id.get() else {
             return;
         };
-        if self.module.is_module_scope(symbol) {
+        if self.module.is_module_scope(symbol)
+            || self.pending.contains(&function.span)
+            || !self.hoisted.insert(function.span)
+        {
             return;
         }
         let name = self
@@ -526,28 +627,27 @@ impl<'a> Lowerer<'a, '_> {
         if pending.default || !pending.tests.is_empty() {
             groups.push(pending);
         }
-        let (defaults, mut tested): (Vec<Group<'a>>, Vec<Group<'a>>) =
-            groups.into_iter().partition(|group| group.default);
-        tested.extend(defaults);
-        tested
+        groups
     }
 
-    /// A `case` on the discriminant when every test is a literal.
+    /// A `case` on the discriminant when every test is a literal. The clauses keep the
+    /// source order, so the first case that matches wins, and `default` ends the `case`.
     fn switch_case(&mut self, discriminant: &Expr, groups: &[Group<'a>], inner: &Tail<'_>) -> Expr {
         let mut clauses = Vec::new();
-        let mut has_default = false;
+        let mut default = None;
         for group in groups {
             let body = self.branch(|lowerer| lowerer.block_of(&group.body, inner));
             if group.default {
-                has_default = true;
-                clauses.push(Clause::new(Expr::var("_"), body));
-                continue;
+                default = Some(body.clone());
             }
             let literals: Vec<(Expr, bool)> = group
                 .tests
                 .iter()
                 .filter_map(|test| switch_literal(test))
                 .collect();
+            if literals.is_empty() {
+                continue;
+            }
             if let [(literal, true)] = literals.as_slice() {
                 clauses.push(Clause::new(literal.clone(), body));
                 continue;
@@ -561,27 +661,41 @@ impl<'a> Lowerer<'a, '_> {
                 .collect();
             clauses.push(Clause::guarded(Expr::var("_"), guards, body));
         }
-        if !has_default {
-            let exit = self.branch(|lowerer| lowerer.fall_through(inner));
-            clauses.push(Clause::new(Expr::var("_"), exit));
-        }
+        let otherwise =
+            default.unwrap_or_else(|| self.branch(|lowerer| lowerer.fall_through(inner)));
+        clauses.push(Clause::new(Expr::var("_"), otherwise));
         Expr::case(discriminant.clone(), clauses)
     }
 
-    /// Nested `case`s on `bouy_rt:strict_eq/2` when some test is not a literal.
+    /// Nested `case`s on `bouy_rt:strict_eq/2` when some test is not a literal. The tests
+    /// run in source order, and `default` runs only when none matches.
     fn switch_chain(
         &mut self,
         discriminant: &Expr,
         groups: &[Group<'a>],
         inner: &Tail<'_>,
     ) -> Vec<Expr> {
+        let default = groups.iter().find(|group| group.default);
+        self.switch_tests(discriminant, groups, default, inner)
+    }
+
+    fn switch_tests(
+        &mut self,
+        discriminant: &Expr,
+        groups: &[Group<'a>],
+        default: Option<&Group<'a>>,
+        inner: &Tail<'_>,
+    ) -> Vec<Expr> {
         let Some((group, later)) = groups.split_first() else {
-            return self.branch(|lowerer| lowerer.fall_through(inner));
+            return self.branch(|lowerer| match default {
+                Some(group) => lowerer.block_of(&group.body, inner),
+                None => lowerer.fall_through(inner),
+            });
         };
-        let body = self.branch(|lowerer| lowerer.block_of(&group.body, inner));
-        if group.default {
-            return body;
+        if group.tests.is_empty() {
+            return self.switch_tests(discriminant, later, default, inner);
         }
+        let body = self.branch(|lowerer| lowerer.block_of(&group.body, inner));
         let test = group
             .tests
             .iter()
@@ -591,7 +705,7 @@ impl<'a> Lowerer<'a, '_> {
             })
             .reduce(|left, right| Expr::op("orelse", left, right))
             .unwrap_or_else(|| Expr::atom("false"));
-        let otherwise = self.switch_chain(discriminant, later, inner);
+        let otherwise = self.switch_tests(discriminant, later, default, inner);
         vec![boolean_case(test, body, otherwise)]
     }
 
@@ -623,7 +737,9 @@ impl<'a> Lowerer<'a, '_> {
             let assigns = !self
                 .rebound(attempt.span, |found| found.visit_block_statement(finalizer))
                 .is_empty();
-            if assigns {
+            // In a generator body, a failed `yield*` skips `finally` (section 13), which an
+            // Erlang `after` block cannot do.
+            if assigns || self.generator {
                 return self.try_finally_rebinding(attempt, escapes, rest, tail);
             }
         }
@@ -740,17 +856,22 @@ impl<'a> Lowerer<'a, '_> {
             (names, pattern)
         };
         let ([class, reason, stack], caught) = raised(self);
+        let mut catches = Vec::new();
+        if self.generator {
+            catches.push(self.abandon(&checkpoint));
+        }
+        catches.push(CatchClause {
+            class: Expr::Var(class),
+            reason: Expr::Var(reason),
+            stack,
+            body: vec![caught],
+        });
         let outcome = self.scope.temp();
         self.seq.push(Expr::matches(
             Expr::var(&outcome),
             Expr::Try {
                 body: vec![Expr::tagged("done", protected)],
-                catches: vec![CatchClause {
-                    class: Expr::Var(class),
-                    reason: Expr::Var(reason),
-                    stack,
-                    body: vec![caught],
-                }],
+                catches,
                 after: Vec::new(),
             },
         ));
@@ -765,10 +886,9 @@ impl<'a> Lowerer<'a, '_> {
                 vars: &[],
                 abrupt: false,
             };
-            for statement in &finalizer.body {
-                let before = self.checkpointed();
-                self.statement(statement, &[], &quiet);
-                self.record_checkpoints(&before);
+            self.block(&finalizer.body, &quiet);
+            if self.seq.last() == Some(&Expr::ok()) {
+                self.seq.pop();
             }
         }
         let ([class, reason, stack], pattern) = raised(self);
@@ -789,6 +909,26 @@ impl<'a> Lowerer<'a, '_> {
         }
         let completion = self.rebuilt_completion(&outcome, reraise, escapes, &vars);
         self.finish(completion, Shape::Bare, &vars, escapes, rest, tail)
+    }
+
+    /// `throw:Reason:Stack -> erlang:erase(Key), erlang:raise(throw, Reason, Stack)`: a
+    /// failed `yield*` throws, and Effect abandons the generator, so `finally` does not run.
+    fn abandon(&mut self, checkpoint: &Checkpoint) -> CatchClause {
+        let reason = self.scope.temp();
+        let stack = self.scope.temp();
+        CatchClause {
+            class: Expr::atom("throw"),
+            reason: Expr::var(&reason),
+            body: vec![
+                Expr::call("erlang", "erase", vec![Expr::var(&checkpoint.key)]),
+                Expr::call(
+                    "erlang",
+                    "raise",
+                    vec![Expr::atom("throw"), Expr::Var(reason), Expr::var(&stack)],
+                ),
+            ],
+            stack,
+        }
     }
 
     /// The completion of a `try` after its `finally` statements ran: each jump that the
@@ -914,28 +1054,6 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// The current versions of the variables of each open checkpoint.
-    fn checkpointed(&self) -> Vec<Expr> {
-        self.checkpoints
-            .iter()
-            .map(|checkpoint| self.scope.tuple(&checkpoint.vars))
-            .collect()
-    }
-
-    /// Records each checkpoint whose variables changed since `before`.
-    fn record_checkpoints(&mut self, before: &[Expr]) {
-        for (checkpoint, before) in self.checkpoints.iter().zip(before) {
-            let now = self.scope.tuple(&checkpoint.vars);
-            if &now != before {
-                self.seq.push(Expr::call(
-                    "erlang",
-                    "put",
-                    vec![Expr::var(&checkpoint.key), now],
-                ));
-            }
-        }
-    }
-
     fn for_statement(
         &mut self,
         each: &'a ForStatement<'a>,
@@ -1048,6 +1166,14 @@ impl<'a> Lowerer<'a, '_> {
         rest: &[&'a Statement<'a>],
         tail: &Tail<'_>,
     ) -> Flow {
+        if let ForStatementLeft::VariableDeclaration(variables) = left
+            && variables.kind == VariableDeclarationKind::Var
+        {
+            self.unsupported(
+                variables.span,
+                "`var` is not supported; use `let` or `const`",
+            );
+        }
         let state = self.rebound(span, |found| {
             if let Some(target) = left.as_assignment_target() {
                 found.assigned(target);
@@ -1343,7 +1469,7 @@ impl<'a> Lowerer<'a, '_> {
 
 /// Expands nested blocks in place. Lexical scoping survives because versions are keyed by
 /// symbol.
-fn flatten<'a>(statements: &[&'a Statement<'a>]) -> Vec<&'a Statement<'a>> {
+pub fn flatten<'a>(statements: &[&'a Statement<'a>]) -> Vec<&'a Statement<'a>> {
     let mut flat = Vec::with_capacity(statements.len());
     for statement in statements {
         match statement {

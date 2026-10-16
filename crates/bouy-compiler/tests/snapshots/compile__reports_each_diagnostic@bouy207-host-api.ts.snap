@@ -3,7 +3,7 @@ source: crates/bouy-compiler/tests/compile.rs
 expression: render(&diagnostics)
 input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy207-host-api.ts
 ---
-bouy207-host-api.ts:1:1: BOUY207: `setTimeout` is not available in Bouy; read process.env.NAME or process.argv, and use sleep or schedule from "bouy" for timers
-bouy207-host-api.ts:2:13: BOUY207: `globalThis` is not available in Bouy; read process.env.NAME or process.argv, and use sleep or schedule from "bouy" for timers
-bouy207-host-api.ts:3:1: BOUY207: `process.exit` is not available in Bouy; read process.env.NAME or process.argv, and use sleep or schedule from "bouy" for timers
-bouy207-host-api.ts:4:13: BOUY207: `process.cwd` is not available in Bouy; read process.env.NAME or process.argv, and use sleep or schedule from "bouy" for timers
+bouy207-host-api.ts:1:1: BOUY207: `setTimeout` is not available in Bouy; use sleep or schedule from "bouy" for timers
+bouy207-host-api.ts:2:13: BOUY207: `globalThis` is not available in Bouy; import the value or pass it as an argument
+bouy207-host-api.ts:3:1: BOUY207: `process.exit` is not available in Bouy; read process.env.NAME or process.argv, and throw an error to exit with status 1
+bouy207-host-api.ts:4:13: BOUY207: `process.cwd` is not available in Bouy; read process.env.NAME or process.argv, and throw an error to exit with status 1

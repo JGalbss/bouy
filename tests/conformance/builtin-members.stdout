@@ -1,0 +1,19 @@
+index call: 11 20
+tuple call: double 42
+numeric key call: one
+optional method: [ 2, 4, 6 ] function function function
+missing method: undefined undefined
+destructured method: function
+inherited: true function true true
+detached method: TypeError
+method call: [ 2, 3 ] [ 'a', 'b' ]
+Object.is: true true false
+groupBy: [ 1, 3, 5 ] [ 2, 4 ]
+Map.groupBy: [ 'a', 'd' ] [ 'bb', 'cc' ] 2
+getOwnPropertyNames: [ '0', '1', 'length' ] [ 'a' ]
+Object.create(null): value [ 'key' ]
+map(JSON.parse): [ { a: 1 }, { a: 2 } ]
+map(JSON.stringify): [ '[1,2]', '[3]' ] [ '"a"', '"b"' ]
+Array.from primitive: [] []
+TypeError: Iterator value 1 is not an entry object
+RangeError: toString() radix argument must be between 2 and 36
