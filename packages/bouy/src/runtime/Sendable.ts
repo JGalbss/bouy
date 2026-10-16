@@ -138,14 +138,11 @@ const sendableOrFailure = <A>(
 
 type Primitive = string | number | boolean | bigint | null | undefined;
 
-const isPrimitive = (value: unknown): value is Primitive =>
+const isPrimitive = <V>(value: V): value is V & Primitive =>
   Object(value) !== value && !Predicate.isSymbol(value);
 
-const areAllPrimitive = (values: ReadonlyArray<unknown>): values is ReadonlyArray<Primitive> =>
-  values.every(isPrimitive);
-
 export const copyArguments = (args: ReadonlyArray<unknown>): ReadonlyArray<Sendable> => {
-  if (areAllPrimitive(args)) return [...args];
+  if (args.every(isPrimitive)) return [...args];
   return sendableOrFailure(args, decodeArguments);
 };
 
