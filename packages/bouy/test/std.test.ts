@@ -21,19 +21,28 @@ class Worker {
   }
 }
 
+const incarnations = { next: 0 };
+
 class Heartbeat {
-  #beats = 0;
+  readonly #id: number;
+  readonly #sources: Array<number> = [];
 
   constructor() {
-    schedule(self<Heartbeat>(this), { every: 5 }, "beat");
+    incarnations.next += 1;
+    this.#id = incarnations.next;
+    schedule(self<Heartbeat>(this), { every: 5 }, "beat", this.#id);
   }
 
-  beat(): void {
-    this.#beats += 1;
+  beat(source: number): void {
+    this.#sources.push(source);
   }
 
-  beats(): number {
-    return this.#beats;
+  id(): number {
+    return this.#id;
+  }
+
+  sources(): Array<number> {
+    return this.#sources;
   }
 
   explode(): never {
@@ -58,6 +67,14 @@ class Reminder {
 }
 
 const settle = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const until = async (ready: () => Promise<boolean>): Promise<void> => {
+  const deadline = performance.now() + 5_000;
+  while (!(await ready())) {
+    if (performance.now() > deadline) throw new Error("the condition did not hold within 5 s");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+};
 
 afterEach(() => shutdown());
 
@@ -84,14 +101,17 @@ describe("pool", () => {
 describe("timers", () => {
   it("delivers periodic messages to the actor and stops them on restart", async () => {
     const heartbeat = spawn(Heartbeat);
-    await settle(40);
-    expect(await heartbeat.beats()).toBeGreaterThan(2);
+    await until(async () => (await heartbeat.sources()).length >= 3);
+    const before = await heartbeat.id();
     await expect(heartbeat.explode()).rejects.toBeInstanceOf(ActorFailed);
-    const afterRestart = await heartbeat.beats();
-    await settle(40);
-    const later = await heartbeat.beats();
-    expect(later - afterRestart).toBeLessThan(20);
-    expect(later).toBeGreaterThan(afterRestart);
+    const after = await heartbeat.id();
+    await until(
+      async () => (await heartbeat.sources()).filter((source) => source === after).length >= 5,
+    );
+    const sources = await heartbeat.sources();
+    expect(after).not.toBe(before);
+    expect(sources.filter((source) => source === before).length).toBeLessThanOrEqual(1);
+    expect(sources.slice(1).every((source) => source === after)).toBe(true);
   });
 
   it("delivers a single delayed message", async () => {
@@ -104,7 +124,7 @@ describe("timers", () => {
 
   it("stops timers when the actor stops", async () => {
     const heartbeat = spawn(Heartbeat);
-    await settle(15);
+    await until(async () => (await heartbeat.sources()).length >= 1);
     await stop(heartbeat);
     await settle(30);
     expect(inspect().some((actor) => actor.name === "Heartbeat")).toBe(false);
