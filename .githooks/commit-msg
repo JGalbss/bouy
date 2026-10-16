@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node "$(git rev-parse --show-toplevel)/scripts/check-commits.ts" --message-file "$1"

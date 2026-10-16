@@ -1,0 +1,13 @@
+{
+  "printWidth": 100,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "ignorePatterns": [
+    "node_modules/",
+    "pnpm-lock.yaml",
+    "tools/oxlint/guardrails/anti-slop/",
+    ".bouy/"
+  ]
+}

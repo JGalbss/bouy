@@ -1,0 +1,40 @@
+{
+  "name": "bouy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A TypeScript compiler and runtime that makes actors the execution primitive for AI agents.",
+  "license": "MIT",
+  "bin": {
+    "bouy": "./bin/bouy.ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "lint": "oxlint --type-aware",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check ."
+  },
+  "dependencies": {
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@ai-sdk/openai": "4.0.95",
+    "@oxlint/plugins": "1.88.0",
+    "@types/node": "26.6.5",
+    "ai": "7.0.142",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
+    "oxlint-tsgolint": "7.0.2004",
+    "zod": "4.6.7"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.28.1"
+}
