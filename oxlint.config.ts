@@ -13,6 +13,9 @@ export default defineConfig({
     "**/fixtures/**",
     // Compiler inputs: these programs exercise every construct the compiler lowers.
     "tests/**",
+    // Benchmark programs: Bouy compiler inputs and the plain Node baselines that they
+    // measure against, which await in loops on purpose to time one call at a time.
+    "bench/programs/**",
   ],
   overrides: [...(preset.overrides ?? [])],
 });
