@@ -1,0 +1,11 @@
+{
+  "name": "@bouy/tests",
+  "private": true,
+  "description": "Oracle dependencies only. Node runs the test programs with these packages to record the expected output; Bouy never loads them.",
+  "type": "module",
+  "devDependencies": {
+    "@ai-sdk/openai": "4.0.95",
+    "ai": "7.0.142",
+    "effect": "4.0.5"
+  }
+}
