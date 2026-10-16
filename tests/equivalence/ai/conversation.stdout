@@ -1,0 +1,9 @@
+openai.chat gpt-4o-mini v4
+proxy.chat gpt-4o
+Hello! You said: Hello from a named provider {"modelId":"gpt-4o","provider":"proxy.chat"} gpt-4o-2026-01-01
+Hello! System: You know cities. You said: Tell me about Lima
+1 ["assistant"]
+Results: lookup -> {"city":"Oslo","population":4000}
+2 ["assistant"]
+6 ["user","assistant","user","assistant","tool","assistant"]
+[{"content":"Tell me about Lima","role":"user"},{"content":[{"text":"Hello! System: You know cities. You said: Tell me about Lima","type":"text"}],"role":"assistant"},{"content":"And Oslo? CALLS [[{\"name\":\"lookup\",\"input\":{\"city\":\"Oslo\"}}]]","role":"user"},{"content":[{"input":{"city":"Oslo"},"toolCallId":"call_1_1","toolName":"lookup","type":"tool-call"}],"role":"assistant"},{"content":[{"output":{"type":"json","value":{"city":"Oslo","population":4000}},"toolCallId":"call_1_1","toolName":"lookup","type":"tool-result"}],"role":"tool"},{"content":[{"text":"Results: lookup -> {\"city\":\"Oslo\",\"population\":4000}","type":"text"}],"role":"assistant"}]

@@ -1,0 +1,69 @@
+401
+AI_APICallError | Incorrect API key provided: sk-wrong. | true
+  status 401 retryable false url true
+  body {"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-wrong.","param":null,"type":"invalid_request_error"}}
+  data {"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-wrong.","param":null,"type":"invalid_request_error"}}
+  headers {"connection":"close","content-length":"130","content-type":"application/json"}
+  request {"messages":[{"content":"hi","role":"user"}],"model":"gpt-4o-mini"}
+500 without retries
+AI_APICallError | The server had an error while processing your request. | true
+  status 500 retryable true url true
+  body {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  data {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  headers {"connection":"close","content-length":"125","content-type":"application/json","retry-after-ms":"0"}
+  request {"messages":[{"content":"hi","role":"user"}],"model":"fake-500"}
+500 with one retry
+AI_RetryError | Failed after 2 attempts. Last error: AI_APICallError: The server had an error while processing your request. | true
+  reason maxRetriesExceeded attempts 2 false
+AI_APICallError | The server had an error while processing your request. | true
+  status 500 retryable true url true
+  body {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  data {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  headers {"connection":"close","content-length":"125","content-type":"application/json","retry-after-ms":"0"}
+  request {"messages":[{"content":"hi","role":"user"}],"model":"fake-500"}
+AI_APICallError | The server had an error while processing your request. | true
+  status 500 retryable true url true
+  body {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  data {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  headers {"connection":"close","content-length":"125","content-type":"application/json","retry-after-ms":"0"}
+  request {"messages":[{"content":"hi","role":"user"}],"model":"fake-500"}
+500 with default retries
+AI_RetryError | Failed after 3 attempts. Last error: AI_APICallError: The server had an error while processing your request. | true
+  reason maxRetriesExceeded attempts 3 true
+AI_APICallError | The server had an error while processing your request. | true
+  status 500 retryable true url true
+  body {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  data {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  headers {"connection":"close","content-length":"125","content-type":"application/json","retry-after-ms":"0"}
+  request {"messages":[{"content":"hi","role":"user"}],"model":"fake-500"}
+AI_APICallError | The server had an error while processing your request. | true
+  status 500 retryable true url true
+  body {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  data {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  headers {"connection":"close","content-length":"125","content-type":"application/json","retry-after-ms":"0"}
+  request {"messages":[{"content":"hi","role":"user"}],"model":"fake-500"}
+AI_APICallError | The server had an error while processing your request. | true
+  status 500 retryable true url true
+  body {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  data {"error":{"code":null,"message":"The server had an error while processing your request.","param":null,"type":"server_error"}}
+  headers {"connection":"close","content-length":"125","content-type":"application/json","retry-after-ms":"0"}
+  request {"messages":[{"content":"hi","role":"user"}],"model":"fake-500"}
+api key
+AI_LoadAPIKeyError | OpenAI API key must be a string. | true
+no prompt
+AI_InvalidPromptError | Invalid prompt: prompt or messages must be defined | true
+both
+AI_InvalidPromptError | Invalid prompt: prompt and messages cannot be defined at the same time | true
+empty
+AI_InvalidPromptError | Invalid prompt: messages must not be empty | true
+system message
+AI_InvalidPromptError | Invalid prompt: System messages are not allowed in the prompt or messages fields. Use the instructions option instead. | true
+bad message
+AI_InvalidPromptError | Invalid prompt: The messages do not match the ModelMessage[] schema. | true
+bad instructions
+AI_InvalidPromptError | Invalid prompt: instructions must be a string, SystemModelMessage, or array of SystemModelMessage | true
+negative retries
+AI_InvalidArgumentError | Invalid argument for parameter maxRetries: maxRetries must be >= 0 | true
+fractional retries
+AI_InvalidArgumentError | Invalid argument for parameter maxRetries: maxRetries must be an integer | true
+fine succeeded: Hello! You said: still works

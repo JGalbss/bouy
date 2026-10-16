@@ -1,0 +1,15 @@
+Hello! System: You are terse. You said: Say hello
+stop stop Hello! System: You are terse. You said: Say hello
+{"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":20},"inputTokens":20,"outputTokenDetails":{"reasoningTokens":0,"textTokens":9},"outputTokens":9,"raw":{"completion_tokens":9,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":20,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":29},"totalTokens":29}
+{"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":20},"inputTokens":20,"outputTokenDetails":{"reasoningTokens":0,"textTokens":9},"outputTokens":9,"raw":{"completion_tokens":9,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":20,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":29},"totalTokens":29}
+chatcmpl-fake-2 gpt-4o-mini-2026-01-01 2026-01-01T00:00:02.000Z
+{"connection":"close","content-length":"425","content-type":"application/json","x-request-id":"req_fake_2"}
+[{"content":[{"text":"Hello! System: You are terse. You said: Say hello","type":"text"}],"role":"assistant"}]
+[{"content":[{"text":"Hello! System: You are terse. You said: Say hello","type":"text"}],"role":"assistant"}]
+1 0 {"modelId":"gpt-4o-mini","provider":"openai.chat"}
+[{"text":"Hello! System: You are terse. You said: Say hello","type":"text"}]
+{"openai":{}} 0
+0 0 0 0
+{} undefined
+true stop true
+length length Hello! You said: Cut me short

@@ -1,0 +1,32 @@
+shout call_2_1 after 3 messages
+Results: add -> 5, multiply -> {"product":20}, shout -> DONE
+3 stop
+step 0: tool-calls tool_calls text=""
+  calls [{"input":{"a":2,"b":3},"toolCallId":"call_1_1","toolName":"add","type":"tool-call"},{"input":{"a":4,"b":5},"toolCallId":"call_1_2","toolName":"multiply","type":"tool-call"}]
+  results [{"dynamic":false,"input":{"a":2,"b":3},"output":5,"toolCallId":"call_1_1","toolName":"add","type":"tool-result"},{"dynamic":false,"input":{"a":4,"b":5},"output":{"product":20},"toolCallId":"call_1_2","toolName":"multiply","type":"tool-result"}]
+  content ["tool-call","tool-call","tool-result","tool-result"]
+  usage {"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":35},"inputTokens":35,"outputTokenDetails":{"reasoningTokens":0,"textTokens":6},"outputTokens":6,"raw":{"completion_tokens":6,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":35,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":41},"totalTokens":41}
+  response chatcmpl-fake-2 gpt-4o-mini-2026-01-01 2026-01-01T00:00:02.000Z
+  messages [{"content":[{"input":{"a":2,"b":3},"toolCallId":"call_1_1","toolName":"add","type":"tool-call"},{"input":{"a":4,"b":5},"toolCallId":"call_1_2","toolName":"multiply","type":"tool-call"}],"role":"assistant"},{"content":[{"output":{"type":"json","value":5},"toolCallId":"call_1_1","toolName":"add","type":"tool-result"},{"output":{"type":"json","value":{"product":20}},"toolCallId":"call_1_2","toolName":"multiply","type":"tool-result"}],"role":"tool"}]
+step 1: tool-calls tool_calls text=""
+  calls [{"input":{"word":"done"},"toolCallId":"call_2_1","toolName":"shout","type":"tool-call"}]
+  results [{"dynamic":false,"input":{"word":"done"},"output":"DONE","toolCallId":"call_2_1","toolName":"shout","type":"tool-result"}]
+  content ["tool-call","tool-result"]
+  usage {"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":65},"inputTokens":65,"outputTokenDetails":{"reasoningTokens":0,"textTokens":3},"outputTokens":3,"raw":{"completion_tokens":3,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":65,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":68},"totalTokens":68}
+  response chatcmpl-fake-5 gpt-4o-mini-2026-01-01 2026-01-01T00:00:05.000Z
+  messages [{"content":[{"input":{"word":"done"},"toolCallId":"call_2_1","toolName":"shout","type":"tool-call"}],"role":"assistant"},{"content":[{"output":{"type":"text","value":"DONE"},"toolCallId":"call_2_1","toolName":"shout","type":"tool-result"}],"role":"tool"}]
+step 2: stop stop text="Results: add -> 5, multiply -> {\"product\":20}, shout -> DONE"
+  calls []
+  results []
+  content ["text"]
+  usage {"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":85},"inputTokens":85,"outputTokenDetails":{"reasoningTokens":0,"textTokens":10},"outputTokens":10,"raw":{"completion_tokens":10,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":85,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":95},"totalTokens":95}
+  response chatcmpl-fake-7 gpt-4o-mini-2026-01-01 2026-01-01T00:00:07.000Z
+  messages [{"content":[{"text":"Results: add -> 5, multiply -> {\"product\":20}, shout -> DONE","type":"text"}],"role":"assistant"}]
+[["call_1_1","add",{"a":2,"b":3}],["call_1_2","multiply",{"a":4,"b":5}],["call_2_1","shout",{"word":"done"}]]
+[["call_1_1",5],["call_1_2",{"product":20}],["call_2_1","DONE"]]
+3 0
+3 0
+{"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":185},"inputTokens":185,"outputTokenDetails":{"reasoningTokens":0,"textTokens":19},"outputTokens":19,"totalTokens":204}
+[{"content":[{"input":{"a":2,"b":3},"toolCallId":"call_1_1","toolName":"add","type":"tool-call"},{"input":{"a":4,"b":5},"toolCallId":"call_1_2","toolName":"multiply","type":"tool-call"}],"role":"assistant"},{"content":[{"output":{"type":"json","value":5},"toolCallId":"call_1_1","toolName":"add","type":"tool-result"},{"output":{"type":"json","value":{"product":20}},"toolCallId":"call_1_2","toolName":"multiply","type":"tool-result"}],"role":"tool"},{"content":[{"input":{"word":"done"},"toolCallId":"call_2_1","toolName":"shout","type":"tool-call"}],"role":"assistant"},{"content":[{"output":{"type":"text","value":"DONE"},"toolCallId":"call_2_1","toolName":"shout","type":"tool-result"}],"role":"tool"},{"content":[{"text":"Results: add -> 5, multiply -> {\"product\":20}, shout -> DONE","type":"text"}],"role":"assistant"}]
+[{"content":[{"text":"Results: add -> 5, multiply -> {\"product\":20}, shout -> DONE","type":"text"}],"role":"assistant"}]
+1 tool-calls "" 2

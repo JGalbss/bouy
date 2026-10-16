@@ -1,0 +1,25 @@
+Results: fail -> {"error":"Error: boom"}, fail -> {"error":"plain failure"}, missing -> {"error":"AI_NoSuchToolError: Model tried to call unavailable tool 'missing'. Available tools: add, fail."}, add -> {"error":"AI_InvalidToolInputError: Invalid input for tool add: AI_JSONParseError: JSON parsing failed: Text: #oops.\nError message: SyntaxError: Unexpected token '#', \"#oops\" is not valid JSON"}, add -> null
+6 stop
+step 0: ["tool-call","tool-error"]
+  error fail {"a":1,"b":0} false Error: boom
+  call fail {"a":1,"b":0} false false
+  tool message [{"content":[{"output":{"type":"error-text","value":"Error: boom"},"toolCallId":"call_1_1","toolName":"fail","type":"tool-result"}],"role":"tool"}]
+step 1: ["tool-call","tool-error"]
+  error fail {"a":0,"b":0} false plain failure
+  call fail {"a":0,"b":0} false false
+  tool message [{"content":[{"output":{"type":"error-text","value":"plain failure"},"toolCallId":"call_2_1","toolName":"fail","type":"tool-result"}],"role":"tool"}]
+step 2: ["tool-call","tool-error"]
+  error missing {"a":1,"b":2} true AI_NoSuchToolError: Model tried to call unavailable tool 'missing'. Available tools: add, fail.
+  call missing {"a":1,"b":2} true true
+  tool message [{"content":[{"output":{"type":"error-text","value":"AI_NoSuchToolError: Model tried to call unavailable tool 'missing'. Available tools: add, fail."},"toolCallId":"call_3_1","toolName":"missing","type":"tool-result"}],"role":"tool"}]
+step 3: ["tool-call","tool-error"]
+  error add "#oops" true AI_InvalidToolInputError: Invalid input for tool add: AI_JSONParseError: JSON parsing failed: Text: #oops.
+Error message: SyntaxError: Unexpected token '#', "#oops" is not valid JSON
+  call add "#oops" true true
+  tool message [{"content":[{"output":{"type":"error-text","value":"AI_InvalidToolInputError: Invalid input for tool add: AI_JSONParseError: JSON parsing failed: Text: #oops.\nError message: SyntaxError: Unexpected token '#', \"#oops\" is not valid JSON"},"toolCallId":"call_4_1","toolName":"add","type":"tool-result"}],"role":"tool"}]
+step 4: ["tool-call","tool-result"]
+  call add {} false false
+  tool message [{"content":[{"output":{"type":"json","value":null},"toolCallId":"call_5_1","toolName":"add","type":"tool-result"}],"role":"tool"}]
+step 5: ["text"]
+  tool message []
+3 2 1

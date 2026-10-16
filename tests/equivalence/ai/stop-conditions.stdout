@@ -1,0 +1,6 @@
+two steps 2 tool-calls ["echo","shout"] ""
+until shout 2 tool-calls ["echo","shout"] ""
+array 4 stop ["echo","shout","echo",""] "Results: echo -> one, shout -> TWO, echo -> three"
+one step 1 tool-calls ["echo"] ""
+no execute 1 tool-calls ["echo"] ""
+[{"input":{"word":"one"},"toolCallId":"call_1_1","toolName":"echo","type":"tool-call"}] 0 [{"content":[{"input":{"word":"one"},"toolCallId":"call_1_1","toolName":"echo","type":"tool-call"}],"role":"assistant"}]
