@@ -1,6 +1,2 @@
 packages:
-  - packages/*
-  - crates/*
-  - examples
-  - bench
-  - e2e
+  - runtime

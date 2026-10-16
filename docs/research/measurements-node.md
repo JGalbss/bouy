@@ -1,5 +1,7 @@
 # Measurements: JavaScript isolation units on Node 25 and Bun 1.3.11
 
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+
 This note records what each JavaScript isolation unit costs on one machine. The architecture decision record uses the numbers for three designs:
 
 - Option C: many actors inside one isolate on Node, Deno, or Bun.

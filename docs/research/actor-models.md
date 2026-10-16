@@ -1,5 +1,7 @@
 # Actor models: semantic lessons for Bouy
 
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+
 Track: actor-models. Date: 2026-10-16.
 
 This note surveys actor systems and their programming models. It picks no engine. It states the semantics that any Bouy engine must implement, and it gives the evidence for each choice. The last section, "Recommended semantics for Bouy", is the contract that the engine tracks can test against.

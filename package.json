@@ -1,32 +1,25 @@
 {
   "name": "bouy-workspace",
   "private": true,
-  "description": "Bouy: a TypeScript compiler and runtime that makes actors the execution primitive for AI agents.",
+  "description": "Bouy: a compiler from TypeScript to Erlang, and an OTP runtime that makes actors the execution primitive for AI agents.",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
-    "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
-    "test": "turbo run test && cargo test --workspace",
-    "bench": "turbo run bench",
-    "lint": "oxlint --type-aware",
-    "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
+    "build": "cargo build --workspace && turbo run build",
+    "test": "cargo test --workspace && turbo run test",
+    "lint": "oxlint --type-aware && cargo clippy --workspace --all-targets -- -D warnings && turbo run lint",
     "format": "oxfmt --write . && cargo fmt --all",
     "format:check": "oxfmt --check . && cargo fmt --all --check",
-    "check": "pnpm format:check && pnpm lint && pnpm lint:rust && turbo run typecheck test build && cargo test --workspace"
+    "check": "pnpm format:check && pnpm lint && pnpm test"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.88.0",
-    "@types/node": "26.6.5",
     "oxfmt": "0.73.0",
     "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
     "turbo": "2.11.8",
     "typescript": "7.0.2"
-  },
-  "engines": {
-    "node": ">=24"
   },
   "packageManager": "pnpm@10.28.1"
 }

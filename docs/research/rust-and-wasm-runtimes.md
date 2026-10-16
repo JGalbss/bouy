@@ -1,5 +1,7 @@
 # Rust async runtimes, Rust actor frameworks, and WebAssembly process models
 
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+
 Research track: rust-wasm. Date: 2026-10-16.
 
 This note collects evidence for two options in the architecture decision:

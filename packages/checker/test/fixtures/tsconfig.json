@@ -1,9 +1,0 @@
-{
-  "extends": "../../../../tsconfig.base.json",
-  "compilerOptions": {
-    "paths": {
-      "bouy": ["../../../bouy/src/index.ts"],
-      "bouy/std": ["../../../bouy/src/std.ts"]
-    }
-  }
-}

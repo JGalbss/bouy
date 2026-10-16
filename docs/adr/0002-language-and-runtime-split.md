@@ -2,6 +2,8 @@
 
 ## 1. Status and context
 
+**Superseded, 2026-10-16:** Bouy no longer runs on Node or Bun. It compiles TypeScript to Erlang and runs on BEAM; see [the BEAM contract](../design/beam-runtime.md). Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+
 **Status:** Accepted, 2026-10-16. The code at commit `86b0df8` implements each decision below.
 
 [ADR 0001](0001-execution-architecture.md) chooses many default actors per thread on Node and Bun, with opt-in thread actors, and plans a pool of worker-thread schedulers (D1). This record decides which language each part uses, how the parts connect, and which command runs each check.
@@ -94,7 +96,7 @@ In the recorded startup suite, the compiler hook left the Node CPU median for a 
 ## 7. References
 
 - [ADR 0001](0001-execution-architecture.md) and [AGENTS.md](../../AGENTS.md)
-- [benchmarks.md](../benchmarks.md), output in [bench/results/](../../bench/results/)
+- [benchmarks.md](../benchmarks.md), output in [bench/results/](https://github.com/JGalbss/bouy/tree/90529d8/bench/results)
 - [measurements-node.md](../research/measurements-node.md), E2
 - Commit messages: `git show 16b86fd` and `git show 86b0df8`
 - `effect` 4.0.5: `src/Scheduler.ts`

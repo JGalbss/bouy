@@ -2,22 +2,21 @@
 
 ## Layout
 
-- `packages/bouy`: the `bouy` npm package. It holds the actor runtime, the public API, and the CLI, in TypeScript with Effect.
-- `packages/checker`: `@bouy/checker`, type-aware isolation diagnostics built on the TypeScript compiler API.
-- `crates/bouy-compiler`: the Rust compiler that lowers one TypeScript module into actor-aware JavaScript with oxc.
-- `crates/bouy-compiler-node`: `@bouy/compiler`, the napi-rs binding that loads the Rust compiler into Node.
-- `examples`, `bench`, `e2e`: runnable agents, benchmarks against plain Node.js, and end-to-end tests.
-- `docs`: the architecture document, the decision records in `docs/adr/`, and research notes in `docs/research/`.
+- `crates/bouy-compiler`: the Rust compiler. oxc parses each TypeScript module, and the compiler lowers it to one Erlang module.
+- `crates/bouy-cli`: the `bouy` command. It embeds the runtime sources, writes the generated Erlang, and starts one BEAM VM.
+- `runtime`: the `bouy` OTP application in Erlang: the JavaScript value core, actors, supervision, and the library modules. rebar3 builds and tests it.
+- `tests`: TypeScript programs that the Rust end-to-end tests compile and run.
+- `docs/design/beam-runtime.md`: the contract between the compiler, the CLI, and the runtime. `docs/adr/` holds the decision records, and `docs/research/` holds the research notes.
 
-Turborepo runs the TypeScript tasks. Cargo builds the crates. `rust-toolchain.toml` pins Rust, so use the rustup toolchain, not a system `cargo`.
+Turborepo orders and caches the runtime tasks. Cargo builds the crates. `rust-toolchain.toml` pins Rust, so use the rustup toolchain, not a system `cargo`.
 
 ## Rules
 
-- Run `pnpm check` before every commit. It runs oxfmt and rustfmt checks, oxlint and clippy, the TypeScript type check, the Vitest and Cargo tests, and the builds.
+- The product runs on BEAM only. Do not add a Node, Bun, or V8 dependency to the compiler, the CLI, or the runtime. Node may appear only as a test oracle for JavaScript semantics and as a benchmark baseline.
+- Run `pnpm check` before every commit. It runs the oxfmt and rustfmt checks, oxlint, clippy, the Cargo tests, and the rebar3 EUnit tests and dialyzer.
 - Write commit subjects as Conventional Commits: `<type>(<scope>): <summary>`. The `commit-msg` hook in `.githooks/` and the CI `commits` job reject other subjects.
+- The contract in `docs/design/beam-runtime.md` is normative. Change it in the same commit as a change to a name or a semantic it defines.
+- Rust follows Rust idioms and the workspace lints. Erlang follows OTP conventions: a `-spec` on every exported function, no compiler warnings, and a clean dialyzer run. TypeScript source, such as examples, uses Effect 4.
 - The lint uses the vendored guardrails plugins in `tools/oxlint/guardrails/`. Do not edit that copy. Do not disable a rule, lower a severity, or add a cast to make the lint pass. Change the code.
-- Write TypeScript source with Effect 4: services as `Context.Service` with a static `layer`, errors as `Schema.TaggedError`, reusable operations as `Effect.fn("Module.operation")`. Effect applies to TypeScript only. Code in another language follows that language's own idioms. Measurement scripts in `bench/evidence/` that time raw platform primitives stay plain, because Effect would add its own cost to the number.
-- `src/` uses erasable TypeScript syntax only, because Node runs it with type stripping. Use `.ts` extensions on relative imports.
 - Every performance claim in a document cites a benchmark in `bench/` and its recorded output. Do not write a number that no benchmark produced.
-- Every claim about npm compatibility names the package, the version, and the test that proves it.
-- `docs/architecture.md` is the living design document. Update it in the same commit as a change to the semantics it describes.
+- Every claim about library compatibility names the package, the version, and the test that proves it.

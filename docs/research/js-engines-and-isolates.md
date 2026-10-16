@@ -1,5 +1,7 @@
 # JavaScript engines and isolates as actor substrates
 
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+
 This note is the "engines" track of the architecture decision. It evaluates three options:
 
 - **C**: TypeScript compiles to JavaScript that runs on V8 or JavaScriptCore. Node, Deno, or Bun hosts many lightweight actors in one isolate.

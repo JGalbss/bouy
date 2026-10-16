@@ -1,5 +1,7 @@
 # BEAM and OTP: the reference model, option A, and option D3
 
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+
 Track: beam. Date: 2026-10-16.
 
 This note describes the BEAM and OTP mechanisms that Bouy wants to imitate. It then evaluates option A (TypeScript compiled to BEAM bytecode with a JavaScript compatibility layer) and option D3 (a BEAM host that runs JavaScript in NIFs or ports). Part 4 scores both options on the nine criteria. It also scores option C on the criteria where BEAM evidence applies. The last section lists the OTP semantics Bouy should copy and the parts that a JavaScript engine cannot copy.

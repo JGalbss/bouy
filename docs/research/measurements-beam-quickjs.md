@@ -1,5 +1,7 @@
 # Measurements: BEAM and QuickJS comparison points
 
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+
 This note measures BEAM processes and QuickJS-wasm runtimes on the Bouy development machine. It also measures Node 25 actors inside one isolate with the same three benchmarks, in the same Linux VM. The architecture decision record uses these numbers for criterion 4 (Startup time and memory per actor) and criterion 5 (Message throughput and latency).
 
 Every number below comes from `bench/evidence/results/beam-quickjs-2026-10-16-m5pro.json`. The `summary` object in that file holds the medians, minimums, and maximums. The `raw` object holds every run. The script `bench/evidence/beam/run-all.sh` produced the file on 2026-10-16 between 14:00:54Z and 14:04:07Z.
