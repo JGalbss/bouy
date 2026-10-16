@@ -15,9 +15,9 @@ order_test_() ->
         ?_assert(bouy_set:call(<<"has">>, Set, [2])),
         ?_assert(bouy_set:call(<<"has">>, Set, [2.0])),
         ?_assertNot(bouy_set:call(<<"has">>, Set, [<<"2">>])),
-        ?_assertEqual([1, 2, 3], bouy_set:call(<<"values">>, Set, [])),
-        ?_assertEqual([1, 2, 3], bouy_set:call(<<"keys">>, Set, [])),
-        ?_assertEqual([[1, 1], [2, 2], [3, 3]], bouy_set:call(<<"entries">>, Set, []))
+        ?_assertEqual({'$iterator', <<"Set Iterator">>, [1, 2, 3]}, bouy_set:call(<<"values">>, Set, [])),
+        ?_assertEqual({'$iterator', <<"Set Iterator">>, [1, 2, 3]}, bouy_set:call(<<"keys">>, Set, [])),
+        ?_assertEqual({'$iterator', <<"Set Entries">>, [[1, 1], [2, 2], [3, 3]]}, bouy_set:call(<<"entries">>, Set, []))
     ].
 
 members_test_() ->

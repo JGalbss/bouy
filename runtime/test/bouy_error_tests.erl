@@ -6,7 +6,7 @@ new_test_() ->
     Error = bouy_error:new(<<"TypeError">>, <<"bad">>),
     Tagged = bouy_error:new(<<"NotFound">>, <<"missing">>, #{<<"_tag">> => <<"NotFound">>, <<"id">> => 7}),
     [
-        ?_assertMatch(#{<<"$error">> := true, <<"name">> := <<"TypeError">>, <<"message">> := <<"bad">>}, Error),
+        ?_assertMatch(#{'$error' := [{'$class', bouy_error, <<"TypeError">>}], <<"name">> := <<"TypeError">>, <<"message">> := <<"bad">>}, Error),
         ?_assertMatch(<<"TypeError: bad\n    at ", _/binary>>, maps:get(<<"stack">>, Error)),
         ?_assertEqual(<<"NotFound">>, maps:get(<<"_tag">>, Tagged)),
         ?_assertEqual(7, bouy_error:get(Tagged, <<"id">>)),
@@ -55,4 +55,30 @@ from_erlang_test_() ->
             <<"TypeError: bad argument in an arithmetic expression\n    at m:f/1 (m.erl:3)">>,
             maps:get(<<"stack">>, bouy_error:from_erlang(badarith, [{m, f, 1, [{file, "m.erl"}, {line, 3}]}]))
         )
+    ].
+
+%% A class value of each class that built the error, and `Error` for all.
+identity_test_() ->
+    Classes = [{'$class', 'bouy@app', <<"Overflow">>}, {'$class', bouy_error, <<"RangeError">>}],
+    Overflow = bouy_error:new(Classes, <<"too big">>, #{}),
+    Renamed = bouy_rt:set(Overflow, <<"name">>, <<"Other">>),
+    [
+        ?_assert(bouy_rt:instance_of(Renamed, {'$class', 'bouy@app', <<"Overflow">>})),
+        ?_assert(bouy_rt:instance_of(Renamed, {'$class', bouy_error, <<"RangeError">>})),
+        ?_assert(bouy_rt:instance_of(Renamed, {'$class', bouy_error, <<"Error">>})),
+        ?_assertNot(bouy_rt:instance_of(Renamed, {'$class', 'bouy@other', <<"Overflow">>})),
+        ?_assertEqual({'$class', 'bouy@app', <<"Overflow">>}, bouy_rt:get(Overflow, <<"constructor">>)),
+        ?_assertEqual(<<"Overflow">>, bouy_rt:get(bouy_rt:get(Overflow, <<"constructor">>), <<"name">>)),
+        ?_assertNot(bouy_rt:instance_of(#{<<"$error">> => true, <<"name">> => <<"TypeError">>}, {'$class', bouy_error, <<"Error">>})),
+        ?_assertEqual([<<"code">>], bouy_object:keys([bouy_error:new(<<"Error">>, <<"m">>, #{<<"code">> => 1})]))
+    ].
+
+%% A call of a namespace member that does not exist, and a module-level const
+%% read before its declaration runs.
+javascript_reason_test_() ->
+    Undefined = try bouy_object:nope([]) catch error:R1:S1 -> bouy_rt:caught(R1, S1) end,
+    Early = try persistent_term:get({'bouy@app', <<"LIMIT">>}) catch error:R2:S2 -> bouy_rt:caught(R2, S2) end,
+    [
+        ?_assertMatch(#{<<"name">> := <<"TypeError">>, <<"message">> := <<"Object.nope is not a function">>}, Undefined),
+        ?_assertMatch(#{<<"name">> := <<"ReferenceError">>, <<"message">> := <<"Cannot access 'LIMIT' before initialization">>}, Early)
     ].

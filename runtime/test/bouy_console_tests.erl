@@ -160,3 +160,40 @@ members_test_() ->
         ?_assertEqual(fun bouy_console:error/1, bouy_console:'$member'(<<"error">>)),
         ?_assertEqual(undefined, bouy_console:'$member'(<<"table">>))
     ].
+
+%% Node lays text out by UTF-16 length for line breaks and by terminal
+%% columns for array groups: node -e 'console.log({ a: "😀".repeat(20), b: "😀".repeat(19) })'
+width_test_() ->
+    Emoji = fun(N) -> binary:copy(<<"😀"/utf8>>, N) end,
+    Cities = [<<"東京"/utf8>>, <<"大阪"/utf8>>, <<"京都"/utf8>>, <<"札幌"/utf8>>, <<"福岡"/utf8>>, <<"神戸"/utf8>>, <<"横浜"/utf8>>, <<"名古屋"/utf8>>, <<"仙台"/utf8>>, <<"広島"/utf8>>],
+    [
+        ?_assertEqual(<<"{\n  a: '", (Emoji(20))/binary, "',\n  b: '", (Emoji(19))/binary, "'\n}">>, bouy_console:format([#{<<"a">> => Emoji(20), <<"b">> => Emoji(19)}])),
+        ?_assertEqual(
+            <<"[\n  '東京', '大阪',\n  '京都', '札幌',\n  '福岡', '神戸',\n  '横浜', '名古屋',\n  '仙台', '広島'\n]"/utf8>>,
+            bouy_console:format([Cities])
+        )
+    ].
+
+%% `%o` shows hidden properties at depth 4, and a nested string is cut
+%% after 10000 code units.
+hidden_test_() ->
+    Long = binary:copy(<<"x">>, 10001),
+    [
+        ?_assertEqual(<<"[ 1, 2, [length]: 2 ]">>, bouy_console:format([<<"%o">>, [1, 2]])),
+        ?_assertEqual(<<"[ [length]: 0 ]">>, bouy_console:format([<<"%o">>, []])),
+        ?_assertEqual(<<"[\n  '", (binary:copy(<<"x">>, 10000))/binary, "'... 1 more character\n]">>, bouy_console:format([[Long]])),
+        ?_assertEqual(Long, bouy_console:format([Long])),
+        ?_assertEqual(<<"{ ['__proto__']: 1 }">>, bouy_console:format([#{<<"__proto__">> => 1}]))
+    ].
+
+runtime_values_test_() ->
+    Map = bouy_map:new([[[<<"a">>, 1]]]),
+    [
+        ?_assertEqual(<<"[Schedule]">>, bouy_console:format([{'$schedule', self()}])),
+        ?_assertEqual(<<"[Map Iterator] { 'a' }">>, bouy_console:format([bouy_rt:call_method(Map, <<"keys">>, [])])),
+        ?_assertEqual(<<"[Map Entries] { [ 'a', 1 ] }">>, bouy_console:format([bouy_rt:call_method(Map, <<"entries">>, [])])),
+        ?_assertEqual(<<"[Map Iterator] {  }">>, bouy_console:format([bouy_rt:call_method(bouy_map:new([]), <<"keys">>, [])])),
+        ?_assertEqual(<<"Object [Array Iterator] {}">>, bouy_console:format([bouy_rt:call_method([1], <<"keys">>, [])])),
+        ?_assertEqual(<<"[Function: map]">>, bouy_console:format([bouy_rt:get([], <<"map">>)])),
+        ?_assertEqual(<<"[Object: null prototype] {}">>, bouy_console:format([bouy_object:'$member'(<<"prototype">>)]))
+    ].

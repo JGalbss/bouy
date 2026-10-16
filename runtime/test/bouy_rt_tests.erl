@@ -242,13 +242,14 @@ type_of_test_() ->
         {1.5, <<"number">>}, {'NaN', <<"number">>}, {<<"s">>, <<"string">>}, {fun(_) -> 1 end, <<"function">>},
         {[], <<"object">>}, {#{}, <<"object">>}, {bouy_map:new([]), <<"object">>},
         {{'$class', m, <<"C">>}, <<"function">>}, {{'$namespace', bouy_math}, <<"object">>},
-        {{'$namespace', bouy_map}, <<"function">>}, {{'$namespace', bouy_json}, <<"object">>}
+        {{'$namespace', bouy_map}, <<"function">>}, {{'$namespace', bouy_json}, <<"object">>},
+        {{'$namespace', bouy_ai_openai}, <<"function">>}
     ],
     [?_assertEqual(Expected, bouy_rt:type_of(V)) || {V, Expected} <- Cases].
 
 instance_of_test_() ->
     TypeError = bouy_error:new(<<"TypeError">>, <<"x">>),
-    NotFound = bouy_error:new(<<"NotFound">>, <<"x">>, #{<<"_tag">> => <<"NotFound">>}),
+    NotFound = bouy_error:new([{'$class', 'bouy@app', <<"NotFound">>}, {'$class', bouy_error, <<"Error">>}], <<"x">>, #{<<"_tag">> => <<"NotFound">>}),
     [
         ?_assert(bouy_rt:instance_of(TypeError, {'$class', bouy_error, <<"Error">>})),
         ?_assert(bouy_rt:instance_of(TypeError, {'$class', bouy_error, <<"TypeError">>})),
@@ -401,4 +402,75 @@ conversion_test_() ->
         ?_assertEqual(0, bouy_rt:collection_key(-0.0)),
         ?_assertEqual(0.5, bouy_rt:collection_key(0.5)),
         ?_assert(bouy_rt:same_value_zero('NaN', 'NaN'))
+    ].
+
+%% `handlers[0](x)`: a key that is not a string names a property to call.
+property_call_test_() ->
+    Handlers = [fun([N]) -> N + 1 end, fun([N]) -> N * 2 end],
+    [
+        ?_assertEqual(11, bouy_rt:call_method(Handlers, 0, [10])),
+        ?_assertEqual(20, bouy_rt:call_method(Handlers, 1.0, [10])),
+        ?_assertEqual(42, bouy_rt:call_method([<<"double">>, fun([N]) -> N * 2 end], 1, [21])),
+        ?_assertEqual(<<"one">>, bouy_rt:call_method(#{<<"1">> => fun([]) -> <<"one">> end}, 1, [])),
+        ?_assertMatch(<<"TypeError: ", _/binary>>, thrown(fun() -> bouy_rt:call_method(Handlers, 5, []) end))
+    ].
+
+%% Built-in methods are properties: a read gives a function value that
+%% `call`, `apply`, and `bind` run with a receiver.
+member_test_() ->
+    Map = bouy_rt:get([1, 2], <<"map">>),
+    HasOwn = bouy_rt:get(bouy_object:'$member'(<<"prototype">>), <<"hasOwnProperty">>),
+    [
+        ?_assertEqual({'$method', bouy_array, <<"map">>}, Map),
+        ?_assertEqual(<<"function">>, bouy_rt:type_of(Map)),
+        ?_assertEqual(<<"map">>, bouy_rt:get(Map, <<"name">>)),
+        ?_assertEqual([2, 3], bouy_rt:call_method(Map, <<"call">>, [[1, 2], fun([X | _]) -> X + 1 end])),
+        ?_assertEqual(<<"TypeError: Array.prototype.map called on null or undefined">>, thrown(fun() -> bouy_rt:call(Map, []) end)),
+        ?_assert(bouy_rt:call_method(HasOwn, <<"call">>, [#{<<"a">> => 1}, <<"a">>])),
+        ?_assertEqual(<<"function">>, bouy_rt:type_of(bouy_rt:get(<<"s">>, <<"trim">>))),
+        ?_assertEqual(<<"function">>, bouy_rt:type_of(bouy_rt:get(5, <<"toFixed">>))),
+        ?_assertEqual(undefined, bouy_rt:get([1], <<"nope">>)),
+        ?_assertEqual({'$namespace', bouy_object}, bouy_rt:get(#{}, <<"constructor">>)),
+        ?_assertEqual({'$namespace', bouy_array}, bouy_rt:get([], <<"constructor">>)),
+        ?_assertEqual(1, bouy_rt:get(#{<<"constructor">> => 1}, <<"constructor">>)),
+        ?_assert(bouy_rt:has(#{}, <<"toString">>)),
+        ?_assertNot(bouy_rt:has(#{}, <<"nope">>)),
+        ?_assertEqual(<<"[object Array]">>, bouy_rt:call_method(bouy_rt:get(#{}, <<"toString">>), <<"call">>, [[]])),
+        ?_assertEqual(undefined, bouy_rt:call_method({'$class', bouy_error, <<"Error">>}, <<"captureStackTrace">>, [#{}]))
+    ].
+
+%% ToPrimitive calls an own valueOf before toString, except for the string
+%% hint of String() and template literals.
+value_of_test_() ->
+    Money = #{<<"valueOf">> => fun([]) -> 150 end},
+    Both = #{<<"valueOf">> => fun([]) -> 7 end, <<"toString">> => fun([]) -> <<"seven">> end},
+    [
+        ?_assertEqual(151, bouy_rt:add(Money, 1)),
+        ?_assertEqual(300, bouy_rt:mul(Money, 2)),
+        ?_assert(bouy_rt:gt(Money, 100)),
+        ?_assertEqual(<<"7">>, bouy_rt:add(Both, <<>>)),
+        ?_assertEqual(<<"seven">>, bouy_rt:to_string(Both)),
+        ?_assertEqual(<<"[object Object]">>, bouy_rt:to_string(Money)),
+        ?_assertEqual(<<"TypeError: Cannot convert object to primitive value">>, thrown(fun() -> bouy_rt:to_string(#{<<"toString">> => fun([]) -> #{} end}) end))
+    ].
+
+%% Equal numbers share one Map key at any size.
+collection_key_test_() ->
+    [
+        ?_assertEqual(100000000000000000000, bouy_rt:collection_key(1.0e20)),
+        ?_assertEqual(1.0e21, bouy_rt:collection_key(1000000000000000000000)),
+        ?_assertEqual(1.0e21, bouy_rt:collection_key(1.0e21)),
+        ?_assertEqual(9007199254740993, bouy_rt:collection_key(9007199254740993)),
+        ?_assertEqual(0, bouy_rt:collection_key(-0.0)),
+        ?_assertEqual(1.5, bouy_rt:collection_key(1.5))
+    ].
+
+%% A message cuts a value after 40 characters, never inside one.
+describe_test_() ->
+    Long = #{<<"name">> => binary:copy(<<"é"/utf8>>, 60)},
+    Text = bouy_rt:describe(Long),
+    [
+        ?_assertEqual(43, bouy_string:char_count(Text)),
+        ?_assertMatch(<<_/binary>>, unicode:characters_to_binary(Text)),
+        ?_assertEqual(<<"\"x\"">>, bouy_rt:describe(<<"x">>))
     ].

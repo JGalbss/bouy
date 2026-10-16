@@ -59,7 +59,7 @@ radix_test_() ->
         {1 / 3, 2, <<"0.010101010101010101010101010101010101010101010101010101">>}, {0, 2, <<"0">>}, {'NaN', 2, <<"NaN">>}
     ],
     [?_assertEqual(Expected, method(N, <<"toString">>, [R])) || {N, R, Expected} <- Cases] ++
-        [?_assertEqual(<<"RangeError: toString() radix must be between 2 and 36">>, thrown(fun() -> method(1, <<"toString">>, [1]) end))].
+        [?_assertEqual(<<"RangeError: toString() radix argument must be between 2 and 36">>, thrown(fun() -> method(1, <<"toString">>, [1]) end))].
 
 locale_test_() ->
     Cases = [

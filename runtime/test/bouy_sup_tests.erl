@@ -15,7 +15,8 @@ supervision_test_() ->
         {"a stopped child stays stopped when a sibling restarts", fun stopped_child_stays_stopped/0},
         {"each top-level actor has its own budget", fun budgets_are_separate/0},
         {"a throwing child constructor fails supervise", fun throwing_child_fails_supervise/0},
-        {"supervise validates its options", fun supervise_validates_options/0}
+        {"supervise validates its options", fun supervise_validates_options/0},
+        {"a group ends with its last actor", fun groups_end_with_actors/0}
     ]}.
 
 supervise_returns_refs() ->
@@ -101,6 +102,8 @@ budgets_are_separate() ->
     ?assertEqual(3, bouy_actor:call(Steady, <<"get">>, [])),
     ?assertMatch(#{<<"status">> := <<"running">>, <<"restarts">> := 0}, entry(Steady)).
 
+%% The children stay listed as stopped, so a ref that escaped a constructor
+%% still names its actor.
 throwing_child_fails_supervise() ->
     Before = length(bouy:inspect([])),
     Children = #{<<"a">> => bouy:child([counter()]), <<"b">> => bouy:child([broken()])},
@@ -108,7 +111,8 @@ throwing_child_fails_supervise() ->
         #{<<"_tag">> := <<"ActorFailed">>, <<"method">> := <<"constructor">>},
         thrown(fun() -> bouy:supervise([#{<<"children">> => Children}]) end)
     ),
-    ?assertEqual(Before, length(bouy:inspect([]))).
+    Added = lists:nthtail(Before, bouy:inspect([])),
+    ?assertMatch([#{<<"name">> := <<"a">>, <<"status">> := <<"stopped">>}, #{<<"name">> := <<"b">>, <<"status">> := <<"stopped">>}], Added).
 
 supervise_validates_options() ->
     Children = children([<<"a">>]),
@@ -139,3 +143,21 @@ restarts(Ref) ->
 
 status(Ref) ->
     maps:get(<<"status">>, entry(Ref)).
+
+%% No group outlives its actors: a supervise() group whose children are all
+%% stopped, the group of a temporary actor that crashed, and the group of a
+%% stopped actor all end.
+groups_end_with_actors() ->
+    Before = active_groups(),
+    #{<<"a">> := A, <<"b">> := B} = bouy:supervise([#{<<"children">> => children([<<"a">>, <<"b">>])}]),
+    undefined = bouy:stop([A]),
+    ?assertEqual(Before + 1, active_groups()),
+    undefined = bouy:stop([B]),
+    Temporary = bouy:spawn([counter(), #{<<"restart">> => <<"temporary">>}]),
+    <<"ActorFailed">> = tag(fun() -> bouy_actor:call(Temporary, <<"fail">>, [<<"x">>]) end),
+    ?assertMatch(#{<<"status">> := <<"stopped">>}, entry(Temporary)),
+    undefined = bouy:stop([bouy:spawn([counter()])]),
+    await(fun() -> active_groups() =:= Before end).
+
+active_groups() ->
+    proplists:get_value(active, supervisor:count_children(bouy_root_sup)).

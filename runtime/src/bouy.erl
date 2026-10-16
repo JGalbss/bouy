@@ -12,6 +12,8 @@
 %% A top-level actor gets a group supervisor of its own with this budget.
 -define(ALONE, #{strategy => one_for_one, intensity => 3, period => 5}).
 -define(CAPACITY, 1024).
+%% The longest timeout of one `receive ... after`.
+-define(MAX_AFTER, 16#FFFFFFFF).
 
 -type ref() :: {'$ref', pos_integer()}.
 -type class() :: {'$class', module(), binary()}.
@@ -21,7 +23,7 @@
 spawn([Class | Rest]) ->
     Options = options(Rest),
     #{id := Id} = Spec = spec(Class, Options, name(option(<<"name">>, Options))),
-    Group = bouy_sup:new_group(?ALONE),
+    Group = new_group(?ALONE, [Id]),
     case bouy_actor:start(Spec#{supervisor => Group, group => alone}) of
         ok ->
             {'$ref', Id};
@@ -59,7 +61,8 @@ supervise(Arguments) ->
     },
     Children = lists:sort(maps:to_list(children(option(<<"children">>, Options)))),
     Specs = [{Key, child_spec(Key, Child)} || {Key, Child} <- Children],
-    start_children(bouy_sup:new_group(Flags), Specs, #{}).
+    Group = new_group(Flags, [Id || {_, #{id := Id}} <- Specs]),
+    start_children(Group, Specs, #{}).
 
 start_children(_Group, [], Refs) ->
     Refs;
@@ -70,11 +73,22 @@ start_children(Group, [{Key, #{id := Id} = Spec} | Rest], Refs) ->
         {error, Failure} ->
             ok = bouy_sup:stop_group(Group),
             lists:foreach(
-                fun({'$ref', Started}) -> bouy_registry:delete(Started) end,
+                fun({'$ref', Started}) -> bouy_registry:mark_stopped(Started) end,
                 maps:values(Refs)
             ),
             raise(Failure)
     end.
+
+%% A group that a constructor starts belongs to the actor of the
+%% constructor: it stops when that actor restarts or stops, so a restart
+%% does not leave the actors of the previous start running.
+new_group(Flags, Ids) ->
+    Group = bouy_sup:new_group(Flags),
+    case bouy_actor:constructing() of
+        true -> ok = bouy_sup:own(Group, bouy_actor:owner(), Ids);
+        false -> ok
+    end,
+    Group.
 
 -spec child([term()]) -> {'$child', class(), options()}.
 child([{'$class', Module, Name} = Class | Rest]) when is_atom(Module), is_binary(Name) ->
@@ -83,25 +97,34 @@ child(_Arguments) ->
     type_error(<<"child() needs an actor class">>).
 
 %% Casts Method to the actor once after `after` ms, or every `every` ms, from a
-%% timer process linked to the caller.
+%% timer process that ends with the caller: the actor whose turn or
+%% constructor calls schedule(), or the top-level code.
 -spec schedule([term()]) -> {'$schedule', pid()}.
 schedule([Ref, Timing, Method | Args]) when is_binary(Method) ->
     Cast = cast([Ref]),
     {Repeat, Ms} = timing(Timing),
-    {'$schedule', spawn_link(fun() -> tick(Repeat, Ms, Cast, Method, Args) end)};
+    Owner = bouy_actor:owner(),
+    {'$schedule', erlang:spawn(fun() -> timer(monitor(process, Owner), Repeat, Ms, Cast, Method, Args) end)};
 schedule(_Arguments) ->
     type_error(<<"schedule() needs a ref, { every } or { after }, and a method name">>).
 
+%% Returns once the timer has stopped, so no cast of the schedule arrives
+%% after a message that the caller sends next.
 -spec cancelSchedule([term()]) -> undefined.
 cancelSchedule([{'$schedule', Timer} | _]) when is_pid(Timer) ->
-    Timer ! cancel,
+    Monitor = monitor(process, Timer),
+    Timer ! {cancel, self(), Monitor},
+    receive
+        {Monitor, cancelled} -> true = demonitor(Monitor, [flush]);
+        {'DOWN', Monitor, process, Timer, _} -> ok
+    end,
     undefined;
 cancelSchedule(_Arguments) ->
     type_error(<<"cancelSchedule() needs the handle that schedule() returned">>).
 
 -spec sleep([term()]) -> undefined.
 sleep([Ms | _]) when is_number(Ms) ->
-    ok = timer:sleep(milliseconds(Ms)),
+    ok = bouy_task:wait(milliseconds(Ms)),
     undefined;
 sleep(_Arguments) ->
     type_error(<<"sleep() needs a number of milliseconds">>).
@@ -117,7 +140,8 @@ self(_Arguments) ->
     bouy_actor:current().
 
 %% The spec of a new actor of Class, from the options of spawn() or child().
-spec({'$class', Module, Class}, Options, Name) when is_atom(Module), is_binary(Class) ->
+spec({'$class', Module, Class} = Value, Options, Name) when is_atom(Module), is_binary(Class) ->
+    ok = actor_class(Value),
     #{
         id => bouy_registry:allocate(),
         module => Module,
@@ -130,6 +154,22 @@ spec({'$class', Module, Class}, Options, Name) when is_atom(Module), is_binary(C
     };
 spec(_Class, _Options, _Name) ->
     type_error(<<"spawn() needs an actor class">>).
+
+%% An actor class compiles to a module with `'C#dispatch'/3`; an error
+%% class has none.
+actor_class({'$class', Module, Class}) ->
+    Loaded = code:ensure_loaded(Module) =:= {module, Module},
+    try binary_to_existing_atom(<<Class/binary, "#dispatch">>) of
+        Dispatch when Loaded ->
+            case erlang:function_exported(Module, Dispatch, 3) of
+                true -> ok;
+                false -> type_error(<<"spawn() needs an actor class">>)
+            end;
+        _ ->
+            type_error(<<"spawn() needs an actor class">>)
+    catch
+        error:badarg -> type_error(<<"spawn() needs an actor class">>)
+    end.
 
 child_spec(Key, {'$child', Class, Options}) -> spec(Class, Options, Key);
 child_spec(_Key, _Child) -> type_error(<<"each child of supervise() must come from child()">>).
@@ -158,8 +198,16 @@ mailbox(_Mailbox) ->
     type_error(<<"mailbox must be an object">>).
 
 capacity(undefined) -> ?CAPACITY;
-capacity(Capacity) when is_integer(Capacity), Capacity > 0 -> Capacity;
-capacity(_Capacity) -> type_error(<<"mailbox.capacity must be a positive integer">>).
+capacity(Capacity) ->
+    case integer(Capacity) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> type_error(<<"mailbox.capacity must be a positive integer">>)
+    end.
+
+%% A number with no fraction, such as 64.0 from JSON or 0.5 * 4, is an
+%% integer, as Number.isInteger says.
+integer(F) when is_float(F), F == trunc(F) -> trunc(F);
+integer(N) -> N.
 
 overflow(undefined) -> backpressure;
 overflow(<<"backpressure">>) -> backpressure;
@@ -185,8 +233,11 @@ children(Children) when is_map(Children) -> Children;
 children(_Children) -> type_error(<<"children must be an object">>).
 
 max_restarts(undefined) -> 3;
-max_restarts(Count) when is_integer(Count), Count >= 0 -> Count;
-max_restarts(_Count) -> type_error(<<"maxRestarts must be a non-negative integer">>).
+max_restarts(Count) ->
+    case integer(Count) of
+        N when is_integer(N), N >= 0 -> N;
+        _ -> type_error(<<"maxRestarts must be a non-negative integer">>)
+    end.
 
 %% OTP counts the restart period in whole seconds, so withinMs rounds up.
 period(undefined) -> 5;
@@ -201,23 +252,32 @@ milliseconds(Ms) when is_integer(Ms) -> max(0, Ms);
 milliseconds(Ms) -> max(0, trunc(Ms)).
 
 %% The timer of one schedule() call. It ends when it is cancelled, after its
-%% one `after` cast, or when the actor has stopped. A full mailbox skips a cast.
-tick(Repeat, Ms, Cast, Method, Args) ->
-    receive
-        cancel -> ok
-    after Ms ->
-        case {Repeat, deliver(Cast, Method, Args)} of
-            {every, Delivery} when Delivery =/= stopped -> tick(Repeat, Ms, Cast, Method, Args);
-            _Done -> ok
-        end
+%% one `after` cast, when the actor has stopped, or when its owner ends. A
+%% full mailbox skips a cast, whatever the overflow of the mailbox is.
+timer(OwnerMonitor, Repeat, Ms, Cast, Method, Args) ->
+    case due(OwnerMonitor, Ms) of
+        {cancel, From, Monitor} ->
+            From ! {Monitor, cancelled};
+        ended ->
+            ok;
+        due ->
+            case {Repeat, bouy_actor:offer(Cast, Method, Args)} of
+                {every, Delivery} when Delivery =/= stopped -> timer(OwnerMonitor, Repeat, Ms, Cast, Method, Args);
+                _Done -> ok
+            end
     end.
 
-deliver(Cast, Method, Args) ->
-    try bouy_actor:cast(Cast, Method, Args) of
-        true -> sent
-    catch
-        error:{'$throw', #{<<"_tag">> := <<"MailboxFull">>}} -> skipped;
-        error:{'$throw', #{<<"_tag">> := <<"ActorStopped">>}} -> stopped
+%% Waits Ms, which may exceed the longest timeout of one `receive`.
+due(OwnerMonitor, Ms) ->
+    Chunk = min(Ms, ?MAX_AFTER),
+    receive
+        {cancel, From, Monitor} -> {cancel, From, Monitor};
+        {'DOWN', OwnerMonitor, process, _, _} -> ended
+    after Chunk ->
+        case Ms - Chunk of
+            0 -> due;
+            Rest -> due(OwnerMonitor, Rest)
+        end
     end.
 
 -spec type_error(binary()) -> no_return().

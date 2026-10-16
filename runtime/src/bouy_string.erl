@@ -7,6 +7,14 @@
 -export([char_count/1, trim/1, trim_start/1]).
 
 -define(FUNCTIONS, [<<"fromCharCode">>, <<"fromCodePoint">>]).
+-define(METHODS, [
+    <<"at">>, <<"charAt">>, <<"charCodeAt">>, <<"codePointAt">>, <<"concat">>, <<"endsWith">>, <<"includes">>,
+    <<"indexOf">>, <<"lastIndexOf">>, <<"localeCompare">>, <<"match">>, <<"matchAll">>, <<"padEnd">>,
+    <<"padStart">>, <<"repeat">>, <<"replace">>, <<"replaceAll">>, <<"search">>, <<"slice">>, <<"split">>,
+    <<"startsWith">>, <<"substr">>, <<"substring">>, <<"toLocaleLowerCase">>, <<"toLocaleUpperCase">>,
+    <<"toLowerCase">>, <<"toString">>, <<"toUpperCase">>, <<"trim">>, <<"trimEnd">>, <<"trimLeft">>,
+    <<"trimRight">>, <<"trimStart">>, <<"valueOf">>
+]).
 
 %%% Namespace
 
@@ -41,7 +49,7 @@ combine_surrogates([]) ->
 
 code_point(N) when is_integer(N), N >= 0, N =< 16#10FFFF -> N;
 code_point(F) when is_float(F), F == trunc(F) -> code_point(trunc(F));
-code_point(N) -> range_error(<<"Invalid code point ", (bouy_rt:to_string(N))/binary>>).
+code_point(N) -> bouy_error:throw(<<"RangeError">>, <<"Invalid code point ", (bouy_rt:to_string(N))/binary>>).
 
 encode(CodePoints) ->
     <<<<(scalar(C))/utf8>> || C <- CodePoints>>.
@@ -55,21 +63,10 @@ scalar(C) -> C.
 get(S, <<"length">>) ->
     char_count(S);
 get(S, Key) ->
-    case index(Key) of
+    case bouy_rt:to_index(Key) of
         I when is_integer(I) -> char_at(S, I, undefined);
-        none -> undefined
+        none -> bouy_rt:member(?MODULE, Key, ?METHODS)
     end.
-
-index(I) when is_integer(I), I >= 0 -> I;
-index(F) when is_float(F), F >= 0, F == trunc(F) -> trunc(F);
-index(<<"0">>) -> 0;
-index(<<C, _/binary>> = Key) when C >= $1, C =< $9 ->
-    try binary_to_integer(Key) of
-        I -> I
-    catch
-        error:badarg -> none
-    end;
-index(_) -> none.
 
 %%% Methods
 
@@ -106,7 +103,7 @@ call(<<"trimEnd">>, S, _Args) -> trim_end(S);
 call(<<"trimLeft">>, S, _Args) -> trim_start(S);
 call(<<"trimRight">>, S, _Args) -> trim_end(S);
 call(Name, _S, _Args) when Name =:= <<"match">>; Name =:= <<"matchAll">>; Name =:= <<"search">> -> no_regexp(Name);
-call(Name, S, _Args) -> bouy_rt:no_method(S, Name).
+call(Name, S, Args) -> bouy_rt:prototype_call(S, Name, Args).
 
 %% An index argument that must name a code point: out-of-range values,
 %% infinities included, become -1.
@@ -275,7 +272,7 @@ padded(S, Padding, trailing) -> <<S/binary, Padding/binary>>.
 repeat(S, CountArg) ->
     case bouy_rt:to_integer(CountArg) of
         N when is_integer(N), N >= 0 -> binary:copy(S, N);
-        _ -> range_error(<<"Invalid count value: ", (bouy_rt:to_string(bouy_rt:to_number(CountArg)))/binary>>)
+        _ -> bouy_error:throw(<<"RangeError">>, <<"Invalid count value: ", (bouy_rt:to_string(bouy_rt:to_number(CountArg)))/binary>>)
     end.
 
 %%% split, replace, and replaceAll with string patterns
@@ -382,7 +379,3 @@ utf8_size(C) when C < 16#80 -> 1;
 utf8_size(C) when C < 16#800 -> 2;
 utf8_size(C) when C < 16#10000 -> 3;
 utf8_size(_) -> 4.
-
--spec range_error(binary()) -> no_return().
-range_error(Message) ->
-    bouy_error:throw(<<"RangeError">>, Message).

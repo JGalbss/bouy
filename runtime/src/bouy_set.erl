@@ -6,11 +6,13 @@
 -export(['$member'/1, new/1, call/3, get/2, mutate/3]).
 -export([items/1]).
 
+-define(METHODS, [<<"add">>, <<"clear">>, <<"delete">>, <<"entries">>, <<"forEach">>, <<"has">>, <<"keys">>, <<"values">>]).
+
 -type set_value() :: {'$set', {#{term() => non_neg_integer()}, non_neg_integer()}}.
 -export_type([set_value/0]).
 
--spec '$member'(binary()) -> undefined.
-'$member'(_Name) -> undefined.
+-spec '$member'(binary()) -> term().
+'$member'(Name) -> bouy_rt:member_function(?MODULE, Name, []).
 
 %% `new Set(iterable)`.
 -spec new(list()) -> set_value().
@@ -24,7 +26,7 @@ empty() -> {'$set', {#{}, 0}}.
 
 -spec get(set_value(), term()) -> term().
 get({'$set', {Index, _}}, <<"size">>) -> map_size(Index);
-get(_Set, _Key) -> undefined.
+get(_Set, Key) -> bouy_rt:member(?MODULE, Key, ?METHODS).
 
 %% The members in insertion order.
 -spec items(set_value()) -> list().
@@ -39,15 +41,15 @@ call(<<"forEach">>, Set, Args) ->
     lists:foreach(fun(Item) -> bouy_rt:call(F, [Item, Item, Set]) end, items(Set)),
     undefined;
 call(Name, Set, _Args) when Name =:= <<"values">>; Name =:= <<"keys">> ->
-    items(Set);
+    bouy_iterator:new(<<"Set Iterator">>, items(Set));
 call(<<"entries">>, Set, _Args) ->
-    [[Item, Item] || Item <- items(Set)];
+    bouy_iterator:new(<<"Set Entries">>, [[Item, Item] || Item <- items(Set)]);
 call(<<"add">>, Set, Args) ->
     element(2, mutate(<<"add">>, Set, Args));
 call(Name, Set, Args) when Name =:= <<"delete">>; Name =:= <<"clear">> ->
     element(1, mutate(Name, Set, Args));
-call(Name, Set, _Args) ->
-    bouy_rt:no_method(Set, Name).
+call(Name, Set, Args) ->
+    bouy_rt:prototype_call(Set, Name, Args).
 
 -spec mutate(binary(), set_value(), list()) -> {term(), set_value()}.
 mutate(<<"add">>, Set, Args) ->

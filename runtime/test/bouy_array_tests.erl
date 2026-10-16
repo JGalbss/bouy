@@ -66,9 +66,9 @@ build_test_() ->
         ?_assertEqual(<<"1,2,3">>, a(<<"join">>, [1, 2, 3], [])),
         ?_assertEqual(<<"--1">>, a(<<"join">>, [null, undefined, 1], [<<"-">>])),
         ?_assertEqual(<<"1,2,3">>, a(<<"toString">>, [1, [2, 3]], [])),
-        ?_assertEqual([[0, 7], [1, 8]], a(<<"entries">>, [7, 8], [])),
-        ?_assertEqual([0, 1], a(<<"keys">>, [7, 8], [])),
-        ?_assertEqual([7, 8], a(<<"values">>, [7, 8], [])),
+        ?_assertEqual({'$iterator', <<"Array Iterator">>, [[0, 7], [1, 8]]}, a(<<"entries">>, [7, 8], [])),
+        ?_assertEqual({'$iterator', <<"Array Iterator">>, [0, 1]}, a(<<"keys">>, [7, 8], [])),
+        ?_assertEqual({'$iterator', <<"Array Iterator">>, [7, 8]}, a(<<"values">>, [7, 8], [])),
         ?_assertEqual([2, 1], a(<<"toReversed">>, [1, 2], [])),
         ?_assertEqual([1, 2, 3], a(<<"toSorted">>, [3, 1, 2], [])),
         ?_assertEqual(3, a(<<"push">>, [1, 2], [3])),
@@ -87,7 +87,8 @@ sort_test_() ->
         ?_assertEqual([3, 2, 1], a(<<"toSorted">>, [3, 1, 2], [fun([A, B]) -> B - A end])),
         ?_assertEqual([[1, 5], [10], [2]], a(<<"toSorted">>, [[2], [1, 5], [10]], [])),
         ?_assertEqual([e, b, d, a, c, f], Ids(a(<<"toSorted">>, Items, [ByKey]))),
-        ?_assertEqual([1, 2, 3], a(<<"toSorted">>, [3, 1, 2], [fun([A, B]) -> A > B end])),
+        %% node -e 'console.log([3, 1, 2].sort((a, b) => a > b))': V8's call order
+        ?_assertEqual([3, 1, 2], a(<<"toSorted">>, [3, 1, 2], [fun([A, B]) -> A > B end])),
         ?_assertEqual([3, 1, 2], a(<<"toSorted">>, [3, 1, 2], [fun(_) -> 'NaN' end]))
     ].
 
@@ -127,5 +128,9 @@ namespace_test_() ->
         ?_assertEqual(<<"RangeError: Invalid array length">>, thrown(fun() -> bouy_array:new([-1]) end)),
         ?_assertEqual(<<"RangeError: Invalid array length">>, thrown(fun() -> bouy_array:new([1.5]) end)),
         ?_assertEqual(true, bouy_rt:call(bouy_array:'$member'(<<"isArray">>), [[]])),
-        ?_assertEqual(undefined, bouy_array:'$member'(<<"prototype">>))
+        ?_assertEqual({'$prototype', {'$namespace', bouy_array}}, bouy_array:'$member'(<<"prototype">>)),
+        ?_assertEqual(<<"Array">>, bouy_array:'$member'(<<"name">>)),
+        %% node -e 'console.log(Array.from(123), Array.from(true))'
+        ?_assertEqual([], bouy_array:from([123])),
+        ?_assertEqual([], bouy_array:from([true]))
     ].

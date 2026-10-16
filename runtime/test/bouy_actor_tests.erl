@@ -33,7 +33,8 @@ actor_test_() ->
         {"a constructor can stop its own actor", fun constructor_stops_actor/0},
         {"inspect lists each actor", fun inspect_lists_actors/0},
         {"a throwing constructor fails spawn", fun throwing_constructor_fails_spawn/0},
-        {"self returns the ref of the actor", fun self_returns_ref/0}
+        {"self returns the ref of the actor", fun self_returns_ref/0},
+        {"a request count belongs to one start of the actor", fun request_count_per_start/0}
     ]}.
 
 call_returns_result() ->
@@ -73,7 +74,7 @@ crash_is_isolated() ->
     Label = <<"Counter #", (integer_to_binary(Id))/binary>>,
     ?assertMatch(
         #{
-            <<"$error">> := true,
+            '$error' := [],
             <<"name">> := <<"ActorFailed">>,
             <<"_tag">> := <<"ActorFailed">>,
             <<"actor">> := Label,
@@ -325,6 +326,8 @@ inspect_lists_actors() ->
     Ids = [EntryId || #{<<"id">> := EntryId} <- bouy:inspect([])],
     ?assertEqual(lists:sort(Ids), Ids).
 
+%% The actor stays listed as stopped, so a ref that escaped its constructor
+%% keeps its label.
 throwing_constructor_fails_spawn() ->
     Before = length(bouy:inspect([])),
     ?assertMatch(
@@ -335,9 +338,24 @@ throwing_constructor_fails_spawn() ->
         },
         thrown(fun() -> bouy:spawn([broken()]) end)
     ),
-    ?assertEqual(Before, length(bouy:inspect([]))).
+    ?assertMatch([#{<<"class">> := <<"Broken">>, <<"status">> := <<"stopped">>}], lists:nthtail(Before, bouy:inspect([]))).
 
 self_returns_ref() ->
     Counter = bouy:spawn([counter()]),
     ?assertEqual(Counter, bouy_actor:call(Counter, <<"me">>, [])),
     ?assertMatch(#{<<"name">> := <<"Error">>}, thrown(fun() -> bouy:self([#{}]) end)).
+
+%% A sender counts its request before it sends it, and takes the count back
+%% only within the same start: a restart sets the count to zero, since the
+%% mailbox of the dead process is gone.
+request_count_per_start() ->
+    {'$ref', Id} = Counter = bouy:spawn([counter()]),
+    ?assertEqual({1, 1}, bouy_registry:occupy(Id)),
+    ok = bouy_registry:release(Id, 1),
+    ?assertEqual({1, 1}, bouy_registry:occupy(Id)),
+    <<"ActorFailed">> = tag(fun() -> bouy_actor:call(Counter, <<"fail">>, [<<"x">>]) end),
+    0 = bouy_actor:call(Counter, <<"get">>, []),
+    ok = bouy_registry:release(Id, 1),
+    ?assertEqual({1, 2}, bouy_registry:occupy(Id)),
+    ok = bouy_registry:release(Id, 2),
+    ?assertEqual(stopped, bouy_registry:occupy(999999999)).

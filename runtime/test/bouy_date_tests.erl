@@ -57,3 +57,26 @@ arithmetic_test_() ->
         ?_assert(bouy_rt:lt(bouy_date:new([1]), bouy_date:new([2]))),
         ?_assert(bouy_rt:instance_of(bouy_date:new([0]), {'$namespace', bouy_date}))
     ].
+
+%% TZ=UTC node -e 'for (const t of [-62198755200000, 253402300800000, 8.64e15, -8.64e15]) console.log(String(new Date(t)), new Date(t).toISOString())'
+years_test_() ->
+    Cases = [
+        {-62198755200000, <<"Fri Jan 01 -0001 00:00:00 GMT+0000 (Coordinated Universal Time)">>, <<"-000001-01-01T00:00:00.000Z">>},
+        {253402300800000, <<"Sat Jan 01 10000 00:00:00 GMT+0000 (Coordinated Universal Time)">>, <<"+010000-01-01T00:00:00.000Z">>},
+        {8640000000000000, <<"Sat Sep 13 275760 00:00:00 GMT+0000 (Coordinated Universal Time)">>, <<"+275760-09-13T00:00:00.000Z">>},
+        {-8640000000000000, <<"Tue Apr 20 -271821 00:00:00 GMT+0000 (Coordinated Universal Time)">>, <<"-271821-04-20T00:00:00.000Z">>}
+    ],
+    [?_assertEqual({Text, Iso}, {bouy_date:to_string({'$date', Ms}), d(<<"toISOString">>, {'$date', Ms})}) || {Ms, Text, Iso} <- Cases].
+
+%% TZ=UTC node -e 'for (const s of process.argv.slice(1)) console.log(new Date(s).getTime())' ...
+parse_test_() ->
+    Cases = [
+        {<<"2020">>, 1577836800000}, {<<"2020-06">>, 1590969600000}, {<<"2020-01-01T10:20Z">>, 1577874000000},
+        {<<"2020-13-01">>, 'NaN'}, {<<"2020-01-32">>, 'NaN'}, {<<"2020-02-30">>, 1583020800000},
+        {<<"2020-01-01T24:00:00Z">>, 1577923200000}, {<<"2020-01-01T24:00:01Z">>, 'NaN'},
+        {<<"2020-01-01T10:20:30+25:00">>, 'NaN'}, {<<"2020-01-01T10:20:30-0530">>, 1577893830000},
+        {<<"2020-01-01T10:20:30.123456Z">>, 1577874030123}, {<<"2020-01-01T10:20:30.Z">>, 'NaN'},
+        {<<"2020-01-01 10:20:30z">>, 1577874030000}, {<<"+275760-09-13T00:00:00.001Z">>, 'NaN'},
+        {<<"-000000-01-01T00:00:00Z">>, 'NaN'}, {<<"20200101">>, 'NaN'}
+    ],
+    [?_assertEqual({Text, Ms}, {Text, d(<<"getTime">>, bouy_date:new([Text]))}) || {Text, Ms} <- Cases].

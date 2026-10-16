@@ -1,19 +1,23 @@
 -module(bouy_task).
 
-%% Promise.all, Promise.allSettled, Promise.race, and withTimeout run their
-%% functions in parallel worker processes. A worker adopts the actor context of
-%% its caller, so a call cycle through a worker still throws CallCycle. A
-%% worker is linked to its caller, so it cannot outlive the caller. It catches
-%% every exception and ends normally, so the link never ends the caller.
+%% Promise.all, Promise.allSettled, Promise.race, Promise.any, and
+%% withTimeout run their functions in parallel worker processes. A worker
+%% adopts the actor context of its caller, so a call cycle through a worker
+%% still throws CallCycle. A worker is linked to its caller, so it cannot
+%% outlive the caller. It catches every exception and ends normally, so the
+%% link never ends the caller.
 %%
 %% Workers reply to an alias. After the caller stops listening, it removes the
 %% alias, and the runtime drops any late reply.
 
--export([all/1, map/2, all_settled/1, map_settled/2, race/1, map_race/2, with_timeout/2]).
--export([resolve/1, reject/1]).
+-export([all/1, map/2, all_settled/1, map_settled/2, race/1, map_race/2, any/1, map_any/2, with_timeout/2]).
+-export([resolve/1, reject/1, wait/1]).
 
 -type thunk() :: fun(() -> term()).
 -type outcome() :: {ok, term()} | {raised, error | exit | throw, term(), list()}.
+
+%% The longest timeout of one `receive ... after`.
+-define(MAX_AFTER, 16#FFFFFFFF).
 
 %% The values in input order. When a thunk throws, the first exception in input
 %% order propagates after every thunk ends.
@@ -21,43 +25,118 @@
 all(Thunks) ->
     [value(Outcome) || Outcome <- settle(Thunks)].
 
-%% `Promise.all(items.map(f))`: f gets the argument list [Item, Index].
--spec map(list(), fun((list()) -> term())) -> list().
+%% `Promise.all(items.map(f))`: f gets the arguments that `map` passes.
+-spec map(term(), term()) -> list().
+map(Items, Fun) when is_list(Items) ->
+    all(thunks(Items, Fun));
 map(Items, Fun) ->
-    all(thunks(Items, Fun)).
+    mapped(Items, Fun).
 
 -spec all_settled([thunk()]) -> [#{binary() => term()}].
 all_settled(Thunks) ->
     [settled(Outcome) || Outcome <- settle(Thunks)].
 
 %% `Promise.allSettled(items.map(f))`.
--spec map_settled(list(), fun((list()) -> term())) -> [#{binary() => term()}].
+-spec map_settled(term(), term()) -> [#{binary() => term()}].
+map_settled(Items, Fun) when is_list(Items) ->
+    all_settled(thunks(Items, Fun));
 map_settled(Items, Fun) ->
-    all_settled(thunks(Items, Fun)).
+    [settled({ok, Value}) || Value <- mapped(Items, Fun)].
 
 %% `Promise.race(items.map(f))`.
--spec map_race(list(), fun((list()) -> term())) -> term().
+-spec map_race(term(), term()) -> term().
+map_race(Items, Fun) when is_list(Items) ->
+    race(thunks(Items, Fun));
 map_race(Items, Fun) ->
-    race(thunks(Items, Fun)).
+    first(mapped(Items, Fun)).
 
+%% `Promise.any(items.map(f))`.
+-spec map_any(term(), term()) -> term().
+map_any(Items, Fun) when is_list(Items) ->
+    any(thunks(Items, Fun));
+map_any(Items, Fun) ->
+    case mapped(Items, Fun) of
+        [] -> aggregate([]);
+        [Value | _] -> Value
+    end.
+
+%% Each item runs `Fun(item, index, items)`, as `map` calls it.
 thunks(Items, Fun) ->
-    [fun() -> Fun([Item, Index]) end || {Index, Item} <- lists:enumerate(0, Items)].
+    [fun() -> bouy_rt:call(Fun, [Item, Index, Items]) end || {Index, Item} <- lists:enumerate(0, Items)].
+
+%% `x.map(f)` of a value that is not an array runs its own `map`, whose
+%% result holds values that are already settled.
+mapped(Items, Fun) ->
+    bouy_rt:to_list(bouy_rt:call_method(Items, <<"map">>, [Fun])).
+
+first([]) -> never_settles();
+first([Value | _]) -> Value.
 
 %% The first thunk to end decides the result. The others keep running, as in
-%% JavaScript, until they end or the caller ends.
+%% JavaScript, until they end or the caller ends, but they no longer act for
+%% the turn of the caller, so their calls carry no call chain.
 -spec race([thunk()]) -> term().
 race([]) ->
-    %% An empty race never settles, as in JavaScript.
-    receive
-    after infinity -> ok
-    end;
+    never_settles();
 race(Thunks) ->
     Alias = alias(),
-    _ = start_workers(Alias, Thunks),
+    Scope = atomics:new(1, []),
+    _ = start_workers(Alias, bouy_actor:within(bouy_actor:context(), Scope), Thunks),
     receive
         {Alias, _Index, Outcome} ->
+            ok = atomics:put(Scope, 1, 1),
             true = unalias(Alias),
             value(Outcome)
+    end.
+
+%% `Promise.any`: the first value. When every thunk throws, an
+%% AggregateError with the errors in input order.
+-spec any([thunk()]) -> term().
+any([]) ->
+    aggregate([]);
+any(Thunks) ->
+    Alias = alias(),
+    Scope = atomics:new(1, []),
+    Count = start_workers(Alias, bouy_actor:within(bouy_actor:context(), Scope), Thunks),
+    first_value(Alias, Scope, Count, #{}).
+
+first_value(Alias, Scope, 0, Errors) ->
+    ok = atomics:put(Scope, 1, 1),
+    true = unalias(Alias),
+    aggregate([caught(maps:get(Index, Errors)) || Index <- lists:seq(1, map_size(Errors))]);
+first_value(Alias, Scope, Remaining, Errors) ->
+    receive
+        {Alias, _Index, {ok, Value}} ->
+            ok = atomics:put(Scope, 1, 1),
+            true = unalias(Alias),
+            Value;
+        {Alias, Index, {raised, error, _, _} = Outcome} ->
+            first_value(Alias, Scope, Remaining - 1, Errors#{Index => Outcome});
+        {Alias, _Index, Outcome} ->
+            %% An Effect failure or an exit is not a rejection, so it propagates.
+            ok = atomics:put(Scope, 1, 1),
+            true = unalias(Alias),
+            value(Outcome)
+    end.
+
+caught({raised, error, Reason, Stack}) -> bouy_rt:caught(Reason, Stack).
+
+-spec aggregate(list()) -> no_return().
+aggregate(Errors) ->
+    bouy_error:throw(<<"AggregateError">>, <<"All promises were rejected">>, #{<<"errors">> => Errors}).
+
+%% An empty race never settles. Outside an actor, the top-level code waits
+%% on it forever, so the program ends as Node ends it, with status 13.
+-spec never_settles() -> no_return().
+never_settles() ->
+    case bouy_actor:current_id() of
+        undefined ->
+            io:put_chars(standard_error, "Warning: Detected unsettled top-level await\n"),
+            erlang:halt(13);
+        _Actor ->
+            receive
+            after infinity -> ok
+            end
     end.
 
 %% `Promise.resolve(value)`, through the namespace rule of `Promise`. A call
@@ -73,19 +152,32 @@ reject(Args) ->
 
 %% Runs Fun in a worker. When Ms passes first, it kills the worker and throws
 %% CallTimedOut.
--spec with_timeout(timeout(), fun((list()) -> term())) -> term().
+-spec with_timeout(non_neg_integer(), fun((list()) -> term())) -> term().
 with_timeout(Ms, Fun) ->
     Alias = alias(),
     Worker = start_worker(Alias, 1, bouy_actor:context(), fun() -> Fun([]) end),
-    receive
-        {Alias, 1, Outcome} ->
+    case outcome(Alias, Ms) of
+        {done, Outcome} ->
             true = unalias(Alias),
-            value(Outcome)
-    after Ms ->
-        true = unlink(Worker),
-        true = exit(Worker, kill),
-        true = unalias(Alias),
-        late_outcome(Alias, Ms)
+            value(Outcome);
+        timeout ->
+            true = unlink(Worker),
+            true = exit(Worker, kill),
+            true = unalias(Alias),
+            late_outcome(Alias, Ms)
+    end.
+
+%% The outcome of worker 1, or timeout after Ms, which may exceed the
+%% longest timeout of one `receive`.
+outcome(Alias, Ms) ->
+    Chunk = min(Ms, ?MAX_AFTER),
+    receive
+        {Alias, 1, Outcome} -> {done, Outcome}
+    after Chunk ->
+        case Ms - Chunk of
+            0 -> timeout;
+            Rest -> outcome(Alias, Rest)
+        end
     end.
 
 %% The worker can end after the deadline but before the kill.
@@ -98,17 +190,25 @@ late_outcome(Alias, Ms) ->
         bouy_error:throw(<<"CallTimedOut">>, Message, Fields)
     end.
 
+%% Blocks the calling process for Ms, which may exceed the longest timeout
+%% of one `receive`.
+-spec wait(non_neg_integer()) -> ok.
+wait(Ms) when Ms > ?MAX_AFTER ->
+    ok = timer:sleep(?MAX_AFTER),
+    wait(Ms - ?MAX_AFTER);
+wait(Ms) ->
+    timer:sleep(Ms).
+
 %% Runs every thunk in its own worker and returns the outcomes in input order.
 -spec settle([thunk()]) -> [outcome()].
 settle(Thunks) ->
     Alias = alias(),
-    Count = start_workers(Alias, Thunks),
+    Count = start_workers(Alias, bouy_actor:context(), Thunks),
     Outcomes = collect(Alias, Count, #{}),
     true = unalias(Alias),
     [maps:get(Index, Outcomes) || Index <- lists:seq(1, Count)].
 
-start_workers(Alias, Thunks) ->
-    Context = bouy_actor:context(),
+start_workers(Alias, Context, Thunks) ->
     lists:foreach(
         fun({Index, Thunk}) -> start_worker(Alias, Index, Context, Thunk) end,
         lists:enumerate(Thunks)

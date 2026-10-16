@@ -9,6 +9,7 @@
 
 -define(MAX_SAFE, 9007199254740991).
 -define(FUNCTIONS, [<<"isInteger">>, <<"isSafeInteger">>, <<"isFinite">>, <<"isNaN">>, <<"parseFloat">>, <<"parseInt">>]).
+-define(METHODS, [<<"toExponential">>, <<"toFixed">>, <<"toLocaleString">>, <<"toPrecision">>, <<"toString">>, <<"valueOf">>]).
 
 -type js_number() :: bouy_rt:js_number().
 
@@ -100,10 +101,10 @@ call(<<"toPrecision">>, N, Args) -> precision(N, bouy_rt:arg(1, Args));
 call(<<"toExponential">>, N, Args) -> exponential(N, bouy_rt:arg(1, Args));
 call(<<"toLocaleString">>, N, _Args) -> locale(N);
 call(<<"valueOf">>, N, _Args) -> N;
-call(Name, N, _Args) -> bouy_rt:no_method(N, Name).
+call(Name, N, Args) -> bouy_rt:prototype_call(N, Name, Args).
 
--spec get(js_number(), term()) -> undefined.
-get(_, _) -> undefined.
+-spec get(js_number(), term()) -> term().
+get(_N, Key) -> bouy_rt:member(?MODULE, Key, ?METHODS).
 
 %%% Number to string
 
@@ -159,7 +160,7 @@ radix_string(N, undefined) ->
 radix_string(N, RadixArg) ->
     case bouy_rt:to_integer(RadixArg) of
         Radix when is_integer(Radix), Radix >= 2, Radix =< 36 -> in_radix(N, Radix);
-        _ -> range_error(<<"toString() radix must be between 2 and 36">>)
+        _ -> bouy_error:throw(<<"RangeError">>, <<"toString() radix argument must be between 2 and 36">>)
     end.
 
 in_radix(N, 10) -> to_string(N);
@@ -236,7 +237,7 @@ digit_char(D) -> $a + D - 10.
 
 %% `toFixed(digits)`: exact decimal rounding, ties away from zero.
 fixed(_, Digits) when not is_integer(Digits); Digits < 0; Digits > 100 ->
-    range_error(<<"toFixed() digits argument must be between 0 and 100">>);
+    bouy_error:throw(<<"RangeError">>, <<"toFixed() digits argument must be between 0 and 100">>);
 fixed(N, _) when is_atom(N) -> to_string(N);
 fixed(N, _) when abs(N) >= 1.0e21 -> to_string(N);
 fixed(N, Digits) when N < 0 -> <<"-", (fixed(-N, Digits))/binary>>;
@@ -255,7 +256,7 @@ precision(N, _) when is_atom(N) -> to_string(N);
 precision(N, PrecisionArg) ->
     case bouy_rt:to_integer(PrecisionArg) of
         P when is_integer(P), P >= 1, P =< 100 -> list_to_binary(precise(N, P));
-        _ -> range_error(<<"toPrecision() argument must be between 1 and 100">>)
+        _ -> bouy_error:throw(<<"RangeError">>, <<"toPrecision() argument must be between 1 and 100">>)
     end.
 
 precise(N, P) when N < 0 -> [$- | precise(-N, P)];
@@ -280,7 +281,7 @@ exponential(N, undefined) ->
 exponential(N, DigitsArg) ->
     case bouy_rt:to_integer(DigitsArg) of
         F when is_integer(F), F >= 0, F =< 100 -> list_to_binary(exponent_form(N, F));
-        _ -> range_error(<<"toExponential() argument must be between 0 and 100">>)
+        _ -> bouy_error:throw(<<"RangeError">>, <<"toExponential() argument must be between 0 and 100">>)
     end.
 
 exponent_form(N, F) when N < 0 -> [$- | exponent_form(-N, F)];
@@ -398,8 +399,13 @@ from_integer_text(Digits, Radix) ->
         I when abs(I) =< 9007199254740992 -> I;
         _ when Radix =:= 10 -> decimal_double(<<Digits/binary, ".0">>);
         I when Radix band (Radix - 1) =:= 0 -> decimal_double(<<(integer_to_binary(I))/binary, ".0">>);
-        _ -> approximate(Digits, Radix, 0.0)
+        _ -> approximate(skip_zeros(Digits), Radix, 0.0)
     end.
+
+%% V8 reads the chunks after the leading zeros, so they do not shift the
+%% chunk boundaries.
+skip_zeros(<<"0", Rest/binary>>) -> skip_zeros(Rest);
+skip_zeros(Digits) -> Digits.
 
 %% V8 reads other radixes in chunks whose multiplier fits in 32 bits and
 %% accumulates them in doubles. Node on arm64 fuses `result * multiplier +
@@ -541,7 +547,3 @@ digit_value(C) when C >= $0, C =< $9 -> C - $0;
 digit_value(C) when C >= $a, C =< $z -> C - $a + 10;
 digit_value(C) when C >= $A, C =< $Z -> C - $A + 10;
 digit_value(_) -> 36.
-
--spec range_error(binary()) -> no_return().
-range_error(Message) ->
-    bouy_error:throw(<<"RangeError">>, Message).

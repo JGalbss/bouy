@@ -4,13 +4,20 @@
 -module(bouy_map).
 
 -export(['$member'/1, new/1, call/3, get/2, mutate/3]).
--export([entries/1]).
+-export([entries/1, 'groupBy'/1]).
+
+-define(METHODS, [<<"clear">>, <<"delete">>, <<"entries">>, <<"forEach">>, <<"get">>, <<"has">>, <<"keys">>, <<"set">>, <<"values">>]).
 
 -type map_value() :: {'$map', {#{term() => {non_neg_integer(), term()}}, non_neg_integer()}}.
 -export_type([map_value/0]).
 
--spec '$member'(binary()) -> undefined.
-'$member'(_Name) -> undefined.
+-spec '$member'(binary()) -> term().
+'$member'(Name) -> bouy_rt:member_function(?MODULE, Name, [<<"groupBy">>]).
+
+%% `Map.groupBy(items, f)`: a Map of arrays, in the order of the items.
+-spec 'groupBy'(list()) -> map_value().
+'groupBy'(Args) ->
+    lists:foldl(fun({Key, Items}, Map) -> put(Map, Key, Items) end, empty(), bouy_object:groups(bouy_rt:arg(1, Args), bouy_rt:arg(2, Args))).
 
 %% `new Map(entries)`.
 -spec new(list()) -> map_value().
@@ -29,7 +36,7 @@ empty() -> {'$map', {#{}, 0}}.
 
 -spec get(map_value(), term()) -> term().
 get({'$map', {Index, _}}, <<"size">>) -> map_size(Index);
-get(_Map, _Key) -> undefined.
+get(_Map, Key) -> bouy_rt:member(?MODULE, Key, ?METHODS).
 
 %% The entries in insertion order.
 -spec entries(map_value()) -> [{term(), term()}].
@@ -49,17 +56,17 @@ call(<<"forEach">>, Map, Args) ->
     lists:foreach(fun({Key, Value}) -> bouy_rt:call(F, [Value, Key, Map]) end, entries(Map)),
     undefined;
 call(<<"keys">>, Map, _Args) ->
-    [Key || {Key, _} <- entries(Map)];
+    bouy_iterator:new(<<"Map Iterator">>, [Key || {Key, _} <- entries(Map)]);
 call(<<"values">>, Map, _Args) ->
-    [Value || {_, Value} <- entries(Map)];
+    bouy_iterator:new(<<"Map Iterator">>, [Value || {_, Value} <- entries(Map)]);
 call(<<"entries">>, Map, _Args) ->
-    [[Key, Value] || {Key, Value} <- entries(Map)];
+    bouy_iterator:new(<<"Map Entries">>, [[Key, Value] || {Key, Value} <- entries(Map)]);
 call(<<"set">>, Map, Args) ->
     element(2, mutate(<<"set">>, Map, Args));
 call(Name, Map, Args) when Name =:= <<"delete">>; Name =:= <<"clear">> ->
     element(1, mutate(Name, Map, Args));
-call(Name, Map, _Args) ->
-    bouy_rt:no_method(Map, Name).
+call(Name, Map, Args) ->
+    bouy_rt:prototype_call(Map, Name, Args).
 
 -spec mutate(binary(), map_value(), list()) -> {term(), map_value()}.
 mutate(<<"set">>, Map, Args) ->

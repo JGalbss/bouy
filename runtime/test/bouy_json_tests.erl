@@ -136,8 +136,13 @@ parse_cases() ->
 parse_test_() ->
     [?_assert(bouy_rt:strict_eq(Expected, bouy_json:parse(Args))) || {Args, Expected} <- parse_cases()] ++
         [
-            %% OTP json reads -0 as 0. JavaScript keeps the sign.
-            ?_assertEqual(0, bouy_json:parse([<<"-0">>])),
+            %% OTP json drops the sign of -0 and -0e0. JavaScript keeps it:
+            %% node -e 'console.log(1 / JSON.parse("-0"), 1 / JSON.parse("[-0e0]")[0])'
+            ?_assert(is_negative_zero(bouy_json:parse([<<"-0">>]))),
+            ?_assert(is_negative_zero(hd(bouy_json:parse([<<"[-0e0]">>])))),
+            ?_assert(is_negative_zero(hd(bouy_json:parse([<<"[-0E2, 1]">>])))),
+            ?_assertEqual([<<"-0">>, 0], bouy_json:parse([<<"[\"-0\", 0]">>])),
+            ?_assertEqual(-0.5, bouy_json:parse([<<"-0.5">>])),
             ?_assertEqual(#{<<"a">> => 2}, bouy_json:parse([<<"{\"a\":1,\"a\":2}">>])),
             ?_assertEqual(<<"TypeError: JSON.parse supports no reviver">>, thrown(fun() -> bouy_json:parse([<<"1">>, fun(_) -> 1 end]) end))
         ].
@@ -157,4 +162,36 @@ members_test_() ->
     [
         ?_assertEqual(<<"[1]">>, bouy_rt:call(bouy_json:'$member'(<<"stringify">>), [[1]])),
         ?_assertEqual(undefined, bouy_json:'$member'(<<"rawJSON">>))
+    ].
+
+is_negative_zero(F) -> is_float(F) andalso F == 0 andalso <<F/float>> =:= <<(-0.0)/float>>.
+
+%% node -e 'console.log(JSON.stringify({ a: 1 }, null, "→→→→"), JSON.stringify({ a: 1 }, null, Infinity))'
+indent_text_test_() ->
+    [
+        ?_assertEqual(<<"{\n→→→→\"a\": 1\n}"/utf8>>, bouy_json:stringify([#{<<"a">> => 1}, null, <<"→→→→"/utf8>>])),
+        ?_assertEqual(<<"{\néééééééééé\"a\": 1\n}"/utf8>>, bouy_json:stringify([#{<<"a">> => 1}, null, <<"éééééééééééé"/utf8>>])),
+        ?_assertEqual(<<"{\n          \"a\": 1\n}">>, bouy_json:stringify([#{<<"a">> => 1}, null, 'Infinity']))
+    ].
+
+%% A reviver or replacer that is not callable is ignored, so that
+%% `lines.map(JSON.parse)` and `xs.map(JSON.stringify)` work.
+uncallable_test_() ->
+    [
+        ?_assertEqual(#{<<"a">> => 1}, bouy_json:parse([<<"{\"a\":1}">>, 0, [<<"{\"a\":1}">>]])),
+        ?_assertEqual(<<"[1,2]">>, bouy_json:stringify([[1, 2], 0, [[1, 2]]])),
+        ?_assertEqual(<<"TypeError: JSON.stringify supports no replacer: pass null">>, thrown(fun() -> bouy_json:stringify([1, fun(_) -> 1 end]) end)),
+        ?_assertEqual(<<"TypeError: JSON.stringify supports no replacer: pass null">>, thrown(fun() -> bouy_json:stringify([1, [<<"a">>]]) end))
+    ].
+
+%% node -e 'console.log(JSON.parse(String.raw`"\ud800"`).length)': UTF-8 cannot hold a lone
+%% surrogate, so it becomes U+FFFD, and a message never splits a character.
+surrogate_test_() ->
+    [
+        ?_assertEqual(<<16#FFFD/utf8>>, bouy_json:parse([<<"\"\\ud800\"">>])),
+        ?_assertEqual(<<"a", 16#FFFD/utf8, "b">>, bouy_json:parse([<<"\"a\\udc00b\"">>])),
+        ?_assertEqual(<<"😀"/utf8>>, bouy_json:parse([<<"\"\\ud83d\\ude00\"">>])),
+        ?_assertEqual(<<"\\ud800">>, bouy_json:parse([<<"\"\\\\ud800\"">>])),
+        ?_assertEqual(<<"SyntaxError: Unexpected token 'é', \"é\" is not valid JSON"/utf8>>, thrown(fun() -> bouy_json:parse([<<"é"/utf8>>]) end)),
+        ?_assertEqual(<<"SyntaxError: Unexpected token '€', \"[1]€\" is not valid JSON"/utf8>>, thrown(fun() -> bouy_json:parse([<<"[1]€"/utf8>>]) end))
     ].

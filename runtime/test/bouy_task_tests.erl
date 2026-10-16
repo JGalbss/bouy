@@ -56,18 +56,24 @@ all_keeps_effect_failure() ->
     ?assertEqual({'$fail', not_found}, catch_throw(fun() -> bouy_task:all_settled(Thunks) end)).
 
 map_passes_item_and_index() ->
-    ?assertEqual([10, 21, 32], bouy_task:map([10, 20, 30], fun([Item, Index]) -> Item + Index end)).
+    ?assertEqual([10, 21, 32], bouy_task:map([10, 20, 30], fun([Item, Index, _Items]) -> Item + Index end)),
+    %% The callback gets the array too, and a namespace such as String is callable.
+    ?assertEqual([3, 3, 3], bouy_task:map([10, 20, 30], fun([_, _, Items]) -> length(Items) end)),
+    ?assertEqual([<<"1">>, <<"2">>], bouy_task:map([1, 2], {'$namespace', bouy_string})),
+    %% A value that is not an array runs its own map.
+    Box = #{<<"map">> => fun([F]) -> [bouy_rt:call(F, [1]), bouy_rt:call(F, [2])] end},
+    ?assertEqual([10, 20], bouy_task:map(Box, fun([X | _]) -> X * 10 end)).
 
 map_forms() ->
     Check = fun
-        ([Item, _Index]) when Item > 15 -> erlang:error({'$throw', bouy_error:new(<<"Error">>, <<"big">>)});
-        ([Item, Index]) -> Item + Index
+        ([Item, _Index, _Items]) when Item > 15 -> erlang:error({'$throw', bouy_error:new(<<"Error">>, <<"big">>)});
+        ([Item, Index, _Items]) -> Item + Index
     end,
     ?assertMatch(
         [#{<<"value">> := 10}, #{<<"status">> := <<"rejected">>}],
         bouy_task:map_settled([10, 20], Check)
     ),
-    ?assertEqual(1, bouy_task:map_race([500, 10], fun([Ms, Index]) -> timer:sleep(Ms), Index end)).
+    ?assertEqual(1, bouy_task:map_race([500, 10], fun([Ms, Index, _Items]) -> timer:sleep(Ms), Index end)).
 
 all_settled_shapes() ->
     Error = bouy_error:new(<<"Error">>, <<"no">>),

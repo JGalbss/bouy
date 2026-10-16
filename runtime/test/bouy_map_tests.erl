@@ -22,10 +22,10 @@ order_test_() ->
         ?_assertEqual(2, bouy_map:get(Map, <<"size">>)),
         ?_assertEqual(3, bouy_map:call(<<"get">>, Map, [<<"a">>])),
         ?_assertNot(bouy_map:call(<<"has">>, Map, [<<"z">>])),
-        ?_assertEqual([<<"a">>, <<"b">>], bouy_map:call(<<"keys">>, Map, [])),
-        ?_assertEqual([3, 4], bouy_map:call(<<"values">>, Map, [])),
-        ?_assertEqual([[<<"a">>, 3], [<<"b">>, 4]], bouy_map:call(<<"entries">>, Map, [])),
-        ?_assertEqual([100 - I || I <- lists:seq(1, 50)], bouy_map:call(<<"keys">>, Many, []))
+        ?_assertEqual({'$iterator', <<"Map Iterator">>, [<<"a">>, <<"b">>]}, bouy_map:call(<<"keys">>, Map, [])),
+        ?_assertEqual({'$iterator', <<"Map Iterator">>, [3, 4]}, bouy_map:call(<<"values">>, Map, [])),
+        ?_assertEqual({'$iterator', <<"Map Entries">>, [[<<"a">>, 3], [<<"b">>, 4]]}, bouy_map:call(<<"entries">>, Map, [])),
+        ?_assertEqual([100 - I || I <- lists:seq(1, 50)], bouy_rt:to_list(bouy_map:call(<<"keys">>, Many, [])))
     ].
 
 keys_test_() ->
@@ -73,7 +73,8 @@ new_test_() ->
         ?_assertEqual([], bouy_map:entries(bouy_map:new([undefined]))),
         ?_assertEqual([{a, 1}], bouy_map:entries(bouy_map:new([bouy_map:new([[[a, 1]]])]))),
         ?_assertEqual(<<"TypeError: Iterator value 1 is not an entry object">>, thrown(fun() -> bouy_map:new([[1]]) end)),
-        ?_assertEqual(undefined, bouy_map:'$member'(<<"groupBy">>)),
+        %% node -e 'console.log(Map.groupBy([1, 2, 3], (x) => x % 2))'
+        ?_assertEqual([{1, [1, 3]}, {0, [2]}], bouy_map:entries(bouy_rt:call(bouy_map:'$member'(<<"groupBy">>), [[1, 2, 3], fun([X | _]) -> X rem 2 end]))),
         ?_assertEqual(undefined, bouy_map:get(bouy_map:new([]), <<"length">>)),
         ?_assertEqual(<<"TypeError: Map(0) {}.push is not a function">>, thrown(fun() -> bouy_map:call(<<"push">>, bouy_map:new([]), []) end))
     ].

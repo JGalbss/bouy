@@ -1,33 +1,51 @@
-%% Error values: maps with `<<"$error">> => true`, a name, a message, a
-%% stack, and any own fields (contract sections 3 and 16).
+%% Error values: maps tagged with the atom key `'$error'`, which holds the
+%% classes of the error, with a name, a message, a stack, and any own fields
+%% (contract sections 3 and 16). JSON and object literals make only binary
+%% keys, so no plain data can pass for an error.
 -module(bouy_error).
 
 -export([new/2, new/3, throw/2, throw/3]).
 -export(['Error#new'/1, 'TypeError#new'/1, 'RangeError#new'/1, 'SyntaxError#new'/1]).
 -export([call/3, get/2]).
--export([from_erlang/2, fields/1, to_string/1]).
+-export([from_erlang/2, fields/1, to_string/1, class/1, classes/1]).
 
--type error_value() :: #{binary() => term()}.
--export_type([error_value/0]).
+-type class() :: {'$class', module(), binary()}.
+-type error_value() :: #{'$error' := [class()], binary() => term()}.
+-export_type([error_value/0, class/0]).
 
 %% Own properties that JavaScript does not enumerate: `Object.keys`,
 %% `JSON.stringify`, and spreads skip them.
--define(HIDDEN, [<<"$error">>, <<"name">>, <<"message">>, <<"stack">>, <<"cause">>]).
+-define(HIDDEN, ['$error', <<"name">>, <<"message">>, <<"stack">>, <<"cause">>]).
+%% The JavaScript error classes whose instances the runtime builds by name.
+-define(BUILT_IN, [<<"Error">>, <<"TypeError">>, <<"RangeError">>, <<"SyntaxError">>, <<"ReferenceError">>, <<"AggregateError">>]).
 
--spec new(binary(), binary()) -> error_value().
+%% Name is the name of a built-in error, or the classes of a user error class,
+%% the class itself first: `[{'$class', Module, <<"E">>}, Base]`.
+-spec new(binary() | [class(), ...], binary()) -> error_value().
 new(Name, Message) ->
     new(Name, Message, #{}).
 
--spec new(binary(), binary(), map()) -> error_value().
+-spec new(binary() | [class(), ...], binary(), map()) -> error_value().
+new([{'$class', _, Name} | _] = Classes, Message, Fields) ->
+    build(Name, Classes, Message, Fields);
 new(Name, Message, Fields) ->
+    build(Name, built_in(Name), Message, Fields).
+
+build(Name, Classes, Message, Fields) ->
     {current_stacktrace, Frames} = erlang:process_info(self(), current_stacktrace),
     Base = #{
-        <<"$error">> => true,
+        '$error' => Classes,
         <<"name">> => Name,
         <<"message">> => Message,
         <<"stack">> => stack(Name, Message, Frames)
     },
     maps:merge(Base, Fields).
+
+built_in(Name) ->
+    case lists:member(Name, ?BUILT_IN) of
+        true -> [{'$class', ?MODULE, Name}];
+        false -> []
+    end.
 
 -spec throw(binary(), binary()) -> no_return().
 throw(Name, Message) ->
@@ -61,21 +79,30 @@ construct(Name, Args) ->
 cause(#{<<"cause">> := Cause}) -> #{<<"cause">> => Cause};
 cause(_) -> #{}.
 
+%% The classes of an error, the most derived first.
+-spec classes(error_value()) -> [class()].
+classes(#{'$error' := Classes}) -> Classes.
+
+%% `error.constructor`: the class that built the error.
+-spec class(error_value()) -> class().
+class(#{'$error' := [Class | _]}) -> Class;
+class(#{'$error' := []}) -> {'$class', ?MODULE, <<"Error">>}.
+
 -spec call(binary(), error_value(), list()) -> term().
 call(<<"toString">>, Error, _Args) ->
     to_string(Error);
 call(Name, Error, Args) ->
     case maps:get(Name, Error, undefined) of
         F when is_function(F, 1) -> F(Args);
-        _ -> throw(<<"TypeError">>, <<(to_string(Error))/binary, ".", Name/binary, " is not a function">>)
+        _ -> bouy_rt:prototype_call(Error, Name, Args)
     end.
 
 -spec get(error_value(), term()) -> term().
 get(Error, Key) ->
-    maps:get(bouy_rt:to_key(Key), Error, undefined).
+    bouy_rt:get(Error, Key).
 
 %% `Error.prototype.toString`.
--spec to_string(error_value()) -> binary().
+-spec to_string(map()) -> binary().
 to_string(Error) ->
     header(text(maps:get(<<"name">>, Error, undefined), <<"Error">>), text(maps:get(<<"message">>, Error, undefined), <<>>)).
 
@@ -89,11 +116,14 @@ header(Name, Message) -> <<Name/binary, ": ", Message/binary>>.
 %% The own fields that JavaScript enumerates.
 -spec fields(error_value()) -> map().
 fields(Error) ->
-    maps:without(?HIDDEN, Error).
+    maps:filter(fun(Key, _) -> is_binary(Key) end, maps:without(?HIDDEN, Error)).
 
-%% The TypeError that a `catch` binds for an Erlang runtime error. The
-%% `erlang` field keeps the original reason for debugging.
+%% The error that a `catch` binds for an Erlang runtime error: a TypeError,
+%% or the ReferenceError of a module-level const read before its declaration
+%% runs. The `erlang` field keeps the original reason for debugging.
 -spec from_erlang(term(), [tuple()]) -> error_value().
+from_erlang(badarg, [{persistent_term, get, [{Module, Name}], _} | _]) when is_atom(Module), is_binary(Name) ->
+    new(<<"ReferenceError">>, <<"Cannot access '", Name/binary, "' before initialization">>);
 from_erlang(Reason, Stack) ->
     Message = describe(Reason, Stack),
     new(<<"TypeError">>, Message, #{
@@ -108,6 +138,11 @@ describe({badmatch, Value}, _) -> <<"no match of right hand side value ", (forma
 describe({case_clause, Value}, _) -> <<"no case clause matching ", (format(Value))/binary>>;
 describe({try_clause, Value}, _) -> <<"no try clause matching ", (format(Value))/binary>>;
 describe(if_clause, _) -> <<"no true branch found in an if expression">>;
+describe(undef, [{Module, Function, _, _} | _] = Stack) ->
+    case bouy_rt:global_name(Module) of
+        undefined -> <<"undefined function", (location(Stack))/binary>>;
+        Global -> <<Global/binary, ".", (atom_to_binary(Function))/binary, " is not a function">>
+    end;
 describe(undef, Stack) -> <<"undefined function", (location(Stack))/binary>>;
 describe({badfun, Value}, _) -> <<(format(Value))/binary, " is not a function">>;
 describe({badarity, _}, Stack) -> <<"function called with the wrong number of arguments", (location(Stack))/binary>>;

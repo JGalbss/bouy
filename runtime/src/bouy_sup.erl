@@ -7,9 +7,11 @@
 %%
 %% A group starts empty and receives its actors through supervisor:start_child/2.
 %% An actor runs its constructor in init/1, so the root supervisor never waits
-%% on user code, and a constructor can spawn other actors.
+%% on user code, and a constructor can spawn other actors. To stop a group, a
+%% process kills it instead of asking the root, which would wait for a
+%% constructor that the group runs.
 
--export([start_root/0, start_group/1, new_group/1, stop_group/1]).
+-export([start_root/0, start_group/1, new_group/1, stop_group/1, stop_when_empty/1, stop_when_empty/2, own/3]).
 -export([init/1]).
 
 -define(ROOT, bouy_root_sup).
@@ -27,10 +29,61 @@ new_group(Flags) ->
     {ok, Group} = supervisor:start_child(?ROOT, [Flags]),
     Group.
 
-%% Stops a group and every actor in it.
+%% Stops a group and every actor in it, and returns when the group is gone.
+%% The actors have brutal_kill shutdowns and do not trap exits, so killing
+%% the group kills them too.
 -spec stop_group(pid()) -> ok.
 stop_group(Group) ->
-    _ = supervisor:terminate_child(?ROOT, Group),
+    Monitor = monitor(process, Group),
+    true = exit(Group, kill),
+    receive
+        {'DOWN', Monitor, process, Group, _} -> ok
+    end.
+
+%% Stops a group that has no actor left: the last one was stopped, or was
+%% temporary and crashed.
+-spec stop_when_empty(pid()) -> ok.
+stop_when_empty(Group) ->
+    case is_empty(Group) of
+        true -> stop_group(Group);
+        false -> ok
+    end.
+
+%% The same, once the process Pid of a crashed actor has exited.
+-spec stop_when_empty(pid(), pid()) -> ok.
+stop_when_empty(Group, Pid) ->
+    _ = spawn(fun() ->
+        Monitor = monitor(process, Pid),
+        receive
+            {'DOWN', Monitor, process, Pid, _} -> stop_when_empty(Group)
+        end
+    end),
+    ok.
+
+%% No child runs or restarts. A child that has exited counts as gone,
+%% because the group may not yet have removed it.
+is_empty(Group) ->
+    try supervisor:which_children(Group) of
+        Children -> not lists:any(fun({_, Child, _, _}) -> Child =:= restarting orelse is_pid(Child) andalso is_process_alive(Child) end, Children)
+    catch
+        exit:_ -> false
+    end.
+
+%% Ties the group to the actor process Owner, whose constructor started it:
+%% when Owner ends, by a restart or a stop, the group and its actors stop.
+-spec own(pid(), pid(), [pos_integer()]) -> ok.
+own(Group, Owner, Ids) ->
+    _ = spawn(fun() ->
+        OwnerMonitor = monitor(process, Owner),
+        GroupMonitor = monitor(process, Group),
+        receive
+            {'DOWN', OwnerMonitor, process, Owner, _} ->
+                lists:foreach(fun bouy_registry:mark_stopped/1, Ids),
+                stop_group(Group);
+            {'DOWN', GroupMonitor, process, Group, _} ->
+                ok
+        end
+    end),
     ok.
 
 -spec init(root | {group, supervisor:sup_flags()}) ->

@@ -270,13 +270,13 @@ kahan_add(N, {Sum, Compensation}) ->
 fround(Args) ->
     case number(Args) of
         N when is_atom(N) -> N;
-        N when erlang:abs(N) > 3.5e38 -> signed_infinity(N);
+        N when erlang:abs(N) > 3.5e38 -> bouy_rt:signed_infinity(N);
         N -> single(<<(float(N)):32/float>>, N)
     end.
 
 %% A double just under the float32 maximum can still round up to infinity.
 single(<<F:32/float>>, _N) -> F;
-single(_Infinity, N) -> signed_infinity(N).
+single(_Infinity, N) -> bouy_rt:signed_infinity(N).
 
 -spec clz32(list()) -> 0..32.
 clz32(Args) ->
@@ -446,14 +446,11 @@ double(Args) ->
             try float(I) of
                 F -> F
             catch
-                error:badarg -> signed_infinity(I)
+                error:badarg -> bouy_rt:signed_infinity(I)
             end;
         N ->
             N
     end.
-
-signed_infinity(N) when N < 0 -> '-Infinity';
-signed_infinity(_) -> 'Infinity'.
 
 %%% Doubles as words, as fdlibm reads them
 

@@ -26,6 +26,19 @@ object_test_() ->
         ?_assertEqual(<<"TypeError: Cannot convert undefined or null to object">>, thrown(fun() -> bouy_object:entries([]) end))
     ].
 
+%% A private field of a class lives under an atom key, which no property
+%% lists: keys, spreads, JSON, and console output skip it.
+private_field_test_() ->
+    This = #{<<"owner">> => <<"ann">>, '#pin' => <<"1234">>},
+    [
+        ?_assertEqual([<<"owner">>], bouy_object:keys([This])),
+        ?_assertEqual(#{<<"owner">> => <<"ann">>}, bouy_rt:object([{'$spread', This}])),
+        ?_assertEqual(<<"{\"owner\":\"ann\"}">>, bouy_json:stringify([This])),
+        ?_assertEqual(<<"{ owner: 'ann' }">>, bouy_console:inspect(This)),
+        ?_assertEqual(<<"{}">>, bouy_console:inspect(#{'#pin' => 1})),
+        ?_assertNot(bouy_rt:has(This, <<"#pin">>))
+    ].
+
 from_entries_test_() ->
     [
         ?_assertEqual(#{<<"a">> => 1, <<"b">> => 2}, bouy_object:'fromEntries'([[[<<"a">>, 1], [<<"b">>, 2]]])),

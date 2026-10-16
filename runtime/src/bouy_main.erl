@@ -22,13 +22,19 @@ start() ->
 
 -spec boot() -> no_return().
 boot() ->
+    %% SIGTERM ends the VM as it ends Node, with status 128 + 15 and no shutdown
+    %% report, and the OTP reports that remain go to stderr, never into the output.
+    ok = os:set_signal(sigterm, default),
+    _ = logger:remove_handler(default),
+    _ = logger:add_handler(default, logger_std_h, #{config => #{type => standard_error}}),
     %% Node writes UTF-8 under any locale. A device in latin1 mode would escape or
     %% mangle the characters outside latin1.
     ok = io:setopts(standard_io, [{encoding, unicode}]),
     ok = io:setopts(standard_error, [{encoding, unicode}]),
+    persistent_term:put({bouy, stdout}, group_leader()),
     case init:get_plain_arguments() of
         [Build, Entry, EntryPath, Modules | Args] ->
-            persistent_term:put({bouy, argv}, [<<"bouy">> | [binary(Arg) || Arg <- [EntryPath | Args]]]),
+            persistent_term:put({bouy, argv}, [<<"bouy">> | [unicode:characters_to_binary(Arg) || Arg <- [EntryPath | Args]]]),
             case compile_modules(Build, string:lexemes(Modules, ",")) of
                 ok -> run(list_to_atom(Entry));
                 {error, Report} -> stop(2, Report)
@@ -50,9 +56,13 @@ import(Module) ->
             ok
     end.
 
+%% The -eval process traps exits, so every worker that the top-level code
+%% links would leave an EXIT message behind, and each receive would scan
+%% them. Workers end normally, so the program does not trap exits.
 -spec run(module()) -> no_return().
 run(Entry) ->
     ok = start_runtime(),
+    _ = process_flag(trap_exit, false),
     try import(Entry) of
         ok -> erlang:halt(0)
     catch
@@ -87,7 +97,7 @@ uncaught(throw, {'$fail', Value}, _Stack) ->
 uncaught(Class, Reason, _Stack) ->
     io_lib:format("Uncaught ~p: ~p~n", [Class, Reason]).
 
-describe(#{<<"$error">> := true, <<"name">> := Name, <<"message">> := Message}) ->
+describe(#{'$error' := _, <<"name">> := Name, <<"message">> := Message}) when is_binary(Name), is_binary(Message) ->
     io_lib:format("Uncaught ~ts: ~ts~n", [Name, Message]);
 describe(Value) ->
     try bouy_rt:to_string(Value) of
@@ -98,7 +108,10 @@ describe(Value) ->
 
 compile_modules(Build, Modules) ->
     Ebin = filename:join(Build, "ebin"),
-    ok = filelib:ensure_path(Ebin),
+    case filelib:ensure_path(Ebin) of
+        ok -> ok;
+        {error, Reason} -> stop(1, io_lib:format("bouy: cannot write ~ts: ~ts~n", [Ebin, file:format_error(Reason)]))
+    end,
     true = code:add_patha(Ebin),
     case lists:flatmap(fun(Module) -> compile_module(Build, Ebin, Module) end, Modules) of
         [] -> ok;
@@ -148,9 +161,6 @@ format_error(File, {Location, Module, Descriptor}) ->
 
 line({Line, _Column}) -> Line;
 line(Line) -> Line.
-
-binary(Text) ->
-    unicode:characters_to_binary(Text).
 
 -spec stop(non_neg_integer(), unicode:chardata()) -> no_return().
 stop(Status, Report) ->

@@ -9,6 +9,13 @@
 
 -define(FUNCTIONS, [<<"isArray">>, <<"from">>, <<"of">>]).
 -define(MUTATORS, [<<"push">>, <<"pop">>, <<"shift">>, <<"unshift">>, <<"splice">>, <<"sort">>, <<"reverse">>, <<"fill">>, <<"copyWithin">>]).
+-define(METHODS, [
+    <<"at">>, <<"concat">>, <<"entries">>, <<"every">>, <<"filter">>, <<"find">>, <<"findIndex">>, <<"findLast">>,
+    <<"findLastIndex">>, <<"flat">>, <<"flatMap">>, <<"forEach">>, <<"includes">>, <<"indexOf">>, <<"join">>,
+    <<"keys">>, <<"lastIndexOf">>, <<"map">>, <<"reduce">>, <<"reduceRight">>, <<"slice">>, <<"some">>,
+    <<"toReversed">>, <<"toSorted">>, <<"toString">>, <<"values">>
+    | ?MUTATORS
+]).
 
 %%% Namespace
 
@@ -43,11 +50,11 @@ from(Args) ->
         F -> map_indexed(fun(Item, I) -> bouy_rt:call(F, [Item, I]) end, Items)
     end.
 
+%% An object without `length`, and a number or a boolean, which ToObject
+%% makes an object without `length`, give no items.
 source_items(#{<<"length">> := Length} = ArrayLike) ->
     [bouy_rt:get(ArrayLike, I) || I <- lists:seq(0, bouy_rt:clamp(Length, 0, 16#FFFFFFFF) - 1)];
-source_items(#{<<"$error">> := true}) ->
-    [];
-source_items(Object) when is_map(Object) ->
+source_items(Value) when is_map(Value); is_number(Value); is_boolean(Value); is_atom(Value), Value =/= undefined, Value =/= null ->
     [];
 source_items(Iterable) ->
     bouy_rt:to_list(Iterable).
@@ -58,9 +65,9 @@ source_items(Iterable) ->
 get(L, <<"length">>) ->
     length(L);
 get(L, Key) ->
-    case index(Key) of
+    case bouy_rt:to_index(Key) of
         I when is_integer(I) -> nth(I, L);
-        none -> undefined
+        none -> bouy_rt:member(?MODULE, Key, ?METHODS)
     end.
 
 nth(0, [Item | _]) -> Item;
@@ -73,7 +80,7 @@ nth(_, []) -> undefined.
 set(L, <<"length">>, Length) ->
     resize(L, bouy_rt:clamp(Length, 0, 16#FFFFFFFF));
 set(L, Key, Value) ->
-    case index(Key) of
+    case bouy_rt:to_index(Key) of
         I when is_integer(I) -> replace(L, I, Value);
         none -> bouy_error:throw(<<"TypeError">>, <<"Cannot set property '", (bouy_rt:to_key(Key))/binary, "' on an array">>)
     end.
@@ -85,23 +92,12 @@ replace([], I, Value) -> lists:duplicate(I, undefined) ++ [Value].
 resize(L, Length) when length(L) >= Length -> lists:sublist(L, Length);
 resize(L, Length) -> L ++ lists:duplicate(Length - length(L), undefined).
 
-index(I) when is_integer(I), I >= 0 -> I;
-index(F) when is_float(F), F >= 0, F == trunc(F) -> trunc(F);
-index(<<"0">>) -> 0;
-index(<<C, _/binary>> = Key) when C >= $1, C =< $9 ->
-    try binary_to_integer(Key) of
-        I -> I
-    catch
-        error:badarg -> none
-    end;
-index(_) -> none.
-
 %%% Methods
 
 -spec call(binary(), list(), list()) -> term().
 call(<<"at">>, L, Args) -> at(L, bouy_rt:arg(1, Args));
 call(<<"concat">>, L, Args) -> L ++ lists:append([spread(Arg) || Arg <- Args]);
-call(<<"entries">>, L, _Args) -> map_indexed(fun(Item, I) -> [I, Item] end, L);
+call(<<"entries">>, L, _Args) -> bouy_iterator:new(<<"Array Iterator">>, map_indexed(fun(Item, I) -> [I, Item] end, L));
 call(<<"every">>, L, Args) -> every(L, bouy_rt:arg(1, Args));
 call(<<"filter">>, L, Args) -> filter(L, bouy_rt:arg(1, Args));
 call(<<"find">>, L, Args) -> find(L, bouy_rt:arg(1, Args), item);
@@ -114,7 +110,7 @@ call(<<"forEach">>, L, Args) -> for_each(L, bouy_rt:arg(1, Args));
 call(<<"includes">>, L, Args) -> includes(L, bouy_rt:arg(1, Args), bouy_rt:arg(2, Args));
 call(<<"indexOf">>, L, Args) -> index_of(L, bouy_rt:arg(1, Args), bouy_rt:arg(2, Args));
 call(<<"join">>, L, Args) -> join(L, separator(bouy_rt:arg(1, Args)));
-call(<<"keys">>, L, _Args) -> lists:seq(0, length(L) - 1);
+call(<<"keys">>, L, _Args) -> bouy_iterator:new(<<"Array Iterator">>, lists:seq(0, length(L) - 1));
 call(<<"lastIndexOf">>, L, Args) -> last_index_of(L, Args);
 call(<<"map">>, L, Args) -> map(L, bouy_rt:arg(1, Args));
 call(<<"reduce">>, L, Args) -> reduce(map_indexed(fun(Item, I) -> {I, Item} end, L), L, Args);
@@ -124,11 +120,11 @@ call(<<"some">>, L, Args) -> some(L, bouy_rt:arg(1, Args));
 call(<<"toReversed">>, L, _Args) -> lists:reverse(L);
 call(<<"toSorted">>, L, Args) -> sort(L, bouy_rt:arg(1, Args));
 call(<<"toString">>, L, _Args) -> join(L, <<",">>);
-call(<<"values">>, L, _Args) -> L;
+call(<<"values">>, L, _Args) -> bouy_iterator:new(<<"Array Iterator">>, L);
 call(Name, L, Args) ->
     case lists:member(Name, ?MUTATORS) of
         true -> element(1, mutate(Name, L, Args));
-        false -> bouy_rt:no_method(L, Name)
+        false -> bouy_rt:prototype_call(L, Name, Args)
     end.
 
 -spec mutate(binary(), list(), list()) -> {term(), list()}.
@@ -332,7 +328,8 @@ copy_within(L, Args) ->
 
 %%% Sorting
 
-%% Both sorts are stable. undefined sorts last without a comparator call.
+%% Both sorts are stable. undefined sorts last without a comparator call,
+%% and a comparator sees the calls that V8 makes (bouy_sort).
 sort(L, Compare) ->
     {Undefined, Defined} = lists:partition(fun(Item) -> Item =:= undefined end, L),
     sorted(Defined, Compare) ++ Undefined.
@@ -340,4 +337,4 @@ sort(L, Compare) ->
 sorted(Items, undefined) ->
     [Item || {_, Item} <- lists:keysort(1, [{bouy_rt:to_string(Item), Item} || Item <- Items])];
 sorted(Items, Compare) ->
-    lists:sort(fun(A, B) -> not bouy_rt:gt(bouy_rt:call(Compare, [A, B]), 0) end, Items).
+    bouy_sort:sort(Items, Compare).
