@@ -1,0 +1,6 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy202-module-let.ts
+---
+bouy202-module-let.ts:1:1: BOUY202: a module-level `let` is shared mutable state; use `const`, or keep the state in a function or an actor

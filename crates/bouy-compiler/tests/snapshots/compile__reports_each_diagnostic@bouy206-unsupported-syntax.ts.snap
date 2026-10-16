@@ -1,0 +1,19 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy206-unsupported-syntax.ts
+---
+bouy206-unsupported-syntax.ts:1:1: BOUY206: enums are not supported; use a union of string literals
+bouy206-unsupported-syntax.ts:6:3: BOUY206: static class members are not supported; use a module-level const
+bouy206-unsupported-syntax.ts:7:3: BOUY206: getters and setters are not supported; use a method
+bouy206-unsupported-syntax.ts:12:8: BOUY206: class inheritance is supported only for error classes: extends Error, Data.TaggedError("Tag"), or Data.Error
+bouy206-unsupported-syntax.ts:14:8: BOUY206: generators are not supported yet; Effect.gen and async * methods come in a later stage
+bouy206-unsupported-syntax.ts:19:3: BOUY206: `var` is not supported; use `let` or `const`
+bouy206-unsupported-syntax.ts:20:3: BOUY206: labeled statements are not supported; move the loop into a function and return from it
+bouy206-unsupported-syntax.ts:23:14: BOUY206: regular expressions are not supported yet
+bouy206-unsupported-syntax.ts:27:3: BOUY206: `.then()` chains are not supported; use `await` and try/catch
+bouy206-unsupported-syntax.ts:28:3: BOUY206: `new Promise` is not supported; call the async function and await it
+bouy206-unsupported-syntax.ts:34:5: BOUY206: `switch` fall-through between non-empty cases is not supported; end the case with `break` or `return`
+bouy206-unsupported-syntax.ts:40:14: BOUY206: `arguments` is not supported; use a rest parameter
+bouy206-unsupported-syntax.ts:45:1: BOUY206: `import x = require(...)` is not supported; use an import declaration
+bouy206-unsupported-syntax.ts:48:3: BOUY206: decorators are not supported

@@ -1,6 +1,6 @@
 [package]
 name = "bouy-compiler"
-description = "Per-file compiler that lowers TypeScript into actor-aware JavaScript for the Bouy runtime."
+description = "Compiles a TypeScript subset into Erlang source for the Bouy OTP runtime."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,10 +8,10 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
-oxc = { version = "0.154", features = ["transformer", "codegen", "semantic", "ast_visit"] }
+oxc = { version = "0.154", features = ["semantic", "ast_visit"] }
 
 [dev-dependencies]
-insta = "1"
+insta = { version = "1", features = ["glob"] }
 
 [lints]
 workspace = true

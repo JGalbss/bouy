@@ -11,6 +11,7 @@ repository = "https://github.com/JGalbss/bouy"
 
 [workspace.dependencies]
 bouy-compiler = { path = "crates/bouy-compiler" }
+clap = { version = "4", features = ["derive"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

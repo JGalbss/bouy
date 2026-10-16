@@ -1,0 +1,31 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/bouy-compiler/tests/fixtures/imported.ts
+---
+-module(bouy@imported).
+-export(['__init__'/0, helper/1, 'Shape#new'/1, 'Shape#area'/2, 'Shape#dispatch'/3, 'Shape#streams'/0]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() ->
+    persistent_term:put({bouy@imported, <<"LIMIT">>}, 10),
+    ok.
+
+helper(Args) ->
+    N@1 = bouy_rt:arg(1, Args),
+    bouy_rt:add(N@1, 10).
+
+'Shape#new'(Args) ->
+    This = #{},
+    This.
+
+'Shape#area'(This, Args) -> {0, This}.
+
+'Shape#dispatch'(<<"area">>, This, Args) -> 'Shape#area'(This, Args);
+'Shape#dispatch'(Method, _This, _Args) ->
+    bouy_error:throw(
+        <<"TypeError">>,
+        bouy_rt:concat([<<"Shape.">>, Method, <<" is not a function">>])
+    ).
+
+'Shape#streams'() -> [].

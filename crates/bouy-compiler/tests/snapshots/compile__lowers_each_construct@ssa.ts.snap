@@ -1,0 +1,156 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/bouy-compiler/tests/fixtures/ssa.ts
+---
+-module(bouy@ssa).
+-export(['__init__'/0, earlyReturnInNestedLoops/1, breakInSwitchInLoop/1, continueWithUpdate/1, tryCatchRebinds/1, shadowing/1, closuresInLoop/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+earlyReturnInNestedLoops(Args) ->
+    Grid@1 = bouy_rt:arg(1, Args),
+    Target@1 = bouy_rt:arg(2, Args),
+    Visited@1 = 0,
+    Row@1 = 0,
+    Loop@1 = fun Loop@1({Visited@2, Row@2}) ->
+        case bouy_rt:lt(Row@2, bouy_rt:get(Grid@1, <<"length">>)) of
+            true ->
+                Loop@2 = fun
+                    Loop@2([Cell@1 | Rest@1], {Visited@3}) ->
+                        Visited@4 = bouy_rt:sub(Visited@3, -1),
+                        case bouy_rt:strict_eq(Cell@1, Target@1) of
+                            true -> {return, bouy_rt:concat([Row@2, <<":">>, Visited@4])};
+                            false -> Loop@2(Rest@1, {Visited@4})
+                        end;
+                    Loop@2([], T@1) -> {break, T@1}
+                end,
+                case Loop@2(bouy_rt:to_list(bouy_rt:get(Grid@1, Row@2)), {Visited@2}) of
+                    {break, {Visited@5}} ->
+                        Row@3 = bouy_rt:sub(Row@2, -1),
+                        Loop@1({Visited@5, Row@3});
+                    T@2 -> T@2
+                end;
+            false -> {break, {Visited@2, Row@2}}
+        end
+    end,
+    case Loop@1({Visited@1, Row@1}) of
+        {break, {Visited@6, Row@4}} -> bouy_rt:concat([<<"none:">>, Visited@6]);
+        {return, T@3} -> T@3
+    end.
+
+breakInSwitchInLoop(Args) ->
+    Words@1 = bouy_rt:arg(1, Args),
+    Score@1 = 0,
+    Loop@1 = fun
+        Loop@1([Word@1 | Rest@1], {Score@2}) ->
+            T@1 = case Word@1 of
+                <<"skip">> -> {next, {Score@2}};
+                <<"end">> -> {return, Score@2};
+                _ ->
+                    case bouy_rt:gt(bouy_rt:get(Word@1, <<"length">>), 3) of
+                        true -> {next, {Score@2}};
+                        false ->
+                            Score@3 = bouy_rt:add(Score@2, bouy_rt:get(Word@1, <<"length">>)),
+                            {next, {Score@3}}
+                    end
+            end,
+            case T@1 of
+                {next, {Score@4}} ->
+                    Score@5 = bouy_rt:sub(Score@4, -1),
+                    Loop@1(Rest@1, {Score@5});
+                T@2 -> T@2
+            end;
+        Loop@1([], T@3) -> {break, T@3}
+    end,
+    case Loop@1(bouy_rt:to_list(Words@1), {Score@1}) of
+        {break, {Score@6}} -> Score@6;
+        {return, T@4} -> T@4
+    end.
+
+continueWithUpdate(Args) ->
+    Limit@1 = bouy_rt:arg(1, Args),
+    Sum@1 = 0,
+    I@1 = 0,
+    J@1 = Limit@1,
+    Loop@1 = fun Loop@1({Sum@2, I@2, J@2}) ->
+        case bouy_rt:lt(I@2, J@2) of
+            true ->
+                case bouy_rt:strict_eq(bouy_rt:remainder(I@2, 2), 0) of
+                    true ->
+                        I@3 = bouy_rt:sub(I@2, -1),
+                        J@3 = bouy_rt:sub(J@2, 1),
+                        Loop@1({Sum@2, I@3, J@3});
+                    false ->
+                        Sum@3 = bouy_rt:add(Sum@2, bouy_rt:mul(I@2, J@2)),
+                        I@4 = bouy_rt:sub(I@2, -1),
+                        J@4 = bouy_rt:sub(J@2, 1),
+                        Loop@1({Sum@3, I@4, J@4})
+                end;
+            false -> {break, {Sum@2, I@2, J@2}}
+        end
+    end,
+    {break, {Sum@4, I@5, J@5}} = Loop@1({Sum@1, I@1, J@1}),
+    Sum@4.
+
+tryCatchRebinds(Args) ->
+    Inputs@1 = bouy_rt:arg(1, Args),
+    Parsed@1 = 0,
+    Failed@1 = 0,
+    Loop@1 = fun
+        Loop@1([Input@1 | Rest@1], {Parsed@2, Failed@2}) ->
+            T@1 = erlang:make_ref(),
+            erlang:put(T@1, {Parsed@2, Failed@2}),
+            {Parsed@5, Failed@5} = try
+                Parsed@3 = bouy_rt:add(Parsed@2, bouy_number:'$call'([bouy_json:parse([Input@1])])),
+                erlang:put(T@1, {Parsed@3, Failed@2}),
+                {Parsed@3, Failed@2}
+            catch
+                error:T@2:T@3 ->
+                    {Parsed@4, Failed@3} = erlang:get(T@1),
+                    Failed@4 = bouy_rt:sub(Failed@3, -1),
+                    erlang:put(T@1, {Parsed@4, Failed@4}),
+                    {Parsed@4, Failed@4}
+            after
+                erlang:erase(T@1)
+            end,
+            Loop@1(Rest@1, {Parsed@5, Failed@5});
+        Loop@1([], T@4) -> {break, T@4}
+    end,
+    {break, {Parsed@6, Failed@6}} = Loop@1(bouy_rt:to_list(Inputs@1), {Parsed@1, Failed@1}),
+    bouy_rt:concat([Parsed@6, <<"/">>, Failed@6]).
+
+shadowing(Args) ->
+    N@1 = bouy_rt:arg(1, Args),
+    X@1 = N@1,
+    X@2 = 100,
+    N@2 = bouy_rt:add(N@1, X@2),
+    X@3 = 0,
+    Loop@1 = fun Loop@1({N@3, X@4}) ->
+        case bouy_rt:lt(X@4, 2) of
+            true ->
+                N@4 = bouy_rt:add(N@3, X@4),
+                X@5 = bouy_rt:sub(X@4, -1),
+                Loop@1({N@4, X@5});
+            false -> {break, {N@3, X@4}}
+        end
+    end,
+    {break, {N@5, X@6}} = Loop@1({N@2, X@3}),
+    bouy_rt:add(X@1, N@5).
+
+closuresInLoop(Args) ->
+    Bases@1 = bouy_rt:arg(1, Args),
+    Fns@1 = [],
+    Loop@1 = fun
+        Loop@1([Base@1 | Rest@1], {Fns@2}) ->
+            Doubled@1 = bouy_rt:mul(Base@1, 2),
+            {_, Fns@3} = bouy_rt:mutate(Fns@2, <<"push">>, [fun(Args@1) -> bouy_rt:add(Doubled@1, Base@1) end]),
+            Loop@1(Rest@1, {Fns@3});
+        Loop@1([], T@2) -> {break, T@2}
+    end,
+    {break, {Fns@4}} = Loop@1(bouy_rt:to_list(Bases@1), {Fns@1}),
+    bouy_rt:call_method(Fns@4, <<"map">>, [fun(Args@2) ->
+        F@1 = bouy_rt:arg(1, Args@2),
+        bouy_rt:call(F@1, [])
+    end]).

@@ -1,0 +1,5 @@
+export function broken(): number {
+  let value = 1;
+  let value = 2;
+  return value;
+}

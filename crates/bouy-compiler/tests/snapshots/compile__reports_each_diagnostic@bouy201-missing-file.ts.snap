@@ -1,0 +1,6 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy201-missing-file.ts
+---
+bouy201-missing-file.ts:1:24: BOUY201: cannot find the module "./does-not-exist.ts"; check the path and the file extension

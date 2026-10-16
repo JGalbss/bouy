@@ -1,0 +1,85 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/bouy-compiler/tests/fixtures/refs.ts
+---
+-module(bouy@refs).
+-export(['__init__'/0, 'Store#new'/1, 'Store#add'/2, 'Store#dispatch'/3, 'Store#streams'/0, 'Router#new'/1, 'Router#route'/2, 'Router#connect'/2, 'Router#dispatch'/3, 'Router#streams'/0, fill/1, collect/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() ->
+    Store@1 = bouy:spawn([{'$class', bouy@refs, <<"Store">>}]),
+    persistent_term:put({bouy@refs, <<"store">>}, Store@1),
+    ok.
+
+'Store#new'(Args) ->
+    This = #{<<"#items">> => []},
+    This.
+
+'Store#add'(This, Args) ->
+    Item@1 = bouy_rt:arg(1, Args),
+    T@1 = bouy_rt:get(This, <<"#items">>),
+    {T@2, T@3} = bouy_rt:mutate(T@1, <<"push">>, [Item@1]),
+    This@1 = bouy_rt:set(This, <<"#items">>, T@3),
+    {bouy_rt:get(bouy_rt:get(This@1, <<"#items">>), <<"length">>), This@1}.
+
+'Store#dispatch'(<<"add">>, This, Args) -> 'Store#add'(This, Args);
+'Store#dispatch'(Method, _This, _Args) ->
+    bouy_error:throw(
+        <<"TypeError">>,
+        bouy_rt:concat([<<"Store.">>, Method, <<" is not a function">>])
+    ).
+
+'Store#streams'() -> [].
+
+'Router#new'(Args) ->
+    Store@1 = bouy_rt:arg(1, Args),
+    This = #{<<"#items">> => undefined, <<"#backup">> => undefined},
+    This@1 = bouy_rt:set(This, <<"#items">>, Store@1),
+    This@1.
+
+'Router#route'(This, Args) ->
+    Items@1 = bouy_rt:arg(1, Args),
+    {
+        bouy_task:map(Items@1, fun(Args@1) ->
+            Item@1 = bouy_rt:arg(1, Args@1),
+            bouy_rt:call_method(bouy_rt:get(This, <<"#items">>), <<"add">>, [Item@1])
+        end),
+        This
+    }.
+
+'Router#connect'(This, Args) ->
+    Backup@1 = bouy_rt:arg(1, Args),
+    This@1 = bouy_rt:set(This, <<"#backup">>, Backup@1),
+    {undefined, This@1}.
+
+'Router#dispatch'(<<"route">>, This, Args) -> 'Router#route'(This, Args);
+'Router#dispatch'(<<"connect">>, This, Args) -> 'Router#connect'(This, Args);
+'Router#dispatch'(Method, _This, _Args) ->
+    bouy_error:throw(
+        <<"TypeError">>,
+        bouy_rt:concat([<<"Router.">>, Method, <<" is not a function">>])
+    ).
+
+'Router#streams'() -> [].
+
+fill(Args) ->
+    Store@1 = bouy_rt:arg(1, Args),
+    Items@1 = bouy_rt:arg(2, Args),
+    Target@1 = Store@1,
+    bouy_task:map(Items@1, fun(Args@1) ->
+        Item@1 = bouy_rt:arg(1, Args@1),
+        bouy_rt:call_method(Target@1, <<"add">>, [Item@1])
+    end).
+
+collect(Args) ->
+    Items@1 = bouy_rt:arg(1, Args),
+    Seen@1 = bouy_set:new([]),
+    Loop@1 = fun
+        Loop@1([Item@1 | Rest@1], {Seen@2}) ->
+            {_, Seen@3} = bouy_rt:mutate(Seen@2, <<"add">>, [Item@1]),
+            Loop@1(Rest@1, {Seen@3});
+        Loop@1([], T@2) -> {break, T@2}
+    end,
+    {break, {Seen@4}} = Loop@1(bouy_rt:to_list(Items@1), {Seen@1}),
+    Seen@4.

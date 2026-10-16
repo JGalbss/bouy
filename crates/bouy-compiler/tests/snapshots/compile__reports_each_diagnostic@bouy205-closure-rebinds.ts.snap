@@ -1,0 +1,7 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy205-closure-rebinds.ts
+---
+bouy205-closure-rebinds.ts:4:5: BOUY205: a closure cannot change `sum`, which belongs to an enclosing function; return the new value from the closure instead
+bouy205-closure-rebinds.ts:7:27: BOUY205: a closure cannot change `seen`, which belongs to an enclosing function; return the new value from the closure instead

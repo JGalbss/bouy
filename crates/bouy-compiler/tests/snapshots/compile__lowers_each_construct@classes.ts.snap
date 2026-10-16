@@ -1,0 +1,100 @@
+---
+source: crates/bouy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/bouy-compiler/tests/fixtures/classes.ts
+---
+-module(bouy@classes).
+-export(['__init__'/0, 'Account#new'/1, 'Account#deposit'/2, 'Account##log'/2, 'Account#balance'/2, 'Account#labels'/2, 'Account##label'/2, 'Account#dispatch'/3, 'Account#streams'/0, 'Overdrawn#new'/1, 'Plain#new'/1, 'Missing#new'/1, open/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+'Account#new'(Args) ->
+    Owner@1 = bouy_rt:arg(1, Args),
+    This = #{<<"#balance">> => 0, <<"owner">> => undefined, <<"history">> => []},
+    This@1 = bouy_rt:set(This, <<"owner">>, Owner@1),
+    This@1.
+
+'Account#deposit'(This, Args) ->
+    Amount@1 = bouy_rt:arg(1, Args),
+    T@1 = bouy_rt:get(This, <<"#balance">>),
+    This@1 = bouy_rt:set(This, <<"#balance">>, bouy_rt:add(T@1, Amount@1)),
+    {_, This@2} = 'Account##log'(This@1, [Amount@1]),
+    {bouy_rt:get(This@2, <<"#balance">>), This@2}.
+
+'Account##log'(This, Args) ->
+    Amount@1 = bouy_rt:arg(1, Args),
+    T@1 = bouy_rt:get(This, <<"history">>),
+    {T@2, T@3} = bouy_rt:mutate(T@1, <<"push">>, [Amount@1]),
+    This@1 = bouy_rt:set(This, <<"history">>, T@3),
+    {undefined, This@1}.
+
+'Account#balance'(This, Args) -> {bouy_rt:get(This, <<"#balance">>), This}.
+
+'Account#labels'(This, Args) ->
+    {
+        bouy_rt:call_method(bouy_rt:get(This, <<"history">>), <<"map">>, [fun(Args@1) ->
+            Amount@1 = bouy_rt:arg(1, Args@1),
+            erlang:element(1, 'Account##label'(This, [Amount@1]))
+        end]),
+        This
+    }.
+
+'Account##label'(This, Args) ->
+    Amount@1 = bouy_rt:arg(1, Args),
+    {bouy_rt:concat([bouy_rt:get(This, <<"owner">>), <<":">>, Amount@1]), This}.
+
+'Account#dispatch'(<<"deposit">>, This, Args) -> 'Account#deposit'(This, Args);
+'Account#dispatch'(<<"balance">>, This, Args) -> 'Account#balance'(This, Args);
+'Account#dispatch'(<<"labels">>, This, Args) -> 'Account#labels'(This, Args);
+'Account#dispatch'(Method, _This, _Args) ->
+    bouy_error:throw(
+        <<"TypeError">>,
+        bouy_rt:concat([<<"Account.">>, Method, <<" is not a function">>])
+    ).
+
+'Account#streams'() -> [].
+
+'Overdrawn#new'(Args) ->
+    Needed@1 = bouy_rt:arg(1, Args),
+    This@1 = bouy_error:new(<<"Overdrawn">>, bouy_rt:concat([<<"needs ">>, Needed@1, <<" more">>]), #{}),
+    This@2 = bouy_rt:set(This@1, <<"name">>, <<"Overdrawn">>),
+    This@3 = bouy_rt:set(This@2, <<"needed">>, Needed@1),
+    This@3.
+
+'Plain#new'(Args) ->
+    This@1 = bouy_error:new(
+        <<"Plain">>,
+        case bouy_rt:arg(1, Args) of
+            undefined -> <<>>;
+            T@1 -> bouy_rt:to_string(T@1)
+        end,
+        #{}
+    ),
+    This@1.
+
+'Missing#new'(Args) ->
+    T@1 = case bouy_rt:arg(1, Args) of
+        undefined -> #{};
+        T@2 -> T@2
+    end,
+    This@1 = bouy_error:new(
+        <<"Missing">>,
+        case bouy_rt:get(T@1, <<"message">>) of
+            undefined -> <<>>;
+            T@3 -> bouy_rt:to_string(T@3)
+        end,
+        bouy_rt:set(T@1, <<"_tag">>, <<"Missing">>)
+    ),
+    This@1.
+
+open(Args) ->
+    Owner@1 = bouy_rt:arg(1, Args),
+    Ref@1 = bouy:spawn([{'$class', bouy@classes, <<"Account">>}, #{<<"args">> => [Owner@1]}]),
+    bouy_rt:call_method(Ref@1, <<"add">>, [1]),
+    [
+        Ref@1,
+        'Overdrawn#new'([5]),
+        'Plain#new'([<<"x">>]),
+        'Missing#new'([#{<<"id">> => <<"1">>}])
+    ].

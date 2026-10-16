@@ -1,49 +1,110 @@
-use std::path::Path;
+//! Snapshot tests of the generated Erlang for each construct, an `erlc` check of every
+//! snapshot, and the diagnostics of section 10.
 
-use bouy_compiler::compile;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
-fn compiled(fixture: &str) -> bouy_compiler::Output {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
-        .join(fixture);
-    let source = std::fs::read_to_string(&path).expect("fixture exists");
-    compile(&path, &source).expect("fixture compiles")
+use bouy_compiler::{Diagnostic, compile_in};
+
+fn tests_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
+}
+
+fn fixtures() -> PathBuf {
+    tests_dir().join("fixtures")
+}
+
+/// The generated Erlang of the module that `path` holds.
+fn lower(path: &Path) -> String {
+    let project = compile_in(path, &fixtures()).unwrap_or_else(|diagnostics| {
+        panic!(
+            "{} does not compile:\n{}",
+            path.display(),
+            render(&diagnostics)
+        )
+    });
+    project.modules[0].erlang.clone()
+}
+
+fn render(diagnostics: &[Diagnostic]) -> String {
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            let mut diagnostic = diagnostic.clone();
+            diagnostic.path = PathBuf::from(diagnostic.path.file_name().unwrap_or_default());
+            diagnostic.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
-fn lowers_an_actor_module() {
-    let output = compiled("research-agent.ts");
-    insta::assert_snapshot!(output.code);
-    assert_eq!(output.preemption_points, 2);
-    assert_eq!(output.located_classes, ["ResearchAgent", "Hidden"]);
+fn lowers_each_construct() {
+    insta::glob!("fixtures/*.ts", |path| {
+        insta::assert_snapshot!(lower(path));
+    });
 }
 
 #[test]
-fn leaves_a_module_without_async_loops_or_exported_classes_unchanged_in_shape() {
-    let path = Path::new("plain.ts");
-    let output = compile(
-        path,
-        "const total: number = [1, 2].reduce((a, b) => a + b, 0);\n",
-    )
-    .expect("plain module compiles");
-    assert_eq!(
-        output.code,
-        "const total = [1, 2].reduce((a, b) => a + b, 0);\n"
+fn generated_erlang_compiles_with_erlc() {
+    if Command::new("erlc").arg("-help").output().is_err() {
+        eprintln!("skipping the erlc check: erlc is not installed");
+        return;
+    }
+    let output = std::env::temp_dir().join(format!("bouy-compiler-erlc-{}", std::process::id()));
+    std::fs::create_dir_all(&output).expect("the temporary directory is writable");
+    let mut failures = Vec::new();
+    for entry in std::fs::read_dir(fixtures()).expect("the fixtures exist") {
+        let path = entry.expect("a directory entry").path();
+        if path.extension().is_none_or(|extension| extension != "ts") {
+            continue;
+        }
+        let project = compile_in(&path, &fixtures()).expect("the fixture compiles");
+        for module in &project.modules {
+            let source = output.join(format!("{}.erl", module.name));
+            std::fs::write(&source, &module.erlang).expect("the temporary directory is writable");
+            let result = Command::new("erlc")
+                .arg("-o")
+                .arg(&output)
+                .arg(&source)
+                .output()
+                .expect("erlc runs");
+            if !result.status.success() {
+                failures.push(format!(
+                    "{}:\n{}{}",
+                    module.name,
+                    String::from_utf8_lossy(&result.stdout),
+                    String::from_utf8_lossy(&result.stderr)
+                ));
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&output);
+    assert!(
+        failures.is_empty(),
+        "erlc rejected generated Erlang:\n{}",
+        failures.join("\n")
     );
-    assert_eq!(output.preemption_points, 0);
 }
 
+/// Each file in `tests/fixtures/diagnostics` is named after the code it must produce, such as
+/// `bouy205-closure-rebinds.ts`, and produces only that code.
 #[test]
-fn reports_syntax_errors_with_positions() {
-    let diagnostics = compile(Path::new("broken.ts"), "const a = ;\n").expect_err("syntax error");
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!((diagnostics[0].line, diagnostics[0].column), (1, 11));
-}
-
-#[test]
-fn places_preemption_points_only_in_async_code() {
-    let output = compiled("loop-shapes.ts");
-    insta::assert_snapshot!(output.code);
-    assert_eq!(output.preemption_points, 6);
-    assert_eq!(output.located_classes, ["Shapes"]);
+fn reports_each_diagnostic() {
+    let directory = fixtures().join("diagnostics");
+    insta::glob!("fixtures/diagnostics/*.ts", |path| {
+        let expected = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.split('-').next())
+            .map(str::to_uppercase)
+            .expect("the fixture name starts with its code");
+        let diagnostics = compile_in(path, &directory).err().unwrap_or_else(|| {
+            panic!("{} compiles, but it must report {expected}", path.display())
+        });
+        for diagnostic in &diagnostics {
+            assert_eq!(diagnostic.code.as_str(), expected, "{diagnostic}");
+        }
+        insta::assert_snapshot!(render(&diagnostics));
+    });
 }
