@@ -1,0 +1,15 @@
+{
+  "name": "@bouy/examples",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-sdk/openai": "4.0.95",
+    "ai": "7.0.142",
+    "bouy": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}

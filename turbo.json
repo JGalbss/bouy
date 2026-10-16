@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**",
+        "Cargo.toml",
+        "build.rs",
+        "package.json",
+        "tsconfig.json",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/crates/*/src/**",
+        "$TURBO_ROOT$/crates/*/Cargo.toml"
+      ],
+      "outputs": ["dist/**", "*.node", "binding.js", "binding.d.ts"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "test/**", "*.ts", "tsconfig.json", "$TURBO_ROOT$/tsconfig.base.json"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "test/**", "fixtures/**", "*.ts", "Cargo.toml"]
+    },
+    "bench": {
+      "dependsOn": ["^build"],
+      "cache": false
+    }
+  }
+}

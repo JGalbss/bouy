@@ -1,7 +1,7 @@
 import { defineConfig } from "oxlint";
 import { recommended } from "./tools/oxlint/guardrails/preset.ts";
 
-const preset = recommended({ typeAware: true });
+const preset = recommended({ effect: true, typeAware: true });
 
 const measurementRelaxations = {
   "guardrails/maintainability-index": "off",
@@ -12,7 +12,14 @@ const measurementRelaxations = {
 
 export default defineConfig({
   ...preset,
-  ignorePatterns: [...(preset.ignorePatterns ?? []), "dist/**", ".bouy/**"],
+  ignorePatterns: [
+    ...(preset.ignorePatterns ?? []),
+    "dist/**",
+    ".bouy/**",
+    "target/**",
+    "crates/*/binding.*",
+    "**/fixtures/**",
+  ],
   overrides: [
     ...(preset.overrides ?? []),
     { files: ["src/**/*.ts", "bin/**/*.ts"], rules: { "eslint/no-ternary": "error" } },

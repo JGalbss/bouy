@@ -3,3 +3,10 @@ dist/
 .bouy/
 *.log
 .DS_Store
+
+# napi-rs build outputs
+crates/*/binding.js
+crates/*/binding.d.ts
+crates/*/*.node
+target/
+.turbo/

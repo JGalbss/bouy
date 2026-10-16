@@ -1,0 +1,25 @@
+{
+  "name": "bouy",
+  "version": "0.1.0",
+  "description": "Actors as the execution primitive for TypeScript AI agents.",
+  "license": "MIT",
+  "bin": {
+    "bouy": "./src/cli/main.ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@bouy/checker": "workspace:*",
+    "@bouy/compiler": "workspace:*",
+    "@effect/platform-node": "4.0.5",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.5",
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

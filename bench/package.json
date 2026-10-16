@@ -1,0 +1,19 @@
+{
+  "name": "@bouy/bench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "4.0.95",
+    "ai": "7.0.142",
+    "bouy": "workspace:*",
+    "effect": "4.0.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}
