@@ -3,12 +3,15 @@ import type { Fiber, Scheduler } from "effect";
 const SLICE_MS = 4;
 const IDLE_GAP_MS = 1;
 const REDUCTIONS_PER_CHECK = 1024;
+const TASKS_PER_CLOCK_CHECK = 64;
+const settled = Promise.resolve();
 
 class SharedDispatcher implements Scheduler.SchedulerDispatcher {
   #tasks: Array<() => void> = [];
   #pending: "none" | "microtask" | "macrotask" = "none";
   #sliceStartedAt = performance.now();
   #lastActiveAt = 0;
+  #tasksSinceClockCheck = 0;
 
   get isSliceSpent(): boolean {
     return performance.now() - this.#sliceStartedAt >= SLICE_MS;
@@ -17,13 +20,15 @@ class SharedDispatcher implements Scheduler.SchedulerDispatcher {
   scheduleTask(task: () => void): void {
     this.#tasks.push(task);
     if (this.#pending !== "none") return;
-    if (this.isSliceSpent) {
+    this.#tasksSinceClockCheck += 1;
+    if (this.#tasksSinceClockCheck >= TASKS_PER_CLOCK_CHECK && this.isSliceSpent) {
+      this.#tasksSinceClockCheck = 0;
       this.#pending = "macrotask";
       setImmediate(this.#afterYield);
       return;
     }
     this.#pending = "microtask";
-    queueMicrotask(this.#afterMicrotask);
+    void settled.then(this.#afterMicrotask);
   }
 
   flush(): void {
@@ -46,12 +51,14 @@ class SharedDispatcher implements Scheduler.SchedulerDispatcher {
   };
 
   #runTasks(): void {
-    const startedAt = performance.now();
-    if (startedAt - this.#lastActiveAt > IDLE_GAP_MS) this.#sliceStartedAt = startedAt;
     const tasks = this.#tasks;
     this.#tasks = [];
+    if (this.#tasksSinceClockCheck === 0) {
+      const startedAt = performance.now();
+      if (startedAt - this.#lastActiveAt > IDLE_GAP_MS) this.#sliceStartedAt = startedAt;
+      this.#lastActiveAt = startedAt;
+    }
     for (const task of tasks) task();
-    this.#lastActiveAt = performance.now();
   }
 }
 

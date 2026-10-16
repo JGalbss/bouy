@@ -136,10 +136,23 @@ const sendableOrFailure = <A>(
   }
 };
 
-export const copyArguments = (args: ReadonlyArray<unknown>): ReadonlyArray<Sendable> =>
-  sendableOrFailure(args, decodeArguments);
+type Primitive = string | number | boolean | bigint | null | undefined;
 
-export const copyValue = (result: Sendable): Sendable => sendableOrFailure(result, decodeValue);
+const isPrimitive = (value: unknown): value is Primitive =>
+  Object(value) !== value && !Predicate.isSymbol(value);
+
+const areAllPrimitive = (values: ReadonlyArray<unknown>): values is ReadonlyArray<Primitive> =>
+  values.every(isPrimitive);
+
+export const copyArguments = (args: ReadonlyArray<unknown>): ReadonlyArray<Sendable> => {
+  if (areAllPrimitive(args)) return [...args];
+  return sendableOrFailure(args, decodeArguments);
+};
+
+export const copyValue = (result: Sendable): Sendable => {
+  if (isPrimitive(result)) return result;
+  return sendableOrFailure(result, decodeValue);
+};
 
 export const copyError = (cause: unknown): Error => {
   if (!(cause instanceof Error)) return new Error(inspect(cause));
