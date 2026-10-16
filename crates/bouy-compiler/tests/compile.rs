@@ -39,3 +39,11 @@ fn reports_syntax_errors_with_positions() {
     assert_eq!(diagnostics.len(), 1);
     assert_eq!((diagnostics[0].line, diagnostics[0].column), (1, 11));
 }
+
+#[test]
+fn places_preemption_points_only_in_async_code() {
+    let output = compiled("loop-shapes.ts");
+    insta::assert_snapshot!(output.code);
+    assert_eq!(output.preemption_points, 6);
+    assert_eq!(output.located_classes, ["Shapes"]);
+}
