@@ -13,6 +13,7 @@ Turborepo orders and caches the runtime tasks. Cargo builds the crates. `rust-to
 
 ## Rules
 
+- `docs/goal.md` holds the objective and the definition of done. Check your work against it.
 - The product runs on BEAM only. Do not add a Node, Bun, or V8 dependency to the compiler, the CLI, or the runtime. Node may appear only as a test oracle for JavaScript semantics and as a benchmark baseline.
 - Run `pnpm check` before every commit. It runs the oxfmt and rustfmt checks, oxlint, clippy, the Cargo tests, and the rebar3 EUnit tests and dialyzer.
 - Write commit subjects as Conventional Commits: `<type>(<scope>): <summary>`. The `commit-msg` hook in `.githooks/` and the CI `commits` job reject other subjects.

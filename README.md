@@ -22,7 +22,7 @@ console.log(await counter.increment());
 
 ## Status
 
-Work in progress. The compiler, the CLI, and the runtime are being built against [the contract](docs/design/beam-runtime.md). This README gets a quick start when `bouy run` passes its end-to-end tests.
+Work in progress. [The goal](docs/goal.md) states the objective and the definition of done. The compiler, the CLI, and the runtime are being built against [the contract](docs/design/beam-runtime.md). This README gets a quick start when `bouy run` passes its end-to-end tests.
 
 ## Layout
 
