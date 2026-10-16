@@ -60,7 +60,8 @@ export const signal = (): AbortSignal => {
   return ambient?.signal ?? ambient?.turn?.signal ?? unaborted;
 };
 
-export const withSignal = <A>(cancellation: AbortSignal, body: () => A): A => {
+export const withSignal = <A>(cancellation: AbortSignal | undefined, body: () => A): A => {
+  if (cancellation === undefined) return body();
   const ambient = storage.getStore();
   const inherited = ambient?.signal ?? ambient?.turn?.signal;
   return storage.run({ turn: ambient?.turn, signal: combine(inherited, cancellation) }, body);
