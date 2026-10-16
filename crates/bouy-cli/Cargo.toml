@@ -1,0 +1,19 @@
+[package]
+name = "bouy-cli"
+description = "The bouy command: compiles a TypeScript program to Erlang and runs it on one BEAM VM."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "bouy"
+path = "src/main.rs"
+
+[dependencies]
+bouy-compiler.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

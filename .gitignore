@@ -5,3 +5,4 @@ target/
 runtime/_build/
 *.log
 .DS_Store
+erl_crash.dump
