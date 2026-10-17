@@ -10,7 +10,7 @@ The pass rate of each test tier that exists today. `bouy-suites compat` writes t
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
 | node | node | v25.9.0 | 1,503 | 4,419 | 34.0% | 2,322 | 11 | d0df4df | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 2,933 | 4,460 | 65.8% | 1,527 | 0 | 9a1816a | `tests/node/surface/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 2,989 | 4,460 | 67.0% | 1,471 | 0 | 388f0ac | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/equivalence.rs` |
@@ -1042,20 +1042,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at 9a1816a. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 388f0ac. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 2,933 | 65.8% | 0 | 0 | 0 | 0 | 1,527 | 0 | 0 | 0 |
+| every test | 4,460 | 2,989 | 67.0% | 0 | 0 | 0 | 0 | 1,471 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| deprecated | 129 | 98 | 76.0% | 0 | 0 | 0 | 0 | 31 | 0 | 0 | 0 |
-| documented | 4,331 | 2,835 | 65.5% | 0 | 0 | 0 | 0 | 1,496 | 0 | 0 | 0 |
+| deprecated | 129 | 100 | 77.5% | 0 | 0 | 0 | 0 | 29 | 0 | 0 | 0 |
+| documented | 4,331 | 2,889 | 66.7% | 0 | 0 | 0 | 0 | 1,442 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1160,7 +1160,7 @@ node-surface at v25.9.0, updated at 9a1816a. Evidence: `tests/node/surface/expec
 | node:path/posix | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:path/win32 | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:perf_hooks | 69 | 69 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:process | 86 | 85 | 98.8% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| node:process | 86 | 86 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:punycode | 9 | 9 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:querystring | 7 | 7 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:readline | 48 | 48 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1182,15 +1182,15 @@ node-surface at v25.9.0, updated at 9a1816a. Evidence: `tests/node/surface/expec
 | node:trace_events | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
 | node:tty | 143 | 143 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:url | 46 | 44 | 95.7% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
-| node:util | 97 | 70 | 72.2% | 0 | 0 | 0 | 0 | 27 | 0 | 0 | 0 |
-| node:util/types | 44 | 17 | 38.6% | 0 | 0 | 0 | 0 | 27 | 0 | 0 | 0 |
+| node:util | 97 | 97 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:util/types | 44 | 44 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:v8 | 72 | 0 | 0.0% | 0 | 0 | 0 | 0 | 72 | 0 | 0 | 0 |
 | node:vm | 16 | 15 | 93.8% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | node:wasi | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:worker_threads | 84 | 80 | 95.2% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
 | node:zlib | 553 | 553 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | performance | 18 | 0 | 0.0% | 0 | 0 | 0 | 0 | 18 | 0 | 0 | 0 |
-| process | 87 | 86 | 98.9% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| process | 87 | 87 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | queueMicrotask | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | require | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sessionStorage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |

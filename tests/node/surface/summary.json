@@ -1,15 +1,15 @@
 {
   "suite": "node-surface",
   "version": "v25.9.0",
-  "updated": "9a1816a4f61f4d567fc2cdc485bc036a1533ebde",
+  "updated": "388f0aca8976abcb933c9a0439807734acb89eff",
   "total": 4460,
   "outcomes": {
-    "pass": 2933,
+    "pass": 2989,
     "rejected": 0,
     "late": 0,
     "skip": 0,
     "never": 0,
-    "fail": 1527,
+    "fail": 1471,
     "timeout": 0,
     "harness_error": 0,
     "crash": 0
@@ -17,12 +17,12 @@
   "groups": {
     "docs": {
       "deprecated": {
-        "pass": 98,
-        "fail": 31
+        "pass": 100,
+        "fail": 29
       },
       "documented": {
-        "pass": 2835,
-        "fail": 1496
+        "pass": 2889,
+        "fail": 1442
       }
     },
     "module": {
@@ -323,8 +323,7 @@
         "pass": 69
       },
       "node:process": {
-        "pass": 85,
-        "fail": 1
+        "pass": 86
       },
       "node:punycode": {
         "pass": 9
@@ -391,12 +390,10 @@
         "fail": 2
       },
       "node:util": {
-        "pass": 70,
-        "fail": 27
+        "pass": 97
       },
       "node:util/types": {
-        "pass": 17,
-        "fail": 27
+        "pass": 44
       },
       "node:v8": {
         "fail": 72
@@ -419,8 +416,7 @@
         "fail": 18
       },
       "process": {
-        "pass": 86,
-        "fail": 1
+        "pass": 87
       },
       "queueMicrotask": {
         "fail": 1

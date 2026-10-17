@@ -33,35 +33,35 @@ binding() ->
             {ok, Dir} = file:get_cwd(),
             bouy_node:string(Dir)
         end)},
-        {<<"chdir">>, F(<<"chdir">>, 1, fun(_, Args) -> chdir(A(1, Args)) end)},
-        {<<"umask">>, F(<<"umask">>, 1, fun(_, Args) -> umask(A(1, Args)) end)},
-        {<<"memoryUsage">>, F(<<"memoryUsage">>, 1, fun(_, Args) -> memory_usage(A(1, Args)) end)},
+        {<<"chdir">>, F(<<"chdir">>, 0, fun(_, Args) -> chdir(A(1, Args)) end)},
+        {<<"umask">>, F(<<"umask">>, 0, fun(_, Args) -> umask(A(1, Args)) end)},
+        {<<"memoryUsage">>, F(<<"memoryUsage">>, 0, fun(_, Args) -> memory_usage(A(1, Args)) end)},
         {<<"rss">>, F(<<"rss">>, 0, fun(_, _) -> erlang:memory(total) end)},
         {<<"constrainedMemory">>, F(<<"constrainedMemory">>, 0, fun(_, _) -> 0 end)},
         {<<"availableMemory">>, F(<<"availableMemory">>, 0, fun(_, _) -> bouy_guard:limit(os:getenv("BOUY_MAX_MEMORY", "")) end)},
-        {<<"cpuUsage">>, F(<<"cpuUsage">>, 1, fun(_, Args) -> cpu_usage(A(1, Args)) end)},
-        {<<"threadCpuUsage">>, F(<<"threadCpuUsage">>, 1, fun(_, Args) -> cpu_usage(A(1, Args)) end)},
-        {<<"resourceUsage">>, F(<<"resourceUsage">>, 1, fun(_, Args) -> resource_usage(A(1, Args)) end)},
+        {<<"cpuUsage">>, F(<<"cpuUsage">>, 0, fun(_, Args) -> cpu_usage(A(1, Args)) end)},
+        {<<"threadCpuUsage">>, F(<<"threadCpuUsage">>, 0, fun(_, Args) -> cpu_usage(A(1, Args)) end)},
+        {<<"resourceUsage">>, F(<<"resourceUsage">>, 0, fun(_, Args) -> resource_usage(A(1, Args)) end)},
         {<<"_getActiveRequests">>, F(<<"_getActiveRequests">>, 0, fun(_, _) -> bouy_heap:new_array([]) end)},
         {<<"_getActiveHandles">>, F(<<"_getActiveHandles">>, 0, fun(_, _) -> bouy_heap:new_array([]) end)},
         {<<"getActiveResourcesInfo">>, F(<<"getActiveResourcesInfo">>, 0, fun(_, _) -> bouy_heap:new_array([]) end)},
-        {<<"_kill">>, F(<<"_kill">>, 2, fun(_, Args) -> kill(A(1, Args), A(2, Args)) end)},
+        {<<"_kill">>, F(<<"_kill">>, 0, fun(_, Args) -> kill(A(1, Args), A(2, Args)) end)},
         {<<"_rawDebug">>, F(<<"_rawDebug">>, 0, fun(_, Args) ->
             io:put_chars(bouy_ref:stderr(), [lists:join(" ", [bouy_ref_string:to_utf8(bouy_ref:to_string(X)) || X <- Args]), "\n"]),
             undefined
         end)},
-        {<<"reallyExit">>, F(<<"reallyExit">>, 1, fun ?MODULE:really_exit/2)},
+        {<<"reallyExit">>, F(<<"reallyExit">>, 0, fun ?MODULE:really_exit/2)},
         {<<"uptime">>, F(<<"uptime">>, 0, fun(_, _) ->
             {Ms, _} = erlang:statistics(wall_clock),
             Ms / 1000
         end)},
-        {<<"patchProcessObject">>, F(<<"patchProcessObject">>, 1, fun(_, Args) -> bouy_node_process:patch(A(1, Args)) end)},
-        {<<"dlopen">>, F(<<"dlopen">>, 2, fun ?MODULE:dlopen/2)},
-        {<<"setEmitWarningSync">>, F(<<"setEmitWarningSync">>, 1, fun(_, Args) ->
+        {<<"patchProcessObject">>, F(<<"patchProcessObject">>, 0, fun(_, Args) -> bouy_node_process:patch(A(1, Args)) end)},
+        {<<"dlopen">>, F(<<"dlopen">>, 0, fun ?MODULE:dlopen/2)},
+        {<<"setEmitWarningSync">>, F(<<"setEmitWarningSync">>, 0, fun(_, Args) ->
             bouy_node_loop:set_callback(emit_warning_sync, A(1, Args)),
             undefined
         end)},
-        {<<"loadEnvFile">>, F(<<"loadEnvFile">>, 1, fun(_, Args) -> load_env_file(A(1, Args)) end)},
+        {<<"loadEnvFile">>, F(<<"loadEnvFile">>, 0, fun(_, Args) -> load_env_file(A(1, Args)) end)},
         {<<"resetStdioForTesting">>, F(<<"resetStdioForTesting">>, 0, fun(_, _) -> undefined end)},
         {<<"abort">>, F(<<"abort">>, 0, fun ?MODULE:abort/2)},
         {<<"causeSegfault">>, F(<<"causeSegfault">>, 0, fun ?MODULE:segfault/2)}

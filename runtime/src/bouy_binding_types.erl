@@ -20,7 +20,7 @@ binding() ->
 %% The functions of the checks Names.
 -spec checks([binary()]) -> [{binary(), term()}].
 checks(Names) ->
-    [{Name, bouy_node:fn(Name, 1, fun(_, Args) -> check(Name, bouy_node:arg(1, Args)) end)} || Name <- Names].
+    [{Name, bouy_node:fn(Name, 0, fun(_, Args) -> check(Name, bouy_node:arg(1, Args)) end)} || Name <- Names].
 
 -spec check(binary(), term()) -> boolean().
 check(Name, V) when ?IS_OBJECT(V) ->
