@@ -49,6 +49,7 @@ struct RecordedProgram {
 enum Runtime {
     Bouy,
     Node,
+    Bun,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

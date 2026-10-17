@@ -31,7 +31,7 @@ Requirement 7 of [goal.md](../goal.md): "test262 covers the language. Node's own
 | Conformance        | `tests/conformance`                               | `crates/bouy-cli/tests/conformance.rs` | 72 programs           |
 | Equivalence        | `tests/equivalence/{effect,ai}`                   | `equivalence.rs`, `ai.rs`              | 23 Effect, 7 AI       |
 | Actor invariants   | `tests/programs`                                  | `crates/bouy-cli/tests/programs.rs`    | 31 tests              |
-| Benchmarks         | `bench/programs`                                  | `crates/bouy-bench`                    | 9 suites              |
+| Benchmarks         | `bench/programs`                                  | `crates/bouy-bench`                    | 13 suites             |
 | Migration fixture  | `tests/migration/before`                          | `crates/bouy-cli/tests/migration.rs`   | one app of 22 modules |
 | test262            | `tests/test262`, fetched into the cache           | `bouy-suites test262`                  | 53,616 files          |
 | Fuzz replay        | `tests/fuzz`                                      | `crates/bouy-cli/tests/fuzz.rs`        | 36 cases              |

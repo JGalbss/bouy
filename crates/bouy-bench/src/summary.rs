@@ -100,7 +100,8 @@ pub fn add_memory_per_actor(suites: &mut [Suite]) {
     }
 }
 
-/// A Markdown table with one row for each metric of each suite.
+/// A Markdown table with one row for each metric of each suite: a cell for each runtime,
+/// then the ratio of the Bouy median to the Bun median.
 pub fn table(results: &Results) -> String {
     let Results {
         date, host, tools, ..
@@ -110,10 +111,11 @@ pub fn table(results: &Results) -> String {
         .as_ref()
         .map_or_else(|| "unknown".to_owned(), cell);
     let mut table = format!(
-        "Bouy and Node on {date}, {name}: {cpu}, {cores} cores, {os}.\n\
-         bouy {commit} ({bouy}), OTP {otp}, Node {node}. Measured runs per program: {runs}, \
-         after one warm-up run. A cell is the median (min–max). 1-minute load average: {load}.\n\n\
-         | Suite | Metric | Bouy | Node |\n| --- | --- | --: | --: |\n",
+        "Bouy, Node, and Bun on {date}, {name}: {cpu}, {cores} cores, {os}.\n\
+         bouy {commit} ({bouy}), OTP {otp}, Node {node}, Bun {bun}. Measured runs per program: \
+         {runs}, after one warm-up run. A cell is the median (min–max). Bouy/Bun is the ratio \
+         of the medians. 1-minute load average: {load}.\n\n\
+         | Suite | Metric | Bouy | Node | Bun | Bouy/Bun |\n| --- | --- | --: | --: | --: | --: |\n",
         name = host.name,
         cpu = host.cpu,
         cores = host.cores,
@@ -122,6 +124,7 @@ pub fn table(results: &Results) -> String {
         bouy = tools.bouy,
         otp = tools.otp,
         node = tools.node,
+        bun = tools.bun,
         runs = results.runs,
     );
     for suite in &results.suites {
@@ -143,9 +146,10 @@ pub fn table(results: &Results) -> String {
                 .collect();
             let _ = writeln!(
                 table,
-                "| {} | {metric} | {} |",
+                "| {} | {metric} | {} | {} |",
                 suite.name,
-                cells.join(" | ")
+                cells.join(" | "),
+                ratio(suite, metric)
             );
         }
         if suite.programs.iter().any(|program| program.failed > 0) {
@@ -156,13 +160,29 @@ pub fn table(results: &Results) -> String {
                 .collect();
             let _ = writeln!(
                 table,
-                "| {} | failed runs | {} |",
+                "| {} | failed runs | {} | |",
                 suite.name,
                 failed.join(" | ")
             );
         }
     }
     table
+}
+
+/// The Bouy median over the Bun median of `metric`, or `—` when one is missing or zero.
+fn ratio(suite: &Suite, metric: &str) -> String {
+    let median = |runtime: &str| {
+        suite
+            .programs
+            .iter()
+            .find(|program| program.runtime == runtime)
+            .and_then(|program| program.summary.get(metric))
+            .map(|spread| spread.median)
+    };
+    match (median("bouy"), median("bun")) {
+        (Some(bouy), Some(bun)) if bun != 0.0 => number(bouy / bun),
+        _ => "—".to_owned(),
+    }
 }
 
 fn mib(kib: u32) -> f64 {
@@ -242,5 +262,35 @@ mod tests {
             max: 4.0,
         };
         assert_eq!(cell(&wide), "2 (1–4)");
+    }
+
+    #[test]
+    fn divides_the_bouy_median_by_the_bun_median() {
+        let program = |runtime, median| crate::results::Program {
+            runtime,
+            failed: 0,
+            summary: [(
+                "wall_ms".to_owned(),
+                Spread {
+                    median,
+                    min: median,
+                    max: median,
+                },
+            )]
+            .into(),
+            runs: Vec::new(),
+        };
+        let mut suite = Suite {
+            name: "startup".to_owned(),
+            programs: vec![
+                program("bouy", 50.0),
+                program("node", 70.0),
+                program("bun", 100.0),
+            ],
+        };
+        assert_eq!(ratio(&suite, "wall_ms"), "0.500");
+        assert_eq!(ratio(&suite, "pings"), "—");
+        suite.programs[2] = program("bun", 0.0);
+        assert_eq!(ratio(&suite, "wall_ms"), "—");
     }
 }

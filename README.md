@@ -30,7 +30,7 @@ Work in progress. [The goal](docs/goal.md) states the objective and the definiti
 | ---------------------- | ------------------------------------------------------------------------------------- |
 | `crates/bouy-compiler` | The compiler. oxc parses the TypeScript, and the compiler lowers it to Erlang source. |
 | `crates/bouy-cli`      | The `bouy` command.                                                                   |
-| `crates/bouy-bench`    | The benchmark harness. It runs each suite in `bench` with Bouy and with plain Node.   |
+| `crates/bouy-bench`    | The benchmark harness. It runs each suite in `bench` with Bouy, Node, and Bun.        |
 | `runtime`              | The OTP application: JavaScript values, actors, and supervision.                      |
 | `tests`                | TypeScript programs that the end-to-end tests compile and run.                        |
 | `bench`                | The benchmark programs and their recorded results.                                    |
