@@ -1,6 +1,7 @@
 %% The Iterator constructor and %Iterator.prototype%: the iterator helpers of
 %% ES2025 (map, filter, take, drop, flatMap, reduce, toArray, forEach, some,
-%% every, and find), Iterator.from, and the objects that they return.
+%% every, and find), chunks, windows, includes, Iterator.from, Iterator.concat,
+%% Iterator.zip, Iterator.zipKeyed, and the objects that they return.
 %%
 %% A helper is an exotic object of class iterator_helper whose slots are
 %% {State, Underlying, Step}: State is suspended_start, suspended_yield,
@@ -26,7 +27,7 @@
 intrinsics() ->
     Methods = [{<<"map">>, 1}, {<<"filter">>, 1}, {<<"take">>, 1}, {<<"drop">>, 1}, {<<"flatMap">>, 1},
                {<<"reduce">>, 1}, {<<"toArray">>, 0}, {<<"forEach">>, 1}, {<<"some">>, 1},
-               {<<"every">>, 1}, {<<"find">>, 1}],
+               {<<"every">>, 1}, {<<"find">>, 1}, {<<"chunks">>, 1}, {<<"windows">>, 1}, {<<"includes">>, 1}],
     Accessor = fun(Name) ->
         {'$accessor', builtin(<<"Iterator.prototype.get ", Name/binary>>, fun(This, _) -> getter(Name, This) end),
          builtin(<<"Iterator.prototype.set ", Name/binary>>, fun(This, Args) -> setter(Name, This, arg(1, Args)) end)}
@@ -43,12 +44,14 @@ intrinsics() ->
      {'WrapForValidIterator.prototype', record(object, ?ITERATOR_PROTO,
          ?METHODS(<<"WrapForValidIterator.prototype">>, [<<"next">>, <<"return">>]), none)},
      {{builtin, <<"Iterator">>}, fixed(ctor_record(<<"Iterator">>, 0, ?ITERATOR_PROTO,
-         ?METHODS(<<"Iterator">>, [<<"from">>, <<"concat">>]), fun construct/2))},
+         ?METHODS(<<"Iterator">>, [<<"from">>, <<"concat">>, <<"zip">>, <<"zipKeyed">>]), fun construct/2))},
      {{builtin, <<"Iterator.prototype.[Symbol.iterator]">>}, function_record(<<"[Symbol.iterator]">>, 0)},
      {{builtin, <<"Iterator.prototype.[Symbol.dispose]">>}, function_record(<<"[Symbol.dispose]">>, 0)}]
     ++ [{{builtin, <<"Iterator.prototype.", Name/binary>>}, function_record(Name, Length)} || {Name, Length} <- Methods]
     ++ [{{builtin, <<"Iterator.from">>}, function_record(<<"from">>, 1)},
         {{builtin, <<"Iterator.concat">>}, function_record(<<"concat">>, 0)},
+        {{builtin, <<"Iterator.zip">>}, function_record(<<"zip">>, 1)},
+        {{builtin, <<"Iterator.zipKeyed">>}, function_record(<<"zipKeyed">>, 1)},
         {{builtin, <<"IteratorHelper.prototype.next">>}, function_record(<<"next">>, 0)},
         {{builtin, <<"IteratorHelper.prototype.return">>}, function_record(<<"return">>, 0)},
         {{builtin, <<"WrapForValidIterator.prototype.next">>}, function_record(<<"next">>, 0)},
@@ -103,6 +106,8 @@ setter(Name, This, V) ->
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"Iterator">>, <<"from">>, _This, Args) -> from(arg(1, Args));
 method(<<"Iterator">>, <<"concat">>, _This, Args) -> concat(Args);
+method(<<"Iterator">>, <<"zip">>, _This, Args) -> zip(arg(1, Args), arg(2, Args));
+method(<<"Iterator">>, <<"zipKeyed">>, _This, Args) -> zip_keyed(arg(1, Args), arg(2, Args));
 method(<<"IteratorHelper.prototype">>, <<"next">>, This, _Args) -> helper_next(This);
 method(<<"IteratorHelper.prototype">>, <<"return">>, This, _Args) -> helper_return(This);
 method(<<"WrapForValidIterator.prototype">>, Name, This, _Args) -> wrap(Name, This);
@@ -140,6 +145,111 @@ concat(Items) ->
                      end
                  end || Item <- Items],
     bouy_heap:new_exotic(iterator_helper, ?HELPER_PROTO, {suspended_start, none, {concat, Iterables, none}}).
+
+%% Iterator.zip: a helper that yields an array of one value of each iterator.
+%% It reads the options and opens every iterator first. Here and below, Open
+%% holds the iterators opened so far, last first: the order of IteratorCloseAll.
+zip(Iterables, Options) ->
+    {Mode, PaddingOption} = zip_options(Iterables, Options),
+    Open = open_iterables(bouy_ref_iterator:get_iterator(Iterables), []),
+    Padding = zip_padding(PaddingOption, length(Open), Open),
+    zip_helper(lists:reverse(Open), Padding, Mode, array).
+
+%% Iterator.zipKeyed: zip over the own enumerable properties of an object,
+%% whose results are objects with the same keys.
+zip_keyed(Iterables, Options) ->
+    {Mode, PaddingOption} = zip_options(Iterables, Options),
+    {Keys, Open} = open_keyed(Iterables, bouy_heap:own_keys(Iterables), [], []),
+    Padding = case PaddingOption of
+        undefined -> [undefined || _ <- Keys];
+        _ -> [closing_all(Open, fun() -> bouy_ref:get(PaddingOption, K) end) || K <- Keys]
+    end,
+    zip_helper(lists:reverse(Open), Padding, Mode, {keys, Keys}).
+
+zip_options(Iterables, Options) ->
+    ?IS_OBJECT(Iterables) orelse bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(Iterables), <<" is not an object">>)),
+    Mode = case Options of
+        undefined -> shortest;
+        _ when ?IS_OBJECT(Options) -> zip_mode(bouy_ref:get(Options, <<"mode">>));
+        _ -> bouy_ref:type_error(<<"The options argument must be an object">>)
+    end,
+    {Mode, padding_option(Mode, Options)}.
+
+zip_mode(undefined) -> shortest;
+zip_mode(<<"shortest">>) -> shortest;
+zip_mode(<<"longest">>) -> longest;
+zip_mode(<<"strict">>) -> strict;
+zip_mode(_) -> bouy_ref:type_error(<<"The mode must be \"shortest\", \"longest\", or \"strict\"">>).
+
+padding_option(longest, Options) ->
+    case bouy_ref:get(Options, <<"padding">>) of
+        Padding when Padding =:= undefined; ?IS_OBJECT(Padding) -> Padding;
+        _ -> bouy_ref:type_error(<<"The padding must be an object">>)
+    end;
+padding_option(_Mode, _Options) -> undefined.
+
+open_iterables(Input, Open) ->
+    case closing_all(Open, fun() -> step_value(Input) end) of
+        done -> Open;
+        {value, V} ->
+            Iterator = try flattenable(V, reject_strings)
+                       catch error:Reason:Stack -> abort_all(Open ++ [Input], Reason, Stack)
+                       end,
+            open_iterables(Input, [Iterator | Open])
+    end.
+
+open_keyed(_O, [], Keys, Open) -> {lists:reverse(Keys), Open};
+open_keyed(O, [K | Rest], Keys, Open) ->
+    Value = closing_all(Open, fun() ->
+                                      case bouy_heap:is_enumerable(bouy_heap:get_own(O, K)) of
+                                          true -> bouy_ref:get(O, K);
+                                          false -> undefined
+                                      end
+                              end),
+    case Value of
+        undefined -> open_keyed(O, Rest, Keys, Open);
+        _ -> open_keyed(O, Rest, [K | Keys], [closing_all(Open, fun() -> flattenable(Value, reject_strings) end) | Open])
+    end.
+
+%% The padding of zip: the values of the padding iterable, then undefined.
+zip_padding(undefined, Count, _Open) -> lists:duplicate(Count, undefined);
+zip_padding(Iterable, Count, Open) ->
+    read_padding(closing_all(Open, fun() -> bouy_ref_iterator:get_iterator(Iterable) end), Count, Open, []).
+
+read_padding({Iterator, _}, 0, Open, Padding) ->
+    closing_all(Open, fun() -> bouy_ref_iterator:close(Iterator) end),
+    lists:reverse(Padding);
+read_padding(Record, Count, Open, Padding) ->
+    case closing_all(Open, fun() -> step_value(Record) end) of
+        done -> lists:reverse(Padding, lists:duplicate(Count, undefined));
+        {value, V} -> read_padding(Record, Count - 1, Open, [V | Padding])
+    end.
+
+%% IteratorZip: each entry is {open, Record, Padding}, or {padded, Padding}
+%% once the iterator is done in longest mode.
+zip_helper(Iterators, Padding, Mode, Finish) ->
+    Entries = lists:zipwith(fun(Record, Pad) -> {open, Record, Pad} end, Iterators, Padding),
+    bouy_heap:new_exotic(iterator_helper, ?HELPER_PROTO, {suspended_start, none, {zip, Entries, Mode, Finish}}).
+
+%% IfAbruptCloseIterators: when Fun throws, the iterators of Open close and
+%% the error of Fun wins.
+closing_all(Open, Fun) ->
+    try Fun()
+    catch error:Reason:Stack -> abort_all(Open, Reason, Stack)
+    end.
+
+%% IteratorCloseAll for a throw completion: the errors of the return methods
+%% are ignored.
+abort_all(Open, Reason, Stack) ->
+    lists:foreach(fun({Iterator, _}) -> close_quietly(Iterator) end, Open),
+    erlang:raise(error, Reason, Stack).
+
+%% IteratorCloseAll for a normal or return completion: the first error of a
+%% return method wins, and the iterators after it still close.
+close_all([]) -> ok;
+close_all([{Iterator, _} | Rest]) ->
+    closing_all(Rest, fun() -> bouy_ref_iterator:close(Iterator) end),
+    close_all(Rest).
 
 %% GetIteratorFlattenable.
 flattenable(O, Primitives) ->
@@ -182,6 +292,16 @@ prototype_method(<<"filter">>, O, Args) -> helper(O, {filter, callback(O, arg(1,
 prototype_method(<<"flatMap">>, O, Args) -> helper(O, {flat_map, callback(O, arg(1, Args)), 0, none});
 prototype_method(<<"take">>, O, Args) -> helper(O, {take, limit(O, arg(1, Args))});
 prototype_method(<<"drop">>, O, Args) -> helper(O, {drop, limit(O, arg(1, Args))});
+prototype_method(<<"chunks">>, O, Args) -> helper(O, {chunks, window_size(O, arg(1, Args)), [], 0});
+prototype_method(<<"windows">>, O, Args) ->
+    Size = window_size(O, arg(1, Args)),
+    helper(O, {windows, Size, undersized(O, arg(2, Args)), [], 0});
+prototype_method(<<"includes">>, O, Args) ->
+    Skip = skipped_elements(O, arg(2, Args)),
+    Search = arg(1, Args),
+    Record = direct(O),
+    %% An integer is less than the atom infinity in term order.
+    each(Record, fun(V, I) -> stop_when(Record, I >= Skip andalso bouy_ref_number:same_value_zero(V, Search), true) end, 0, false);
 prototype_method(<<"reduce">>, O, Args) ->
     Reducer = callback(O, arg(1, Args)),
     Record = direct(O),
@@ -243,6 +363,33 @@ limit(O, V) ->
             bouy_heap:throw_error('RangeError', <<"The limit must be between 0 and 2^53 - 1">>)
     end.
 
+%% The size of chunks and windows: an integral Number from 1 to 2^32 - 1. These
+%% arguments are not coerced.
+window_size(O, Size) ->
+    bouy_ref_number:is_integral(Size) orelse reject(O, 'TypeError', <<"The size must be an integer">>),
+    (Size >= 1 andalso Size =< 16#FFFFFFFF) orelse reject(O, 'RangeError', <<"The size must be between 1 and 2^32 - 1">>),
+    trunc(Size).
+
+undersized(_O, undefined) -> only_full;
+undersized(_O, <<"only-full">>) -> only_full;
+undersized(_O, <<"allow-partial">>) -> allow_partial;
+undersized(O, _) -> reject(O, 'TypeError', <<"undersized must be \"only-full\" or \"allow-partial\"">>).
+
+%% The skippedElements of includes: +Infinity or an integer from 0 to 2^53 - 1.
+skipped_elements(_O, undefined) -> 0;
+skipped_elements(_O, 'Infinity') -> ?INFINITY;
+skipped_elements(O, '-Infinity') -> reject(O, 'RangeError', <<"skippedElements must not be negative">>);
+skipped_elements(O, N) ->
+    bouy_ref_number:is_integral(N) orelse reject(O, 'TypeError', <<"skippedElements must be an integer">>),
+    (N >= 0 andalso N =< ?MAX_SAFE_INTEGER) orelse reject(O, 'RangeError', <<"skippedElements must be between 0 and 2^53 - 1">>),
+    trunc(N).
+
+%% An argument that is not valid: the iterator closes, and the method throws.
+-spec reject(term(), atom(), binary()) -> no_return().
+reject(O, Type, Message) ->
+    close_quietly(O),
+    bouy_heap:throw_error(Type, Message).
+
 close_quietly(O) ->
     try bouy_ref_iterator:close(O) of
         _ -> ok
@@ -256,14 +403,21 @@ direct(O) -> {O, bouy_ref:get(O, <<"next">>)}.
 helper(O, Step) ->
     bouy_heap:new_exotic(iterator_helper, ?HELPER_PROTO, {suspended_start, direct(O), Step}).
 
-%% IteratorStepValue: {value, V} or done. An error leaves the iterator done.
-step_value({Iterator, Next}) ->
+%% IteratorStep: the result object, or done. An error leaves the iterator done.
+iterator_step({Iterator, Next}) ->
     Result = bouy_ref:call(Next, Iterator, []),
     ?IS_OBJECT(Result) orelse
         bouy_ref:type_error(bouy_ref_string:concat([<<"Iterator result ">>, bouy_ref:describe(Result), <<" is not an object">>])),
     case bouy_ref:truthy(bouy_ref:get(Result, <<"done">>)) of
         true -> done;
-        false -> {value, bouy_ref:get(Result, <<"value">>)}
+        false -> Result
+    end.
+
+%% IteratorStepValue: {value, V} or done.
+step_value(Record) ->
+    case iterator_step(Record) of
+        done -> done;
+        Result -> {value, bouy_ref:get(Result, <<"value">>)}
     end.
 
 %% A call of a callback: when it throws, the iterator closes first.
@@ -350,6 +504,8 @@ helper_return(H) ->
 
 close_helper(none, {concat, _, {Inner, _}}) -> bouy_ref_iterator:close(Inner);
 close_helper(none, {concat, _, none}) -> ok;
+close_helper(none, {zip, Entries, _, _}) -> close_all(open_records(Entries, []));
+close_helper(_Underlying, exhausted) -> ok;
 close_helper({Iterator, _}, {flat_map, _, _, {Inner, _}}) ->
     try bouy_ref_iterator:close(Inner)
     catch error:Reason:Stack -> close_quietly(Iterator), erlang:raise(error, Reason, Stack)
@@ -420,7 +576,78 @@ step(None, {concat, Rest, Current} = Step) ->
     case step_value(Current) of
         done -> step(None, {concat, Rest, none});
         {value, V} -> {yield, V, Step}
+    end;
+%% chunks and windows keep their buffer newest first. After the last partial
+%% buffer the underlying iterator is done, so return does not close it.
+step(Underlying, {chunks, Size, Buffer, Count}) ->
+    case step_value(Underlying) of
+        done when Count > 0 -> {yield, bouy_heap:new_array(lists:reverse(Buffer)), exhausted};
+        done -> done;
+        {value, V} when Count < Size - 1 -> step(Underlying, {chunks, Size, [V | Buffer], Count + 1});
+        {value, V} -> {yield, bouy_heap:new_array(lists:reverse(Buffer, [V])), {chunks, Size, [], 0}}
+    end;
+step(Underlying, {windows, Size, Undersized, Buffer, Count}) ->
+    case step_value(Underlying) of
+        done when Undersized =:= allow_partial, Count > 0, Count < Size ->
+            {yield, bouy_heap:new_array(lists:reverse(Buffer)), exhausted};
+        done -> done;
+        {value, V} when Count < Size - 1 -> step(Underlying, {windows, Size, Undersized, [V | Buffer], Count + 1});
+        {value, V} ->
+            Window = [V | lists:sublist(Buffer, Size - 1)],
+            {yield, bouy_heap:new_array(lists:reverse(Window)), {windows, Size, Undersized, Window, Size}}
+    end;
+step(_Underlying, exhausted) ->
+    done;
+step(_None, {zip, [], _Mode, _Finish}) ->
+    done;
+step(_None, {zip, Entries, Mode, Finish}) ->
+    case zip_row(Entries, Mode, [], []) of
+        done -> done;
+        {Values, Entries1} -> {yield, zip_result(Finish, Values), {zip, Entries1, Mode, Finish}}
     end.
+
+%% One value of each iterator of zip: {Values, Entries}, or done. Seen holds the
+%% entries before the current one, newest first.
+zip_row([], _Mode, Seen, Values) ->
+    {lists:reverse(Values), lists:reverse(Seen)};
+zip_row([{padded, Pad} = Entry | Rest], Mode, Seen, Values) ->
+    zip_row(Rest, Mode, [Entry | Seen], [Pad | Values]);
+zip_row([{open, Record, Pad} = Entry | Rest], Mode, Seen, Values) ->
+    Next = try step_value(Record)
+           catch error:Reason:Stack -> abort_all(open_records(Rest, Seen), Reason, Stack)
+           end,
+    case Next of
+        {value, V} -> zip_row(Rest, Mode, [Entry | Seen], [V | Values]);
+        done when Mode =:= shortest -> close_all(open_records(Rest, Seen)), done;
+        done when Mode =:= strict, Seen =:= [] -> strict_rest(Rest);
+        done when Mode =:= strict -> closing_all(open_records(Rest, Seen), fun mismatch/0);
+        done ->
+            case open_records(Rest, Seen) of
+                [] -> done;
+                _ -> zip_row(Rest, Mode, [{padded, Pad} | Seen], [Pad | Values])
+            end
+    end.
+
+%% Strict mode after the first iterator is done: every other one must be done.
+strict_rest([]) ->
+    done;
+strict_rest([{open, Record, _} = Entry | Rest]) ->
+    Next = try iterator_step(Record)
+           catch error:Reason:Stack -> abort_all(open_records(Rest, []), Reason, Stack)
+           end,
+    case Next of
+        done -> strict_rest(Rest);
+        _ -> closing_all(open_records(Rest, [Entry]), fun mismatch/0)
+    end.
+
+-spec mismatch() -> no_return().
+mismatch() -> bouy_ref:type_error(<<"The iterators of a strict zip have different lengths">>).
+
+%% The open iterators of the entries Rest and Seen, last first.
+open_records(Rest, Seen) -> [Record || {open, Record, _} <- lists:reverse(Rest, Seen)].
+
+zip_result(array, Values) -> bouy_heap:new_array(Values);
+zip_result({keys, Keys}, Values) -> bouy_heap:object(null, lists:zip(Keys, Values)).
 
 decrement(?INFINITY) -> ?INFINITY;
 decrement(N) -> N - 1.
