@@ -107,11 +107,7 @@ registry(NewTarget, Args) ->
 
 %% GetPrototypeFromConstructor.
 proto_of({'$f', {builtin, _}, _}, Default) -> {'$o', Default};
-proto_of(NewTarget, Default) ->
-    case bouy_ref:get(NewTarget, <<"prototype">>) of
-        P when ?IS_OBJECT(P) -> P;
-        _ -> {'$o', Default}
-    end.
+proto_of(NewTarget, Default) -> bouy_ref_realm:proto_for(NewTarget, Default).
 
 %% CanBeHeldWeakly: an object, or a symbol that Symbol.for did not make.
 -spec can_be_held_weakly(term()) -> boolean().

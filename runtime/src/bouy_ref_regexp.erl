@@ -162,11 +162,7 @@ create(Pattern, Flags) -> initialize(alloc(constructor()), Pattern, Flags).
 alloc(NewTarget) ->
     Proto = case NewTarget of
         {'$f', {builtin, <<"RegExp">>}, _} -> ?PROTO;
-        _ ->
-            case bouy_ref:get(NewTarget, <<"prototype">>) of
-                P when ?IS_OBJECT(P) -> P;
-                _ -> ?PROTO
-            end
+        _ -> bouy_ref_realm:proto_for(NewTarget, 'RegExp.prototype')
     end,
     %% [[LegacyFeaturesEnabled]]: RegExp itself, not a subclass, made the object.
     Legacy = case NewTarget of
@@ -197,7 +193,7 @@ initialize(O, Pattern, Flags) ->
 -spec literal(bouy_ref_string:js_string(), binary()) -> term().
 literal(Source, Flags) ->
     {_Program, Names} = program(Source, Flags),
-    O = bouy_heap:new_exotic(regexp, ?PROTO, #{legacy => true, source => Source, flags => Flags, names => Names}),
+    O = bouy_heap:new_exotic(regexp, bouy_heap:intrinsic('RegExp.prototype'), #{legacy => true, source => Source, flags => Flags, names => Names}),
     bouy_heap:define(O, <<"lastIndex">>, #{value => 0, writable => true, enumerable => false, configurable => false}).
 
 %% The matcher of an initialized RegExp. The object keeps its source and flags,
@@ -309,9 +305,9 @@ proto(<<"flags">>, This, _Args) ->
                   bouy_ref:truthy(bouy_ref:get(R, Name))],
     list_to_binary(Flags);
 proto(<<"source">>, This, _Args) ->
-    case This of
-        ?PROTO -> <<"(?:)">>;
-        _ ->
+    case This =:= bouy_heap:intrinsic('RegExp.prototype') of
+        true -> <<"(?:)">>;
+        false ->
             this_object(This, <<"source">>),
             #{source := Source} = has_slots(This, <<"source">>),
             escape_pattern(Source)
@@ -334,9 +330,14 @@ proto(Name, This, _Args) ->
     end,
     has_flag(This, Flag, Name).
 
-%% RegExpHasFlag.
-has_flag(?PROTO, _Flag, _Name) -> undefined;
+%% RegExpHasFlag: undefined for RegExp.prototype of the current realm.
 has_flag(This, Flag, Name) ->
+    case This =:= bouy_heap:intrinsic('RegExp.prototype') of
+        true -> undefined;
+        false -> object_has_flag(This, Flag, Name)
+    end.
+
+object_has_flag(This, Flag, Name) ->
     this_object(This, Name),
     #{flags := Flags} = has_slots(This, Name),
     lists:member(Flag, bouy_ref_string:units(Flags)).

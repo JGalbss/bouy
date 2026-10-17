@@ -81,7 +81,7 @@ call_constructor(_Name, _This, _Args) -> bouy_ref:type_error(<<"Constructor Iter
 construct({'$f', {builtin, <<"Iterator">>}, _}, _Args) ->
     bouy_ref:type_error(<<"Abstract class Iterator not directly constructable">>);
 construct(NewTarget, _Args) ->
-    bouy_ref:new_this(NewTarget).
+    bouy_heap:new_object(bouy_ref_realm:proto_for(NewTarget, 'Iterator.prototype')).
 
 %% The accessors of Symbol.toStringTag and constructor, whose setters do not
 %% write the prototype itself.

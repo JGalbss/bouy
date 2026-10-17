@@ -78,7 +78,7 @@ trap({revoked, _} = Slots, Name) ->
 trap({Target, Handler}, Name) ->
     Trap = case bouy_ref:get(Handler, Name) of
         T when T =:= undefined; T =:= null -> undefined;
-        {'$f', _, _} = T -> T;
+        {'$f', _, _} = T -> bouy_ref_realm:callee(T);
         T -> type_error(bouy_ref_string:concat([bouy_ref:describe(T), <<" returned for property '">>, Name, <<"' of object '#<Object>' is not a function">>]))
     end,
     {Target, Handler, Trap}.

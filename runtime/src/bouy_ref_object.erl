@@ -455,7 +455,7 @@ get_own(S, K) when ?IS_STRING(S) ->
 get_own(_, _) -> none.
 
 prototype(O) when ?IS_OBJECT(O) -> bouy_heap:prototype_of(O);
-prototype(S) when ?IS_STRING(S) -> {'$o', 'String.prototype'};
-prototype(B) when is_boolean(B) -> {'$o', 'Boolean.prototype'};
-prototype({'$sym', _, _}) -> {'$o', 'Symbol.prototype'};
-prototype(_) -> {'$o', 'Number.prototype'}.
+prototype(S) when ?IS_STRING(S) -> bouy_heap:intrinsic('String.prototype');
+prototype(B) when is_boolean(B) -> bouy_heap:intrinsic('Boolean.prototype');
+prototype({'$sym', _, _}) -> bouy_heap:intrinsic('Symbol.prototype');
+prototype(_) -> bouy_heap:intrinsic('Number.prototype').

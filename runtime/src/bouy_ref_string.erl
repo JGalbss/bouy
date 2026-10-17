@@ -312,9 +312,9 @@ get(S, <<"length">>) -> length_of(S);
 get(S, I) when is_integer(I) ->
     case I < length_of(S) of
         true -> unit_string(S, I);
-        false -> bouy_ref:get_from({'$o', 'String.prototype'}, I, S)
+        false -> bouy_ref:get_from(bouy_heap:intrinsic('String.prototype'), I, S)
     end;
-get(S, K) -> bouy_ref:get_from({'$o', 'String.prototype'}, K, S).
+get(S, K) -> bouy_ref:get_from(bouy_heap:intrinsic('String.prototype'), K, S).
 
 %% The index of the first Search in S at or after From, or -1.
 -spec index_of(js_string(), js_string(), non_neg_integer()) -> integer().

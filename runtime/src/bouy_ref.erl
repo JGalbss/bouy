@@ -102,11 +102,11 @@ get({'$f', _, _} = F, K) -> bouy_heap:get(F, K);
 get(S, K) when ?IS_STRING(S) -> bouy_ref_string:get(S, K);
 get(undefined, K) -> read_error(<<"undefined">>, K);
 get(null, K) -> read_error(<<"null">>, K);
-get(B, K) when is_boolean(B) -> lookup({'$o', 'Boolean.prototype'}, K, B);
-get(N, K) when ?IS_NUMBER(N) -> lookup({'$o', 'Number.prototype'}, K, N);
-get({'$bigint', _} = B, K) -> lookup({'$o', 'BigInt.prototype'}, K, B);
+get(B, K) when is_boolean(B) -> lookup(bouy_heap:intrinsic('Boolean.prototype'), K, B);
+get(N, K) when ?IS_NUMBER(N) -> lookup(bouy_heap:intrinsic('Number.prototype'), K, N);
+get({'$bigint', _} = B, K) -> lookup(bouy_heap:intrinsic('BigInt.prototype'), K, B);
 get({'$sym', _, Description}, <<"description">>) -> Description;
-get({'$sym', _, _} = S, K) -> lookup({'$o', 'Symbol.prototype'}, K, S);
+get({'$sym', _, _} = S, K) -> lookup(bouy_heap:intrinsic('Symbol.prototype'), K, S);
 get({'$actor', Pid}, K) when ?IS_STRING(K) -> {'$f', {actor, Pid, K}, fun(_This, Args) -> bouy_jobs:actor_call(Pid, K, Args) end};
 get({'$actor', _}, _K) -> undefined.
 
@@ -145,10 +145,10 @@ sloppy_set(P, K, V) ->
     _ = bouy_heap:set(primitive_proto(P), K, V, P),
     V.
 
-primitive_proto(S) when ?IS_STRING(S) -> {'$o', 'String.prototype'};
-primitive_proto(B) when is_boolean(B) -> {'$o', 'Boolean.prototype'};
-primitive_proto({'$sym', _, _}) -> {'$o', 'Symbol.prototype'};
-primitive_proto(_) -> {'$o', 'Number.prototype'}.
+primitive_proto(S) when ?IS_STRING(S) -> bouy_heap:intrinsic('String.prototype');
+primitive_proto(B) when is_boolean(B) -> bouy_heap:intrinsic('Boolean.prototype');
+primitive_proto({'$sym', _, _}) -> bouy_heap:intrinsic('Symbol.prototype');
+primitive_proto(_) -> bouy_heap:intrinsic('Number.prototype').
 
 -spec sloppy_set_computed(term(), term(), term()) -> term().
 sloppy_set_computed(O, K, V) -> sloppy_set(O, to_property_key(K), V).
@@ -163,7 +163,7 @@ sloppy_delete_computed(O, K) -> sloppy_delete(O, to_property_key(K)).
 
 %% The this of a sloppy function: the global object for undefined and null.
 -spec sloppy_this(term()) -> term().
-sloppy_this(This) when This =:= undefined; This =:= null -> {'$o', 'globalThis'};
+sloppy_this(This) when This =:= undefined; This =:= null -> bouy_ref_realm:global_object();
 sloppy_this(This) -> to_object(This).
 
 -spec delete(term(), bouy_heap:key()) -> boolean().
@@ -233,12 +233,7 @@ construct(F, Args) -> bouy_heap:construct(F, Args, F).
 %% The this of a base class constructor: an object whose prototype is the
 %% prototype of new.target.
 -spec new_this(term()) -> term().
-new_this(NewTarget) ->
-    Proto = case get(NewTarget, <<"prototype">>) of
-        P when ?IS_OBJECT(P) -> P;
-        _ -> ?OBJECT_PROTO
-    end,
-    bouy_heap:new_object(Proto).
+new_this(NewTarget) -> bouy_heap:new_object(bouy_ref_realm:proto_for(NewTarget, 'Object.prototype')).
 
 -spec super_construct(term(), list(), term()) -> term().
 super_construct(Parent, Args, NewTarget) -> bouy_heap:construct(Parent, Args, NewTarget).
@@ -274,9 +269,9 @@ arguments_object(Args) ->
     O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
     [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
     bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
-    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, ?SYM(iterator)),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get(bouy_heap:intrinsic('Array.prototype'), ?SYM(iterator)),
                                           writable => true, enumerable => false, configurable => true}),
-    Thrower = bouy_ref_function:throw_type_error(),
+    Thrower = bouy_ref_realm:current(bouy_ref_function:throw_type_error()),
     bouy_heap:define(O, <<"callee">>, #{get => Thrower, set => Thrower, enumerable => false, configurable => false}),
     O.
 
@@ -288,7 +283,7 @@ mapped_arguments(Args, Cells, Callee) ->
     O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
     [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
     bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
-    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, ?SYM(iterator)),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get(bouy_heap:intrinsic('Array.prototype'), ?SYM(iterator)),
                                           writable => true, enumerable => false, configurable => true}),
     bouy_heap:define(O, <<"callee">>, #{value => Callee, writable => true, enumerable => false, configurable => true}),
     Count = min(length(Args), length(Cells)),
@@ -384,14 +379,14 @@ finish_fn(F, normal) ->
     bouy_heap:define(F, <<"prototype">>, #{value => Proto, writable => true, enumerable => false, configurable => false}),
     F;
 finish_fn(F, async) ->
-    bouy_heap:set_prototype_of(F, {'$o', bouy_ref_function:kind_prototype_id(async)});
+    bouy_heap:set_prototype_of(F, bouy_heap:intrinsic(bouy_ref_function:kind_prototype_id(async)));
 finish_fn(F, Kind) ->
     Parent = case Kind of
-        generator -> {'$o', 'Generator.prototype'};
-        async_generator -> {'$o', 'AsyncGenerator.prototype'}
+        generator -> bouy_heap:intrinsic('Generator.prototype');
+        async_generator -> bouy_heap:intrinsic('AsyncGenerator.prototype')
     end,
     bouy_heap:define(F, <<"prototype">>, #{value => bouy_heap:new_object(Parent), writable => true, enumerable => false, configurable => false}),
-    bouy_heap:set_prototype_of(F, {'$o', bouy_ref_function:kind_prototype_id(Kind)}).
+    bouy_heap:set_prototype_of(F, bouy_heap:intrinsic(bouy_ref_function:kind_prototype_id(Kind))).
 
 %% ClassDefinitionEvaluation up to the methods: the constructor function
 %% and its prototype object. Parent is none without extends.
@@ -801,11 +796,11 @@ to_numeric(V) -> to_number(V).
 -spec to_object(term()) -> term().
 to_object(V) when ?IS_OBJECT(V) -> V;
 to_object(V) when V =:= undefined; V =:= null -> type_error(<<"Cannot convert undefined or null to object">>);
-to_object(N) when ?IS_NUMBER(N) -> bouy_ref_number:wrap(N, {'$o', 'Number.prototype'});
-to_object(S) when ?IS_STRING(S) -> bouy_ref_string:wrap(S, {'$o', 'String.prototype'});
-to_object(B) when is_boolean(B) -> bouy_ref_boolean:wrap(B, {'$o', 'Boolean.prototype'});
-to_object({'$bigint', _} = B) -> bouy_ref_bigint:wrap(B, {'$o', 'BigInt.prototype'});
-to_object({'$sym', _, _} = S) -> bouy_heap:new_exotic(symbol, {'$o', 'Symbol.prototype'}, S);
+to_object(N) when ?IS_NUMBER(N) -> bouy_ref_number:wrap(N, bouy_heap:intrinsic('Number.prototype'));
+to_object(S) when ?IS_STRING(S) -> bouy_ref_string:wrap(S, bouy_heap:intrinsic('String.prototype'));
+to_object(B) when is_boolean(B) -> bouy_ref_boolean:wrap(B, bouy_heap:intrinsic('Boolean.prototype'));
+to_object({'$bigint', _} = B) -> bouy_ref_bigint:wrap(B, bouy_heap:intrinsic('BigInt.prototype'));
+to_object({'$sym', _, _} = S) -> bouy_heap:new_exotic(symbol, bouy_heap:intrinsic('Symbol.prototype'), S);
 to_object(V) -> V.
 
 %% ToPrimitive: Symbol.toPrimitive, else valueOf and toString in the order
