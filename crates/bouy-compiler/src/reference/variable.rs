@@ -87,9 +87,9 @@ impl<'a> Lowerer<'a, '_> {
                 let value = self.bind(value);
                 let key = self.var_key(&name);
                 self.pre.push(Expr::call(
-                    "erlang",
-                    "put",
-                    vec![key, Expr::tagged("v", value.clone())],
+                    "bouy_ref_class",
+                    "set_module",
+                    vec![key, value.clone(), Expr::js_string(&name)],
                 ));
                 value
             }

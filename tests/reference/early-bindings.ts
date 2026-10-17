@@ -67,3 +67,14 @@ try {
 } catch (error) {
   console.log("loop head:", (error as Error).constructor.name, shadowed);
 }
+
+try {
+  readModuleLater();
+} catch (error) {
+  console.log("module binding before its declaration:", (error as Error).constructor.name);
+}
+const moduleLater = ["module", "later"].join(" ");
+console.log(readModuleLater());
+function readModuleLater(): string {
+  return moduleLater;
+}

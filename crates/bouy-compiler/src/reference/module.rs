@@ -196,12 +196,40 @@ impl<'a> Lowerer<'a, '_> {
         } else {
             self.stmts(statements, &Cont::Value(Expr::undefined()))
         };
+        // The `let` and `const` of the module are in their dead zone until the top-level
+        // code declares them.
+        let mut body: Vec<Expr> = self
+            .tops
+            .iter()
+            .filter(|(symbol, top)| {
+                matches!(top, Top::Var(_))
+                    && self
+                        .semantic
+                        .scoping()
+                        .symbol_flags(**symbol)
+                        .is_block_scoped()
+            })
+            .filter_map(|(_, top)| match top {
+                Top::Var(name) => Some(name.clone()),
+                _ => None,
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|name| {
+                Expr::call(
+                    "erlang",
+                    "put",
+                    vec![self.var_key(&name), Expr::atom("$tdz")],
+                )
+            })
+            .collect();
+        body.extend(code);
         let main = Expr::Fun {
             name: None,
             clauses: vec![Clause {
                 patterns: vec![],
                 guards: vec![],
-                body: code,
+                body,
             }],
         };
         Function {
@@ -323,6 +351,12 @@ impl<'a> Lowerer<'a, '_> {
     /// `value` on the first read in a realm whose top-level code did not set it.
     fn var_getter(&mut self, name: &str, mut init: Vec<Expr>, value: Expr) {
         let key = self.var_key(name);
+        // A read during the initializer, or before the declaration in the main realm,
+        // finds the marker: the temporal dead zone, and no endless recursion.
+        init.insert(
+            0,
+            Expr::call("erlang", "put", vec![key.clone(), Expr::atom("$tdz")]),
+        );
         init.push(Expr::matches(Expr::var("V"), value));
         init.push(Expr::call(
             "erlang",
@@ -341,6 +375,14 @@ impl<'a> Lowerer<'a, '_> {
                         Clause::new(
                             Expr::tagged("v", Expr::var("Found")),
                             vec![Expr::var("Found")],
+                        ),
+                        Clause::new(
+                            Expr::atom("$tdz"),
+                            vec![Expr::call(
+                                "bouy_ref_class",
+                                "initialized",
+                                vec![Expr::atom("$uninitialized"), Expr::js_string(name)],
+                            )],
                         ),
                         Clause::new(Expr::undefined(), init),
                     ],

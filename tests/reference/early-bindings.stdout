@@ -6,3 +6,5 @@ default before its parameter: ReferenceError
 [ 0, 2, 4 ]
 loop binding 1
 loop head: ReferenceError outside
+module binding before its declaration: ReferenceError
+module later

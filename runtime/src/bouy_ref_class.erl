@@ -12,7 +12,7 @@
 -include("bouy_ref.hrl").
 
 -export([create/3, set_construct/2, method/4, function_name/2, define_field/3, define_method/4, set_literal_proto/3]).
--export([base_return/2, initialized/2]).
+-export([base_return/2, initialized/2, set_module/3]).
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
 -export([super_get/3, super_set/4]).
 -export([private_name/1, private_names/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
@@ -167,6 +167,15 @@ bind_this(Cell, This) ->
 initialized(?UNINITIALIZED, Name) ->
     bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat([<<"Cannot access '">>, Name, <<"' before initialization">>]));
 initialized(V, _Name) -> V.
+
+%% An assignment to a module variable: a ReferenceError while its
+%% declaration has not run in this realm.
+-spec set_module(term(), term(), bouy_ref_string:js_string()) -> term().
+set_module(Key, V, Name) ->
+    case erlang:get(Key) of
+        '$tdz' -> initialized(?UNINITIALIZED, Name);
+        _ -> erlang:put(Key, {v, V}), V
+    end.
 
 %% The result of a base constructor that returns V: V when it is an object.
 -spec base_return(term(), term()) -> term().
