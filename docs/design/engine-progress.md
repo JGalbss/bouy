@@ -23,13 +23,45 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 | Directory      | Tests |  Pass |  Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ----: | ------: | ------: | ---: | --------: |
-| test/language  | 23726 | 11354 |  3776 |    7052 |       0 | 1544 |     51.1% |
-| test/built-ins | 23823 |  6193 | 12764 |    4665 |       3 |  198 |     26.2% |
-| **Total**      | 47549 | 17547 | 16540 |   11717 |       3 | 1742 |     38.3% |
+| test/language  | 23726 | 12174 |  3830 |    6178 |       0 | 1544 |     54.8% |
+| test/built-ins | 23823 |  6203 | 12755 |    4663 |       4 |  198 |     26.2% |
+| **Total**      | 47549 | 18377 | 16585 |   10841 |       4 | 1742 |     40.1% |
 
 ## Run log
 
 - 2026-10-17, commit `7090eb1`: the baseline. Other workflows kept the load average between 40 and 95 during the run, so the 3 timeouts are an upper bound.
+- 2026-10-17, branch `engine-modules` at `df30d18`, with the `module-code` row from `a996747`: the module system (section 17.8 of the contract). The runner now writes each test next to its fixtures, compiles a test without the `module` flag as a classic script, and ignores unhandled rejections, as test262 hosts do. No test that passed at the baseline fails, apart from 3 that passed only because the engine never created a top-level class: an anonymous `export default class` and two subclasses of `EvalError` and `URIError`, which the engine does not define. The load average stayed between 50 and 155, so the 4 timeouts are an upper bound.
+
+## The module system
+
+The directories of the module system (contract section 17.8), before and after the work of the `engine-modules` branch. "Before" is the engine at `8a5ddfc`, which compiled one module that imported only from "bouy". The pass rate counts the tests that ran.
+
+| Directory                                                      | Tests | Before | After | Pass rate |
+| -------------------------------------------------------------- | ----: | -----: | ----: | --------: |
+| test/language/export                                           |     3 |      3 |     3 |    100.0% |
+| test/language/expressions/dynamic-import                       |    32 |      1 |    20 |     62.5% |
+| test/language/expressions/dynamic-import/assignment-expression |    28 |      0 |    23 |     88.4% |
+| test/language/expressions/dynamic-import/catch                 |   176 |      0 |   140 |     79.5% |
+| test/language/expressions/dynamic-import/import-attributes     |    23 |      0 |    14 |     63.6% |
+| test/language/expressions/dynamic-import/import-defer          |     5 |      0 |     4 |     80.0% |
+| test/language/expressions/dynamic-import/namespace             |    67 |      0 |    33 |     55.9% |
+| test/language/expressions/dynamic-import/syntax                |   566 |    340 |   504 |     98.0% |
+| test/language/expressions/dynamic-import/usage                 |   108 |      0 |    80 |     74.0% |
+| test/language/expressions/import.meta                          |     4 |      0 |     2 |     50.0% |
+| test/language/expressions/import.meta/syntax                   |    18 |     11 |    14 |     77.7% |
+| test/language/import                                           |     4 |      4 |     4 |    100.0% |
+| test/language/import/import-attributes                         |    17 |      0 |    10 |     58.8% |
+| test/language/import/import-bytes                              |     5 |      0 |     0 |      0.0% |
+| test/language/import/import-defer                              |   103 |      6 |    81 |     78.6% |
+| test/language/module-code                                      |   284 |    176 |   259 |     91.1% |
+| test/language/module-code/ambiguous-export-bindings            |    10 |      0 |     9 |     90.0% |
+| test/language/module-code/import-attributes                    |    13 |      3 |    13 |    100.0% |
+| test/language/module-code/namespace                            |    38 |      0 |    22 |     57.8% |
+| test/language/module-code/source-phase-import                  |     3 |      0 |     0 |      0.0% |
+| test/language/module-code/top-level-await                      |   251 |    156 |   198 |     78.8% |
+| **Total**                                                      |  1758 |    700 |  1433 |     84.5% |
+
+Most of the 262 tests that still fail stop at a feature of another area: async generators and `for await` (58), the `Function` constructor (38), `Reflect` (38), regular expressions (16), `URIError` (14), `await` in a conditional expression or around `finally` (24), `super` and class expressions (15), and `Object.isExtensible` (9). The module system itself lacks source phase imports and the `text` and `bytes` import attributes, which are proposals.
 
 ## test/language
 
@@ -39,29 +71,29 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/language/asi                     |   102 |  102 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/block-scope             |   145 |  143 |    0 |       2 |       0 |    0 |     98.6% |
 | test/language/comments                |    52 |   43 |    9 |       0 |       0 |    0 |     82.6% |
-| test/language/computed-property-names |    48 |   39 |    5 |       4 |       0 |    0 |     81.2% |
+| test/language/computed-property-names |    48 |   41 |    3 |       4 |       0 |    0 |     85.4% |
 | test/language/destructuring           |    19 |   12 |    6 |       0 |       0 |    1 |     66.6% |
 | test/language/directive-prologue      |    62 |    5 |    0 |       0 |       0 |   57 |    100.0% |
 | test/language/eval-code               |   347 |    9 |  117 |       1 |       0 |  220 |      7.0% |
 | test/language/export                  |     3 |    3 |    0 |       0 |       0 |    0 |    100.0% |
-| test/language/expressions             | 11102 | 4492 | 1406 |    4616 |       0 |  588 |     42.7% |
+| test/language/expressions             | 11102 | 5004 | 1469 |    4041 |       0 |  588 |     47.5% |
 | test/language/function-code           |   217 |   91 |   17 |       0 |       0 |  109 |     84.2% |
 | test/language/future-reserved-words   |    55 |   47 |    1 |       0 |       0 |    7 |     97.9% |
-| test/language/global-code             |    42 |   15 |   20 |       2 |       0 |    5 |     40.5% |
+| test/language/global-code             |    42 |   17 |   18 |       2 |       0 |    5 |     45.9% |
 | test/language/identifier-resolution   |    14 |    3 |    5 |       1 |       0 |    5 |     33.3% |
 | test/language/identifiers             |   268 |  267 |    1 |       0 |       0 |    0 |     99.6% |
-| test/language/import                  |   129 |   10 |    3 |     116 |       0 |    0 |      7.7% |
+| test/language/import                  |   129 |   95 |   26 |       8 |       0 |    0 |     73.6% |
 | test/language/keywords                |    25 |   25 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/line-terminators        |    41 |   32 |    9 |       0 |       0 |    0 |     78.0% |
 | test/language/literals                |   536 |  279 |  196 |      47 |       0 |   14 |     53.4% |
-| test/language/module-code             |   599 |  335 |   40 |     224 |       0 |    0 |     55.9% |
+| test/language/module-code             |   599 |  501 |   39 |      59 |       0 |    0 |     83.6% |
 | test/language/punctuators             |    11 |   10 |    1 |       0 |       0 |    0 |     90.9% |
-| test/language/reserved-words          |    27 |   26 |    1 |       0 |       0 |    0 |     96.2% |
+| test/language/reserved-words          |    27 |   27 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/rest-parameters         |    11 |   10 |    1 |       0 |       0 |    0 |     90.9% |
 | test/language/source-text             |     1 |    1 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/statementList           |    80 |   32 |   40 |       8 |       0 |    0 |     40.0% |
-| test/language/statements              |  9347 | 5109 | 1824 |    1942 |       0 |  472 |     57.5% |
-| test/language/types                   |   113 |   84 |   16 |       4 |       0 |    9 |     80.7% |
+| test/language/statements              |  9347 | 5160 | 1799 |    1916 |       0 |  472 |     58.1% |
+| test/language/types                   |   113 |   85 |   15 |       4 |       0 |    9 |     81.7% |
 | test/language/white-space             |    67 |   26 |   16 |      25 |       0 |    0 |     38.8% |
 
 ## test/built-ins
@@ -87,7 +119,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/DisposableStack                |    93 |    0 |   92 |       1 |       0 |    0 |      0.0% |
 | test/built-ins/Error                          |    93 |   36 |   52 |       5 |       0 |    0 |     38.7% |
 | test/built-ins/FinalizationRegistry           |    47 |    0 |   47 |       0 |       0 |    0 |      0.0% |
-| test/built-ins/Function                       |   509 |   97 |  248 |      76 |       0 |   88 |     23.0% |
+| test/built-ins/Function                       |   509 |   97 |  249 |      75 |       0 |   88 |     23.0% |
 | test/built-ins/GeneratorFunction              |    23 |    0 |   23 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/GeneratorPrototype             |    61 |   31 |   14 |      16 |       0 |    0 |     50.8% |
 | test/built-ins/Infinity                       |     6 |    2 |    2 |       0 |       0 |    2 |     50.0% |
@@ -100,8 +132,8 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/NativeErrors                   |    94 |   32 |   62 |       0 |       0 |    0 |     34.0% |
 | test/built-ins/Number                         |   340 |  219 |  116 |       5 |       0 |    0 |     64.4% |
 | test/built-ins/Object                         |  3411 | 1761 | 1625 |      11 |       3 |   11 |     51.7% |
-| test/built-ins/Promise                        |   732 |  373 |  345 |      11 |       0 |    3 |     51.1% |
-| test/built-ins/Proxy                          |   311 |    0 |  292 |       8 |       0 |   11 |      0.0% |
+| test/built-ins/Promise                        |   732 |  383 |  335 |      11 |       0 |    3 |     52.5% |
+| test/built-ins/Proxy                          |   311 |    0 |  293 |       7 |       0 |   11 |      0.0% |
 | test/built-ins/Reflect                        |   153 |    0 |  153 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/RegExp                         |  1879 |    1 |  648 |    1229 |       0 |    1 |      0.0% |
 | test/built-ins/RegExpStringIteratorPrototype  |    17 |    0 |    0 |      17 |       0 |    0 |      0.0% |
@@ -109,7 +141,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/SetIteratorPrototype           |    11 |    8 |    3 |       0 |       0 |    0 |     72.7% |
 | test/built-ins/ShadowRealm                    |    64 |    0 |   64 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/SharedArrayBuffer              |   104 |    0 |  102 |       2 |       0 |    0 |      0.0% |
-| test/built-ins/String                         |  1223 |  673 |  432 |     115 |       0 |    3 |     55.1% |
+| test/built-ins/String                         |  1223 |  673 |  431 |     115 |       1 |    3 |     55.1% |
 | test/built-ins/StringIteratorPrototype        |     7 |    4 |    3 |       0 |       0 |    0 |     57.1% |
 | test/built-ins/SuppressedError                |    22 |    0 |   22 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/Symbol                         |    98 |   35 |   61 |       0 |       0 |    2 |     36.4% |
