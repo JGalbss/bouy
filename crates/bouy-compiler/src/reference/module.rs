@@ -165,6 +165,16 @@ impl<'a> Lowerer<'a, '_> {
                 },
             }
         }
+        // A later declaration of a function name replaces an earlier one.
+        let mut seen = std::collections::HashSet::new();
+        functions.reverse();
+        functions.retain(|function: &Function| {
+            seen.insert((
+                function.name.clone(),
+                function.clauses.first().map(|c| c.patterns.len()),
+            ))
+        });
+        functions.reverse();
         self.nested_var_getters(program);
         functions.push(self.init(&body));
         functions.push(self.class_dispatch());

@@ -512,8 +512,18 @@ typeof_global(Name) ->
         error:{'$throw', _} -> <<"undefined">>
     end.
 
+%% InstanceofOperator: a Symbol.hasInstance method of the target decides,
+%% such as a static method of a class; else OrdinaryHasInstance.
 -spec instance_of(term(), term()) -> boolean().
-instance_of(V, {'$f', _, _} = C) ->
+instance_of(V, C) when ?IS_OBJECT(C) ->
+    case get(C, bouy_heap:well_known(hasInstance)) of
+        H when H =:= undefined; H =:= null -> ordinary_instance_of(V, C);
+        H -> truthy(call(H, C, [V]))
+    end;
+instance_of(V, C) ->
+    ordinary_instance_of(V, C).
+
+ordinary_instance_of(V, {'$f', _, _} = C) ->
     case ?IS_OBJECT(V) of
         false ->
             false;
@@ -522,7 +532,7 @@ instance_of(V, {'$f', _, _} = C) ->
             ?IS_OBJECT(Proto) orelse type_error(<<"Function has non-object prototype in instanceof check">>),
             in_chain(bouy_heap:prototype_of(V), Proto)
     end;
-instance_of(_V, C) ->
+ordinary_instance_of(_V, C) ->
     type_error(text([<<"Right-hand side of 'instanceof' is not callable (">>, describe(C), <<")">>])).
 
 in_chain(null, _Proto) -> false;

@@ -169,3 +169,10 @@ console.log(
     },
   ),
 );
+
+class Even {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return typeof value === "number" && value % 2 === 0;
+  }
+}
+console.log(2 instanceof (Even as any), 3 instanceof (Even as any));
