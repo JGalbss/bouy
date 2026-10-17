@@ -1,0 +1,19 @@
+ownKeys, gopd Symbol(tag), get Symbol(tag), gopd hidden, gopd b, get b, gopd a, get a
+b, a, Symbol(tag)
+2 get b, ownKeys, gopd Symbol(tag), get Symbol(tag), gopd hidden, gopd a, get a a, Symbol(tag)
+{"first":1,"fourth":4}
+TypeError 3
+define 0, define 1, set length, gopd length, define length
+7 own 0
+TypeError false TypeError TypeError ok true
+number 1, bigint 2 TypeError
+TypeError
+m,x
+TypeError m,x
+TypeError TypeError TypeError
+RangeError
+object object
+true true
+TypeError
+1,2,9
+1,5,,2,
