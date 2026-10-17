@@ -38,6 +38,11 @@ actor_test_() ->
         {"a request count belongs to one start of the actor", fun request_count_per_start/0},
         {"an actor past maxMemory fails with ActorOutOfMemory and restarts", fun memory_limit_restarts/0},
         {"a child past maxMemory restarts in its group", fun child_memory_limit_restarts/0},
+        {"a turn past turnTimeout fails with ActorTimedOut and restarts", fun turn_timeout_restarts/0},
+        {"a cast turn past turnTimeout restarts the actor", fun cast_turn_timeout_restarts/0},
+        {"turns within turnTimeout keep the actor", fun short_turns_keep_actor/0},
+        {"a timed-out child restarts in its group within its budget", fun child_turn_timeout_uses_budget/0},
+        {"turnTimeout takes a positive whole number of ms", fun turn_timeout_option/0},
         {"a pure constructor runs in the spawner, and a restart runs it again", fun pure_constructor_spawns_ready/0}
     ]}.
 
@@ -417,6 +422,75 @@ child_memory_limit_restarts() ->
 
 record_chunks(Ref, Count) ->
     [bouy_actor:call(Ref, <<"record">>, [binary:copy(<<"x">>, 1024 * 1024)]) || _ <- lists:seq(1, Count)].
+
+%% The turn spins on the CPU and never yields, so only the turn timer ends it.
+turn_timeout_restarts() ->
+    {'$ref', Id} = Looper = bouy:spawn([slow(), #{<<"turnTimeout">> => 50}]),
+    Healthy = bouy:spawn([counter()]),
+    1 = bouy_actor:call(Looper, <<"work">>, [0]),
+    Started = erlang:monotonic_time(millisecond),
+    {Failure, Text} = capture_stderr(fun() ->
+        Failed = thrown(fun() -> bouy_actor:call(Looper, <<"spin">>, [60000]) end),
+        %% The next call waits for the restart, which gives a fresh state.
+        ?assertEqual(0, bouy_actor:call(Looper, <<"done">>, [])),
+        Failed
+    end),
+    ?assert(erlang:monotonic_time(millisecond) - Started < 5000),
+    Label = <<"Slow #", (integer_to_binary(Id))/binary>>,
+    Message = <<Label/binary, " did not finish spin within 50 ms">>,
+    ?assertMatch(
+        #{<<"_tag">> := <<"ActorTimedOut">>, <<"name">> := <<"ActorTimedOut">>, <<"actor">> := Label,
+          <<"method">> := <<"spin">>, <<"ms">> := 50, <<"message">> := Message},
+        Failure
+    ),
+    ?assertEqual(<<"bouy: ", Label/binary, " crashed: ActorTimedOut: ", Message/binary, "\n">>, Text),
+    ?assertMatch(#{<<"restarts">> := 1, <<"status">> := <<"running">>}, entry(Looper)),
+    ?assertEqual(1, bouy_actor:call(Healthy, <<"inc">>, [])).
+
+cast_turn_timeout_restarts() ->
+    Looper = bouy:spawn([slow(), #{<<"turnTimeout">> => 30}]),
+    {Pong, Text} = capture_stderr(fun() ->
+        true = bouy_actor:cast(bouy:cast([Looper]), <<"spin">>, [60000]),
+        %% The call waits behind the loop and is lost with it, as after a crash.
+        ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:call(Looper, <<"ping">>, []) end)),
+        bouy_actor:call(Looper, <<"ping">>, [])
+    end),
+    ?assertEqual(<<"pong">>, Pong),
+    ?assertMatch(<<"bouy: Slow #", _/binary>>, Text),
+    ?assertMatch(#{<<"restarts">> := 1}, entry(Looper)).
+
+short_turns_keep_actor() ->
+    Counter = bouy:spawn([counter(), #{<<"turnTimeout">> => 1000}]),
+    [bouy_actor:call(Counter, <<"inc">>, []) || _ <- lists:seq(1, 999)],
+    [true = bouy_actor:cast(bouy:cast([Counter]), <<"inc">>, [1]) || _ <- lists:seq(1, 1000)],
+    ?assertEqual(1999, bouy_actor:call(Counter, <<"get">>, [])),
+    ?assertMatch(#{<<"restarts">> := 0, <<"status">> := <<"running">>}, entry(Counter)).
+
+%% A timeout counts as a crash against the budget of the group: one restart
+%% is allowed, and the second timeout stops the actor.
+child_turn_timeout_uses_budget() ->
+    #{<<"looper">> := Looper} = bouy:supervise([
+        #{<<"maxRestarts">> => 1, <<"children">> => #{<<"looper">> => bouy:child([slow(), #{<<"turnTimeout">> => 20}])}}
+    ]),
+    {Tags, Text} = capture_stderr(fun() ->
+        [tag(fun() -> bouy_actor:call(Looper, <<"spin">>, [60000]) end) || _ <- [1, 2]]
+    end),
+    ?assertEqual([<<"ActorTimedOut">>, <<"ActorTimedOut">>], Tags),
+    ?assertEqual(
+        <<"bouy: Slow looper crashed: ActorTimedOut: Slow looper did not finish spin within 20 ms\n"
+          "bouy: Slow looper crashed: ActorTimedOut: Slow looper did not finish spin within 20 ms\n">>,
+        Text
+    ),
+    ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:call(Looper, <<"ping">>, []) end)),
+    await(fun() -> maps:get(<<"status">>, entry(Looper)) =:= <<"stopped">> end).
+
+turn_timeout_option() ->
+    Exact = bouy:spawn([counter(), #{<<"turnTimeout">> => 50.0}]),
+    ?assertEqual(0, bouy_actor:call(Exact, <<"get">>, [])),
+    [?assertMatch(#{<<"name">> := <<"TypeError">>}, thrown(fun() -> bouy:spawn([counter(), #{<<"turnTimeout">> => Bad}]) end))
+     || Bad <- [0, -5, 1.5, <<"50">>, true]],
+    BadChild = #{<<"children">> => #{<<"x">> => bouy:child([counter(), #{<<"turnTimeout">> => 0}])}},
+    ?assertMatch(#{<<"name">> := <<"TypeError">>}, thrown(fun() -> bouy:supervise([BadChild]) end)).
 
 %% The counter class marks its constructor pure; the slow class does not.
 pure_constructor_spawns_ready() ->

@@ -4722,9 +4722,9 @@
       "suite_version": null,
       "updated": null,
       "test": "crates/bouy-cli/tests/programs.rs",
-      "total": 34,
+      "total": 35,
       "outcomes": {
-        "pass": 34,
+        "pass": 35,
         "rejected": 0,
         "late": 0,
         "skip": 0,

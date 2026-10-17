@@ -384,6 +384,32 @@ fn an_actor_past_max_memory_restarts_and_spares_the_others() {
 }
 
 #[test]
+fn a_turn_past_turn_timeout_ends_and_the_actor_restarts() {
+    check_on_vm(
+        &mut bouy("actor-turn-timeout.ts"),
+        &Outcome {
+            stdout: "ActorTimedOut: Looper looper did not finish spin within 50 ms\n\
+                     the loop ended within a second: true\n\
+                     the counter still answers: 2\n\
+                     the looper restarted fresh: 0\n\
+                     round 1: ActorTimedOut\n\
+                     round 2: ActorTimedOut\n\
+                     past the budget: ActorStopped\n\
+                     looper: running, restarts 1\n\
+                     counter: running, restarts 0\n\
+                     worker: stopped, restarts 1\n",
+            stderr: "bouy: Looper looper crashed: ActorTimedOut: Looper looper did not finish \
+                     spin within 50 ms\n\
+                     bouy: Looper worker crashed: ActorTimedOut: Looper worker did not finish \
+                     spin within 20 ms\n\
+                     bouy: Looper worker crashed: ActorTimedOut: Looper worker did not finish \
+                     spin within 20 ms\n",
+            status: 0,
+        },
+    );
+}
+
+#[test]
 fn a_batch_of_calls_keeps_the_semantics_of_parallel_calls() {
     check_on_vm(
         &mut bouy("batch-calls.ts"),

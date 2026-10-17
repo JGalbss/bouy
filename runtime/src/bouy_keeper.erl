@@ -16,6 +16,10 @@
 %% An actor process that dies with the reason `killed`, unmarked by stop(),
 %% passed its memory limit: the keeper prints its crash line and restarts a
 %% spawned actor. The group of a child restarts the child.
+%%
+%% The turn timers of the actors with a turn timeout fire here. A turn that
+%% still runs ends as a crash (bouy_actor:timed_out/1), and the supervisor of
+%% the actor restarts it.
 
 -export([start_link/0, own/2, watch_group/2, watch_temporary/2, watch_memory/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
@@ -81,6 +85,9 @@ handle_cast({watch, Pid, Watch}, #keeper{watches = Watches} = State) ->
     {noreply, State#keeper{watches = Watches#{monitor(process, Pid) => Watch}}}.
 
 -spec handle_info(term(), #keeper{}) -> {noreply, #keeper{}}.
+handle_info({timeout, _Timer, {turn, _, _, _, _, _, _, _} = Turn}, State) ->
+    ok = bouy_actor:timed_out(Turn),
+    {noreply, State};
 handle_info({'EXIT', _Pid, {shutdown, {crashed, Id}}}, State) ->
     {noreply, restart(Id, State)};
 handle_info({'EXIT', _Pid, {shutdown, stopped}}, State) ->
@@ -191,4 +198,4 @@ restart(Id, #keeper{restarts = Restarts} = State) ->
     end.
 
 spec(Actor) ->
-    maps:with([id, supervisor, group, module, class, args, name, mailbox, restart, max_memory], Actor).
+    maps:with([id, supervisor, group, module, class, args, name, mailbox, restart, max_memory, turn_timeout], Actor).

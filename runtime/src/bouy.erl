@@ -154,6 +154,7 @@ spec({'$class', Module, Class} = Value, Options, Name) when is_atom(Module), is_
         mailbox => mailbox(option(<<"mailbox">>, Options)),
         restart => restart(option(<<"restart">>, Options)),
         max_memory => max_memory(option(<<"maxMemory">>, Options)),
+        turn_timeout => turn_timeout(option(<<"turnTimeout">>, Options)),
         chain => bouy_actor:chain()
     };
 spec(_Class, _Options, _Name) ->
@@ -216,6 +217,14 @@ restart(<<"transient">>) -> transient;
 restart(<<"temporary">>) -> temporary;
 restart(_Restart) ->
     type_error(<<"restart must be \"permanent\", \"transient\", or \"temporary\"">>).
+
+%% The longest turn of the actor in ms, or `infinity`.
+turn_timeout(undefined) -> infinity;
+turn_timeout(Ms) ->
+    case integer(Ms) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> type_error(<<"turnTimeout must be a positive integer number of milliseconds">>)
+    end.
 
 %% Bytes, or a string with a K, M, G, or T suffix, as BOUY_MAX_MEMORY takes. The limit
 %% must leave room for the smallest heap of a process.

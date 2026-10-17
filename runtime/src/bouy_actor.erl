@@ -24,7 +24,7 @@
 %% supervisor of the actor. It never polls.
 
 -export([start/1, start_link/1, spawn_options/1, init_alone/2, init_tree/2, init_ready/4, class_functions/2, call/3, cast/3, offer/3, stop/1, snapshot/1]).
--export([report_out_of_memory/1, send_call/4, call_outcome/4]).
+-export([report_out_of_memory/1, timed_out/1, send_call/4, call_outcome/4]).
 -export([context/0, adopt/1, within/2, live/1, chain/0, current/0, current_id/0, owner/0, constructing/0]).
 -export([loop/2]).
 
@@ -49,6 +49,7 @@
     mailbox := bouy_registry:mailbox(),
     restart := bouy_registry:restart(),
     max_memory => pos_integer() | infinity,
+    turn_timeout => pos_integer() | infinity,
     supervisor := pid(),
     group := alone | tree,
     chain => [pos_integer()],
@@ -82,11 +83,18 @@
     counter :: atomics:atomics_ref(),
     %% The context of a turn whose chain is only this actor: every cast, and
     %% each call from code outside an actor.
-    alone :: #context{}
+    alone :: #context{},
+    turn_timeout = infinity :: pos_integer() | infinity
 }).
 %% The loop holds the state, which stays fixed for the life of the process,
 %% and `This` beside it, so a turn does not copy the state.
 -type state() :: #state{}.
+%% A turn timer goes to bouy_keeper, which ends the turn when the actor is
+%% still in it: the process, the actor, the counter of the start, the turn,
+%% the caller that waits on the turn, the method, and the limit in ms.
+-type turn() :: {turn, pid(), pos_integer(), atomics:atomics_ref(), pos_integer(), reference() | none, binary(), pos_integer()}.
+-export_type([turn/0]).
+
 %% Starts the actor of Spec and returns when its constructor has finished.
 %% When the constructor throws, the start fails with ActorFailed and the
 %% actor is stopped. A spawned actor runs as a process linked to bouy_keeper;
@@ -140,7 +148,7 @@ start_alone(Spec) ->
 %% keeper.
 start_ready(#{id := Id, module := Module, args := Args} = Spec, Dispatch, New) ->
     This = Module:New(Args),
-    Counter = atomics:new(1, []),
+    Counter = atomics:new(2, []),
     Pid = erlang:spawn_opt(?MODULE, init_ready, [Spec, Dispatch, Counter, This], ?SPAWN),
     ok = bouy_registry:enter_ready(Id, Pid, Counter, Spec),
     watch(Spec, 1).
@@ -834,7 +842,8 @@ state(Spec, Dispatch, Counter) ->
         supervisor = Supervisor,
         group = Group,
         counter = Counter,
-        alone = #context{actor = Id, chain = [Id], owner = self()}
+        alone = #context{actor = Id, chain = [Id], owner = self()},
+        turn_timeout = maps:get(turn_timeout, Spec, infinity)
     }.
 
 %% Waits for the next request and runs it as one turn. A message that is not
@@ -858,7 +867,7 @@ loop(#state{counter = Counter} = State, This) ->
 
 call_turn(Alias, Method, Args, Chain, #state{id = Id} = State, This) ->
     begin_turn(Chain, State),
-    case turn(Method, Args, State, This) of
+    case timed_turn(Alias, Method, Args, State, This) of
         {ok, Value, This1} ->
             Alias ! {Alias, {ok, Value}},
             loop(State, This1);
@@ -872,7 +881,7 @@ call_turn(Alias, Method, Args, Chain, #state{id = Id} = State, This) ->
 
 cast_turn(Method, Args, #state{id = Id} = State, This) ->
     begin_turn([], State),
-    case turn(Method, Args, State, This) of
+    case timed_turn(none, Method, Args, State, This) of
         {crashed, Cause} ->
             _ = crash(Method, Cause, State),
             exit(crashed(Id));
@@ -884,6 +893,27 @@ begin_turn([], #state{alone = Alone}) ->
     put(?CONTEXT, Alone);
 begin_turn(Chain, #state{id = Id}) ->
     put(?CONTEXT, #context{actor = Id, chain = [Id | Chain], owner = self()}).
+
+%% Runs one turn, under a turn timer when the actor has a turn timeout. The
+%% second slot of the counter names the turn that runs, so bouy_keeper ends
+%% a turn only while it runs: whichever side swaps the slot first decides.
+timed_turn(_Caller, Method, Args, #state{turn_timeout = infinity} = State, This) ->
+    turn(Method, Args, State, This);
+timed_turn(Caller, Method, Args, #state{id = Id, counter = Counter, turn_timeout = Ms} = State, This) ->
+    Turn = erlang:unique_integer([positive]),
+    ok = atomics:put(Counter, 2, Turn),
+    Timer = erlang:start_timer(Ms, bouy_keeper, {turn, self(), Id, Counter, Turn, Caller, Method, Ms}),
+    Outcome = turn(Method, Args, State, This),
+    case atomics:compare_exchange(Counter, 2, Turn, 0) of
+        ok ->
+            ok = erlang:cancel_timer(Timer, [{async, true}, {info, false}]),
+            Outcome;
+        _Ended ->
+            %% bouy_keeper has ended this turn, and it ends the process next.
+            receive
+            after infinity -> ok
+            end
+    end.
 
 %% Runs one method. A method that returns an Effect runs it in the same turn:
 %% a typed failure keeps the state, and an exception crashes the actor.
@@ -940,6 +970,35 @@ print_crash(Label, Cause) ->
         Device -> Device ! {io_request, self(), make_ref(), {put_chars, unicode, Line}}
     end,
     ok.
+
+%% bouy_keeper calls this when a turn timer fires. When the actor is still in
+%% that turn, the turn ends as a crash ends it: callers wait for the restart,
+%% the crash line goes to stderr, the caller of the turn gets ActorTimedOut,
+%% and the process exits, so its supervisor restarts the actor within its
+%% budget.
+-spec timed_out(turn()) -> ok.
+timed_out({turn, Pid, Id, Counter, Turn, Caller, Method, Ms}) ->
+    case atomics:compare_exchange(Counter, 2, Turn, -1) of
+        ok -> end_turn(Pid, Id, Caller, Method, Ms);
+        _Ended -> ok
+    end.
+
+end_turn(Pid, Id, Caller, Method, Ms) ->
+    case bouy_registry:find(Id) of
+        {ok, #{mode := {_Phase, Pid, _Counter, _Mailbox}} = Actor} ->
+            Label = label(Actor),
+            Error = turn_timed_out(Label, Method, Ms),
+            ok = record_crash(Actor#{label => Label}, Pid, Error),
+            reply(Caller, {throw, Error}),
+            true = exit(Pid, crashed(Id)),
+            ok;
+        _StoppedOrRestarted ->
+            true = exit(Pid, {shutdown, stopped}),
+            ok
+    end.
+
+reply(none, _Reply) -> ok;
+reply(Alias, Reply) -> Alias ! {Alias, Reply}.
 
 %% The JavaScript value of an exception that ended a turn.
 cause(error, Reason, Stack) ->
@@ -1024,6 +1083,10 @@ out_of_memory(Actor) ->
         end,
     Message = <<Label/binary, " used more than its memory limit of ", (integer_to_binary(Limit))/binary, " bytes">>,
     tagged(<<"ActorOutOfMemory">>, Label, Message, #{<<"limit">> => Limit}).
+
+turn_timed_out(Label, Method, Ms) ->
+    Message = <<Label/binary, " did not finish ", Method/binary, " within ", (integer_to_binary(Ms))/binary, " ms">>,
+    tagged(<<"ActorTimedOut">>, Label, Message, #{<<"method">> => Method, <<"ms">> => Ms}).
 
 mailbox_full(Actor) ->
     Label = label(Actor),

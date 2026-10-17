@@ -10,8 +10,9 @@
 %% Counter, Mailbox}` once the constructor of process Pid has finished,
 %% `{starting, Pid, Counter, Mailbox}` while it runs, `restarting` while no
 %% process serves the actor, or `stopped`. Counter is an atomics array of one
-%% start of the actor: it counts the requests that the process has not taken.
-%% A sender adds one before it sends and the actor takes one off when it takes
+%% start of the actor: its first slot counts the requests that the process
+%% has not taken, and its second names the turn that runs under a turn
+%% timeout (bouy_actor). A sender adds one before it sends and the actor takes one off when it takes
 %% the request, so concurrent senders cannot pass the capacity together. A new
 %% process gets a new counter, since the messages of a dead process are lost.
 %%
@@ -55,6 +56,7 @@
     mailbox := mailbox(),
     restart := restart(),
     max_memory => pos_integer() | infinity,
+    turn_timeout => pos_integer() | infinity,
     atom() => term()
 }.
 -type actor() :: #{
@@ -72,6 +74,7 @@
     mailbox := mailbox(),
     restart := restart(),
     max_memory => pos_integer() | infinity,
+    turn_timeout => pos_integer() | infinity,
     atom() => term()
 }.
 
@@ -109,7 +112,7 @@ allocate() ->
 %% constructor.
 -spec enter(pos_integer(), pid(), info()) -> {pos_integer(), atomics:atomics_ref()} | stopped.
 enter(Id, Pid, #{mailbox := Mailbox} = Info) ->
-    Counter = atomics:new(1, []),
+    Counter = atomics:new(2, []),
     Mode = {starting, Pid, Counter, Mailbox},
     case ets:insert_new(?TABLE, {Id, Mode, Pid, 1, false, Info}) of
         true -> {1, Counter};

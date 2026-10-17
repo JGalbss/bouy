@@ -1,13 +1,14 @@
-import { cast, sleep, spawn, stop, withTimeout } from "bouy";
+import { cast, sleep, spawn } from "bouy";
 
 // Runaway loop: 100 agents answer pings. Agent 0 enters a loop that never ends, inside its
 // turn. The BEAM scheduler preempts it, so the other agents keep their turns. For 1 s the
 // program pings the other 99 agents in rounds of parallel calls, one round every 5 ms, and
-// times each ping. Meanwhile a supervisor pings agent 0 with withTimeout(100, ...). The
-// call times out, stop() kills the agent at once, and the supervisor spawns a fresh agent
-// in its place. stop() is final, so the supervisor replaces the agent, as the Node pool
-// replaces a worker. The program records the ping times and failures of the 99 agents,
-// the time until the runaway agent stopped, and the time until its replacement answered.
+// times each ping. Every agent has turnTimeout: 100, so the runtime ends a turn that runs
+// longer than 100 ms, and the keeper restarts the agent with a fresh state, with no
+// supervisor code in the program. A ping that waits behind the loop is lost with it and
+// fails, as the Node pool fails the calls of a stuck worker. The program records the ping
+// times and failures of the 99 agents, the time until the runaway turn ended, and the time
+// until agent 0 answered again.
 
 const AGENTS = 100;
 const WINDOW_MS = 1000;
@@ -48,20 +49,18 @@ async function pingRounds(others: any[], until: number): Promise<Sample[]> {
   return rounds.flat();
 }
 
-async function answers(agent: any): Promise<boolean> {
+// Starts the loop and pings agent 0 behind it. The turn timeout ends the loop, and the ping
+// is lost with it. The next ping waits for the restart.
+async function recover(runaway: any, started: number): Promise<number[]> {
+  cast(runaway).spin();
   try {
-    await withTimeout(TIMEOUT_MS, () => agent.ping());
-    return true;
-  } catch {
-    return false;
+    await runaway.ping();
+    throw new Error("the runaway agent answered during its loop");
+  } catch (error) {
+    if (error._tag !== "ActorStopped") throw error;
   }
-}
-
-async function supervise(runaway: any, started: number): Promise<number[]> {
-  if (await answers(runaway)) throw new Error("the runaway agent answered");
-  stop(runaway);
   const stopped = performance.now() - started;
-  await spawn(Agent).ping();
+  await runaway.ping();
   return [stopped, performance.now() - started];
 }
 
@@ -71,13 +70,12 @@ function percentile(sorted: number[], fraction: number): number {
 }
 
 async function measure(): Promise<object> {
-  const agents = Array.from({ length: AGENTS }, () => spawn(Agent));
+  const agents = Array.from({ length: AGENTS }, () => spawn(Agent, { turnTimeout: TIMEOUT_MS }));
   const others = agents.slice(1);
   await Promise.all(agents.map((agent) => agent.ping()));
   const started = performance.now();
-  cast(agents[0]).spin();
   const [[stopped, recovered], samples] = await Promise.all([
-    supervise(agents[0], started),
+    recover(agents[0], started),
     pingRounds(others, started + WINDOW_MS),
   ]);
   const sorted = samples.map((sample) => sample.ms).toSorted((a, b) => a - b);
