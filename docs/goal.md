@@ -21,6 +21,17 @@ This file is the objective and the definition of done. The owner sets it, and ev
 13. **Flagship: a real production codebase.** The owner's company monorepo, a large multi-service TypeScript app that runs on Bun today and uses Temporal, builds and runs on Bouy on the owner's machine out of the box, faster than on Bun, with Bouy's durable runtime in place of Temporal. Its name and code stay out of this public repository.
 14. **Production ready.** Teams can run Bouy in production: a self-contained release with the Erlang runtime inside, so the machine needs no Erlang install; Linux x86-64 and arm64 builds and a container image; OpenTelemetry tracing, metrics, and logs that work with existing Node instrumentation; soak, chaos, and memory tests that run for hours without a leak or a crash; a security review of the compiler, the runtime, and the native code; and versioned releases with a changelog.
 
+## Launch gate
+
+Nobody announces Bouy publicly until every line below holds. The owner: "ya this needs to be production grade so if i post on twitter i dont get clowned".
+
+1. **Every claim has proof.** Each claim in the README and the docs links to a test, a row of `docs/COMPAT.md`, or a results file in `bench/results`. The benchmarks show Bouy's losses next to its wins. Nothing says "all of Node" or "all of npm" before the dashboard says 100%.
+2. **The quick start works on a clean machine.** On a fresh macOS machine and a fresh Linux container, the install command and the README quick start work when pasted, in under 5 minutes. CI runs this on every release.
+3. **One command reproduces the headline numbers,** and each results file records the hardware, the load, and the versions.
+4. **A real demo.** The examples run, and a recorded demo shows a real agent app on Bouy surviving a crashed, a looping, and a leaking agent while the others keep serving.
+5. **No known crash on the common path.** The fuzz corpus has no open silent mismatch, a 24-hour soak test passes, and every error that a new user can hit names its fix.
+6. **A clean public repository.** No private data and no absolute local paths. A license, `CONTRIBUTING.md`, `SECURITY.md`, an honest status and limitations section, and green CI on Linux and macOS.
+
 ## Definition of done
 
 - `bouy run example.ts` runs TypeScript.
@@ -52,3 +63,4 @@ The owner added these on 2026-10-16, in order:
 - "it needsto be more performant and better recovery then bun"
 - "like a sick goal would be, being able to build [the owner's production repo] on my computer and have it work on our runtime more performantly out of the box with swapping out temporal probs for just default runtime", then "ideally the agent server"
 - "we need 100% node coverage", "if this is going to be used in prod"
+- "ya this needs to be production grade so if i post on twitter i dont get clowned"
