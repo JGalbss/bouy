@@ -23,44 +23,45 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 | Directory      | Tests |  Pass |  Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ----: | ------: | ------: | ---: | --------: |
-| test/language  | 23726 | 11354 |  3776 |    7052 |       0 | 1544 |     51.1% |
-| test/built-ins | 23823 |  6193 | 12764 |    4665 |       3 |  198 |     26.2% |
-| **Total**      | 47549 | 17547 | 16540 |   11717 |       3 | 1742 |     38.3% |
+| test/language  | 23726 | 19182 |  1718 |    1282 |       0 | 1544 |     86.4% |
+| test/built-ins | 23823 |  6756 | 12392 |    4475 |       2 |  198 |     28.5% |
+| **Total**      | 47549 | 25938 | 14110 |    5757 |       2 | 1742 |     56.6% |
 
 ## Run log
 
 - 2026-10-17, commit `7090eb1`: the baseline. Other workflows kept the load average between 40 and 95 during the run, so the 3 timeouts are an upper bound.
+- 2026-10-17, branch `engine-classes`, commit `c0a4efa`: classes, generators, async iteration, iterator closing, the iterator helpers, function names, and the temporal dead zone (section "Classes and iteration"). `test/language` 11354 to 19182 passes, `test/built-ins` 6193 to 6756. The `test/language` rows other than `statements` come from the run at commit `14bf518`, the commit before; commit `c0a4efa` changed only `for` heads and `extends` clauses.
 
 ## test/language
 
 | Directory                             | Tests | Pass | Fail | Compile | Timeout | Skip | Pass rate |
 | ------------------------------------- | ----: | ---: | ---: | ------: | ------: | ---: | --------: |
-| test/language/arguments-object        |   263 |  104 |   42 |      60 |       0 |   57 |     50.4% |
+| test/language/arguments-object        |   263 |  204 |    2 |       0 |       0 |   57 |     99.0% |
 | test/language/asi                     |   102 |  102 |    0 |       0 |       0 |    0 |    100.0% |
-| test/language/block-scope             |   145 |  143 |    0 |       2 |       0 |    0 |     98.6% |
+| test/language/block-scope             |   145 |  145 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/comments                |    52 |   43 |    9 |       0 |       0 |    0 |     82.6% |
-| test/language/computed-property-names |    48 |   39 |    5 |       4 |       0 |    0 |     81.2% |
-| test/language/destructuring           |    19 |   12 |    6 |       0 |       0 |    1 |     66.6% |
+| test/language/computed-property-names |    48 |   48 |    0 |       0 |       0 |    0 |    100.0% |
+| test/language/destructuring           |    19 |   17 |    1 |       0 |       0 |    1 |     94.4% |
 | test/language/directive-prologue      |    62 |    5 |    0 |       0 |       0 |   57 |    100.0% |
 | test/language/eval-code               |   347 |    9 |  117 |       1 |       0 |  220 |      7.0% |
 | test/language/export                  |     3 |    3 |    0 |       0 |       0 |    0 |    100.0% |
-| test/language/expressions             | 11102 | 4492 | 1406 |    4616 |       0 |  588 |     42.7% |
+| test/language/expressions             | 11102 | 8900 |  769 |     845 |       0 |  588 |     84.6% |
 | test/language/function-code           |   217 |   91 |   17 |       0 |       0 |  109 |     84.2% |
-| test/language/future-reserved-words   |    55 |   47 |    1 |       0 |       0 |    7 |     97.9% |
-| test/language/global-code             |    42 |   15 |   20 |       2 |       0 |    5 |     40.5% |
+| test/language/future-reserved-words   |    55 |   48 |    0 |       0 |       0 |    7 |    100.0% |
+| test/language/global-code             |    42 |   17 |   19 |       1 |       0 |    5 |     45.9% |
 | test/language/identifier-resolution   |    14 |    3 |    5 |       1 |       0 |    5 |     33.3% |
-| test/language/identifiers             |   268 |  267 |    1 |       0 |       0 |    0 |     99.6% |
+| test/language/identifiers             |   268 |  268 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/import                  |   129 |   10 |    3 |     116 |       0 |    0 |      7.7% |
 | test/language/keywords                |    25 |   25 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/line-terminators        |    41 |   32 |    9 |       0 |       0 |    0 |     78.0% |
 | test/language/literals                |   536 |  279 |  196 |      47 |       0 |   14 |     53.4% |
-| test/language/module-code             |   599 |  335 |   40 |     224 |       0 |    0 |     55.9% |
+| test/language/module-code             |   599 |  360 |   41 |     198 |       0 |    0 |     60.1% |
 | test/language/punctuators             |    11 |   10 |    1 |       0 |       0 |    0 |     90.9% |
 | test/language/reserved-words          |    27 |   26 |    1 |       0 |       0 |    0 |     96.2% |
-| test/language/rest-parameters         |    11 |   10 |    1 |       0 |       0 |    0 |     90.9% |
+| test/language/rest-parameters         |    11 |   11 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/source-text             |     1 |    1 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/statementList           |    80 |   32 |   40 |       8 |       0 |    0 |     40.0% |
-| test/language/statements              |  9347 | 5109 | 1824 |    1942 |       0 |  472 |     57.5% |
+| test/language/statements              |  9347 | 8383 |  456 |      36 |       0 |  472 |     94.4% |
 | test/language/types                   |   113 |   84 |   16 |       4 |       0 |    9 |     80.7% |
 | test/language/white-space             |    67 |   26 |   16 |      25 |       0 |    0 |     38.8% |
 
@@ -70,28 +71,28 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | --------------------------------------------- | ----: | ---: | ---: | ------: | ------: | ---: | --------: |
 | test/built-ins/AbstractModuleSource           |     8 |    0 |    8 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/AggregateError                 |    25 |   16 |    9 |       0 |       0 |    0 |     64.0% |
-| test/built-ins/Array                          |  3083 | 1833 | 1174 |      40 |       0 |   36 |     60.1% |
-| test/built-ins/ArrayBuffer                    |   221 |    0 |  216 |       5 |       0 |    0 |      0.0% |
+| test/built-ins/Array                          |  3083 | 1834 | 1187 |      26 |       0 |   36 |     60.1% |
+| test/built-ins/ArrayBuffer                    |   221 |    0 |  217 |       4 |       0 |    0 |      0.0% |
 | test/built-ins/ArrayIteratorPrototype         |    27 |    4 |   15 |       0 |       0 |    8 |     21.0% |
-| test/built-ins/AsyncDisposableStack           |   104 |    0 |  100 |       4 |       0 |    0 |      0.0% |
-| test/built-ins/AsyncFromSyncIteratorPrototype |    38 |    0 |    0 |      38 |       0 |    0 |      0.0% |
-| test/built-ins/AsyncFunction                  |    18 |    6 |   12 |       0 |       0 |    0 |     33.3% |
-| test/built-ins/AsyncGeneratorFunction         |    23 |    0 |   23 |       0 |       0 |    0 |      0.0% |
-| test/built-ins/AsyncGeneratorPrototype        |    48 |    0 |   41 |       7 |       0 |    0 |      0.0% |
-| test/built-ins/AsyncIteratorPrototype         |    13 |    0 |   12 |       1 |       0 |    0 |      0.0% |
-| test/built-ins/Atomics                        |   389 |    0 |  200 |     187 |       0 |    2 |      0.0% |
+| test/built-ins/AsyncDisposableStack           |   104 |    0 |  102 |       2 |       0 |    0 |      0.0% |
+| test/built-ins/AsyncFromSyncIteratorPrototype |    38 |   38 |    0 |       0 |       0 |    0 |    100.0% |
+| test/built-ins/AsyncFunction                  |    18 |   10 |    8 |       0 |       0 |    0 |     55.5% |
+| test/built-ins/AsyncGeneratorFunction         |    23 |    4 |   19 |       0 |       0 |    0 |     17.3% |
+| test/built-ins/AsyncGeneratorPrototype        |    48 |   48 |    0 |       0 |       0 |    0 |    100.0% |
+| test/built-ins/AsyncIteratorPrototype         |    13 |    3 |    9 |       1 |       0 |    0 |     23.0% |
+| test/built-ins/Atomics                        |   389 |    0 |  274 |     113 |       0 |    2 |      0.0% |
 | test/built-ins/BigInt                         |    77 |    0 |   34 |      43 |       0 |    0 |      0.0% |
 | test/built-ins/Boolean                        |    51 |   28 |   22 |       1 |       0 |    0 |     54.9% |
 | test/built-ins/DataView                       |   561 |    0 |  533 |      28 |       0 |    0 |      0.0% |
 | test/built-ins/Date                           |   594 |   73 |  515 |       6 |       0 |    0 |     12.2% |
 | test/built-ins/DisposableStack                |    93 |    0 |   92 |       1 |       0 |    0 |      0.0% |
-| test/built-ins/Error                          |    93 |   36 |   52 |       5 |       0 |    0 |     38.7% |
+| test/built-ins/Error                          |    93 |   36 |   54 |       3 |       0 |    0 |     38.7% |
 | test/built-ins/FinalizationRegistry           |    47 |    0 |   47 |       0 |       0 |    0 |      0.0% |
-| test/built-ins/Function                       |   509 |   97 |  248 |      76 |       0 |   88 |     23.0% |
-| test/built-ins/GeneratorFunction              |    23 |    0 |   23 |       0 |       0 |    0 |      0.0% |
-| test/built-ins/GeneratorPrototype             |    61 |   31 |   14 |      16 |       0 |    0 |     50.8% |
+| test/built-ins/Function                       |   509 |   99 |  251 |      71 |       0 |   88 |     23.5% |
+| test/built-ins/GeneratorFunction              |    23 |    4 |   19 |       0 |       0 |    0 |     17.3% |
+| test/built-ins/GeneratorPrototype             |    61 |   61 |    0 |       0 |       0 |    0 |    100.0% |
 | test/built-ins/Infinity                       |     6 |    2 |    2 |       0 |       0 |    2 |     50.0% |
-| test/built-ins/Iterator                       |   654 |   14 |  604 |      36 |       0 |    0 |      2.1% |
+| test/built-ins/Iterator                       |   654 |  426 |  206 |      22 |       0 |    0 |     65.1% |
 | test/built-ins/JSON                           |   166 |   93 |   66 |       7 |       0 |    0 |     56.0% |
 | test/built-ins/Map                            |   204 |  114 |   86 |       3 |       0 |    1 |     56.1% |
 | test/built-ins/MapIteratorPrototype           |    11 |    8 |    3 |       0 |       0 |    0 |     72.7% |
@@ -99,13 +100,13 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/NaN                            |     6 |    2 |    2 |       0 |       0 |    2 |     50.0% |
 | test/built-ins/NativeErrors                   |    94 |   32 |   62 |       0 |       0 |    0 |     34.0% |
 | test/built-ins/Number                         |   340 |  219 |  116 |       5 |       0 |    0 |     64.4% |
-| test/built-ins/Object                         |  3411 | 1761 | 1625 |      11 |       3 |   11 |     51.7% |
-| test/built-ins/Promise                        |   732 |  373 |  345 |      11 |       0 |    3 |     51.1% |
+| test/built-ins/Object                         |  3411 | 1776 | 1611 |      11 |       2 |   11 |     52.2% |
+| test/built-ins/Promise                        |   732 |  375 |  348 |       6 |       0 |    3 |     51.4% |
 | test/built-ins/Proxy                          |   311 |    0 |  292 |       8 |       0 |   11 |      0.0% |
 | test/built-ins/Reflect                        |   153 |    0 |  153 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/RegExp                         |  1879 |    1 |  648 |    1229 |       0 |    1 |      0.0% |
 | test/built-ins/RegExpStringIteratorPrototype  |    17 |    0 |    0 |      17 |       0 |    0 |      0.0% |
-| test/built-ins/Set                            |   383 |  177 |  175 |      30 |       0 |    1 |     46.3% |
+| test/built-ins/Set                            |   383 |  177 |  182 |      23 |       0 |    1 |     46.3% |
 | test/built-ins/SetIteratorPrototype           |    11 |    8 |    3 |       0 |       0 |    0 |     72.7% |
 | test/built-ins/ShadowRealm                    |    64 |    0 |   64 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/SharedArrayBuffer              |   104 |    0 |  102 |       2 |       0 |    0 |      0.0% |
@@ -115,8 +116,8 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/Symbol                         |    98 |   35 |   61 |       0 |       0 |    2 |     36.4% |
 | test/built-ins/Temporal                       |  4605 |    0 | 2280 |    2325 |       0 |    0 |      0.0% |
 | test/built-ins/ThrowTypeError                 |    14 |    7 |    7 |       0 |       0 |    0 |     50.0% |
-| test/built-ins/TypedArray                     |  1453 |    0 | 1150 |     295 |       0 |    8 |      0.0% |
-| test/built-ins/TypedArrayConstructors         |   738 |    0 |  615 |     107 |       0 |   16 |      0.0% |
+| test/built-ins/TypedArray                     |  1453 |    0 | 1154 |     291 |       0 |    8 |      0.0% |
+| test/built-ins/TypedArrayConstructors         |   738 |    0 |  616 |     106 |       0 |   16 |      0.0% |
 | test/built-ins/Uint8Array                     |    70 |    0 |   70 |       0 |       0 |    0 |      0.0% |
 | test/built-ins/WeakMap                        |   141 |   86 |   55 |       0 |       0 |    0 |     60.9% |
 | test/built-ins/WeakRef                        |    29 |    0 |   29 |       0 |       0 |    0 |      0.0% |
@@ -168,3 +169,55 @@ Errors at run time:
 | `$262` is not defined: the host hooks of test262                                                                                 |       14 |       134 |
 | The realm grew past 256 MB                                                                                                       |        2 |        79 |
 | The generated Erlang does not compile                                                                                            |       46 |         4 |
+
+## Classes and iteration
+
+The area of the `engine-classes` branch: classes, generators, async functions, async generators, `for...of` and `for await...of`, labeled statements, and the iterator helpers. "Before" is the run at commit `8a5ddfc`, and "after" is the run of the log above.
+
+| Directory                                      | Tests | Pass before | Pass after | Rate before | Rate after |
+| ---------------------------------------------- | ----: | ----------: | ---------: | ----------: | ---------: |
+| test/language/statements/class                 |  4367 |        2646 |       4126 |       61.2% |      95.5% |
+| test/language/expressions/class                |  4059 |         592 |       3860 |       14.8% |      96.7% |
+| test/language/statements/for-of                |   751 |         503 |        664 |       70.5% |      93.1% |
+| test/language/statements/for-await-of          |  1234 |          87 |       1197 |        7.2% |      99.4% |
+| test/language/expressions/yield                |    63 |          18 |         60 |       29.5% |      98.3% |
+| test/language/statements/generators            |   266 |         203 |        244 |       82.5% |      99.1% |
+| test/language/expressions/generators           |   290 |         213 |        262 |       80.6% |      99.2% |
+| test/language/expressions/async-arrow-function |    60 |          38 |         51 |       73.0% |      98.0% |
+| test/language/expressions/async-function       |    93 |          58 |         73 |       78.3% |      98.6% |
+| test/language/expressions/async-generator      |   623 |         178 |        596 |       29.6% |      99.3% |
+| test/language/statements/async-function        |    74 |          51 |         62 |       79.6% |      96.8% |
+| test/language/statements/async-generator       |   301 |          79 |        291 |       27.1% |     100.0% |
+| test/language/statements/labeled               |    24 |          15 |         17 |       78.9% |      89.4% |
+| test/language/expressions/await                |    22 |          13 |         22 |       59.0% |     100.0% |
+| test/language/expressions/super                |    94 |          48 |         86 |       52.1% |      93.4% |
+| test/language/expressions/new.target           |    14 |           2 |         11 |       14.2% |      78.5% |
+| test/built-ins/GeneratorPrototype              |    61 |          31 |         61 |       50.8% |     100.0% |
+| test/built-ins/AsyncGeneratorPrototype         |    48 |           0 |         48 |        0.0% |     100.0% |
+| test/built-ins/Iterator                        |   654 |          14 |        426 |        2.1% |      65.1% |
+| test/built-ins/GeneratorFunction               |    23 |           0 |          4 |        0.0% |      17.3% |
+| test/built-ins/AsyncGeneratorFunction          |    23 |           0 |          4 |        0.0% |      17.3% |
+| test/built-ins/AsyncFromSyncIteratorPrototype  |    38 |           0 |         38 |        0.0% |     100.0% |
+| **Total**                                      | 13182 |        4789 |      12203 |       37.1% |      94.7% |
+
+What the area changed:
+
+- A class is made where its code runs. Each evaluation makes new private names, a private element lives under its name outside the own keys, and `#x in o` checks the brand. A derived constructor binds `this` in a cell that `super(...)` sets once (`bouy_ref_class`).
+- Code at region depth `d` runs under a chain of handlers, one Erlang `try` per level, and `{'$k', F, A, Level}` peels one level at a time. So a `finally` block, a conditional expression, and a nested `try` can hold `await` or `yield`. Async generators, `yield*`, and `for await` are built on this (`bouy_ref_generator`).
+- `for...of` and array patterns close their iterator on an abrupt exit, and a generator that returns at a `yield` inside them closes it too.
+- Every function has a name and a length, from `NamedEvaluation` or its own name, and the name of a function expression refers to the function.
+- A binding that code reads before its declaration runs is a cell that throws a `ReferenceError` until then (`early`).
+- `Iterator` and its helpers of ES2025, and `Iterator.concat` (`bouy_ref_iterator_prototype`).
+
+What the area leaves, by the cause of the first error:
+
+| Cause                                                                                            |    Tests | Owner                                |
+| ------------------------------------------------------------------------------------------------ | -------: | ------------------------------------ |
+| `eval` (direct eval in the class element tests)                                                  |      193 | eval and the global scope            |
+| Iterator proposals: `zip`, `zipKeyed`, `windows`, `chunks`, `includes`, `join`, `Symbol.dispose` |      211 | not at stage 4                       |
+| `Function()` and the constructors of the function kinds, which compile source text               |       34 | eval                                 |
+| `Proxy`, `Reflect`, typed arrays, `RegExp`, `BigInt`                                             | about 90 | built-ins                            |
+| Bound functions and `Boolean`, `Number`, `String`, `Function` as constructors of a subclass      | about 30 | built-ins                            |
+| Assignment to an undeclared name                                                                 |       15 | the global scope                     |
+| A `Map` or a `Set` that changes while a `for...of` reads it                                      |        4 | `Map` and `Set` keep a snapshot list |
+| The `accessor` keyword of the decorators proposal                                                |        2 | not at stage 4                       |

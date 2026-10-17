@@ -318,31 +318,35 @@ helper_next(H) ->
             end
     end.
 
-%% %IteratorHelperPrototype%.return: closes the inner iterator of flatMap and
-%% then the underlying iterator.
+%% %IteratorHelperPrototype%.return: closes the inner iterator of flatMap or
+%% concat, then the underlying iterator. From suspended-yield the closure
+%% resumes to close them, so the helper is executing meanwhile.
 helper_return(H) ->
     case helper_slots(H) of
         {executing, _, _} -> bouy_ref:type_error(<<"Generator is already running">>);
         {completed, _, _} -> bouy_ref_iterator:result(undefined, true);
-        {_, none, {concat, _, Current} = Step} ->
-            bouy_heap:set_slots(H, {completed, none, Step}),
-            case Current of
-                {Inner, _} -> bouy_ref_iterator:close(Inner);
-                none -> ok
+        {State, Underlying, Step} ->
+            During = case State of
+                suspended_start -> completed;
+                suspended_yield -> executing
             end,
-            bouy_ref_iterator:result(undefined, true);
-        {_, {Iterator, _} = Underlying, Step} ->
-            bouy_heap:set_slots(H, {completed, Underlying, Step}),
-            case Step of
-                {flat_map, _, _, {Inner, _}} ->
-                    try bouy_ref_iterator:close(Inner)
-                    catch error:Reason:Stack -> close_quietly(Iterator), erlang:raise(error, Reason, Stack)
-                    end;
-                _ -> ok
+            bouy_heap:set_slots(H, {During, Underlying, Step}),
+            try close_helper(Underlying, Step)
+            after
+                bouy_heap:set_slots(H, {completed, Underlying, Step})
             end,
-            bouy_ref_iterator:close(Iterator),
             bouy_ref_iterator:result(undefined, true)
     end.
+
+close_helper(none, {concat, _, {Inner, _}}) -> bouy_ref_iterator:close(Inner);
+close_helper(none, {concat, _, none}) -> ok;
+close_helper({Iterator, _}, {flat_map, _, _, {Inner, _}}) ->
+    try bouy_ref_iterator:close(Inner)
+    catch error:Reason:Stack -> close_quietly(Iterator), erlang:raise(error, Reason, Stack)
+    end,
+    bouy_ref_iterator:close(Iterator);
+close_helper({Iterator, _}, _Step) ->
+    bouy_ref_iterator:close(Iterator).
 
 %% One step of the closure of a helper.
 step(Underlying, {map, Mapper, Counter}) ->
