@@ -165,9 +165,24 @@ mangle(Id) ->
 %% The globals of Node that the engine does not define. Each is an accessor
 %% of the global object until the bootstrap runs; the bootstrap then defines
 %% the real property.
+%% The globals that Node's bootstrap defines and the engine does not: the
+%% globals of tests/node/surface.json. Crypto, Storage, and the others that
+%% Node defines only with OpenSSL or SQLite read as undefined after the
+%% bootstrap.
 -spec lazy_globals() -> [binary()].
 lazy_globals() ->
-    [<<"process">>, <<"Buffer">>, <<"global">>, <<"setImmediate">>, <<"clearImmediate">>].
+    [<<"process">>, <<"Buffer">>, <<"global">>, <<"setImmediate">>, <<"clearImmediate">>
+     | [atom_to_binary(Name) || Name <- ['AbortController', 'AbortSignal', 'Blob', 'BroadcastChannel',
+        'ByteLengthQueuingStrategy', 'CloseEvent', 'CompressionStream', 'CountQueuingStrategy', 'Crypto', 'CryptoKey',
+        'CustomEvent', 'DOMException', 'DecompressionStream', 'ErrorEvent', 'Event', 'EventTarget', 'File', 'FormData',
+        'Headers', 'MessageChannel', 'MessageEvent', 'MessagePort', 'Navigator', 'Performance', 'PerformanceEntry',
+        'PerformanceMark', 'PerformanceMeasure', 'PerformanceObserver', 'PerformanceObserverEntryList',
+        'PerformanceResourceTiming', 'ReadableByteStreamController', 'ReadableStream', 'ReadableStreamBYOBReader',
+        'ReadableStreamBYOBRequest', 'ReadableStreamDefaultController', 'ReadableStreamDefaultReader', 'Request',
+        'Response', 'Storage', 'SubtleCrypto', 'TextDecoder', 'TextDecoderStream', 'TextEncoder', 'TextEncoderStream',
+        'TransformStream', 'TransformStreamDefaultController', 'URL', 'URLPattern', 'URLSearchParams', 'WebSocket',
+        'WritableStream', 'WritableStreamDefaultController', 'WritableStreamDefaultWriter', atob, btoa, crypto, fetch,
+        localStorage, navigator, performance, sessionStorage]]].
 
 %% The getter of a lazy global: runs the bootstrap, then reads the property
 %% that it defined.

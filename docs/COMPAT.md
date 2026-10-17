@@ -9,8 +9,8 @@ The pass rate of each test tier that exists today. `bouy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 1,515 | 4,419 | 34.3% | 2,309 | 12 | 6985b80 | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 2,989 | 4,460 | 67.0% | 1,471 | 0 | 388f0ac | `tests/node/surface/expectations.txt` |
+| node | node | v25.9.0 | 1,532 | 4,419 | 34.7% | 2,292 | 12 | 5e1d3e5 | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,449 | 4,460 | 77.3% | 1,011 | 0 | 5e1d3e5 | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/equivalence.rs` |
@@ -950,15 +950,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at 6985b80. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at 5e1d3e5. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 1,515 | 34.3% | 0 | 0 | 583 | 0 | 2,305 | 4 | 0 | 12 |
+| every test | 4,419 | 1,532 | 34.7% | 0 | 0 | 583 | 0 | 2,288 | 4 | 0 | 12 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 1,515 | 37.2% | 0 | 0 | 240 | 0 | 2,305 | 4 | 0 | 12 |
+| kind: public | 4,076 | 1,532 | 37.6% | 0 | 0 | 240 | 0 | 2,288 | 4 | 0 | 12 |
 
 ### By module
 
@@ -1006,7 +1006,7 @@ node at v25.9.0, updated at 6985b80. Evidence: `tests/node/expectations.txt`.
 | tls | 220 | 198 | 90.0% | 0 | 0 | 15 | 0 | 7 | 0 | 0 | 0 |
 | trace_events | 29 | 5 | 17.2% | 0 | 0 | 3 | 0 | 21 | 0 | 0 | 0 |
 | tty | 3 | 1 | 33.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
-| url | 42 | 18 | 42.9% | 0 | 0 | 3 | 0 | 21 | 0 | 0 | 0 |
+| url | 42 | 35 | 83.3% | 0 | 0 | 3 | 0 | 4 | 0 | 0 | 0 |
 | util | 30 | 7 | 23.3% | 0 | 0 | 10 | 0 | 12 | 0 | 0 | 1 |
 | v8 | 22 | 8 | 36.4% | 0 | 0 | 5 | 0 | 9 | 0 | 0 | 0 |
 | vm | 99 | 0 | 0.0% | 0 | 0 | 9 | 0 | 90 | 0 | 0 | 0 |
@@ -1030,7 +1030,7 @@ node at v25.9.0, updated at 6985b80. Evidence: `tests/node/expectations.txt`.
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | es-module | 222 | 26 | 11.7% | 0 | 0 | 16 | 0 | 180 | 0 | 0 | 0 |
-| parallel | 4,079 | 1,456 | 35.7% | 0 | 0 | 545 | 0 | 2,064 | 3 | 0 | 11 |
+| parallel | 4,079 | 1,473 | 36.1% | 0 | 0 | 545 | 0 | 2,047 | 3 | 0 | 11 |
 | sequential | 118 | 33 | 28.0% | 0 | 0 | 22 | 0 | 61 | 1 | 0 | 1 |
 
 ### Blockers
@@ -1042,20 +1042,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at 388f0ac. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 5e1d3e5. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 2,989 | 67.0% | 0 | 0 | 0 | 0 | 1,471 | 0 | 0 | 0 |
+| every test | 4,460 | 3,449 | 77.3% | 0 | 0 | 0 | 0 | 1,011 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | deprecated | 129 | 100 | 77.5% | 0 | 0 | 0 | 0 | 29 | 0 | 0 | 0 |
-| documented | 4,331 | 2,889 | 66.7% | 0 | 0 | 0 | 0 | 1,442 | 0 | 0 | 0 |
+| documented | 4,331 | 3,349 | 77.3% | 0 | 0 | 0 | 0 | 982 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1063,75 +1063,75 @@ node-surface at v25.9.0, updated at 388f0ac. Evidence: `tests/node/surface/expec
 
 | module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| AbortController | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| AbortSignal | 11 | 0 | 0.0% | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 0 |
-| Blob | 8 | 0 | 0.0% | 0 | 0 | 0 | 0 | 8 | 0 | 0 | 0 |
-| BroadcastChannel | 10 | 0 | 0.0% | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 0 |
+| AbortController | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| AbortSignal | 11 | 11 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Blob | 8 | 8 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| BroadcastChannel | 10 | 10 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Buffer | 72 | 72 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ByteLengthQueuingStrategy | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| CloseEvent | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
-| CompressionStream | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| CountQueuingStrategy | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| ByteLengthQueuingStrategy | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CloseEvent | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CompressionStream | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CountQueuingStrategy | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
 | CryptoKey | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| CustomEvent | 20 | 0 | 0.0% | 0 | 0 | 0 | 0 | 20 | 0 | 0 | 0 |
-| DOMException | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| DecompressionStream | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| ErrorEvent | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
-| Event | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
-| EventTarget | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| File | 10 | 0 | 0.0% | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 0 |
-| FormData | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| Headers | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| MessageChannel | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| MessageEvent | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
-| MessagePort | 21 | 0 | 0.0% | 0 | 0 | 0 | 0 | 21 | 0 | 0 | 0 |
-| Navigator | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| Performance | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| PerformanceEntry | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| PerformanceMark | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
-| PerformanceMeasure | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
-| PerformanceObserver | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| PerformanceObserverEntryList | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| PerformanceResourceTiming | 17 | 0 | 0.0% | 0 | 0 | 0 | 0 | 17 | 0 | 0 | 0 |
-| ReadableByteStreamController | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
-| ReadableStream | 9 | 0 | 0.0% | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 0 |
-| ReadableStreamBYOBReader | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| ReadableStreamBYOBRequest | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| ReadableStreamDefaultController | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| ReadableStreamDefaultReader | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| Request | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| Response | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| CustomEvent | 20 | 20 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DOMException | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DecompressionStream | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ErrorEvent | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Event | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| EventTarget | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| File | 10 | 10 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| FormData | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Headers | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| MessageChannel | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| MessageEvent | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| MessagePort | 21 | 17 | 81.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| Navigator | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Performance | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceEntry | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceMark | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceMeasure | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceObserver | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceObserverEntryList | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceResourceTiming | 17 | 17 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableByteStreamController | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStream | 9 | 9 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamBYOBReader | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamBYOBRequest | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamDefaultController | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamDefaultReader | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Request | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Response | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Storage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | SubtleCrypto | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
-| TextDecoder | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| TextDecoderStream | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
-| TextEncoder | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| TextEncoderStream | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| TransformStream | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| TransformStreamDefaultController | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| URL | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
-| URLPattern | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| URLSearchParams | 14 | 0 | 0.0% | 0 | 0 | 0 | 0 | 14 | 0 | 0 | 0 |
-| WebSocket | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| WritableStream | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| WritableStreamDefaultController | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| WritableStreamDefaultWriter | 8 | 0 | 0.0% | 0 | 0 | 0 | 0 | 8 | 0 | 0 | 0 |
+| TextDecoder | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TextDecoderStream | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TextEncoder | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TextEncoderStream | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TransformStream | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TransformStreamDefaultController | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| URL | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| URLPattern | 3 | 1 | 33.3% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
+| URLSearchParams | 14 | 14 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WebSocket | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WritableStream | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WritableStreamDefaultController | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WritableStreamDefaultWriter | 8 | 8 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | __dirname | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | __filename | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| atob | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| btoa | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| atob | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| btoa | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | clearImmediate | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | clearInterval | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | clearTimeout | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | console | 23 | 1 | 4.3% | 0 | 0 | 0 | 0 | 22 | 0 | 0 | 0 |
 | crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
 | exports | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| fetch | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| fetch | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | global | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | localStorage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | module | 3 | 2 | 66.7% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| navigator | 2 | 0 | 0.0% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
+| navigator | 2 | 2 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:assert | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:assert/strict | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:async_hooks | 20 | 20 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1174,7 +1174,7 @@ node-surface at v25.9.0, updated at 388f0ac. Evidence: `tests/node/surface/expec
 | node:stream/web | 81 | 81 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:string_decoder | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:sys | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:test | 28 | 0 | 0.0% | 0 | 0 | 0 | 0 | 28 | 0 | 0 | 0 |
+| node:test | 28 | 28 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:test/reporters | 2 | 2 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:timers | 7 | 7 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:timers/promises | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1184,12 +1184,12 @@ node-surface at v25.9.0, updated at 388f0ac. Evidence: `tests/node/surface/expec
 | node:url | 46 | 44 | 95.7% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | node:util | 97 | 97 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:util/types | 44 | 44 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:v8 | 72 | 0 | 0.0% | 0 | 0 | 0 | 0 | 72 | 0 | 0 | 0 |
+| node:v8 | 72 | 70 | 97.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | node:vm | 16 | 15 | 93.8% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | node:wasi | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:worker_threads | 84 | 80 | 95.2% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
 | node:zlib | 553 | 553 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| performance | 18 | 0 | 0.0% | 0 | 0 | 0 | 0 | 18 | 0 | 0 | 0 |
+| performance | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | process | 87 | 87 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | queueMicrotask | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | require | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |

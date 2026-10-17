@@ -1,15 +1,15 @@
 {
   "suite": "node-surface",
   "version": "v25.9.0",
-  "updated": "388f0aca8976abcb933c9a0439807734acb89eff",
+  "updated": "5e1d3e50eb21bb9222d614f8cdafbc1bd4deece8",
   "total": 4460,
   "outcomes": {
-    "pass": 2989,
+    "pass": 3449,
     "rejected": 0,
     "late": 0,
     "skip": 0,
     "never": 0,
-    "fail": 1471,
+    "fail": 1011,
     "timeout": 0,
     "harness_error": 0,
     "crash": 0
@@ -21,37 +21,37 @@
         "fail": 29
       },
       "documented": {
-        "pass": 2889,
-        "fail": 1442
+        "pass": 3349,
+        "fail": 982
       }
     },
     "module": {
       "AbortController": {
-        "fail": 3
+        "pass": 3
       },
       "AbortSignal": {
-        "fail": 11
+        "pass": 11
       },
       "Blob": {
-        "fail": 8
+        "pass": 8
       },
       "BroadcastChannel": {
-        "fail": 10
+        "pass": 10
       },
       "Buffer": {
         "pass": 72
       },
       "ByteLengthQueuingStrategy": {
-        "fail": 3
+        "pass": 3
       },
       "CloseEvent": {
-        "fail": 19
+        "pass": 19
       },
       "CompressionStream": {
-        "fail": 3
+        "pass": 3
       },
       "CountQueuingStrategy": {
-        "fail": 3
+        "pass": 3
       },
       "Crypto": {
         "fail": 4
@@ -60,88 +60,89 @@
         "fail": 5
       },
       "CustomEvent": {
-        "fail": 20
+        "pass": 20
       },
       "DOMException": {
-        "fail": 1
+        "pass": 1
       },
       "DecompressionStream": {
-        "fail": 3
+        "pass": 3
       },
       "ErrorEvent": {
-        "fail": 19
+        "pass": 19
       },
       "Event": {
-        "fail": 19
+        "pass": 19
       },
       "EventTarget": {
-        "fail": 4
+        "pass": 4
       },
       "File": {
-        "fail": 10
+        "pass": 10
       },
       "FormData": {
-        "fail": 1
+        "pass": 1
       },
       "Headers": {
-        "fail": 1
+        "pass": 1
       },
       "MessageChannel": {
-        "fail": 1
+        "pass": 1
       },
       "MessageEvent": {
-        "fail": 19
+        "pass": 19
       },
       "MessagePort": {
-        "fail": 21
+        "pass": 17,
+        "fail": 4
       },
       "Navigator": {
-        "fail": 1
+        "pass": 1
       },
       "Performance": {
-        "fail": 3
+        "pass": 3
       },
       "PerformanceEntry": {
-        "fail": 5
+        "pass": 5
       },
       "PerformanceMark": {
-        "fail": 6
+        "pass": 6
       },
       "PerformanceMeasure": {
-        "fail": 6
+        "pass": 6
       },
       "PerformanceObserver": {
-        "fail": 5
+        "pass": 5
       },
       "PerformanceObserverEntryList": {
-        "fail": 4
+        "pass": 4
       },
       "PerformanceResourceTiming": {
-        "fail": 17
+        "pass": 17
       },
       "ReadableByteStreamController": {
-        "fail": 6
+        "pass": 6
       },
       "ReadableStream": {
-        "fail": 9
+        "pass": 9
       },
       "ReadableStreamBYOBReader": {
-        "fail": 5
+        "pass": 5
       },
       "ReadableStreamBYOBRequest": {
-        "fail": 4
+        "pass": 4
       },
       "ReadableStreamDefaultController": {
-        "fail": 5
+        "pass": 5
       },
       "ReadableStreamDefaultReader": {
-        "fail": 5
+        "pass": 5
       },
       "Request": {
-        "fail": 1
+        "pass": 1
       },
       "Response": {
-        "fail": 1
+        "pass": 1
       },
       "Storage": {
         "fail": 1
@@ -150,43 +151,44 @@
         "fail": 19
       },
       "TextDecoder": {
-        "fail": 5
+        "pass": 5
       },
       "TextDecoderStream": {
-        "fail": 6
+        "pass": 6
       },
       "TextEncoder": {
-        "fail": 4
+        "pass": 4
       },
       "TextEncoderStream": {
-        "fail": 4
+        "pass": 4
       },
       "TransformStream": {
-        "fail": 3
+        "pass": 3
       },
       "TransformStreamDefaultController": {
-        "fail": 5
+        "pass": 5
       },
       "URL": {
-        "fail": 19
+        "pass": 19
       },
       "URLPattern": {
-        "fail": 3
+        "pass": 1,
+        "fail": 2
       },
       "URLSearchParams": {
-        "fail": 14
+        "pass": 14
       },
       "WebSocket": {
-        "fail": 4
+        "pass": 4
       },
       "WritableStream": {
-        "fail": 5
+        "pass": 5
       },
       "WritableStreamDefaultController": {
-        "fail": 3
+        "pass": 3
       },
       "WritableStreamDefaultWriter": {
-        "fail": 8
+        "pass": 8
       },
       "__dirname": {
         "pass": 1
@@ -195,10 +197,10 @@
         "pass": 1
       },
       "atob": {
-        "fail": 1
+        "pass": 1
       },
       "btoa": {
-        "fail": 1
+        "pass": 1
       },
       "clearImmediate": {
         "pass": 1
@@ -220,7 +222,7 @@
         "pass": 1
       },
       "fetch": {
-        "fail": 1
+        "pass": 1
       },
       "global": {
         "pass": 1
@@ -233,7 +235,7 @@
         "fail": 1
       },
       "navigator": {
-        "fail": 2
+        "pass": 2
       },
       "node:assert": {
         "pass": 24
@@ -365,7 +367,7 @@
         "pass": 25
       },
       "node:test": {
-        "fail": 28
+        "pass": 28
       },
       "node:test/reporters": {
         "pass": 2
@@ -396,7 +398,8 @@
         "pass": 44
       },
       "node:v8": {
-        "fail": 72
+        "pass": 70,
+        "fail": 2
       },
       "node:vm": {
         "pass": 15,
@@ -413,7 +416,7 @@
         "pass": 553
       },
       "performance": {
-        "fail": 18
+        "pass": 18
       },
       "process": {
         "pass": 87
