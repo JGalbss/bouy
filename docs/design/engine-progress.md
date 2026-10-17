@@ -9,7 +9,7 @@ scripts/test262-dev.sh --failures /tmp/language.txt test/language
 scripts/test262-dev.sh --failures /tmp/built-ins.txt test/built-ins
 ```
 
-With 8 jobs on the 18-core development machine, `test/language` took about 10 minutes and `test/built-ins` about 19 minutes at a load average between 20 and 55. The failures file lists each test that did not pass, with its first error line. The runner gives the VM `BOUY_COMPILER`, the `bouy` binary next to it, which compiles the code of `eval` and `new Function`.
+With 8 jobs on the 18-core development machine, `test/language` took about 10 minutes and `test/built-ins` between 17 and 19 minutes at a load average between 15 and 55. The failures file lists each test that did not pass, with its first error line. The runner gives the VM `BOUY_COMPILER`, the `bouy` binary next to it, which compiles the code of `eval` and `new Function`.
 
 The columns of the tables:
 
@@ -24,9 +24,19 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 | Directory      | Tests | Baseline pass |  Pass | Fail | Compile | Timeout | Skip | Baseline rate | Pass rate |
 | -------------- | ----: | ------------: | ----: | ---: | ------: | ------: | ---: | ------------: | --------: |
-| test/language  | 23726 |         11354 | 23425 |  293 |       2 |       6 |    0 |         51.1% |     98.7% |
-| test/built-ins | 23823 |          6193 | 18011 | 5810 |       0 |       0 |    2 |         26.2% |     75.6% |
-| **Total**      | 47549 |         17547 | 41436 | 6103 |       2 |       6 |    2 |         38.3% |     87.1% |
+| test/language  | 23726 |         11354 | 23424 |  293 |       2 |       7 |    0 |         51.1% |     98.7% |
+| test/built-ins | 23823 |          6193 | 18010 | 5810 |       0 |       1 |    2 |         26.2% |     75.6% |
+| **Total**      | 47549 |         17547 | 41434 | 6103 |       2 |       8 |    2 |         38.3% |     87.1% |
+
+The same run without the proposal tests. A proposal test has a feature from the "Proposed language features" part of test262's `features.txt`. At the pinned commit, Temporal, `explicit-resource-management`, `joint-iteration`, `iterator-chunking`, and `iterator-includes` are in the standard part, so these counts keep them. The proposal tests are 532 in `test/language` and 285 in `test/built-ins`.
+
+| Directory      | Tests |  Pass | Fail | Compile | Timeout | Skip | Pass rate |
+| -------------- | ----: | ----: | ---: | ------: | ------: | ---: | --------: |
+| test/language  | 23194 | 22914 |  273 |       0 |       7 |    0 |     98.7% |
+| test/built-ins | 23538 | 18004 | 5531 |       0 |       1 |    2 |     76.4% |
+| **Total**      | 46732 | 40918 | 5804 |       0 |       8 |    2 |     87.5% |
+
+Temporal is 4595 of the 5532 failures of `test/built-ins`. Without Temporal, `test/built-ins` passes 18004 of 18941 tests (95.0%).
 
 ## Run log
 
@@ -39,14 +49,22 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
   - `engine-regexp` at `7a043c3`, regular expressions: 11602 and 8286.
 - 2026-10-17, the merges into `engine`, each run in full: `198bc70` (objects and classes) 21337 and 9295; `89ec6cf` (with modules) 22318 and 9306; `1be63e7` (with primitives) 23142 and 15634; `4c8687c` (with regular expressions) 23425 and 18011. The load average stayed between 18 and 55.
 - Each merge run was compared test by test with the five area runs. At `4c8687c`, 6 tests pass on an area branch and fail on `engine`. Four are the `*-element-function-nonconstructor` tests of `Promise.all`, `allSettled`, and `any`: the branches passed them only because the `then` of the thenable never ran and the old `hasOwnProperty` accepted undefined. Two are tests of the `nonextensible-applies-to-private` proposal, which the classes branch passed because adding a private field threw for another reason. The other passes of every branch hold.
+- 2026-10-17, commit `d93d434`, round 1 measurement: 23424 and 18010, with 8 jobs at a load average between 15 and 37. `test/built-ins` took 17 minutes. The engine code is the same as at `4c8687c`. The 2 fewer passes are 2 more timeouts: `test/language/comments/S7.4_A5.js` and `General_Category_-_Punctuation.js` of `RegExp/property-escapes`. Near test 23000 the VM halted with `no more index entries in fun_staged_index (max=524288)`: each test loads a module, and the fun table filled. The runner started a new VM, and the 8 Temporal tests that were running count as "the VM crashed".
 
 ## Causes left
 
-- Proposals that the engine does not implement: Temporal (4605 tests), ShadowRealm (64), `DisposableStack` and `AsyncDisposableStack` (197), the iterator proposals `zip`, `zipKeyed`, `chunks`, `windows`, `includes`, and `join` (about 125), `Promise.allKeyed` and `allSettledKeyed` (about 45), `ArrayBuffer.prototype.transferToImmutable` and `sliceToImmutable` (22), source phase imports, and the `accessor` keyword.
-- `$262.createRealm` and `$262.evalScript`, which the runner does not provide (about 190 tests): intrinsics are shared through `persistent_term`, so a second realm in one process needs a redesign.
-- A direct eval inside a class or a method that uses `super`, `new.target`, or a private name (54 language tests): `compile-eval` parses the eval code alone.
-- A realm that grows past 256 MB within one job (24 tests), because the collector runs only between jobs.
-- `Atomics.wait`, `waitAsync`, and `notify` (119 tests): the runner gives no `$262.agent`, and no buffer keeps a waiter list yet.
+The failures of the round 1 run without the proposal tests (5812, timeouts included), grouped by root cause and largest first:
+
+1. Temporal is not implemented (4595 tests, all of `test/built-ins/Temporal`). Only 2 of its tests name an IANA time zone, and none names a calendar other than ISO 8601.
+2. The Promise family does not follow the specification (249 tests: 247 in `test/built-ins/Promise` and the 2 `subclass-Promise` tests). The constructor ignores NewTarget. The statics ignore their `this` and never call `C.resolve`. `Symbol.species`, `Promise.try`, and the `length` and `name` of the resolving and element functions are missing. `all`, `allSettled`, `any`, and `race` read the whole iterable before they start, so the 20 tests with an endless iterator grow past 256 MB.
+3. `DisposableStack` and `AsyncDisposableStack` do not exist (197 tests).
+4. `Iterator.zip` and `Iterator.zipKeyed` (77 tests), `Iterator.prototype.chunks` and `windows` (69), and `Iterator.prototype.includes` (40) do not exist.
+5. Direct eval (179 language tests whose source calls `eval`). `compile-eval` parses the eval code alone, so `super`, `new.target`, private names, and the `arguments` rule of class fields fail (about 70). The completion value of a loop, `if`, `switch`, `try`, or labeled statement is lost (about 63). A sloppy `var` in eval code becomes a global instead of a binding of the caller's function (about 35). Each new source text starts a `bouy compile-eval` process, so the 7 tests that call eval once per character time out.
+6. `$262.createRealm` and `$262.evalScript`, which the runner does not provide (189 tests in 20 directories, such as `Proxy`, `TypedArrayConstructors`, `Symbol`, and `Array`). Intrinsics are shared through `persistent_term`, so a second realm in one process needs a redesign that touches every built-in module.
+7. `Atomics.wait`, `waitAsync`, and `notify` (116 tests): the runner gives no `$262.agent`, and no buffer keeps a waiter list yet.
+8. About 50 other tests in small groups, such as `with` scopes over a Proxy, PutValue on a deleted binding, and the 3 `copyWithin` tests that grow past 256 MB.
+
+The proposal tests that fail (301) are mostly `Promise.allKeyed` and `allSettledKeyed` (87), ShadowRealm (64), immutable `ArrayBuffer` (59), and the `Error.prototype.stack` accessor (35).
 
 ## test/language
 
@@ -55,7 +73,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/language/arguments-object        |   263 |           104 |   261 |    2 |       0 |       0 |    0 |         50.4% |     99.2% |
 | test/language/asi                     |   102 |           102 |   102 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
 | test/language/block-scope             |   145 |           143 |   145 |    0 |       0 |       0 |    0 |         98.6% |    100.0% |
-| test/language/comments                |    52 |            43 |    48 |    2 |       0 |       2 |    0 |         82.6% |     92.3% |
+| test/language/comments                |    52 |            43 |    47 |    2 |       0 |       3 |    0 |         82.6% |     90.3% |
 | test/language/computed-property-names |    48 |            39 |    48 |    0 |       0 |       0 |    0 |         81.2% |    100.0% |
 | test/language/destructuring           |    19 |            12 |    18 |    1 |       0 |       0 |    0 |         66.6% |     94.7% |
 | test/language/directive-prologue      |    62 |             5 |    62 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
@@ -120,7 +138,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/Promise                        |   732 |           373 |  398 |  334 |       0 |       0 |    0 |         51.1% |     54.4% |
 | test/built-ins/Proxy                          |   311 |             0 |  274 |   37 |       0 |       0 |    0 |          0.0% |     88.1% |
 | test/built-ins/Reflect                        |   153 |             0 |  153 |    0 |       0 |       0 |    0 |          0.0% |    100.0% |
-| test/built-ins/RegExp                         |  1879 |             1 | 1867 |   12 |       0 |       0 |    0 |          0.0% |     99.4% |
+| test/built-ins/RegExp                         |  1879 |             1 | 1866 |   12 |       0 |       1 |    0 |          0.0% |     99.3% |
 | test/built-ins/RegExpStringIteratorPrototype  |    17 |             0 |   17 |    0 |       0 |       0 |    0 |          0.0% |    100.0% |
 | test/built-ins/Set                            |   383 |           177 |  382 |    1 |       0 |       0 |    0 |         46.3% |     99.7% |
 | test/built-ins/SetIteratorPrototype           |    11 |             8 |   11 |    0 |       0 |       0 |    0 |         72.7% |    100.0% |
