@@ -7,7 +7,8 @@
 //! that the name has without the `with`.
 
 use oxc::ast::ast::{IdentifierReference, WithStatement};
-use oxc::span::Span;
+use oxc::semantic::SymbolId;
+use oxc::span::{GetSpan, Span};
 
 use super::analyze::contains;
 use super::context::{Cont, Lowerer, boolean_case};
@@ -41,20 +42,63 @@ impl<'a> Lowerer<'a, '_> {
     /// The objects of the `with` statements that `ident` resolves through, innermost first:
     /// those around the reference that do not hold the declaration of its binding.
     pub fn with_objects(&self, ident: &IdentifierReference<'a>) -> Vec<String> {
+        self.with_objects_for(self.symbol_of(ident.reference_id.get()))
+    }
+
+    /// The objects of the `with` statements that a name bound to `symbol` resolves through:
+    /// those that do not hold the scope of the binding. A `var` belongs to its function, so
+    /// a `with` inside the function holds its declaration but not its scope.
+    pub fn with_objects_for(&self, symbol: Option<SymbolId>) -> Vec<String> {
         if self.frame.withs.is_empty() {
             return Vec::new();
         }
-        let declared = self
-            .symbol_of(ident.reference_id.get())
-            .map(|symbol| self.semantic.scoping().symbol_span(symbol));
+        let scoping = self.semantic.scoping();
+        let bound = symbol.map(|symbol| {
+            let scope = scoping.symbol_scope_id(symbol);
+            self.semantic
+                .nodes()
+                .get_node(scoping.get_node_id(scope))
+                .span()
+        });
         let mut objects = Vec::new();
         for scope in self.frame.withs.iter().rev() {
-            if declared.is_some_and(|declared| contains(scope.span, declared)) {
+            if bound.is_some_and(|bound| contains(scope.span, bound)) {
                 break;
             }
             objects.push(scope.object.clone());
         }
         objects
+    }
+
+    /// `var name = value` inside a `with` statement: the name resolves through the objects
+    /// first, and the value runs after.
+    pub fn with_var_initializer(
+        &mut self,
+        name: &str,
+        symbol: SymbolId,
+        objects: &[String],
+        init: &'a oxc::ast::ast::Expression<'a>,
+    ) {
+        let reference = self.with_resolve(objects, name);
+        let value = self.named_expr(init, Some(Expr::js_string(name)));
+        let value = self.bind(value);
+        let fallback = self.branch(|me| {
+            me.declare_symbol(symbol, value.clone());
+            value.clone()
+        });
+        let object = self.fresh("O");
+        let set = Expr::call(
+            "bouy_ref",
+            "sloppy_set",
+            vec![Expr::var(object.clone()), Expr::js_string(name), value],
+        );
+        self.pre.push(Expr::case(
+            reference,
+            vec![
+                Clause::new(Expr::tagged("with", Expr::var(object)), vec![set]),
+                Clause::new(Expr::atom("none"), fallback),
+            ],
+        ));
     }
 
     /// The value of `found(Object)` for the innermost object that has `name`, else of

@@ -2,7 +2,9 @@
 //! tail call: of the join fun of the rest of the block, of a loop fun, or of the function
 //! end. So `return v` is just the value, and loops do not grow the stack.
 
-use oxc::ast::ast::{Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement};
+use oxc::ast::ast::{
+    BindingPattern, Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement,
+};
 use oxc::ast_visit::Visit;
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
@@ -180,6 +182,17 @@ impl<'a> Lowerer<'a, '_> {
             // initializer does nothing.
             if declaration.kind.is_var() && declarator.init.is_none() {
                 continue;
+            }
+            if declaration.kind.is_var()
+                && let (BindingPattern::BindingIdentifier(id), Some(init)) =
+                    (&declarator.id, &declarator.init)
+                && let Some(symbol) = id.symbol_id.get()
+            {
+                let objects = self.with_objects_for(Some(symbol));
+                if !objects.is_empty() {
+                    self.with_var_initializer(id.name.as_str(), symbol, &objects, init);
+                    continue;
+                }
             }
             let value = match &declarator.init {
                 Some(init) => self.named_expr(init, binding_name(&declarator.id)),

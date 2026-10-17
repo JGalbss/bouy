@@ -63,6 +63,9 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     let early = early_bindings(scoping, nodes);
     cells.extend(early.iter().copied());
     cells.extend(eval_visible(scoping));
+    let mut with_vars = WithVars::default();
+    with_vars.visit_program(program);
+    cells.extend(with_vars.found);
     let mut loops = LoopHeads {
         cells: &cells,
         found: HashSet::new(),
@@ -73,6 +76,41 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
         cells,
         per_iteration,
         early,
+    }
+}
+
+/// The `var` names that a declaration inside a `with` statement initializes: the write may
+/// go to the object or to the variable, so the variable lives in a cell.
+#[derive(Default)]
+struct WithVars {
+    depth: usize,
+    found: Vec<SymbolId>,
+}
+
+impl<'a> Visit<'a> for WithVars {
+    fn visit_with_statement(&mut self, it: &oxc::ast::ast::WithStatement<'a>) {
+        self.depth += 1;
+        walk::walk_with_statement(self, it);
+        self.depth -= 1;
+    }
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        if self.depth > 0 && it.kind == VariableDeclarationKind::Var {
+            for declarator in &it.declarations {
+                self.found.extend(
+                    declarator
+                        .id
+                        .get_binding_identifiers()
+                        .iter()
+                        .filter_map(|id| id.symbol_id.get()),
+                );
+            }
+        }
+        walk::walk_variable_declaration(self, it);
+    }
+    fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        let depth = std::mem::replace(&mut self.depth, 0);
+        walk::walk_function(self, it, flags);
+        self.depth = depth;
     }
 }
 
