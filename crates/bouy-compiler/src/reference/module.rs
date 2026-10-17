@@ -226,9 +226,14 @@ impl<'a> Lowerer<'a, '_> {
         functions.push(match self.eval {
             Some(_) => {
                 // A directive is an expression statement too: `eval("'1'")` is "1".
+                // compile_eval writes the directive of strict eval code before the code.
+                let injected = usize::from(self.eval == Some(true));
                 let directive = program
                     .directives
+                    .iter()
+                    .skip(injected)
                     .last()
+                    .filter(|_| program.body.is_empty())
                     .map(|directive| Expr::js_string(directive.directive.as_str()));
                 self.eval_function(&body, directive)
             }

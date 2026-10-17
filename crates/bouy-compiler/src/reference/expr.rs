@@ -498,7 +498,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.effect(&unary.argument);
                 Expr::undefined()
             }
-            UnaryOperator::Delete => match unary.argument.as_member_expression() {
+            UnaryOperator::Delete => match strip(&unary.argument).as_member_expression() {
                 Some(member) => {
                     let (object, key) = self.member_parts(member);
                     let (fixed, computed) = if self.frame.sloppy {
