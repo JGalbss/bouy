@@ -22,3 +22,4 @@ meta true true
 meta dirname true
 meta resolve true
 meta main true
+builtin object true true [ '_makeLong', 'basename', 'default', 'delimiter' ] Module

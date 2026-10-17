@@ -508,13 +508,34 @@ foreign_export(M, Key) ->
 
 %%% Built-in modules of Node
 
+%% An import of a built-in module reads its ES module facade, as Node's
+%% BuiltinModule.getESMFacade makes it: `default` is module.exports, and each
+%% other export is the property of module.exports with that name.
 -spec builtin_export(term(), term()) -> term().
+builtin_export(Name, <<"default">>) ->
+    builtin_exports(Name);
 builtin_export(Name, Export) ->
-    NS = builtin_namespace(Name),
-    bouy_heap:get(NS, Export).
+    bouy_heap:get(builtin_exports(Name), Export).
 
+%% The namespace of the facade: the keys of module.exports when the first
+%% import reads it, and `default`.
 -spec builtin_namespace(term()) -> term().
 builtin_namespace(Name) ->
+    Key = {'$bouy_builtin_namespace', Name},
+    case erlang:get(Key) of
+        undefined ->
+            Exports = builtin_exports(Name),
+            Names = lists:usort(fun(A, B) -> bouy_ref_string:compare(A, B) =/= gt end,
+                                [<<"default">> | [K || K <- bouy_heap:enumerable_keys(Exports), ?IS_STRING(K)]]),
+            NS = make_namespace([{K, fun() -> builtin_export(Name, K) end} || K <- Names]),
+            erlang:put(Key, NS),
+            NS;
+        NS ->
+            NS
+    end.
+
+%% module.exports of a built-in module, which require() returns.
+builtin_exports(Name) ->
     case builtin(Name) of
         {ok, Value} -> Value;
         error -> no_builtin(Name)
@@ -879,7 +900,7 @@ require(M, Specifier) ->
                                            <<"The argument 'id' must be a non-empty string. Received ''">>),
     case target(M, Specifier, require) of
         {builtin, Name} ->
-            builtin_namespace(Name);
+            builtin_exports(Name);
         {error, Code, Message} ->
             throw_coded('Error', Code, Message);
         {_Path, Target} when is_atom(Target), Target =/= none ->

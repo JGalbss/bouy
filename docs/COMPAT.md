@@ -10,7 +10,7 @@ The pass rate of each test tier that exists today. `bouy-suites compat` writes t
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
 | node | node | v25.9.0 | 1,503 | 4,419 | 34.0% | 2,322 | 11 | d0df4df | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 0 | 4,460 | 0.0% | 0 | 0 | d38648d | `tests/node/surface/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 2,933 | 4,460 | 65.8% | 1,527 | 0 | 9a1816a | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/equivalence.rs` |
@@ -1042,20 +1042,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at d38648d. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 9a1816a. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 0 | 0.0% | 4,460 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| every test | 4,460 | 2,933 | 65.8% | 0 | 0 | 0 | 0 | 1,527 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| deprecated | 129 | 0 | 0.0% | 129 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| documented | 4,331 | 0 | 0.0% | 4,331 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| deprecated | 129 | 98 | 76.0% | 0 | 0 | 0 | 0 | 31 | 0 | 0 | 0 |
+| documented | 4,331 | 2,835 | 65.5% | 0 | 0 | 0 | 0 | 1,496 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1063,141 +1063,141 @@ node-surface at v25.9.0, updated at d38648d. Evidence: `tests/node/surface/expec
 
 | module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| AbortController | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| AbortSignal | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Blob | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| BroadcastChannel | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Buffer | 72 | 0 | 0.0% | 72 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ByteLengthQueuingStrategy | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| CloseEvent | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| CompressionStream | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| CountQueuingStrategy | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Crypto | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| CryptoKey | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| CustomEvent | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DOMException | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DecompressionStream | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ErrorEvent | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Event | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| EventTarget | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| File | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| FormData | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Headers | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| MessageChannel | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| MessageEvent | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| MessagePort | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Navigator | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Performance | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| PerformanceEntry | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| PerformanceMark | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| PerformanceMeasure | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| PerformanceObserver | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| PerformanceObserverEntryList | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| PerformanceResourceTiming | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ReadableByteStreamController | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ReadableStream | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ReadableStreamBYOBReader | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ReadableStreamBYOBRequest | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ReadableStreamDefaultController | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ReadableStreamDefaultReader | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Request | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Response | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Storage | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| SubtleCrypto | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| TextDecoder | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| TextDecoderStream | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| TextEncoder | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| TextEncoderStream | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| TransformStream | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| TransformStreamDefaultController | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| URL | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| URLPattern | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| URLSearchParams | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| WebSocket | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| WritableStream | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| WritableStreamDefaultController | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| WritableStreamDefaultWriter | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| __dirname | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| __filename | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| atob | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| btoa | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| clearImmediate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| clearInterval | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| clearTimeout | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| console | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| crypto | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| exports | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| fetch | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| global | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| localStorage | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| module | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| navigator | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:assert | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:assert/strict | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:async_hooks | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:buffer | 106 | 0 | 0.0% | 106 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:child_process | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:cluster | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:console | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:crypto | 401 | 0 | 0.0% | 401 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:dgram | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:diagnostics_channel | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:dns | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:dns/promises | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:domain | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:events | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:fs | 241 | 0 | 0.0% | 241 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:fs/promises | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:http | 318 | 0 | 0.0% | 318 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:http2 | 112 | 0 | 0.0% | 112 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:https | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:inspector | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:inspector/promises | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:module | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:net | 119 | 0 | 0.0% | 119 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:os | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:path | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:path/posix | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:path/win32 | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:perf_hooks | 69 | 0 | 0.0% | 69 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:process | 86 | 0 | 0.0% | 86 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:punycode | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:querystring | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:readline | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:readline/promises | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:repl | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:sea | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:sqlite | 32 | 0 | 0.0% | 32 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:stream | 250 | 0 | 0.0% | 250 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:stream/consumers | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:stream/promises | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:stream/web | 81 | 0 | 0.0% | 81 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:string_decoder | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:sys | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:test | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:test/reporters | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:timers | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:timers/promises | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:tls | 126 | 0 | 0.0% | 126 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:trace_events | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:tty | 143 | 0 | 0.0% | 143 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:url | 46 | 0 | 0.0% | 46 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:util | 97 | 0 | 0.0% | 97 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:util/types | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:v8 | 72 | 0 | 0.0% | 72 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:vm | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:wasi | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:worker_threads | 84 | 0 | 0.0% | 84 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:zlib | 553 | 0 | 0.0% | 553 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| performance | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| process | 87 | 0 | 0.0% | 87 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| queueMicrotask | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| require | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| sessionStorage | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| setImmediate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| setInterval | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| setTimeout | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| structuredClone | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| AbortController | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| AbortSignal | 11 | 0 | 0.0% | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 0 |
+| Blob | 8 | 0 | 0.0% | 0 | 0 | 0 | 0 | 8 | 0 | 0 | 0 |
+| BroadcastChannel | 10 | 0 | 0.0% | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 0 |
+| Buffer | 72 | 72 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ByteLengthQueuingStrategy | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| CloseEvent | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| CompressionStream | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| CountQueuingStrategy | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| Crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| CryptoKey | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| CustomEvent | 20 | 0 | 0.0% | 0 | 0 | 0 | 0 | 20 | 0 | 0 | 0 |
+| DOMException | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| DecompressionStream | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| ErrorEvent | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| Event | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| EventTarget | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| File | 10 | 0 | 0.0% | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 0 |
+| FormData | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Headers | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| MessageChannel | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| MessageEvent | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| MessagePort | 21 | 0 | 0.0% | 0 | 0 | 0 | 0 | 21 | 0 | 0 | 0 |
+| Navigator | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Performance | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| PerformanceEntry | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| PerformanceMark | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
+| PerformanceMeasure | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
+| PerformanceObserver | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| PerformanceObserverEntryList | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| PerformanceResourceTiming | 17 | 0 | 0.0% | 0 | 0 | 0 | 0 | 17 | 0 | 0 | 0 |
+| ReadableByteStreamController | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
+| ReadableStream | 9 | 0 | 0.0% | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 0 |
+| ReadableStreamBYOBReader | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| ReadableStreamBYOBRequest | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| ReadableStreamDefaultController | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| ReadableStreamDefaultReader | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| Request | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Response | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Storage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| SubtleCrypto | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| TextDecoder | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| TextDecoderStream | 6 | 0 | 0.0% | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 0 |
+| TextEncoder | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| TextEncoderStream | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| TransformStream | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| TransformStreamDefaultController | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| URL | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| URLPattern | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| URLSearchParams | 14 | 0 | 0.0% | 0 | 0 | 0 | 0 | 14 | 0 | 0 | 0 |
+| WebSocket | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| WritableStream | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| WritableStreamDefaultController | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| WritableStreamDefaultWriter | 8 | 0 | 0.0% | 0 | 0 | 0 | 0 | 8 | 0 | 0 | 0 |
+| __dirname | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| __filename | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| atob | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| btoa | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| clearImmediate | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| clearInterval | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| clearTimeout | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| console | 23 | 1 | 4.3% | 0 | 0 | 0 | 0 | 22 | 0 | 0 | 0 |
+| crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| exports | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| fetch | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| global | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| localStorage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| module | 3 | 2 | 66.7% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| navigator | 2 | 0 | 0.0% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
+| node:assert | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:assert/strict | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:async_hooks | 20 | 20 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:buffer | 106 | 105 | 99.1% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| node:child_process | 28 | 28 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:cluster | 48 | 48 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:console | 26 | 22 | 84.6% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| node:crypto | 401 | 0 | 0.0% | 0 | 0 | 0 | 0 | 401 | 0 | 0 | 0 |
+| node:dgram | 43 | 43 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:diagnostics_channel | 13 | 13 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:dns | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
+| node:dns/promises | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
+| node:domain | 27 | 27 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:events | 49 | 49 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:fs | 241 | 241 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:fs/promises | 34 | 34 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:http | 318 | 318 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:http2 | 112 | 0 | 0.0% | 0 | 0 | 0 | 0 | 112 | 0 | 0 | 0 |
+| node:https | 78 | 0 | 0.0% | 0 | 0 | 0 | 0 | 78 | 0 | 0 | 0 |
+| node:inspector | 40 | 0 | 0.0% | 0 | 0 | 0 | 0 | 40 | 0 | 0 | 0 |
+| node:inspector/promises | 40 | 0 | 0.0% | 0 | 0 | 0 | 0 | 40 | 0 | 0 | 0 |
+| node:module | 20 | 3 | 15.0% | 0 | 0 | 0 | 0 | 17 | 0 | 0 | 0 |
+| node:net | 119 | 119 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:os | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:path | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:path/posix | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:path/win32 | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:perf_hooks | 69 | 69 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:process | 86 | 85 | 98.8% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| node:punycode | 9 | 9 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:querystring | 7 | 7 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:readline | 48 | 48 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:readline/promises | 27 | 27 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:repl | 28 | 0 | 0.0% | 0 | 0 | 0 | 0 | 28 | 0 | 0 | 0 |
+| node:sea | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:sqlite | 32 | 0 | 0.0% | 0 | 0 | 0 | 0 | 32 | 0 | 0 | 0 |
+| node:stream | 250 | 250 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:stream/consumers | 7 | 7 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:stream/promises | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:stream/web | 81 | 81 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:string_decoder | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:sys | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:test | 28 | 0 | 0.0% | 0 | 0 | 0 | 0 | 28 | 0 | 0 | 0 |
+| node:test/reporters | 2 | 2 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:timers | 7 | 7 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:timers/promises | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:tls | 126 | 0 | 0.0% | 0 | 0 | 0 | 0 | 126 | 0 | 0 | 0 |
+| node:trace_events | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| node:tty | 143 | 143 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:url | 46 | 44 | 95.7% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
+| node:util | 97 | 70 | 72.2% | 0 | 0 | 0 | 0 | 27 | 0 | 0 | 0 |
+| node:util/types | 44 | 17 | 38.6% | 0 | 0 | 0 | 0 | 27 | 0 | 0 | 0 |
+| node:v8 | 72 | 0 | 0.0% | 0 | 0 | 0 | 0 | 72 | 0 | 0 | 0 |
+| node:vm | 16 | 15 | 93.8% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| node:wasi | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:worker_threads | 84 | 80 | 95.2% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| node:zlib | 553 | 553 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| performance | 18 | 0 | 0.0% | 0 | 0 | 0 | 0 | 18 | 0 | 0 | 0 |
+| process | 87 | 86 | 98.9% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| queueMicrotask | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| require | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| sessionStorage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| setImmediate | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| setInterval | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| setTimeout | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| structuredClone | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 
 </details>
 
@@ -1207,9 +1207,6 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 | Blocker | Tests blocked | Only blocker |
 | --- | --- | --- |
-| `BOUY201` | 3,854 | 3,854 |
-| `BOUY206` | 606 | 12 |
-| `BOUY207` | 594 | 0 |
 
 ### Never
 

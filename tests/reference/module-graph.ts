@@ -1,5 +1,6 @@
 // The ES module graph of the reference engine: live bindings, namespaces, default
-// exports, re-exports, string export names, evaluation order, cycles, and import.meta.
+// exports, re-exports, string export names, evaluation order, cycles, import.meta, and
+// the facade of a built-in module.
 import Counter, { count, increment, label } from "./modules/counter.ts";
 import * as counter from "./modules/counter.ts";
 import area, * as shapes from "./modules/shapes.ts";
@@ -8,6 +9,8 @@ import "./modules/order-a.ts";
 import { events } from "./modules/order-log.ts";
 import { fromA, viaB } from "./modules/cycle-a.ts";
 import { early } from "./modules/cycle-b.ts";
+import path, * as pathNamespace from "node:path";
+import { join } from "node:path";
 
 console.log("live", count, counter.count);
 increment();
@@ -42,3 +45,11 @@ console.log(
   import.meta.resolve("./modules/counter.ts").endsWith("/modules/counter.ts"),
 );
 console.log("meta main", import.meta.main);
+console.log(
+  "builtin",
+  typeof path,
+  pathNamespace.default === path,
+  pathNamespace.join === join,
+  Object.keys(pathNamespace).slice(0, 4),
+  pathNamespace[Symbol.toStringTag],
+);
