@@ -118,7 +118,7 @@ read_error(What, K) ->
 text(Parts) -> bouy_ref_string:concat(Parts).
 
 -spec get_computed(term(), term()) -> term().
-get_computed(O, K) -> get(O, to_property_key(K)).
+get_computed(O, K) -> get(O, member_key(O, K)).
 
 -spec set(term(), bouy_heap:key(), term()) -> term().
 set({'$o', _} = O, K, V) -> bouy_heap:set(O, K, V);
@@ -130,6 +130,7 @@ set(P, K, V) ->
     V.
 
 -spec set_computed(term(), term(), term()) -> term().
+set_computed(O, K, _V) when O =:= undefined; O =:= null -> cannot_set(atom_to_binary(O), key_preview(K));
 set_computed(O, K, V) -> set(O, to_property_key(K), V).
 
 -spec cannot_set(binary(), bouy_heap:key()) -> no_return().
@@ -162,6 +163,7 @@ primitive_proto({'$bigint', _}) -> {'$o', 'BigInt.prototype'};
 primitive_proto(_) -> {'$o', 'Number.prototype'}.
 
 -spec sloppy_set_computed(term(), term(), term()) -> term().
+sloppy_set_computed(O, K, _V) when O =:= undefined; O =:= null -> cannot_set(atom_to_binary(O), key_preview(K));
 sloppy_set_computed(O, K, V) -> sloppy_set(O, to_property_key(K), V).
 
 %% `delete o[k]` in sloppy code: false for a property that cannot go.
@@ -170,6 +172,7 @@ sloppy_delete(O, K) when ?IS_OBJECT(O) -> bouy_heap:delete_property(O, K);
 sloppy_delete(O, K) -> delete(O, K).
 
 -spec sloppy_delete_computed(term(), term()) -> boolean().
+sloppy_delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
 sloppy_delete_computed(O, K) -> sloppy_delete(O, to_property_key(K)).
 
 %% The this of a sloppy function: the global object for undefined and null.
@@ -184,6 +187,7 @@ delete(null, K) -> delete(undefined, K);
 delete(_P, _K) -> true.
 
 -spec delete_computed(term(), term()) -> boolean().
+delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
 delete_computed(O, K) -> delete(O, to_property_key(K)).
 
 %% `k in o`.
@@ -191,8 +195,8 @@ delete_computed(O, K) -> delete(O, to_property_key(K)).
 in(K, O) when ?IS_OBJECT(O) -> bouy_heap:has(O, to_property_key(K));
 in(K, O) -> type_error(text([<<"Cannot use 'in' operator to search for '">>, to_string(K), <<"' in ">>, describe(O)])).
 
-%% The key of o[k] in an update or a compound assignment: the base must not
-%% be undefined or null before the key converts.
+%% The key of o[k]: the base must not be undefined or null before the key
+%% converts (GetValue and PutValue run ToObject before ToPropertyKey).
 -spec member_key(term(), term()) -> bouy_heap:key().
 member_key(undefined, K) -> read_error(<<"undefined">>, key_preview(K));
 member_key(null, K) -> read_error(<<"null">>, key_preview(K));
