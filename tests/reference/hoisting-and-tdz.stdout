@@ -5,3 +5,4 @@ get method, argument
 TypeError: Cannot read properties of undefined (reading 'call') false
 42
 TypeError: Assignment to constant variable.
+[ 5, 10 ]

@@ -37,7 +37,16 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
             continue;
         }
         let references: Vec<_> = scoping.get_resolved_references(symbol).collect();
-        if !references.iter().any(|reference| reference.is_write()) {
+        // A `var` exists, as undefined, from the start of its function, before its
+        // initializer runs, so a closure that reads it needs the cell even without a write.
+        let var = scoping
+            .symbol_flags(symbol)
+            .is_function_scoped_declaration()
+            && matches!(
+                nodes.kind(scoping.symbol_declaration(symbol)),
+                AstKind::VariableDeclarator(_)
+            );
+        if !var && !references.iter().any(|reference| reference.is_write()) {
             continue;
         }
         let home = function_scope(scoping, scoping.symbol_scope_id(symbol));

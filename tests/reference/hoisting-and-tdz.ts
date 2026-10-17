@@ -68,3 +68,12 @@ function constWrite(): string {
   });
 }
 console.log(constWrite());
+function varsReadEarly(): unknown[] {
+  var later = (): number => value;
+  var value = 5;
+  function hoisted(): number {
+    return value * 2;
+  }
+  return [later(), hoisted()];
+}
+console.log(varsReadEarly());
