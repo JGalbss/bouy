@@ -6,7 +6,10 @@
 %% primitive go to the intrinsic prototype of its type, as in JavaScript.
 -module(bouy_ref).
 
--export([init_realm/0, global/1, caught/2, report_uncaught/1, type_error/1]).
+-export([init_realm/0, global/1, caught/2, report_uncaught/1, exit_program/1, stderr/0, type_error/1]).
+-export_type([exit_status/0]).
+
+-type exit_status() :: 0..255.
 -export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
 -export([call/3, call_method/3, call_method_computed/3, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, fn/1, named_fn/3, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
@@ -58,8 +61,27 @@ report_uncaught(Value) ->
     Text = try uncaught_text(Value)
            catch _:_ -> io_lib:format("~0tp", [Value])
            end,
-    io:put_chars(standard_error, ["Uncaught ", Text, "\n"]),
-    erlang:halt(1).
+    io:put_chars(stderr(), ["Uncaught ", Text, "\n"]),
+    exit_program(1).
+
+%% Ends the program with Status. A realm that a test runner starts sets
+%% '$bouy_exit' in its process dictionary: the realm then exits with
+%% {'$bouy_exit', Status}, and the VM goes on.
+-spec exit_program(exit_status()) -> no_return().
+exit_program(Status) ->
+    case erlang:get('$bouy_exit') of
+        undefined -> erlang:halt(Status);
+        _ -> exit({'$bouy_exit', Status})
+    end.
+
+%% The device of stderr: '$bouy_stderr' in the process dictionary of a realm
+%% that a test runner starts, else standard_error.
+-spec stderr() -> io:device().
+stderr() ->
+    case erlang:get('$bouy_stderr') of
+        undefined -> standard_error;
+        Device -> Device
+    end.
 
 uncaught_text({'$o', _} = O) ->
     case bouy_heap:class_of(O) of

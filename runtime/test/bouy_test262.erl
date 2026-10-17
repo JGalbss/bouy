@@ -1,0 +1,133 @@
+%% The VM half of the test262 development runner (crates/bouy-cli/src/bin/test262-dev.rs):
+%% one VM runs many compiled tests, each in a realm process of its own, so a test does
+%% not pay for the start of a VM.
+%%
+%%   erl ... -pa <runtime ebin> -pa <dir of this module> -eval 'bouy_test262:main()'
+%%       -extra <manifest> <jobs> <output dir>
+%%
+%% Each line of the manifest is "<index>\t<erl file>\t<timeout ms>". For each test, the
+%% runner prints "START <index>", compiles and loads the module, runs its top-level code
+%% with stdout and stderr captured into <output dir>/<index>.out and .err, and prints
+%% "DONE <index> <status>": the exit status, timeout, memory, or compile.
+-module(bouy_test262).
+
+-export([main/0]).
+
+%% A realm that grows past this many words (512 MB) ends.
+-define(MAX_HEAP_WORDS, 64 * 1024 * 1024).
+
+-spec main() -> no_return().
+main() ->
+    [Manifest, Jobs, Out] = init:get_plain_arguments(),
+    {ok, Text} = file:read_file(Manifest),
+    Tests = list_to_tuple([parse(Line) || Line <- binary:split(Text, <<"\n">>, [global, trim_all])]),
+    {ok, Runtime} = bouy_app:start(normal, []),
+    true = unlink(Runtime),
+    Next = atomics:new(1, []),
+    Workers = [spawn_monitor(fun() -> worker(Tests, Next, Out) end) || _ <- lists:seq(1, list_to_integer(Jobs))],
+    [receive {'DOWN', Ref, process, Pid, _} -> ok end || {Pid, Ref} <- Workers],
+    erlang:halt(0).
+
+parse(Line) ->
+    [Index, File, Timeout] = binary:split(Line, <<"\t">>, [global]),
+    {Index, binary_to_list(File), binary_to_integer(Timeout)}.
+
+worker(Tests, Next, Out) ->
+    I = atomics:add_get(Next, 1, 1),
+    case I =< tuple_size(Tests) of
+        true ->
+            run(element(I, Tests), Out),
+            worker(Tests, Next, Out);
+        false ->
+            ok
+    end.
+
+run({Index, File, Timeout}, Out) ->
+    io:format("START ~ts~n", [Index]),
+    Base = filename:join(Out, binary_to_list(Index)),
+    Status = case compile:file(File, [binary, return_errors, nowarn_unused_vars]) of
+        {ok, Module, Binary} ->
+            {module, Module} = code:load_binary(Module, File, Binary),
+            Result = execute(Module, Timeout, Base),
+            _ = code:purge(Module),
+            _ = code:delete(Module),
+            _ = code:purge(Module),
+            Result;
+        Failed ->
+            ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected the module: ~0tP~n", [Failed, 12])),
+            ok = file:write_file(Base ++ ".out", <<>>),
+            "compile"
+    end,
+    io:format("DONE ~ts ~ts~n", [Index, Status]).
+
+%% Runs the top-level code in a new process, with its output captured.
+execute(Module, Timeout, Base) ->
+    Stdout = capture(),
+    Stderr = capture(),
+    {Pid, Ref} = spawn_opt(fun() -> realm(Module, Stdout, Stderr) end,
+                           [monitor, {max_heap_size, #{size => ?MAX_HEAP_WORDS, kill => true, error_logger => false}}]),
+    Status = receive
+        {'DOWN', Ref, process, Pid, {'$bouy_exit', Code}} -> integer_to_list(Code);
+        {'DOWN', Ref, process, Pid, killed} -> "memory";
+        {'DOWN', Ref, process, Pid, Reason} ->
+            io:put_chars(Stderr, io_lib:format("the realm crashed: ~0tP~n", [Reason, 12])),
+            "1"
+    after Timeout ->
+        exit(Pid, kill),
+        receive {'DOWN', Ref, process, Pid, _} -> ok end,
+        "timeout"
+    end,
+    ok = file:write_file(Base ++ ".out", collect(Stdout)),
+    ok = file:write_file(Base ++ ".err", collect(Stderr)),
+    Status.
+
+realm(Module, Stdout, Stderr) ->
+    group_leader(Stdout, self()),
+    erlang:put('$bouy_exit', true),
+    erlang:put('$bouy_stderr', Stderr),
+    try Module:'__init__'() of
+        _ -> exit({'$bouy_exit', 0})
+    catch
+        exit:{'$bouy_exit', _} = Exit ->
+            exit(Exit);
+        Class:Reason:Stack ->
+            io:put_chars(Stderr, io_lib:format("Uncaught ~p: ~0tP ~0tP~n", [Class, Reason, 12, Stack, 12])),
+            exit({'$bouy_exit', 1})
+    end.
+
+%%% An I/O server that keeps what a realm writes.
+
+capture() -> spawn(fun() -> capture([]) end).
+
+capture(Acc) ->
+    receive
+        {io_request, From, ReplyAs, Request} ->
+            {Reply, Acc1} = request(Request, Acc),
+            From ! {io_reply, ReplyAs, Reply},
+            capture(Acc1);
+        {collect, From} ->
+            From ! {captured, self(), lists:reverse(Acc)}
+    end.
+
+request({put_chars, Encoding, Chars}, Acc) ->
+    case unicode:characters_to_binary(Chars, Encoding, utf8) of
+        Text when is_binary(Text) -> {ok, [Text | Acc]};
+        _ -> {{error, put_chars}, Acc}
+    end;
+request({put_chars, Encoding, M, F, A}, Acc) ->
+    request({put_chars, Encoding, apply(M, F, A)}, Acc);
+request({requests, Requests}, Acc) ->
+    lists:foldl(fun(R, {_, A}) -> request(R, A) end, {ok, Acc}, Requests);
+request(getopts, Acc) ->
+    {[{encoding, unicode}], Acc};
+request({setopts, _}, Acc) ->
+    {ok, Acc};
+request(_, Acc) ->
+    {{error, enotsup}, Acc}.
+
+collect(Capture) ->
+    Capture ! {collect, self()},
+    receive
+        {captured, Capture, Output} -> Output
+    after 5000 -> <<>>
+    end.

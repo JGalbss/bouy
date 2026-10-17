@@ -437,8 +437,8 @@ run_main(Body) ->
         {'$o', _} = P ->
             case is_promise(P) andalso bouy_heap:slots(P) of
                 {pending, _, _, _} ->
-                    io:put_chars(standard_error, "Warning: Detected unsettled top-level await\n"),
-                    erlang:halt(13);
+                    io:put_chars(bouy_ref:stderr(), "Warning: Detected unsettled top-level await\n"),
+                    bouy_ref:exit_program(13);
                 _ ->
                     ok
             end;

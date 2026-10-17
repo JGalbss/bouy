@@ -23,7 +23,7 @@ method(<<"console">>, Name, _This, Args) -> write(Name, Args).
 -spec write(binary(), list()) -> undefined.
 write(Name, Args) ->
     Device = case Name of
-        N when N =:= <<"error">>; N =:= <<"warn">> -> standard_error;
+        N when N =:= <<"error">>; N =:= <<"warn">> -> bouy_ref:stderr();
         _ -> persistent_term:get({bouy, stdout}, standard_io)
     end,
     Line = <<(format(Args))/binary, "\n">>,
