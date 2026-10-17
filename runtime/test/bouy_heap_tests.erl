@@ -280,3 +280,18 @@ proxy_invariant_test() ->
                   ?assertError({'$throw', _}, bouy_heap:get(Proxy, <<"x">>)),
                   ?assertEqual(2, bouy_heap:get(Proxy, <<"y">>))
           end).
+
+private_names_ignore_integrity_test() ->
+    realm(fun() ->
+                  O = bouy_heap:new_object(?P),
+                  K = {'#', <<"C">>, <<"x">>},
+                  bouy_heap:define(O, K, #{value => 1, writable => true, enumerable => true, configurable => true}),
+                  bouy_heap:freeze(O),
+                  %% Private names are no properties: freeze leaves them writable.
+                  ?assertEqual(2, bouy_heap:set(O, K, 2)),
+                  ?assertEqual(2, bouy_heap:get(O, K)),
+                  N = bouy_heap:new_object(?P),
+                  bouy_heap:prevent_extensions(N),
+                  ?assertEqual(3, bouy_heap:set(N, {'#', <<"C">>, <<"y">>}, 3)),
+                  ?assertEqual([], bouy_heap:own_keys(N))
+          end).

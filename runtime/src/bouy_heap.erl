@@ -335,6 +335,8 @@ from_record({array, Proto, _, _, _, {_, Elements}}, K, Receiver) when is_integer
     end;
 from_record({array, _, _, _, _, {Length, _}}, <<"length">>, _Receiver) ->
     Length;
+from_record({proxy, _, Props, _, _, _}, {'#', _, _} = K, _Receiver) ->
+    maps:get(K, Props, undefined);
 from_record({proxy, _, _, _, _, Handler}, K, Receiver) ->
     bouy_ref_proxy:get(Handler, K, Receiver);
 from_record({arguments, _, _, _, _, Map}, K, _Receiver) when is_map_key(K, Map) ->
@@ -437,7 +439,7 @@ add(Id, {Class, P, Props, Keys, Attrs, Slots}, K, V, O, Mode) ->
         {setter, Setter} ->
             call_setter(Setter, O, K, V, Mode);
         none ->
-            case extensible(Attrs) of
+            case is_private(K) orelse extensible(Attrs) of
                 true ->
                     erlang:put(Id, {Class, P, Props#{K => V}, add_key(K, Props, Keys), Attrs, Slots}),
                     V;
@@ -513,6 +515,9 @@ find_property(O, K) ->
 -spec set(value(), key(), value(), value()) -> boolean().
 set(O, K, V, Receiver) ->
     case record_of(O) of
+        {proxy, _, _, _, _, _} when element(1, K) =:= '#' ->
+            put_own(O, K, V, ?ALL),
+            true;
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:set(Handler, K, V, Receiver);
         {arguments, _, _, _, _, Map} = R when is_map_key(K, Map), O =:= Receiver ->
@@ -550,8 +555,12 @@ set_on_receiver(K, V, Receiver) when ?is_obj(Receiver) ->
 set_on_receiver(_K, _V, _Receiver) ->
     false.
 
+writable({'#', _, _}, _Attrs) -> true;
 writable(_K, #{'$frozen' := true}) -> false;
 writable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?WRITABLE =/= 0.
+
+is_private({'#', _, _}) -> true;
+is_private(_) -> false.
 
 extensible(#{'$frozen' := true}) -> false;
 extensible(#{'$noext' := true}) -> false;
@@ -695,6 +704,14 @@ define_failed(O, K) ->
 
 %% [[DefineOwnProperty]]: true when the property now matches the descriptor.
 -spec define_own_property(value(), key(), map()) -> boolean().
+define_own_property(O, {'#', _, _} = K, Desc) ->
+    %% A private name is no property: it takes its value whatever the object's state.
+    Slot = case is_accessor_descriptor(Desc) of
+        true -> {'$accessor', maps:get(get, Desc, undefined), maps:get(set, Desc, undefined)};
+        false -> maps:get(value, Desc, undefined)
+    end,
+    put_own(O, K, Slot, ?ALL),
+    true;
 define_own_property(O, K, Desc) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
@@ -904,6 +921,7 @@ own_of({arguments, _, _, _, Attrs, Map}, K) when is_map_key(K, Map) ->
 own_of({_, _, Props, _, Attrs, _}, K) ->
     found(maps:find(K, Props), own_bits(K, Attrs)).
 
+own_bits({'#', _, _}, _Attrs) -> ?ALL;
 own_bits(K, #{'$frozen' := true} = Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE;
 own_bits(K, Attrs) -> maps:get(K, Attrs, ?ALL).
 
