@@ -224,17 +224,21 @@ lookup(O, K, Receiver) ->
 %% when [[Set]] returns false, and sloppy code ignores it.
 -spec super_set(term(), term(), term(), term()) -> term().
 super_set(null, K, _V, _This) ->
-    bouy_ref:type_error(<<"Cannot set properties of null (setting '", (key_text(K))/binary, "')">>);
+    null_super_base(K);
 super_set(Base, K, V, This) ->
     bouy_heap:set(Base, K, V, This) orelse bouy_heap:set_failed(This, K),
     V.
 
 -spec sloppy_super_set(term(), term(), term(), term()) -> term().
-sloppy_super_set(null, K, V, This) ->
-    super_set(null, K, V, This);
+sloppy_super_set(null, K, _V, _This) ->
+    null_super_base(K);
 sloppy_super_set(Base, K, V, This) ->
     _ = bouy_heap:set(Base, K, V, This),
     V.
+
+-spec null_super_base(term()) -> no_return().
+null_super_base(K) ->
+    bouy_ref:type_error(<<"Cannot set properties of null (setting '", (key_text(K))/binary, "')">>).
 
 key_text(K) ->
     case function_name(K, <<>>) of
