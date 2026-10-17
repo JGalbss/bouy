@@ -348,11 +348,16 @@ pending_list(Key) ->
         L -> L
     end.
 
+%% A test262 host, as bouy_test262 is, sets '$bouy_rejections' to ignore: such hosts
+%% do not end a test for a rejection that no handler takes.
 check_unhandled() ->
-    case pending_list(?UNHANDLED) of
-        [] ->
+    case {pending_list(?UNHANDLED), erlang:get('$bouy_rejections')} of
+        {[], _} ->
             ok;
-        [P | _] ->
+        {_, ignore} ->
+            erlang:erase(?UNHANDLED),
+            ok;
+        {[P | _], _} ->
             {rejected, Reason, _} = bouy_heap:slots(P),
             bouy_ref:report_uncaught(Reason)
     end.

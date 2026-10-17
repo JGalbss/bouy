@@ -235,6 +235,8 @@ prototype_for(NewTarget) ->
 -spec get(value(), key()) -> value().
 get({'$o', Id} = O, K) ->
     case erlang:get(Id) of
+        {deferred_namespace, _, Props, _, _, M} ->
+            deferred_get(M, Props, K, O);
         {array, _, _, _, _, {_, Elements}} = R when is_integer(K) ->
             case Elements of
                 #{K := V} -> V;
@@ -293,11 +295,30 @@ inherited({'$o', Id} = O, K, Receiver) ->
 inherited({'$f', _, _} = F, K, Receiver) ->
     inherited_from(fn_record(F), K, Receiver).
 
+inherited_from({deferred_namespace, _, Props, _, _, M}, K, Receiver) ->
+    deferred_get(M, Props, K, Receiver);
 inherited_from({_, Proto, Props, _, _, _}, K, Receiver) ->
     case Props of
         #{K := V} -> resolve(V, Receiver);
         _ -> inherited(Proto, K, Receiver)
     end.
+
+%% A deferred namespace (bouy_module) evaluates its module when code first uses a
+%% string key other than "then". "then" and symbols act as on an ordinary object,
+%% and the namespace holds no ordinary "then".
+deferred_get(M, Props, K, Receiver) ->
+    case deferred_key(M, K) of
+        absent -> undefined;
+        _ ->
+            case Props of
+                #{K := V} -> resolve(V, Receiver);
+                _ -> undefined
+            end
+    end.
+
+deferred_key(_M, <<"then">>) -> absent;
+deferred_key(_M, {'$sym', _, _}) -> ordinary;
+deferred_key(M, _K) -> ok = bouy_module:ensure_deferred(M), export.
 
 %% A live binding of a module namespace (bouy_module) reads its module.
 resolve({'$live', Read}, _Receiver) -> Read();
@@ -315,7 +336,7 @@ set({'$o', Id} = O, K, V) ->
         {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">>, map_size(Attrs) =:= 0 ->
             erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, V)}),
             V;
-        {namespace, _, _, _, _, _} ->
+        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace ->
             read_only(K);
         {Class, P, Props, Keys, Attrs, Slots} = R ->
             case Props of
@@ -427,6 +448,7 @@ has(O, K) ->
     case record_of(O) of
         %% [[HasProperty]] of a namespace does not read the binding.
         {namespace, _, Props, _, _, _} -> is_map_key(K, Props);
+        {deferred_namespace, _, Props, _, _, M} -> deferred_key(M, K) =/= absent andalso is_map_key(K, Props);
         _ -> has_ordinary(O, K)
     end.
 
@@ -445,7 +467,7 @@ has_own(O, K) ->
     case record_of(O) of
         {array, _, _, _, _, {_, Elements}} when is_integer(K) -> is_map_key(K, Elements);
         %% [[GetOwnProperty]] of a namespace reads the binding, which may be uninitialized.
-        {namespace, _, _, _, _, _} -> get_own(O, K) =/= none;
+        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace -> get_own(O, K) =/= none;
         {array, _, _, _, _, _} when K =:= <<"length">> -> true;
         {_, _, Props, _, _, _} -> is_map_key(K, Props)
     end.
@@ -453,6 +475,10 @@ has_own(O, K) ->
 %% `delete o[k]`. A non-configurable property throws a TypeError, as in strict mode.
 -spec delete(value(), key()) -> true.
 delete(O, K) ->
+    case record_of(O) of
+        {deferred_namespace, _, _, _, _, M} -> deferred_key(M, K);
+        _ -> ok
+    end,
     Id = id_for_write(O),
     case erlang:get(Id) of
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K) ->
@@ -477,6 +503,10 @@ cannot_delete(K) ->
 %% order, then symbols in insertion order. Private names are not keys.
 -spec own_keys(value()) -> [key()].
 own_keys(O) ->
+    case record_of(O) of
+        {deferred_namespace, _, _, _, _, M} -> ok = bouy_module:ensure_deferred(M);
+        _ -> ok
+    end,
     {_, _, Props, Keys, _, _} = R = record_of(O),
     Indexes = case R of
         {array, _, _, _, _, {_, Elements}} -> lists:sort(maps:keys(Elements));
@@ -493,7 +523,7 @@ enumerable_keys(O) ->
     {Class, _, _, _, Attrs, _} = record_of(O),
     Keys = [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs)],
     %% Each key of a namespace reads its binding, as [[GetOwnProperty]] does.
-    Class =:= namespace andalso lists:foreach(fun(K) -> get_own(O, K) end, Keys),
+    (Class =:= namespace orelse Class =:= deferred_namespace) andalso lists:foreach(fun(K) -> get_own(O, K) end, Keys),
     Keys.
 
 enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
@@ -504,6 +534,9 @@ enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 define(O, K, Descriptor) ->
     case record_of(O) of
         {namespace, _, _, _, _, _} -> bouy_module:define_namespace(O, K, Descriptor);
+        {deferred_namespace, _, _, _, _, M} ->
+            deferred_key(M, K),
+            bouy_module:define_namespace(O, K, Descriptor);
         _ -> define_ordinary(O, K, Descriptor)
     end.
 
@@ -542,7 +575,17 @@ bit(Name, Bit, Descriptor, Existing) ->
 %% The own property K: {data, Value, Bits}, {accessor, Get, Set, Bits}, or none.
 -spec get_own(value(), key()) -> {data, value(), 0..7} | {accessor, value(), value(), 0..7} | none.
 get_own(O, K) ->
-    {_, _, Props, _, Attrs, _} = R = record_of(O),
+    case record_of(O) of
+        {deferred_namespace, _, _, _, _, M} ->
+            case deferred_key(M, K) of
+                absent -> none;
+                _ -> get_own_record(record_of(O), K)
+            end;
+        R -> get_own_record(R, K)
+    end.
+
+get_own_record(R, K) ->
+    {_, _, Props, _, Attrs, _} = R,
     Found = case R of
         {array, _, _, _, _, {_, Elements}} when is_integer(K) -> maps:find(K, Elements);
         {array, _, _, _, _, {Length, _}} when K =:= <<"length">> -> {ok, Length};
@@ -564,7 +607,7 @@ prototype_of(O) -> element(2, record_of(O)).
 
 -spec set_prototype_of(value(), value()) -> value().
 set_prototype_of(O, Proto) ->
-    class_of(O) =:= namespace andalso Proto =/= null andalso
+    lists:member(class_of(O), [namespace, deferred_namespace]) andalso Proto =/= null andalso
         throw_error('TypeError', <<"Cannot set the prototype of a module namespace object">>),
     Id = id_for_write(O),
     erlang:put(Id, setelement(2, record_of(O), Proto)),

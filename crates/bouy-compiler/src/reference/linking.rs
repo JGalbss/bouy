@@ -56,6 +56,11 @@ impl<'c> Linking<'c> {
                 "namespace",
                 vec![Expr::atom(self.module_of(*unit))],
             ),
+            Binding::DeferredNamespace(unit) => Expr::call(
+                "bouy_module",
+                "deferred_namespace",
+                vec![Expr::atom(self.module_of(*unit))],
+            ),
             Binding::Builtin { name, export } => Expr::call(
                 "bouy_module",
                 "builtin_export",
@@ -93,14 +98,19 @@ impl<'c> Linking<'c> {
             .record
             .order
             .iter()
-            .filter_map(|specifier| {
+            .filter_map(|(specifier, deferred)| {
                 unit.requests
                     .iter()
                     .find_map(|request| match &request.resolved {
                         Resolved::Unit(target, _)
                             if &request.specifier == specifier && request.mode == Mode::Import =>
                         {
-                            Some(Expr::atom(self.module_of(*target)))
+                            let module = Expr::atom(self.module_of(*target));
+                            Some(if *deferred {
+                                Expr::tagged("defer", module)
+                            } else {
+                                module
+                            })
                         }
                         _ => None,
                     })

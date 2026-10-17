@@ -18,6 +18,7 @@
 -export([uninitialized/2, hoisted/1]).
 -export([dynamic_import/4, meta/1, require/2]).
 -export([define_namespace/3, broken/1]).
+-export([deferred_namespace/1, ensure_deferred/1]).
 
 -define(RECORD(M), {'$bouy_module', M}).
 -define(NAMESPACE(M), {'$bouy_namespace', M}).
@@ -67,7 +68,7 @@ evaluate_dependencies(Module) ->
     case erlang:function_exported(Module, '$module', 0) of
         true ->
             #{requests := Requests} = Module:'$module'(),
-            lists:foreach(fun(M) -> link_graph(M), _ = evaluate(M) end, Requests);
+            lists:foreach(fun(M) -> link_graph(M), _ = evaluate(M) end, [M || M <- Requests, is_atom(M)]);
         false ->
             ok
     end.
@@ -94,7 +95,11 @@ info(M, Key) -> maps:get(Key, get(M, info)).
 
 kind(M) -> info(M, kind).
 
-requests(M) -> info(M, requests).
+%% The modules that M imports, without the phase: `{defer, R}` is an import defer.
+requests(M) -> [unphase(R) || R <- info(M, requests)].
+
+unphase({defer, R}) -> R;
+unphase(R) -> R.
 
 has_tla(M) -> info(M, async).
 
@@ -206,7 +211,7 @@ inner_evaluate_esm(M, Index) ->
     set(M, ancestor, Index),
     set(M, pending, 0),
     put_stack([M | get_stack()]),
-    Index1 = lists:foldl(fun(R, I) -> required(M, R, I) end, Index + 1, requests(M)),
+    Index1 = lists:foldl(fun(R, I) -> required(M, R, I) end, Index + 1, evaluation_requests(M)),
     case get(M, pending) > 0 orelse has_tla(M) of
         true ->
             set(M, order, next_order()),
@@ -222,6 +227,40 @@ inner_evaluate_esm(M, Index) ->
         false -> ok
     end,
     Index1.
+
+%% The modules that evaluate before M: each eager import, and for an import defer
+%% only the modules with top-level await that it reaches.
+evaluation_requests(M) ->
+    lists:foldl(fun({defer, R}, Acc) -> add_new(gather_async(R, []), Acc);
+                   (R, Acc) -> add_new([R], Acc)
+                end, [], info(M, requests)).
+
+add_new(Items, Acc) -> Acc ++ [I || I <- Items, not lists:member(I, Acc)].
+
+%% GatherAsynchronousTransitiveDependencies
+gather_async(M, Seen) ->
+    {Found, _} = gather_async(M, [], Seen),
+    Found.
+
+gather_async(M, Found, Seen) ->
+    case lists:member(M, Seen) of
+        true ->
+            {Found, Seen};
+        false ->
+            Seen1 = [M | Seen],
+            case kind(M) =:= esm andalso get(M, status) of
+                S when S =:= evaluating; S =:= evaluated; S =:= evaluating_async; S =:= false ->
+                    {Found, Seen1};
+                _ ->
+                    case has_tla(M) of
+                        true ->
+                            {add_new([M], Found), Seen1};
+                        false ->
+                            lists:foldl(fun(R, {F, Sn}) -> gather_async(R, F, Sn) end,
+                                        {Found, Seen1}, requests(M))
+                    end
+            end
+    end.
 
 required(M, R, Index) ->
     Index1 = inner_evaluate(R, Index),
@@ -386,6 +425,62 @@ make_namespace(Named) ->
     erlang:put(Raw, {namespace, null, Props, Keys, Attrs, none}),
     Id.
 
+%% The deferred namespace of M (`import defer * as ns`): the exports of M, which
+%% evaluates when code first reads a string key of it (bouy_heap calls
+%% ensure_deferred/1), and the tag "Deferred Module".
+-spec deferred_namespace(module()) -> term().
+deferred_namespace(M) ->
+    Key = {'$bouy_deferred_namespace', M},
+    case erlang:get(Key) of
+        undefined ->
+            {'$o', Id} = NS = make_namespace(M:'$namespace'()),
+            {namespace, P, Props, Keys, Attrs, _} = erlang:get(Id),
+            Tag = ?SYM(toStringTag),
+            erlang:put(Id, {deferred_namespace, P, Props#{Tag => <<"Deferred Module">>}, Keys, Attrs, M}),
+            erlang:put(Key, NS),
+            NS;
+        NS ->
+            NS
+    end.
+
+%% EnsureDeferredNamespaceEvaluation: evaluates M now, or throws a TypeError when
+%% M cannot evaluate synchronously, because it or a module it imports awaits or
+%% is evaluating.
+-spec ensure_deferred(module()) -> ok.
+ensure_deferred(M) ->
+    case get(M, status) of
+        evaluated ->
+            case get(M, error) of
+                none -> ok;
+                {error, E} -> erlang:error({'$throw', E})
+            end;
+        _ ->
+            ready_for_sync(M, []) orelse
+                bouy_ref:type_error(<<"Cannot evaluate a deferred module that is evaluating or awaits">>),
+            P = evaluate(M),
+            case bouy_heap:slots(P) of
+                {rejected, Reason, _} ->
+                    bouy_jobs:perform_then(P, fun(_) -> undefined end, fun(_) -> undefined end, undefined),
+                    erlang:error({'$throw', Reason});
+                _ ->
+                    ok
+            end
+    end.
+
+%% ReadyForSyncExecution
+ready_for_sync(M, Seen) ->
+    case lists:member(M, Seen) orelse kind(M) =/= esm of
+        true ->
+            true;
+        false ->
+            case get(M, status) of
+                evaluated -> true;
+                evaluating -> false;
+                evaluating_async -> false;
+                _ -> not has_tla(M) andalso lists:all(fun(R) -> ready_for_sync(R, [M | Seen]) end, requests(M))
+            end
+    end.
+
 %% [[DefineOwnProperty]] of a namespace: it succeeds only when it changes nothing.
 -spec define_namespace(term(), term(), map()) -> term().
 define_namespace(NS, K, Descriptor) ->
@@ -499,7 +594,12 @@ dynamic_import(From, Specifier, Options, Phase) ->
             _ -> throw_coded('Error', <<"ERR_MODULE_NOT_FOUND">>,
                              bouy_ref_string:concat([<<"Cannot find module '">>, Text, <<"' imported from ">>, info(From, path)]))
         end,
-        bouy_jobs:enqueue(fun() -> load_dynamic(Target, Resolve, Reject) end)
+        Loaded = case {Phase, Target} of
+            {defer, {builtin, _}} -> Target;
+            {defer, _} -> {defer, Target};
+            _ -> Target
+        end,
+        bouy_jobs:enqueue(fun() -> load_dynamic(Loaded, Resolve, Reject) end)
     catch
         error:Reason:Stack -> Reject(bouy_ref:caught(Reason, Stack))
     end,
@@ -511,6 +611,10 @@ load_dynamic(Target, Resolve, Reject) ->
         case Target of
             {builtin, B} ->
                 Resolve(builtin_namespace(B));
+            {defer, M} ->
+                link_graph(M),
+                Evaluation = bouy_jobs:all([evaluate(D) || D <- gather_async(M, [])], false),
+                bouy_jobs:perform_then(Evaluation, fun(_) -> Resolve(deferred_namespace(M)) end, Reject, undefined);
             M ->
                 link_graph(M),
                 Evaluation = evaluate(M),

@@ -113,13 +113,16 @@ pub enum Resolved {
 pub enum Imported {
     Name(String),
     Namespace,
+    /// `import defer * as ns`: the namespace of a module that evaluates on first use.
+    DeferredNamespace,
 }
 
 /// The syntax facts of a module that linking needs.
 #[derive(Debug, Default)]
 pub struct Record {
-    /// The specifiers of `import` and `export ... from`, once each, in source order.
-    pub order: Vec<String>,
+    /// The specifiers of `import` and `export ... from` in source order, once for each
+    /// phase: `true` for `import defer`.
+    pub order: Vec<(String, bool)>,
     /// `(local, specifier, imported)`
     pub imports: Vec<(String, String, Imported)>,
     /// `(export name, local name)`. The local name of `export default <expression>` and
@@ -260,13 +263,21 @@ fn speculative(path: &Path, dynamic: &Dynamic) -> Vec<PathBuf> {
         return Vec::new();
     }
     let base = path.parent().unwrap_or(Path::new("/"));
-    let mut found: Vec<PathBuf> = dynamic
-        .strings
-        .iter()
-        .map(|text| normalize(&base.join(text)))
-        .filter(|candidate| candidate.is_file() && is_module_file(candidate))
-        .collect();
-    for pattern in &dynamic.patterns {
+    let mut found = Vec::new();
+    let mut patterns = dynamic.patterns.clone();
+    for text in &dynamic.strings {
+        let candidate = normalize(&base.join(text));
+        if candidate.is_file() {
+            if is_module_file(&candidate) {
+                found.push(candidate);
+            }
+        } else {
+            // A string that names no file may be the start of a specifier that the code
+            // concatenates, such as `'./locales/' + name`.
+            patterns.push(format!("{text}*"));
+        }
+    }
+    for pattern in &patterns {
         let Some((head, tail)) = pattern.split_once('*') else {
             continue;
         };
@@ -281,7 +292,9 @@ fn speculative(path: &Path, dynamic: &Dynamic) -> Vec<PathBuf> {
         let Ok(entries) = fs::read_dir(normalize(&base.join(dir))) else {
             continue;
         };
-        for entry in entries.filter_map(Result::ok) {
+        // shortcut: a pattern stops at 200 files of a directory, so that a short prefix
+        // does not load a whole tree; a bundler-style context map would lift the limit.
+        for entry in entries.filter_map(Result::ok).take(200) {
             let name = entry.file_name().to_string_lossy().into_owned();
             let candidate = entry.path();
             if name.starts_with(prefix)
@@ -461,8 +474,19 @@ struct Facts<'s, 'a> {
 
 impl<'a> Facts<'_, 'a> {
     fn request(&mut self, specifier: &str) {
-        if !self.record.order.iter().any(|known| known == specifier) {
-            self.record.order.push(specifier.to_owned());
+        self.add_request(specifier, false);
+    }
+
+    /// A request of `import defer`, which evaluates only the modules with top-level
+    /// await that it reaches.
+    fn deferred_request(&mut self, specifier: &str) {
+        self.add_request(specifier, true);
+    }
+
+    fn add_request(&mut self, specifier: &str, deferred: bool) {
+        let entry = (specifier.to_owned(), deferred);
+        if !self.record.order.contains(&entry) {
+            self.record.order.push(entry);
         }
         self.specifiers
             .push((specifier.to_owned(), Mode::Import, false));
@@ -480,6 +504,7 @@ impl<'a> Facts<'_, 'a> {
                     if specifier == "bouy" {
                         continue;
                     }
+                    let deferred = matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Defer));
                     let mut kept = import.specifiers.is_none();
                     for item in import.specifiers.iter().flatten() {
                         // TypeScript erases an import that no value reads.
@@ -498,7 +523,11 @@ impl<'a> Facts<'_, 'a> {
                                 Imported::Name("default".to_owned())
                             }
                             ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
-                                Imported::Namespace
+                                if deferred {
+                                    Imported::DeferredNamespace
+                                } else {
+                                    Imported::Namespace
+                                }
                             }
                         };
                         self.record.imports.push((
@@ -507,7 +536,9 @@ impl<'a> Facts<'_, 'a> {
                             imported,
                         ));
                     }
-                    if kept || !self.typescript {
+                    if (kept || !self.typescript) && deferred {
+                        self.deferred_request(specifier);
+                    } else if kept || !self.typescript {
                         self.request(specifier);
                     }
                 }

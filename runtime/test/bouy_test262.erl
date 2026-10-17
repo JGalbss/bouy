@@ -129,6 +129,7 @@ realm(Module, Stdout, Stderr) ->
     group_leader(Stdout, self()),
     erlang:put('$bouy_exit', true),
     erlang:put('$bouy_stderr', Stderr),
+    erlang:put('$bouy_rejections', ignore),
     try Module:'__init__'() of
         _ -> exit({'$bouy_exit', 0})
     catch

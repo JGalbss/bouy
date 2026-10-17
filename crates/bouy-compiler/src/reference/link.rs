@@ -20,6 +20,8 @@ pub enum Binding {
     Export { unit: usize, key: String },
     /// The namespace object of a module of the graph.
     Namespace(usize),
+    /// The deferred namespace object of a module of the graph (`import defer`).
+    DeferredNamespace(usize),
     /// An export of a built-in module.
     Builtin { name: String, export: String },
     /// The namespace of a built-in module.
@@ -165,16 +167,18 @@ impl Linker<'_> {
 
     /// The first static request that resolution did not find.
     fn missing(&self, index: usize) -> Option<LinkError> {
-        self.unit(index).record.order.iter().find_map(|specifier| {
-            match self.target(index, specifier) {
+        self.unit(index)
+            .record
+            .order
+            .iter()
+            .find_map(|(specifier, _)| match self.target(index, specifier) {
                 Some(Resolved::Missing(failure)) => Some(LinkError {
                     kind: "Error",
                     code: Some(failure.code),
                     message: failure.message.clone(),
                 }),
                 _ => None,
-            }
-        })
+            })
     }
 
     /// What an import of `imported` from `specifier` reads.
@@ -189,6 +193,9 @@ impl Linker<'_> {
         };
         match (target, imported) {
             (Resolved::Unit(unit, _), Imported::Namespace) => Ok(Some(Binding::Namespace(unit))),
+            (Resolved::Unit(unit, _), Imported::DeferredNamespace) => {
+                Ok(Some(Binding::DeferredNamespace(unit)))
+            }
             (Resolved::Unit(unit, _), Imported::Name(name)) => {
                 match self.resolve_export(unit, name, &mut Vec::new()) {
                     Resolution::Found(binding) => Ok(Some(binding)),
@@ -206,7 +213,7 @@ impl Linker<'_> {
                     }),
                 }
             }
-            (Resolved::Builtin(builtin), Imported::Namespace) => {
+            (Resolved::Builtin(builtin), Imported::Namespace | Imported::DeferredNamespace) => {
                 Ok(Some(Binding::BuiltinNamespace(builtin)))
             }
             (Resolved::Builtin(builtin), Imported::Name(name)) => Ok(Some(Binding::Builtin {
@@ -271,12 +278,16 @@ impl Linker<'_> {
                 (Some(Resolved::Unit(unit, _)), Imported::Namespace) => {
                     Resolution::Found(Binding::Namespace(unit))
                 }
+                (Some(Resolved::Unit(unit, _)), Imported::DeferredNamespace) => {
+                    Resolution::Found(Binding::DeferredNamespace(unit))
+                }
                 (Some(Resolved::Unit(unit, _)), Imported::Name(imported)) => {
                     self.resolve_export(unit, &imported, visited)
                 }
-                (Some(Resolved::Builtin(builtin)), Imported::Namespace) => {
-                    Resolution::Found(Binding::BuiltinNamespace(builtin))
-                }
+                (
+                    Some(Resolved::Builtin(builtin)),
+                    Imported::Namespace | Imported::DeferredNamespace,
+                ) => Resolution::Found(Binding::BuiltinNamespace(builtin)),
                 (Some(Resolved::Builtin(builtin)), Imported::Name(imported)) => {
                     Resolution::Found(Binding::Builtin {
                         name: builtin,
