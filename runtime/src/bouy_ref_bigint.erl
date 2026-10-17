@@ -39,7 +39,13 @@ wrap(B, Proto) -> bouy_heap:new_exotic(bigint, Proto, B).
 
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"BigInt.prototype">>, <<"valueOf">>, This, _Args) -> this_big_int(This, <<"valueOf">>);
-method(<<"BigInt.prototype">>, <<"toLocaleString">>, This, _Args) -> to_string(this_big_int(This, <<"toLocaleString">>), 10);
+method(<<"BigInt.prototype">>, <<"toLocaleString">>, This, _Args) ->
+    {'$bigint', I} = this_big_int(This, <<"toLocaleString">>),
+    Sign = case I < 0 of
+        true -> "-";
+        false -> ""
+    end,
+    list_to_binary(Sign ++ group(integer_to_list(abs(I))));
 method(<<"BigInt.prototype">>, <<"toString">>, This, Args) ->
     B = this_big_int(This, <<"toString">>),
     Radix = case arg(1, Args) of
@@ -68,6 +74,12 @@ this_big_int(_, Name) -> not_a_big_int(Name).
 
 -spec not_a_big_int(binary()) -> no_return().
 not_a_big_int(Name) -> bouy_ref:type_error(<<"BigInt.prototype.", Name/binary, " requires that 'this' be a BigInt">>).
+
+%% The digits grouped by three, as the en-US locale writes them.
+group(Digits) when length(Digits) =< 3 -> Digits;
+group(Digits) ->
+    {Head, Tail} = lists:split(length(Digits) - 3, Digits),
+    group(Head) ++ "," ++ Tail.
 
 -spec to_string({'$bigint', integer()}, 2..36) -> binary().
 to_string({'$bigint', I}, 10) -> integer_to_binary(I);
