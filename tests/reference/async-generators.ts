@@ -52,4 +52,25 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+async function placements(n: number): Promise<unknown[]> {
+  const out: unknown[] = [];
+  switch (n) {
+    case await Promise.resolve(1):
+      out.push("case one");
+      break;
+    default:
+      out.push("default");
+  }
+  const maybe: Record<string, number> | null = n === 1 ? { k: 7 } : null;
+  out.push(maybe?.[await Promise.resolve("k")]);
+  let i = 0;
+  do {
+    i++;
+  } while (await Promise.resolve(i < 3));
+  out.push(i, (await Promise.resolve(null)) ?? "nullish", n ? await Promise.resolve("yes") : "no");
+  return out;
+}
+
+main().then(async () => {
+  console.log(await placements(1), await placements(0));
+});

@@ -374,6 +374,19 @@ impl Lowerer<'_, '_> {
             );
             return code;
         };
+        if after.is_empty() {
+            // A case in tail position, such as the dispatch of a `switch`: each clause
+            // ends the code itself.
+            let clauses = clauses
+                .into_iter()
+                .map(|mut clause| {
+                    clause.body = self.seal(clause.body);
+                    clause
+                })
+                .collect();
+            code.push(Expr::Case(subject, clauses));
+            return code;
+        }
         let join = self.fresh("Join");
         let after = self.seal(after);
         code.push(Expr::matches(

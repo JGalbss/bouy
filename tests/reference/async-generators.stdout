@@ -19,3 +19,4 @@ delegate 10
 delegate 11
 await in a default 7
 outer catch thrown after an inner try
+[ 'case one', 7, 3, 'nullish', 'yes' ] [ 'default', undefined, 3, 'nullish', 'no' ]

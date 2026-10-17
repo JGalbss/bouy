@@ -8,6 +8,7 @@ use oxc::ast::ast::{
 
 use super::context::Lowerer;
 use super::literal::number;
+use super::suspend::holds_marker;
 use crate::erlang::{CatchClause, Clause, Expr};
 
 const CHAIN: &str = "$bouy_chain";
@@ -74,6 +75,14 @@ impl<'a> Lowerer<'a, '_> {
             ChainElement::ComputedMemberExpression(member) => me.computed_member(member),
             ChainElement::PrivateFieldExpression(member) => me.private_member(member),
         });
+        if code.iter().any(holds_marker) {
+            // An `await` or a `yield` cannot split an Erlang `try`, so each guard of this
+            // chain becomes a case whose last clause holds the rest of the chain.
+            let mut code = nest_guards(code);
+            let value = code.pop().unwrap_or_else(Expr::undefined);
+            self.pre.extend(code);
+            return self.bind(value);
+        }
         self.bind(Expr::Try {
             body: code,
             catches: vec![CatchClause {
@@ -267,4 +276,31 @@ pub fn index_of(name: &str) -> Option<i64> {
     name.parse::<i64>()
         .ok()
         .filter(|index| *index <= 4_294_967_294)
+}
+
+/// The code of an optional chain with each guard as a case: `undefined` for a nullish
+/// value, else the rest of the chain.
+fn nest_guards(mut code: Vec<Expr>) -> Vec<Expr> {
+    let Some(index) = code.iter().position(is_guard) else {
+        return code;
+    };
+    let rest = nest_guards(code.split_off(index + 1));
+    let Some(Expr::Case(subject, _)) = code.pop() else {
+        return code;
+    };
+    code.push(Expr::Case(
+        subject,
+        vec![
+            Clause::new(Expr::undefined(), vec![Expr::undefined()]),
+            Clause::new(Expr::atom("null"), vec![Expr::undefined()]),
+            Clause::new(Expr::var("_"), rest),
+        ],
+    ));
+    code
+}
+
+/// Whether the expression is the guard of `chain_guard`.
+fn is_guard(expr: &Expr) -> bool {
+    let throw = Expr::call("erlang", "throw", vec![Expr::atom(CHAIN)]);
+    matches!(expr, Expr::Case(_, clauses) if clauses.first().is_some_and(|clause| clause.body == [throw.clone()]))
 }
