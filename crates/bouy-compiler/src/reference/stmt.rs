@@ -92,6 +92,19 @@ impl<'a> Lowerer<'a, '_> {
             })
             .collect();
         let saved = std::mem::take(&mut self.pre);
+        // A `let`, `const`, or class that a function written before it reads gets its cell
+        // now, holding '$tdz' until the declaration runs.
+        for symbol in list.iter().flat_map(|statement| block_bindings(statement)) {
+            // The rest of a block after a compound statement hoists again; keep the cell.
+            if self.analysis.early.contains(&symbol) && !self.frame.env.contains_key(&symbol) {
+                let cell = self.fresh("Tdz");
+                self.pre.push(Expr::matches(
+                    Expr::var(cell.clone()),
+                    Expr::call("bouy_heap", "cell", vec![Expr::atom("$tdz")]),
+                ));
+                self.frame.env.insert(symbol, Local::Cell(cell));
+            }
+        }
         let mut cells = Vec::new();
         for (symbol, _) in &functions {
             let cell = self.fresh("Fn");
@@ -179,6 +192,7 @@ impl<'a> Lowerer<'a, '_> {
             Statement::SwitchStatement(statement) => self.switch_statement(statement, k),
             Statement::TryStatement(statement) => self.try_statement(statement, k),
             Statement::LabeledStatement(statement) => self.labeled_statement(statement, k),
+            Statement::WithStatement(statement) => self.with_statement(statement, k),
             Statement::BlockStatement(inner) => self.stmts(inner.body.iter().collect(), k),
             Statement::ReturnStatement(statement) => {
                 let value = match &statement.argument {
@@ -480,4 +494,23 @@ pub fn is_simple(statement: &Statement<'_>) -> bool {
             | Statement::ExportNamedDeclaration(_)
             | Statement::DebuggerStatement(_)
     )
+}
+
+/// The `let`, `const`, and class bindings that a statement declares in its block.
+fn block_bindings(statement: &Statement<'_>) -> Vec<SymbolId> {
+    match statement {
+        Statement::VariableDeclaration(declaration) if !declaration.kind.is_var() => declaration
+            .declarations
+            .iter()
+            .flat_map(|declarator| declarator.id.get_binding_identifiers())
+            .filter_map(|id| id.symbol_id.get())
+            .collect(),
+        Statement::ClassDeclaration(class) => class
+            .id
+            .as_ref()
+            .and_then(|id| id.symbol_id.get())
+            .into_iter()
+            .collect(),
+        _ => Vec::new(),
+    }
 }

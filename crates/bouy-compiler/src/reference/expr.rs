@@ -193,6 +193,16 @@ impl<'a> Lowerer<'a, '_> {
         right: &'a Expression<'a>,
     ) -> Expr {
         let name = Some(Expr::js_string(ident.name.as_str()));
+        let objects = self.with_objects(ident);
+        if !objects.is_empty() {
+            let value = if operator == AssignmentOperator::Assign {
+                self.named_expr(right, name)
+            } else {
+                let current = self.with_read(ident, &objects);
+                self.combine(operator, current, right, name)
+            };
+            return self.with_write(ident, &objects, value);
+        }
         let Some(symbol) = self.symbol_of(ident.reference_id.get()) else {
             let value = if operator == AssignmentOperator::Assign {
                 self.named_expr(right, name)
@@ -211,11 +221,45 @@ impl<'a> Lowerer<'a, '_> {
         self.assign_symbol(symbol, value, ident.span)
     }
 
+    /// `typeof x`: "undefined" for a name that nothing declares.
+    fn typeof_identifier(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        if self.symbol_of(ident.reference_id.get()).is_none()
+            && !matches!(ident.name.as_str(), "undefined" | "NaN" | "Infinity")
+            && !(ident.name == "arguments" && self.frame.arguments.is_some())
+        {
+            let name = Expr::js_string(ident.name.as_str());
+            return self.bind(Expr::call("bouy_ref", "typeof_global", vec![name]));
+        }
+        let value = self.identifier_plain(ident);
+        self.bind(Expr::call("bouy_ref", "typeof", vec![value]))
+    }
+
     /// `delete x` in sloppy code: false for a declared binding, else the delete of the
-    /// global object's property.
+    /// global object's property, and first a property of a `with` object.
     fn delete_identifier(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        let objects = self.with_objects(ident);
+        if !objects.is_empty() {
+            let fallback = self.branch(|me| me.delete_binding(ident));
+            let name = ident.name.as_str();
+            return self.through_withs(
+                &objects,
+                name,
+                |_, object| {
+                    vec![Expr::call(
+                        "bouy_ref",
+                        "sloppy_delete",
+                        vec![object, Expr::js_string(name)],
+                    )]
+                },
+                fallback,
+            );
+        }
+        self.delete_binding(ident)
+    }
+
+    fn delete_binding(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
         let global = match self.symbol_of(ident.reference_id.get()) {
-            None => true,
+            None => !(ident.name == "arguments" && self.frame.arguments.is_some()),
             Some(symbol) => {
                 !self.frame.env.contains_key(&symbol)
                     && matches!(self.tops.get(&symbol), Some(Top::Global(_)))
@@ -311,6 +355,14 @@ impl<'a> Lowerer<'a, '_> {
         };
         match &update.argument {
             SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
+                let objects = self.with_objects(ident);
+                if !objects.is_empty() {
+                    let old = self.with_read(ident, &objects);
+                    let old = self.bind(Expr::call("bouy_ref", "to_numeric", vec![old]));
+                    let new = self.bind(Expr::call("bouy_ref", function, vec![old.clone()]));
+                    let new = self.with_write(ident, &objects, new);
+                    return if update.prefix { new } else { old };
+                }
                 let Some(symbol) = self.symbol_of(ident.reference_id.get()) else {
                     let old = self.identifier_read(ident);
                     let old = self.bind(Expr::call("bouy_ref", "to_numeric", vec![old]));
@@ -406,13 +458,26 @@ impl<'a> Lowerer<'a, '_> {
                 self.bind(Expr::call("bouy_ref", "bit_not", vec![value]))
             }
             UnaryOperator::Typeof => {
-                if let Expression::Identifier(ident) = &unary.argument
-                    && self.symbol_of(ident.reference_id.get()).is_none()
-                    && !matches!(ident.name.as_str(), "undefined" | "NaN" | "Infinity")
-                    && !(ident.name == "arguments" && self.frame.arguments.is_some())
-                {
-                    let name = Expr::js_string(ident.name.as_str());
-                    return self.bind(Expr::call("bouy_ref", "typeof_global", vec![name]));
+                if let Expression::Identifier(ident) = strip(&unary.argument) {
+                    let objects = self.with_objects(ident);
+                    if !objects.is_empty() {
+                        let fallback = self.branch(|me| me.typeof_identifier(ident));
+                        let name = ident.name.as_str();
+                        return self.through_withs(
+                            &objects,
+                            name,
+                            |_, object| {
+                                let value = Expr::call(
+                                    "bouy_ref",
+                                    "get",
+                                    vec![object, Expr::js_string(name)],
+                                );
+                                vec![Expr::call("bouy_ref", "typeof", vec![value])]
+                            },
+                            fallback,
+                        );
+                    }
+                    return self.typeof_identifier(ident);
                 }
                 let value = self.expr(&unary.argument);
                 self.bind(Expr::call("bouy_ref", "typeof", vec![value]))

@@ -11,7 +11,7 @@ use oxc::ast::ast::{
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{NodeId, ScopeFlags, ScopeId, Scoping, Semantic, SymbolId};
-use oxc::span::Span;
+use oxc::span::{GetSpan, Span};
 
 /// The variables that live in heap cells.
 pub struct Analysis {
@@ -22,6 +22,10 @@ pub struct Analysis {
     /// Cells declared in the head of a `for (let ...)` loop whose body creates closures:
     /// each iteration copies them, as the per-iteration bindings of JavaScript.
     pub per_iteration: HashSet<SymbolId>,
+    /// `let`, `const`, and class bindings that a function written before the declaration
+    /// reads, such as a hoisted function declaration. Their cells exist from the start of
+    /// the block and hold `'$tdz'` until the declaration runs.
+    pub early: HashSet<SymbolId>,
 }
 
 pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
@@ -56,6 +60,8 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     };
     mapped.visit_program(program);
     cells.extend(mapped.found);
+    let early = early_bindings(scoping, nodes);
+    cells.extend(early.iter().copied());
     let mut loops = LoopHeads {
         cells: &cells,
         found: HashSet::new(),
@@ -65,7 +71,25 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     Analysis {
         cells,
         per_iteration,
+        early,
     }
+}
+
+/// The block-scoped bindings that a nested function reads at a place before their
+/// declaration.
+fn early_bindings(scoping: &Scoping, nodes: &oxc::semantic::AstNodes<'_>) -> HashSet<SymbolId> {
+    scoping
+        .symbol_ids()
+        .filter(|symbol| scoping.symbol_flags(*symbol).is_block_scoped())
+        .filter(|symbol| {
+            let home = function_scope(scoping, scoping.symbol_scope_id(*symbol));
+            let declared = scoping.symbol_span(*symbol);
+            scoping.get_resolved_references(*symbol).any(|reference| {
+                function_scope(scoping, reference.scope_id()) != home
+                    && nodes.get_node(reference.node_id()).span().start < declared.start
+            })
+        })
+        .collect()
 }
 
 /// The scope of the function that holds `scope`: a function, an arrow, a static block, or
@@ -90,6 +114,11 @@ fn guarded_write(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, declared: Sp
         match ancestor.kind() {
             AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => return false,
             AstKind::TryStatement(statement) => {
+                if !contains(statement.span, declared) {
+                    return true;
+                }
+            }
+            AstKind::WithStatement(statement) => {
                 if !contains(statement.span, declared) {
                     return true;
                 }

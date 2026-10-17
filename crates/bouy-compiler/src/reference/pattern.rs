@@ -28,6 +28,14 @@ impl<'a> Lowerer<'a, '_> {
             }
             BindingPattern::ObjectPattern(object) => {
                 let source = self.bind(value);
+                if object.properties.is_empty() {
+                    // RequireObjectCoercible: `const {} = null` throws.
+                    self.pre.push(Expr::call(
+                        "bouy_ref_object",
+                        "require_object",
+                        vec![source.clone()],
+                    ));
+                }
                 let mut keys = Vec::new();
                 for property in &object.properties {
                     let key = self.property_key(&property.key, property.computed);
@@ -113,6 +121,13 @@ impl<'a> Lowerer<'a, '_> {
             }
             AssignmentTarget::ObjectAssignmentTarget(object) => {
                 let source = self.bind(value);
+                if object.properties.is_empty() {
+                    self.pre.push(Expr::call(
+                        "bouy_ref_object",
+                        "require_object",
+                        vec![source.clone()],
+                    ));
+                }
                 let mut keys = Vec::new();
                 for property in &object.properties {
                     match property {

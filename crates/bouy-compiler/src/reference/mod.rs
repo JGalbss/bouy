@@ -42,6 +42,7 @@ mod pattern;
 mod stmt;
 mod suspend;
 mod variable;
+mod with;
 
 use std::collections::HashMap;
 

@@ -10,6 +10,15 @@ use crate::erlang::Expr;
 
 impl<'a> Lowerer<'a, '_> {
     pub fn identifier(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        let objects = self.with_objects(ident);
+        if !objects.is_empty() && !matches!(ident.name.as_str(), "undefined" | "NaN" | "Infinity") {
+            return self.with_read(ident, &objects);
+        }
+        self.identifier_plain(ident)
+    }
+
+    /// A read of `ident` without the `with` statements around it.
+    pub fn identifier_plain(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
         match self.symbol_of(ident.reference_id.get()) {
             Some(symbol) => self.read_symbol(symbol, ident.span),
             None => match ident.name.as_str() {
@@ -58,6 +67,14 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(local) = self.frame.env.get(&symbol) {
             return match local.clone() {
                 Local::Var(name) => Expr::var(name),
+                Local::Cell(name) if self.analysis.early.contains(&symbol) => {
+                    let binding = self.semantic.scoping().symbol_name(symbol).to_owned();
+                    self.bind(Expr::call(
+                        "bouy_ref",
+                        "tdz_get",
+                        vec![Expr::var(name), Expr::js_string(&binding)],
+                    ))
+                }
                 Local::Cell(name) => self.bind(cell_get(&name)),
             };
         }
@@ -74,11 +91,37 @@ impl<'a> Lowerer<'a, '_> {
             )),
             Some(Top::Literal(value)) => value,
             Some(Top::Bouy(_)) => self.unsupported(span, "a function of \"bouy\" used as a value"),
+            None if self.is_local_binding(symbol) => {
+                // A read before the declaration ran: the temporal dead zone.
+                let binding = self.semantic.scoping().symbol_name(symbol).to_owned();
+                self.bind(Expr::call(
+                    "bouy_ref",
+                    "tdz_error",
+                    vec![Expr::js_string(&binding)],
+                ))
+            }
             None => self.unsupported(
                 span,
                 "a reference to a local variable before its declaration",
             ),
         }
+    }
+
+    /// Stores a computed value in the binding of `ident`: a local, a module variable, or a
+    /// global.
+    pub fn assign_name_value(&mut self, ident: &'a IdentifierReference<'a>, value: Expr) -> Expr {
+        match self.symbol_of(ident.reference_id.get()) {
+            Some(symbol) => self.assign_symbol(symbol, value, ident.span),
+            None => self.set_global(ident.name.as_str(), value),
+        }
+    }
+
+    /// Whether `symbol` is a `let`, `const`, class, or parameter: a binding whose read
+    /// before its declaration is a `ReferenceError`.
+    fn is_local_binding(&self, symbol: SymbolId) -> bool {
+        let flags = self.semantic.scoping().symbol_flags(symbol);
+        flags.is_block_scoped()
+            || flags.contains(oxc::semantic::SymbolFlags::FunctionScopedVariable)
     }
 
     /// Stores `value` in the variable `symbol` and returns the stored value.
@@ -132,13 +175,15 @@ impl<'a> Lowerer<'a, '_> {
         }
         if self.analysis.cells.contains(&symbol) {
             // A `var` declaration after the start of the function writes the cell that
-            // the start of the function made, which closures may hold.
+            // the start of the function made, which closures may hold, and so does a
+            // binding that a function read before its declaration.
             if let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
-                && self
+                && (self
                     .semantic
                     .scoping()
                     .symbol_flags(symbol)
                     .is_function_scoped_declaration()
+                    || self.analysis.early.contains(&symbol))
             {
                 let value = self.bind(value);
                 self.pre.push(cell_set(&cell, value));

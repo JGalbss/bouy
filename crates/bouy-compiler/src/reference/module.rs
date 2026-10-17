@@ -114,26 +114,34 @@ impl<'a> Lowerer<'a, '_> {
     /// A script's top-level `var` names and functions are properties of the global object.
     /// A function that the code never assigns keeps its Erlang function for calls.
     fn declare_script_globals(&mut self, program: &'a Program<'a>) {
-        for symbol in top_level_vars(program) {
-            let name = self.semantic.scoping().symbol_name(symbol).to_owned();
-            self.script_globals.push(name.clone());
-            self.tops.insert(symbol, Top::Global(name));
-        }
+        let mut function_symbols = Vec::new();
         for statement in &program.body {
             if let Statement::FunctionDeclaration(function) = statement
                 && let Some(id) = &function.id
                 && let Some(symbol) = id.symbol_id.get()
                 && let Some(Top::Function { name, length, kind }) = self.tops.get(&symbol).cloned()
             {
+                self.script_functions.retain(|(other, _, _)| *other != name);
                 self.script_functions.push((name.clone(), length, kind));
-                let assigned = self
-                    .semantic
-                    .scoping()
-                    .get_resolved_references(symbol)
-                    .any(oxc::semantic::Reference::is_write);
-                if assigned {
-                    self.tops.insert(symbol, Top::Global(name));
-                }
+                function_symbols.push(symbol);
+            }
+        }
+        for symbol in top_level_vars(program) {
+            let name = self.semantic.scoping().symbol_name(symbol).to_owned();
+            if !function_symbols.contains(&symbol) {
+                self.script_globals.push(name.clone());
+            }
+            self.tops.insert(symbol, Top::Global(name));
+        }
+        for symbol in function_symbols {
+            let assigned = self
+                .semantic
+                .scoping()
+                .get_resolved_references(symbol)
+                .any(oxc::semantic::Reference::is_write);
+            if assigned {
+                let name = self.semantic.scoping().symbol_name(symbol).to_owned();
+                self.tops.insert(symbol, Top::Global(name));
             }
         }
     }
@@ -182,7 +190,15 @@ impl<'a> Lowerer<'a, '_> {
                         if let Some(id) = &function.id
                             && function.body.is_some()
                         {
-                            functions.push(self.module_function(id.name.as_str(), function));
+                            let lowered = self.module_function(id.name.as_str(), function);
+                            // A later declaration of the same name replaces the earlier one.
+                            match functions
+                                .iter()
+                                .position(|f: &Function| f.name == lowered.name)
+                            {
+                                Some(index) => functions[index] = lowered,
+                                None => functions.push(lowered),
+                            }
                         }
                     }
                     Some(Declaration::ClassDeclaration(class)) => {
@@ -301,17 +317,15 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// `'__eval__'/0`: runs the code of an `eval` in the current realm and returns the value
-    /// of its last statement when that is an expression statement.
+    /// `'__eval__'/1`: runs the code of an `eval` in the current realm with its `this` and
+    /// returns the value of its last statement when that is an expression statement.
     pub fn eval_function(&mut self, body: &[&'a Statement<'a>]) -> Function {
         self.frame = Frame::default();
         self.frame.sloppy = self.is_sloppy(None);
+        // The `this` of the eval: the caller's for a direct eval, else the global object.
         let this = self.fresh("This");
-        let mut code = vec![Expr::matches(
-            Expr::var(this.clone()),
-            Expr::Tuple(vec![Expr::atom("$o"), Expr::atom("globalThis")]),
-        )];
-        self.frame.this = Some(this);
+        let mut code = Vec::new();
+        self.frame.this = Some(this.clone());
         if !self.script_globals.is_empty() || !self.script_functions.is_empty() {
             code.push(self.declare_globals_call());
         }
@@ -350,7 +364,7 @@ impl<'a> Lowerer<'a, '_> {
         Function {
             name: "__eval__".to_owned(),
             clauses: vec![Clause {
-                patterns: vec![],
+                patterns: vec![Expr::var(this)],
                 guards: vec![],
                 body: code,
             }],

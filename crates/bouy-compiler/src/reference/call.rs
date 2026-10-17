@@ -64,6 +64,20 @@ impl<'a> Lowerer<'a, '_> {
                 let args = self.args(&call.arguments);
                 return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
             }
+            if !call.arguments.iter().all(is_pure) {
+                // The method is read before the arguments run (ECMA-262 §13.3.6.1).
+                let key = self.fix_key(key);
+                let method = self.get(object.clone(), key.clone());
+                let args = self.args(&call.arguments);
+                let MemberKey::Static(key) = key else {
+                    return Expr::undefined();
+                };
+                return self.bind(Expr::call(
+                    "bouy_ref",
+                    "call_method_value",
+                    vec![method, object, key, args],
+                ));
+            }
             let args = self.args(&call.arguments);
             let value = match key {
                 MemberKey::Static(key) => {
@@ -74,6 +88,15 @@ impl<'a> Lowerer<'a, '_> {
                 }
             };
             return self.bind(value);
+        }
+        if let Expression::Identifier(ident) = callee
+            && !call.optional
+            && !self.with_objects(ident).is_empty()
+        {
+            let objects = self.with_objects(ident);
+            let (function, this) = self.with_callee(ident, &objects);
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("bouy_ref", "call", vec![function, this, args]));
         }
         if let Expression::Identifier(ident) = callee
             && ident.name == "eval"
@@ -88,10 +111,11 @@ impl<'a> Lowerer<'a, '_> {
             } else {
                 "strict"
             });
+            let this = self.this_expr();
             return self.bind(Expr::call(
                 "bouy_ref_eval",
                 "direct",
-                vec![eval, args, mode],
+                vec![eval, args, mode, this],
             ));
         }
         if let Expression::Identifier(ident) = callee
@@ -162,5 +186,24 @@ impl<'a> Lowerer<'a, '_> {
         let constructor = self.expr(&new.callee);
         let args = self.args(&new.arguments);
         self.bind(Expr::call("bouy_ref", "construct", vec![constructor, args]))
+    }
+}
+
+/// Whether an argument has no effect that the read of the method could observe: a literal,
+/// a name, `this`, or a function.
+fn is_pure(argument: &Argument<'_>) -> bool {
+    match argument.as_expression().map(strip) {
+        Some(
+            Expression::NumericLiteral(_)
+            | Expression::StringLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::Identifier(_)
+            | Expression::ThisExpression(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_),
+        ) => true,
+        Some(Expression::TemplateLiteral(template)) => template.expressions.is_empty(),
+        _ => false,
     }
 }

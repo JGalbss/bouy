@@ -106,8 +106,8 @@ fn compile_in_with(
 }
 
 /// Compiles the code of an `eval` or of the `Function` constructor at run time (reference
-/// semantics) into the Erlang module `name`, whose `'__eval__'/0` runs the code in the
-/// current realm and returns its completion value. Strict code keeps its `var` names to
+/// semantics) into the Erlang module `name`, whose `'__eval__'/1` runs the code in the
+/// current realm with a `this` and returns its completion value. Strict code keeps its `var` names to
 /// itself; sloppy code makes them properties of the global object. With `function`, the
 /// source must be one parenthesized function expression, as the `Function` constructor
 /// builds it, so a body cannot close the function early.

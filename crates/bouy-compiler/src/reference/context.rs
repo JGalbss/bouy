@@ -169,6 +169,8 @@ pub struct Frame<'a> {
     pub sloppy: bool,
     /// The value of the function itself, for `arguments.callee`.
     pub callee: Option<Expr>,
+    /// The `with` statements around the code, outermost first.
+    pub withs: Vec<super::with::WithScope>,
 }
 
 pub struct Lowerer<'a, 'c> {

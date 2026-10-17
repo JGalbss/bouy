@@ -12,8 +12,9 @@
 -type exit_status() :: 0..255.
 -export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
 -export([sloppy_set/3, sloppy_set_computed/3, sloppy_delete/2, sloppy_delete_computed/2, sloppy_this/1]).
--export([mapped_arguments/3, function_name/2, literal_proto/2, named_fn/5, to_numeric/1]).
--export([call/3, call_method/3, call_method_computed/3, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
+-export([mapped_arguments/3, function_name/2, literal_proto/2, named_fn/5, to_numeric/1, tdz_get/2, tdz_error/1]).
+-export([with_object/1, with_has/2]).
+-export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, fn/1, fn/3, named_fn/3, named_fn/4, new_target/1, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
 -export([array/1, array_spread/1, object_spread/2, object_rest/2, template/1]).
@@ -201,6 +202,10 @@ call_method({'$o', _} = O, K, Args) -> invoke(bouy_heap:get(O, K), O, K, Args);
 call_method({'$actor', Pid}, K, Args) -> bouy_jobs:actor_call(Pid, K, Args);
 call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 
+%% r.k(args) where the code read the method before the arguments ran.
+-spec call_method_value(term(), term(), bouy_heap:key(), list()) -> term().
+call_method_value(F, This, K, Args) -> invoke(F, This, K, Args).
+
 invoke({'$f', _, Fun}, This, _K, Args) -> Fun(This, Args);
 invoke(_V, This, K, _Args) -> type_error(text([receiver_text(This), <<".">>, key_text(K), <<" is not a function">>])).
 
@@ -326,6 +331,36 @@ literal_proto(O, Proto) when ?IS_OBJECT(Proto); Proto =:= null ->
     ok;
 literal_proto(_O, _Proto) ->
     ok.
+
+%% The object of `with (v)`: ToObject, a TypeError for undefined and null.
+-spec with_object(term()) -> term().
+with_object(V) -> bouy_ref_object:require_object(V).
+
+%% Whether the object environment of a `with` statement binds Name
+%% (HasBinding of ECMA-262 §9.1.1.2.1): the object has the property, and its
+%% Symbol.unscopables does not block it.
+-spec with_has(term(), bouy_ref_string:js_string()) -> boolean().
+with_has(O, Name) when ?IS_OBJECT(O) ->
+    K = bouy_heap:to_key(Name),
+    bouy_heap:has(O, K) andalso not unscopable(get(O, ?SYM(unscopables)), K);
+with_has(P, Name) ->
+    bouy_heap:has(primitive_proto(P), bouy_heap:to_key(Name)).
+
+unscopable(U, K) when ?IS_OBJECT(U) -> truthy(get(U, K));
+unscopable(_U, _K) -> false.
+
+%% The value of a binding that a function may read before its declaration
+%% runs: a ReferenceError until then.
+-spec tdz_get({'$c', pos_integer()}, bouy_ref_string:js_string()) -> term().
+tdz_get(Cell, Name) ->
+    case bouy_heap:cell_get(Cell) of
+        '$tdz' -> tdz_error(Name);
+        V -> V
+    end.
+
+-spec tdz_error(bouy_ref_string:js_string()) -> no_return().
+tdz_error(Name) ->
+    bouy_heap:throw_error('ReferenceError', text([<<"Cannot access '">>, Name, <<"' before initialization">>])).
 
 %% ToNumeric: a number, until BigInt arrives.
 -spec to_numeric(term()) -> term().

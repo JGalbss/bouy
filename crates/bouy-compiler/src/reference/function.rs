@@ -67,6 +67,7 @@ impl<'a> Lowerer<'a, '_> {
             new_target,
             sloppy,
             callee: callee_value,
+            withs: outer.withs.clone(),
             ..Frame::default()
         };
         let mut prologue = Vec::new();
@@ -180,7 +181,16 @@ impl<'a> Lowerer<'a, '_> {
         let saved = std::mem::take(&mut self.pre);
         for symbol in vars.0 {
             if !self.frame.env.contains_key(&symbol) {
-                self.declare_symbol(symbol, Expr::undefined());
+                // `var arguments` keeps the arguments object (ECMA-262 §10.2.11).
+                let value = match &self.frame.arguments {
+                    Some(arguments)
+                        if self.semantic.scoping().symbol_name(symbol) == "arguments" =>
+                    {
+                        Expr::var(arguments.clone())
+                    }
+                    _ => Expr::undefined(),
+                };
+                self.declare_symbol(symbol, value);
             }
         }
         code.extend(std::mem::replace(&mut self.pre, saved));
