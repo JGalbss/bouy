@@ -1234,8 +1234,13 @@ static_function_record({'$f', {Form, Module, Name, Length} = Id, _} = F) ->
 static_function_record(_F) ->
     {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}}.
 
+%% A static record {lazy, Module} is an intrinsic that each realm builds on
+%% first use: Module:load(Id) puts its record in this realm and returns it.
 intrinsic_record(Id, _O) when is_atom(Id) ->
-    persistent_term:get({?MODULE, Id}, ?EMPTY);
+    case persistent_term:get({?MODULE, Id}, ?EMPTY) of
+        {lazy, Module} -> Module:load(Id);
+        Record -> Record
+    end;
 intrinsic_record(Id, O) ->
     erlang:error({dangling_reference, O, Id}).
 

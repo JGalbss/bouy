@@ -36,6 +36,23 @@ date_text_test() ->
         ?assertEqual(<<"-271821-04-20T00:00:00.000Z">>, bouy_ref_date:to_iso_string(-8640000000000000))
     end).
 
+%% Temporal names a zone of the tz database in any case. A link resolves to
+%% its target, the zones of UTC to "UTC", and other text to no zone.
+named_zone_test() ->
+    ?assertEqual({ok, <<"America/New_York">>}, bouy_ref_tz:named(<<"AMERICA/NEW_YORK">>)),
+    ?assertEqual({ok, <<"America/New_York">>}, bouy_ref_tz:named(<<"US/Eastern">>)),
+    ?assertEqual({ok, <<"UTC">>}, bouy_ref_tz:named(<<"etc/utc">>)),
+    ?assertEqual(error, bouy_ref_tz:named(<<"Mars/Olympus_Mons">>)),
+    ?assertEqual(error, bouy_ref_tz:named(<<"../../../etc/passwd">>)),
+    ?assertEqual(-14400000, bouy_ref_tz:offset_in(<<"America/New_York">>, 1625140800000)),
+    ?assertEqual(-18000000, bouy_ref_tz:offset_in(<<"America/New_York">>, 1609502400000)),
+    ?assertEqual({-1, 12, 31}, bouy_ref_tz:civil_from_days(-719529)).
+
+system_zone_test() ->
+    with_tz("Europe/Paris", fun() -> ?assertEqual(<<"Europe/Paris">>, bouy_ref_tz:system_id()) end),
+    with_tz(":Asia/Tokyo", fun() -> ?assertEqual(<<"Asia/Tokyo">>, bouy_ref_tz:system_id()) end),
+    with_tz("<+0530>-5:30", fun() -> ?assertEqual(<<"UTC">>, bouy_ref_tz:system_id()) end).
+
 with_tz(Tz, Test) ->
     Old = os:getenv("TZ"),
     os:putenv("TZ", Tz),

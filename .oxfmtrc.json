@@ -9,6 +9,7 @@
     "pnpm-lock.yaml",
     "tools/oxlint/guardrails/anti-slop/",
     ".bouy/",
-    ".claude/"
+    ".claude/",
+    "runtime/vendor/"
   ]
 }

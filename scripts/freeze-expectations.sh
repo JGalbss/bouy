@@ -11,6 +11,7 @@
 #
 # The programs of tests/reference run under `bouy run --semantics reference`. Their actor
 # programs import "bouy", which the script points at the Node shim in tests/reference/shim.
+# A program that names Temporal runs with the polyfill of runtime/vendor/temporal-polyfill.
 #
 # Usage: scripts/freeze-expectations.sh tests/conformance
 
@@ -50,11 +51,20 @@ case "${1%/}" in
     ;;
 esac
 
+# Node 25.9 has no Temporal. A program that names it runs with the polyfill that Bouy
+# compiles into its runtime, so Node checks how Bouy runs that code. The polyfill installs
+# nothing when Node has Temporal.
+temporal="$(cd "$(dirname "$0")/.." && pwd)/runtime/vendor/temporal-polyfill/global.js"
+
 for program in "$1"/*.ts; do
     [ -f "$program" ] || continue
     name=${program%.ts}
     status=0
-    node "$program" >"$name.stdout" 2>/dev/null || status=$?
+    preload=
+    if grep -q Temporal "$program"; then
+        preload="--import=$temporal"
+    fi
+    node ${preload:+"$preload"} "$program" >"$name.stdout" 2>/dev/null || status=$?
     if [ "$status" -eq 0 ]; then
         rm -f "$name.status"
     else

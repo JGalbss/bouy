@@ -40,7 +40,8 @@ prototype_methods() ->
      {<<"setUTCFullYear">>, 3}, {<<"setUTCHours">>, 4}, {<<"setUTCMilliseconds">>, 1}, {<<"setUTCMinutes">>, 3},
      {<<"setUTCMonth">>, 2}, {<<"setUTCSeconds">>, 2}, {<<"setYear">>, 1}, {<<"toDateString">>, 0}, {<<"toISOString">>, 0},
      {<<"toJSON">>, 1}, {<<"toLocaleDateString">>, 0}, {<<"toLocaleString">>, 0}, {<<"toLocaleTimeString">>, 0},
-     {<<"toString">>, 0}, {<<"toTimeString">>, 0}, {<<"toUTCString">>, 0}, {<<"valueOf">>, 0}].
+     {<<"toString">>, 0}, {<<"toTimeString">>, 0}, {<<"toUTCString">>, 0}, {<<"valueOf">>, 0},
+     {<<"toTemporalInstant">>, 0}].
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{<<"Date">>, constructor()}].
@@ -171,6 +172,8 @@ proto(<<"setYear">>, T, O, Args) ->
     end;
 proto(<<"toISOString">>, 'NaN', _O, _) -> bouy_heap:throw_error('RangeError', <<"Invalid time value">>);
 proto(<<"toISOString">>, T, _O, _) -> iso(T);
+proto(<<"toTemporalInstant">>, 'NaN', _O, _) -> bouy_heap:throw_error('RangeError', <<"Invalid time value">>);
+proto(<<"toTemporalInstant">>, T, _O, _) -> bouy_ref_temporal:to_instant(T);
 proto(<<"toString">>, T, _O, _) -> date_string(T, full);
 proto(<<"toDateString">>, T, _O, _) -> date_string(T, date);
 proto(<<"toTimeString">>, T, _O, _) -> date_string(T, time);

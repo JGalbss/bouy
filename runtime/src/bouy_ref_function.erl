@@ -140,9 +140,12 @@ in_chain(Proto, Proto) -> true;
 in_chain(O, Proto) -> in_chain(bouy_heap:prototype_of(O), Proto).
 
 %% Function.prototype.toString: the source text that the compiler kept, or
-%% the NativeFunction form.
+%% the NativeFunction form. The functions of bouy_temporal, the compiled
+%% Temporal polyfill, are built-in functions, so they have the native form.
 source_text(F) ->
     case {bouy_heap:slots(F), F} of
+        {#{source := {bouy_temporal, _, _}}, _} -> native_text(F);
+        {_, {'$f', {_Form, bouy_temporal, _, _}, _}} -> native_text(F);
         {#{source := {Module, Start, End}}, _} -> slice(Module, Start, End);
         {_, {'$f', {_Form, Module, Name, _}, _}} -> module_function_text(F, Module, Name);
         {_, {'$f', {fn, Module, Name, _, sloppy}, _}} -> module_function_text(F, Module, Name);

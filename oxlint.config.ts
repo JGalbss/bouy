@@ -20,6 +20,8 @@ export default defineConfig({
     // The same kind of programs for the reference-semantics prototype: compiler inputs and
     // their Node baselines.
     "bench/reference/**",
+    // Third-party JavaScript that build.rs compiles into the runtime, kept as published.
+    "runtime/vendor/**",
   ],
   overrides: [...(preset.overrides ?? [])],
 });

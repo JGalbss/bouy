@@ -2,6 +2,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+%% The loader of the lazy intrinsic of lazy_intrinsic_test/0.
+-export([load/1]).
+
 -define(P, {'$o', 'Object.prototype'}).
 
 %% Each test runs in a fresh process, which is a fresh realm.
@@ -346,3 +349,24 @@ weak_ref_and_registry_test() ->
                   bouy_jobs:drain(),
                   ?assertEqual(Held, erlang:get(cleaned))
           end).
+
+%% A static record {lazy, Module} builds its record in each realm on the
+%% first read, and only then.
+lazy_intrinsic_test() ->
+    bouy_heap:install_intrinsic('LazyProbe', {lazy, ?MODULE}),
+    Lazy = {'$o', 'LazyProbe'},
+    Read = fun() ->
+                   First = bouy_heap:get(Lazy, <<"x">>),
+                   bouy_heap:set(Lazy, <<"x">>, 2),
+                   {First, bouy_heap:get(Lazy, <<"x">>), get(lazy_loads)}
+           end,
+    ?assertEqual({1, 2, 1}, realm(Read)),
+    ?assertEqual({1, 2, 1}, realm(Read)),
+    persistent_term:erase({bouy_heap, 'LazyProbe'}).
+
+-spec load(atom()) -> tuple().
+load(Id) ->
+    put(lazy_loads, length([x || get(lazy_loads) =/= undefined]) + 1),
+    Record = {object, ?P, #{<<"x">> => 1}, [<<"x">>], #{}, none},
+    put(Id, Record),
+    Record.
