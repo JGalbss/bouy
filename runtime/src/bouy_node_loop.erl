@@ -278,7 +278,11 @@ reject_hook(Type, Promise, Reason) ->
 -spec uncaught(term(), boolean()) -> term().
 uncaught(Error, FromPromise) ->
     Process = process(),
-    Handled = try bouy_heap:call(bouy_heap:get(Process, <<"_fatalException">>), Process, [Error, FromPromise])
+    Fatal = bouy_heap:get(Process, <<"_fatalException">>),
+    %% A program that replaced process._fatalException with no function exits
+    %% with kInvalidFatalExceptionMonkeyPatching, as TriggerUncaughtException does.
+    bouy_heap:is_callable(Fatal) orelse begin print_fatal(Error), really_exit(6) end,
+    Handled = try bouy_heap:call(Fatal, Process, [Error, FromPromise])
               catch
                   error:Reason:Stack -> {thrown, bouy_ref:caught(Reason, Stack)}
               end,

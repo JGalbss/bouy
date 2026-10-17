@@ -5,6 +5,7 @@
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Write as _;
+use std::io::{IsTerminal as _, Read as _};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -72,13 +73,13 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         index += 1;
         match argument.as_str() {
             "--" => break,
-            "-e" | "--eval" | "-p" | "--print" => {
+            "-e" | "--eval" | "-p" | "--print" | "-pe" | "-ep" => {
                 let code = arguments
                     .get(index)
                     .map_or_else(String::new, |code| code.to_string_lossy().into_owned());
                 index += 1;
                 options.exec_argv.extend([argument.clone(), code.clone()]);
-                entry = Some(if argument.starts_with("-e") || argument == "--eval" {
+                entry = Some(if argument == "-e" || argument == "--eval" {
                     Entry::Eval(code)
                 } else {
                     Entry::Print(code)
@@ -112,6 +113,13 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
     }
     let program_arguments = &arguments[index.min(arguments.len())..];
     match entry {
+        Some(Entry::Script(script)) if script == "-" => {
+            // `node - a b` keeps `-` as process.argv[1].
+            let arguments: Vec<OsString> = std::iter::once(OsString::from("-"))
+                .chain(program_arguments.iter().cloned())
+                .collect();
+            run_stdin(&arguments, options)
+        }
         Some(Entry::Script(script)) => {
             let project = match super::compile(Path::new(&script), Semantics::Reference) {
                 Ok(project) => project,
@@ -136,10 +144,22 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             );
             run_source(source, false, program_arguments, &options)
         }
-        None => super::fail(
+        None if std::io::stdin().is_terminal() => super::fail(
             "bouy: a REPL without a script is not supported yet; pass a script, -e, or -p",
         ),
+        None => run_stdin(program_arguments, options),
     }
+}
+
+/// `bouy -` and `bouy` with piped stdin: the script is the text of stdin.
+fn run_stdin(arguments: &[OsString], mut options: Options) -> ExitCode {
+    let mut code = String::new();
+    if let Err(error) = std::io::stdin().read_to_string(&mut code) {
+        return super::fail(&format!("bouy: cannot read the script from stdin: {error}"));
+    }
+    options.eval = true;
+    let module = is_module(&code, &options.exec_argv);
+    run_source(code, module, arguments, &options)
 }
 
 /// Compiles the code as the module `[eval]` of the working directory, so it resolves its

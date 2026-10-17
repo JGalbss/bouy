@@ -6,7 +6,7 @@ mod runtime;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io;
+use std::io::{self, IsTerminal as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -182,6 +182,10 @@ fn main() -> ExitCode {
         && is_node_invocation(first)
     {
         return node::run(&arguments[1..]);
+    }
+    // `bouy` alone with a script on stdin runs it, as `node` does.
+    if arguments.len() == 1 && !io::stdin().is_terminal() {
+        return node::run(&[]);
     }
     // `bouy run <entry> [args...]` passes each argument after the entry to the program as
     // it is, `--help` and `--` included, as `node <entry> [args...]` does.

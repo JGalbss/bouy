@@ -44,7 +44,7 @@ binding() ->
         {<<"resourceUsage">>, F(<<"resourceUsage">>, 0, fun(_, Args) -> resource_usage(A(1, Args)) end)},
         {<<"_getActiveRequests">>, F(<<"_getActiveRequests">>, 0, fun(_, _) -> bouy_heap:new_array([]) end)},
         {<<"_getActiveHandles">>, F(<<"_getActiveHandles">>, 0, fun(_, _) -> bouy_heap:new_array([]) end)},
-        {<<"getActiveResourcesInfo">>, F(<<"getActiveResourcesInfo">>, 0, fun(_, _) -> bouy_heap:new_array([]) end)},
+        {<<"getActiveResourcesInfo">>, F(<<"getActiveResourcesInfo">>, 0, fun(_, _) -> active_resources() end)},
         {<<"_kill">>, F(<<"_kill">>, 0, fun(_, Args) -> kill(A(1, Args), A(2, Args)) end)},
         {<<"_rawDebug">>, F(<<"_rawDebug">>, 0, fun(_, Args) ->
             io:put_chars(bouy_ref:stderr(), [lists:join(" ", [bouy_ref_string:to_utf8(bouy_ref:to_string(X)) || X <- Args]), "\n"]),
@@ -152,3 +152,13 @@ segfault(_This, _Args) -> erlang:halt(139).
 dlopen(_This, _Args) ->
     bouy_node:throw_code('Error', <<"ERR_DLOPEN_FAILED">>,
                          <<"Bouy cannot load native addons (.node files); use the WebAssembly or pure-JavaScript build of the package">>).
+
+%% GetActiveResourcesInfo: a Timeout for each active timer (timeoutInfo[0]
+%% of lib/internal/timers) and an Immediate for each ref'd immediate
+%% (immediateInfo[kRefCount]).
+%% shortcut: the requests and handles of the bindings are not named yet.
+active_resources() ->
+    Timers = bouy_node:binding(<<"timers">>),
+    Timeouts = bouy_heap:get(bouy_heap:get(Timers, <<"timeoutInfo">>), 0),
+    Immediates = bouy_heap:get(bouy_heap:get(Timers, <<"immediateInfo">>), 1),
+    bouy_heap:new_array(lists:duplicate(max(0, Timeouts), <<"Timeout">>) ++ lists:duplicate(max(0, Immediates), <<"Immediate">>)).
