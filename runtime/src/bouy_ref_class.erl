@@ -15,7 +15,7 @@
 -export([base_return/2]).
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
 -export([super_get/3, super_set/4]).
--export([private_name/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
+-export([private_name/1, private_names/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
 
 -define(UNINITIALIZED, '$uninitialized').
 
@@ -244,6 +244,10 @@ key_text(K) ->
 
 -spec private_name(binary()) -> {'#', pos_integer(), binary()}.
 private_name(Name) -> {'#', erlang:unique_integer([positive]), Name}.
+
+%% The private names of a class that declares many, in a tuple.
+-spec private_names([binary()]) -> tuple().
+private_names(Names) -> list_to_tuple([private_name(Name) || Name <- Names]).
 
 %% o.#x
 -spec private_get(term(), tuple()) -> term().

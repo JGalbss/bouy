@@ -120,7 +120,7 @@ impl<'a> Lowerer<'a, '_> {
                         {
                             ("set_literal_proto", self.expr(&property.value))
                         }
-                        PropertyKind::Init if property.shorthand || property.computed => {
+                        PropertyKind::Init if property.shorthand => {
                             ("define_field", self.expr(&property.value))
                         }
                         PropertyKind::Init => (

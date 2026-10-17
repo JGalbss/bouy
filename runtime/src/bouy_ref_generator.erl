@@ -455,7 +455,7 @@ delegate_async(Iterator, Next, Received, Yield, Done, Throw, Return) ->
             end;
         {return, V} ->
             case attempt(fun() -> get_method(Iterator, <<"return">>) end) of
-                {ok, undefined} -> Return(V);
+                {ok, undefined} -> bouy_jobs:await(V, Return, Throw);
                 {ok, Method} -> Call(Method, [V], Return);
                 {error, E2} -> Throw(E2)
             end

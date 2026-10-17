@@ -240,7 +240,8 @@ impl<'a> Lowerer<'a, '_> {
 
     /// A new private name for each `#name` that the class body declares.
     fn declare_privates(&mut self, class: &'a Class<'a>) {
-        let mut names: Vec<(String, String)> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut names: Vec<String> = Vec::new();
         for element in &class.body.body {
             let key = match element {
                 ClassElement::MethodDefinition(method) => &method.key,
@@ -248,25 +249,53 @@ impl<'a> Lowerer<'a, '_> {
                 ClassElement::AccessorProperty(accessor) => &accessor.key,
                 _ => continue,
             };
-            let PropertyKey::PrivateIdentifier(private) = key else {
-                continue;
-            };
-            let name = private.name.to_string();
-            if names.iter().any(|(known, _)| *known == name) {
-                continue;
+            if let PropertyKey::PrivateIdentifier(private) = key
+                && seen.insert(private.name.as_str())
+            {
+                names.push(private.name.to_string());
             }
-            let var = self.fresh("Private");
+        }
+        // A fun can close over at most 255 variables, so many names share one tuple.
+        let scope = if names.len() <= 32 {
+            names
+                .into_iter()
+                .map(|name| {
+                    let var = self.fresh("Private");
+                    self.pre.push(Expr::matches(
+                        Expr::var(var.clone()),
+                        Expr::call(
+                            "bouy_ref_class",
+                            "private_name",
+                            vec![Expr::js_string(&name)],
+                        ),
+                    ));
+                    (name, Expr::var(var))
+                })
+                .collect()
+        } else {
+            let var = self.fresh("Privates");
             self.pre.push(Expr::matches(
                 Expr::var(var.clone()),
                 Expr::call(
                     "bouy_ref_class",
-                    "private_name",
-                    vec![Expr::js_string(&name)],
+                    "private_names",
+                    vec![Expr::List(
+                        names.iter().map(|name| Expr::js_string(name)).collect(),
+                    )],
                 ),
             ));
-            names.push((name, var));
-        }
-        self.privates.push(names);
+            names
+                .into_iter()
+                .enumerate()
+                .map(|(index, name)| {
+                    let position = Expr::Integer(i64::try_from(index + 1).unwrap_or(0));
+                    let key =
+                        Expr::call("erlang", "element", vec![position, Expr::var(var.clone())]);
+                    (name, key)
+                })
+                .collect()
+        };
+        self.privates.push(scope);
     }
 
     /// The key of a private name: the variable of the innermost class that declares it.
@@ -275,10 +304,10 @@ impl<'a> Lowerer<'a, '_> {
             scope
                 .iter()
                 .find(|(known, _)| known == name)
-                .map(|(_, var)| var.clone())
+                .map(|(_, key)| key.clone())
         });
         match found {
-            Some(var) => Expr::var(var),
+            Some(key) => key,
             None => self.unsupported(
                 oxc::span::Span::default(),
                 &format!("the private name `#{name}` outside its class"),

@@ -14,7 +14,7 @@ use oxc::semantic::ScopeFlags;
 
 use super::analyze::{UsesArguments, VarDeclarations};
 use super::class::method_kind;
-use super::context::{ClassFrame, Cont, Frame, Kind, Lowerer, Ret};
+use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, cell_set};
 use crate::erlang::{Clause, Expr};
 
 /// The lowered code of a function.
@@ -330,8 +330,8 @@ impl<'a> Lowerer<'a, '_> {
         self.arrow_value(arrow, None)
     }
 
-    /// An arrow function. With a name from `NamedEvaluation` it gets a record that holds
-    /// its name and length; without one it has none until something needs it.
+    /// An arrow function: a record with its name, from `NamedEvaluation` or empty, and its
+    /// length.
     pub fn arrow_value(
         &mut self,
         arrow: &'a ArrowFunctionExpression<'a>,
@@ -350,17 +350,17 @@ impl<'a> Lowerer<'a, '_> {
             None,
         );
         let fun = code.fun();
-        match name {
-            Some(name) => {
-                let kind = if arrow.r#async { "async" } else { "arrow" };
-                self.bind(Expr::call(
-                    "bouy_ref_class",
-                    "method",
-                    vec![fun, name, int(length_of(&arrow.params)), Expr::atom(kind)],
-                ))
-            }
-            None => self.bind(Expr::call("bouy_ref", "fn", vec![fun])),
-        }
+        let kind = if arrow.r#async { "async" } else { "arrow" };
+        self.bind(Expr::call(
+            "bouy_ref_class",
+            "method",
+            vec![
+                fun,
+                name.unwrap_or_else(|| Expr::js_string("")),
+                int(length_of(&arrow.params)),
+                Expr::atom(kind),
+            ],
+        ))
     }
 
     pub fn function_expression(&mut self, function: &'a Function<'a>) -> Expr {
@@ -383,13 +383,37 @@ impl<'a> Lowerer<'a, '_> {
             }
             uses.0
         };
+        // The name of a function expression is a constant binding inside it, to the
+        // function itself: a cell that is set once the function exists.
+        let own = function
+            .id
+            .as_ref()
+            .filter(|_| function.is_expression())
+            .and_then(|id| id.symbol_id.get())
+            .filter(|symbol| {
+                !self
+                    .semantic
+                    .scoping()
+                    .get_resolved_reference_ids(*symbol)
+                    .is_empty()
+            })
+            .map(|symbol| {
+                let cell = self.fresh("Own");
+                self.pre.push(Expr::matches(
+                    Expr::var(cell.clone()),
+                    Expr::call("bouy_heap", "cell", vec![Expr::undefined()]),
+                ));
+                let saved = self.frame.env.insert(symbol, Local::Cell(cell.clone()));
+                self.class_bindings.push(symbol);
+                (symbol, cell, saved)
+            });
         let fun = self.function_fun(function, Callee::Function);
         let kind = match method_kind(function.r#async, function.generator) {
             "method" if reads_new_target => "normal_nt",
             "method" => "normal",
             other => other,
         };
-        self.bind(Expr::call(
+        let value = self.bind(Expr::call(
             "bouy_ref_class",
             "method",
             vec![
@@ -398,7 +422,16 @@ impl<'a> Lowerer<'a, '_> {
                 int(length_of(&function.params)),
                 Expr::atom(kind),
             ],
-        ))
+        ));
+        if let Some((symbol, cell, saved)) = own {
+            self.class_bindings.pop();
+            match saved {
+                Some(local) => self.frame.env.insert(symbol, local),
+                None => self.frame.env.remove(&symbol),
+            };
+            self.pre.push(cell_set(&cell, value.clone()));
+        }
+        value
     }
 
     /// The Erlang fun of a non-arrow function: `fun(This, Args) -> ... end`, or the maker

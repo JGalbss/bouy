@@ -203,8 +203,8 @@ pub struct Lowerer<'a, 'c> {
     /// The classes of the module, for `'$class'/1`.
     pub classes: Vec<String>,
     /// The private names of the class bodies around the code, innermost last: each
-    /// name and the Erlang variable that holds it.
-    pub privates: Vec<Vec<(String, String)>>,
+    /// name and the Erlang expression of its key.
+    pub privates: Vec<Vec<(String, Expr)>>,
     /// The class bindings of the class bodies around the code, which are constant there.
     pub class_bindings: Vec<SymbolId>,
 }
