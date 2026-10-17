@@ -67,7 +67,7 @@ jobs:
         with:
           name: test262
           path: target/suites/test262
-      # Node's own tests, vendored in tests/node/suite (section 5.7). The nightly job runs
+      # Node's own tests, vendored in tests/node/test (section 5.7). The nightly job runs
       # every id.
       - name: Run Node's tests
         if: success() || failure()

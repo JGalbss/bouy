@@ -1,6 +1,6 @@
 //! Node's own tests (section 5.7 of docs/design/testing.md): the files of `parallel`,
 //! `es-module`, and `sequential` that `scripts/vendor-node-tests.sh` copied into
-//! `tests/node/suite` at the tag of `.node-version`. Each file runs in its own `bouy` OS
+//! `tests/node/test` at the tag of `.node-version`. Each file runs in its own `bouy` OS
 //! process, because these files use `process.exit`, signals, stdio, and child processes. A
 //! file passes when it exits with 0 within the deadline. `config.json` skips the files that
 //! can never apply to Bouy (section 3.5), by path or by a flag of the `// Flags:` line.
@@ -26,6 +26,11 @@ const SUITE: &str = "node";
 /// The command that rewrites the expectation file and the summary.
 pub const UPDATE: &str =
     "cargo build --release -p bouy-cli && cargo run --release -p bouy-suites -- node --update";
+
+/// The directory of `tests/node` that holds Node's `test/`. Each file runs from
+/// `tests/node` as `test/<id>`, as Node's runner runs it from the root of the repository,
+/// because some tests read the name of their directory or `process.cwd()`.
+const SUITE_DIRECTORY: &str = "test";
 
 /// The directories of test files. `sequential` runs one file at a time.
 const DIRECTORIES: [&str; 3] = ["parallel", "es-module", "sequential"];
@@ -127,7 +132,7 @@ const STDERR_LINES: usize = 20;
 
 #[derive(Debug)]
 pub struct Options {
-    /// `tests/node`: `config.json`, `suite/`, `expectations.txt`, and `summary.json`.
+    /// `tests/node`: `config.json`, `test/`, `expectations.txt`, and `summary.json`.
     pub directory: PathBuf,
     /// `target/suites/node`: the regenerated files, `results.json`, and `comment.md`.
     pub output: PathBuf,
@@ -368,7 +373,6 @@ fn module_of(id: &str) -> String {
 /// What the executions share.
 struct Context<'a> {
     options: &'a Options,
-    suite: PathBuf,
     scratch: PathBuf,
     deadline: Duration,
     /// The entry files of `test/common` that `bouy check` rejects.
@@ -400,7 +404,7 @@ pub fn run(options: &Options) -> Result<Report, String> {
     let mut durations_ms = BTreeMap::new();
 
     let started = Instant::now();
-    let tests = load_tests(&options.directory.join("suite"), &config)?;
+    let tests = load_tests(&options.directory.join(SUITE_DIRECTORY), &config)?;
     durations_ms.insert("load".to_owned(), started.elapsed().as_millis());
 
     let expected = expectations::read(&options.directory.join("expectations.txt"))?;
@@ -498,12 +502,10 @@ fn execute_selected<'a>(
         .enumerate()
         .filter(|(_, test)| is_selected(test, options, expected.get(&test.id)))
         .partition(|(_, test)| test.id.starts_with(SEQUENTIAL));
-    let suite = options.directory.join("suite");
     let scratch = options.output.join("scratch");
     let context = Context {
         options,
-        rejected_common: rejected_common(options, &suite, &scratch)?,
-        suite,
+        rejected_common: rejected_common(options, &scratch)?,
         scratch,
         deadline: Duration::from_millis(config.timeout_ms),
     };
@@ -528,11 +530,7 @@ fn is_selected(test: &Test, options: &Options, expected: Option<&Entry>) -> bool
 
 /// The entry files of `test/common` that `bouy check` rejects. Each one is a blocker of the
 /// rejected files that load it, as a harness file of test262 is.
-fn rejected_common(
-    options: &Options,
-    suite: &Path,
-    scratch: &Path,
-) -> Result<Vec<&'static str>, String> {
+fn rejected_common(options: &Options, scratch: &Path) -> Result<Vec<&'static str>, String> {
     let mut rejected = Vec::new();
     for (index, file) in COMMON.into_iter().enumerate() {
         let temporary = scratch.join(format!("common-{index}"));
@@ -540,10 +538,10 @@ fn rejected_common(
             .map_err(|error| format!("{}: {error}", temporary.display()))?;
         let mut command = Command::new(&options.bouy);
         bouy_env(&mut command, &temporary)
-            .current_dir(suite)
+            .current_dir(&options.directory)
             .arg("check")
             .args(ENGINE)
-            .arg(file);
+            .arg(Path::new(SUITE_DIRECTORY).join(file));
         if !crate::run(&mut command, Duration::from_secs(60))
             .output
             .status
@@ -555,7 +553,7 @@ fn rejected_common(
     Ok(rejected)
 }
 
-/// Runs one file with `bouy run` from the suite directory, or skips it.
+/// Runs one file with `bouy run` from `tests/node`, or skips it.
 fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, String> {
     if let Some(reason) = &test.skip {
         return Ok(Execution {
@@ -573,7 +571,7 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
     // test/common/tmpdir.js makes its directory under NODE_TEST_DIR, so a run never writes
     // into the vendored tree.
     bouy_env(&mut command, &temporary)
-        .current_dir(&context.suite)
+        .current_dir(&context.options.directory)
         .env("BOUY_RESULT_FILE", &result_file)
         .env("NODE_TEST_KNOWN_GLOBALS", "0")
         .env("NODE_SKIP_FLAG_CHECK", "1")
@@ -582,7 +580,7 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
         .envs(test.env.iter().map(|(name, value)| (name, value)))
         .arg("run")
         .args(ENGINE)
-        .arg(&test.id);
+        .arg(Path::new(SUITE_DIRECTORY).join(&test.id));
     let started = Instant::now();
     let finished = crate::run(&mut command, context.deadline);
     let time_ms = started.elapsed().as_millis();

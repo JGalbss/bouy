@@ -1,13 +1,13 @@
 #!/bin/sh
 # Vendors Node's own tests (section 5.7 of docs/design/testing.md). It fetches nodejs/node at
 # the tag of `.node-version` and copies `test/common`, `test/fixtures`, `test/parallel`,
-# `test/sequential`, and `test/es-module` into tests/node/suite, with Node's LICENSE. It copies
+# `test/sequential`, and `test/es-module` into tests/node/test, with Node's LICENSE. It copies
 # every file of these directories, so the denominator is in the repository.
 #
 # It writes tests/node/suite.sha256, one `shasum -a 256` line for each upstream file, and
 # records the tag and the commit in tests/node/config.json. The rule check of
 # crates/bouy-suites/tests/rules.rs hashes each vendored file against suite.sha256, so a test
-# file stays byte-identical. Bouy edits only files of tests/node/suite/common, each with a
+# file stays byte-identical. Bouy edits only files of tests/node/test/common, each with a
 # `// Bouy:` comment and a line in tests/node/edited.txt. A new vendor run overwrites those
 # edits; the script names the files of edited.txt, and `git diff` shows the edits to apply
 # again.
@@ -22,7 +22,7 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 tag="v$(cat "$root/.node-version")"
 node_dir="$root/tests/node"
-suite="$node_dir/suite"
+suite="$node_dir/test"
 directories="common fixtures parallel sequential es-module"
 
 work=$(mktemp -d)

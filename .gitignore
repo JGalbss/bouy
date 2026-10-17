@@ -2,7 +2,7 @@ node_modules/
 # The resolution cases of tests/npm commit their packages.
 !/tests/npm/**/node_modules/
 # Node's own tests are vendored byte for byte, fixtures included.
-!/tests/node/suite/**/node_modules/
+!/tests/node/test/**/node_modules/
 target/
 .turbo/
 .bouy/

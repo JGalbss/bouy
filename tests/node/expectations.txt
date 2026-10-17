@@ -2617,7 +2617,7 @@ parallel/test-parse-args.mjs fail
 parallel/test-parse-test-envs.js skip
 parallel/test-parse-test-only-envs.js fail
 parallel/test-path-basename.js pass
-parallel/test-path-dirname.js fail
+parallel/test-path-dirname.js pass
 parallel/test-path-extname.js pass
 parallel/test-path-glob.js pass
 parallel/test-path-isabsolute.js pass

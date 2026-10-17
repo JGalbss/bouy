@@ -22,7 +22,7 @@ const SKIPPED: [&str; 8] = [
 
 /// The vendored upstream trees. Rule 7 keeps them byte-identical, so no rule reads their
 /// code, and the `node` shim stops any call to node at run time.
-const UPSTREAM: [&str; 1] = ["tests/node/suite/"];
+const UPSTREAM: [&str; 2] = ["tests/node/test/", "runtime/vendor/node/"];
 
 /// The files that may name node as a program: the oracle tools, the test that checks that
 /// the `node` shim answers, and this file, which names the patterns.
@@ -190,7 +190,7 @@ fn sha256(path: &Path) -> String {
     })
 }
 
-/// Rules 2 and 5: each file of `tests/node/suite` matches its upstream hash in
+/// Rules 2 and 5: each file of `tests/node/test` matches its upstream hash in
 /// `tests/node/suite.sha256`, which `scripts/vendor-node-tests.sh` writes from the upstream
 /// checkout, unless `tests/node/edited.txt` lists it with a reason. Only files of `common/`
 /// may change, and a line of `edited.txt` for an unchanged file is stale.
@@ -223,10 +223,10 @@ fn vendored_node_tests_match_their_upstream_hash() {
         })
         .collect();
     // Node's fixtures hold node_modules directories, so this walk skips only Finder files.
-    let vendored = files_except(&node, "suite", &[".DS_Store"]);
+    let vendored = files_except(&node, "test", &[".DS_Store"]);
     let mut wrong: Vec<String> = Vec::new();
     for file in &vendored {
-        let path = file.strip_prefix("suite/").unwrap_or(file);
+        let path = file.strip_prefix("test/").unwrap_or(file);
         let matches = upstream.get(path) == Some(&sha256(&node.join(file)).as_str());
         match (matches, edited.contains(path)) {
             (false, false) => wrong.push(format!("{path}: differs from upstream")),
@@ -236,7 +236,7 @@ fn vendored_node_tests_match_their_upstream_hash() {
     }
     let present: BTreeSet<&str> = vendored
         .iter()
-        .map(|file| file.strip_prefix("suite/").unwrap_or(file))
+        .map(|file| file.strip_prefix("test/").unwrap_or(file))
         .collect();
     wrong.extend(
         upstream
@@ -246,7 +246,7 @@ fn vendored_node_tests_match_their_upstream_hash() {
     );
     assert!(
         wrong.is_empty(),
-        "tests/node/suite differs from tests/node/suite.sha256; run scripts/vendor-node-tests.sh, \
+        "tests/node/test differs from tests/node/suite.sha256; run scripts/vendor-node-tests.sh, \
          or list an edit of common/ in tests/node/edited.txt:\n{}",
         wrong.join("\n")
     );

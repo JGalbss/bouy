@@ -1,15 +1,15 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "804a63c92fd721dc2e043daa926358bcdcdac715",
+  "updated": "d0df4dfdd5da9e32b9e9faab2ddf901f2025bd80",
   "total": 4419,
   "outcomes": {
-    "pass": 1502,
+    "pass": 1503,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 2319,
+    "fail": 2318,
     "timeout": 4,
     "harness_error": 0,
     "crash": 11
@@ -22,9 +22,9 @@
         "fail": 180
       },
       "parallel": {
-        "pass": 1443,
+        "pass": 1444,
         "skip": 545,
-        "fail": 2078,
+        "fail": 2077,
         "timeout": 3,
         "crash": 10
       },
@@ -41,9 +41,9 @@
         "skip": 343
       },
       "public": {
-        "pass": 1502,
+        "pass": 1503,
         "skip": 240,
-        "fail": 2319,
+        "fail": 2318,
         "timeout": 4,
         "crash": 11
       }
@@ -156,8 +156,7 @@
         "crash": 2
       },
       "path": {
-        "pass": 16,
-        "fail": 1
+        "pass": 17
       },
       "perf_hooks": {
         "pass": 13,

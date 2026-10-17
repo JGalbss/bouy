@@ -146,7 +146,7 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
 fn node_modules(runtime: &Path, out: &Path) -> Vec<PathBuf> {
     let list = runtime.join("node/builtins.txt");
     println!("cargo:rerun-if-changed={}", list.display());
-    println!("cargo:rerun-if-changed={}", runtime.join("node").display());
+    println!("cargo:rerun-if-changed={}", runtime.join("node/").display());
     let text = fs::read_to_string(&list)
         .unwrap_or_else(|error| panic!("{} lists the Node built-ins: {error}", list.display()));
     let ids: Vec<&str> = text
@@ -198,7 +198,7 @@ fn node_parameters(id: &str) -> &'static str {
 }
 
 fn node_module(runtime: &Path, id: &str, out: &Path) -> PathBuf {
-    let own = runtime.join("node").join(format!("{id}.js"));
+    let own = runtime.join(format!("node/{id}.js"));
     let path = if own.is_file() {
         own
     } else if let Some(dep) = id.strip_prefix("internal/deps/") {

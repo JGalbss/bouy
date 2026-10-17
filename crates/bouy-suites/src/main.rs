@@ -34,7 +34,7 @@ enum Suite {
         #[arg(long)]
         checkout: Option<PathBuf>,
     },
-    /// Node's own tests, vendored in tests/node/suite at the tag of .node-version.
+    /// Node's own tests, vendored in tests/node/test at the tag of .node-version.
     Node(Upstream),
     /// The API surface of tests/node/surface.json, probed on Bouy.
     NodeSurface(Surface),

@@ -60,7 +60,7 @@ A binding function that only throws must call a function, such as `bouy_node:thr
 
 1. Build: `cargo build --release -p bouy-cli -p bouy-suites`.
 2. Run the module's files: `target/release/bouy-suites node --filter test-<module> --bouy $PWD/target/release/bouy`. The report gives the first lines of stderr for each failure. The suite runs on the reference engine (`bouy run --semantics reference`).
-3. Run one file by hand from `tests/node/suite` with the environment that the report prints. `BOUY_NODE_DEBUG=1` traces the bootstrap, prints the Erlang stack of the last error that the runtime threw, and traces the loop. The generated Erlang of an id is `~/.cache/bouy/runtime-*/src/bouy_node@<id>.erl`.
+3. Run one file by hand from `tests/node`, as `test/<id>`, with the environment that the report prints. `BOUY_NODE_DEBUG=1` traces the bootstrap, prints the Erlang stack of the last error that the runtime threw, and traces the loop. The generated Erlang of an id is `~/.cache/bouy/runtime-*/src/bouy_node@<id>.erl`.
 4. Fix the cause where it lives: a missing binding member in its `bouy_binding_<name>.erl` (create the file to replace the stub), an engine gap in the compiler or the runtime with a test of `tests/reference`, and a difference of Bouy in `runtime/node/<id>.js` only where Node's lib depends on V8 itself.
 5. Record the result: `bouy-suites node --update --filter test-<module>` rewrites the lines of those files in `tests/node/expectations.txt`, and `bouy-suites node-surface --update --filter <module>` the surface. Never weaken an expectation to pass.
 6. Each VM of a runner has `BOUY_MAX_MEMORY=1G`, and a runner starts at most 8 at once (AGENTS.md).
