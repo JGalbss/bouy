@@ -16,7 +16,8 @@
 %% change of the mode, which bouy_registry announces, or for the end of the
 %% supervisor of the actor. It never polls.
 
--export([start/1, start_link/1, spawn_options/0, init_alone/2, class_functions/2, call/3, cast/3, offer/3, stop/1, snapshot/1]).
+-export([start/1, start_link/1, spawn_options/1, init_alone/2, class_functions/2, call/3, cast/3, offer/3, stop/1, snapshot/1]).
+-export([report_out_of_memory/1]).
 -export([context/0, adopt/1, within/2, live/1, chain/0, current/0, current_id/0, owner/0, constructing/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
@@ -26,7 +27,10 @@
 %% The message queue of an actor stays off its heap, so a mailbox that fills
 %% to its capacity does not grow the heap that each garbage collection copies.
 -define(SPAWN, [{message_queue_data, off_heap}]).
--define(INFO, [supervisor, group, module, class, args, name, mailbox, restart]).
+-define(INFO, [supervisor, group, module, class, args, name, mailbox, restart, max_memory]).
+%% A group ends a child with an exit signal `shutdown`, so the reason `killed`
+%% names the memory limit of the process, unless stop() marked the actor first.
+-define(SHUTDOWN, 5000).
 
 -type ref() :: {'$ref', pos_integer()}.
 -type error_value() :: #{'$error' := list(), binary() => term()}.
@@ -38,6 +42,7 @@
     name := binary() | undefined,
     mailbox := bouy_registry:mailbox(),
     restart := bouy_registry:restart(),
+    max_memory => pos_integer() | infinity,
     supervisor := pid(),
     group := alone | tree,
     chain => [pos_integer()],
@@ -78,14 +83,13 @@
 %% actor is stopped. A spawned actor runs as a process linked to bouy_keeper;
 %% a child of supervise() runs under its group supervisor.
 -spec start(spec()) -> ok | {error, error_value()}.
-start(#{id := Id, group := alone} = Spec) ->
-    {Pid, Monitor} = proc_lib:spawn_opt(?MODULE, init_alone, [Spec, self()], [monitor | ?SPAWN]),
+start(#{group := alone} = Spec) ->
+    {Pid, Monitor} = proc_lib:spawn_opt(?MODULE, init_alone, [Spec, self()], [monitor | spawn_options(Spec)]),
     receive
         {started, Pid, Outcome} ->
             true = demonitor(Monitor, [flush]),
             Outcome;
         {'DOWN', Monitor, process, Pid, Reason} ->
-            _ = bouy_registry:mark_stopped(Id),
             ended_during_constructor(Spec, Reason)
     end;
 start(#{id := Id, supervisor := Group, restart := Restart} = Spec) ->
@@ -93,7 +97,7 @@ start(#{id := Id, supervisor := Group, restart := Restart} = Spec) ->
         id => Id,
         start => {?MODULE, start_link, [Spec]},
         restart => otp_restart(Restart),
-        shutdown => brutal_kill
+        shutdown => ?SHUTDOWN
     },
     try supervisor:start_child(Group, Child) of
         {ok, _Pid} ->
@@ -101,8 +105,9 @@ start(#{id := Id, supervisor := Group, restart := Restart} = Spec) ->
         {error, {{constructor_failed, Cause}, _Child}} ->
             _ = bouy_registry:mark_stopped(Id),
             {error, actor_failed(label(Spec), <<"constructor">>, Cause)};
+        {error, {killed, _Child}} ->
+            ended_during_constructor(Spec, killed);
         {error, Reason} ->
-            _ = bouy_registry:mark_stopped(Id),
             ended_during_constructor(Spec, Reason)
     catch
         %% stop() killed the group while the constructor ran.
@@ -112,13 +117,20 @@ start(#{id := Id, supervisor := Group, restart := Restart} = Spec) ->
     end.
 
 %% stop() ended the actor while its constructor ran, as when a constructor
-%% stops its own actor: the actor exists, stopped. Any other end fails the
-%% start.
-ended_during_constructor(_Spec, killed) ->
-    ok;
-ended_during_constructor(Spec, Reason) ->
-    Message = unicode:characters_to_binary(io_lib:format("~0tp", [Reason])),
-    {error, actor_failed(label(Spec), <<"constructor">>, bouy_error:new(<<"Error">>, Message))}.
+%% stops its own actor: the actor exists, stopped. A kill without the mark of
+%% stop() is the memory limit. Any other end fails the start.
+ended_during_constructor(#{id := Id} = Spec, Reason) ->
+    Marked = bouy_registry:mode(Id) =:= stopped,
+    _ = bouy_registry:mark_stopped(Id),
+    case {Reason, Marked} of
+        {killed, true} ->
+            ok;
+        {killed, false} ->
+            {error, report_out_of_memory(Spec)};
+        _ ->
+            Message = unicode:characters_to_binary(io_lib:format("~0tp", [Reason])),
+            {error, actor_failed(label(Spec), <<"constructor">>, bouy_error:new(<<"Error">>, Message))}
+    end.
 
 %% A crash exits with a {shutdown, _} reason, and OTP restarts a child after
 %% such an exit only when the child is permanent. An actor never exits
@@ -128,11 +140,20 @@ otp_restart(_) -> permanent.
 
 -spec start_link(spec()) -> gen_server:start_ret().
 start_link(Spec) ->
-    gen_server:start_link(?MODULE, Spec, [{spawn_opt, ?SPAWN}]).
+    gen_server:start_link(?MODULE, Spec, [{spawn_opt, spawn_options(Spec)}]).
 
-%% The spawn options of an actor process.
--spec spawn_options() -> [erlang:spawn_opt_option()].
-spawn_options() ->
+%% The spawn options of an actor process. A memory limit kills the process at
+%% the collection that finds its heap and its binaries past the limit.
+-spec spawn_options(#{max_memory => pos_integer() | infinity, _ => _}) -> [erlang:spawn_opt_option()].
+spawn_options(#{max_memory := Bytes}) when is_integer(Bytes) ->
+    MaxHeap = #{
+        size => Bytes div erlang:system_info(wordsize),
+        kill => true,
+        error_logger => false,
+        include_shared_binaries => true
+    },
+    [{max_heap_size, MaxHeap} | ?SPAWN];
+spawn_options(_Spec) ->
     ?SPAWN.
 
 %% The process of a spawned actor, on its first start (Starter waits for the
@@ -193,6 +214,12 @@ request(Id, Method, Args, Chain, Dead) ->
         exit:{noproc, _} ->
             release(Counter),
             request(Id, Method, Args, Chain, Pid);
+        exit:{killed, {gen_server, call, _}} ->
+            release(Counter),
+            case known(Id) of
+                #{mode := stopped} = Actor -> raise(stopped(Actor));
+                Actor -> raise(out_of_memory(Actor))
+            end;
         exit:{_, {gen_server, call, _}} ->
             release(Counter),
             raise(stopped(known(Id)))
@@ -465,9 +492,11 @@ stop_process(#{group := tree, supervisor := Group, id := Id}) ->
     end,
     bouy_registry:drop_waits(Id).
 
+%% An actor traps no exits, so the signal ends it at once, and bouy_keeper
+%% skips the reason without a look at the table.
 end_process(Pid) when is_pid(Pid) ->
     Monitor = monitor(process, Pid),
-    true = exit(Pid, kill),
+    true = exit(Pid, {shutdown, stopped}),
     receive
         {'DOWN', Monitor, process, Pid, _} -> ok
     end;
@@ -591,6 +620,14 @@ watch(#{id := Id, group := tree, restart := temporary}, _Starts) ->
 watch(_Spec, _Starts) ->
     ok.
 
+%% bouy_keeper prints the crash line when the memory limit kills a child of a
+%% group, since the group restarts it. It watches a spawned actor through its
+%% link already.
+watch_memory(#{group := tree, max_memory := Bytes, id := Id}) when is_integer(Bytes) ->
+    bouy_keeper:watch_memory(self(), Id);
+watch_memory(_Spec) ->
+    ok.
+
 %% Only the first start runs inside the call to spawn(), so only that
 %% constructor waits on the chain of the spawner.
 first_chain(1, #{id := Id, chain := Chain}) -> [Id | Chain];
@@ -613,6 +650,7 @@ construct(Spec, Counter, Chain) ->
     },
     try Module:New(Args) of
         This ->
+            ok = watch_memory(Spec),
             ok = bouy_registry:ready(Id, self(), Counter, Mailbox),
             {ok, State#state{this = This}}
     catch
@@ -754,6 +792,30 @@ actor_failed(Label, Method, Cause) ->
 stopped(Actor) ->
     Label = label(Actor),
     tagged(<<"ActorStopped">>, Label, <<Label/binary, " is stopped">>, #{}).
+
+%% Prints the crash line of an actor that its memory limit killed, and returns
+%% the error.
+-spec report_out_of_memory(#{class := binary(), name := binary() | undefined, id := pos_integer(), _ => _}) ->
+    error_value().
+report_out_of_memory(Actor) ->
+    Error = out_of_memory(Actor),
+    io:format(standard_error, "bouy: ~ts crashed: ~ts~n", [label(Actor), bouy_rt:to_string(Error)]),
+    Error.
+
+%% The error of an actor that the memory limit killed: its own maxMemory, or
+%% the limit of every process, which BOUY_MAX_MEMORY sets.
+out_of_memory(Actor) ->
+    Label = label(Actor),
+    Limit =
+        case maps:get(max_memory, Actor, infinity) of
+            infinity ->
+                {max_heap_size, #{size := Words}} = erlang:system_info(max_heap_size),
+                Words * erlang:system_info(wordsize);
+            Bytes ->
+                Bytes
+        end,
+    Message = <<Label/binary, " used more than its memory limit of ", (integer_to_binary(Limit))/binary, " bytes">>,
+    tagged(<<"ActorOutOfMemory">>, Label, Message, #{<<"limit">> => Limit}).
 
 mailbox_full(Actor) ->
     Label = label(Actor),

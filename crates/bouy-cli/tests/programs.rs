@@ -366,6 +366,24 @@ fn a_program_past_the_memory_limit_stops_with_status_1() {
 }
 
 #[test]
+fn an_actor_past_max_memory_restarts_and_spares_the_others() {
+    check_on_vm(
+        &mut bouy("actor-memory-limit.ts"),
+        &Outcome {
+            stdout: "ActorOutOfMemory: Hoarder hoarder used more than its memory limit of \
+                     16777216 bytes\n\
+                     the counter still answers: 2\n\
+                     the hoarder restarted empty: 0\n\
+                     hoarder: running, restarts 1\n\
+                     counter: running, restarts 0\n",
+            stderr: "bouy: Hoarder hoarder crashed: ActorOutOfMemory: Hoarder hoarder used more \
+                     than its memory limit of 16777216 bytes\n",
+            status: 0,
+        },
+    );
+}
+
+#[test]
 fn program_arguments_reach_process_argv() {
     check_on_vm(
         bouy("arguments.ts").args(["one", "--two", "three four"]),

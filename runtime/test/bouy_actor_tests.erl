@@ -35,7 +35,9 @@ actor_test_() ->
         {"inspect lists each actor", fun inspect_lists_actors/0},
         {"a throwing constructor fails spawn", fun throwing_constructor_fails_spawn/0},
         {"self returns the ref of the actor", fun self_returns_ref/0},
-        {"a request count belongs to one start of the actor", fun request_count_per_start/0}
+        {"a request count belongs to one start of the actor", fun request_count_per_start/0},
+        {"an actor past maxMemory fails with ActorOutOfMemory and restarts", fun memory_limit_restarts/0},
+        {"a child past maxMemory restarts in its group", fun child_memory_limit_restarts/0}
     ]}.
 
 call_returns_result() ->
@@ -370,3 +372,47 @@ request_count_per_start() ->
     ?assertNotEqual(First, Second),
     ?assertEqual(0, atomics:get(Second, 1)),
     ?assertEqual(forgotten, bouy_registry:mode(999999999)).
+
+%% Each recorded chunk is a 1 MiB binary outside the heap, which the limit
+%% counts, so the actor dies at the collection after the eighth.
+memory_limit_restarts() ->
+    {'$ref', Id} = Leaky = bouy:spawn([counter(), #{<<"maxMemory">> => <<"8M">>, <<"args">> => [5]}]),
+    Healthy = bouy:spawn([counter()]),
+    {Failure, Text} = capture_stderr(fun() ->
+        Failed = thrown(fun() -> record_chunks(Leaky, 64) end),
+        %% The next call waits for the restart, which the keeper starts after the crash line.
+        ?assertEqual(5, bouy_actor:call(Leaky, <<"get">>, [])),
+        Failed
+    end),
+    Label = <<"Counter #", (integer_to_binary(Id))/binary>>,
+    Message = <<Label/binary, " used more than its memory limit of 8388608 bytes">>,
+    ?assertMatch(
+        #{<<"_tag">> := <<"ActorOutOfMemory">>, <<"actor">> := Label, <<"limit">> := 8388608, <<"message">> := Message},
+        Failure
+    ),
+    ?assertEqual(<<"bouy: ", Label/binary, " crashed: ActorOutOfMemory: ", Message/binary, "\n">>, Text),
+    ?assertMatch(#{<<"restarts">> := 1, <<"status">> := <<"running">>}, entry(Leaky)),
+    ?assertEqual(1, bouy_actor:call(Healthy, <<"inc">>, [])),
+    ?assertMatch(#{<<"name">> := <<"TypeError">>}, thrown(fun() -> bouy:spawn([counter(), #{<<"maxMemory">> => <<"lots">>}]) end)),
+    ?assertMatch(#{<<"name">> := <<"RangeError">>}, thrown(fun() -> bouy:spawn([counter(), #{<<"maxMemory">> => 16}]) end)).
+
+child_memory_limit_restarts() ->
+    #{<<"leaky">> := Leaky, <<"steady">> := Steady} = bouy:supervise([
+        #{<<"children">> => #{
+            <<"leaky">> => bouy:child([counter(), #{<<"maxMemory">> => 8 * 1024 * 1024}]),
+            <<"steady">> => bouy:child([counter()])
+        }}
+    ]),
+    3 = bouy_actor:call(Steady, <<"inc">>, [3]),
+    {Tag, Text} = capture_stderr(fun() ->
+        Thrown = tag(fun() -> record_chunks(Leaky, 64) end),
+        await(fun() -> maps:get(<<"restarts">>, entry(Leaky)) =:= 1 end),
+        ?assertEqual(0, bouy_actor:call(Leaky, <<"get">>, [])),
+        Thrown
+    end),
+    ?assertEqual(<<"ActorOutOfMemory">>, Tag),
+    ?assertMatch(<<"bouy: Counter leaky crashed: ActorOutOfMemory: ", _/binary>>, Text),
+    ?assertEqual(3, bouy_actor:call(Steady, <<"get">>, [])).
+
+record_chunks(Ref, Count) ->
+    [bouy_actor:call(Ref, <<"record">>, [binary:copy(<<"x">>, 1024 * 1024)]) || _ <- lists:seq(1, Count)].

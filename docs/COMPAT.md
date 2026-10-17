@@ -15,7 +15,7 @@ The pass rate of each test tier that exists today. `bouy-suites compat` writes t
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/equivalence.rs` |
 | corpora | equivalence/ai | Node 25.9.0 | 7 | 7 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/ai.rs` |
-| corpora | programs |  | 32 | 32 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/programs.rs` |
+| corpora | programs |  | 33 | 33 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/programs.rs` |
 | corpora | npm |  | 0 | 19 | 0.0% | 0 | 0 |  | `crates/bouy-cli/tests/ecosystem.rs` |
 | corpora | equivalence/ai-zod |  | 0 | 4 | 0.0% | 1 | 0 |  | `crates/bouy-cli/tests/ecosystem.rs` |
 | corpora | equivalence/anthropic |  | 0 | 2 | 0.0% | 0 | 0 |  | `crates/bouy-cli/tests/ecosystem.rs` |
@@ -1370,7 +1370,7 @@ The test of each corpus fails when a program breaks its rule, so these counts ho
 | conformance | 72 | pass 72 | each program prints what Node printed | `crates/bouy-cli/tests/conformance.rs` |
 | equivalence/effect | 23 | pass 23 | each program prints what Node printed | `crates/bouy-cli/tests/equivalence.rs` |
 | equivalence/ai | 7 | pass 7 | each program prints what Node printed | `crates/bouy-cli/tests/ai.rs` |
-| programs | 32 | pass 32 | each test checks the contract | `crates/bouy-cli/tests/programs.rs` |
+| programs | 33 | pass 33 | each test checks the contract | `crates/bouy-cli/tests/programs.rs` |
 | npm | 19 | rejected 19 | each program has the outcome of `tests/npm/expectations.txt` | `crates/bouy-cli/tests/ecosystem.rs` |
 | equivalence/ai-zod | 4 | rejected 3, fail 1 | each program has the outcome of `tests/equivalence/ai-zod/expectations.txt` | `crates/bouy-cli/tests/ecosystem.rs` |
 | equivalence/anthropic | 2 | rejected 2 | each program has the outcome of `tests/equivalence/anthropic/expectations.txt` | `crates/bouy-cli/tests/ecosystem.rs` |

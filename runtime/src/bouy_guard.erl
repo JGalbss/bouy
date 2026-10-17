@@ -11,7 +11,7 @@
 %%   binaries outside any heap, also stops the VM.
 %% Either way the VM prints one line to stderr and halts with status 1.
 
--export([start/0, limit/1]).
+-export([start/0, limit/1, bytes/1]).
 
 -define(DEFAULT_LIMIT, 4 * 1024 * 1024 * 1024).
 -define(INTERVAL_MS, 100).
@@ -37,19 +37,28 @@ start() ->
 %% the default.
 -spec limit(string()) -> pos_integer().
 limit(Text) ->
+    case bytes(Text) of
+        {ok, Bytes} -> Bytes;
+        error -> ?DEFAULT_LIMIT
+    end.
+
+%% A positive number of bytes with an optional K, M, G, or T suffix (powers of 1024),
+%% such as "64M", which BOUY_MAX_MEMORY and the maxMemory option of an actor take.
+-spec bytes(string()) -> {ok, pos_integer()} | error.
+bytes(Text) ->
     case string:to_integer(string:trim(Text)) of
         {Number, Suffix} when is_integer(Number), Number > 0 ->
             scale(Number, string:uppercase(Suffix));
         _ ->
-            ?DEFAULT_LIMIT
+            error
     end.
 
-scale(Number, "") -> Number;
-scale(Number, "K") -> Number * 1024;
-scale(Number, "M") -> Number * 1024 * 1024;
-scale(Number, "G") -> Number * 1024 * 1024 * 1024;
-scale(Number, "T") -> Number * 1024 * 1024 * 1024 * 1024;
-scale(_Number, _Suffix) -> ?DEFAULT_LIMIT.
+scale(Number, "") -> {ok, Number};
+scale(Number, "K") -> {ok, Number * 1024};
+scale(Number, "M") -> {ok, Number * 1024 * 1024};
+scale(Number, "G") -> {ok, Number * 1024 * 1024 * 1024};
+scale(Number, "T") -> {ok, Number * 1024 * 1024 * 1024 * 1024};
+scale(_Number, _Suffix) -> error.
 
 watch(Main, Limit) ->
     receive

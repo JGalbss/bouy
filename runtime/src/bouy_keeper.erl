@@ -12,15 +12,20 @@
 %% that constructor ends. It marks the actors of a supervise() group stopped
 %% when the group ends, and a temporary child of a group when its process
 %% ends, since no supervisor restarts it.
+%%
+%% An actor process that dies with the reason `killed`, unmarked by stop(),
+%% passed its memory limit: the keeper prints its crash line and restarts a
+%% spawned actor. The group of a child restarts the child.
 
--export([start_link/0, own/2, watch_group/2, watch_temporary/2]).
+-export([start_link/0, own/2, watch_group/2, watch_temporary/2, watch_memory/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(INTENSITY, 3).
 -define(PERIOD, 5).
 
 -type owned() :: {actor, pos_integer()} | {group, pid(), [pos_integer()]}.
--type watch() :: {owner, pid(), [owned()]} | {group, [pos_integer()]} | {temporary, pos_integer(), pid()}.
+-type watch() ::
+    {owner, pid(), [owned()]} | {group, [pos_integer()]} | {temporary, pos_integer(), pid()} | {memory, pos_integer()}.
 -record(keeper, {
     %% The restart times of each actor that restarted, in seconds, the latest first.
     restarts = #{} :: #{pos_integer() => [integer()]},
@@ -45,12 +50,20 @@ watch_group(Group, Ids) ->
 watch_temporary(Pid, Id) ->
     gen_server:cast(?MODULE, {watch, Pid, {temporary, Id, Pid}}).
 
+%% Prints the crash line when the memory limit kills process Pid of actor Id.
+%% A call, so the watch exists before the actor takes a request.
+-spec watch_memory(pid(), pos_integer()) -> ok.
+watch_memory(Pid, Id) ->
+    gen_server:call(?MODULE, {watch, Pid, {memory, Id}}).
+
 -spec init([]) -> {ok, #keeper{}}.
 init([]) ->
     process_flag(trap_exit, true),
     {ok, #keeper{}}.
 
 -spec handle_call(term(), gen_server:from(), #keeper{}) -> {reply, ok, #keeper{}}.
+handle_call({watch, Pid, Watch}, _From, #keeper{watches = Watches} = State) ->
+    {reply, ok, State#keeper{watches = Watches#{monitor(process, Pid) => Watch}}};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -70,18 +83,19 @@ handle_cast({watch, Pid, Watch}, #keeper{watches = Watches} = State) ->
 -spec handle_info(term(), #keeper{}) -> {noreply, #keeper{}}.
 handle_info({'EXIT', _Pid, {shutdown, {crashed, Id}}}, State) ->
     {noreply, restart(Id, State)};
-handle_info({'EXIT', _Pid, Reason}, State) when Reason =:= killed; Reason =:= {shutdown, stopped} ->
+handle_info({'EXIT', _Pid, {shutdown, stopped}}, State) ->
     {noreply, State};
-handle_info({'EXIT', Pid, _Abnormal}, State) ->
-    %% A runtime fault, not a JavaScript exception: the actor restarts as after a crash.
+handle_info({'EXIT', Pid, Reason}, State) ->
+    %% A runtime fault, not a JavaScript exception, or the memory limit: the actor
+    %% restarts as after a crash.
     case bouy_registry:id_of(Pid) of
-        {ok, Id} -> {noreply, restart(Id, State)};
+        {ok, Id} -> {noreply, fault(Id, Reason, State)};
         error -> {noreply, State}
     end;
-handle_info({'DOWN', Monitor, process, _Pid, _Reason}, #keeper{watches = Watches, owners = Owners} = State) ->
+handle_info({'DOWN', Monitor, process, _Pid, Reason}, #keeper{watches = Watches, owners = Owners} = State) ->
     case maps:take(Monitor, Watches) of
         {Watch, Rest} ->
-            ok = ended(Watch),
+            ok = ended(Watch, Reason),
             {noreply, State#keeper{watches = Rest, owners = maps:remove(owner(Watch), Owners)}};
         error ->
             {noreply, State}
@@ -92,21 +106,52 @@ handle_info(_Message, State) ->
 owner({owner, Owner, _Owned}) -> Owner;
 owner(_Watch) -> none.
 
-ended({owner, _Owner, Owned}) ->
+ended({owner, _Owner, Owned}, _Reason) ->
     lists:foreach(fun stop_owned/1, Owned);
-ended({group, Ids}) ->
+ended({group, Ids}, _Reason) ->
     lists:foreach(fun stop_marked/1, Ids);
-ended({temporary, Id, Pid}) ->
+ended({temporary, Id, Pid}, _Reason) ->
     case bouy_registry:pid(Id) of
         Pid -> stop_marked(Id);
         _Restarted -> ok
+    end;
+ended({memory, Id}, killed) ->
+    case bouy_registry:find(Id) of
+        {ok, #{mode := Mode} = Actor} when Mode =/= stopped -> out_of_memory(Actor);
+        _StoppedOrForgotten -> ok
+    end;
+ended({memory, _Id}, _Reason) ->
+    ok.
+
+%% A spawned actor whose process ended outside a crash. stop() marks the actor
+%% before it kills the process, so a kill without the mark is the memory limit.
+%% The spawner reports a kill during the first constructor.
+fault(Id, Reason, State) ->
+    case {bouy_registry:find(Id), Reason} of
+        {{ok, #{mode := stopped}}, _} ->
+            State;
+        {{ok, #{mode := {starting, _, _, _}, starts := 1}}, killed} ->
+            State;
+        {{ok, #{restart := temporary} = Actor}, killed} ->
+            ok = out_of_memory(Actor),
+            _ = bouy_registry:mark_stopped(Id),
+            State;
+        {{ok, Actor}, killed} ->
+            ok = out_of_memory(Actor),
+            restart(Id, State);
+        _Fault ->
+            restart(Id, State)
     end.
+
+out_of_memory(Actor) ->
+    _ = bouy_actor:report_out_of_memory(Actor),
+    ok.
 
 %% The process is read after the mark, as in bouy_actor:stop/1.
 stop_owned({actor, Id}) ->
     _ = bouy_registry:mark_stopped(Id),
     case bouy_registry:pid(Id) of
-        Pid when is_pid(Pid) -> true = exit(Pid, kill);
+        Pid when is_pid(Pid) -> true = exit(Pid, {shutdown, stopped});
         undefined -> ok
     end,
     bouy_registry:drop_waits(Id);
@@ -134,7 +179,8 @@ restart(Id, #keeper{restarts = Restarts} = State) ->
             Recent = [Time || Time <- maps:get(Id, Restarts, []), Time >= Now - ?PERIOD],
             case length(Recent) < ?INTENSITY of
                 true ->
-                    _ = proc_lib:spawn_opt(bouy_actor, init_alone, [spec(Actor), none], [link | bouy_actor:spawn_options()]),
+                    Spec = spec(Actor),
+                    _ = proc_lib:spawn_opt(bouy_actor, init_alone, [Spec, none], [link | bouy_actor:spawn_options(Spec)]),
                     State#keeper{restarts = Restarts#{Id => [Now | Recent]}};
                 false ->
                     _ = bouy_registry:mark_stopped(Id),
@@ -145,4 +191,4 @@ restart(Id, #keeper{restarts = Restarts} = State) ->
     end.
 
 spec(Actor) ->
-    maps:with([id, supervisor, group, module, class, args, name, mailbox, restart], Actor).
+    maps:with([id, supervisor, group, module, class, args, name, mailbox, restart, max_memory], Actor).

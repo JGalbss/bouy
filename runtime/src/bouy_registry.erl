@@ -49,7 +49,8 @@
     args := list(),
     name := binary() | undefined,
     mailbox := mailbox(),
-    restart := restart()
+    restart := restart(),
+    max_memory => pos_integer() | infinity
 }.
 -type actor() :: #{
     id := pos_integer(),
@@ -64,7 +65,8 @@
     args := list(),
     name := binary() | undefined,
     mailbox := mailbox(),
-    restart := restart()
+    restart := restart(),
+    max_memory => pos_integer() | infinity
 }.
 
 %% Row positions: {Id, Mode, Pid, Starts, Stopped, Info}. Pid is the last
