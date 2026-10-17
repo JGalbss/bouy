@@ -15,16 +15,17 @@
 %% the request, so concurrent senders cannot pass the capacity together. A new
 %% process gets a new counter, since the messages of a dead process are lost.
 %%
-%% The ETS table `bouy_watchers` holds `{Id, Pid, Ref}` while process Pid
-%% waits for the row of actor Id to change. Each change of a mode sends
-%% `{Ref, changed}` to those processes and forgets them.
+%% The ETS table `bouy_watchers` holds `{Id, Pid, Ref, Need}` while process
+%% Pid waits for the row of actor Id to change. Each change of a mode sends
+%% `{Ref, changed}` to those processes and forgets them; a new process wakes
+%% only the processes that wait for a live process.
 %%
 %% The ETS table `bouy_waits` holds the wait-for graph: `{From, To, Waiter,
 %% Scopes}` while process Waiter, acting for actor From, waits on actor To.
 
--export([create/0, allocate/0, enter/3, ready/4, vacate/2, mark_stopped/1]).
+-export([create/0, allocate/0, enter/3, enter_ready/4, ready/4, vacate/2, mark_stopped/1]).
 -export([mode/1, pid/1, id_of/1, find/1, all/0]).
--export([watch/2, unwatch/2, notify/1]).
+-export([watch/3, unwatch/3, notify/1]).
 -export([wait/3, unwait/3, waits_on/1, drop_waits/1]).
 
 -export_type([actor/0, info/0, mode/0, mailbox/0, restart/0]).
@@ -41,6 +42,9 @@
     {running | starting, pid(), atomics:atomics_ref(), mailbox()}
     | restarting
     | stopped.
+%% The facts of an actor that stay fixed for its life. The spec of the first
+%% start may hold more keys, such as the call chain of the spawner, which the
+%% row keeps and a restart ignores.
 -type info() :: #{
     supervisor := pid(),
     group := alone | tree,
@@ -50,7 +54,8 @@
     name := binary() | undefined,
     mailbox := mailbox(),
     restart := restart(),
-    max_memory => pos_integer() | infinity
+    max_memory => pos_integer() | infinity,
+    atom() => term()
 }.
 -type actor() :: #{
     id := pos_integer(),
@@ -66,7 +71,8 @@
     name := binary() | undefined,
     mailbox := mailbox(),
     restart := restart(),
-    max_memory => pos_integer() | infinity
+    max_memory => pos_integer() | infinity,
+    atom() => term()
 }.
 
 %% Row positions: {Id, Mode, Pid, Starts, Stopped, Info}. Pid is the last
@@ -96,9 +102,11 @@ allocate() ->
 
 %% Records that Pid is the new process of actor Id, with a new counter.
 %% Returns how many processes the actor has started and the counter, or
-%% `stopped` when stop/1 has ended the actor. The mode and the pid change in
-%% one write that fails on a stopped row, and stop/1 reads the pid after it
-%% marks the row, so either stop/1 sees this process or it sees the mark.
+%% `stopped` when stop/1 has ended the actor. The pid is written before the
+%% mark of stop/1 is read, and stop/1 reads the pid after it marks the row,
+%% so either stop/1 sees this process or this process sees the mark. Only
+%% the callers that wait for a live process wake: a call still waits for the
+%% constructor.
 -spec enter(pos_integer(), pid(), info()) -> {pos_integer(), atomics:atomics_ref()} | stopped.
 enter(Id, Pid, #{mailbox := Mailbox} = Info) ->
     Counter = atomics:new(1, []),
@@ -108,35 +116,53 @@ enter(Id, Pid, #{mailbox := Mailbox} = Info) ->
         false -> reenter(Id, Mode, Pid, Counter)
     end.
 
+%% Records the first process of actor Id, whose constructor has already run.
+-spec enter_ready(pos_integer(), pid(), atomics:atomics_ref(), info()) -> ok.
+enter_ready(Id, Pid, Counter, #{mailbox := Mailbox} = Info) ->
+    true = ets:insert_new(?TABLE, {Id, {running, Pid, Counter, Mailbox}, Pid, 1, false, Info}),
+    ok.
+
 reenter(Id, Mode, Pid, Counter) ->
-    Replace = {{Id, {const, Mode}, {const, Pid}, {'+', '$1', 1}, false, '$2'}},
-    case ets:select_replace(?TABLE, [{{Id, '_', '_', '$1', false, '$2'}, [], [Replace]}]) of
-        1 ->
-            notify(Id),
-            {ets:lookup_element(?TABLE, Id, ?STARTS, 2), Counter};
-        0 ->
-            stopped
+    Starts = ets:update_counter(?TABLE, Id, {?STARTS, 1}),
+    true = ets:update_element(?TABLE, Id, [{?MODE, Mode}, {?PID, Pid}]),
+    case keep_stopped(Id) of
+        true ->
+            stopped;
+        false ->
+            notify_alive(Id),
+            {Starts, Counter}
     end.
 
-%% The constructor of process Pid has finished. When stop/1 marked the row
-%% before this write, the mark is written again, so the mode ends stopped
-%% either way.
+%% After a write of the mode: when stop/1 marked the row, before or after
+%% the write, the mark is written again, so the mode ends stopped either way.
+keep_stopped(Id) ->
+    case ets:lookup_element(?TABLE, Id, ?STOPPED, true) of
+        true ->
+            _ = ets:update_element(?TABLE, Id, {?MODE, stopped}),
+            true;
+        false ->
+            false
+    end.
+
+%% The constructor of process Pid has finished.
 -spec ready(pos_integer(), pid(), atomics:atomics_ref(), mailbox()) -> ok.
 ready(Id, Pid, Counter, Mailbox) ->
     _ = ets:update_element(?TABLE, Id, {?MODE, {running, Pid, Counter, Mailbox}}),
-    case ets:lookup_element(?TABLE, Id, ?STOPPED, true) of
-        true -> _ = ets:update_element(?TABLE, Id, {?MODE, stopped});
-        false -> ok
-    end,
+    _ = keep_stopped(Id),
     notify(Id).
 
 %% Process Pid of actor Id is about to exit after a crash, so callers wait for
 %% the restart instead of sending to it.
 -spec vacate(pos_integer(), pid()) -> ok.
 vacate(Id, Pid) ->
-    Head = {Id, {'_', Pid, '_', '_'}, '$1', '$2', false, '$3'},
-    _ = ets:select_replace(?TABLE, [{Head, [], [{{Id, restarting, '$1', '$2', false, '$3'}}]}]),
-    notify(Id).
+    case ets:lookup_element(?TABLE, Id, ?MODE, stopped) of
+        {_Phase, Pid, _Counter, _Mailbox} ->
+            _ = ets:update_element(?TABLE, Id, {?MODE, restarting}),
+            _ = keep_stopped(Id),
+            notify(Id);
+        _Other ->
+            ok
+    end.
 
 %% Marks actor Id stopped, then forgets the stopped actors beyond ?KEEP.
 -spec mark_stopped(pos_integer()) -> boolean().
@@ -195,19 +221,36 @@ actor({Id, Mode, Pid, Starts, Stopped, Info}) ->
 
 %%% Processes that wait for a change of a row
 
--spec watch(pos_integer(), reference()) -> ok.
-watch(Id, Ref) ->
-    true = ets:insert(?WATCHERS, {Id, self(), Ref}),
+%% Need is `alive` for a caller that waits for a process, and `ready` for one
+%% that waits until a constructor has finished.
+-spec watch(pos_integer(), alive | ready, reference()) -> ok.
+watch(Id, Need, Ref) ->
+    true = ets:insert(?WATCHERS, {Id, self(), Ref, Need}),
     ok.
 
--spec unwatch(pos_integer(), reference()) -> ok.
-unwatch(Id, Ref) ->
-    true = ets:delete_object(?WATCHERS, {Id, self(), Ref}),
+-spec unwatch(pos_integer(), alive | ready, reference()) -> ok.
+unwatch(Id, Need, Ref) ->
+    true = ets:delete_object(?WATCHERS, {Id, self(), Ref, Need}),
     ok.
 
+%% Wakes every process that waits for a change of the row of actor Id.
 -spec notify(pos_integer()) -> ok.
 notify(Id) ->
-    lists:foreach(fun({_, Pid, Ref}) -> Pid ! {Ref, changed} end, ets:take(?WATCHERS, Id)).
+    lists:foreach(fun wake/1, ets:take(?WATCHERS, Id)).
+
+%% Wakes the processes that wait for a live process of actor Id. The others
+%% wait on, for the constructor of that process.
+notify_alive(Id) ->
+    lists:foreach(
+        fun
+            ({_, _, _, alive} = Watcher) -> wake(Watcher);
+            (Watcher) -> true = ets:insert(?WATCHERS, Watcher)
+        end,
+        ets:take(?WATCHERS, Id)
+    ).
+
+wake({_, Pid, Ref, _Need}) ->
+    Pid ! {Ref, changed}.
 
 %%% The wait-for graph
 

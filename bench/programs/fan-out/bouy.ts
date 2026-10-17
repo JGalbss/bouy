@@ -1,7 +1,8 @@
 import { spawn } from "bouy";
 
 // Fan-out: 10,000 parallel calls over 1,000 actors with Promise.all, ten calls per actor,
-// in 10 rounds. Bouy runs each call of a round in its own process.
+// in 10 rounds. Each call is one method call on an actor ref, so the compiler sends the
+// calls of a round together (bouy_task:map_call), one part for each scheduler.
 
 const ACTORS = 1000;
 const CALLS = 10000;

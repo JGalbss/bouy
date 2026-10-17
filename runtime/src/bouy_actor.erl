@@ -1,9 +1,16 @@
 -module(bouy_actor).
--behaviour(gen_server).
 
-%% An actor is a gen_server whose state holds the class module and `This`.
-%% A turn is one call or one cast, and the process handles one message at a
-%% time, so turns never interleave.
+%% An actor is a process that runs a receive loop over the class module and
+%% `This`. A turn is one call or one cast, and the process handles one
+%% message at a time, so turns never interleave. The loop is not a
+%% gen_server: a call is one message and one reply to the alias of a monitor,
+%% which is all that the contract needs, and it costs less than gen_server.
+%%
+%% Messages to an actor process:
+%%   {'$call', Alias, Method, Args, Chain}  replies {Alias, {ok, V} | {throw, E}}
+%%   {'$cast', Method, Args}
+%%   {'$room', Alias, Method, Args}         a cast that waits: replies {Alias, true}
+%%                                          when the actor takes it
 %%
 %% A turn runs with its context in the process dictionary: its call chain,
 %% its own actor id first and then the ids of the actors that wait on it. A
@@ -16,10 +23,10 @@
 %% change of the mode, which bouy_registry announces, or for the end of the
 %% supervisor of the actor. It never polls.
 
--export([start/1, start_link/1, spawn_options/1, init_alone/2, class_functions/2, call/3, cast/3, offer/3, stop/1, snapshot/1]).
--export([report_out_of_memory/1]).
+-export([start/1, start_link/1, spawn_options/1, init_alone/2, init_tree/2, init_ready/4, class_functions/2, call/3, cast/3, offer/3, stop/1, snapshot/1]).
+-export([report_out_of_memory/1, send_call/4, call_outcome/4]).
 -export([context/0, adopt/1, within/2, live/1, chain/0, current/0, current_id/0, owner/0, constructing/0]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+-export([loop/2]).
 
 -export_type([spec/0, context/0]).
 
@@ -27,7 +34,6 @@
 %% The message queue of an actor stays off its heap, so a mailbox that fills
 %% to its capacity does not grow the heap that each garbage collection copies.
 -define(SPAWN, [{message_queue_data, off_heap}]).
--define(INFO, [supervisor, group, module, class, args, name, mailbox, restart, max_memory]).
 %% A group ends a child with an exit signal `shutdown`, so the reason `killed`
 %% names the memory limit of the process, unless stop() marked the actor first.
 -define(SHUTDOWN, 5000).
@@ -46,7 +52,8 @@
     supervisor := pid(),
     group := alone | tree,
     chain => [pos_integer()],
-    owner => pid() | none
+    owner => pid() | none,
+    functions => {atom(), atom(), boolean()}
 }.
 %% What a caller needs from the mode of an actor before it sends a request.
 -type need() :: alive | {ready, [pos_integer()]}.
@@ -73,24 +80,22 @@
     supervisor :: pid(),
     group :: alone | tree,
     counter :: atomics:atomics_ref(),
-    this :: term()
+    %% The context of a turn whose chain is only this actor: every cast, and
+    %% each call from code outside an actor.
+    alone :: #context{}
 }).
+%% The loop holds the state, which stays fixed for the life of the process,
+%% and `This` beside it, so a turn does not copy the state.
 -type state() :: #state{}.
--type request() :: {call, binary(), list(), [pos_integer()]} | {cast, binary(), list()}.
-
 %% Starts the actor of Spec and returns when its constructor has finished.
 %% When the constructor throws, the start fails with ActorFailed and the
 %% actor is stopped. A spawned actor runs as a process linked to bouy_keeper;
 %% a child of supervise() runs under its group supervisor.
 -spec start(spec()) -> ok | {error, error_value()}.
-start(#{group := alone} = Spec) ->
-    {Pid, Monitor} = proc_lib:spawn_opt(?MODULE, init_alone, [Spec, self()], [monitor | spawn_options(Spec)]),
-    receive
-        {started, Pid, Outcome} ->
-            true = demonitor(Monitor, [flush]),
-            Outcome;
-        {'DOWN', Monitor, process, Pid, Reason} ->
-            ended_during_constructor(Spec, Reason)
+start(#{group := alone, functions := Functions} = Spec) ->
+    case {Functions, maps:get(max_memory, Spec, infinity)} of
+        {{Dispatch, New, true}, infinity} -> start_ready(Spec, Dispatch, New);
+        _Waits -> start_alone(Spec)
     end;
 start(#{id := Id, supervisor := Group, restart := Restart} = Spec) ->
     Child = #{
@@ -116,6 +121,30 @@ start(#{id := Id, supervisor := Group, restart := Restart} = Spec) ->
             ok
     end.
 
+%% The constructor runs in the new process, which reports when it has ended.
+start_alone(Spec) ->
+    {Pid, Monitor} = erlang:spawn_opt(?MODULE, init_alone, [Spec, self()], [monitor | spawn_options(Spec)]),
+    receive
+        {started, Pid, Outcome} ->
+            true = demonitor(Monitor, [flush]),
+            Outcome;
+        {'DOWN', Monitor, process, Pid, Reason} ->
+            ended_during_constructor(Spec, Reason)
+    end.
+
+%% A pure constructor (contract section 9) has no effect and cannot throw, so it
+%% runs here, and the new process starts with its `This` and enters its loop at
+%% once. No one can send to the actor before spawn() returns its ref, so the row
+%% is written after the process starts. An actor with a memory limit takes the
+%% other path, since the limit could end its process before the link to the
+%% keeper.
+start_ready(#{id := Id, module := Module, args := Args} = Spec, Dispatch, New) ->
+    This = Module:New(Args),
+    Counter = atomics:new(1, []),
+    Pid = erlang:spawn_opt(?MODULE, init_ready, [Spec, Dispatch, Counter, This], ?SPAWN),
+    ok = bouy_registry:enter_ready(Id, Pid, Counter, Spec),
+    watch(Spec, 1).
+
 %% stop() ended the actor while its constructor ran, as when a constructor
 %% stops its own actor: the actor exists, stopped. A kill without the mark of
 %% stop() is the memory limit. Any other end fails the start.
@@ -138,9 +167,19 @@ ended_during_constructor(#{id := Id} = Spec, Reason) ->
 otp_restart(temporary) -> temporary;
 otp_restart(_) -> permanent.
 
--spec start_link(spec()) -> gen_server:start_ret().
+%% The start function of a child of supervise(), which its group supervisor
+%% calls: the process is linked to the supervisor, and the call returns when
+%% the constructor has finished.
+-spec start_link(spec()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Spec) ->
-    gen_server:start_link(?MODULE, Spec, [{spawn_opt, spawn_options(Spec)}]).
+    {Pid, Monitor} = erlang:spawn_opt(?MODULE, init_tree, [Spec, self()], [link, monitor | spawn_options(Spec)]),
+    receive
+        {started, Pid, Outcome} ->
+            true = demonitor(Monitor, [flush]),
+            Outcome;
+        {'DOWN', Monitor, process, Pid, Reason} ->
+            {error, Reason}
+    end.
 
 %% The spawn options of an actor process. A memory limit kills the process at
 %% the collection that finds its heap and its binaries past the limit.
@@ -157,15 +196,14 @@ spawn_options(_Spec) ->
     ?SPAWN.
 
 %% The process of a spawned actor, on its first start (Starter waits for the
-%% constructor) and on each restart by bouy_keeper (Starter is `none`). It
-%% waits for its first request hibernated, as init/1 does.
+%% constructor) and on each restart by bouy_keeper (Starter is `none`).
 -spec init_alone(spec(), pid() | none) -> no_return().
 init_alone(#{id := Id, supervisor := Keeper} = Spec, Starter) ->
     true = link(Keeper),
     case begin_process(Spec) of
-        {ok, State} ->
+        {ok, State, This, Starts} ->
             started(Starter, ok),
-            gen_server:enter_loop(?MODULE, [], State, hibernate);
+            wait_first(State, This, Starts);
         {failed, Cause} when Starter =/= none ->
             _ = bouy_registry:mark_stopped(Id),
             started(Starter, {error, actor_failed(label(Spec), <<"constructor">>, Cause)}),
@@ -176,8 +214,38 @@ init_alone(#{id := Id, supervisor := Keeper} = Spec, Starter) ->
             exit({shutdown, stopped})
     end.
 
-started(none, _Outcome) -> ok;
-started(Starter, Outcome) -> Starter ! {started, self(), Outcome}.
+%% The process of a spawned actor whose constructor ran in the spawner.
+-spec init_ready(spec(), atom(), atomics:atomics_ref(), term()) -> no_return().
+init_ready(#{supervisor := Keeper} = Spec, Dispatch, Counter, This) ->
+    true = link(Keeper),
+    erlang:hibernate(?MODULE, loop, [state(Spec, Dispatch, Counter), This]).
+
+%% The process of a child of supervise(). A constructor that throws fails the
+%% start, and the process then ends normally, as a gen_server whose init/1
+%% returns an error ends, so the group sees no crash.
+-spec init_tree(spec(), pid()) -> ok.
+init_tree(Spec, Starter) ->
+    case begin_process(Spec) of
+        {ok, State, This, Starts} ->
+            started(Starter, {ok, self()}),
+            wait_first(State, This, Starts);
+        {failed, Cause} ->
+            started(Starter, {error, {constructor_failed, Cause}});
+        stopped ->
+            started(Starter, ignore)
+    end.
+
+%% A first process waits for its first request hibernated, so an actor that
+%% takes no request holds only its live data. A restarted process does not:
+%% the callers that waited for the restart call it at once.
+wait_first(State, This, 1) -> erlang:hibernate(?MODULE, loop, [State, This]);
+wait_first(State, This, _Starts) -> loop(State, This).
+
+started(none, _Outcome) ->
+    ok;
+started(Starter, Outcome) ->
+    Starter ! {started, self(), Outcome},
+    ok.
 
 %% A crash exits quietly with the id, so bouy_keeper knows which actor to
 %% restart.
@@ -185,7 +253,13 @@ crashed(Id) -> {shutdown, {crashed, Id}}.
 
 -spec call(ref(), binary(), list()) -> term().
 call({'$ref', Id}, Method, Args) ->
-    Chain = chain(),
+    case chain() of
+        [] -> request(Id, Method, Args, [], none);
+        Chain -> chained_call(Id, Method, Args, Chain)
+    end.
+
+%% A call from a turn records its wait, and fails at once on a cycle.
+chained_call(Id, Method, Args, Chain) ->
     Waited =
         case lists:member(Id, Chain) of
             true -> cycle;
@@ -207,22 +281,119 @@ request(Id, Method, Args, Chain, Dead) ->
         _ ->
             ok
     end,
-    try gen_server:call(Pid, {call, Method, Args, Chain}, infinity) of
+    Alias = monitor(process, Pid, [{alias, reply_demonitor}]),
+    Pid ! {'$call', Alias, Method, Args, Chain},
+    Reply =
+        receive
+            {Alias, Answer} -> Answer;
+            {'DOWN', Alias, process, Pid, Reason} -> {down, Reason}
+        end,
+    case reply_outcome(Id, Counter, Reply) of
         {ok, Value} -> Value;
-        {throw, Error} -> erlang:error({'$throw', Error})
-    catch
-        exit:{noproc, _} ->
+        {raised, error, Thrown, _Stack} -> erlang:error(Thrown);
+        wait -> request(Id, Method, Args, Chain, Pid)
+    end.
+
+%% The outcome of a call from the reply, or from the reason of the 'DOWN' of
+%% the process. A process that was already gone gives `wait`: the call goes
+%% again, past that process. A kill without the mark of stop() is the memory
+%% limit.
+reply_outcome(Id, Counter, Reply) ->
+    case Reply of
+        {ok, Value} ->
+            {ok, Value};
+        {throw, Error} ->
+            {raised, error, {'$throw', Error}, []};
+        {down, noproc} ->
             release(Counter),
-            request(Id, Method, Args, Chain, Pid);
-        exit:{killed, {gen_server, call, _}} ->
+            wait;
+        {down, killed} ->
             release(Counter),
-            case known(Id) of
-                #{mode := stopped} = Actor -> raise(stopped(Actor));
-                Actor -> raise(out_of_memory(Actor))
+            error_outcome(fun() ->
+                case known(Id) of
+                    #{mode := stopped} = Actor -> stopped(Actor);
+                    Actor -> out_of_memory(Actor)
+                end
+            end);
+        {down, _Reason} ->
+            release(Counter),
+            error_outcome(fun() -> stopped(known(Id)) end)
+    end.
+
+%%% Calls that one process sends together (bouy_task:map_call/3)
+
+%% Sends one call of a batch when the actor runs and the call needs no wait:
+%% `{sent, Alias, Pid, Counter}`, and call_outcome/4 takes the reply. A call
+%% that would throw at once gives its error, and a call that must wait, for a
+%% constructor or a restart, gives `wait`, so the caller makes it with call/3.
+%% A call from a turn records its wait in the graph, as call/3 does, until
+%% call_outcome/4.
+-spec send_call(pos_integer(), binary(), list(), [pos_integer()]) ->
+    {sent, reference(), pid(), atomics:atomics_ref()} | {raised, error_value()} | wait.
+send_call(Id, Method, Args, []) ->
+    send_request(Id, Method, Args, []);
+send_call(Id, Method, Args, [From | _] = Chain) ->
+    #context{scopes = Scopes, constructing = Constructing} = context(),
+    case lists:member(Id, Chain) of
+        true ->
+            sent_error(fun() -> call_cycle(known(Id)) end);
+        false when Constructing ->
+            wait;
+        false ->
+            ok = bouy_registry:wait(From, Id, Scopes),
+            Sent =
+                case reaches([Id], Chain, #{}) of
+                    true -> sent_error(fun() -> call_cycle(known(Id)) end);
+                    false -> send_request(Id, Method, Args, Chain)
+                end,
+            case Sent of
+                {sent, _, _, _} -> ok;
+                _ -> ok = bouy_registry:unwait(From, Id, Scopes)
+            end,
+            Sent
+    end.
+
+send_request(Id, Method, Args, Chain) ->
+    case bouy_registry:mode(Id) of
+        {running, Pid, Counter, Mailbox} ->
+            Count = atomics:add_get(Counter, 1, 1),
+            case Mailbox of
+                {Capacity, reject} when Count > Capacity ->
+                    release(Counter),
+                    sent_error(fun() -> mailbox_full(known(Id)) end);
+                _ ->
+                    Alias = monitor(process, Pid, [{alias, reply_demonitor}]),
+                    Pid ! {'$call', Alias, Method, Args, Chain},
+                    {sent, Alias, Pid, Counter}
             end;
-        exit:{_, {gen_server, call, _}} ->
-            release(Counter),
-            raise(stopped(known(Id)))
+        _NotRunning ->
+            wait
+    end.
+
+%% The outcome of a call that send_call/4 sent, as reply_outcome/3 gives it,
+%% once the wait that send_call/4 recorded is gone.
+-spec call_outcome(pos_integer(), atomics:atomics_ref(), [pos_integer()], Reply) ->
+    {ok, term()} | {raised, error, term(), list()} | wait
+when Reply :: {ok, term()} | {throw, term()} | {down, term()}.
+call_outcome(Id, Counter, Chain, Reply) ->
+    case Chain of
+        [From | _] -> ok = bouy_registry:unwait(From, Id, (context())#context.scopes);
+        [] -> ok
+    end,
+    reply_outcome(Id, Counter, Reply).
+
+%% The error that Build() returns, as the result of send_call/4. known/1 may
+%% throw ActorStopped instead, for a forgotten actor.
+sent_error(Build) ->
+    {raised, error, {'$throw', Error}, _Stack} = error_outcome(Build),
+    {raised, Error}.
+
+%% The error that Build() returns or throws, as the outcome of a call.
+error_outcome(Build) ->
+    try Build() of
+        Error -> {raised, error, {'$throw', Error}, []}
+    catch
+        error:{'$throw', Error}:Stack -> {raised, error, {'$throw', Error}, Stack}
     end.
 
 -spec cast({'$cast', pos_integer()}, binary(), list()) -> true.
@@ -268,7 +439,7 @@ skipped_unless_stopped(stopped) -> stopped;
 skipped_unless_stopped(_Status) -> skipped.
 
 send(Pid, Method, Args) ->
-    ok = gen_server:cast(Pid, {cast, Method, Args}),
+    Pid ! {'$cast', Method, Args},
     true.
 
 %% Takes back a request that was not sent.
@@ -293,13 +464,15 @@ wait_for_room(Id, Pid, Counter, Method, Args) ->
 %% The actor replies as soon as it takes the cast. A cast lost in a crash
 %% counts as sent, as any cast does; a stopped actor throws ActorStopped.
 room(Id, Pid, Counter, Method, Args) ->
-    try
-        gen_server:call(Pid, {cast, Method, Args}, infinity)
-    catch
-        exit:{noproc, _} ->
+    Alias = monitor(process, Pid, [{alias, reply_demonitor}]),
+    Pid ! {'$room', Alias, Method, Args},
+    receive
+        {Alias, true} ->
+            true;
+        {'DOWN', Alias, process, Pid, noproc} ->
             release(Counter),
             cast(Id, Method, Args, Pid);
-        exit:{_, {gen_server, call, _}} ->
+        {'DOWN', Alias, process, Pid, _Reason} ->
             release(Counter),
             case bouy_registry:mode(Id) of
                 stopped -> raise(stopped(known(Id)));
@@ -369,18 +542,22 @@ admit(Id, Need, Dead) ->
 %% still wakes this caller.
 await_change(Id, Need, Dead) ->
     Ref = make_ref(),
-    ok = bouy_registry:watch(Id, Ref),
+    Watch = watch_need(Need),
+    ok = bouy_registry:watch(Id, Watch, Ref),
     Outcome = standing(Id, bouy_registry:find(Id), Need, Dead),
     case Outcome of
         {waiting, Supervisor} -> until_change(Supervisor, Ref);
         _ -> ok
     end,
-    ok = bouy_registry:unwatch(Id, Ref),
+    ok = bouy_registry:unwatch(Id, Watch, Ref),
     flush(Ref),
     case Outcome of
         {raise, Error} -> raise(Error);
         _Retry -> admit(Id, Need, Dead)
     end.
+
+watch_need(alive) -> alive;
+watch_need({ready, _Chain}) -> ready.
 
 %% Whether the caller can retry now, must wait for a change, or must throw.
 standing(Id, error, _Need, _Dead) ->
@@ -587,30 +764,22 @@ owner() ->
 constructing() ->
     (context())#context.constructing.
 
-%%% gen_server
-
-%% The process of a child of supervise(), which its group supervisor starts.
-%% A new process waits for its first request hibernated, so an actor that
-%% takes no request holds only its live data.
--spec init(spec()) -> {ok, state(), hibernate} | {error, {constructor_failed, term()}} | ignore.
-init(Spec) ->
-    case begin_process(Spec) of
-        {ok, State} -> {ok, State, hibernate};
-        {failed, Cause} -> {error, {constructor_failed, Cause}};
-        stopped -> ignore
-    end.
+%%% The actor process
 
 %% Enters the registry and runs the constructor in the new process. The
 %% first process of a spawned actor that a constructor starts belongs to the
 %% actor of that constructor, and a temporary child of a group has its end
 %% watched, since the group does not restart it.
 begin_process(#{id := Id} = Spec) ->
-    case bouy_registry:enter(Id, self(), maps:with(?INFO, Spec)) of
+    case bouy_registry:enter(Id, self(), Spec) of
         stopped ->
             stopped;
         {Starts, Counter} ->
             ok = watch(Spec, Starts),
-            construct(Spec, Counter, first_chain(Starts, Spec))
+            case construct(Spec, Counter, first_chain(Starts, Spec)) of
+                {ok, State, This} -> {ok, State, This, Starts};
+                Failed -> Failed
+            end
     end.
 
 watch(#{id := Id, owner := Owner}, 1) when is_pid(Owner) ->
@@ -635,10 +804,28 @@ first_chain(_Starts, #{id := Id}) -> [Id].
 
 construct(Spec, Counter, Chain) ->
     #{id := Id, module := Module, class := Class, args := Args, mailbox := Mailbox} = Spec,
-    #{restart := Restart, supervisor := Supervisor, group := Group} = Spec,
     put(?CONTEXT, #context{actor = Id, chain = Chain, owner = self(), constructing = true}),
-    {Dispatch, New} = class_functions(Module, Class),
-    State = #state{
+    {Dispatch, New, _Pure} =
+        case Spec of
+            #{functions := Functions} -> Functions;
+            #{} -> class_functions(Module, Class)
+        end,
+    State = state(Spec, Dispatch, Counter),
+    try Module:New(Args) of
+        This ->
+            ok = watch_memory(Spec),
+            ok = bouy_registry:ready(Id, self(), Counter, Mailbox),
+            {ok, State, This}
+    catch
+        Kind:Reason:Stack ->
+            Cause = cause(Kind, Reason, Stack),
+            ok = record_crash(facts(State), self(), Cause),
+            {failed, Cause}
+    end.
+
+state(Spec, Dispatch, Counter) ->
+    #{id := Id, module := Module, restart := Restart, supervisor := Supervisor, group := Group} = Spec,
+    #state{
         id = Id,
         label = label(Spec),
         module = Module,
@@ -646,60 +833,61 @@ construct(Spec, Counter, Chain) ->
         restart = Restart,
         supervisor = Supervisor,
         group = Group,
-        counter = Counter
-    },
-    try Module:New(Args) of
-        This ->
-            ok = watch_memory(Spec),
-            ok = bouy_registry:ready(Id, self(), Counter, Mailbox),
-            {ok, State#state{this = This}}
-    catch
-        Kind:Reason:Stack ->
-            Cause = cause(Kind, Reason, Stack),
-            record_crash(State, Cause),
-            {failed, Cause}
+        counter = Counter,
+        alone = #context{actor = Id, chain = [Id], owner = self()}
+    }.
+
+%% Waits for the next request and runs it as one turn. A message that is not
+%% a request, such as a late reply to an earlier turn, is dropped.
+-spec loop(state(), term()) -> no_return().
+loop(#state{counter = Counter} = State, This) ->
+    receive
+        {'$call', Alias, Method, Args, Chain} ->
+            release(Counter),
+            call_turn(Alias, Method, Args, Chain, State, This);
+        {'$cast', Method, Args} ->
+            release(Counter),
+            cast_turn(Method, Args, State, This);
+        {'$room', Alias, Method, Args} ->
+            release(Counter),
+            Alias ! {Alias, true},
+            cast_turn(Method, Args, State, This);
+        _Dropped ->
+            loop(State, This)
     end.
 
--spec handle_call(request(), gen_server:from(), state()) ->
-    {reply, {ok, term()} | {throw, term()}, state()}
-    | {stop, {shutdown, {crashed, pos_integer()}}, {throw, error_value()}, state()}
-    | {noreply, state()}
-    | {stop, {shutdown, {crashed, pos_integer()}}, state()}.
-handle_call({call, Method, Args, Chain}, _From, #state{id = Id, counter = Counter} = State) ->
-    release(Counter),
-    begin_turn(Id, [Id | Chain]),
-    case turn(Method, Args, State) of
-        {ok, Value, This} -> {reply, {ok, Value}, State#state{this = This}};
-        {failed, Failure, This} -> {reply, {throw, Failure}, State#state{this = This}};
-        {crashed, Cause} -> {stop, crashed(Id), {throw, crash(Method, Cause, State)}, State}
-    end;
-handle_call({cast, _Method, _Args} = Cast, From, State) ->
-    gen_server:reply(From, true),
-    handle_cast(Cast, State).
+call_turn(Alias, Method, Args, Chain, #state{id = Id} = State, This) ->
+    begin_turn(Chain, State),
+    case turn(Method, Args, State, This) of
+        {ok, Value, This1} ->
+            Alias ! {Alias, {ok, Value}},
+            loop(State, This1);
+        {failed, Failure, This1} ->
+            Alias ! {Alias, {throw, Failure}},
+            loop(State, This1);
+        {crashed, Cause} ->
+            Alias ! {Alias, {throw, crash(Method, Cause, State)}},
+            exit(crashed(Id))
+    end.
 
--spec handle_cast({cast, binary(), list()}, state()) ->
-    {noreply, state()} | {stop, {shutdown, {crashed, pos_integer()}}, state()}.
-handle_cast({cast, Method, Args}, #state{id = Id, counter = Counter} = State) ->
-    release(Counter),
-    begin_turn(Id, [Id]),
-    case turn(Method, Args, State) of
+cast_turn(Method, Args, #state{id = Id} = State, This) ->
+    begin_turn([], State),
+    case turn(Method, Args, State, This) of
         {crashed, Cause} ->
             _ = crash(Method, Cause, State),
-            {stop, crashed(Id), State};
-        {_Outcome, _Result, This} ->
-            {noreply, State#state{this = This}}
+            exit(crashed(Id));
+        {_Outcome, _Result, This1} ->
+            loop(State, This1)
     end.
 
--spec handle_info(term(), state()) -> {noreply, state()}.
-handle_info(_Message, State) ->
-    {noreply, State}.
-
-begin_turn(Id, Chain) ->
-    put(?CONTEXT, #context{actor = Id, chain = Chain, owner = self()}).
+begin_turn([], #state{alone = Alone}) ->
+    put(?CONTEXT, Alone);
+begin_turn(Chain, #state{id = Id}) ->
+    put(?CONTEXT, #context{actor = Id, chain = [Id | Chain], owner = self()}).
 
 %% Runs one method. A method that returns an Effect runs it in the same turn:
 %% a typed failure keeps the state, and an exception crashes the actor.
-turn(Method, Args, #state{module = Module, dispatch = Dispatch, this = This}) ->
+turn(Method, Args, #state{module = Module, dispatch = Dispatch}, This) ->
     try
         {Result, This1} = Module:Dispatch(Method, This, Args),
         settle(Result, This1)
@@ -718,24 +906,40 @@ settle(Value, This) ->
 %% After a thrown error, later callers wait for the restart, the crash line
 %% goes to stderr, and the caller of the turn gets ActorFailed.
 crash(Method, Cause, #state{label = Label} = State) ->
-    record_crash(State, Cause),
+    ok = record_crash(facts(State), self(), Cause),
     actor_failed(Label, Method, Cause).
 
-%% A temporary actor never restarts, so it is stopped, and the group of a
-%% temporary child ends once no actor is left in it.
-record_crash(#state{id = Id, label = Label, restart = Restart, supervisor = Supervisor, group = Group}, Cause) ->
-    ok = bouy_registry:vacate(Id, self()),
-    io:format(standard_error, "bouy: ~ts crashed: ~ts~n", [Label, bouy_rt:to_string(Cause)]),
+facts(#state{id = Id, label = Label, restart = Restart, supervisor = Supervisor, group = Group}) ->
+    #{id => Id, label => Label, restart => Restart, supervisor => Supervisor, group => Group}.
+
+%% Process Pid of an actor ends after a crash. A temporary actor never
+%% restarts, so it is stopped, and the group of a temporary child ends once
+%% no actor is left in it.
+record_crash(#{id := Id, label := Label, restart := Restart, supervisor := Supervisor, group := Group}, Pid, Cause) ->
+    ok = bouy_registry:vacate(Id, Pid),
+    ok = print_crash(Label, Cause),
     case {Restart, Group} of
         {temporary, tree} ->
             _ = bouy_registry:mark_stopped(Id),
-            bouy_sup:stop_when_empty(Supervisor, self());
+            bouy_sup:stop_when_empty(Supervisor, Pid);
         {temporary, alone} ->
             _ = bouy_registry:mark_stopped(Id),
             ok;
         _ ->
             ok
     end.
+
+%% Prints the crash line without waiting for the write. The standard_error
+%% server writes requests in the order they arrive, so the line comes before
+%% any later write of the caller that gets the error, and bouy_main:finish/2
+%% waits for the server before the VM halts.
+print_crash(Label, Cause) ->
+    Line = <<"bouy: ", Label/binary, " crashed: ", (bouy_rt:to_string(Cause))/binary, "\n">>,
+    case whereis(standard_error) of
+        undefined -> ok;
+        Device -> Device ! {io_request, self(), make_ref(), {put_chars, unicode, Line}}
+    end,
+    ok.
 
 %% The JavaScript value of an exception that ended a turn.
 cause(error, Reason, Stack) ->
@@ -753,9 +957,10 @@ label(#{class := Class, name := Name}) ->
     <<Class/binary, " ", Name/binary>>.
 
 %% The dispatch and constructor functions of an actor class, `'C#dispatch'/3`
-%% and `'C#new'/1`, or `error` for another class, such as an error class,
-%% which has no dispatch. A class is checked once.
--spec class_functions(module(), binary()) -> {atom(), atom()} | error.
+%% and `'C#new'/1`, and whether the constructor is pure (`'C#pure'/0`), or
+%% `error` for another class, such as an error class, which has no dispatch.
+%% A class is checked once.
+-spec class_functions(module(), binary()) -> {atom(), atom(), boolean()} | error.
 class_functions(Module, Class) ->
     Key = {?MODULE, Module, Class},
     case persistent_term:get(Key, undefined) of
@@ -775,8 +980,11 @@ check_class(Module, Class) ->
     try binary_to_existing_atom(<<Class/binary, "#dispatch">>) of
         Dispatch when Loaded ->
             case erlang:function_exported(Module, Dispatch, 3) of
-                true -> {Dispatch, binary_to_atom(<<Class/binary, "#new">>)};
-                false -> error
+                true ->
+                    Pure = erlang:function_exported(Module, binary_to_atom(<<Class/binary, "#pure">>), 0),
+                    {Dispatch, binary_to_atom(<<Class/binary, "#new">>), Pure};
+                false ->
+                    error
             end;
         _ ->
             error

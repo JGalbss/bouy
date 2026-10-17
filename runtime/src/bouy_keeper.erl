@@ -180,7 +180,7 @@ restart(Id, #keeper{restarts = Restarts} = State) ->
             case length(Recent) < ?INTENSITY of
                 true ->
                     Spec = spec(Actor),
-                    _ = proc_lib:spawn_opt(bouy_actor, init_alone, [Spec, none], [link | bouy_actor:spawn_options(Spec)]),
+                    _ = erlang:spawn_opt(bouy_actor, init_alone, [Spec, none], [link | bouy_actor:spawn_options(Spec)]),
                     State#keeper{restarts = Restarts#{Id => [Now | Recent]}};
                 false ->
                     _ = bouy_registry:mark_stopped(Id),

@@ -10,7 +10,7 @@
 %% Workers reply to an alias. After the caller stops listening, it removes the
 %% alias, and the runtime drops any late reply.
 
--export([all/1, map/2, map/3, all_settled/1, map_settled/2, map_settled/3]).
+-export([all/1, map/2, map/3, map_call/3, all_settled/1, map_settled/2, map_settled/3]).
 -export([race/1, map_race/2, map_race/3, any/1, map_any/2, map_any/3, with_timeout/2]).
 -export([resolve/1, reject/1, wait/1]).
 
@@ -19,6 +19,8 @@
 
 %% The longest timeout of one `receive ... after`.
 -define(MAX_AFTER, 16#FFFFFFFF).
+%% The most calls that map_call/3 sends from one process.
+-define(BATCH, 256).
 
 %% The values in input order. When a thunk throws, the first exception in input
 %% order propagates after every thunk ends.
@@ -38,6 +40,109 @@ map(Items, Fun, Params) when is_list(Items) ->
     all(thunks(Items, Fun, Params));
 map(Items, Fun, _Params) ->
     mapped(Items, Fun).
+
+%% `Promise.all(items.map((x, i) => x.m(args)))`, where the arguments of the
+%% call have no effect, so the compiler emits this form (section 7). f must
+%% be of that shape: one call on its first parameter, and nothing else. For an
+%% item that is an actor ref, f runs here with a stand-in of the ref, which
+%% returns the call instead of making it. The calls go out together, with
+%% their replies to aliases of the process that sent them, so they need no
+%% worker each. A large batch splits into one part for each scheduler, sent
+%% in parallel by workers. A call that must wait, for a constructor or a
+%% restart, and any other item, run in a worker as in map/3. The outcomes are
+%% those of map/3.
+-spec map_call(term(), term(), non_neg_integer()) -> list().
+map_call(Items, Fun, Params) when is_list(Items), Params =< 2 ->
+    [value(Outcome) || Outcome <- batches(Items, Fun, length(Items))];
+map_call(Items, Fun, Params) ->
+    map(Items, Fun, Params).
+
+batches(Items, Fun, Count) when Count > ?BATCH ->
+    Size = max(?BATCH, ceil(Count / erlang:system_info(schedulers_online))),
+    Parts = parts(Items, Size, 0),
+    lists:append([value(Outcome) || Outcome <- settle([fun() -> scatter(Part, Fun, Offset) end || {Offset, Part} <- Parts])]);
+batches(Items, Fun, _Count) ->
+    scatter(Items, Fun, 0).
+
+parts([], _Size, _Offset) ->
+    [];
+parts(Items, Size, Offset) when length(Items) =< Size ->
+    [{Offset, Items}];
+parts(Items, Size, Offset) ->
+    {Part, Rest} = lists:split(Size, Items),
+    [{Offset, Part} | parts(Rest, Size, Offset + Size)].
+
+%% The outcomes of the calls of Items, in order. Offset is the index of the
+%% first item in the whole array, which f gets.
+-record(scatter, {
+    alias :: reference(),
+    context :: bouy_actor:context(),
+    chain :: [pos_integer()],
+    function :: term(),
+    offset :: non_neg_integer(),
+    %% The calls in flight, by alias, and the workers, by {worker, Index}.
+    pending = #{} :: #{term() => term()},
+    outcomes = [] :: [{pos_integer(), outcome()}]
+}).
+
+scatter(Items, Fun, Offset) ->
+    Batch = #scatter{alias = alias(), context = bouy_actor:context(), chain = bouy_actor:chain(), function = Fun, offset = Offset},
+    Started = lists:foldl(fun({Index, Item}, Acc) -> start_item(Index, Item, Acc) end, Batch, lists:enumerate(Items)),
+    #scatter{alias = Alias, outcomes = Outcomes} = gather(Started, list_to_tuple(Items)),
+    true = unalias(Alias),
+    [Outcome || {_Index, Outcome} <- lists:keysort(1, Outcomes)].
+
+start_item(Index, {'$ref', Id} = Item, #scatter{chain = Chain, pending = Pending, outcomes = Outcomes} = Batch) ->
+    case deferred(Batch, Id, Index) of
+        {Method, Args} ->
+            case bouy_actor:send_call(Id, Method, Args, Chain) of
+                {sent, CallAlias, _Pid, Counter} ->
+                    Batch#scatter{pending = Pending#{CallAlias => {Index, Id, Counter}}};
+                {raised, Error} ->
+                    Batch#scatter{outcomes = [{Index, {raised, error, {'$throw', Error}, []}} | Outcomes]};
+                wait ->
+                    worker(Index, Item, Batch)
+            end;
+        other ->
+            worker(Index, Item, Batch)
+    end;
+start_item(Index, Item, Batch) ->
+    worker(Index, Item, Batch).
+
+%% The call that f makes on the stand-in of actor Id, or `other` when f does
+%% something else with it.
+deferred(#scatter{function = Fun, offset = Offset}, Id, Index) ->
+    try bouy_rt:call(Fun, [{'$defer', Id}, Offset + Index - 1]) of
+        {'$deferred', Id, Method, Args} -> {Method, Args};
+        _Other -> other
+    catch
+        _:_ -> other
+    end.
+
+%% A worker runs f on the item; its outcome arrives as `{Alias, Index, Outcome}`.
+worker(Index, Item, #scatter{alias = Alias, context = Context, function = Fun, offset = Offset, pending = Pending} = Batch) ->
+    _ = start_worker(Alias, Index, Context, fun() -> bouy_rt:call(Fun, [Item, Offset + Index - 1]) end),
+    Batch#scatter{pending = Pending#{{worker, Index} => worker}}.
+
+gather(#scatter{pending = Pending} = Batch, _Items) when map_size(Pending) =:= 0 ->
+    Batch;
+gather(#scatter{alias = Alias, pending = Pending, outcomes = Outcomes} = Batch, Items) ->
+    receive
+        {Alias, Index, Outcome} ->
+            gather(Batch#scatter{pending = maps:remove({worker, Index}, Pending), outcomes = [{Index, Outcome} | Outcomes]}, Items);
+        {CallAlias, Reply} when is_map_key(CallAlias, Pending) ->
+            gather(reply(CallAlias, Reply, Batch, Items), Items);
+        {'DOWN', CallAlias, process, _Pid, Reason} when is_map_key(CallAlias, Pending) ->
+            gather(reply(CallAlias, {down, Reason}, Batch, Items), Items)
+    end.
+
+%% A call whose process was gone runs again in a worker.
+reply(CallAlias, Reply, #scatter{chain = Chain, pending = Pending, outcomes = Outcomes} = Batch, Items) ->
+    {{Index, Id, Counter}, Rest} = maps:take(CallAlias, Pending),
+    case bouy_actor:call_outcome(Id, Counter, Chain, Reply) of
+        wait -> worker(Index, element(Index, Items), Batch#scatter{pending = Rest});
+        Outcome -> Batch#scatter{pending = Rest, outcomes = [{Index, Outcome} | Outcomes]}
+    end.
 
 -spec all_settled([thunk()]) -> [#{binary() => term()}].
 all_settled(Thunks) ->

@@ -37,7 +37,8 @@ actor_test_() ->
         {"self returns the ref of the actor", fun self_returns_ref/0},
         {"a request count belongs to one start of the actor", fun request_count_per_start/0},
         {"an actor past maxMemory fails with ActorOutOfMemory and restarts", fun memory_limit_restarts/0},
-        {"a child past maxMemory restarts in its group", fun child_memory_limit_restarts/0}
+        {"a child past maxMemory restarts in its group", fun child_memory_limit_restarts/0},
+        {"a pure constructor runs in the spawner, and a restart runs it again", fun pure_constructor_spawns_ready/0}
     ]}.
 
 call_returns_result() ->
@@ -416,3 +417,17 @@ child_memory_limit_restarts() ->
 
 record_chunks(Ref, Count) ->
     [bouy_actor:call(Ref, <<"record">>, [binary:copy(<<"x">>, 1024 * 1024)]) || _ <- lists:seq(1, Count)].
+
+%% The counter class marks its constructor pure; the slow class does not.
+pure_constructor_spawns_ready() ->
+    ?assertMatch({_, _, true}, bouy_actor:class_functions(bouy_fixture_counter, <<"Counter">>)),
+    ?assertMatch({_, _, false}, bouy_actor:class_functions(bouy_fixture_slow, <<"Slow">>)),
+    {'$ref', Id} = Counter = bouy:spawn([counter(), #{<<"args">> => [5]}]),
+    ?assertMatch({running, _, _, {1024, backpressure}}, bouy_registry:mode(Id)),
+    ?assertMatch(#{<<"status">> := <<"running">>, <<"restarts">> := 0}, entry(Counter)),
+    ?assertEqual(6, bouy_actor:call(Counter, <<"inc">>, [])),
+    {_, _} = capture_stderr(fun() -> thrown(fun() -> bouy_actor:call(Counter, <<"fail">>, [<<"x">>]) end) end),
+    ?assertEqual(5, bouy_actor:call(Counter, <<"get">>, [])),
+    ?assertMatch(#{<<"restarts">> := 1}, entry(Counter)),
+    ok = bouy_actor:stop(Id),
+    ?assertEqual(<<"ActorStopped">>, tag(fun() -> bouy_actor:call(Counter, <<"get">>, []) end)).

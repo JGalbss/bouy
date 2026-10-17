@@ -31,6 +31,17 @@ export function fill(store: Ref<Store>, items: string[]): Promise<number[]> {
   return Promise.all(items.map((item) => target.add(item)));
 }
 
+// The receiver is the first parameter and the argument is a name, so the calls go out
+// together (`bouy_task:map_call/3`).
+export function broadcast(stores: Ref<Store>[], item: string): Promise<number[]> {
+  return Promise.all(stores.map((store) => store.add(item)));
+}
+
+// A template literal may run code, so each call runs in a worker (`bouy_task:map/3`).
+export function shout(stores: Ref<Store>[], item: string): Promise<number[]> {
+  return Promise.all(stores.map((store) => store.add(`${item}!`)));
+}
+
 export function collect(items: string[]): Set<string> {
   const seen = new Set<string>();
   for (const item of items) {

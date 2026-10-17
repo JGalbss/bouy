@@ -2,7 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(bouy_test_runtime, [counter/0, slow/0, thrown/1, tag/1]).
+-import(bouy_test_runtime, [counter/0, slow/0, thrown/1, tag/1, capture_stderr/1]).
 
 task_test_() ->
     {setup, fun bouy_test_runtime:start/0, fun bouy_test_runtime:stop/1, [
@@ -20,7 +20,12 @@ task_test_() ->
         {"workers end with their caller", fun workers_end_with_caller/0},
         {"withTimeout returns the value or throws the error of the function", fun with_timeout_returns/0},
         {"withTimeout kills the worker and throws CallTimedOut", fun with_timeout_kills_worker/0},
-        {"an actor keeps working after a call times out", fun actor_survives_timeout/0}
+        {"an actor keeps working after a call times out", fun actor_survives_timeout/0},
+        {"map_call sends the calls together and keeps input order", fun map_call_keeps_order/0},
+        {"map_call runs other items in workers", fun map_call_runs_other_items/0},
+        {"map_call throws the first error in input order after every call ends", fun map_call_throws_first_error/0},
+        {"map_call waits for an actor that restarts", fun map_call_waits_for_restart/0},
+        {"map_call splits a large batch and passes each index", fun map_call_splits_large_batch/0}
     ]}.
 
 all_keeps_input_order() ->
@@ -208,3 +213,46 @@ catch_throw(Fun) ->
     catch
         throw:Thrown -> Thrown
     end.
+
+%% The compiled shape of `(counter, i) => counter.<Method>(i)`.
+call_with_index(Method) ->
+    fun(Args) -> bouy_rt:call_method(bouy_rt:arg(1, Args), Method, [bouy_rt:arg(2, Args)]) end.
+
+map_call_keeps_order() ->
+    Counters = [bouy:spawn([counter()]) || _ <- lists:seq(1, 4)],
+    ?assertEqual([0, 1, 2, 3], bouy_task:map_call(Counters, call_with_index(<<"inc">>), 2)),
+    ?assertEqual([0, 2, 4, 6], bouy_task:map_call(Counters, call_with_index(<<"inc">>), 2)),
+    ?assertEqual([], bouy_task:map_call([], call_with_index(<<"inc">>), 2)).
+
+map_call_runs_other_items() ->
+    Counter = bouy:spawn([counter()]),
+    Plain = #{<<"inc">> => fun([By]) -> {plain, By} end},
+    ?assertEqual([0, {plain, 1}, 2], bouy_task:map_call([Counter, Plain, Counter], call_with_index(<<"inc">>), 2)),
+    %% A function that returns something else for the stand-in runs in a worker.
+    Echo = fun(Args) -> {echo, bouy_rt:arg(2, Args)} end,
+    ?assertEqual([{echo, 0}, {echo, 1}], bouy_task:map_call([Counter, Counter], Echo, 2)).
+
+map_call_throws_first_error() ->
+    Counters = [bouy:spawn([counter()]) || _ <- lists:seq(1, 3)],
+    Fail = fun(Args) -> bouy_rt:call_method(bouy_rt:arg(1, Args), <<"fail">>, [<<"boom">>]) end,
+    {Failure, Text} = capture_stderr(fun() -> thrown(fun() -> bouy_task:map_call(Counters, Fail, 2) end) end),
+    [{'$ref', First} | _] = Counters,
+    FirstLabel = <<"Counter #", (integer_to_binary(First))/binary>>,
+    ?assertMatch(#{<<"_tag">> := <<"ActorFailed">>, <<"actor">> := FirstLabel, <<"method">> := <<"fail">>}, Failure),
+    ?assertEqual(3, length(binary:matches(Text, <<"crashed: Error: boom">>))).
+
+map_call_waits_for_restart() ->
+    Counter = bouy:spawn([counter(), #{<<"args">> => [7]}]),
+    {Values, _Text} = capture_stderr(fun() ->
+        _ = thrown(fun() -> bouy_actor:call(Counter, <<"fail">>, [<<"boom">>]) end),
+        bouy_task:map_call([Counter, Counter], call_with_index(<<"inc">>), 2)
+    end),
+    ?assertEqual([7, 8], lists:sort(Values)).
+
+map_call_splits_large_batch() ->
+    Counters = [bouy:spawn([counter()]) || _ <- lists:seq(1, 10)],
+    Items = lists:append(lists:duplicate(100, Counters)),
+    Values = bouy_task:map_call(Items, call_with_index(<<"inc">>), 2),
+    ?assertEqual(1000, length(Values)),
+    %% Item I adds I, so the counters hold the sum of the indexes 0 to 999.
+    ?assertEqual(lists:sum(lists:seq(0, 999)), lists:sum([bouy_actor:call(C, <<"get">>, []) || C <- Counters])).

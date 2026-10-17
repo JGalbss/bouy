@@ -27,33 +27,66 @@ struct Release {
 }
 
 impl Runtime {
-    /// The command that starts the VM. The `erl` script searches for its root directory
-    /// with a chain of shell commands on each start, so the command passes the recorded
-    /// root in `ERL_ROOTDIR`. When `erl` is the script of that release, `<root>/bin/erl`,
-    /// the command starts its `erlexec` with the environment that the script would set.
-    pub fn vm(&self) -> Command {
+    /// The command that starts the VM with the emulator flags `emulator`, such as `Bd`,
+    /// followed by the init flags that the caller adds. The `erl` script searches for its
+    /// root directory with a chain of shell commands on each start, so the command passes
+    /// the recorded root in `ERL_ROOTDIR`. When `erl` is the script of that release,
+    /// `<root>/bin/erl`, the command starts the emulator, `beam.smp`, with the arguments
+    /// and the environment that `erlexec` would give it, which saves one `exec` of each
+    /// start. That path ignores `ERL_FLAGS`, `ERL_AFLAGS`, and `ERL_ZFLAGS`, so a set one
+    /// takes the `erlexec` path.
+    pub fn vm(&self, emulator: &[&str]) -> Command {
+        let plus = || emulator.iter().map(|flag| format!("+{flag}"));
         let Some(Release {
             root,
             erts,
             erl: real,
         }) = &self.release
         else {
-            return Command::new(erl());
+            let mut vm = Command::new(erl());
+            vm.args(plus());
+            return vm;
         };
         let root_path = Path::new(root);
         let bin = root_path.join(format!("erts-{erts}")).join("bin");
-        if Path::new(real) == root_path.join("bin").join("erl") && bin.join("erlexec").is_file() {
+        let script = Path::new(real) == root_path.join("bin").join("erl");
+        let flags_set = ["ERL_FLAGS", "ERL_AFLAGS", "ERL_ZFLAGS"]
+            .iter()
+            .any(|name| env::var_os(name).is_some_and(|value| !value.is_empty()));
+        if script
+            && !flags_set
+            && bin.join("beam.smp").is_file()
+            && let Some(home) = env::var_os("HOME")
+        {
+            let mut vm = Command::new(bin.join("beam.smp"));
+            vm.env("ROOTDIR", root)
+                .env("BINDIR", &bin)
+                .env("EMU", "beam")
+                .env("PROGNAME", "erl")
+                .args(emulator.iter().map(|flag| format!("-{flag}")))
+                .args(["--", "-root"])
+                .arg(root)
+                .arg("-bindir")
+                .arg(&bin)
+                .args(["-progname", "erl", "--", "-home"])
+                .arg(home)
+                .arg("--");
+            return vm;
+        }
+        if script && bin.join("erlexec").is_file() {
             let mut vm = Command::new(bin.join("erlexec"));
             vm.env("ROOTDIR", root)
                 .env("BINDIR", &bin)
                 .env("EMU", "beam")
-                .env("PROGNAME", "erl");
+                .env("PROGNAME", "erl")
+                .args(plus());
             return vm;
         }
         let mut vm = Command::new(erl());
         if env::var_os("ERL_ROOTDIR").is_none() {
             vm.env("ERL_ROOTDIR", root);
         }
+        vm.args(plus());
         vm
     }
 }

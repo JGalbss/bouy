@@ -43,21 +43,34 @@ limit(Text) ->
     end.
 
 %% A positive number of bytes with an optional K, M, G, or T suffix (powers of 1024),
-%% such as "64M", which BOUY_MAX_MEMORY and the maxMemory option of an actor take.
+%% such as "64M", which BOUY_MAX_MEMORY and the maxMemory option of an actor take. It
+%% parses by hand: the string module would load unicode_util, a large module, on each
+%% start of the VM.
 -spec bytes(string()) -> {ok, pos_integer()} | error.
 bytes(Text) ->
-    case string:to_integer(string:trim(Text)) of
-        {Number, Suffix} when is_integer(Number), Number > 0 ->
-            scale(Number, string:uppercase(Suffix));
+    case digits(lists:dropwhile(fun is_space/1, Text), 0, 0) of
+        {Number, Suffix} when Number > 0 ->
+            scale(Number, lists:dropwhile(fun is_space/1, lists:reverse(Suffix)));
         _ ->
             error
     end.
 
+%% The leading digits as a number, and the rest of the text.
+digits([Digit | Rest], Number, Count) when Digit >= $0, Digit =< $9 ->
+    digits(Rest, Number * 10 + Digit - $0, Count + 1);
+digits(Rest, Number, Count) when Count > 0 ->
+    {Number, Rest};
+digits(_Rest, _Number, _Count) ->
+    error.
+
+is_space(Char) -> Char =:= $\s orelse Char =:= $\t orelse Char =:= $\n orelse Char =:= $\r.
+
+%% The suffix without trailing space, reversed: one letter or none.
 scale(Number, "") -> {ok, Number};
-scale(Number, "K") -> {ok, Number * 1024};
-scale(Number, "M") -> {ok, Number * 1024 * 1024};
-scale(Number, "G") -> {ok, Number * 1024 * 1024 * 1024};
-scale(Number, "T") -> {ok, Number * 1024 * 1024 * 1024 * 1024};
+scale(Number, [Unit]) when Unit =:= $K; Unit =:= $k -> {ok, Number * 1024};
+scale(Number, [Unit]) when Unit =:= $M; Unit =:= $m -> {ok, Number * 1024 * 1024};
+scale(Number, [Unit]) when Unit =:= $G; Unit =:= $g -> {ok, Number * 1024 * 1024 * 1024};
+scale(Number, [Unit]) when Unit =:= $T; Unit =:= $t -> {ok, Number * 1024 * 1024 * 1024 * 1024};
 scale(_Number, _Suffix) -> error.
 
 watch(Main, Limit) ->

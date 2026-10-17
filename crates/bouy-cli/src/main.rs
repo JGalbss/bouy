@@ -90,13 +90,12 @@ fn run(entry: &Path, args: &[OsString]) -> ExitCode {
         .iter()
         .map(|module| module.name.as_str())
         .collect();
-    let mut vm = runtime.vm();
-    // `+Bd`: Ctrl-C ends the VM, as it ends Node, instead of opening the BREAK menu. A
+    // `Bd`: Ctrl-C ends the VM, as it ends Node, instead of opening the BREAK menu. A
     // failure to boot leaves no erl_crash.dump in the working directory. `-mode minimal`
     // starts the kernel without distribution and the resolver, which bouy_ai_openai starts
     // on its first request, and `no_dot_erlang` skips the `.erlang` files of the user.
+    let mut vm = runtime.vm(&["Bd"]);
     vm.args([
-        "+Bd",
         "-noshell",
         "-noinput",
         "-mode",

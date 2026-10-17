@@ -68,6 +68,9 @@ import(Module) ->
 run(Entry) ->
     ok = start_runtime(),
     _ = process_flag(trap_exit, false),
+    %% Many workers reply to the top-level code at once, as in Promise.all over actor
+    %% calls. Off the heap, their messages need no lock of this process.
+    _ = process_flag(message_queue_data, off_heap),
     try import(Entry) of
         ok -> finish(0, #{})
     catch
@@ -122,6 +125,12 @@ format(Term) ->
 %% and the status there as one JSON object.
 -spec finish(non_neg_integer(), map()) -> no_return().
 finish(Status, Facts) ->
+    %% An actor prints its crash line without waiting (bouy_actor), so the VM waits
+    %% for the standard_error server to write the lines that reached it first.
+    try io:put_chars(standard_error, <<>>)
+    catch
+        _:_ -> ok
+    end,
     case os:getenv("BOUY_RESULT_FILE", "") of
         "" -> ok;
         Path -> _ = file:write_file(Path, json:encode(Facts#{status => Status}))

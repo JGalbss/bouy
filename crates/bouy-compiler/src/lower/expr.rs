@@ -9,7 +9,7 @@ use oxc::ast::ast::{
     Argument, ArrayExpression, ArrayExpressionElement, BinaryExpression, CallExpression,
     ChainElement, ChainExpression, ConditionalExpression, Expression, IdentifierReference,
     LogicalExpression, NewExpression, ObjectExpression, ObjectPropertyKind, PropertyKey,
-    PropertyKind, SequenceExpression, StringLiteral, TemplateLiteral, UnaryExpression,
+    PropertyKind, SequenceExpression, Statement, StringLiteral, TemplateLiteral, UnaryExpression,
     YieldExpression,
 };
 use oxc::semantic::SymbolId;
@@ -1327,10 +1327,12 @@ impl<'a> Lowerer<'a, '_> {
                     return Expr::undefined();
                 };
                 let params = literal_params(fun);
+                let direct = name == "all" && self.is_direct_call(fun);
                 let mut values = self.ordered(&[items, fun]).into_iter();
                 let items = values.next().unwrap_or_else(Expr::undefined);
                 let fun = values.next().unwrap_or_else(Expr::undefined);
                 let function = match name {
+                    _ if direct => "map_call",
                     "allSettled" => "map_settled",
                     "race" => "map_race",
                     "any" => "map_any",
@@ -1979,6 +1981,89 @@ fn mapped_items<'a>(
         {
             Some((&member.object, argument_expression(argument)))
         }
+        _ => None,
+    }
+}
+
+impl<'a> Lowerer<'a, '_> {
+    /// Whether `f` of `Promise.all(items.map(f))` is `(x, i) => x.m(args)`: one method call on
+    /// its first parameter, whose arguments are literals or other names, so evaluating them
+    /// has no effect. `bouy_task:map_call/3` then sends the calls of the batch together
+    /// (section 7).
+    fn is_direct_call(&self, function: &Expression<'a>) -> bool {
+        let (params, returned) = match strip(function) {
+            Expression::ArrowFunctionExpression(arrow) => (
+                &arrow.params,
+                arrow.get_expression().or_else(|| {
+                    arrow
+                        .get_function_body()
+                        .and_then(|body| returned_expression(&body.statements))
+                }),
+            ),
+            Expression::FunctionExpression(function) => (
+                &function.params,
+                function
+                    .body
+                    .as_ref()
+                    .and_then(|body| returned_expression(&body.statements)),
+            ),
+            _ => return false,
+        };
+        let Some(returned) = returned else {
+            return false;
+        };
+        let Some(first) = params
+            .items
+            .first()
+            .and_then(|param| param.pattern.get_binding_identifier())
+            .and_then(|id| id.symbol_id.get())
+        else {
+            return false;
+        };
+        if params.rest.is_some() || params.items.len() > 2 {
+            return false;
+        }
+        let mut call = strip(returned);
+        if let Expression::AwaitExpression(awaited) = call {
+            call = strip(&awaited.argument);
+        }
+        let Expression::CallExpression(call) = call else {
+            return false;
+        };
+        let Expression::StaticMemberExpression(member) = strip(&call.callee) else {
+            return false;
+        };
+        let receiver_is_first = matches!(
+            strip(&member.object),
+            Expression::Identifier(ident) if self.symbol_of(ident) == Some(first)
+        );
+        receiver_is_first
+            && !call.optional
+            && !member.optional
+            && call.arguments.iter().all(|argument| match argument {
+                Argument::SpreadElement(_) => false,
+                other => self.is_plain_value(other.to_expression(), first),
+            })
+    }
+
+    /// A literal, or a name other than `excluded`: a value that costs nothing to read.
+    fn is_plain_value(&self, expression: &Expression<'a>, excluded: SymbolId) -> bool {
+        match strip(expression) {
+            Expression::NumericLiteral(_)
+            | Expression::StringLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_) => true,
+            Expression::Identifier(ident) => self.symbol_of(ident) != Some(excluded),
+            _ => false,
+        }
+    }
+}
+
+/// The one expression that a function body returns: an arrow body or `return e;` alone.
+fn returned_expression<'e, 'a>(statements: &'e [Statement<'a>]) -> Option<&'e Expression<'a>> {
+    match statements {
+        [Statement::ExpressionStatement(statement)] => Some(&statement.expression),
+        [Statement::ReturnStatement(statement)] => statement.argument.as_ref(),
         _ => None,
     }
 }

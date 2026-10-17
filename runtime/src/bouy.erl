@@ -144,8 +144,8 @@ self(_Arguments) ->
 
 %% The spec of a new actor of Class, from the options of spawn() or child().
 spec({'$class', Module, Class} = Value, Options, Name) when is_atom(Module), is_binary(Class) ->
-    ok = actor_class(Value),
     #{
+        functions => actor_class(Value),
         id => bouy_registry:allocate(),
         module => Module,
         class => Class,
@@ -164,7 +164,7 @@ spec(_Class, _Options, _Name) ->
 actor_class({'$class', Module, Class}) ->
     case bouy_actor:class_functions(Module, Class) of
         error -> type_error(<<"spawn() needs an actor class">>);
-        _Functions -> ok
+        Functions -> Functions
     end.
 
 child_spec(Key, {'$child', Class, Options}) -> spec(Class, Options, Key);

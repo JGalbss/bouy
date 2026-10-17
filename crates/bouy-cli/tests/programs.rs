@@ -384,6 +384,25 @@ fn an_actor_past_max_memory_restarts_and_spares_the_others() {
 }
 
 #[test]
+fn a_batch_of_calls_keeps_the_semantics_of_parallel_calls() {
+    check_on_vm(
+        &mut bouy("batch-calls.ts"),
+        &Outcome {
+            stdout: "[ 0, 1, 2, 3 ]\n\
+                     1000 calls answered\n\
+                     [ 250, 251, 252, 253 ]\n\
+                     [ 253, 20 ]\n\
+                     ActorFailed in failFirst\n\
+                     [ 0, 253, 252, 253 ]\n\
+                     CallCycle\n\
+                     a,b\n",
+            stderr: "bouy: Counter #1 crashed: Error: boom\n",
+            status: 0,
+        },
+    );
+}
+
+#[test]
 fn program_arguments_reach_process_argv() {
     check_on_vm(
         bouy("arguments.ts").args(["one", "--two", "three four"]),
