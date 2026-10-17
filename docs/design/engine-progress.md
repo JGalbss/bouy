@@ -25,16 +25,16 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | Directory      | Tests | Baseline pass |  Pass | Fail | Compile | Timeout | Skip | Baseline rate | Pass rate |
 | -------------- | ----: | ------------: | ----: | ---: | ------: | ------: | ---: | ------------: | --------: |
 | test/language  | 23726 |         11354 | 23608 |  116 |       2 |       0 |    0 |         51.1% |     99.5% |
-| test/built-ins | 23823 |          6193 | 23232 |  585 |       0 |       4 |    2 |         26.2% |     97.5% |
-| **Total**      | 47549 |         17547 | 46840 |  701 |       2 |       4 |    2 |         38.3% |     98.5% |
+| test/built-ins | 23823 |          6193 | 23348 |  469 |       0 |       4 |    2 |         26.2% |     98.0% |
+| **Total**      | 47549 |         17547 | 46956 |  585 |       2 |       4 |    2 |         38.3% |     98.7% |
 
 The same run without the proposal tests. A proposal test has a feature from the "Proposed language features" part of test262's `features.txt`. At the pinned commit, Temporal, `explicit-resource-management`, `joint-iteration`, `iterator-chunking`, and `iterator-includes` are in the standard part, so these counts keep them. The proposal tests are 532 in `test/language` and 285 in `test/built-ins`.
 
 | Directory      | Tests |  Pass | Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ---: | ------: | ------: | ---: | --------: |
 | test/language  | 23194 | 23097 |   97 |       0 |       0 |    0 |     99.6% |
-| test/built-ins | 23538 | 23216 |  316 |       0 |       4 |    2 |     98.6% |
-| **Total**      | 46732 | 46313 |  413 |       0 |       4 |    2 |     99.1% |
+| test/built-ins | 23538 | 23332 |  200 |       0 |       4 |    2 |     99.1% |
+| **Total**      | 46732 | 46429 |  297 |       0 |       4 |    2 |     99.3% |
 
 Temporal passes 4589 of its 4605 tests in this run and 4597 when the 8 tests that the runner lost run alone (cause 5 and the rest, below).
 
@@ -57,6 +57,8 @@ Temporal passes 4589 of its 4605 tests in this run and 4597 when the 8 tests tha
 - 2026-10-17, branch `engine-r1-disposable-stacks` at `974bbcd`: `DisposableStack` and `AsyncDisposableStack`. Their two directories pass 195 of 197 tests, up from 0. The 2 failures are the `proto-from-ctor-realm.js` tests, which need `$262.createRealm`.
 - 2026-10-17, commit `a7a0b11`, the round 1 merge of the five branches above into `engine`: 23608 and 23231, with 8 jobs. `test/language` took 16 minutes at a load average between 15 and 60, and `test/built-ins` took 24 minutes at a load average between 17 and 79. Compared test by test with the round 1 run and the branch runs, no test that passed before fails, apart from the 13 tests that the runner lost. `test/language` passes the 179 tests of the eval branch and 5 tests of the Promise branch: the 2 `yield-thenable-create-resolving-functions` tests, the 2 `subclass-Promise` tests, and `import-defer-transitive-async-module/promise-prototype-then-not-called.js`. `test/built-ins` passes 23244 of its tests when the 13 tests that the runner lost run alone. Near test 20000 the fun table filled again, and 8 tests of `Temporal/ZonedDateTime/from` count as "the VM crashed". 5 tests of `RegExp/property-escapes` timed out. A rerun of these 13 tests alone passes all of them. The merge changes one call: `crates/bouy-cli/build.rs` passes the default `EvalContext` to `compile_eval`, and `bouy_ref_temporal` calls `'__eval__'/3`.
 - 2026-10-17, commit `f433f10`, round 2 measurement: 23608 and 23232, with 8 jobs. `test/language` took 18 minutes and `test/built-ins` 19 minutes, at a load average between 19 and 46. The engine code is the same as at `a7a0b11`. `test/language` fails the same 118 tests. `test/built-ins` fails the same tests apart from the ones that the runner lost: the fun table filled near test 20000 again, so 8 tests of `Temporal/ZonedDateTime/from` count as "the VM crashed", and 4 `RegExp/property-escapes` tests timed out instead of 5. These 12 tests pass when they run alone, so `test/built-ins` passes 23244. The causes below come from this run.
+
+- 2026-10-17, branch `engine-r2-atomics-agents`, cause 2 below: `test/built-ins/Atomics` passes 378 of 389 tests, up from 262, in two runs with 8 jobs at load averages between 42 and 182. The runner defines `$262.agent`, and `bouy_ref_waiters` keeps the waiter lists of `Atomics.wait`, `waitAsync`, and `notify` (contract section 17.3). All 116 tests of the cause pass. The 9 failures left are the `immutable-buffer` tests, and the 2 `CanBlockIsFalse` tests stay skipped. `Promise`, `TypedArray`, `TypedArrayConstructors`, `ArrayBuffer`, `SharedArrayBuffer`, and `DataView` keep their 3637 passes, `test/harness` its 111, and the async directories of `test/language` fail only the 6 tests of causes 1 and 3.
 
 ## Causes left
 
@@ -120,7 +122,7 @@ The proposal tests that fail (290) are `await-dictionary` (87), ShadowRealm (64)
 | test/built-ins/AsyncGeneratorFunction         |    23 |             0 |   21 |    2 |       0 |       0 |    0 |          0.0% |     91.3% |
 | test/built-ins/AsyncGeneratorPrototype        |    48 |             0 |   48 |    0 |       0 |       0 |    0 |          0.0% |    100.0% |
 | test/built-ins/AsyncIteratorPrototype         |    13 |             0 |   13 |    0 |       0 |       0 |    0 |          0.0% |    100.0% |
-| test/built-ins/Atomics                        |   389 |             0 |  262 |  125 |       0 |       0 |    2 |          0.0% |     67.7% |
+| test/built-ins/Atomics                        |   389 |             0 |  378 |    9 |       0 |       0 |    2 |          0.0% |     97.6% |
 | test/built-ins/BigInt                         |    77 |             0 |   76 |    1 |       0 |       0 |    0 |          0.0% |     98.7% |
 | test/built-ins/Boolean                        |    51 |            28 |   50 |    1 |       0 |       0 |    0 |         54.9% |     98.0% |
 | test/built-ins/DataView                       |   561 |             0 |  548 |   13 |       0 |       0 |    0 |          0.0% |     97.7% |

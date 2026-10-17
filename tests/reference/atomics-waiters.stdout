@@ -1,0 +1,7 @@
+true true
+{ async: false, value: 'not-equal' } { async: false, value: 'timed-out' }
+not-equal timed-out
+2 0 0
+[ 'first ok', 'second ok' ] timed-out
+1 0
+[ 'first ok', 'second ok', 'third ok' ]
