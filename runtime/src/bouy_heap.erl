@@ -39,10 +39,11 @@
 
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
--export([function/1, function/4, call/3, construct/3]).
--export([get/2, set/3, has/2, has_own/2, delete/2, own_keys/1, enumerable_keys/1]).
--export([define/3, get_own/2, prototype_of/1, set_prototype_of/2, freeze/1, is_frozen/1]).
--export([class_of/1, slots/1, set_slots/2, new_exotic/3, is_object/1, is_callable/1]).
+-export([function/1, function/4, function/5, new_id/0, call/3, construct/3, new_target/1, is_constructor/1]).
+-export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1]).
+-export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
+-export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
+-export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
 -export([cell/1, cell_get/1, cell_set/2]).
 -export([symbol/1, symbol_for/1, well_known/1]).
 -export([to_key/1, key_to_value/1]).
@@ -50,12 +51,15 @@
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
 -export([clone_out/1, clone_in/1]).
 
--export_type([value/0, key/0]).
+-export_type([value/0, key/0, property/0]).
 
 -type value() :: term().
 -type key() :: non_neg_integer() | binary() | {'$sym', term(), term()} | {'#', term(), binary()}.
+%% An own property: its value or accessor functions and its attribute bits.
+-type property() :: {data, value(), 0..7} | {accessor, value(), value(), 0..7} | none.
 
 -define(NEXT, '$bouy_next').
+-define(NEW_TARGET, '$bouy_new_target').
 -define(STATS, '$bouy_gc').
 -define(WORDS_PER_ID, 16).
 -define(MIN_HEAP_WORDS, 4096).
@@ -146,6 +150,16 @@ new_array(Items, Proto) ->
     erlang:put(Id, {array, Proto, #{}, [], #{}, {map_size(Elements), Elements}}),
     {'$o', Id}.
 
+%% A proxy (bouy_ref_proxy): a function value when Target is callable.
+-spec proxy(value(), value()) -> value().
+proxy(Target, Handler) ->
+    Id = next_id(),
+    erlang:put(Id, {proxy, null, #{}, [], #{}, {Target, Handler}}),
+    case is_callable(Target) of
+        true -> {'$f', Id, fun(This, Args) -> bouy_ref_proxy:call(Id, This, Args) end};
+        false -> {'$o', Id}
+    end.
+
 %% An object of another class, such as a Map, with its internal slots.
 -spec new_exotic(atom(), value(), term()) -> value().
 new_exotic(Class, Proto, Slots) ->
@@ -176,7 +190,7 @@ array_push({'$o', Id} = O, Items) ->
 -spec array_set_items(value(), [value()]) -> ok.
 array_set_items({'$o', Id} = O, Items) ->
     {array, P, Props, Keys, Attrs, _} = record_of(O),
-    map_size(Attrs) =:= 0 orelse read_only(0),
+    map_size(Attrs) =:= 0 orelse set_failed(O, 0),
     Elements = maps:from_list(lists:enumerate(0, Items)),
     erlang:put(Id, {array, P, Props, Keys, Attrs, {length(Items), Elements}}),
     ok.
@@ -192,9 +206,21 @@ array_length({'$o', Id}) ->
 -spec function(fun((value(), list()) -> value())) -> value().
 function(Fun) -> {'$f', next_id(), Fun}.
 
+%% An id for a function value that its own code builds, before its fun exists.
+-spec new_id() -> pos_integer().
+new_id() -> next_id().
+
+%% A function with a record under an id from new_id/0.
+-spec function(pos_integer(), fun((value(), list()) -> value()), binary(), value(), map()) -> value().
+function(Id, Fun, Name, Length, Slots) ->
+    Props = #{<<"length">> => Length, <<"name">> => Name},
+    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
+    erlang:put(Id, {function, ?FUNCTION_PROTO, Props, [<<"name">>, <<"length">>], Attrs, Slots}),
+    {'$f', Id, Fun}.
+
 %% A function with a record: a name, a length, and internal slots, such as the
 %% construct behaviour of a class.
--spec function(fun((value(), list()) -> value()), binary(), non_neg_integer(), map()) -> value().
+-spec function(fun((value(), list()) -> value()), binary(), value(), map()) -> value().
 function(Fun, Name, Length, Slots) ->
     Id = next_id(),
     Props = #{<<"length">> => Length, <<"name">> => Name},
@@ -206,23 +232,66 @@ function(Fun, Name, Length, Slots) ->
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
 call(V, _This, _Args) -> throw_error('TypeError', text([describe(V), <<" is not a function">>])).
 
-%% [[Construct]] for a function whose slots hold construct => fun((NewTarget, Args) -> Object).
+%% [[Construct]]. A class or a builtin keeps its construct fun in its slots,
+%% fun((NewTarget, Args) -> Object). An ordinary function gets a new this
+%% whose prototype comes from NewTarget, and reads NewTarget with
+%% new_target/1. A bound function or a proxy constructs through its target.
 -spec construct(value(), list(), value()) -> value().
 construct({'$f', _, Fun} = F, Args, NewTarget) ->
     case fn_record(F) of
         {function, _, _, _, _, #{construct := Construct}} ->
             Construct(NewTarget, Args);
         {function, _, _, _, _, #{kind := normal}} ->
-            This = new_object(prototype_for(NewTarget)),
-            case Fun(This, Args) of
-                Object when ?is_obj(Object) -> Object;
-                _ -> This
-            end;
+            construct_ordinary(Fun, Args, NewTarget);
+        {proxy, _, _, _, _, Handler} ->
+            bouy_ref_proxy:construct(Handler, Args, NewTarget);
         _ ->
             throw_error('TypeError', text([describe(F), <<" is not a constructor">>]))
     end;
 construct(V, _Args, _NewTarget) ->
     throw_error('TypeError', text([describe(V), <<" is not a constructor">>])).
+
+construct_ordinary(Fun, Args, NewTarget) ->
+    This = new_object(prototype_for(NewTarget)),
+    Saved = erlang:put(?NEW_TARGET, {This, NewTarget}),
+    Result = try
+                 Fun(This, Args)
+             after
+                 restore(?NEW_TARGET, Saved)
+             end,
+    case Result of
+        Object when ?is_obj(Object) -> Object;
+        _ -> This
+    end.
+
+restore(Key, undefined) -> erlang:erase(Key);
+restore(Key, Saved) -> erlang:put(Key, Saved).
+
+%% new.target in an ordinary function whose this is This: the NewTarget of
+%% the construct that made This, else undefined. The read takes the entry, so
+%% a call inside the constructor on the same this sees undefined.
+-spec new_target(value()) -> value().
+new_target(This) ->
+    case erlang:get(?NEW_TARGET) of
+        {This, NewTarget} ->
+            erlang:erase(?NEW_TARGET),
+            NewTarget;
+        _ ->
+            undefined
+    end.
+
+%% IsConstructor.
+-spec is_constructor(term()) -> boolean().
+is_constructor({'$f', _, _} = F) ->
+    case fn_record(F) of
+        {function, _, _, _, _, #{construct := _}} -> true;
+        {function, _, _, _, _, #{kind := normal}} -> true;
+        {proxy, _, _, _, _, {revoked, IsConstructor}} -> IsConstructor;
+        {proxy, _, _, _, _, {Target, _}} -> is_constructor(Target);
+        _ -> false
+    end;
+is_constructor(_) ->
+    false.
 
 prototype_for(NewTarget) ->
     case get(NewTarget, <<"prototype">>) of
@@ -231,176 +300,262 @@ prototype_for(NewTarget) ->
     end.
 
 %%% Properties
+%%
+%% The internal methods of ECMA-262 §10.1. get/3 is [[Get]], set/4 [[Set]],
+%% get_own/2 [[GetOwnProperty]], define_own_property/3 [[DefineOwnProperty]],
+%% has/2 [[HasProperty]], delete_property/2 [[Delete]], own_keys/1
+%% [[OwnPropertyKeys]], prototype_of/1 and set_prototype/2, and
+%% is_extensible/1 and prevent_extensions/1. Each one sends a proxy to
+%% bouy_ref_proxy, an array's length and indexes through the array rules of
+%% §10.4.2, and a mapped arguments object through §10.4.4. The functions that
+%% return a boolean report a failure; set/3, delete/2, and define/3 throw a
+%% TypeError instead, as strict code does.
 
 -spec get(value(), key()) -> value().
-get({'$o', Id} = O, K) ->
+get(O, K) -> get(O, K, O).
+
+%% [[Get]] with a receiver: a getter runs with Receiver as this.
+-spec get(value(), key(), value()) -> value().
+get({'$o', Id} = O, K, Receiver) ->
     case erlang:get(Id) of
-        {array, _, _, _, _, {_, Elements}} = R when is_integer(K) ->
-            case Elements of
-                #{K := V} -> V;
-                _ -> inherited(element(2, R), K, O)
-            end;
-        {array, _, _, _, _, {Length, _}} when K =:= <<"length">> ->
-            Length;
-        {_, Proto, Props, _, _, _} ->
-            case Props of
-                #{K := V} -> resolve(V, O);
-                _ -> inherited(Proto, K, O)
-            end;
-        undefined ->
-            from_record(intrinsic_record(Id, O), K, O)
+        undefined -> from_record(intrinsic_record(Id, O), K, Receiver);
+        R -> from_record(R, K, Receiver)
     end;
-get({'$f', Id, _} = F, K) ->
+get({'$f', Id, _} = F, K, Receiver) ->
     case erlang:get(Id) of
-        {_, Proto, Props, _, _, _} ->
-            case Props of
-                #{K := V} -> resolve(V, F);
-                _ -> inherited(Proto, K, F)
-            end;
-        undefined ->
-            fn_default_get(K, F)
+        undefined -> from_record(fn_record(F), K, Receiver);
+        R -> from_record(R, K, Receiver)
     end.
 
-fn_default_get(K, F) ->
-    case fn_record(F) of
-        {_, Proto, Props, _, _, _} ->
-            case Props of
-                #{K := V} -> resolve(V, F);
-                _ -> inherited(Proto, K, F)
-            end
-    end.
-
-from_record({array, _, _, _, _, {_, Elements}} = R, K, O) when is_integer(K) ->
+from_record({array, Proto, _, _, _, {_, Elements}}, K, Receiver) when is_integer(K) ->
     case Elements of
+        #{K := {'$accessor', _, _} = A} -> resolve(A, Receiver);
         #{K := V} -> V;
-        _ -> inherited(element(2, R), K, O)
+        _ -> inherited(Proto, K, Receiver)
     end;
-from_record({array, _, _, _, _, {Length, _}}, <<"length">>, _O) ->
+from_record({array, _, _, _, _, {Length, _}}, <<"length">>, _Receiver) ->
     Length;
-from_record({_, Proto, Props, _, _, _}, K, O) ->
-    case Props of
-        #{K := V} -> resolve(V, O);
-        _ -> inherited(Proto, K, O)
-    end.
-
-inherited(null, _K, _Receiver) ->
-    undefined;
-inherited({'$o', Id} = O, K, Receiver) ->
-    case erlang:get(Id) of
-        undefined -> inherited_from(intrinsic_record(Id, O), K, Receiver);
-        R -> inherited_from(R, K, Receiver)
-    end;
-inherited({'$f', _, _} = F, K, Receiver) ->
-    inherited_from(fn_record(F), K, Receiver).
-
-inherited_from({_, Proto, Props, _, _, _}, K, Receiver) ->
+from_record({proxy, _, _, _, _, Handler}, K, Receiver) ->
+    bouy_ref_proxy:get(Handler, K, Receiver);
+from_record({arguments, _, _, _, _, Map}, K, _Receiver) when is_map_key(K, Map) ->
+    cell_get(maps:get(K, Map));
+from_record({_, Proto, Props, _, _, _}, K, Receiver) ->
     case Props of
         #{K := V} -> resolve(V, Receiver);
         _ -> inherited(Proto, K, Receiver)
     end.
 
+inherited(null, _K, _Receiver) -> undefined;
+inherited(Proto, K, Receiver) -> get(Proto, K, Receiver).
+
 resolve({'$accessor', undefined, _}, _Receiver) -> undefined;
 resolve({'$accessor', Getter, _}, Receiver) -> call(Getter, Receiver, []);
 resolve(V, _Receiver) -> V.
 
-%% [[Set]] in strict mode: a failed write throws a TypeError.
+%% `o[k] = v` in strict code: [[Set]] with o as the receiver, and a TypeError
+%% when it fails. The common cases write the record at once.
 -spec set(value(), key(), value()) -> value().
-set({'$o', Id} = O, K, V) ->
+set(O, K, V) -> assign(O, K, V, strict).
+
+%% `o[k] = v` in sloppy code: a failed write does nothing.
+-spec sloppy_set(value(), key(), value()) -> value().
+sloppy_set(O, K, V) -> assign(O, K, V, sloppy).
+
+assign({'$o', Id} = O, K, V, Mode) ->
     case erlang:get(Id) of
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K), map_size(Attrs) =:= 0 ->
-            erlang:put(Id, {array, P, Props, Keys, Attrs, {max(K + 1, Length), Elements#{K => V}}}),
-            V;
-        {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">>, map_size(Attrs) =:= 0 ->
+            case Elements of
+                #{K := {'$accessor', _, _}} ->
+                    strict_set(O, K, V, Mode);
+                #{K := _} ->
+                    erlang:put(Id, {array, P, Props, Keys, Attrs, {Length, Elements#{K := V}}}),
+                    V;
+                _ ->
+                    case inherited_setter(P, K) of
+                        none ->
+                            erlang:put(Id, {array, P, Props, Keys, Attrs, {max(K + 1, Length), Elements#{K => V}}}),
+                            V;
+                        _ ->
+                            strict_set(O, K, V, Mode)
+                    end
+            end;
+        {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">>, map_size(Attrs) =:= 0,
+                                                   is_integer(V), V >= 0, V =< ?MAX_INDEX + 1 ->
             erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, V)}),
             V;
-        {Class, P, Props, Keys, Attrs, Slots} = R ->
+        {array, _, _, _, _, _} when is_integer(K); K =:= <<"length">> ->
+            strict_set(O, K, V, Mode);
+        {Class, P, Props, Keys, Attrs, Slots} = R when Class =/= proxy, (Class =/= arguments orelse not is_map(Slots)) ->
             case Props of
                 #{K := {'$accessor', _, Setter}} ->
-                    call_setter(Setter, O, K, V);
+                    call_setter(Setter, O, K, V, Mode);
                 #{K := _} when map_size(Attrs) =:= 0 ->
                     erlang:put(Id, {Class, P, Props#{K := V}, Keys, Attrs, Slots}),
                     V;
                 #{K := _} ->
-                    write_checked(Id, R, K, V);
+                    case writable(K, Attrs) of
+                        true ->
+                            erlang:put(Id, {Class, P, Props#{K := V}, Keys, Attrs, Slots}),
+                            V;
+                        false ->
+                            strict_set(O, K, V, Mode)
+                    end;
                 _ ->
-                    add(Id, R, K, V, O)
+                    add(Id, R, K, V, O, Mode)
             end;
         undefined ->
             materialize(Id, O),
-            set(O, K, V)
+            assign(O, K, V, Mode);
+        _ ->
+            strict_set(O, K, V, Mode)
     end;
-set({'$f', Id, _} = F, K, V) ->
-    R = fn_record(F),
-    {_, _, Props, _, _, _} = R,
-    case Props of
-        #{K := {'$accessor', _, Setter}} -> call_setter(Setter, F, K, V);
-        #{K := _} -> write_checked(Id, R, K, V);
-        _ -> add(Id, R, K, V, F)
+assign({'$f', Id, _} = F, K, V, Mode) ->
+    case erlang:get(Id) of
+        {function, P, Props, Keys, Attrs, Slots} = R ->
+            case Props of
+                #{K := {'$accessor', _, Setter}} ->
+                    call_setter(Setter, F, K, V, Mode);
+                #{K := _} ->
+                    case writable(K, Attrs) of
+                        true ->
+                            erlang:put(Id, {function, P, Props#{K := V}, Keys, Attrs, Slots}),
+                            V;
+                        false ->
+                            strict_set(F, K, V, Mode)
+                    end;
+                _ ->
+                    add(Id, R, K, V, F, Mode)
+            end;
+        _ ->
+            strict_set(F, K, V, Mode)
     end.
 
-write_checked(Id, {array, P, Props, Keys, Attrs, {Length, Elements}}, K, V) when is_integer(K) ->
-    writable(K, Attrs) orelse read_only(K),
-    erlang:put(Id, {array, P, Props, Keys, Attrs, {max(K + 1, Length), Elements#{K => V}}}),
-    V;
-write_checked(Id, {Class, P, Props, Keys, Attrs, Slots}, K, V) ->
-    writable(K, Attrs) orelse read_only(K),
-    erlang:put(Id, {Class, P, Props#{K => V}, Keys, Attrs, Slots}),
+%% A new own key K: a setter or a read-only property up the prototype chain
+%% decides, else the object must be extensible.
+add(Id, {Class, P, Props, Keys, Attrs, Slots}, K, V, O, Mode) ->
+    case inherited_setter(P, K) of
+        {setter, Setter} ->
+            call_setter(Setter, O, K, V, Mode);
+        none ->
+            case extensible(Attrs) of
+                true ->
+                    erlang:put(Id, {Class, P, Props#{K => V}, add_key(K, Props, Keys), Attrs, Slots}),
+                    V;
+                false ->
+                    strict_set(O, K, V, Mode)
+            end;
+        _ ->
+            strict_set(O, K, V, Mode)
+    end.
+
+call_setter(undefined, O, K, V, Mode) ->
+    failed(O, K, V, Mode);
+call_setter(Setter, O, _K, V, _Mode) ->
+    _ = call(Setter, O, [V]),
     V.
+
+%% What the prototype chain says about a write of a new own key K: none, a
+%% setter, read_only, or slow when a proxy or an array length is in the way.
+inherited_setter(null, _K) ->
+    none;
+inherited_setter(P, K) ->
+    case record_of(P) of
+        {proxy, _, _, _, _, _} -> slow;
+        {array, _, _, _, _, _} when K =:= <<"length">> -> slow;
+        {array, Proto, _, _, Attrs, {_, Elements}} when is_integer(K) -> setter_from(maps:find(K, Elements), K, Attrs, Proto);
+        {arguments, _, _, _, _, Map} when is_map_key(K, Map) -> slow;
+        {_, Proto, Props, _, Attrs, _} -> setter_from(maps:find(K, Props), K, Attrs, Proto)
+    end.
+
+setter_from({ok, {'$accessor', _, Setter}}, _K, _Attrs, _Proto) ->
+    {setter, Setter};
+setter_from({ok, _}, K, Attrs, _Proto) ->
+    case writable(K, Attrs) of
+        true -> none;
+        false -> read_only
+    end;
+setter_from(error, K, _Attrs, Proto) ->
+    inherited_setter(Proto, K).
+
+strict_set(O, K, V, Mode) ->
+    case set(O, K, V, O) of
+        true -> V;
+        false -> failed(O, K, V, Mode)
+    end.
+
+failed(O, K, _V, strict) -> set_failed(O, K);
+failed(_O, _K, V, sloppy) -> V.
+
+-spec set_failed(value(), key()) -> no_return().
+set_failed(O, K) ->
+    Message = case find_property(O, K) of
+        proxy -> text([<<"'set' on proxy: trap returned falsish for property '">>, key_text(K), <<"'">>]);
+        {accessor, _, _, _} -> text([<<"Cannot set property ">>, key_text(K), <<" of ">>, describe(O), <<" which has only a getter">>]);
+        {data, _, _} -> text([<<"Cannot assign to read only property '">>, key_text(K), <<"' of object">>]);
+        none -> text([<<"Cannot add property ">>, key_text(K), <<", object is not extensible">>])
+    end,
+    throw_error('TypeError', Message).
+
+%% The property K on O or up its chain, without running a proxy trap.
+find_property(null, _K) ->
+    none;
+find_property(O, K) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, _} -> proxy;
+        R ->
+            case own_of(R, K) of
+                none -> find_property(element(2, R), K);
+                Found -> Found
+            end
+    end.
+
+%% [[Set]] (OrdinarySet, §10.1.9): true when the write happened.
+-spec set(value(), key(), value(), value()) -> boolean().
+set(O, K, V, Receiver) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} ->
+            bouy_ref_proxy:set(Handler, K, V, Receiver);
+        {arguments, _, _, _, _, Map} = R when is_map_key(K, Map), O =:= Receiver ->
+            _ = cell_set(maps:get(K, Map), V),
+            ordinary_set(R, K, V, Receiver);
+        R ->
+            ordinary_set(R, K, V, Receiver)
+    end.
+
+ordinary_set(R, K, V, Receiver) ->
+    case own_of(R, K) of
+        none ->
+            case element(2, R) of
+                null -> set_on_receiver(K, V, Receiver);
+                Parent -> set(Parent, K, V, Receiver)
+            end;
+        {data, _, Bits} when Bits band ?WRITABLE =:= 0 ->
+            false;
+        {data, _, _} ->
+            set_on_receiver(K, V, Receiver);
+        {accessor, _, undefined, _} ->
+            false;
+        {accessor, _, Setter, _} ->
+            _ = call(Setter, Receiver, [V]),
+            true
+    end.
+
+set_on_receiver(K, V, Receiver) when ?is_obj(Receiver) ->
+    case get_own(Receiver, K) of
+        {accessor, _, _, _} -> false;
+        {data, _, Bits} when Bits band ?WRITABLE =:= 0 -> false;
+        {data, _, _} -> define_own_property(Receiver, K, #{value => V});
+        none -> define_own_property(Receiver, K, #{value => V, writable => true, enumerable => true, configurable => true})
+    end;
+set_on_receiver(_K, _V, _Receiver) ->
+    false.
 
 writable(_K, #{'$frozen' := true}) -> false;
 writable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?WRITABLE =/= 0.
 
--spec read_only(key()) -> no_return().
-read_only(K) ->
-    throw_error('TypeError', text([<<"Cannot assign to read only property '">>, key_text(K), <<"' of object">>])).
-
-add(Id, {Class, P, Props, Keys, Attrs, Slots} = R, K, V, O) ->
-    case inherited_setter(P, K) of
-        {setter, Setter} ->
-            call_setter(Setter, O, K, V);
-        read_only ->
-            read_only(K);
-        none when Class =:= array, is_integer(K) ->
-            write_checked(Id, R, K, V);
-        none ->
-            extensible(Attrs) orelse
-                throw_error('TypeError', text([<<"Cannot add property ">>, key_text(K), <<", object is not extensible">>])),
-            erlang:put(Id, {Class, P, Props#{K => V}, add_key(K, Props, Keys), Attrs, Slots}),
-            V
-    end.
-
 extensible(#{'$frozen' := true}) -> false;
 extensible(#{'$noext' := true}) -> false;
 extensible(_) -> true.
-
-call_setter(undefined, _O, K, _V) ->
-    throw_error('TypeError', text([<<"Cannot set property ">>, key_text(K), <<" which has only a getter">>]));
-call_setter(Setter, O, _K, V) ->
-    _ = call(Setter, O, [V]),
-    V.
-
-%% Whether a write of a new own key K must go to a setter or fail, from the
-%% prototype chain.
-inherited_setter(null, _K) ->
-    none;
-inherited_setter({'$o', Id} = O, K) ->
-    case erlang:get(Id) of
-        undefined -> setter_in(intrinsic_record(Id, O), K);
-        R -> setter_in(R, K)
-    end;
-inherited_setter({'$f', _, _} = F, K) ->
-    setter_in(fn_record(F), K).
-
-setter_in({_, Proto, Props, _, Attrs, _}, K) ->
-    case Props of
-        #{K := {'$accessor', _, Setter}} -> {setter, Setter};
-        #{K := _} ->
-            case writable(K, Attrs) of
-                true -> none;
-                false -> read_only
-            end;
-        _ -> inherited_setter(Proto, K)
-    end.
 
 add_key(K, _Props, Keys) when is_integer(K) -> Keys;
 add_key({'#', _, _}, _Props, Keys) -> Keys;
@@ -417,138 +572,413 @@ resize({_, Elements}, NewLength) when is_integer(NewLength), NewLength >= 0 ->
 resize(_, NewLength) ->
     throw_error('RangeError', text([<<"Invalid array length: ">>, bouy_ref:to_string(NewLength)])).
 
-%% The `in` operator.
+%% [[HasProperty]]: the `in` operator.
 -spec has(value(), key()) -> boolean().
 has(O, K) ->
-    case has_own(O, K) of
-        true -> true;
-        false ->
-            case prototype_of(O) of
-                null -> false;
-                Proto -> has(Proto, K)
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} ->
+            bouy_ref_proxy:has(Handler, K);
+        R ->
+            case own_of(R, K) of
+                none ->
+                    case element(2, R) of
+                        null -> false;
+                        Proto -> has(Proto, K)
+                    end;
+                _ ->
+                    true
             end
     end.
 
 -spec has_own(value(), key()) -> boolean().
-has_own(O, K) ->
-    case record_of(O) of
-        {array, _, _, _, _, {_, Elements}} when is_integer(K) -> is_map_key(K, Elements);
-        {array, _, _, _, _, _} when K =:= <<"length">> -> true;
-        {_, _, Props, _, _, _} -> is_map_key(K, Props)
-    end.
+has_own(O, K) -> get_own(O, K) =/= none.
 
-%% `delete o[k]`. A non-configurable property throws a TypeError, as in strict mode.
+%% `delete o[k]` in strict code: a property that cannot go throws a TypeError.
 -spec delete(value(), key()) -> true.
 delete(O, K) ->
+    case delete_property(O, K) of
+        true -> true;
+        false -> cannot_delete(K)
+    end.
+
+%% [[Delete]]: false for a non-configurable property.
+-spec delete_property(value(), key()) -> boolean().
+delete_property(O, K) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} ->
+            bouy_ref_proxy:delete_property(Handler, K);
+        R ->
+            case own_of(R, K) of
+                none -> true;
+                {data, _, Bits} when Bits band ?CONFIGURABLE =:= 0 -> false;
+                {accessor, _, _, Bits} when Bits band ?CONFIGURABLE =:= 0 -> false;
+                _ -> remove_own(O, K), true
+            end
+    end.
+
+remove_own(O, K) ->
     Id = id_for_write(O),
     case erlang:get(Id) of
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K) ->
-            configurable(K, Attrs) orelse cannot_delete(K),
-            erlang:put(Id, {array, P, Props, Keys, Attrs, {Length, maps:remove(K, Elements)}});
-        {Class, P, Props, Keys, Attrs, Slots} when is_map_key(K, Props) ->
-            configurable(K, Attrs) orelse cannot_delete(K),
-            erlang:put(Id, {Class, P, maps:remove(K, Props), lists:delete(K, Keys), maps:remove(K, Attrs), Slots});
-        _ ->
-            ok
+            erlang:put(Id, {array, P, Props, Keys, maps:remove(K, Attrs), {Length, maps:remove(K, Elements)}});
+        {arguments, P, Props, Keys, Attrs, Map} when is_map(Map) ->
+            erlang:put(Id, {arguments, P, maps:remove(K, Props), lists:delete(K, Keys), maps:remove(K, Attrs), maps:remove(K, Map)});
+        {Class, P, Props, Keys, Attrs, Slots} ->
+            erlang:put(Id, {Class, P, maps:remove(K, Props), lists:delete(K, Keys), maps:remove(K, Attrs), Slots})
     end,
-    true.
-
-configurable(_K, #{'$frozen' := true}) -> false;
-configurable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?CONFIGURABLE =/= 0.
+    ok.
 
 -spec cannot_delete(key()) -> no_return().
 cannot_delete(K) ->
     throw_error('TypeError', text([<<"Cannot delete property '">>, key_text(K), <<"'">>])).
 
-%% OrdinaryOwnPropertyKeys: indexes ascending, then strings in insertion
-%% order, then symbols in insertion order. Private names are not keys.
+%% [[OwnPropertyKeys]] (OrdinaryOwnPropertyKeys): indexes ascending, then
+%% strings in insertion order, then symbols in insertion order. An array's
+%% length is its first string key. Private names are not keys.
 -spec own_keys(value()) -> [key()].
 own_keys(O) ->
-    {_, _, Props, Keys, _, _} = R = record_of(O),
-    Indexes = case R of
-        {array, _, _, _, _, {_, Elements}} -> lists:sort(maps:keys(Elements));
-        _ -> []
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} -> bouy_ref_proxy:own_keys(Handler);
+        R -> record_keys(R)
+    end.
+
+record_keys({Class, _, Props, Keys, _, Slots}) ->
+    {Indexes, First} = case Class of
+        array ->
+            {_, Elements} = Slots,
+            {lists:sort(maps:keys(Elements)), [<<"length">>]};
+        _ ->
+            {lists:sort([K || K <- maps:keys(Props), is_integer(K)]), []}
     end,
     Ordered = lists:reverse(Keys),
-    Indexes ++ lists:sort([K || K <- maps:keys(Props), is_integer(K)])
-        ++ [K || K <- Ordered, ?IS_STRING(K)]
-        ++ [K || {'$sym', _, _} = K <- Ordered].
+    Indexes ++ First ++ [K || K <- Ordered, ?IS_STRING(K)] ++ [K || {'$sym', _, _} = K <- Ordered].
 
 %% The enumerable own string keys, for Object.keys, for-in, spread, and JSON.
 -spec enumerable_keys(value()) -> [key()].
 enumerable_keys(O) ->
-    {_, _, _, _, Attrs, _} = record_of(O),
-    [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs)].
+    case record_of(O) of
+        {proxy, _, _, _, _, _} ->
+            [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), is_enumerable(get_own(O, K))];
+        {Class, _, _, _, Attrs, _} = R ->
+            [K || K <- record_keys(R), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs),
+                  not (Class =:= array andalso K =:= <<"length">>)]
+    end.
 
 enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 
-%% Object.defineProperty with a descriptor map: value, writable, enumerable,
-%% configurable, get, set. A missing attribute is false for a new property.
+is_enumerable({data, _, Bits}) -> Bits band ?ENUMERABLE =/= 0;
+is_enumerable({accessor, _, _, Bits}) -> Bits band ?ENUMERABLE =/= 0;
+is_enumerable(none) -> false.
+
+%% Object.defineProperty for internal use: a descriptor map of value,
+%% writable, enumerable, configurable, get, and set, where a missing
+%% attribute of a new property is false. A failure throws a TypeError.
 -spec define(value(), key(), map()) -> value().
 define(O, K, Descriptor) ->
-    Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = record_of(O),
-    Existing = maps:get(K, Attrs, case is_map_key(K, Props) of true -> ?ALL; false -> 0 end),
-    Bits = bit(writable, ?WRITABLE, Descriptor, Existing)
-        bor bit(enumerable, ?ENUMERABLE, Descriptor, Existing)
-        bor bit(configurable, ?CONFIGURABLE, Descriptor, Existing),
-    Slot = case Descriptor of
-        #{get := G} -> {'$accessor', G, maps:get(set, Descriptor, undefined)};
-        #{set := S} -> {'$accessor', undefined, S};
-        #{value := V} -> V;
-        _ -> maps:get(K, Props, undefined)
-    end,
-    Attrs1 = case Bits of
-        ?ALL -> maps:remove(K, Attrs);
-        _ -> Attrs#{K => Bits}
-    end,
-    case {Class, K} of
-        {array, I} when is_integer(I) ->
-            {Length, Elements} = Slots,
-            erlang:put(Id, {Class, P, Props, Keys, Attrs1, {max(I + 1, Length), Elements#{I => Slot}}});
-        _ ->
-            erlang:put(Id, {Class, P, Props#{K => Slot}, add_key(K, Props, Keys), Attrs1, Slots})
-    end,
-    O.
+    case define_own_property(O, K, Descriptor) of
+        true -> O;
+        false -> define_failed(O, K)
+    end.
 
-bit(Name, Bit, Descriptor, Existing) ->
-    case maps:get(Name, Descriptor, Existing band Bit =/= 0) of
+-spec define_failed(value(), key()) -> no_return().
+define_failed(O, K) ->
+    Message = case record_of(O) of
+        {proxy, _, _, _, _, _} ->
+            text([<<"'defineProperty' on proxy: trap returned falsish for property '">>, key_text(K), <<"'">>]);
+        R ->
+            case own_of(R, K) of
+                none -> text([<<"Cannot define property ">>, key_text(K), <<", object is not extensible">>]);
+                _ -> text([<<"Cannot redefine property: ">>, key_text(K)])
+            end
+    end,
+    throw_error('TypeError', Message).
+
+%% [[DefineOwnProperty]]: true when the property now matches the descriptor.
+-spec define_own_property(value(), key(), map()) -> boolean().
+define_own_property(O, K, Desc) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} ->
+            bouy_ref_proxy:define_own_property(Handler, K, Desc);
+        {array, _, _, _, _, _} = R when K =:= <<"length">> ->
+            array_set_length(O, R, Desc);
+        {array, _, _, _, Attrs, {Length, _}} = R when is_integer(K), K >= Length ->
+            case length_bits(Attrs) band ?WRITABLE of
+                0 -> false;
+                _ -> validate_and_apply(O, K, extensible(Attrs), Desc, own_of(R, K))
+            end;
+        {arguments, _, _, _, Attrs, Map} = R when is_map_key(K, Map) ->
+            arguments_define(O, K, Desc, maps:get(K, Map), extensible(Attrs), own_of(R, K));
+        {_, _, _, _, Attrs, _} = R ->
+            validate_and_apply(O, K, extensible(Attrs), Desc, own_of(R, K))
+    end.
+
+%% ValidateAndApplyPropertyDescriptor (§10.1.6.3). With O undefined it only
+%% validates: IsCompatiblePropertyDescriptor.
+-spec validate_and_apply(value(), key(), boolean(), map(), property()) -> boolean().
+validate_and_apply(_O, _K, false, _Desc, none) ->
+    false;
+validate_and_apply(undefined, _K, true, _Desc, none) ->
+    true;
+validate_and_apply(O, K, true, Desc, none) ->
+    case is_accessor_descriptor(Desc) of
+        true -> put_own(O, K, {'$accessor', maps:get(get, Desc, undefined), maps:get(set, Desc, undefined)}, merge_bits(Desc, 0));
+        false -> put_own(O, K, maps:get(value, Desc, undefined), merge_bits(Desc, 0))
+    end,
+    true;
+validate_and_apply(O, K, _Extensible, Desc, Current) ->
+    case compatible(Desc, Current) of
+        false ->
+            false;
+        true when O =:= undefined ->
+            true;
+        true ->
+            apply_descriptor(O, K, Desc, Current),
+            true
+    end.
+
+%% Whether Desc may change the property Current.
+compatible(Desc, Current) ->
+    Bits = current_bits(Current),
+    case Bits band ?CONFIGURABLE of
+        0 ->
+            maps:get(configurable, Desc, false) =/= true
+                andalso maps:get(enumerable, Desc, Bits band ?ENUMERABLE =/= 0) =:= (Bits band ?ENUMERABLE =/= 0)
+                andalso fixed_compatible(Desc, Current);
+        _ ->
+            true
+    end.
+
+fixed_compatible(Desc, {accessor, G, S, _}) ->
+    not is_data_descriptor(Desc)
+        andalso maps:get(get, Desc, G) =:= G
+        andalso maps:get(set, Desc, S) =:= S;
+fixed_compatible(Desc, {data, V, Bits}) ->
+    case is_accessor_descriptor(Desc) of
+        true -> false;
+        false when Bits band ?WRITABLE =:= 0 -> maps:get(writable, Desc, false) =/= true andalso maps:get(value, Desc, V) =:= V;
+        false -> true
+    end.
+
+current_bits({data, _, Bits}) -> Bits;
+current_bits({accessor, _, _, Bits}) -> Bits.
+
+apply_descriptor(O, K, Desc, {data, V, Bits}) ->
+    case is_accessor_descriptor(Desc) of
+        true -> put_own(O, K, {'$accessor', maps:get(get, Desc, undefined), maps:get(set, Desc, undefined)}, merge_bits(Desc, Bits band (?ENUMERABLE bor ?CONFIGURABLE)));
+        false -> put_own(O, K, maps:get(value, Desc, V), merge_bits(Desc, Bits))
+    end;
+apply_descriptor(O, K, Desc, {accessor, G, S, Bits}) ->
+    case is_data_descriptor(Desc) of
+        true -> put_own(O, K, maps:get(value, Desc, undefined), merge_bits(Desc, Bits band (?ENUMERABLE bor ?CONFIGURABLE)));
+        false -> put_own(O, K, {'$accessor', maps:get(get, Desc, G), maps:get(set, Desc, S)}, merge_bits(Desc, Bits) band (bnot ?WRITABLE))
+    end.
+
+merge_bits(Desc, Bits) ->
+    flag(writable, ?WRITABLE, Desc, Bits) bor flag(enumerable, ?ENUMERABLE, Desc, Bits) bor flag(configurable, ?CONFIGURABLE, Desc, Bits).
+
+flag(Name, Bit, Desc, Bits) ->
+    case maps:get(Name, Desc, Bits band Bit =/= 0) of
         true -> Bit;
         _ -> 0
     end.
 
-%% The own property K: {data, Value, Bits}, {accessor, Get, Set, Bits}, or none.
--spec get_own(value(), key()) -> {data, value(), 0..7} | {accessor, value(), value(), 0..7} | none.
-get_own(O, K) ->
-    {_, _, Props, _, Attrs, _} = R = record_of(O),
-    Found = case R of
-        {array, _, _, _, _, {_, Elements}} when is_integer(K) -> maps:find(K, Elements);
-        {array, _, _, _, _, {Length, _}} when K =:= <<"length">> -> {ok, Length};
-        _ -> maps:find(K, Props)
+-spec is_accessor_descriptor(map()) -> boolean().
+is_accessor_descriptor(Desc) -> is_map_key(get, Desc) orelse is_map_key(set, Desc).
+
+-spec is_data_descriptor(map()) -> boolean().
+is_data_descriptor(Desc) -> is_map_key(value, Desc) orelse is_map_key(writable, Desc).
+
+%% Writes the own property K with its value or accessor and its bits.
+put_own(O, K, Slot, Bits) ->
+    Id = id_for_write(O),
+    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    case Class of
+        array when is_integer(K) ->
+            {Length, Elements} = Slots,
+            erlang:put(Id, {array, P, Props, Keys, bits_into(K, Bits, ?ALL, Attrs), {max(K + 1, Length), Elements#{K => Slot}}});
+        array when K =:= <<"length">> ->
+            erlang:put(Id, {array, P, Props, Keys, bits_into(K, Bits, ?WRITABLE, Attrs), resize(Slots, Slot)});
+        _ ->
+            erlang:put(Id, {Class, P, Props#{K => Slot}, add_key(K, Props, Keys), bits_into(K, Bits, ?ALL, Attrs), Slots})
     end,
-    Bits = case Attrs of
-        #{'$frozen' := true} -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE;
-        _ -> maps:get(K, Attrs, ?ALL)
-    end,
-    case Found of
-        {ok, {'$accessor', G, S}} -> {accessor, G, S, Bits};
-        {ok, V} -> {data, V, Bits};
-        error -> none
+    ok.
+
+bits_into(K, Default, Default, Attrs) -> maps:remove(K, Attrs);
+bits_into(K, Bits, _Default, Attrs) -> Attrs#{K => Bits}.
+
+length_bits(#{'$frozen' := true}) -> 0;
+length_bits(Attrs) -> maps:get(<<"length">>, Attrs, ?WRITABLE).
+
+%% ArraySetLength (§10.4.2.4).
+array_set_length(O, {array, _, _, _, Attrs, {OldLength, _}}, Desc) ->
+    Current = {data, OldLength, length_bits(Attrs)},
+    case Desc of
+        #{value := Value} ->
+            NewLength = bouy_ref_number:to_uint32(bouy_ref:to_number(Value)),
+            NewLength == bouy_ref:to_number(Value) orelse throw_error('RangeError', <<"Invalid array length">>),
+            Desc1 = Desc#{value := NewLength},
+            case NewLength >= OldLength of
+                true -> validate_and_apply(O, <<"length">>, true, Desc1, Current);
+                false -> shrink(O, NewLength, Desc1, Current)
+            end;
+        _ ->
+            validate_and_apply(O, <<"length">>, true, Desc, Current)
     end.
 
--spec prototype_of(value()) -> value().
-prototype_of(O) -> element(2, record_of(O)).
+%% Deletes the elements from the end down to NewLength, and stops at one that
+%% is not configurable.
+shrink(_O, _NewLength, _Desc, {data, _, Bits}) when Bits band ?WRITABLE =:= 0 ->
+    false;
+shrink(O, NewLength, Desc, Current) ->
+    case compatible(Desc#{writable => true}, Current) of
+        false ->
+            false;
+        true ->
+            Id = id_for_write(O),
+            {array, P, Props, Keys, Attrs, {_, Elements}} = erlang:get(Id),
+            Doomed = lists:reverse(lists:sort([I || I <- maps:keys(Elements), I >= NewLength])),
+            {Final, Kept, Attrs1} = drop_elements(Doomed, NewLength, Elements, Attrs),
+            LengthBits = case maps:get(writable, Desc, true) of
+                false -> 0;
+                _ -> ?WRITABLE
+            end,
+            erlang:put(Id, {array, P, Props, Keys, bits_into(<<"length">>, LengthBits, ?WRITABLE, Attrs1), {Final, Kept}}),
+            Final =:= NewLength
+    end.
 
+drop_elements([], NewLength, Elements, Attrs) ->
+    {NewLength, Elements, Attrs};
+drop_elements([I | Rest], NewLength, Elements, Attrs) ->
+    case own_bits(I, Attrs) band ?CONFIGURABLE of
+        0 -> {I + 1, Elements, Attrs};
+        _ -> drop_elements(Rest, NewLength, maps:remove(I, Elements), maps:remove(I, Attrs))
+    end.
+
+%% [[DefineOwnProperty]] of a mapped arguments object (§10.4.4.2) for the
+%% index K that Cell maps.
+arguments_define(O, K, Desc, Cell, Extensible, Current) ->
+    Desc1 = case is_data_descriptor(Desc) andalso not is_map_key(value, Desc) andalso maps:get(writable, Desc, true) =:= false of
+        true -> Desc#{value => cell_get(Cell)};
+        false -> Desc
+    end,
+    case validate_and_apply(O, K, Extensible, Desc1, Current) of
+        false ->
+            false;
+        true ->
+            case is_accessor_descriptor(Desc) of
+                true ->
+                    unmap(O, K);
+                false ->
+                    _ = case Desc of
+                        #{value := V} -> cell_set(Cell, V);
+                        _ -> ok
+                    end,
+                    case maps:get(writable, Desc, true) of
+                        false -> unmap(O, K);
+                        _ -> ok
+                    end
+            end,
+            true
+    end.
+
+unmap(O, K) ->
+    Id = id_for_write(O),
+    {arguments, P, Props, Keys, Attrs, Map} = erlang:get(Id),
+    erlang:put(Id, {arguments, P, Props, Keys, Attrs, maps:remove(K, Map)}),
+    ok.
+
+%% [[GetOwnProperty]]: {data, Value, Bits}, {accessor, Get, Set, Bits}, or none.
+-spec get_own(value(), key()) -> property().
+get_own(O, K) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} -> bouy_ref_proxy:get_own_property(Handler, K);
+        R -> own_of(R, K)
+    end.
+
+own_of({array, _, _, _, Attrs, {_, Elements}}, K) when is_integer(K) ->
+    found(maps:find(K, Elements), own_bits(K, Attrs));
+own_of({array, _, _, _, Attrs, {Length, _}}, <<"length">>) ->
+    {data, Length, length_bits(Attrs)};
+own_of({arguments, _, _, _, Attrs, Map}, K) when is_map_key(K, Map) ->
+    {data, cell_get(maps:get(K, Map)), own_bits(K, Attrs)};
+own_of({_, _, Props, _, Attrs, _}, K) ->
+    found(maps:find(K, Props), own_bits(K, Attrs)).
+
+own_bits(K, #{'$frozen' := true} = Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE;
+own_bits(K, Attrs) -> maps:get(K, Attrs, ?ALL).
+
+found({ok, {'$accessor', G, S}}, Bits) -> {accessor, G, S, Bits};
+found({ok, V}, Bits) -> {data, V, Bits};
+found(error, _Bits) -> none.
+
+%% [[GetPrototypeOf]].
+-spec prototype_of(value()) -> value().
+prototype_of(O) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} -> bouy_ref_proxy:get_prototype_of(Handler);
+        R -> element(2, R)
+    end.
+
+%% Sets the prototype for internal use, without checks.
 -spec set_prototype_of(value(), value()) -> value().
 set_prototype_of(O, Proto) ->
     Id = id_for_write(O),
-    erlang:put(Id, setelement(2, record_of(O), Proto)),
+    erlang:put(Id, setelement(2, erlang:get(Id), Proto)),
     O.
 
+%% [[SetPrototypeOf]] (OrdinarySetPrototypeOf): false for a non-extensible
+%% object, a cycle, or a new prototype of Object.prototype.
+-spec set_prototype(value(), value()) -> boolean().
+set_prototype(O, Proto) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} ->
+            bouy_ref_proxy:set_prototype_of(Handler, Proto);
+        {_, Proto, _, _, _, _} ->
+            true;
+        _ when O =:= ?OBJECT_PROTO ->
+            false;
+        {_, _, _, _, Attrs, _} ->
+            case extensible(Attrs) andalso not in_chain(Proto, O) of
+                true -> _ = set_prototype_of(O, Proto), true;
+                false -> false
+            end
+    end.
+
+in_chain(null, _O) -> false;
+in_chain(O, O) -> true;
+in_chain(P, O) ->
+    case record_of(P) of
+        {proxy, _, _, _, _, _} -> false;
+        R -> in_chain(element(2, R), O)
+    end.
+
+%% [[IsExtensible]].
+-spec is_extensible(value()) -> boolean().
+is_extensible(O) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} -> bouy_ref_proxy:is_extensible(Handler);
+        {_, _, _, _, Attrs, _} -> extensible(Attrs)
+    end.
+
+%% [[PreventExtensions]].
+-spec prevent_extensions(value()) -> boolean().
+prevent_extensions(O) ->
+    case record_of(O) of
+        {proxy, _, _, _, _, Handler} ->
+            bouy_ref_proxy:prevent_extensions(Handler);
+        _ ->
+            Id = id_for_write(O),
+            {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+            erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
+            true
+    end.
+
+%% Object.freeze of an ordinary object: one flag makes every property
+%% read-only and non-configurable, and the object non-extensible.
 -spec freeze(value()) -> value().
 freeze(O) ->
     Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = record_of(O),
+    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
     erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$frozen' => true}, Slots}),
     O.
 
@@ -603,6 +1033,33 @@ static_function_record({'$f', {builtin, Name} = Id, _}) ->
         R ->
             R
     end;
+%% A module-level generator or async function is {'$f', {fn, Module, Name,
+%% Length, Kind}, Fun}: new cannot construct it.
+static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) ->
+    Proto = new_object(?OBJECT_PROTO),
+    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => null},
+    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE, <<"prototype">> => ?WRITABLE, <<"arguments">> => 0, <<"caller">> => 0},
+    Keys = [<<"prototype">>, <<"caller">>, <<"arguments">>, <<"name">>, <<"length">>],
+    Record = {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}},
+    erlang:put(Id, Record),
+    define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
+    Record;
+static_function_record({'$f', {fn, _Module, Name, Length, Kind} = Id, _}) ->
+    Props = #{<<"length">> => Length, <<"name">> => Name},
+    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
+    Record = case Kind of
+        async ->
+            {function, ?FUNCTION_PROTO, Props, [<<"name">>, <<"length">>], Attrs, #{kind => Kind}};
+        _ ->
+            Parent = case Kind of
+                generator -> {'$o', 'Generator.prototype'};
+                _ -> {'$o', 'AsyncGenerator.prototype'}
+            end,
+            {function, ?FUNCTION_PROTO, Props#{<<"prototype">> => new_object(Parent)}, [<<"prototype">>, <<"name">>, <<"length">>],
+             Attrs#{<<"prototype">> => ?WRITABLE}, #{kind => Kind}}
+    end,
+    erlang:put(Id, Record),
+    Record;
 %% A module-level function declaration is {'$f', {fn, Module, Name, Length}, Fun}.
 %% Each realm makes its record, with a new prototype object, on first use.
 static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->

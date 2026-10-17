@@ -1,4 +1,4 @@
-%% The keyed collections: Map, Set, WeakMap, and WeakSet.
+%% The keyed collections Map and Set. WeakMap and WeakSet are in bouy_ref_weak.
 -module(bouy_ref_collection).
 
 -include("bouy_ref.hrl").
@@ -8,7 +8,7 @@
 -import(bouy_ref_realm, [arg/2, rest/2, builtin/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
 
--define(NAMES, [<<"Map">>, <<"Set">>, <<"WeakMap">>, <<"WeakSet">>]).
+-define(NAMES, [<<"Map">>, <<"Set">>]).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
@@ -20,12 +20,8 @@ intrinsics() ->
          ++ [{<<"size">>, {'$accessor', builtin(<<"get size">>, fun(This, _) -> ?MODULE:collection_size(This) end), undefined}},
              {<<"constructor">>, constructor(<<"Set">>)}, {?SYM(toStringTag), <<"Set">>},
              {?SYM(iterator), builtin(<<"Set.prototype.values">>, fun(This, Args) -> ?MODULE:method(<<"Set.prototype">>, <<"values">>, This, Args) end)}], none)},
-     {'WeakMap.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Map.prototype">>, [<<"get">>, <<"set">>, <<"has">>, <<"delete">>]) ++ [{<<"constructor">>, constructor(<<"WeakMap">>)}], none)},
-     {'WeakSet.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Set.prototype">>, [<<"add">>, <<"has">>, <<"delete">>]) ++ [{<<"constructor">>, constructor(<<"WeakSet">>)}], none)},
      {{builtin, <<"Map">>}, ctor_record(<<"Map">>, 0, {'$o', 'Map.prototype'}, ?METHODS(<<"Map">>, [<<"groupBy">>]), fun map_construct/2)},
-     {{builtin, <<"Set">>}, ctor_record(<<"Set">>, 0, {'$o', 'Set.prototype'}, [], fun set_construct/2)},
-     {{builtin, <<"WeakMap">>}, ctor_record(<<"WeakMap">>, 0, {'$o', 'WeakMap.prototype'}, [], fun map_construct/2)},
-     {{builtin, <<"WeakSet">>}, ctor_record(<<"WeakSet">>, 0, {'$o', 'WeakSet.prototype'}, [], fun set_construct/2)}].
+     {{builtin, <<"Set">>}, ctor_record(<<"Set">>, 0, {'$o', 'Set.prototype'}, [], fun set_construct/2)}].
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{N, constructor(N)} || N <- ?NAMES].
@@ -65,8 +61,6 @@ set_construct(NewTarget, Args) ->
     end,
     S.
 
-collection_proto({'$f', {builtin, <<"WeakMap">>}, _}, _) -> {'$o', 'WeakMap.prototype'};
-collection_proto({'$f', {builtin, <<"WeakSet">>}, _}, _) -> {'$o', 'WeakSet.prototype'};
 collection_proto({'$f', {builtin, _}, _}, Default) -> {'$o', Default};
 collection_proto(NewTarget, _Default) -> bouy_ref:get(NewTarget, <<"prototype">>).
 

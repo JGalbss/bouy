@@ -16,8 +16,8 @@
 
 -include("bouy_ref.hrl").
 
--export([install/0, global/1, constructor/2]).
--export([arg/2, rest/2, builtin/2, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
+-export([install/0, global/1, set_global/3, declare_globals/2, delete_global/1, constructor/2]).
+-export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
 -export([intrinsics/0, globals/0, method/4]).
 
 families() ->
@@ -38,6 +38,9 @@ families() ->
      bouy_ref_json,
      bouy_ref_date,
      bouy_ref_console,
+     bouy_ref_reflect,
+     bouy_ref_proxy,
+     bouy_ref_weak,
      ?MODULE].
 
 %%% Installation
@@ -52,17 +55,82 @@ install() ->
             ok;
         _ ->
             [bouy_heap:install_intrinsic(Id, Record) || M <- families(), {Id, Record} <- M:intrinsics()],
-            persistent_term:put({?MODULE, globals}, maps:from_list(lists:append([M:globals() || M <- families()]))),
+            Globals = lists:append([M:globals() || M <- families()]),
+            bouy_heap:install_intrinsic('globalThis', global_object(Globals)),
+            persistent_term:put({?MODULE, globals}, maps:from_list(Globals)),
             persistent_term:put({?MODULE, installed}, Version)
     end,
     ok.
 
+%% The global object: each global binding is a writable, configurable, and
+%% non-enumerable property, except undefined, NaN, and Infinity, which are
+%% read-only and non-configurable.
+global_object(Globals) ->
+    {Class, Proto, Props, Keys, Attrs, Slots} = record(object, ?OBJECT_PROTO, Globals, none),
+    Fixed = maps:from_list([{K, 0} || K <- [<<"undefined">>, <<"NaN">>, <<"Infinity">>], is_map_key(K, Props)]),
+    {Class, Proto, Props, Keys, maps:merge(Attrs, Fixed), Slots}.
+
+%% The value of an identifier that no scope declares: a property of the
+%% global object, up its prototype chain, else a ReferenceError. A realm
+%% that has not written to its global object reads the static bindings.
 -spec global(binary()) -> term().
 global(Name) ->
-    case persistent_term:get({?MODULE, globals}) of
-        #{Name := V} -> V;
-        _ -> bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat(Name, <<" is not defined">>))
+    case erlang:get('globalThis') of
+        undefined ->
+            case persistent_term:get({?MODULE, globals}) of
+                #{Name := V} -> V;
+                _ -> global_slow(Name)
+            end;
+        _ ->
+            global_slow(Name)
     end.
+
+global_slow(Name) ->
+    G = {'$o', 'globalThis'},
+    case bouy_heap:has(G, Name) of
+        true -> bouy_heap:get(G, Name);
+        false -> bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat(Name, <<" is not defined">>))
+    end.
+
+%% `name = value` for an identifier that no scope declares. Strict code
+%% throws a ReferenceError when the global object lacks the name; sloppy
+%% code creates the property.
+-spec set_global(binary(), term(), strict | sloppy) -> term().
+set_global(Name, Value, Mode) ->
+    G = {'$o', 'globalThis'},
+    case Mode =:= sloppy orelse bouy_heap:has(G, Name) of
+        true -> set_in_mode(G, Name, Value, Mode);
+        false -> bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat(Name, <<" is not defined">>))
+    end.
+
+%% GlobalDeclarationInstantiation of a script (ECMA-262 §16.1.7): each `var`
+%% name that the global object lacks becomes a property, and each function a
+%% property with its value. Both are writable, enumerable, and not
+%% configurable.
+-spec declare_globals([binary()], [{binary(), term()}]) -> ok.
+declare_globals(Vars, Functions) ->
+    G = {'$o', 'globalThis'},
+    lists:foreach(fun({Name, F}) ->
+                          Desc = case bouy_heap:get_own(G, Name) of
+                              {_, _, _, Bits} when Bits band 4 =:= 0 -> #{value => F};
+                              {_, _, Bits} when Bits band 4 =:= 0 -> #{value => F};
+                              _ -> #{value => F, writable => true, enumerable => true, configurable => false}
+                          end,
+                          bouy_heap:define(G, Name, Desc)
+                  end, Functions),
+    lists:foreach(fun(Name) ->
+                          case bouy_heap:has_own(G, Name) of
+                              true -> ok;
+                              false -> bouy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => false})
+                          end
+                  end, Vars).
+
+%% `delete name` in sloppy code for a global.
+-spec delete_global(binary()) -> boolean().
+delete_global(Name) -> bouy_heap:delete_property({'$o', 'globalThis'}, Name).
+
+set_in_mode(G, Name, Value, strict) -> bouy_heap:set(G, Name, Value);
+set_in_mode(G, Name, Value, sloppy) -> _ = bouy_heap:set(G, Name, Value, G), Value.
 
 %%% Builders for the intrinsics of a family
 
@@ -74,6 +142,15 @@ constructor(Module, Name) -> {'$f', {builtin, Name}, fun(This, Args) -> Module:c
 -spec builtin(binary(), fun((term(), list()) -> term())) -> term().
 builtin(Name, Fun) -> {'$f', {builtin, Name}, Fun}.
 
+%% A builtin with its own name and length properties: Id names it uniquely,
+%% such as <<"Symbol.prototype.description">>, and Name is the value of its
+%% name property, such as <<"get description">>.
+-spec builtin(binary(), binary(), non_neg_integer(), fun((term(), list()) -> term())) -> term().
+builtin(Id, Name, Length, Fun) ->
+    {Class, Proto, Props, Keys, Attrs, Slots} = record(function, ?FUNCTION_PROTO, [{<<"length">>, Length}, {<<"name">>, Name}], #{}),
+    bouy_heap:install_intrinsic({builtin, Id}, {Class, Proto, Props, Keys, Attrs#{<<"length">> => 4, <<"name">> => 4}, Slots}),
+    builtin(Id, Fun).
+
 %% A record whose properties are all builtin data: not enumerable.
 -spec record(atom(), term(), [{term(), term()}], term()) -> tuple().
 record(Class, Proto, Entries, Slots) ->
@@ -82,14 +159,23 @@ record(Class, Proto, Entries, Slots) ->
     Attrs = maps:from_list([{K, ?HIDDEN} || {K, _} <- Entries]),
     {Class, Proto, Props, Keys, Attrs, Slots}.
 
--spec methods(module(), binary(), [binary()]) -> [{binary(), term()}].
+%% The builtin methods of Owner. A name with its length, {Name, Length}, also
+%% gets its own name and length properties.
+-spec methods(module(), binary(), [binary() | {binary(), non_neg_integer()}]) -> [{binary(), term()}].
 methods(Module, Owner, Names) ->
-    [{Name, builtin(<<Owner/binary, ".", Name/binary>>, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)} || Name <- Names].
+    [method_entry(Module, Owner, Name) || Name <- Names].
+
+method_entry(Module, Owner, {Name, Length}) ->
+    {Name, builtin(<<Owner/binary, ".", Name/binary>>, Name, Length, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)};
+method_entry(Module, Owner, Name) ->
+    {Name, builtin(<<Owner/binary, ".", Name/binary>>, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)}.
 
 -spec ctor_record(binary(), non_neg_integer(), term(), [{term(), term()}], fun((term(), list()) -> term())) -> tuple().
 ctor_record(Name, Length, Proto, Statics, Construct) ->
     Entries = [{<<"length">>, Length}, {<<"name">>, Name}, {<<"prototype">>, Proto} | Statics],
-    record(function, ?FUNCTION_PROTO, Entries, #{construct => Construct, kind => builtin}).
+    {Class, P, Props, Keys, Attrs, Slots} = record(function, ?FUNCTION_PROTO, Entries, #{construct => Construct, kind => builtin}),
+    %% name and length are configurable only; prototype is fixed.
+    {Class, P, Props, Keys, Attrs#{<<"length">> => 4, <<"name">> => 4, <<"prototype">> => 0}, Slots}.
 
 %% The [[Construct]] of a builtin that new does not support, such as new String().
 -spec not_constructible(term(), list()) -> no_return().

@@ -11,8 +11,10 @@
 
 -type exit_status() :: 0..255.
 -export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
+-export([sloppy_set/3, sloppy_set_computed/3, sloppy_delete/2, sloppy_delete_computed/2, sloppy_this/1]).
+-export([mapped_arguments/3, function_name/2, literal_proto/2, named_fn/5, to_numeric/1]).
 -export([call/3, call_method/3, call_method_computed/3, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
--export([arguments_object/1, throw_type_error/2, fn/1, named_fn/3, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
+-export([arguments_object/1, throw_type_error/2, fn/1, fn/3, named_fn/3, named_fn/4, new_target/1, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
 -export([array/1, array_spread/1, object_spread/2, object_rest/2, template/1]).
 -export([add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1, plus/1]).
@@ -119,12 +121,48 @@ get_computed(O, K) -> get(O, to_property_key(K)).
 -spec set(term(), bouy_heap:key(), term()) -> term().
 set({'$o', _} = O, K, V) -> bouy_heap:set(O, K, V);
 set({'$f', _, _} = F, K, V) -> bouy_heap:set(F, K, V);
-set(undefined, K, _V) -> type_error(text([<<"Cannot set properties of undefined (setting '">>, key_text(K), <<"')">>]));
-set(null, K, _V) -> type_error(text([<<"Cannot set properties of null (setting '">>, key_text(K), <<"')">>]));
+set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
+set(null, K, _V) -> cannot_set(<<"null">>, K);
 set(P, K, _V) -> type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])).
 
 -spec set_computed(term(), term(), term()) -> term().
 set_computed(O, K, V) -> set(O, to_property_key(K), V).
+
+-spec cannot_set(binary(), bouy_heap:key()) -> no_return().
+cannot_set(What, K) -> type_error(text([<<"Cannot set properties of ">>, What, <<" (setting '">>, key_text(K), <<"')">>])).
+
+%% `o[k] = v` in sloppy code: a write that fails does nothing, and a write to a
+%% primitive runs only a setter of its prototype.
+-spec sloppy_set(term(), bouy_heap:key(), term()) -> term().
+sloppy_set({'$o', _} = O, K, V) -> bouy_heap:sloppy_set(O, K, V);
+sloppy_set({'$f', _, _} = F, K, V) -> bouy_heap:sloppy_set(F, K, V);
+sloppy_set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
+sloppy_set(null, K, _V) -> cannot_set(<<"null">>, K);
+sloppy_set({'$actor', _}, _K, V) -> V;
+sloppy_set(P, K, V) ->
+    _ = bouy_heap:set(primitive_proto(P), K, V, P),
+    V.
+
+primitive_proto(S) when ?IS_STRING(S) -> {'$o', 'String.prototype'};
+primitive_proto(B) when is_boolean(B) -> {'$o', 'Boolean.prototype'};
+primitive_proto({'$sym', _, _}) -> {'$o', 'Symbol.prototype'};
+primitive_proto(_) -> {'$o', 'Number.prototype'}.
+
+-spec sloppy_set_computed(term(), term(), term()) -> term().
+sloppy_set_computed(O, K, V) -> sloppy_set(O, to_property_key(K), V).
+
+%% `delete o[k]` in sloppy code: false for a property that cannot go.
+-spec sloppy_delete(term(), bouy_heap:key()) -> boolean().
+sloppy_delete(O, K) when ?IS_OBJECT(O) -> bouy_heap:delete_property(O, K);
+sloppy_delete(O, K) -> delete(O, K).
+
+-spec sloppy_delete_computed(term(), term()) -> boolean().
+sloppy_delete_computed(O, K) -> sloppy_delete(O, to_property_key(K)).
+
+%% The this of a sloppy function: the global object for undefined and null.
+-spec sloppy_this(term()) -> term().
+sloppy_this(This) when This =:= undefined; This =:= null -> {'$o', 'globalThis'};
+sloppy_this(This) -> This.
 
 -spec delete(term(), bouy_heap:key()) -> boolean().
 delete(O, K) when ?IS_OBJECT(O) -> bouy_heap:delete(O, K);
@@ -216,8 +254,24 @@ arguments_object(Args) ->
     bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
     bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, <<"values">>),
                                           writable => true, enumerable => false, configurable => true}),
-    Thrower = bouy_ref_realm:builtin(<<"ThrowTypeError">>, fun ?MODULE:throw_type_error/2),
+    Thrower = bouy_ref_function:throw_type_error(),
     bouy_heap:define(O, <<"callee">>, #{get => Thrower, set => Thrower, enumerable => false, configurable => false}),
+    O.
+
+%% The mapped arguments object of a sloppy function with simple parameters
+%% (ECMA-262 §10.4.4.7): an index below the argument count shares the cell
+%% of its parameter, and callee is the function.
+-spec mapped_arguments(list(), list(), term()) -> term().
+mapped_arguments(Args, Cells, Callee) ->
+    O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
+    [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
+    bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, <<"values">>),
+                                          writable => true, enumerable => false, configurable => true}),
+    bouy_heap:define(O, <<"callee">>, #{value => Callee, writable => true, enumerable => false, configurable => true}),
+    Count = min(length(Args), length(Cells)),
+    Map = maps:from_list([{I, Cell} || {I, Cell} <- lists:enumerate(0, lists:sublist(Cells, Count)), Cell =/= undefined]),
+    bouy_heap:set_slots(O, Map),
     O.
 
 %% %ThrowTypeError%: the accessor of callee on an arguments object.
@@ -229,14 +283,83 @@ throw_type_error(_This, _Args) ->
 -spec fn(fun((term(), list()) -> term())) -> term().
 fn(Fun) -> bouy_heap:function(Fun).
 
+%% An arrow function or a method with its name and length: a record, but no
+%% prototype, and new throws.
+-spec fn(fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer()) -> term().
+fn(Fun, Name, Length) -> bouy_heap:function(Fun, Name, Length, #{}).
+
+%% new.target in an ordinary function whose this is This.
+-spec new_target(term()) -> term().
+new_target(This) -> bouy_heap:new_target(This).
+
 %% A function declaration or expression: it has a name and a prototype
 %% object, so new works on it.
 -spec named_fn(fun((term(), list()) -> term()), binary(), non_neg_integer()) -> term().
-named_fn(Fun, Name, Length) ->
-    F = bouy_heap:function(Fun, Name, Length, #{kind => normal}),
+named_fn(Fun, Name, Length) -> named_fn(Fun, Name, Length, normal).
+
+%% named_fn/4 under an id from bouy_heap:new_id/0, for a function whose code
+%% refers to itself.
+-spec named_fn(pos_integer(), fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer(), atom()) -> term().
+named_fn(Id, Fun, Name, Length, Kind) ->
+    F = bouy_heap:function(Id, Fun, Name, Length, #{kind => slot_kind(Kind)}),
+    finish_fn(F, Kind).
+
+%% The name of a function from a property key, as SetFunctionName gives it:
+%% a symbol's description in brackets, and a prefix such as "get".
+-spec function_name(bouy_heap:key(), bouy_ref_string:js_string()) -> bouy_ref_string:js_string().
+function_name(K, Prefix) ->
+    Name = case K of
+        {'$sym', _, undefined} -> <<>>;
+        {'$sym', _, D} -> text([<<"[">>, D, <<"]">>]);
+        I when is_integer(I) -> integer_to_binary(I);
+        S -> S
+    end,
+    case Prefix of
+        <<>> -> Name;
+        _ -> text([Prefix, <<" ">>, Name])
+    end.
+
+%% `__proto__: v` in an object literal: an object or null becomes the prototype.
+-spec literal_proto(term(), term()) -> ok.
+literal_proto(O, Proto) when ?IS_OBJECT(Proto); Proto =:= null ->
+    _ = bouy_heap:set_prototype_of(O, Proto),
+    ok;
+literal_proto(_O, _Proto) ->
+    ok.
+
+%% ToNumeric: a number, until BigInt arrives.
+-spec to_numeric(term()) -> term().
+to_numeric(V) -> to_number(V).
+
+%% A function of a kind: normal, which new can construct, generator or
+%% async_generator, whose prototype object is the prototype of the
+%% generators it makes, or async, which has no prototype.
+-spec named_fn(fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer(), normal | sloppy | generator | async | async_generator) -> term().
+named_fn(Fun, Name, Length, Kind) ->
+    finish_fn(bouy_heap:function(Fun, Name, Length, #{kind => slot_kind(Kind)}), Kind).
+
+%% A sloppy function is a normal one with the caller and arguments
+%% properties that V8 gives it, both null.
+slot_kind(sloppy) -> normal;
+slot_kind(Kind) -> Kind.
+
+finish_fn(F, sloppy) ->
+    bouy_heap:define(F, <<"arguments">>, #{value => null, writable => false, enumerable => false, configurable => false}),
+    bouy_heap:define(F, <<"caller">>, #{value => null, writable => false, enumerable => false, configurable => false}),
+    finish_fn(F, normal);
+finish_fn(F, normal) ->
     Proto = bouy_heap:new_object(?OBJECT_PROTO),
     bouy_heap:define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
     bouy_heap:define(F, <<"prototype">>, #{value => Proto, writable => true, enumerable => false, configurable => false}),
+    F;
+finish_fn(F, async) ->
+    F;
+finish_fn(F, Kind) ->
+    Parent = case Kind of
+        generator -> {'$o', 'Generator.prototype'};
+        async_generator -> {'$o', 'AsyncGenerator.prototype'}
+    end,
+    bouy_heap:define(F, <<"prototype">>, #{value => bouy_heap:new_object(Parent), writable => true, enumerable => false, configurable => false}),
     F.
 
 %% ClassDefinitionEvaluation up to the methods: the constructor function
@@ -310,13 +433,27 @@ define_field(O, K, V) ->
 -spec array(list()) -> term().
 array(Items) -> bouy_heap:new_array(Items).
 
-%% [a, ...b]: Parts are {item, V} and {spread, Iterable}.
+%% [a, , b] and [a, ...b]: Parts are {item, V}, hole, and {spread, Iterable}.
+%% A hole leaves its index without an element.
 -spec array_spread(list()) -> term().
 array_spread(Parts) ->
-    bouy_heap:new_array(lists:append([spread_part(P) || P <- Parts])).
+    Items = lists:append([spread_part(P) || P <- Parts]),
+    case lists:member(hole, Items) of
+        false -> bouy_heap:new_array([V || {item, V} <- Items]);
+        true -> holey_array(Items)
+    end.
 
-spread_part({item, V}) -> [V];
-spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
+holey_array(Items) ->
+    A = bouy_heap:new_array([]),
+    Length = lists:foldl(fun(hole, I) -> I + 1;
+                            ({item, V}, I) -> _ = bouy_heap:set(A, I, V), I + 1
+                         end, 0, Items),
+    _ = bouy_heap:set(A, <<"length">>, Length),
+    A.
+
+spread_part({item, V}) -> [{item, V}];
+spread_part(hole) -> [hole];
+spread_part({spread, V}) -> [{item, X} || X <- bouy_ref_iterator:to_list(V)].
 
 %% {...source} into Target: CopyDataProperties.
 -spec object_spread(term(), term()) -> term().
@@ -512,22 +649,20 @@ typeof_global(Name) ->
         error:{'$throw', _} -> <<"undefined">>
     end.
 
+%% InstanceofOperator: Symbol.hasInstance, else OrdinaryHasInstance.
 -spec instance_of(term(), term()) -> boolean().
-instance_of(V, {'$f', _, _} = C) ->
-    case ?IS_OBJECT(V) of
-        false ->
-            false;
-        true ->
-            Proto = get(C, <<"prototype">>),
-            ?IS_OBJECT(Proto) orelse type_error(<<"Function has non-object prototype in instanceof check">>),
-            in_chain(bouy_heap:prototype_of(V), Proto)
+instance_of(V, C) when ?IS_OBJECT(C) ->
+    case get(C, ?SYM(hasInstance)) of
+        {'$f', {builtin, <<"Function.prototype[Symbol.hasInstance]">>}, _} ->
+            bouy_ref_function:ordinary_has_instance(C, V);
+        H when H =:= undefined; H =:= null ->
+            bouy_heap:is_callable(C) orelse type_error(text([<<"Right-hand side of 'instanceof' is not callable">>])),
+            bouy_ref_function:ordinary_has_instance(C, V);
+        H ->
+            truthy(call(H, C, [V]))
     end;
 instance_of(_V, C) ->
-    type_error(text([<<"Right-hand side of 'instanceof' is not callable (">>, describe(C), <<")">>])).
-
-in_chain(null, _Proto) -> false;
-in_chain(Proto, Proto) -> true;
-in_chain(O, Proto) -> in_chain(bouy_heap:prototype_of(O), Proto).
+    type_error(text([<<"Right-hand side of 'instanceof' is not an object (">>, describe(C), <<")">>])).
 
 -spec truthy(term()) -> boolean().
 truthy(true) -> true;
