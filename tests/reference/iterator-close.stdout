@@ -1,0 +1,28 @@
+inner finally
+delegated inner result
+[ 1, 2, 3, 4 ]
+inner finally
+1 { value: 9, done: true } { value: undefined, done: true }
+cleanup ran
+{ value: 7, done: true }
+caught boom
+{ value: 'done', done: true }
+return called
+return called
+thrown in the body at 0
+return called
+returned 0
+pair 1 0
+return called
+pair 2 0
+return called
+return called
+pattern 0 1
+defaults 0 10 20
+return called
+0
+return called
+asked
+conditional answer
+conditional not asked
+{ value: 5, done: true } closes: 1

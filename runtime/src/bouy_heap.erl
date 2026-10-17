@@ -50,6 +50,7 @@
 -export([install_intrinsic/2, intrinsic/1, throw_error/2, error_object/3]).
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
 -export([clone_out/1, clone_in/1]).
+-export([private_find/2, private_put/3]).
 
 -export_type([value/0, key/0, property/0]).
 
@@ -1047,6 +1048,18 @@ is_frozen(O) ->
     {_, _, _, _, Attrs, _} = record_of(O),
     maps:get('$frozen', Attrs, false).
 
+%% The private element P of O (bouy_ref_class): {ok, Slot} or error. Private
+%% elements are not inherited, and a frozen object can still change them.
+-spec private_find(value(), key()) -> {ok, term()} | error.
+private_find(O, P) -> maps:find(P, element(3, record_of(O))).
+
+-spec private_put(value(), key(), term()) -> ok.
+private_put(O, P, Slot) ->
+    Id = id_for_write(O),
+    {Class, Proto, Props, Keys, Attrs, Slots} = record_of(O),
+    erlang:put(Id, {Class, Proto, Props#{P => Slot}, Keys, Attrs, Slots}),
+    ok.
+
 -spec class_of(value()) -> atom().
 class_of(O) -> element(1, record_of(O)).
 
@@ -1094,8 +1107,9 @@ static_function_record({'$f', {builtin, Name} = Id, _}) ->
         R ->
             R
     end;
-%% A module-level generator or async function is {'$f', {fn, Module, Name,
-%% Length, Kind}, Fun}: new cannot construct it.
+%% A module-level normal function of sloppy code is {'$f', {fn, Module, Name,
+%% Length, sloppy}, Fun}: it has the caller and arguments properties that V8
+%% gives it, both null.
 static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) ->
     Proto = new_object(?OBJECT_PROTO),
     Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => null},
@@ -1104,23 +1118,6 @@ static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) 
     Record = {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}},
     erlang:put(Id, Record),
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
-    Record;
-static_function_record({'$f', {fn, _Module, Name, Length, Kind} = Id, _}) ->
-    Props = #{<<"length">> => Length, <<"name">> => Name},
-    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
-    FunctionProto = {'$o', bouy_ref_function:kind_prototype_id(Kind)},
-    Record = case Kind of
-        async ->
-            {function, FunctionProto, Props, [<<"name">>, <<"length">>], Attrs, #{kind => Kind}};
-        _ ->
-            Parent = case Kind of
-                generator -> {'$o', 'Generator.prototype'};
-                _ -> {'$o', 'AsyncGenerator.prototype'}
-            end,
-            {function, FunctionProto, Props#{<<"prototype">> => new_object(Parent)}, [<<"prototype">>, <<"name">>, <<"length">>],
-             Attrs#{<<"prototype">> => ?WRITABLE}, #{kind => Kind}}
-    end,
-    erlang:put(Id, Record),
     Record;
 %% A module-level function declaration is {'$f', {fn, Module, Name, Length}, Fun}.
 %% Each realm makes its record, with a new prototype object, on first use.
@@ -1131,6 +1128,11 @@ static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
     Record = {function, ?FUNCTION_PROTO, Props, [<<"prototype">>, <<"name">>, <<"length">>], Attrs, #{kind => normal}},
     erlang:put(Id, Record),
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
+    Record;
+%% A generator, an async function, or a function that reads new.target.
+static_function_record({'$f', {Form, Module, Name, Length} = Id, _} = F) ->
+    Record = bouy_ref_generator:static_record(Form, Module, Name, Length, F),
+    erlang:put(Id, Record),
     Record;
 static_function_record(_F) ->
     {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}}.

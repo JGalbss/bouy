@@ -323,6 +323,11 @@ fn program(test262: &Path, meta: &Frontmatter, source: &str) -> Result<(String, 
             prelude.push('\n');
         }
     }
+    if meta.has_flag("async") {
+        // asyncHelpers.js looks for $DONE on the global object, where a script's function
+        // declarations live; a declaration here is module-level.
+        prelude.push_str("globalThis.$DONE = $DONE;\n");
+    }
     let lines = prelude.lines().count();
     prelude.push_str(source);
     Ok((prelude, lines))

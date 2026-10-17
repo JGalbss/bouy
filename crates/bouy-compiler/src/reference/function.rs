@@ -1,96 +1,106 @@
-//! Functions: parameters, bodies, `return`, and the function values of arrows,
-//! function expressions, and object literal methods, with their `name` and `length`.
+//! Functions: parameters, bodies, `return`, and the function objects of arrows,
+//! function expressions, and methods, with their `name`, `length`, and source text.
+//!
+//! A generator or an async generator function compiles to a maker,
+//! `fun(SelfId) -> fun(This, Args) -> ... end end`, so that its body can find the
+//! prototype of its own function object for the generators it makes. A function that
+//! reads `new.target` compiles to `fun(This, Args, NewTarget)`.
 
 use oxc::ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Expression, FormalParameters, Function, FunctionBody,
+    ArrowFunctionExpression, BindingPattern, Class, Expression, FormalParameters, Function,
+    FunctionBody, NewTarget,
 };
-
 use oxc::ast_visit::Visit;
-use oxc::semantic::{ScopeId, SymbolId};
+use oxc::semantic::{ScopeFlags, ScopeId};
 use oxc::span::Span;
 
 use super::analyze::{BlockFunctions, UsesArguments, UsesThis, VarDeclarations, is_simple};
-use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret};
-use super::expr::strip;
+use super::class::method_kind;
+use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, cell_get, cell_set};
 use crate::erlang::{Clause, Expr};
 
-/// How a function refers to itself: for `arguments.callee`, and for the name of a named
-/// function expression inside its body.
-#[derive(Debug, Clone)]
-pub enum Itself {
-    None,
-    /// A module-level function: its static value.
-    Static(Expr),
-    /// A function made at run time: `id` holds the id that `bouy_heap:new_id/0` gave it
-    /// before the fun existed, and `fun` names the named fun, so the body can build
-    /// `{'$f', Id, Fun}`. `symbol` is the binding of a named function expression.
-    Named {
-        id: String,
-        fun: String,
-        symbol: Option<SymbolId>,
-    },
+/// The lowered code of a function.
+pub struct Code {
+    pub this: String,
+    pub args: String,
+    pub new_target: Option<String>,
+    pub body: Vec<Expr>,
+}
+
+impl Code {
+    /// `fun(This, Args) -> Body end`, with `NewTarget` when the function reads it.
+    pub fn fun(self) -> Expr {
+        let mut patterns = vec![Expr::var(self.this), Expr::var(self.args)];
+        if let Some(new_target) = self.new_target {
+            patterns.push(Expr::var(new_target));
+        }
+        Expr::Fun {
+            name: None,
+            clauses: vec![Clause {
+                patterns,
+                guards: vec![],
+                body: self.body,
+            }],
+        }
+    }
 }
 
 impl<'a> Lowerer<'a, '_> {
-    /// Lowers a function: returns the names of its `This` and `Args` parameters and its
-    /// body.
+    /// Lowers a function. `own` is the value that a generator's body finds its function
+    /// object by: the id of its record, or the static function value. `scope` is the scope
+    /// of the function, which says whether its code is sloppy.
     pub fn function_code(
         &mut self,
         params: &'a FormalParameters<'a>,
         body: FnBody<'a>,
         kind: Kind,
         callee: Callee,
+        own: Option<Expr>,
         scope: Option<ScopeId>,
-        itself: &Itself,
-    ) -> (String, String, Vec<Expr>) {
+    ) -> Code {
         let this_param = self.fresh("This");
         let args = self.fresh("Args");
         let outer = std::mem::take(&mut self.frame);
         let outer_pre = std::mem::take(&mut self.pre);
-        let own_arguments = matches!(callee, Callee::Function(_));
-        let (this, class, arguments, new_target, callee_value) = match callee {
-            Callee::Arrow => (
-                outer.this.clone(),
-                outer.class.clone(),
-                outer.arguments.clone(),
-                outer.new_target.clone(),
-                outer.callee.clone(),
-            ),
-            Callee::Function(class) => (Some(this_param.clone()), class, None, None, None),
+        let own_arguments = !matches!(callee, Callee::Arrow);
+        let reads_new_target = match (&callee, body) {
+            (Callee::Function(_), FnBody::Block(block)) if kind == Kind::Sync => {
+                let mut uses = UsesNewTarget(false);
+                uses.visit_formal_parameters(params);
+                uses.visit_function_body(block);
+                uses.0
+            }
+            _ => false,
         };
-        let sloppy = scope.is_some() && self.is_sloppy(scope);
-        self.frame = Frame {
+        let new_target_param = reads_new_target.then(|| self.fresh("NewTarget"));
+        let mut frame = Frame {
             env: outer.env.clone(),
-            this,
             kind,
-            class,
-            arguments,
-            new_target,
-            sloppy,
-            callee: callee_value,
+            sloppy: scope.is_some() && self.is_sloppy(scope),
             withs: outer.withs.clone(),
             ..Frame::default()
         };
-        let mut prologue = Vec::new();
-        match itself {
-            Itself::None => {}
-            Itself::Static(value) => self.frame.callee = Some(value.clone()),
-            Itself::Named { id, fun, symbol } => {
-                let value = self.fresh("Self");
-                prologue.push(Expr::matches(
-                    Expr::var(value.clone()),
-                    Expr::Tuple(vec![
-                        Expr::atom("$f"),
-                        Expr::var(id.clone()),
-                        Expr::var(fun.clone()),
-                    ]),
-                ));
-                if let Some(symbol) = symbol {
-                    self.frame.env.insert(*symbol, Local::Var(value.clone()));
-                }
-                self.frame.callee = Some(Expr::var(value));
+        match callee {
+            Callee::Arrow => {
+                frame.this.clone_from(&outer.this);
+                frame.class.clone_from(&outer.class);
+                frame.arguments.clone_from(&outer.arguments);
+                frame.this_cell.clone_from(&outer.this_cell);
+                frame.new_target.clone_from(&outer.new_target);
+                frame.callee.clone_from(&outer.callee);
+            }
+            Callee::Function(itself) => {
+                frame.this = Some(this_param.clone());
+                frame.new_target.clone_from(&new_target_param);
+                frame.callee = itself;
+            }
+            Callee::Method(class) => {
+                frame.this = Some(this_param.clone());
+                frame.class = class;
             }
         }
+        self.frame = frame;
+        let own = own.unwrap_or_else(Expr::undefined);
         let code = match kind {
             Kind::Sync => {
                 let mut code = self.entry(params, body, &args, own_arguments);
@@ -110,24 +120,64 @@ impl<'a> Lowerer<'a, '_> {
                 self.frame.ret = Ret::Generator;
                 let inner = self.body(body);
                 code.push(Expr::call(
-                    "bouy_ref_iterator",
-                    "make_generator",
-                    vec![Expr::Fun {
-                        name: None,
-                        clauses: vec![Clause {
-                            patterns: vec![],
-                            guards: vec![],
-                            body: inner,
-                        }],
-                    }],
+                    "bouy_ref_generator",
+                    "start",
+                    vec![
+                        own,
+                        Expr::Fun {
+                            name: None,
+                            clauses: vec![Clause {
+                                patterns: vec![],
+                                guards: vec![],
+                                body: inner,
+                            }],
+                        },
+                    ],
                 ));
                 code
             }
+            Kind::AsyncGenerator => {
+                let mut code = self.entry(params, body, &args, own_arguments);
+                code.push(self.async_generator_body(body, own));
+                code
+            }
         };
-        prologue.extend(code);
         self.frame = outer;
         self.pre = outer_pre;
-        (this_param, args, prologue)
+        Code {
+            this: this_param,
+            args,
+            new_target: new_target_param,
+            body: code,
+        }
+    }
+
+    /// `bouy_ref_generator:start_async(Own, fun(Resolve, Reject, Yield) -> ... end)`: the
+    /// body of an async generator, which its first `next()` starts.
+    fn async_generator_body(&mut self, body: FnBody<'a>, own: Expr) -> Expr {
+        let resolve = self.fresh("Resolve");
+        let reject = self.fresh("Reject");
+        let yield_fun = self.fresh("Yield");
+        self.frame.ret = Ret::Resolve(resolve.clone());
+        self.frame.reject = Some(reject.clone());
+        self.frame.yield_fun = Some(yield_fun.clone());
+        let inner = self.body(body);
+        let inner = self.wrap_level(inner, &reject, 0);
+        Expr::call(
+            "bouy_ref_generator",
+            "start_async",
+            vec![
+                own,
+                Expr::Fun {
+                    name: None,
+                    clauses: vec![Clause {
+                        patterns: vec![Expr::var(resolve), Expr::var(reject), Expr::var(yield_fun)],
+                        guards: vec![],
+                        body: vec![inner],
+                    }],
+                },
+            ],
+        )
     }
 
     pub fn body(&mut self, body: FnBody<'a>) -> Vec<Expr> {
@@ -142,10 +192,10 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// The code at the start of a function: `new.target` and a sloppy `this` when it reads
-    /// them, its `arguments` object when it reads one, its parameters, and its `var` names,
-    /// which hold `undefined` until their declarations run.
-    fn entry(
+    /// The code at the start of a function: a sloppy `this` when it reads it, its
+    /// `arguments` object when it reads one, its parameters, and its `var` names, which
+    /// hold `undefined` until their declarations run.
+    pub fn entry(
         &mut self,
         params: &'a FormalParameters<'a>,
         body: FnBody<'a>,
@@ -229,23 +279,10 @@ impl<'a> Lowerer<'a, '_> {
         code
     }
 
-    /// `new.target` of an ordinary function, and the `this` of a sloppy one: the global
-    /// object when the caller passed undefined or null.
+    /// The `this` of a sloppy function: the global object when the caller passed undefined
+    /// or null.
     fn receiver(&mut self, reads: &UsesThis) -> Vec<Expr> {
         let mut code = Vec::new();
-        let in_constructor = self
-            .frame
-            .class
-            .as_ref()
-            .is_some_and(|class| class.new_target.is_some());
-        if reads.new_target && !in_constructor {
-            let new_target = self.fresh("NewTarget");
-            code.push(Expr::matches(
-                Expr::var(new_target.clone()),
-                Expr::call("bouy_ref", "new_target", vec![self.this_expr()]),
-            ));
-            self.frame.new_target = Some(new_target);
-        }
         if reads.this && self.frame.sloppy {
             let this = self.fresh("This");
             code.push(Expr::matches(
@@ -291,6 +328,8 @@ impl<'a> Lowerer<'a, '_> {
     /// Binds the parameters from the argument list `args`.
     pub fn params(&mut self, params: &'a FormalParameters<'a>, args: &str) -> Vec<Expr> {
         let saved = std::mem::take(&mut self.pre);
+        let early = self.early_params(params);
+        self.pre.extend(early);
         for (index, param) in params.items.iter().enumerate() {
             let position = Expr::Integer(i64::try_from(index + 1).unwrap_or(i64::MAX));
             let arg = Expr::call("bouy_rt", "arg", vec![position, Expr::var(args)]);
@@ -328,61 +367,73 @@ impl<'a> Lowerer<'a, '_> {
         std::mem::replace(&mut self.pre, saved)
     }
 
-    /// The expression that ends the function with `value`.
+    /// The expression that ends the function with `value`: through the `finally` blocks
+    /// and the loops around the code that must close their iterators.
     pub fn ret(&mut self, value: Expr) -> Expr {
-        if !self.frame.reify.is_empty() {
+        if self.reify_innermost() {
             return Expr::tagged("return", value);
+        }
+        if let Some(finally) = self.frame.finally.last() {
+            let (fun, region) = (finally.fun.clone(), finally.region);
+            return self.call_cont(&fun, vec![Expr::tagged("return", value)], region);
         }
         match self.frame.ret.clone() {
             Ret::Value => value,
             Ret::Generator => Expr::tagged("done", value),
             Ret::Resolve(resolve) => Expr::Apply(Box::new(Expr::var(resolve)), vec![value]),
             Ret::Constructor => {
+                if let Some(cell) = self.frame.this_cell.clone() {
+                    return Expr::call(
+                        "bouy_ref_class",
+                        "derived_return",
+                        vec![Expr::var(cell), value],
+                    );
+                }
                 let this = self.this_expr();
                 if value == Expr::undefined() {
                     return this;
                 }
-                let v = self.fresh("R");
-                Expr::case(
-                    value,
-                    vec![
-                        Clause::guarded(
-                            Expr::var(v.clone()),
-                            vec![Expr::call(
-                                "bouy_heap",
-                                "is_object",
-                                vec![Expr::var(v.clone())],
-                            )],
-                            vec![Expr::var(v)],
-                        ),
-                        Clause::new(Expr::var("_"), vec![this]),
-                    ],
-                )
+                Expr::call("bouy_ref_class", "base_return", vec![this, value])
             }
         }
     }
 
-    /// The function value of an object literal method, getter, or setter, whose `name` is
-    /// `name`: its own `this`, and no `prototype` unless it is a generator.
-    /// `span` is the source text of the method, from its key to its body.
-    pub fn method_value(&mut self, value: &'a Expression<'a>, name: Expr, span: Span) -> Expr {
-        match value {
-            Expression::FunctionExpression(function) => {
-                let kind = fn_kind(function);
-                if kind != "normal" {
-                    return self.function_value_at(function, Some(name), false, span);
-                }
-                let fun = self.function_fun(function, None);
-                let length = Expr::Integer(i64::try_from(length_of(&function.params)).unwrap_or(0));
-                let source = self.source_span(span);
-                self.bind(Expr::call(
-                    "bouy_ref",
-                    "fn",
-                    vec![fun, name, length, source],
-                ))
-            }
-            other => self.expr(other),
-        }
+    /// The function object of an object literal method, named after its key. `home` is
+    /// the object, for `super`. `span` is the source text of the method, from its key to
+    /// its body.
+    pub fn method_value(
+        &mut self,
+        value: &'a Expression<'a>,
+        key: Expr,
+        kind: &'static str,
+        home: Option<String>,
+        span: Span,
+    ) -> Expr {
+        let Expression::FunctionExpression(function) = value else {
+            return self.expr(value);
+        };
+        let frame = home.map(|home| ClassFrame {
+            home,
+            class: None,
+            init: None,
+        });
+        let fun = self.function_fun(function, Callee::Method(frame));
+        let kind = match kind {
+            "method" => method_kind(function.r#async, function.generator),
+            other => other,
+        };
+        let source = self.source_span(span);
+        self.bind(Expr::call(
+            "bouy_ref_class",
+            "method",
+            vec![
+                fun,
+                key,
+                int(length_of(&function.params)),
+                Expr::atom(kind),
+                source,
+            ],
+        ))
     }
 
     /// `{Module, Start, End}`: where the source text of a function is in `'$source'/0`.
@@ -394,134 +445,126 @@ impl<'a> Lowerer<'a, '_> {
         ])
     }
 
-    /// An expression whose value is named `name` when it is an anonymous function: the
-    /// `NamedEvaluation` of ECMA-262 §8.4.5.
-    pub fn named_expr(&mut self, expression: &'a Expression<'a>, name: Option<Expr>) -> Expr {
-        let Some(name) = name else {
-            return self.expr(expression);
-        };
-        match strip(expression) {
-            Expression::FunctionExpression(function) if function.id.is_none() => {
-                self.function_value(function, Some(name), false)
-            }
-            Expression::ArrowFunctionExpression(arrow) => self.arrow_named(arrow, name),
-            _ => self.expr(expression),
-        }
-    }
-
     pub fn arrow(&mut self, arrow: &'a ArrowFunctionExpression<'a>) -> Expr {
-        self.arrow_named(arrow, Expr::js_string(""))
+        self.arrow_value(arrow, None)
     }
 
-    fn arrow_named(&mut self, arrow: &'a ArrowFunctionExpression<'a>, name: Expr) -> Expr {
+    /// An arrow function: a record with its name, from `NamedEvaluation` or empty, and its
+    /// length.
+    pub fn arrow_value(
+        &mut self,
+        arrow: &'a ArrowFunctionExpression<'a>,
+        name: Option<Expr>,
+    ) -> Expr {
         let body = match (arrow.get_expression(), arrow.get_function_body()) {
             (Some(expression), _) => FnBody::Expr(expression),
             (None, Some(body)) => FnBody::Block(body),
             (None, None) => return Expr::undefined(),
         };
-        let (this_param, args, code) = self.function_code(
+        let code = self.function_code(
             &arrow.params,
             body,
             kind_of(arrow.r#async, false),
             Callee::Arrow,
+            None,
             arrow.scope_id.get(),
-            &Itself::None,
         );
-        let fun = fun2(None, this_param, args, code);
-        let length = Expr::Integer(i64::try_from(length_of(&arrow.params)).unwrap_or(0));
+        let fun = code.fun();
+        let kind = if arrow.r#async { "async" } else { "arrow" };
         let source = self.source_span(arrow.span);
         self.bind(Expr::call(
-            "bouy_ref",
-            "fn",
-            vec![fun, name, length, source],
+            "bouy_ref_class",
+            "method",
+            vec![
+                fun,
+                name.unwrap_or_else(|| Expr::js_string("")),
+                int(length_of(&arrow.params)),
+                Expr::atom(kind),
+                source,
+            ],
         ))
     }
 
     pub fn function_expression(&mut self, function: &'a Function<'a>) -> Expr {
-        self.function_value(function, None, true)
+        self.function_value(function, None)
     }
 
-    /// The value of a function expression or a nested function declaration:
-    /// `named_fn(Fun, Name, Length, Kind)`. `name` names an anonymous function, and
-    /// `expression` says that the function's own name is a binding inside it.
-    pub fn function_value(
-        &mut self,
-        function: &'a Function<'a>,
-        name: Option<Expr>,
-        expression: bool,
-    ) -> Expr {
-        self.function_value_at(function, name, expression, function.span)
-    }
-
-    /// `function_value` whose source text is at `span`.
-    fn function_value_at(
-        &mut self,
-        function: &'a Function<'a>,
-        name: Option<Expr>,
-        expression: bool,
-        span: Span,
-    ) -> Expr {
+    /// The function object of a function expression or a nested declaration: named after
+    /// its own name, or the key of `NamedEvaluation`.
+    pub fn function_value(&mut self, function: &'a Function<'a>, name: Option<Expr>) -> Expr {
         let name = match (&function.id, name) {
             (Some(id), _) => Expr::js_string(id.name.as_str()),
             (None, Some(name)) => name,
             (None, None) => Expr::js_string(""),
         };
-        let length = Expr::Integer(i64::try_from(length_of(&function.params)).unwrap_or(0));
-        // The kind carries where the source text is, for Function.prototype.toString.
-        let kind = Expr::Tuple(vec![
-            Expr::atom(self.value_kind(function)),
-            self.source_span(span),
-        ]);
+        let reads_new_target = !function.r#async && !function.generator && {
+            let mut uses = UsesNewTarget(false);
+            uses.visit_formal_parameters(&function.params);
+            if let Some(body) = &function.body {
+                uses.visit_function_body(body);
+            }
+            uses.0
+        };
+        // The name of a function expression is a constant binding inside it, to the
+        // function itself, and so is `arguments.callee` of a sloppy function: a cell that
+        // is set once the function exists.
         let symbol = function
             .id
             .as_ref()
+            .filter(|_| function.is_expression())
             .and_then(|id| id.symbol_id.get())
             .filter(|symbol| {
-                expression
-                    && self
-                        .semantic
-                        .scoping()
-                        .get_resolved_references(*symbol)
-                        .next()
-                        .is_some()
+                !self
+                    .semantic
+                    .scoping()
+                    .get_resolved_reference_ids(*symbol)
+                    .is_empty()
             });
-        if symbol.is_none() && !self.needs_callee(function) {
-            let fun = self.function_fun(function, None);
-            return self.bind(Expr::call(
-                "bouy_ref",
-                "named_fn",
-                vec![fun, name, length, kind],
+        let callee = self.needs_callee(function);
+        let cell = (symbol.is_some() || callee).then(|| {
+            let cell = self.fresh("Own");
+            self.pre.push(Expr::matches(
+                Expr::var(cell.clone()),
+                Expr::call("bouy_heap", "cell", vec![Expr::undefined()]),
             ));
-        }
-        let id = self.fresh("Id");
-        self.pre.push(Expr::matches(
-            Expr::var(id.clone()),
-            Expr::call("bouy_heap", "new_id", vec![]),
-        ));
-        let fun_name = self.fresh("Fn");
-        let itself = Itself::Named {
-            id: id.clone(),
-            fun: fun_name,
-            symbol,
+            cell
+        });
+        let own = symbol.zip(cell.clone()).map(|(symbol, cell)| {
+            let saved = self.frame.env.insert(symbol, Local::Cell(cell));
+            self.class_bindings.push(symbol);
+            (symbol, saved)
+        });
+        let itself = cell.clone().filter(|_| callee).map(|cell| cell_get(&cell));
+        let fun = self.function_fun(function, Callee::Function(itself));
+        let kind = match method_kind(function.r#async, function.generator) {
+            "method" if reads_new_target => "normal_nt",
+            "method" if self.is_sloppy(function.scope_id.get()) => "sloppy",
+            "method" => "normal",
+            other => other,
         };
-        let fun = self.function_fun_itself(function, None, &itself);
-        self.bind(Expr::call(
-            "bouy_ref",
-            "named_fn",
-            vec![Expr::var(id), fun, name, length, kind],
-        ))
-    }
-
-    /// The kind of a function value: `sloppy` for a normal function of sloppy code.
-    pub fn value_kind(&self, function: &'a Function<'a>) -> &'static str {
-        match fn_kind(function) {
-            "normal"
-                if function.scope_id.get().is_some() && self.is_sloppy(function.scope_id.get()) =>
-            {
-                "sloppy"
-            }
-            kind => kind,
+        let source = self.source_span(function.span);
+        let value = self.bind(Expr::call(
+            "bouy_ref_class",
+            "method",
+            vec![
+                fun,
+                name,
+                int(length_of(&function.params)),
+                Expr::atom(kind),
+                source,
+            ],
+        ));
+        if let Some((symbol, saved)) = own {
+            self.class_bindings.pop();
+            match saved {
+                Some(local) => self.frame.env.insert(symbol, local),
+                None => self.frame.env.remove(&symbol),
+            };
         }
+        if let Some(cell) = cell {
+            self.pre.push(cell_set(&cell, value.clone()));
+        }
+        value
     }
 
     /// Whether a function's `arguments` object needs the function itself, as
@@ -537,43 +580,44 @@ impl<'a> Lowerer<'a, '_> {
         uses.0
     }
 
-    /// The Erlang fun of a non-arrow function: `fun(This, Args) -> ... end`.
-    pub fn function_fun(&mut self, function: &'a Function<'a>, class: Option<ClassFrame>) -> Expr {
-        self.function_fun_itself(function, class, &Itself::None)
-    }
-
-    pub fn function_fun_itself(
-        &mut self,
-        function: &'a Function<'a>,
-        class: Option<ClassFrame>,
-        itself: &Itself,
-    ) -> Expr {
+    /// The Erlang fun of a non-arrow function: `fun(This, Args) -> ... end`, or the maker
+    /// of a generator.
+    pub fn function_fun(&mut self, function: &'a Function<'a>, callee: Callee) -> Expr {
         let Some(body) = &function.body else {
             return Expr::undefined();
         };
-        let (this_param, args, code) = self.function_code(
+        let kind = kind_of(function.r#async, function.generator);
+        let maker = matches!(kind, Kind::Generator | Kind::AsyncGenerator);
+        let own = maker.then(|| self.fresh("Own"));
+        let code = self.function_code(
             &function.params,
             FnBody::Block(body),
-            kind_of(function.r#async, function.generator),
-            Callee::Function(class),
+            kind,
+            callee,
+            own.clone().map(Expr::var),
             function.scope_id.get(),
-            itself,
         );
-        let name = match itself {
-            Itself::Named { fun, .. } => Some(fun.clone()),
-            _ => None,
-        };
-        fun2(name, this_param, args, code)
+        let fun = code.fun();
+        match own {
+            Some(own) => Expr::Fun {
+                name: None,
+                clauses: vec![Clause::new(Expr::var(own), vec![fun])],
+            },
+            None => fun,
+        }
     }
 }
 
-/// What `this` and `super` mean in a function.
+/// What `this`, `super`, `new.target`, and `arguments.callee` mean in a function.
 #[derive(Debug, Clone)]
 pub enum Callee {
     /// An arrow function: the `this` and the class of the enclosing function.
     Arrow,
-    /// A function with its own `this`, and the class frame of a method.
-    Function(Option<ClassFrame>),
+    /// A function declaration or expression: its own `this` and `new.target`, and the
+    /// value of the function itself for `arguments.callee` of a sloppy function.
+    Function(Option<Expr>),
+    /// A method: its own `this`, and the home object for `super`.
+    Method(Option<ClassFrame>),
 }
 
 /// The body of a function: a block, or the expression of an arrow function.
@@ -594,19 +638,10 @@ pub fn length_of(params: &FormalParameters<'_>) -> usize {
 
 pub fn kind_of(is_async: bool, generator: bool) -> Kind {
     match (is_async, generator) {
-        (_, true) => Kind::Generator,
+        (true, true) => Kind::AsyncGenerator,
+        (false, true) => Kind::Generator,
         (true, false) => Kind::Async,
         (false, false) => Kind::Sync,
-    }
-}
-
-/// The kind of a function value for `bouy_ref:named_fn/4`.
-pub fn fn_kind(function: &Function<'_>) -> &'static str {
-    match (function.r#async, function.generator) {
-        (false, false) => "normal",
-        (false, true) => "generator",
-        (true, false) => "async",
-        (true, true) => "async_generator",
     }
 }
 
@@ -618,13 +653,18 @@ pub fn binding_name(pattern: &BindingPattern<'_>) -> Option<Expr> {
     }
 }
 
-pub fn fun2(name: Option<String>, this: String, args: String, body: Vec<Expr>) -> Expr {
-    Expr::Fun {
-        name,
-        clauses: vec![Clause {
-            patterns: vec![Expr::var(this), Expr::var(args)],
-            guards: vec![],
-            body,
-        }],
+fn int(value: usize) -> Expr {
+    Expr::Integer(i64::try_from(value).unwrap_or(0))
+}
+
+/// Whether a function reads `new.target`: in its own code or in an arrow function inside
+/// it, which shares it.
+pub struct UsesNewTarget(pub bool);
+
+impl<'a> Visit<'a> for UsesNewTarget {
+    fn visit_new_target(&mut self, _it: &NewTarget) {
+        self.0 = true;
     }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
 }

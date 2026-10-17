@@ -3,9 +3,9 @@
 
 use oxc::ast::ast::{Argument, CallExpression, Expression, IdentifierReference, NewExpression};
 
-use super::context::{Local, Lowerer, Top};
+use super::context::{Local, Lowerer, Top, cell_get};
 use super::expr::strip;
-use super::member::MemberKey;
+use super::member::{MemberKey, super_parts};
 use crate::erlang::Expr;
 
 impl<'a> Lowerer<'a, '_> {
@@ -42,21 +42,27 @@ impl<'a> Lowerer<'a, '_> {
     pub fn call(&mut self, call: &'a CallExpression<'a>) -> Expr {
         let callee = strip(&call.callee);
         if let Expression::Super(_) = callee {
+            let parent = self.super_constructor();
             let args = self.args(&call.arguments);
-            return self.super_constructor_call(args);
+            return self.super_constructor_call(parent, args);
         }
         if let Some(member) = callee.as_member_expression() {
             if let Expression::Super(_) = member.object() {
-                let key = match self.member_key(member) {
-                    MemberKey::Static(key) => key,
-                    MemberKey::Dynamic(value) => {
-                        self.bind(Expr::call("bouy_ref", "to_property_key", vec![value]))
-                    }
-                };
+                let (object, key) = self.member_parts(member);
+                let method = self.get(object.clone(), key);
                 let args = self.args(&call.arguments);
-                return self.super_method_call(key, args);
+                let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
+                return self.bind(Expr::call("bouy_ref", "call", vec![method, this, args]));
             }
             let (object, key) = self.member_parts(member);
+            if let MemberKey::Private(_) = key {
+                if call.optional {
+                    self.chain_guard(object.clone());
+                }
+                let method = self.get(object.clone(), key);
+                let args = self.args(&call.arguments);
+                return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
+            }
             if call.optional {
                 let key = self.fix_key(key);
                 let method = self.get(object.clone(), key);
@@ -86,6 +92,7 @@ impl<'a> Lowerer<'a, '_> {
                 MemberKey::Dynamic(key) => {
                     Expr::call("bouy_ref", "call_method_computed", vec![object, key, args])
                 }
+                MemberKey::Private(_) => Expr::undefined(),
             };
             return self.bind(value);
         }
@@ -171,12 +178,16 @@ impl<'a> Lowerer<'a, '_> {
                 if names.iter().any(|seen| seen == name.as_str()) {
                     continue;
                 }
-                if let Some(Local::Cell(cell)) = self.frame.env.get(symbol) {
+                if let Some(Local::Cell(cell)) = self.frame.env.get(symbol).cloned() {
                     names.push(name.to_string());
-                    entries.push(Expr::Tuple(vec![
-                        Expr::js_string(name),
-                        Expr::var(cell.clone()),
-                    ]));
+                    // An immutable binding, such as the name of a function expression,
+                    // reaches the eval as a copy, so a write there changes nothing.
+                    let cell = if self.class_bindings.contains(symbol) {
+                        self.bind(Expr::call("bouy_heap", "cell", vec![cell_get(&cell)]))
+                    } else {
+                        Expr::var(cell)
+                    };
+                    entries.push(Expr::Tuple(vec![Expr::js_string(name), cell]));
                 }
             }
         }

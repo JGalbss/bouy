@@ -8,15 +8,34 @@ use oxc::ast::ast::{
 
 use super::context::Lowerer;
 use super::literal::number;
+use super::suspend::holds_marker;
 use crate::erlang::{CatchClause, Clause, Expr};
 
 const CHAIN: &str = "$bouy_chain";
 
-/// The key of a member expression: known at compile time, or a value to convert.
+/// The key of a member expression: known at compile time, a value to convert, or a
+/// private name.
 #[derive(Debug, Clone)]
 pub enum MemberKey {
     Static(Expr),
     Dynamic(Expr),
+    Private(Expr),
+}
+
+/// The object of a `super.k` member expression: the prototype of the home object, read
+/// when the reference is made, and `this`. `get` and `set` look the key up there.
+pub fn super_object(base: Expr, this: Expr) -> Expr {
+    Expr::Tuple(vec![Expr::atom("$super"), base, this])
+}
+
+/// The base and `this` of a `super.k` object.
+pub fn super_parts(object: &Expr) -> Option<(Expr, Expr)> {
+    match object {
+        Expr::Tuple(parts) if parts.len() == 3 && parts[0] == Expr::atom("$super") => {
+            Some((parts[1].clone(), parts[2].clone()))
+        }
+        _ => None,
+    }
 }
 
 impl<'a> Lowerer<'a, '_> {
@@ -24,6 +43,17 @@ impl<'a> Lowerer<'a, '_> {
     pub fn property_key(&mut self, key: &'a PropertyKey<'a>, computed: bool) -> Expr {
         if let PropertyKey::PrivateIdentifier(private) = key {
             return self.private_key(private.name.as_str());
+        }
+        // A number key is the string of the number, which the runtime prints.
+        if !computed
+            && let PropertyKey::NumericLiteral(literal) = key
+            && !matches!(number(literal.value), Expr::Integer(index) if index >= 0)
+        {
+            return self.bind(Expr::call(
+                "bouy_ref",
+                "to_property_key",
+                vec![number(literal.value)],
+            ));
         }
         if !computed && let Some(name) = key.static_name() {
             return static_key(&name);
@@ -37,19 +67,6 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    pub fn private_key(&mut self, name: &str) -> Expr {
-        let class = self
-            .frame
-            .class
-            .as_ref()
-            .map_or_else(String::new, |class| class.name.clone());
-        Expr::Tuple(vec![
-            Expr::atom("#"),
-            Expr::js_string(&class),
-            Expr::js_string(name),
-        ])
-    }
-
     pub fn chain(&mut self, chain: &'a ChainExpression<'a>) -> Expr {
         let code = self.branch(|me| match &chain.expression {
             ChainElement::CallExpression(call) => me.call(call),
@@ -58,6 +75,14 @@ impl<'a> Lowerer<'a, '_> {
             ChainElement::ComputedMemberExpression(member) => me.computed_member(member),
             ChainElement::PrivateFieldExpression(member) => me.private_member(member),
         });
+        if code.iter().any(holds_marker) {
+            // An `await` or a `yield` cannot split an Erlang `try`, so each guard of this
+            // chain becomes a case whose last clause holds the rest of the chain.
+            let mut code = nest_guards(code);
+            let value = code.pop().unwrap_or_else(Expr::undefined);
+            self.pre.extend(code);
+            return self.bind(value);
+        }
         self.bind(Expr::Try {
             body: code,
             catches: vec![CatchClause {
@@ -85,7 +110,11 @@ impl<'a> Lowerer<'a, '_> {
 
     pub fn static_member(&mut self, member: &'a StaticMemberExpression<'a>) -> Expr {
         if let Expression::Super(_) = member.object {
-            return self.super_get(static_key(member.property.name.as_str()));
+            let object = self.super_reference();
+            return self.get(
+                object,
+                MemberKey::Static(static_key(member.property.name.as_str())),
+            );
         }
         let object = self.expr(&member.object);
         if member.optional {
@@ -99,12 +128,11 @@ impl<'a> Lowerer<'a, '_> {
 
     pub fn computed_member(&mut self, member: &'a ComputedMemberExpression<'a>) -> Expr {
         if let Expression::Super(_) = member.object {
+            let this = self.this_expr();
+            let this = self.bind(this);
             let key = self.computed_key(&member.expression);
-            let key = self.fix_key(key);
-            let MemberKey::Static(key) = key else {
-                return Expr::undefined();
-            };
-            return self.super_get(key);
+            let object = self.super_base(this);
+            return self.get(object, key);
         }
         let object = self.expr(&member.object);
         if member.optional {
@@ -120,7 +148,7 @@ impl<'a> Lowerer<'a, '_> {
             self.chain_guard(object.clone());
         }
         let key = self.private_key(member.field.name.as_str());
-        self.get(object, MemberKey::Static(key))
+        self.get(object, MemberKey::Private(key))
     }
 
     /// The object and the key of a member expression, lowered in order.
@@ -128,6 +156,12 @@ impl<'a> Lowerer<'a, '_> {
         &mut self,
         member: &'a oxc::ast::ast::MemberExpression<'a>,
     ) -> (Expr, MemberKey) {
+        if let Expression::Super(_) = member.object() {
+            let this = self.this_expr();
+            let this = self.bind(this);
+            let key = self.member_key(member);
+            return (self.super_base(this), key);
+        }
         let object = self.expr(member.object());
         let object = self.bind(object);
         let key = self.member_key(member);
@@ -143,7 +177,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.computed_key(&member.expression)
             }
             oxc::ast::ast::MemberExpression::PrivateFieldExpression(member) => {
-                MemberKey::Static(self.private_key(member.field.name.as_str()))
+                MemberKey::Private(self.private_key(member.field.name.as_str()))
             }
         }
     }
@@ -167,17 +201,31 @@ impl<'a> Lowerer<'a, '_> {
     /// A key that a compound operation uses twice: converted once.
     pub fn fix_key(&mut self, key: MemberKey) -> MemberKey {
         match key {
-            MemberKey::Static(key) => MemberKey::Static(key),
             MemberKey::Dynamic(value) => {
                 MemberKey::Static(self.bind(Expr::call("bouy_ref", "to_property_key", vec![value])))
             }
+            other => other,
         }
     }
 
     pub fn get(&mut self, object: Expr, key: MemberKey) -> Expr {
+        if let Some((base, this)) = super_parts(&object) {
+            let key = match key {
+                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Dynamic(value) => Expr::call("bouy_ref", "to_property_key", vec![value]),
+            };
+            return self.bind(Expr::call(
+                "bouy_ref_class",
+                "super_get",
+                vec![base, key, this],
+            ));
+        }
         let value = match key {
             MemberKey::Static(key) => Expr::call("bouy_ref", "get", vec![object, key]),
             MemberKey::Dynamic(key) => Expr::call("bouy_ref", "get_computed", vec![object, key]),
+            MemberKey::Private(key) => {
+                Expr::call("bouy_ref_class", "private_get", vec![object, key])
+            }
         };
         self.bind(value)
     }
@@ -189,9 +237,26 @@ impl<'a> Lowerer<'a, '_> {
         } else {
             ("set", "set_computed")
         };
+        if let Some((base, this)) = super_parts(&object) {
+            let key = match key {
+                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Dynamic(value) => {
+                    self.bind(Expr::call("bouy_ref", "to_property_key", vec![value]))
+                }
+            };
+            self.pre.push(Expr::call(
+                "bouy_ref_class",
+                "super_set",
+                vec![base, key, value, this],
+            ));
+            return;
+        }
         let call = match key {
             MemberKey::Static(key) => Expr::call("bouy_ref", fixed, vec![object, key, value]),
             MemberKey::Dynamic(key) => Expr::call("bouy_ref", computed, vec![object, key, value]),
+            MemberKey::Private(key) => {
+                Expr::call("bouy_ref_class", "private_set", vec![object, key, value])
+            }
         };
         self.pre.push(call);
     }
@@ -215,4 +280,31 @@ pub fn index_of(name: &str) -> Option<i64> {
     name.parse::<i64>()
         .ok()
         .filter(|index| *index <= 4_294_967_294)
+}
+
+/// The code of an optional chain with each guard as a case: `undefined` for a nullish
+/// value, else the rest of the chain.
+fn nest_guards(mut code: Vec<Expr>) -> Vec<Expr> {
+    let Some(index) = code.iter().position(is_guard) else {
+        return code;
+    };
+    let rest = nest_guards(code.split_off(index + 1));
+    let Some(Expr::Case(subject, _)) = code.pop() else {
+        return code;
+    };
+    code.push(Expr::Case(
+        subject,
+        vec![
+            Clause::new(Expr::undefined(), vec![Expr::undefined()]),
+            Clause::new(Expr::atom("null"), vec![Expr::undefined()]),
+            Clause::new(Expr::var("_"), rest),
+        ],
+    ));
+    code
+}
+
+/// Whether the expression is the guard of `chain_guard`.
+fn is_guard(expr: &Expr) -> bool {
+    let throw = Expr::call("erlang", "throw", vec![Expr::atom(CHAIN)]);
+    matches!(expr, Expr::Case(_, clauses) if clauses.first().is_some_and(|clause| clause.body == [throw.clone()]))
 }

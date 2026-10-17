@@ -3,8 +3,9 @@
 
 use oxc::ast::ast::{
     ArrayExpression, ArrayExpressionElement, Expression, ObjectExpression, ObjectPropertyKind,
-    PropertyKind, TemplateLiteral,
+    PropertyKey, PropertyKind, Super, TemplateLiteral,
 };
+use oxc::ast_visit::Visit;
 use oxc::syntax::operator::UnaryOperator;
 
 use super::context::Lowerer;
@@ -80,7 +81,7 @@ impl<'a> Lowerer<'a, '_> {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
                     let name = Expr::js_string(key);
                     let value = if property.method {
-                        self.method_value(&property.value, name, property.span)
+                        self.method_value(&property.value, name, "method", None, property.span)
                     } else {
                         self.named_expr(&property.value, Some(name))
                     };
@@ -115,35 +116,44 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 ObjectPropertyKind::ObjectProperty(property) => {
                     let key = self.property_key(&property.key, property.computed);
-                    let prefix = match property.kind {
-                        PropertyKind::Init => "",
-                        PropertyKind::Get => "get",
-                        PropertyKind::Set => "set",
-                    };
-                    let name = match property.key.static_name().filter(|_| !property.computed) {
-                        Some(name) if prefix.is_empty() => Expr::js_string(&name),
-                        Some(name) => Expr::js_string(&format!("{prefix} {name}")),
-                        None => Expr::call(
-                            "bouy_ref",
-                            "function_name",
-                            vec![key.clone(), Expr::js_string(prefix)],
-                        ),
+                    let home = match &target {
+                        Expr::Var(name) => Some(name.clone()),
+                        _ => None,
                     };
                     let (function, value) = match property.kind {
                         PropertyKind::Init if property.method => (
                             "define_field",
-                            self.method_value(&property.value, name, property.span),
+                            self.method_value(
+                                &property.value,
+                                key.clone(),
+                                "method",
+                                home,
+                                property.span,
+                            ),
                         ),
-                        PropertyKind::Init => {
-                            ("define_field", self.named_expr(&property.value, Some(name)))
-                        }
+                        PropertyKind::Init => (
+                            "define_field",
+                            self.named_expr(&property.value, Some(key.clone())),
+                        ),
                         PropertyKind::Get => (
                             "literal_getter",
-                            self.method_value(&property.value, name, property.span),
+                            self.method_value(
+                                &property.value,
+                                key.clone(),
+                                "get",
+                                home,
+                                property.span,
+                            ),
                         ),
                         PropertyKind::Set => (
                             "literal_setter",
-                            self.method_value(&property.value, name, property.span),
+                            self.method_value(
+                                &property.value,
+                                key.clone(),
+                                "set",
+                                home,
+                                property.span,
+                            ),
                         ),
                     };
                     self.pre.push(Expr::call(
@@ -186,8 +196,17 @@ pub fn literal_keys(object: &ObjectExpression<'_>) -> Option<Vec<String>> {
         if property.computed || property.kind != PropertyKind::Init || is_proto_setter(property) {
             return None;
         }
+        // A method that uses `super` needs the object as its home before it exists.
+        if property.method && uses_super(&property.value) {
+            return None;
+        }
+        if let PropertyKey::NumericLiteral(literal) = &property.key
+            && literal.value.fract() != 0.0
+        {
+            return None;
+        }
         let name = property.key.static_name()?.into_owned();
-        if index_of(&name).is_some() || keys.contains(&name) {
+        if index_of(&name).is_some() || keys.contains(&name) || name == "__proto__" {
             return None;
         }
         keys.push(name);
@@ -252,4 +271,23 @@ pub fn literal(expression: &Expression<'_>) -> Option<Expr> {
         Expression::TSAsExpression(inner) => literal(&inner.expression),
         _ => None,
     }
+}
+
+/// Whether a method uses `super`, in its own code or in an arrow function inside it.
+fn uses_super(value: &Expression<'_>) -> bool {
+    struct Finder(bool);
+    impl Visit<'_> for Finder {
+        fn visit_super(&mut self, _it: &Super) {
+            self.0 = true;
+        }
+    }
+    let Expression::FunctionExpression(function) = value else {
+        return false;
+    };
+    let mut finder = Finder(false);
+    if let Some(body) = &function.body {
+        finder.visit_function_body(body);
+    }
+    finder.visit_formal_parameters(&function.params);
+    finder.0
 }

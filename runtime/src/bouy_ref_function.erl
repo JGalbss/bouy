@@ -26,29 +26,10 @@ intrinsics() ->
                      #{<<"length">> => 0, <<"name">> => 0, '$noext' => true}, #{}},
     [{'Function.prototype', {Class, Proto, Props, Keys, maps:merge(Attrs, Fixed), Slots}},
      {{builtin, <<"ThrowTypeError">>}, ThrowerRecord},
-     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Args) end)}]
-    ++ lists:append([kind_intrinsics(Kind) || Kind <- [generator, async, async_generator]]).
+     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Args) end)}].
 
-%% %GeneratorFunction%, %AsyncFunction%, and %AsyncGeneratorFunction%: the
-%% constructors of the other kinds of function and their prototypes, which
-%% are not globals (ECMA-262 §27.3, §27.4, §27.7).
-kind_intrinsics(Kind) ->
-    {Name, Instances} = kind_names(Kind),
-    ProtoId = kind_prototype_id(Kind),
-    Ctor = {'$f', {builtin, Name}, fun(This, Args) -> ?MODULE:call_constructor(Name, This, Args) end},
-    ProtoEntries = [{<<"constructor">>, Ctor}, {?SYM(toStringTag), Name}]
-        ++ [{<<"prototype">>, {'$o', Instances}} || Instances =/= none],
-    {PC, PP, PProps, PKeys, PAttrs, PSlots} = record(object, ?FUNCTION_PROTO, ProtoEntries, none),
-    ProtoRecord = {PC, PP, PProps, PKeys, PAttrs#{<<"constructor">> => 4, ?SYM(toStringTag) => 4, <<"prototype">> => 4}, PSlots},
-    {CC, _, CProps, CKeys, CAttrs, CSlots} =
-        ctor_record(Name, 1, {'$o', ProtoId}, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Kind, Args) end),
-    [{ProtoId, ProtoRecord}, {{builtin, Name}, {CC, constructor(), CProps, CKeys, CAttrs, CSlots}}].
-
-kind_names(generator) -> {<<"GeneratorFunction">>, 'Generator.prototype'};
-kind_names(async) -> {<<"AsyncFunction">>, none};
-kind_names(async_generator) -> {<<"AsyncGeneratorFunction">>, 'AsyncGenerator.prototype'}.
-
-%% The id of the prototype of the functions of a kind.
+%% The id of the prototype of the functions of a kind (bouy_ref_generator
+%% holds the records).
 -spec kind_prototype_id(generator | async | async_generator) -> atom().
 kind_prototype_id(generator) -> 'GeneratorFunction.prototype';
 kind_prototype_id(async) -> 'AsyncFunction.prototype';
@@ -163,8 +144,8 @@ in_chain(O, Proto) -> in_chain(bouy_heap:prototype_of(O), Proto).
 source_text(F) ->
     case {bouy_heap:slots(F), F} of
         {#{source := {Module, Start, End}}, _} -> slice(Module, Start, End);
-        {_, {'$f', {fn, Module, Name, _}, _}} -> module_function_text(F, Module, Name);
-        {_, {'$f', {fn, Module, Name, _, _}, _}} -> module_function_text(F, Module, Name);
+        {_, {'$f', {_Form, Module, Name, _}, _}} -> module_function_text(F, Module, Name);
+        {_, {'$f', {fn, Module, Name, _, sloppy}, _}} -> module_function_text(F, Module, Name);
         {#{kind := class}, _} -> bouy_ref_string:concat([<<"class ">>, name_of(F), <<" { }">>]);
         _ -> native_text(F)
     end.

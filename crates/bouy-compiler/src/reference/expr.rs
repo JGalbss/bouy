@@ -14,7 +14,7 @@ use oxc::syntax::operator::{
 
 use super::context::{Kind, Lowerer, Top, boolean_case};
 use super::literal::{js_string_literal, number};
-use super::member::MemberKey;
+use super::member::{MemberKey, super_parts};
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -37,21 +37,33 @@ impl<'a> Lowerer<'a, '_> {
             Expression::AssignmentExpression(assignment) => self.assign(assignment),
             Expression::UpdateExpression(update) => self.update(update),
             Expression::AwaitExpression(expression) => {
-                if self.frame.kind != Kind::Async {
+                if !matches!(self.frame.kind, Kind::Async | Kind::AsyncGenerator) {
                     return self.unsupported(expression.span, "`await` outside an async function");
                 }
                 let value = self.expr(&expression.argument);
                 self.marker("await", value)
             }
             Expression::YieldExpression(expression) => {
-                if expression.delegate {
-                    return self.unsupported(expression.span, "`yield*`");
-                }
                 let value = match &expression.argument {
                     Some(argument) => self.expr(argument),
                     None => Expr::undefined(),
                 };
-                self.marker("yield", value)
+                let kind = if expression.delegate {
+                    "yield_star"
+                } else {
+                    "yield"
+                };
+                self.marker(kind, value)
+            }
+            Expression::ClassExpression(class) => self.class_expression(class, None),
+            Expression::PrivateInExpression(expression) => {
+                let key = self.private_key(expression.left.name.as_str());
+                let object = self.expr(&expression.right);
+                self.bind(Expr::call(
+                    "bouy_ref_class",
+                    "private_in",
+                    vec![key, object],
+                ))
             }
             Expression::BinaryExpression(binary) => self.binary(binary),
             Expression::LogicalExpression(logical) => self.logical(logical),
@@ -82,11 +94,9 @@ impl<'a> Lowerer<'a, '_> {
                 let what = match other {
                     Expression::BigIntLiteral(_) => "a BigInt literal",
                     Expression::RegExpLiteral(_) => "a regular expression literal",
-                    Expression::ClassExpression(_) => "a class expression",
                     Expression::TaggedTemplateExpression(_) => "a tagged template",
                     Expression::ImportExpression(_) => "`import()`",
                     Expression::ImportMeta(_) => "`import.meta`",
-                    Expression::PrivateInExpression(_) => "`#name in`",
                     Expression::Super(_) => "this use of `super`",
                     _ => "this syntax",
                 };
@@ -317,6 +327,17 @@ impl<'a> Lowerer<'a, '_> {
         }
         let key = self.fix_key(key);
         let current = self.get(object.clone(), key.clone());
+        // A logical assignment that short-circuits writes nothing, so no setter runs.
+        if let Some(logical) = logical_operator(operator) {
+            let current = self.bind(current);
+            let other = self.branch(|me| {
+                let value = me.expr(right);
+                let value = me.bind(value);
+                me.set(object, key, value.clone());
+                value
+            });
+            return self.bind(logical_case(logical, current, other, false));
+        }
         let value = self.combine(operator, current, right, None);
         let value = self.bind(value);
         self.set(object, key, value.clone());
@@ -331,13 +352,7 @@ impl<'a> Lowerer<'a, '_> {
         right: &'a Expression<'a>,
         name: Option<Expr>,
     ) -> Expr {
-        let logical = match operator {
-            AssignmentOperator::LogicalAnd => Some(LogicalOperator::And),
-            AssignmentOperator::LogicalOr => Some(LogicalOperator::Or),
-            AssignmentOperator::LogicalNullish => Some(LogicalOperator::Coalesce),
-            _ => None,
-        };
-        if let Some(logical) = logical {
+        if let Some(logical) = logical_operator(operator) {
             let other = self.branch(|me| me.named_expr(right, name));
             return self.bind(logical_case(logical, current, other, false));
         }
@@ -501,6 +516,16 @@ impl<'a> Lowerer<'a, '_> {
             UnaryOperator::Delete => match strip(&unary.argument).as_member_expression() {
                 Some(member) => {
                     let (object, key) = self.member_parts(member);
+                    if super_parts(&object).is_some() {
+                        return self.bind(Expr::call(
+                            "bouy_heap",
+                            "throw_error",
+                            vec![
+                                Expr::atom("ReferenceError"),
+                                Expr::js_string("Unsupported reference to 'super'"),
+                            ],
+                        ));
+                    }
                     let (fixed, computed) = if self.frame.sloppy {
                         ("sloppy_delete", "sloppy_delete_computed")
                     } else {
@@ -511,6 +536,7 @@ impl<'a> Lowerer<'a, '_> {
                         MemberKey::Dynamic(key) => {
                             Expr::call("bouy_ref", computed, vec![object, key])
                         }
+                        MemberKey::Private(_) => Expr::atom("true"),
                     };
                     self.bind(value)
                 }
@@ -523,6 +549,16 @@ impl<'a> Lowerer<'a, '_> {
                 },
             },
         }
+    }
+}
+
+/// The operator of a logical assignment (`&&=`, `||=`, `??=`).
+fn logical_operator(operator: AssignmentOperator) -> Option<LogicalOperator> {
+    match operator {
+        AssignmentOperator::LogicalAnd => Some(LogicalOperator::And),
+        AssignmentOperator::LogicalOr => Some(LogicalOperator::Or),
+        AssignmentOperator::LogicalNullish => Some(LogicalOperator::Coalesce),
+        _ => None,
     }
 }
 

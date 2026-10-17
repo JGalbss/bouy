@@ -9,19 +9,20 @@ use oxc::semantic::{Semantic, SymbolId};
 use oxc::span::Span;
 
 use super::analyze::Analysis;
-use super::suspend::is_marker;
 use crate::diagnostic::{Code, Reporter};
 use crate::erlang::{Clause, Expr, Function};
 
 /// What a module-level name refers to.
 #[derive(Debug, Clone)]
 pub enum Top {
-    /// A function declaration: the Erlang function `'name'/2`, its `length`, and its kind
-    /// (`normal`, `generator`, `async`, or `async_generator`).
+    /// A function declaration: the Erlang function `'name'/2`, its `length`, and the
+    /// form of its static function value (`fn`, `sloppy` for a normal function of sloppy
+    /// code, `async`, `generator`, `async_generator`, or `fn_nt` for a function that reads
+    /// `new.target`).
     Function {
         name: String,
         length: usize,
-        kind: &'static str,
+        form: &'static str,
     },
     /// A class: created once per realm by `'$class'/1`.
     Class(String),
@@ -50,6 +51,7 @@ pub enum Kind {
     Sync,
     Async,
     Generator,
+    AsyncGenerator,
 }
 
 /// How `return v` ends the function.
@@ -123,22 +125,40 @@ pub struct Target<'a> {
 pub struct Reify {
     /// Targets below this index are outside the `try`.
     pub base: usize,
+    /// The nesting order among the reified `try`s and the finally frames.
+    pub order: usize,
     /// The targets the body jumps to, and whether as a continue.
     pub jumps: Vec<(usize, bool)>,
 }
 
-/// The class around a method, for `super` and fields.
+/// The class or object literal around a method, for `super` and fields.
 #[derive(Debug, Clone)]
 pub struct ClassFrame {
-    pub name: String,
-    /// The home object: the prototype for instance methods, the class for static ones.
+    /// The home object: the prototype for instance methods, the class for static ones,
+    /// or the object of an object literal method.
     pub home: String,
-    /// The variable that holds the value of the `extends` clause.
-    pub parent: Option<String>,
-    /// In a constructor: the variable of new.target and the fields to define after
-    /// `super(...)`.
-    pub new_target: Option<String>,
-    pub span: Span,
+    /// The class constructor, whose prototype `super(...)` constructs.
+    pub class: Option<String>,
+    /// The fun that adds the private methods and the fields of the class to `this`.
+    pub init: Option<String>,
+}
+
+/// A statement whose code must run when control leaves it abruptly: a `try` with a
+/// `finally` block, or a `for...of` loop, which closes its iterator. `fun` takes the
+/// completion: `normal`, `{throw, E}`, `{return, V}`, or `{jump, Index, IsContinue}`.
+#[derive(Debug, Clone)]
+pub struct FinallyFrame {
+    pub fun: String,
+    /// The nesting order among the reified `try`s and the finally frames.
+    pub order: usize,
+    /// Targets below this index are outside the statement.
+    pub base: usize,
+    /// The region depth where `fun` was made.
+    pub region: usize,
+    /// The jumps that leave the statement.
+    pub jumps: Vec<(usize, bool)>,
+    /// A loop target whose `continue` stays inside: the loop of a `for...of`.
+    pub stays: Option<usize>,
 }
 
 /// The state of the function being lowered.
@@ -162,8 +182,14 @@ pub struct Frame<'a> {
     pub labels: Vec<String>,
     /// The Erlang variable of the `arguments` object of the nearest non-arrow function.
     pub arguments: Option<String>,
-    /// The Erlang variable of `new.target` in an ordinary function that reads it.
+    /// The cell of `this` in a derived constructor, which `super(...)` binds.
+    pub this_cell: Option<String>,
+    /// The Erlang variable of `new.target`, or none for `undefined`.
     pub new_target: Option<String>,
+    /// The Yield fun of an async generator.
+    pub yield_fun: Option<String>,
+    /// The statements around the code whose code runs on an abrupt completion.
+    pub finally: Vec<FinallyFrame>,
     /// Sloppy-mode code: a failed write does not throw, and a function called without a
     /// receiver sees the global object as `this`.
     pub sloppy: bool,
@@ -200,6 +226,15 @@ pub struct Lowerer<'a, 'c> {
     /// The local bindings of the caller of a direct eval, by name, and the Erlang variables
     /// of their cells in `'__eval__'/2`.
     pub eval_bindings: Vec<(String, String)>,
+    /// The private names of the class bodies around the code, innermost last: each
+    /// name and the Erlang expression of its key.
+    pub privates: Vec<Vec<(String, Expr)>>,
+    /// The class bindings of the class bodies around the code, which are constant there.
+    pub class_bindings: Vec<SymbolId>,
+    /// The bindings that code reads before their declaration runs (`early`).
+    pub early: std::collections::HashSet<SymbolId>,
+    /// The resource cell of the `using` declaration being lowered.
+    pub using_stacks: Vec<String>,
 }
 
 impl Lowerer<'_, '_> {
@@ -288,7 +323,24 @@ impl Lowerer<'_, '_> {
             .map(|(_, cell)| cell.clone())
     }
 
+    /// The nesting order of the next reified `try` or finally frame.
+    pub fn next_order(&self) -> usize {
+        self.frame.reify.len() + self.frame.finally.len()
+    }
+
+    /// Whether the innermost frame that catches abrupt completions is a reified `try`.
+    pub fn reify_innermost(&self) -> bool {
+        match (self.frame.reify.last(), self.frame.finally.last()) {
+            (Some(reify), Some(finally)) => reify.order > finally.order,
+            (Some(_), None) => true,
+            _ => false,
+        }
+    }
+
     pub fn this_expr(&self) -> Expr {
+        if let Some(cell) = &self.frame.this_cell {
+            return Expr::call("bouy_ref_class", "this_of", vec![Expr::var(cell.clone())]);
+        }
         match &self.frame.this {
             Some(name) => Expr::var(name.clone()),
             None => Expr::undefined(),
@@ -302,13 +354,6 @@ impl Lowerer<'_, '_> {
         let value = f(self);
         let mut code = std::mem::replace(&mut self.pre, saved);
         code.push(value);
-        if code.iter().any(is_marker) {
-            self.reporter.report(
-                Span::default(),
-                Code::Unsupported,
-                "`await` or `yield` inside a conditional part of an expression is not supported by the reference-semantics prototype",
-            );
-        }
         code
     }
 

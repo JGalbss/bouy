@@ -129,7 +129,6 @@ fn reference_lowering_names_unsupported_syntax() {
         [
             "a regular expression literal is not supported by the reference-semantics prototype",
             "a BigInt literal is not supported by the reference-semantics prototype",
-            "a class expression is not supported by the reference-semantics prototype",
         ]
     );
 }

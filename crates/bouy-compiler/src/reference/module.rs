@@ -8,8 +8,8 @@ use oxc::ast::ast::{
 use oxc::ast_visit::Visit;
 
 use super::analyze;
-use super::context::{Cont, Frame, Local, Lowerer, Top};
-use super::function::{Callee, FnBody, Itself, kind_of, length_of};
+use super::context::{Cont, Frame, Kind, Local, Lowerer, Top};
+use super::function::{Callee, FnBody, UsesNewTarget, kind_of, length_of};
 use super::literal::literal;
 use crate::diagnostic::Code;
 use crate::erlang::{Clause, Expr, Function};
@@ -119,10 +119,10 @@ impl<'a> Lowerer<'a, '_> {
             if let Statement::FunctionDeclaration(function) = statement
                 && let Some(id) = &function.id
                 && let Some(symbol) = id.symbol_id.get()
-                && let Some(Top::Function { name, length, kind }) = self.tops.get(&symbol).cloned()
+                && let Some(Top::Function { name, length, form }) = self.tops.get(&symbol).cloned()
             {
                 self.script_functions.retain(|(other, _, _)| *other != name);
-                self.script_functions.push((name.clone(), length, kind));
+                self.script_functions.push((name.clone(), length, form));
                 function_symbols.push(symbol);
             }
         }
@@ -156,15 +156,38 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(id) = &function.id
             && let Some(symbol) = id.symbol_id.get()
         {
-            let kind = self.value_kind(function);
+            let form = self.function_form(function);
             self.tops.insert(
                 symbol,
                 Top::Function {
                     name: id.name.to_string(),
                     length: length_of(&function.params),
-                    kind,
+                    form,
                 },
             );
+        }
+    }
+
+    /// The form of the static value of a module-level function declaration.
+    pub fn function_form(&self, function: &oxc::ast::ast::Function<'_>) -> &'static str {
+        match (function.r#async, function.generator) {
+            (true, true) => "async_generator",
+            (false, true) => "generator",
+            (true, false) => "async",
+            (false, false) => {
+                let mut uses = UsesNewTarget(false);
+                uses.visit_formal_parameters(&function.params);
+                if let Some(body) = &function.body {
+                    uses.visit_function_body(body);
+                }
+                if uses.0 {
+                    "fn_nt"
+                } else if self.is_sloppy(function.scope_id.get()) {
+                    "sloppy"
+                } else {
+                    "fn"
+                }
+            }
         }
     }
 
@@ -178,13 +201,13 @@ impl<'a> Lowerer<'a, '_> {
                 Statement::ExportDefaultDeclaration(export) => match &export.declaration {
                     ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
                         if let Some(id) = &function.id {
-                            functions.push(self.module_function(id.name.as_str(), function));
+                            functions.extend(self.module_function(id.name.as_str(), function));
                         }
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                        if let Some(id) = &class.id {
-                            self.module_class(id.name.as_str(), class);
-                        }
+                        let name = class.id.as_ref().map_or("default", |id| id.name.as_str());
+                        self.module_class(name, class);
+                        body.push(statement);
                     }
                     _ => {
                         self.unsupported(export.span, "this `export default`");
@@ -195,15 +218,7 @@ impl<'a> Lowerer<'a, '_> {
                         if let Some(id) = &function.id
                             && function.body.is_some()
                         {
-                            let lowered = self.module_function(id.name.as_str(), function);
-                            // A later declaration of the same name replaces the earlier one.
-                            match functions
-                                .iter()
-                                .position(|f: &Function| f.name == lowered.name)
-                            {
-                                Some(index) => functions[index] = lowered,
-                                None => functions.push(lowered),
-                            }
+                            functions.extend(self.module_function(id.name.as_str(), function));
                         }
                     }
                     Some(Declaration::ClassDeclaration(class)) => {
@@ -211,6 +226,9 @@ impl<'a> Lowerer<'a, '_> {
                             && !class.declare
                         {
                             self.module_class(id.name.as_str(), class);
+                            // The class is made where the top-level code declares it, so its
+                            // static elements run in order.
+                            body.push(statement);
                         }
                     }
                     Some(Declaration::VariableDeclaration(variables)) if !variables.declare => {
@@ -222,6 +240,16 @@ impl<'a> Lowerer<'a, '_> {
                 },
             }
         }
+        // A later declaration of a function name replaces an earlier one.
+        let mut seen = std::collections::HashSet::new();
+        functions.reverse();
+        functions.retain(|function: &Function| {
+            seen.insert((
+                function.name.clone(),
+                function.clauses.first().map(|c| c.patterns.len()),
+            ))
+        });
+        functions.reverse();
         self.nested_var_getters(program);
         functions.push(match self.eval {
             Some(_) => {
@@ -256,10 +284,10 @@ impl<'a> Lowerer<'a, '_> {
         let functions = self
             .script_functions
             .iter()
-            .map(|(name, length, kind)| {
+            .map(|(name, length, form)| {
                 Expr::Tuple(vec![
                     Expr::js_string(name),
-                    self.static_function(name, *length, kind),
+                    self.static_function(name, *length, form),
                 ])
             })
             .collect();
@@ -302,12 +330,14 @@ impl<'a> Lowerer<'a, '_> {
         } else {
             self.stmts(statements, &Cont::Value(Expr::undefined()))
         });
+        let mut body = self.dead_zone();
+        body.extend(code);
         let main = Expr::Fun {
             name: None,
             clauses: vec![Clause {
                 patterns: vec![],
                 guards: vec![],
-                body: code,
+                body,
             }],
         };
         Function {
@@ -318,6 +348,35 @@ impl<'a> Lowerer<'a, '_> {
                 body: vec![Expr::call("bouy_jobs", "run_main", vec![main]), Expr::ok()],
             }],
         }
+    }
+
+    /// The `let` and `const` of the module, or of eval code, are in their dead zone until
+    /// the top-level code declares them.
+    fn dead_zone(&self) -> Vec<Expr> {
+        self.tops
+            .iter()
+            .filter(|(symbol, top)| {
+                matches!(top, Top::Var(_))
+                    && self
+                        .semantic
+                        .scoping()
+                        .symbol_flags(**symbol)
+                        .is_block_scoped()
+            })
+            .filter_map(|(_, top)| match top {
+                Top::Var(name) => Some(name.clone()),
+                _ => None,
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|name| {
+                Expr::call(
+                    "erlang",
+                    "put",
+                    vec![self.var_key(&name), Expr::atom("$tdz")],
+                )
+            })
+            .collect()
     }
 
     /// `'__eval__'/1`: runs the code of an `eval` in the current realm with its `this` and
@@ -345,9 +404,27 @@ impl<'a> Lowerer<'a, '_> {
         if !self.script_globals.is_empty() || !self.script_functions.is_empty() {
             code.push(self.declare_globals_call());
         }
-        let (init, last) = match body.split_last() {
-            Some((Statement::ExpressionStatement(last), init)) => (init.to_vec(), Some(last)),
-            _ => (body.to_vec(), None),
+        code.extend(self.dead_zone());
+        // The completion is the value of the last expression statement that only
+        // declarations follow, as a declaration completes empty.
+        let last_value = body
+            .iter()
+            .rposition(|statement| matches!(statement, Statement::ExpressionStatement(_)))
+            .filter(|index| {
+                body[index + 1..]
+                    .iter()
+                    .all(|statement| completes_empty(statement))
+            });
+        let (init, last, trailing) = match last_value {
+            Some(index) => match body[index] {
+                Statement::ExpressionStatement(last) => (
+                    body[..index].to_vec(),
+                    Some(last),
+                    body[index + 1..].to_vec(),
+                ),
+                _ => (body.to_vec(), None, Vec::new()),
+            },
+            None => (body.to_vec(), None, Vec::new()),
         };
         match last {
             None => {
@@ -360,8 +437,9 @@ impl<'a> Lowerer<'a, '_> {
             Some(last) => {
                 let saved = std::mem::take(&mut self.pre);
                 let value = self.expr(&last.expression);
+                let value = self.bind(value);
                 let mut tail = std::mem::replace(&mut self.pre, saved);
-                tail.push(value);
+                tail.extend(self.stmts(trailing, &Cont::Value(value)));
                 let join = self.fresh("K");
                 code.push(Expr::matches(
                     Expr::var(join.clone()),
@@ -519,6 +597,12 @@ impl<'a> Lowerer<'a, '_> {
     /// `value` on the first read in a realm whose top-level code did not set it.
     fn var_getter(&mut self, name: &str, mut init: Vec<Expr>, value: Expr) {
         let key = self.var_key(name);
+        // A read during the initializer, or before the declaration in the main realm,
+        // finds the marker: the temporal dead zone, and no endless recursion.
+        init.insert(
+            0,
+            Expr::call("erlang", "put", vec![key.clone(), Expr::atom("$tdz")]),
+        );
         init.push(Expr::matches(Expr::var("V"), value));
         init.push(Expr::call(
             "erlang",
@@ -538,6 +622,14 @@ impl<'a> Lowerer<'a, '_> {
                             Expr::tagged("v", Expr::var("Found")),
                             vec![Expr::var("Found")],
                         ),
+                        Clause::new(
+                            Expr::atom("$tdz"),
+                            vec![Expr::call(
+                                "bouy_ref_class",
+                                "initialized",
+                                vec![Expr::atom("$uninitialized"), Expr::js_string(name)],
+                            )],
+                        ),
                         Clause::new(Expr::undefined(), init),
                     ],
                 )],
@@ -545,57 +637,81 @@ impl<'a> Lowerer<'a, '_> {
         });
     }
 
-    /// A module-level function declaration: `'name'(This, Args)`.
+    /// A module-level function declaration: `'name'(This, Args)`, and `'name'/3`, which
+    /// takes new.target, for a function that reads it.
     pub fn module_function(
         &mut self,
         name: &str,
         function: &'a oxc::ast::ast::Function<'a>,
-    ) -> Function {
+    ) -> Vec<Function> {
         self.frame = Frame::default();
         let Some(body) = &function.body else {
-            return Function {
-                name: name.to_owned(),
-                clauses: vec![],
-            };
+            return vec![];
         };
-        let itself = if self.needs_callee(function) {
-            Itself::Static(self.static_function(
-                name,
-                length_of(&function.params),
-                self.value_kind(function),
-            ))
-        } else {
-            Itself::None
-        };
-        let (this, args, code) = self.function_code(
+        let length = length_of(&function.params);
+        let form = self.function_form(function);
+        let kind = kind_of(function.r#async, function.generator);
+        let own = matches!(kind, Kind::Generator | Kind::AsyncGenerator)
+            .then(|| self.static_function(name, length, form));
+        let itself = self
+            .needs_callee(function)
+            .then(|| self.static_function(name, length, form));
+        let code = self.function_code(
             &function.params,
             FnBody::Block(body),
-            kind_of(function.r#async, function.generator),
-            Callee::Function(None),
+            kind,
+            Callee::Function(itself),
+            own,
             function.scope_id.get(),
-            &itself,
         );
-        Function {
-            name: name.to_owned(),
-            clauses: vec![Clause {
-                patterns: vec![Expr::var(this), Expr::var(args)],
-                guards: vec![],
-                body: code,
-            }],
-        }
+        let Some(new_target) = code.new_target else {
+            return vec![Function {
+                name: name.to_owned(),
+                clauses: vec![Clause {
+                    patterns: vec![Expr::var(code.this), Expr::var(code.args)],
+                    guards: vec![],
+                    body: code.body,
+                }],
+            }];
+        };
+        vec![
+            Function {
+                name: name.to_owned(),
+                clauses: vec![Clause {
+                    patterns: vec![Expr::var("This"), Expr::var("Args")],
+                    guards: vec![],
+                    body: vec![Expr::local_call(
+                        name,
+                        vec![Expr::var("This"), Expr::var("Args"), Expr::undefined()],
+                    )],
+                }],
+            },
+            Function {
+                name: name.to_owned(),
+                clauses: vec![Clause {
+                    patterns: vec![
+                        Expr::var(code.this),
+                        Expr::var(code.args),
+                        Expr::var(new_target),
+                    ],
+                    guards: vec![],
+                    body: code.body,
+                }],
+            },
+        ]
     }
 
     /// The value of a module-level function used as a value: the same term in every realm.
-    /// A function that is not `normal` carries its kind as a fifth element of its id.
-    pub fn static_function(&self, name: &str, length: usize, kind: &str) -> Expr {
+    /// A normal function of sloppy code carries `sloppy` as a fifth element of its id.
+    pub fn static_function(&self, name: &str, length: usize, form: &str) -> Expr {
         let mut id = vec![
-            Expr::atom("fn"),
+            Expr::atom(if form == "sloppy" { "fn" } else { form }),
             Expr::atom(self.module.clone()),
             Expr::js_string(name),
             Expr::Integer(i64::try_from(length).unwrap_or(0)),
         ];
-        if kind != "normal" {
-            id.push(Expr::atom(kind));
+        if form == "sloppy" {
+            id.push(Expr::atom("sloppy"));
         }
         Expr::Tuple(vec![
             Expr::atom("$f"),
@@ -652,4 +768,16 @@ fn source_functions(program: &Program<'_>, source: &str) -> Vec<Function> {
             clauses: spans,
         },
     ]
+}
+
+/// Whether a statement completes empty, so that the completion of the code before it
+/// stays: a declaration or an empty statement.
+fn completes_empty(statement: &Statement<'_>) -> bool {
+    matches!(
+        statement,
+        Statement::VariableDeclaration(_)
+            | Statement::FunctionDeclaration(_)
+            | Statement::ClassDeclaration(_)
+            | Statement::EmptyStatement(_)
+    )
 }

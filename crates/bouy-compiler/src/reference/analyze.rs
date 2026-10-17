@@ -6,12 +6,12 @@ use std::collections::HashSet;
 use oxc::ast::AstKind;
 use oxc::ast::ast::{
     ArrowFunctionExpression, AwaitExpression, BindingPattern, Class, ForOfStatement, ForStatement,
-    ForStatementInit, FormalParameters, Function, IdentifierReference, NewTarget, Program,
-    Statement, ThisExpression, VariableDeclaration, VariableDeclarationKind, YieldExpression,
+    ForStatementInit, FormalParameters, Function, IdentifierReference, Program, Statement,
+    ThisExpression, VariableDeclaration, VariableDeclarationKind, YieldExpression,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{NodeId, ScopeFlags, ScopeId, Scoping, Semantic, SymbolId};
-use oxc::span::{GetSpan, Span};
+use oxc::span::Span;
 
 /// The variables that live in heap cells.
 pub struct Analysis {
@@ -22,10 +22,6 @@ pub struct Analysis {
     /// Cells declared in the head of a `for (let ...)` loop whose body creates closures:
     /// each iteration copies them, as the per-iteration bindings of JavaScript.
     pub per_iteration: HashSet<SymbolId>,
-    /// `let`, `const`, and class bindings that a function written before the declaration
-    /// reads, such as a hoisted function declaration. Their cells exist from the start of
-    /// the block and hold `'$tdz'` until the declaration runs.
-    pub early: HashSet<SymbolId>,
 }
 
 pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
@@ -69,8 +65,6 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     };
     mapped.visit_program(program);
     cells.extend(mapped.found);
-    let early = early_bindings(scoping, nodes);
-    cells.extend(early.iter().copied());
     cells.extend(eval_visible(scoping));
     let mut with_vars = WithVars::default();
     with_vars.visit_program(program);
@@ -84,7 +78,6 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     Analysis {
         cells,
         per_iteration,
-        early,
     }
 }
 
@@ -144,40 +137,6 @@ fn eval_visible(scoping: &Scoping) -> Vec<SymbolId> {
         }
     }
     found
-}
-
-/// The block-scoped bindings that a nested function can read before their declaration
-/// runs: a function written before the declaration, or a function declaration, which
-/// exists from the start of its block.
-fn early_bindings(scoping: &Scoping, nodes: &oxc::semantic::AstNodes<'_>) -> HashSet<SymbolId> {
-    scoping
-        .symbol_ids()
-        .filter(|symbol| scoping.symbol_flags(*symbol).is_block_scoped())
-        .filter(|symbol| {
-            let home = function_scope(scoping, scoping.symbol_scope_id(*symbol));
-            let declared = scoping.symbol_span(*symbol);
-            scoping.get_resolved_references(*symbol).any(|reference| {
-                function_scope(scoping, reference.scope_id()) != home
-                    && (nodes.get_node(reference.node_id()).span().start < declared.start
-                        || in_hoisted_function(nodes, reference.node_id(), home))
-            })
-        })
-        .collect()
-}
-
-/// Whether a node sits in a function declaration inside the function of scope `home`.
-fn in_hoisted_function(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, home: ScopeId) -> bool {
-    for ancestor in nodes.ancestors(node) {
-        if let AstKind::Function(function) = ancestor.kind() {
-            if function.scope_id.get() == Some(home) {
-                return false;
-            }
-            if function.is_declaration() {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 /// The scope of the function that holds `scope`: a function, an arrow, a static block, or
@@ -296,6 +255,13 @@ impl<'a> Visit<'a> for Suspends {
     fn visit_await_expression(&mut self, _it: &AwaitExpression<'a>) {
         self.0 = true;
     }
+    /// An `await using` declaration awaits when its block ends.
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        if it.kind == VariableDeclarationKind::AwaitUsing {
+            self.0 = true;
+        }
+        walk::walk_variable_declaration(self, it);
+    }
     fn visit_yield_expression(&mut self, _it: &YieldExpression<'a>) {
         self.0 = true;
     }
@@ -382,20 +348,16 @@ pub fn is_simple(params: &FormalParameters<'_>) -> bool {
         })
 }
 
-/// Whether a function reads `this` or `new.target`, in its own code or in an arrow function
-/// inside it, which shares them.
+/// Whether a function reads `this`, in its own code or in an arrow function inside it,
+/// which shares it.
 #[derive(Default)]
 pub struct UsesThis {
     pub this: bool,
-    pub new_target: bool,
 }
 
 impl<'a> Visit<'a> for UsesThis {
     fn visit_this_expression(&mut self, _it: &ThisExpression) {
         self.this = true;
-    }
-    fn visit_new_target(&mut self, _it: &NewTarget) {
-        self.new_target = true;
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_class(&mut self, _it: &Class<'a>) {}

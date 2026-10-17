@@ -11,12 +11,14 @@
 //! named fun that calls itself. Expressions lower in A-normal form: each step binds a
 //! fresh variable, so the Erlang code keeps the evaluation order of JavaScript.
 //!
-//! `await` and `yield` leave a marker in the code of a statement. `seal` splits a body at
-//! each marker: the rest of the body becomes the fun that a promise reaction or `next()`
-//! calls later. A `try` that holds a suspension point is a region: each segment of its
-//! body runs inside an Erlang `try` whose handler is the `catch` clause, and a jump out of
-//! the region returns `{'$k', Fun, Args}` so that the wrapper calls `Fun` outside the
-//! Erlang `try`.
+//! `await`, `yield`, and `yield*` leave a marker in the code of a statement. `seal` splits
+//! a body at each marker: the rest of the body becomes the fun that a promise reaction or
+//! `next()` calls later. A `try` that holds a suspension point, and the body of a
+//! `for...of`, are regions: each segment runs inside an Erlang `try` whose handler is the
+//! `catch` clause or closes the iterator, and a jump out of the region returns
+//! `{'$k', Fun, Args, Level}` so that the wrapper of the level above `Level` calls `Fun`
+//! outside the inner Erlang `try`s. A `finally` block, and the closing of an iterator, is
+//! a fun that takes the completion (`suspend` and `exception`).
 //!
 //! The files, by area:
 //!
@@ -31,6 +33,7 @@ mod analyze;
 mod call;
 mod class;
 mod context;
+mod early;
 mod exception;
 mod expr;
 mod function;
@@ -49,7 +52,7 @@ use std::collections::HashMap;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::erlang;
 use crate::graph;
-use crate::parse::with_program;
+use crate::parse::with_js_program;
 
 use context::{Frame, Lowerer};
 
@@ -67,7 +70,7 @@ pub fn lower_eval(
     scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
     if !lexical.is_empty() && !strict {
-        let conflict = with_program(&module.path, &module.source, |program, semantic| {
+        let conflict = with_js_program(&module.path, &module.source, |program, semantic| {
             declared_var_names(program, semantic)
                 .into_iter()
                 .find(|name| lexical.contains(name))
@@ -82,7 +85,7 @@ pub fn lower_eval(
         }
     }
     if function {
-        let complete = with_program(&module.path, &module.source, |program, _| {
+        let complete = with_js_program(&module.path, &module.source, |program, _| {
             is_one_function(program, module.source.len())
         })?;
         if !complete {
@@ -147,7 +150,7 @@ fn lower(
     eval: Option<bool>,
     scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
-    with_program(&module.path, &module.source, |program, semantic| {
+    with_js_program(&module.path, &module.source, |program, semantic| {
         let analysis = analyze::analyze(program, semantic);
         let mut lowerer = Lowerer {
             semantic,
@@ -168,6 +171,10 @@ fn lower(
                 .enumerate()
                 .map(|(index, name)| (name.clone(), format!("Scope_{index}")))
                 .collect(),
+            privates: Vec::new(),
+            class_bindings: Vec::new(),
+            early: std::collections::HashSet::new(),
+            using_stacks: Vec::new(),
         };
         lowerer.declare(program);
         let functions = lowerer.module_functions(program, &module.source);

@@ -4,6 +4,7 @@
 
 use oxc::ast::ast::{
     BindingPattern, Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement,
+    VariableDeclarationKind,
 };
 use oxc::ast_visit::Visit;
 use oxc::semantic::SymbolId;
@@ -11,7 +12,7 @@ use oxc::span::{GetSpan, Span};
 
 use super::analyze::{Assigned, completes_normally};
 use super::context::{
-    Cont, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
+    Cont, Kind, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
 };
 use super::function::binding_name;
 use crate::erlang::{Clause, Expr};
@@ -27,7 +28,15 @@ impl<'a> Lowerer<'a, '_> {
                 code.extend(self.jump(k));
                 break;
             };
-            if let Statement::BlockStatement(inner) = statement {
+            if is_using(statement) {
+                code.extend(self.using_block(&list[index..], k));
+                break;
+            }
+            // A block with `using` declarations disposes at its own end, so it stays a
+            // statement; another block joins the list.
+            if let Statement::BlockStatement(inner) = statement
+                && !inner.body.iter().any(is_using)
+            {
                 let mut spliced: Vec<&'a Statement<'a>> = inner.body.iter().collect();
                 code.extend(self.hoist(&spliced));
                 spliced.extend_from_slice(&list[index + 1..]);
@@ -94,23 +103,8 @@ impl<'a> Lowerer<'a, '_> {
             })
             .collect();
         let saved = std::mem::take(&mut self.pre);
-        // A `let`, `const`, or class that a function written before it reads gets its cell
-        // now, holding '$tdz' until the declaration runs.
-        for symbol in list.iter().flat_map(|statement| block_bindings(statement)) {
-            // The rest of a block after a compound statement hoists again; keep the cell.
-            // A module-level binding lives in the process dictionary instead.
-            if self.analysis.early.contains(&symbol)
-                && !self.frame.env.contains_key(&symbol)
-                && !self.tops.contains_key(&symbol)
-            {
-                let cell = self.fresh("Tdz");
-                self.pre.push(Expr::matches(
-                    Expr::var(cell.clone()),
-                    Expr::call("bouy_heap", "cell", vec![Expr::atom("$tdz")]),
-                ));
-                self.frame.env.insert(symbol, Local::Cell(cell));
-            }
-        }
+        let early = self.early_bindings(list);
+        self.pre.extend(early);
         let mut cells = Vec::new();
         for (symbol, _) in &functions {
             // A sloppy block function shares the cell that its function made for it at the
@@ -128,7 +122,7 @@ impl<'a> Lowerer<'a, '_> {
             cells.push(cell);
         }
         for ((_, function), cell) in functions.iter().zip(cells) {
-            let value = self.function_value(function, None, false);
+            let value = self.function_value(function, None);
             self.pre.push(cell_set(&cell, value));
         }
         std::mem::replace(&mut self.pre, saved)
@@ -160,13 +154,22 @@ impl<'a> Lowerer<'a, '_> {
         match statement {
             Statement::ExpressionStatement(statement) => self.effect(&statement.expression),
             Statement::VariableDeclaration(declaration) => self.variables(declaration),
-            Statement::ExportDeclaration(export) => {
-                if let Declaration::VariableDeclaration(declaration) = &export.declaration {
-                    self.variables(declaration);
+            Statement::ExportDeclaration(export) => match &export.declaration {
+                Declaration::VariableDeclaration(declaration) => self.variables(declaration),
+                Declaration::ClassDeclaration(class) if !class.declare => {
+                    self.class_declaration(class);
+                }
+                _ => {}
+            },
+            Statement::ExportDefaultDeclaration(export) => {
+                if let oxc::ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) =
+                    &export.declaration
+                {
+                    self.class_declaration(class);
                 }
             }
             Statement::ClassDeclaration(class) if !class.declare => {
-                self.unsupported(class.span, "a class declared inside a function");
+                self.class_declaration(class);
             }
             _ => {}
         }
@@ -198,6 +201,19 @@ impl<'a> Lowerer<'a, '_> {
                 Some(init) => self.named_expr(init, binding_name(&declarator.id)),
                 None => Expr::undefined(),
             };
+            let hint = match declaration.kind {
+                VariableDeclarationKind::Using => Some("sync"),
+                VariableDeclarationKind::AwaitUsing => Some("async"),
+                _ => None,
+            };
+            let value = match (hint, self.using_stacks.last().cloned()) {
+                (Some(hint), Some(stack)) => self.bind(Expr::call(
+                    "bouy_ref_dispose",
+                    "add",
+                    vec![Expr::var(stack), value, Expr::atom(hint)],
+                )),
+                _ => value,
+            };
             self.declare_pattern(&declarator.id, value);
         }
     }
@@ -219,6 +235,11 @@ impl<'a> Lowerer<'a, '_> {
             Statement::BlockStatement(inner) => self.stmts(inner.body.iter().collect(), k),
             Statement::ReturnStatement(statement) => {
                 let value = match &statement.argument {
+                    // An async generator awaits the value that it returns.
+                    Some(argument) if self.frame.kind == Kind::AsyncGenerator => {
+                        let value = self.expr(argument);
+                        self.marker("await", value)
+                    }
                     Some(argument) => self.expr(argument),
                     None => Expr::undefined(),
                 };
@@ -281,6 +302,7 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::atom("$k"),
                 Expr::var(name.to_owned()),
                 Expr::List(args),
+                Expr::Integer(i64::try_from(region).unwrap_or(0)),
             ])
         } else {
             Expr::Apply(Box::new(Expr::var(name.to_owned())), args)
@@ -359,6 +381,8 @@ impl<'a> Lowerer<'a, '_> {
         let labels = std::mem::take(&mut self.frame.labels);
         let discriminant = self.expr(&statement.discriminant);
         let discriminant = self.bind(discriminant);
+        let early = self.early_case_bindings(statement);
+        self.pre.extend(early);
         let mut code = std::mem::take(&mut self.pre);
         let vars = self.assigned_in(statement.span, |visitor| {
             for case in &statement.cases {
@@ -476,14 +500,60 @@ impl<'a> Lowerer<'a, '_> {
         self.jump_target(index, is_continue)
     }
 
+    /// The variables that the continuation of a jump to target `index` passes on.
+    pub fn target_vars(&self, index: usize, is_continue: bool) -> Vec<SymbolId> {
+        let target = &self.frame.targets[index];
+        let k = match (&target.cont, is_continue) {
+            (Some(cont), true) => cont,
+            _ => &target.brk,
+        };
+        match k {
+            Cont::Call { vars, .. } | Cont::Next { vars, .. } | Cont::Test { vars, .. } => {
+                vars.clone()
+            }
+            Cont::Return | Cont::Value(_) => Vec::new(),
+        }
+    }
+
+    fn target_values(&self, index: usize, is_continue: bool) -> Expr {
+        Expr::List(
+            self.target_vars(index, is_continue)
+                .iter()
+                .map(|symbol| self.carried(*symbol))
+                .collect(),
+        )
+    }
+
     pub fn jump_target(&mut self, index: usize, is_continue: bool) -> Vec<Expr> {
-        if let Some(reify) = self.frame.reify.last_mut()
+        if self.reify_innermost()
+            && let Some(reify) = self.frame.reify.last()
             && index < reify.base
         {
-            if !reify.jumps.contains(&(index, is_continue)) {
+            let values = self.target_values(index, is_continue);
+            if let Some(reify) = self.frame.reify.last_mut()
+                && !reify.jumps.contains(&(index, is_continue))
+            {
                 reify.jumps.push((index, is_continue));
             }
-            return vec![jump_tuple(index, is_continue)];
+            return vec![jump_tuple(index, is_continue, values)];
+        }
+        if !self.reify_innermost()
+            && let Some(finally) = self.frame.finally.last()
+            && index < finally.base
+            && !(is_continue && finally.stays == Some(index))
+        {
+            let (fun, region) = (finally.fun.clone(), finally.region);
+            let values = self.target_values(index, is_continue);
+            if let Some(finally) = self.frame.finally.last_mut()
+                && !finally.jumps.contains(&(index, is_continue))
+            {
+                finally.jumps.push((index, is_continue));
+            }
+            return vec![self.call_cont(
+                &fun,
+                vec![jump_tuple(index, is_continue, values)],
+                region,
+            )];
         }
         let target = &self.frame.targets[index];
         let k = match (&target.cont, is_continue) {
@@ -494,12 +564,24 @@ impl<'a> Lowerer<'a, '_> {
     }
 }
 
-pub fn jump_tuple(index: usize, is_continue: bool) -> Expr {
+/// The completion of a jump out of a `try` or a `for...of`: the target, and the values
+/// of the variables that the target passes on.
+pub fn jump_tuple(index: usize, is_continue: bool, values: Expr) -> Expr {
     Expr::Tuple(vec![
         Expr::atom("jump"),
         Expr::Integer(i64::try_from(index).unwrap_or(0)),
         Expr::atom(is_continue.to_string()),
+        values,
     ])
+}
+
+/// A `using` or `await using` declaration.
+pub fn is_using(statement: &Statement<'_>) -> bool {
+    matches!(
+        statement,
+        Statement::VariableDeclaration(declaration)
+            if matches!(declaration.kind, VariableDeclarationKind::Using | VariableDeclarationKind::AwaitUsing)
+    )
 }
 
 /// Statements that run straight through, with no jump or join.
@@ -517,23 +599,4 @@ pub fn is_simple(statement: &Statement<'_>) -> bool {
             | Statement::ExportNamedDeclaration(_)
             | Statement::DebuggerStatement(_)
     )
-}
-
-/// The `let`, `const`, and class bindings that a statement declares in its block.
-fn block_bindings(statement: &Statement<'_>) -> Vec<SymbolId> {
-    match statement {
-        Statement::VariableDeclaration(declaration) if !declaration.kind.is_var() => declaration
-            .declarations
-            .iter()
-            .flat_map(|declarator| declarator.id.get_binding_identifiers())
-            .filter_map(|id| id.symbol_id.get())
-            .collect(),
-        Statement::ClassDeclaration(class) => class
-            .id
-            .as_ref()
-            .and_then(|id| id.symbol_id.get())
-            .into_iter()
-            .collect(),
-        _ => Vec::new(),
-    }
 }

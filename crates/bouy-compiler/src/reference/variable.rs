@@ -44,16 +44,8 @@ impl<'a> Lowerer<'a, '_> {
     /// `new.target`: the variable of the function or of the class constructor, else
     /// undefined.
     pub fn new_target_expr(&self) -> Expr {
-        if let Some(new_target) = &self.frame.new_target {
-            return Expr::var(new_target.clone());
-        }
-        match self
-            .frame
-            .class
-            .as_ref()
-            .and_then(|class| class.new_target.clone())
-        {
-            Some(new_target) => Expr::var(new_target),
+        match &self.frame.new_target {
+            Some(new_target) => Expr::var(new_target.clone()),
             None => Expr::undefined(),
         }
     }
@@ -62,19 +54,12 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(local) = self.frame.env.get(&symbol) {
             return match local.clone() {
                 Local::Var(name) => Expr::var(name),
-                Local::Cell(name) if self.analysis.early.contains(&symbol) => {
-                    let binding = self.semantic.scoping().symbol_name(symbol).to_owned();
-                    self.bind(Expr::call(
-                        "bouy_ref",
-                        "tdz_get",
-                        vec![Expr::var(name), Expr::js_string(&binding)],
-                    ))
-                }
+                Local::Cell(name) if self.early.contains(&symbol) => self.early_read(symbol, &name),
                 Local::Cell(name) => self.bind(cell_get(&name)),
             };
         }
         match self.tops.get(&symbol).cloned() {
-            Some(Top::Function { name, length, kind }) => self.static_function(&name, length, kind),
+            Some(Top::Function { name, length, form }) => self.static_function(&name, length, form),
             Some(Top::Class(name)) => {
                 self.bind(Expr::local_call("$class", vec![Expr::binary(name)]))
             }
@@ -134,13 +119,20 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Stores `value` in the variable `symbol` and returns the stored value.
     pub fn assign_symbol(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
-        if self
-            .semantic
-            .scoping()
-            .symbol_flags(symbol)
-            .is_const_variable()
+        // The name of a function expression is immutable: sloppy code ignores a write to
+        // it (ECMA-262 §9.1.1.1.5).
+        if self.class_bindings.contains(&symbol) && self.frame.sloppy {
+            return self.bind(value);
+        }
+        if self.class_bindings.contains(&symbol)
+            || self
+                .semantic
+                .scoping()
+                .symbol_flags(symbol)
+                .is_const_variable()
         {
-            // An assignment to a constant: the value runs, then a TypeError.
+            // A `const`, and the name of a class inside the class, are constants: the
+            // value runs, then a TypeError.
             let value = self.bind(value);
             self.pre.push(Expr::call("bouy_ref", "const_error", vec![]));
             return value;
@@ -161,19 +153,35 @@ impl<'a> Lowerer<'a, '_> {
                 let value = self.bind(value);
                 let key = self.var_key(&name);
                 self.pre.push(Expr::call(
-                    "erlang",
-                    "put",
-                    vec![key, Expr::tagged("v", value.clone())],
+                    "bouy_ref_class",
+                    "set_module",
+                    vec![key, value.clone(), Expr::js_string(&name)],
                 ));
                 value
             }
             Some(Top::Global(name)) => self.set_global(&name, value),
+            // A module-level class name holds the value that replaces the class in this
+            // realm.
+            Some(Top::Class(name)) => {
+                let value = self.bind(value);
+                let key = self.class_key(&name);
+                self.pre
+                    .push(Expr::call("erlang", "put", vec![key, value.clone()]));
+                value
+            }
             _ => self.unsupported(span, "an assignment to this name"),
         }
     }
 
     /// Declares `symbol` with `value`: a version, a cell, or a module variable.
     pub fn declare_symbol(&mut self, symbol: SymbolId, value: Expr) {
+        if self.early.contains(&symbol)
+            && let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
+        {
+            let value = self.bind(value);
+            self.pre.push(cell_set(&cell, value));
+            return;
+        }
         match self.tops.get(&symbol).cloned() {
             Some(Top::Var(name)) => {
                 let value = self.bind(value);
@@ -193,15 +201,13 @@ impl<'a> Lowerer<'a, '_> {
             _ => {}
         }
         // A `var` declaration after the start of the function writes the cell that the
-        // start of the function made, which closures may hold, and so does a binding that
-        // a function read before its declaration, or that an eval shares with its caller.
+        // start of the function made, which closures may hold.
         if let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
-            && (self
+            && self
                 .semantic
                 .scoping()
                 .symbol_flags(symbol)
                 .is_function_scoped_declaration()
-                || self.analysis.early.contains(&symbol))
         {
             let value = self.bind(value);
             self.pre.push(cell_set(&cell, value));
