@@ -2,8 +2,8 @@
 # Runs test262 files or directories on the reference engine (`--semantics reference`): the
 # quick loop of engine work. It fetches tc39/test262 at the pinned commit into
 # ~/.cache/bouy/test262 on first use, builds the CLI, and runs the dev runner,
-# crates/bouy-cli/src/bin/test262-dev.rs, which compiles each test and runs them all in
-# one VM. The runner prints each failure with its first error line, then a table of
+# crates/bouy-cli/src/bin/test262-dev.rs, which compiles each test and runs up to 8000
+# tests in one VM. The runner prints each failure with its first error line, then a table of
 # results per directory.
 #
 # Usage: scripts/test262-dev.sh [--jobs N] [--timeout-ms N] [--failures FILE] <path>...

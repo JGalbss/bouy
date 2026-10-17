@@ -1,6 +1,6 @@
 //! A development runner for test262 on the reference engine. It compiles each test with the
-//! harness files that its frontmatter names, runs the compiled tests in one VM, each in a
-//! realm process of its own (`runtime/test/bouy_test262.erl`), and prints the failures and
+//! harness files that its frontmatter names, runs up to 8000 compiled tests in one VM, each
+//! in a realm process of its own (`runtime/test/bouy_test262.erl`), and prints the failures and
 //! a table of results per directory.
 //!
 //! `scripts/test262-dev.sh` fetches test262 at the pinned commit and runs this binary. It
@@ -44,6 +44,16 @@ delete globalThis.$262CreateRealm;\n";
 
 /// The VM half of the runner, which the VM compiles when it starts.
 const VM_RUNNER: &str = include_str!("../../../../runtime/test/bouy_test262.erl");
+
+/// The tests that one VM runs before the runner starts a new VM. The VM never frees an entry
+/// of its fun table, even when it purges the module of the fun, and the table holds 524288
+/// entries. A test of `Temporal` adds about 48 entries and most other tests about 20: in a
+/// full run of `test/built-ins`, the fullest VM held 351666.
+const TESTS_PER_VM: usize = 8000;
+
+/// The harness of the tests that get at least 60 seconds: most of them match regular
+/// expressions against every code point of Unicode, about ten million steps.
+const SLOW_HARNESS: &str = "regExpUtils.js";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -161,15 +171,17 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
             &written[index],
         )
     });
-    let compiled: Vec<(usize, &[PathBuf])> = prepared
+    let compiled: Vec<(usize, &[PathBuf], u64)> = prepared
         .iter()
         .enumerate()
         .filter_map(|(index, prepared)| match prepared {
-            Prepared::Compiled { erlang, .. } => Some((index, erlang.as_slice())),
+            Prepared::Compiled { meta, erlang } => {
+                Some((index, erlang.as_slice(), timeout_ms(options, meta)))
+            }
             Prepared::Decided(_) => None,
         })
         .collect();
-    let mut runs = run_vm(options, scratch, jobs, &compiled)?;
+    let mut runs = run_vm(scratch, jobs, &compiled)?;
     Ok(prepared
         .into_iter()
         .enumerate()
@@ -385,6 +397,13 @@ fn prepare(
     Prepared::Compiled { meta, erlang }
 }
 
+fn timeout_ms(options: &Options, meta: &Frontmatter) -> u64 {
+    if meta.includes.iter().any(|include| include == SLOW_HARNESS) {
+        return options.timeout_ms.max(60_000);
+    }
+    options.timeout_ms
+}
+
 fn skip_reason(meta: &Frontmatter) -> Option<&'static str> {
     if meta.has_flag("CanBlockIsFalse") {
         return Some("can-block");
@@ -476,33 +495,27 @@ fn describe(diagnostic: &Diagnostic, prelude_lines: usize) -> String {
     }
 }
 
-/// Runs the compiled tests in one VM, and starts another for the tests that a VM which
-/// crashed did not start, as long as each VM starts a test. Returns the run of each test
-/// that finished.
+/// Runs the compiled tests in VMs of at most `TESTS_PER_VM` tests each, and starts another
+/// for the tests that a VM which crashed did not start, as long as each VM starts a test.
+/// Returns the run of each test that finished.
 fn run_vm(
-    options: &Options,
     scratch: &Path,
     jobs: usize,
-    compiled: &[(usize, &[PathBuf])],
+    compiled: &[(usize, &[PathBuf], u64)],
 ) -> Result<HashMap<usize, Run>, String> {
     let runtime = runtime::locate()?;
     let runner = scratch.join("bouy_test262.erl");
     fs::write(&runner, VM_RUNNER).map_err(|error| format!("cannot write the runner: {error}"))?;
     let mut runs = HashMap::new();
-    let mut remaining: Vec<(usize, &[PathBuf])> = compiled.to_vec();
+    let mut remaining = compiled.to_vec();
     while !remaining.is_empty() {
         let mut manifest = String::new();
-        for (index, erlang) in &remaining {
+        for (index, erlang, timeout_ms) in remaining.iter().take(TESTS_PER_VM) {
             let files: Vec<String> = erlang
                 .iter()
                 .map(|file| file.display().to_string())
                 .collect();
-            let _ = writeln!(
-                manifest,
-                "{index}\t{}\t{}",
-                files.join(","),
-                options.timeout_ms
-            );
+            let _ = writeln!(manifest, "{index}\t{}\t{timeout_ms}", files.join(","));
         }
         let manifest_path = scratch.join("manifest");
         fs::write(&manifest_path, manifest)
@@ -512,7 +525,7 @@ fn run_vm(
             eprintln!("test262-dev: the VM stopped before it started a test");
             break;
         }
-        remaining.retain(|(index, _)| !runs.contains_key(index) && !started.contains(index));
+        remaining.retain(|(index, ..)| !runs.contains_key(index) && !started.contains(index));
     }
     Ok(runs)
 }
@@ -677,8 +690,12 @@ fn frontmatter(source: &str) -> Frontmatter {
     let Some(length) = source[start..].find("---*/") else {
         return meta;
     };
+    // A test may end its lines with CR alone, as line-terminator-normalisation-CR.js does.
+    let text = source[start + 5..start + length]
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
     let mut key = String::new();
-    for line in source[start + 5..start + length].lines() {
+    for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -827,6 +844,38 @@ mod tests {
             (negative.phase.as_str(), negative.error.as_str()),
             ("parse", "SyntaxError")
         );
+    }
+
+    #[test]
+    fn reads_lines_that_end_with_cr_or_crlf() {
+        for newline in ["\r", "\r\n"] {
+            let source = [
+                "/*---",
+                "includes: [nativeFunctionMatcher.js]",
+                "flags:",
+                "  - noStrict",
+                "---*/",
+                "x;",
+            ]
+            .join(newline);
+            let meta = frontmatter(&source);
+            assert_eq!(meta.includes, ["nativeFunctionMatcher.js"]);
+            assert_eq!(meta.flags, ["noStrict"]);
+        }
+    }
+
+    #[test]
+    fn gives_the_tests_of_regexp_utils_a_minute() {
+        let options = Options {
+            test262: PathBuf::new(),
+            jobs: None,
+            timeout_ms: 10_000,
+            failures: None,
+            paths: Vec::new(),
+        };
+        let slow = frontmatter("/*---\nincludes: [regExpUtils.js]\n---*/");
+        assert_eq!(timeout_ms(&options, &slow), 60_000);
+        assert_eq!(timeout_ms(&options, &Frontmatter::default()), 10_000);
     }
 
     #[test]
