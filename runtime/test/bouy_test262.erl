@@ -48,57 +48,79 @@ worker(Tests, Next, Out, Loader) ->
             ok
     end.
 
-%% Loads each imported module once: tests that run at once share fixtures, and a
-%% second load of a module in use would purge the code that a realm runs.
-loader(Loaded) ->
+%% Loads the modules of the tests. A module loads once: tests share fixtures, a test may
+%% import another test, and a second load of a module in use would purge the code that a
+%% realm runs. Each test holds its modules. The module of a test is released when the
+%% test ends, and purged when no test holds it and no test imports it; an imported module
+%% stays loaded. The workers compile, so the loader only loads.
+loader(Held) ->
     receive
-        {load, File, From} ->
-            Result = case Loaded of
-                #{File := Known} -> Known;
-                _ -> load(File)
+        {loaded, File, From} ->
+            From ! {loaded, File, maps:find(File, Held)},
+            loader(Held);
+        {load, File, Module, Binary, Entry, From} ->
+            Held1 = case Held of
+                #{File := {Known, Count, Transient}} ->
+                    Held#{File => {Known, Count + 1, Transient andalso Entry}};
+                _ ->
+                    {module, Module} = code:load_binary(Module, File, Binary),
+                    Held#{File => {Module, 1, Entry}}
             end,
-            From ! {loaded, File, Result},
-            loader(Loaded#{File => Result})
+            {Loaded, _, _} = maps:get(File, Held1),
+            From ! {held, File, Loaded},
+            loader(Held1);
+        {release, File} ->
+            case Held of
+                #{File := {Module, 1, true}} ->
+                    _ = code:purge(Module),
+                    _ = code:delete(Module),
+                    _ = code:purge(Module),
+                    loader(maps:remove(File, Held));
+                #{File := {Module, Count, Transient}} ->
+                    loader(Held#{File => {Module, Count - 1, Transient}});
+                _ ->
+                    loader(Held)
+            end
     end.
 
-load(File) ->
-    case compile:file(File, [binary, return_errors, nowarn_unused_vars]) of
-        {ok, Module, Binary} ->
-            {module, Module} = code:load_binary(Module, File, Binary),
-            ok;
+%% Holds a module for a test: compiled here unless the loader has it already.
+hold(File, Entry, Loader) ->
+    Loader ! {loaded, File, self()},
+    Compiled = receive
+        {loaded, File, {ok, {Module, _, _}}} -> {ok, Module, none};
+        {loaded, File, error} -> compile:file(File, [binary, return_errors, nowarn_unused_vars])
+    end,
+    case Compiled of
+        {ok, Name, Binary} ->
+            Loader ! {load, File, Name, Binary, Entry, self()},
+            receive {held, File, Loaded} -> {ok, Loaded} end;
         Failed ->
             {error, Failed}
     end.
 
-load_imports(Imports, Loader) ->
-    lists:foldl(fun(File, ok) ->
-                        Loader ! {load, File, self()},
-                        receive {loaded, File, Result} -> Result end;
-                   (_, Failed) ->
-                        Failed
-                end, ok, Imports).
-
 run({Index, File, Imports, Timeout}, Out, Loader) ->
     io:format("START ~ts~n", [Index]),
     Base = filename:join(Out, binary_to_list(Index)),
-    Compiled = case load_imports(Imports, Loader) of
-        ok -> compile:file(File, [binary, return_errors, nowarn_unused_vars]);
-        ImportFailed -> ImportFailed
-    end,
-    Status = case Compiled of
-        {ok, Module, Binary} ->
-            {module, Module} = code:load_binary(Module, File, Binary),
+    Held = lists:foldl(fun(Import, ok) ->
+                               case hold(Import, false, Loader) of
+                                   {ok, _} -> ok;
+                                   {error, Failed} -> {import, Failed}
+                               end;
+                          (_, Failed) ->
+                               Failed
+                       end, ok, Imports),
+    Status = case Held =:= ok andalso hold(File, true, Loader) of
+        {ok, Module} ->
             Result = execute(Module, Timeout, Base),
-            _ = code:purge(Module),
-            _ = code:delete(Module),
-            _ = code:purge(Module),
+            Loader ! {release, File},
             Result;
-        {error, Rejected} ->
-            ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected an imported module: ~0tP~n", [Rejected, 12])),
+        {error, Failed} ->
+            ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected the module: ~0tP~n", [Failed, 12])),
             ok = file:write_file(Base ++ ".out", <<>>),
             "compile";
-        Failed ->
-            ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected the module: ~0tP~n", [Failed, 12])),
+        false ->
+            {import, Rejected} = Held,
+            ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected an imported module: ~0tP~n", [Rejected, 12])),
             ok = file:write_file(Base ++ ".out", <<>>),
             "compile"
     end,
