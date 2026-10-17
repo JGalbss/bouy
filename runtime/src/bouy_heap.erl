@@ -250,7 +250,8 @@ get({'$o', Id} = O, K) ->
     case erlang:get(Id) of
         {array, _, _, _, _, {_, Elements}} = R when is_integer(K) ->
             case Elements of
-                #{K := V} -> resolve(V, O);
+                #{K := {'$accessor', _, _} = V} -> resolve(V, O);
+                #{K := V} -> V;
                 _ -> inherited(element(2, R), K, O)
             end;
         {array, _, _, _, _, {Length, _}} when K =:= <<"length">> ->

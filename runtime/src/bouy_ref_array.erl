@@ -1129,13 +1129,21 @@ iterator_method(V) ->
 
 from_array_like(C, O, Mapper) ->
     Len = length_of(O),
-    A = case is_constructor(C) of
-        true -> bouy_ref:construct(C, [Len]);
-        false -> array_create(Len)
-    end,
-    up(0, Len - 1, fun(K) -> create_property(A, K, mapped(Mapper, get(O, K), K)) end),
-    set_length(A, Len),
-    A.
+    case fresh_constructor(C) of
+        true ->
+            A = array_create(Len),
+            Pairs = fold_up(0, Len - 1, fun(K, Acc) -> [{K, mapped(Mapper, value_at(O, K), K)} | Acc] end, []),
+            commit(A, Len, Pairs);
+        false ->
+            A = bouy_ref:construct(C, [Len]),
+            up(0, Len - 1, fun(K) -> create_property(A, K, mapped(Mapper, get(O, K), K)) end),
+            set_length(A, Len),
+            A
+    end.
+
+%% Whether Array.from and Array.of make a new array of %Array%: this is not
+%% a constructor, or is %Array% itself.
+fresh_constructor(C) -> C =:= constructor() orelse not is_constructor(C).
 
 mapped(none, V, _K) -> V;
 mapped({F, This}, V, K) -> bouy_ref:call(F, This, [V, K]).

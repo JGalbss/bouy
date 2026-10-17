@@ -409,6 +409,7 @@ template_object(Site, Cooked, Raw) ->
 -spec add(term(), term()) -> term().
 add(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:canonical(A + B);
 add(A, B) when is_binary(A), is_binary(B) -> <<A/binary, B/binary>>;
+add(A, B) when is_number(A), is_number(B) -> bouy_ref_number:add(A, B);
 add(A, B) ->
     PA = to_primitive(A, default),
     PB = to_primitive(B, default),
@@ -434,12 +435,15 @@ binary_numeric(Op, A, B) ->
 
 -spec sub(term(), term()) -> term().
 sub(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:canonical(A - B);
+sub(A, B) when is_number(A), is_number(B) -> bouy_ref_number:sub(A, B);
 sub(A, B) -> binary_numeric(sub, A, B).
 
 -spec mul(term(), term()) -> term().
+mul(A, B) when is_number(A), is_number(B) -> bouy_ref_number:mul(A, B);
 mul(A, B) -> binary_numeric(mul, A, B).
 
 -spec divide(term(), term()) -> term().
+divide(A, B) when is_number(A), is_number(B) -> bouy_ref_number:divide(A, B);
 divide(A, B) -> binary_numeric(divide, A, B).
 
 -spec remainder(term(), term()) -> term().
@@ -476,11 +480,13 @@ one(V) ->
     end.
 
 -spec bit_and(term(), term()) -> term().
+bit_and(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:bit_and(A, B);
 bit_and(A, B) -> binary_numeric(bit_and, A, B).
 -spec bit_or(term(), term()) -> term().
 bit_or(A, B) when is_integer(A), is_integer(B), A >= 0, A < 16#80000000, B >= 0, B < 16#80000000 -> A bor B;
 bit_or(A, B) -> binary_numeric(bit_or, A, B).
 -spec bit_xor(term(), term()) -> term().
+bit_xor(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:bit_xor(A, B);
 bit_xor(A, B) -> binary_numeric(bit_xor, A, B).
 -spec bit_not(term()) -> term().
 bit_not(A) ->
@@ -489,10 +495,13 @@ bit_not(A) ->
         N -> bouy_ref_number:bit_not(N)
     end.
 -spec shift_left(term(), term()) -> term().
+shift_left(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:shift_left(A, B);
 shift_left(A, B) -> binary_numeric(shift_left, A, B).
 -spec shift_right(term(), term()) -> term().
+shift_right(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:shift_right(A, B);
 shift_right(A, B) -> binary_numeric(shift_right, A, B).
 -spec shift_right_unsigned(term(), term()) -> term().
+shift_right_unsigned(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:shift_right_unsigned(A, B);
 shift_right_unsigned(A, B) -> binary_numeric(shift_right_unsigned, A, B).
 
 %% Objects compare by identity: the terms are equal only for the same id.
