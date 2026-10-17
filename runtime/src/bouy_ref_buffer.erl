@@ -18,7 +18,7 @@
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3]).
 -export([allocate/1, allocate/2, byte_length/1, is_detached/1, is_buffer/1, read/3, write/3, copy/5, copy_forward/5, detach/1]).
--export([element_size/1, decode/2, encode/2, is_big_int_kind/1, kinds/0, kind_name/1, to_index/1]).
+-export([element_size/1, decode/2, encode/2, is_big_int_kind/1, kinds/0, kind_name/1, to_index/1, species_constructor/2]).
 
 -import(bouy_ref_realm, [arg/2, record/4, ctor_record/5]).
 
@@ -451,7 +451,8 @@ relative(V, Len, _Default) ->
         I -> min(I, Len)
     end.
 
-%% SpeciesConstructor.
+%% SpeciesConstructor(O, Default).
+-spec species_constructor(term(), term()) -> term().
 species_constructor(O, Default) ->
     case bouy_ref:get(O, <<"constructor">>) of
         undefined -> Default;

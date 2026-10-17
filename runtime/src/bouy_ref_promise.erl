@@ -1,18 +1,30 @@
 %% The Promise family: the Promise constructor, its statics, and
-%% Promise.prototype. bouy_jobs holds the promise states and the job queue.
+%% Promise.prototype, as ECMA-262 §27.2 specifies them. bouy_jobs holds the
+%% promise states and the job queue.
+%%
+%% A promise capability is {Promise, Resolve, Reject}. For the intrinsic
+%% Promise, Resolve and Reject are Erlang funs of bouy_jobs, which nothing
+%% can observe, and they become builtin functions only when user code can
+%% see them. For another constructor they are the functions that its
+%% executor received.
 -module(bouy_ref_promise).
 
 -include("bouy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, constructor/0]).
 
--import(bouy_ref_realm, [arg/2, rest/2, builtin/2, record/4, ctor_record/5, callable/1]).
+-import(bouy_ref_realm, [arg/2, rest/2, record/4, ctor_record/5]).
 -import(bouy_ref, [type_error/1]).
+-import(bouy_jobs, [invoke/2]).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
-    [{'Promise.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Promise.prototype">>, [<<"then">>, <<"catch">>, <<"finally">>]) ++ [{<<"constructor">>, constructor()}, {?SYM(toStringTag), <<"Promise">>}], none)},
-     {{builtin, <<"Promise">>}, ctor_record(<<"Promise">>, 1, {'$o', 'Promise.prototype'}, ?METHODS(<<"Promise">>, [<<"resolve">>, <<"reject">>, <<"all">>, <<"allSettled">>, <<"race">>, <<"any">>, <<"withResolvers">>]), fun promise_construct/2)}].
+    [{'Promise.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Promise.prototype">>, [{<<"then">>, 2}, {<<"catch">>, 1}, {<<"finally">>, 1}]) ++ [{<<"constructor">>, constructor()}, {?SYM(toStringTag), <<"Promise">>, 4}], none)},
+     {{builtin, <<"Promise">>}, ctor_record(<<"Promise">>, 1, {'$o', 'Promise.prototype'}, ?METHODS(<<"Promise">>, [{<<"resolve">>, 1}, {<<"reject">>, 1}, {<<"all">>, 1}, {<<"allSettled">>, 1}, {<<"race">>, 1}, {<<"any">>, 1}, {<<"withResolvers">>, 0}, {<<"try">>, 1}]) ++ [{?SYM(species), species_getter(), 4}], fun construct/2)}].
+
+%% get Promise[Symbol.species]: this.
+species_getter() ->
+    {'$accessor', bouy_ref_realm:builtin(<<"get Promise[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}.
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{<<"Promise">>, constructor()}].
@@ -25,60 +37,225 @@ call_constructor(Name, _This, _Args) -> type_error(<<"Constructor ", Name/binary
 
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"Promise.prototype">>, Name, This, Args) -> promise_proto(Name, This, Args);
-method(<<"Promise">>, Name, _This, Args) -> promise_static(Name, Args).
+method(<<"Promise">>, Name, This, Args) -> promise_static(Name, This, Args).
 
-promise_construct(_NewTarget, Args) ->
+%% new Promise(executor): the prototype comes from NewTarget, so a subclass
+%% gets its own.
+construct(NewTarget, Args) ->
     Executor = arg(1, Args),
     bouy_heap:is_callable(Executor) orelse
         type_error(bouy_ref_string:concat([<<"Promise resolver ">>, bouy_ref:describe(Executor), <<" is not a function">>])),
-    P = bouy_jobs:new_promise(),
+    P = bouy_jobs:new_promise(bouy_ref_realm:proto_for(NewTarget, 'Promise.prototype')),
     {Resolve, Reject} = bouy_jobs:resolving_functions(P),
-    try bouy_ref:call(Executor, undefined, [js(Resolve), js(Reject)]) of
+    try bouy_ref:call(Executor, undefined, [bouy_jobs:js_function(Resolve), bouy_jobs:js_function(Reject)]) of
         _ -> ok
     catch
         error:Reason:Stack -> Reject(bouy_ref:caught(Reason, Stack))
     end,
     P.
 
-js(Fun) -> bouy_heap:function(fun(_This, Args) -> Fun(arg(1, Args)) end).
+%% NewPromiseCapability(C). The intrinsic Promise needs no executor, because
+%% its construction is not observable.
+new_capability(C) ->
+    case C =:= constructor() of
+        true -> bouy_jobs:capability();
+        false -> capability_of(C)
+    end.
+
+%% Construct(C, [executor]) with a GetCapabilitiesExecutor: a builtin of
+%% length 2 that keeps the first resolve and reject that are not undefined.
+capability_of(C) ->
+    bouy_heap:is_constructor(C) orelse type_error(bouy_ref_string:concat(bouy_ref:describe(C), <<" is not a constructor">>)),
+    Functions = bouy_heap:cell({undefined, undefined}),
+    Executor = bouy_heap:function(fun(_This, Args) ->
+                                          case bouy_heap:cell_get(Functions) of
+                                              {undefined, undefined} -> bouy_heap:cell_set(Functions, {arg(1, Args), arg(2, Args)}), undefined;
+                                              _ -> type_error(<<"Promise executor has already been invoked with non-undefined arguments">>)
+                                          end
+                                  end, <<>>, 2, #{}),
+    P = bouy_heap:construct(C, [Executor], C),
+    {Resolve, Reject} = bouy_heap:cell_get(Functions),
+    bouy_heap:is_callable(Resolve) andalso bouy_heap:is_callable(Reject) orelse
+        type_error(<<"Promise resolve or reject function is not callable">>),
+    {P, Resolve, Reject}.
+
+%% PromiseResolve(C, X): X itself when it is a promise of C.
+promise_resolve(C, X) ->
+    case bouy_jobs:is_promise(X) andalso bouy_heap:get(X, <<"constructor">>) =:= C of
+        true ->
+            X;
+        false ->
+            {P, Resolve, _} = new_capability(C),
+            _ = invoke(Resolve, X),
+            P
+    end.
+
+%% SpeciesConstructor(P, %Promise%).
+species_constructor(P) -> bouy_ref_buffer:species_constructor(P, constructor()).
+
+%% A capability function as user code sees it.
+as_js(F) when is_function(F, 1) -> bouy_jobs:js_function(F);
+as_js(F) -> F.
 
 promise_proto(<<"then">>, P, Args) ->
     bouy_jobs:is_promise(P) orelse type_error(<<"Method Promise.prototype.then called on incompatible receiver">>),
-    bouy_jobs:then(P, arg(1, Args), arg(2, Args));
+    {Promise, _, _} = Capability = new_capability(species_constructor(P)),
+    bouy_jobs:perform_then(P, arg(1, Args), arg(2, Args), Capability),
+    Promise;
 promise_proto(<<"catch">>, P, Args) ->
     bouy_ref:call_method(P, <<"then">>, [undefined, arg(1, Args)]);
 promise_proto(<<"finally">>, P, Args) ->
-    case arg(1, Args) of
-        {'$f', _, _} = OnFinally ->
-            ThenFinally = bouy_heap:function(fun(_, [Value | _]) ->
-                Result = bouy_ref:call(OnFinally, undefined, []),
-                Promise = bouy_jobs:promise_resolve(Result),
-                bouy_ref:call_method(Promise, <<"then">>, [bouy_heap:function(fun(_, _) -> Value end)])
-            end),
-            CatchFinally = bouy_heap:function(fun(_, [Reason | _]) ->
-                Result = bouy_ref:call(OnFinally, undefined, []),
-                Promise = bouy_jobs:promise_resolve(Result),
-                bouy_ref:call_method(Promise, <<"then">>, [bouy_heap:function(fun(_, _) -> erlang:error({'$throw', Reason}) end)])
-            end),
+    ?IS_OBJECT(P) orelse type_error(<<"Method Promise.prototype.finally called on a non-object">>),
+    C = species_constructor(P),
+    OnFinally = arg(1, Args),
+    case bouy_heap:is_callable(OnFinally) of
+        true ->
+            ThenFinally = after_finally(C, OnFinally, fun(Value) -> Value end),
+            CatchFinally = after_finally(C, OnFinally, fun(Reason) -> erlang:error({'$throw', Reason}) end),
             bouy_ref:call_method(P, <<"then">>, [ThenFinally, CatchFinally]);
-        Other ->
-            bouy_ref:call_method(P, <<"then">>, [Other, Other])
+        false ->
+            bouy_ref:call_method(P, <<"then">>, [OnFinally, OnFinally])
     end.
 
-promise_static(<<"resolve">>, Args) -> bouy_jobs:promise_resolve(arg(1, Args));
-promise_static(<<"reject">>, Args) -> bouy_jobs:rejected(arg(1, Args));
-promise_static(<<"all">>, Args) -> settle_list(fun(L) -> bouy_jobs:all(L, true) end, Args);
-promise_static(<<"allSettled">>, Args) -> settle_list(fun bouy_jobs:all_settled/1, Args);
-promise_static(<<"race">>, Args) -> settle_list(fun bouy_jobs:race/1, Args);
-promise_static(<<"any">>, Args) -> settle_list(fun bouy_jobs:any/1, Args);
-promise_static(<<"withResolvers">>, _Args) ->
-    {P, Resolve, Reject} = bouy_jobs:capability(),
-    bouy_heap:object(?OBJECT_PROTO, [{<<"promise">>, P}, {<<"resolve">>, js(Resolve)}, {<<"reject">>, js(Reject)}]).
+%% thenFinally or catchFinally: calls onFinally, waits for its result, and
+%% then passes on the value or the reason through Settle.
+after_finally(C, OnFinally, Settle) ->
+    bouy_jobs:js_function(fun(Argument) ->
+                                  Promise = promise_resolve(C, bouy_ref:call(OnFinally, undefined, [])),
+                                  Thunk = bouy_heap:function(fun(_, _) -> Settle(Argument) end, <<>>, 0, #{}),
+                                  bouy_ref:call_method(Promise, <<"then">>, [Thunk])
+                          end).
 
-%% An iterable that throws rejects the result instead of throwing.
-settle_list(Combinator, Args) ->
-    try bouy_ref_iterator:to_list(arg(1, Args)) of
-        L -> Combinator(L)
+promise_static(<<"resolve">>, C, Args) ->
+    ?IS_OBJECT(C) orelse type_error(<<"PromiseResolve called on non-object">>),
+    promise_resolve(C, arg(1, Args));
+promise_static(<<"reject">>, C, Args) ->
+    {P, _, Reject} = new_capability(C),
+    _ = invoke(Reject, arg(1, Args)),
+    P;
+promise_static(<<"withResolvers">>, C, _Args) ->
+    {P, Resolve, Reject} = new_capability(C),
+    bouy_heap:object(?OBJECT_PROTO, [{<<"promise">>, P}, {<<"resolve">>, as_js(Resolve)}, {<<"reject">>, as_js(Reject)}]);
+%% Promise.try with ecma262 PR 3883: a promise of C that the callback
+%% returns comes back unwrapped.
+promise_static(<<"try">>, C, Args) ->
+    ?IS_OBJECT(C) orelse type_error(<<"Promise.try called on non-object">>),
+    try bouy_ref:call(arg(1, Args), undefined, rest(2, Args)) of
+        V -> promise_resolve(C, V)
     catch
-        error:Reason:Stack -> bouy_jobs:rejected(bouy_ref:caught(Reason, Stack))
+        error:Reason:Stack -> promise_static(<<"reject">>, C, [bouy_ref:caught(Reason, Stack)])
+    end;
+promise_static(<<"all">>, C, Args) -> combinator(C, arg(1, Args), fun all/2);
+promise_static(<<"allSettled">>, C, Args) -> combinator(C, arg(1, Args), fun all_settled/2);
+promise_static(<<"any">>, C, Args) -> combinator(C, arg(1, Args), fun any/2);
+promise_static(<<"race">>, C, Args) -> combinator(C, arg(1, Args), fun race/2).
+
+%%% all, allSettled, any, and race
+
+%% The frame of the combinators: an error of GetPromiseResolve, of
+%% GetIterator, or of the loop rejects the promise instead of throwing.
+%% Perform gets Each, which runs the loop, and the capability.
+combinator(C, Iterable, Perform) ->
+    {P, _, Reject} = Capability = new_capability(C),
+    try
+        Resolve = bouy_ref:get(C, <<"resolve">>),
+        bouy_heap:is_callable(Resolve) orelse type_error(<<"Promise resolve is not a function">>),
+        State = bouy_ref_iterator:iterate(Iterable),
+        Perform(fun(Element) -> each(State, fun(V) -> bouy_ref:call(Resolve, C, [V]) end, Element, 0) end, Capability)
+    catch
+        error:Reason:Stack -> invoke(Reject, bouy_ref:caught(Reason, Stack))
+    end,
+    P.
+
+%% Steps the iterator one value at a time and calls Element(Index, Next)
+%% with the promise of each value from C.resolve. Returns the count at the
+%% end. An error after a step closes the iterator; an error of the step
+%% itself does not, because the iterator is then done.
+each(State, Resolve, Element, Index) ->
+    case bouy_ref_iterator:step(State) of
+        done ->
+            Index;
+        {value, V, State1} ->
+            try
+                Element(Index, Resolve(V))
+            catch
+                Class:Reason:Stack ->
+                    bouy_ref_iterator:close_quietly(State1),
+                    erlang:raise(Class, Reason, Stack)
+            end,
+            each(State1, Resolve, Element, Index + 1)
     end.
+
+%% Promise.race: the first value or reason.
+race(Each, {_, Resolve, Reject}) ->
+    {OnFulfilled, OnRejected} = {as_js(Resolve), as_js(Reject)},
+    Each(fun(_Index, Next) -> bouy_ref:call_method(Next, <<"then">>, [OnFulfilled, OnRejected]) end).
+
+%% Promise.all: an array of the values, or the first reason.
+all(Each, {_, Resolve, Reject}) ->
+    Finish = fun(Values) -> invoke(Resolve, bouy_heap:new_array(Values)) end,
+    OnRejected = as_js(Reject),
+    gather(Each, Finish, Finish, fun(Element) -> {Element(fun(V) -> V end), OnRejected} end).
+
+%% Promise.allSettled: an array of the outcomes as objects.
+all_settled(Each, {_, Resolve, _}) ->
+    Finish = fun(Values) -> invoke(Resolve, bouy_heap:new_array(Values)) end,
+    gather(Each, Finish, Finish,
+           fun(Element) -> {Element(fun(V) -> outcome(<<"fulfilled">>, <<"value">>, V) end),
+                            Element(fun(E) -> outcome(<<"rejected">>, <<"reason">>, E) end)} end).
+
+outcome(Status, Key, V) -> bouy_heap:object(?OBJECT_PROTO, [{<<"status">>, Status}, {Key, V}]).
+
+%% Promise.any: the first value, or an AggregateError of the reasons. When
+%% the iterator ends with nothing left, the error is an abrupt completion
+%% of the loop, so the frame rejects with it.
+any(Each, {_, Resolve, Reject}) ->
+    OnFulfilled = as_js(Resolve),
+    gather(Each, fun(Errors) -> invoke(Reject, aggregate(Errors)) end,
+           fun(Errors) -> erlang:error({'$throw', aggregate(Errors)}) end,
+           fun(Element) -> {OnFulfilled, Element(fun(E) -> E end)} end).
+
+aggregate(Errors) ->
+    E = bouy_heap:error_object({'$o', 'AggregateError.prototype'}, <<"All promises were rejected">>, <<>>),
+    bouy_heap:define(E, <<"errors">>, #{value => bouy_heap:new_array(Errors), writable => true, enumerable => false, configurable => true}),
+    E.
+
+%% The loop of all, allSettled, and any. Each value gets an index in the
+%% list of results and stays in the remaining count, which starts at 1 for
+%% the loop itself, until one of its element functions runs. Handlers gets
+%% Element and returns the two functions for then; Element(Wrap) makes an
+%% element function, a builtin of length 1 that stores Wrap(X), and the
+%% element functions of one index share one alreadyCalled flag. The list
+%% goes to Finish when an element function settles the last index, or to
+%% Last when the loop ends with nothing remaining.
+gather(Each, Finish, Last, Handlers) ->
+    Values = bouy_heap:cell(#{}),
+    Remaining = bouy_heap:cell(1),
+    CountDown = fun(Then) ->
+                        case bouy_heap:cell_set(Remaining, bouy_heap:cell_get(Remaining) - 1) of
+                            0 -> Then(ordered(bouy_heap:cell_get(Values)));
+                            _ -> undefined
+                        end
+                end,
+    _ = Each(fun(Index, Next) ->
+                     bouy_heap:cell_set(Values, (bouy_heap:cell_get(Values))#{Index => undefined}),
+                     AlreadyCalled = bouy_heap:cell(false),
+                     Element = fun(Wrap) ->
+                                       bouy_jobs:js_function(fun(X) ->
+                                                                     case bouy_heap:cell_get(AlreadyCalled) of
+                                                                         true ->
+                                                                             undefined;
+                                                                         false ->
+                                                                             bouy_heap:cell_set(AlreadyCalled, true),
+                                                                             bouy_heap:cell_set(Values, (bouy_heap:cell_get(Values))#{Index => Wrap(X)}),
+                                                                             CountDown(Finish)
+                                                                     end
+                                                             end)
+                               end,
+                     {OnFulfilled, OnRejected} = Handlers(Element),
+                     bouy_heap:cell_set(Remaining, bouy_heap:cell_get(Remaining) + 1),
+                     bouy_ref:call_method(Next, <<"then">>, [OnFulfilled, OnRejected])
+             end),
+    CountDown(Last).
+
+ordered(Values) -> [maps:get(I, Values) || I <- lists:seq(0, map_size(Values) - 1)].
