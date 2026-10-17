@@ -73,19 +73,8 @@ chdir(Dir) ->
         ok ->
             undefined;
         {error, Reason} ->
-            {Code, Text} = case Reason of
-                enoent -> {<<"ENOENT">>, <<"no such file or directory">>};
-                enotdir -> {<<"ENOTDIR">>, <<"not a directory">>};
-                eacces -> {<<"EACCES">>, <<"permission denied">>};
-                _ -> {string:uppercase(atom_to_binary(Reason)), atom_to_binary(Reason)}
-            end,
             {ok, Cwd} = file:get_cwd(),
-            Message = iolist_to_binary([Code, <<": process.chdir failed, ">>, Text, <<", chdir '">>, Cwd, <<"' -> '">>, Path, <<"'">>]),
-            E = bouy_heap:error_object('Error', bouy_ref_string:from_utf8(Message), bouy_ref_string:from_utf8(<<"Error: ", Message/binary>>)),
-            [bouy_heap:set(E, K, V) || {K, V} <- [{<<"errno">>, -2}, {<<"code">>, Code}, {<<"syscall">>, <<"chdir">>},
-                                                   {<<"path">>, bouy_ref_string:from_utf8(unicode:characters_to_binary(Cwd))},
-                                                   {<<"dest">>, bouy_ref_string:from_utf8(Path)}]],
-            erlang:error({'$throw', E})
+            bouy_binding_fs:uv_error(Reason, <<"chdir">>, unicode:characters_to_binary(Cwd), Path)
     end.
 
 %% umask(mask): the VM cannot set the umask of its OS process, so the realm

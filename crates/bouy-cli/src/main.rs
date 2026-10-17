@@ -314,8 +314,9 @@ fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
     .arg(modules.join(","))
     .args(args.iter().map(|arg| arg.to_string_lossy().into_owned()))
     .env("ERL_CRASH_DUMP_SECONDS", "0");
-    // The runtime compiles the code of `eval` and `new Function` with this binary.
-    if let Ok(compiler) = env::current_exe() {
+    // The runtime compiles the code of `eval` and `new Function` with this binary, and
+    // `process.execPath` names it, as an absolute path without symbolic links, as Node's does.
+    if let Ok(compiler) = env::current_exe().and_then(|path| path.canonicalize()) {
         vm.env("BOUY_COMPILER", compiler);
     }
     start(vm)

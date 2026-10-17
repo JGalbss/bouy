@@ -88,7 +88,35 @@ function setupNavigator() {
   defineReplaceableLazyAttribute(globalThis, 'internal/navigator', ['navigator'], false);
 }
 
+function initializeReport() {
+  ObjectDefineProperty(process, 'report', {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      const { report } = require('internal/process/report');
+      return report;
+    },
+  });
+}
+
+function initializeDeprecations() {
+  // DEP0103: process.binding('util').isX reads the checkers of util.types.
+  const utilBinding = internalBinding('util');
+  const types = require('internal/util/types');
+  for (const name of [
+    'isArrayBuffer', 'isArrayBufferView', 'isAsyncFunction', 'isDataView',
+    'isDate', 'isExternal', 'isMap', 'isMapIterator', 'isNativeError',
+    'isPromise', 'isRegExp', 'isSet', 'isSetIterator', 'isTypedArray',
+    'isUint8Array', 'isAnyArrayBuffer',
+  ]) {
+    utilBinding[name] = types[name];
+  }
+}
+
 patchProcessObject();
+initializeReport();
+initializeDeprecations();
 setupNavigator();
 setupWarningHandler();
 setupDebugEnv();

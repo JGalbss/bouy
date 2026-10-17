@@ -8,7 +8,7 @@
 -spec binding() -> term().
 binding() ->
     Ids = bouy_heap:new_array(bouy_node:ids()),
-    bouy_node:object([
+    Binding = bouy_node:object([
         {<<"builtinIds">>, Ids},
         {<<"config">>, config()},
         {<<"compileFunction">>, bouy_node:fn(<<"compileFunction">>, 1, fun(_, Args) ->
@@ -22,7 +22,26 @@ binding() ->
         {<<"getCacheUsage">>, bouy_node:fn(<<"getCacheUsage">>, 0, fun(_, _) ->
             bouy_node:object([{K, bouy_heap:new_array([])} || K <- [<<"compiledWithCache">>, <<"compiledWithoutCache">>, <<"compiledInSnapshot">>]])
         end)}
-    ]).
+    ]),
+    Natives = bouy_node:fn(<<"get natives">>, 0, fun(_, _) -> natives() end),
+    bouy_heap:define(Binding, <<"natives">>, #{get => Natives, enumerable => true, configurable => true}),
+    Binding.
+
+%% natives: the source text of each built-in, by id.
+natives() ->
+    bouy_node:object([{Id, source(Id)} || Id <- bouy_node:ids()]).
+
+source(Id) ->
+    Module = binary_to_atom(<<"bouy_node@", (bouy_node:mangle(Id))/binary>>),
+    Text = Module:'$source'(),
+    %% The code without the wrapper that build.rs put around it.
+    case binary:match(Text, <<") { ">>) of
+        {At, Length} ->
+            Body = binary:part(Text, At + Length, byte_size(Text) - At - Length),
+            bouy_ref_string:from_utf8(binary:part(Body, 0, max(0, byte_size(Body) - 3)));
+        nomatch ->
+            bouy_ref_string:from_utf8(Text)
+    end.
 
 %% The JSON of process.config: the variables that Node's lib and tests read.
 %% Intl, OpenSSL, and the inspector are off, so the tests that need them skip.

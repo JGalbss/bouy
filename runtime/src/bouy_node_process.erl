@@ -151,15 +151,14 @@ env_get(Key) ->
             undefined
     end.
 
+%% The key and the value convert with ToString, which throws a TypeError for
+%% a symbol, as V8 does in EnvSetter. A name that the OS refuses, such as one
+%% with `=`, sets nothing, as uv_os_setenv fails and Node ignores it.
 env_set(Key, Value) ->
-    case env_name(Key) of
-        {ok, Name} ->
-            Text = bouy_ref_string:to_utf8(bouy_ref:to_string(Value)),
-            true = os:putenv(Name, unicode:characters_to_list(Text)),
-            true;
-        error ->
-            true
-    end.
+    Name = unicode:characters_to_list(bouy_ref_string:to_utf8(bouy_ref:to_string(Key))),
+    Text = bouy_ref_string:to_utf8(bouy_ref:to_string(Value)),
+    try os:putenv(Name, unicode:characters_to_list(Text)) catch error:badarg -> true end,
+    true.
 
 env_delete(Key) ->
     case env_name(Key) of
