@@ -33,15 +33,22 @@ method(<<"globalThis">>, <<"eval">>, _This, Args) -> indirect(bouy_ref_realm:arg
 
 %% PerformEval of an indirect eval: global code, sloppy unless it says
 %% otherwise.
-indirect(Source) when ?IS_STRING(Source) -> run(Source, false, false, ?GLOBAL);
+indirect(Source) when ?IS_STRING(Source) -> run(Source, [], ?GLOBAL);
 indirect(Value) -> Value.
 
 %% `eval(...)` where eval is the name of the global: a direct eval when it
 %% still is the intrinsic, else a plain call.
--spec direct(term(), list(), strict | sloppy, term()) -> term().
+%% A direct eval in a parameter default (sloppy_parameters) may not declare
+%% `arguments`.
+-spec direct(term(), list(), strict | sloppy | sloppy_parameters, term()) -> term().
 direct({'$f', {builtin, <<"eval">>}, _}, Args, Mode, This) ->
+    Flags = case Mode of
+        strict -> ["--strict"];
+        sloppy -> [];
+        sloppy_parameters -> ["--parameters"]
+    end,
     case bouy_ref_realm:arg(1, Args) of
-        Source when ?IS_STRING(Source) -> run(Source, Mode =:= strict, false, This);
+        Source when ?IS_STRING(Source) -> run(Source, Flags, This);
         Value -> Value
     end;
 direct(F, Args, _Mode, _This) ->
@@ -68,13 +75,14 @@ create_function(Kind, Args) ->
         async_generator -> <<"(async function* anonymous(">>
     end,
     Source = bouy_ref_string:concat([Prefix, P, <<"\n) {\n">>, B, <<"\n})">>]),
-    run(Source, false, true, ?GLOBAL).
+    run(Source, ["--function"], ?GLOBAL).
 
-run(Source, Strict, Function, This) ->
-    Key = {?MODULE, erlang:md5(term_to_binary({Source, Strict, Function}))},
+%% Flags are the options of `bouy compile-eval`.
+run(Source, Flags, This) ->
+    Key = {?MODULE, erlang:md5(term_to_binary({Source, Flags}))},
     Module = case persistent_term:get(Key, undefined) of
         undefined ->
-            M = compile(Source, Strict, Function),
+            M = compile(Source, Flags),
             persistent_term:put(Key, M),
             M;
         M ->
@@ -82,7 +90,7 @@ run(Source, Strict, Function, This) ->
     end,
     Module:'__eval__'(This).
 
-compile(Source, Strict, Function) ->
+compile(Source, Flags) ->
     Compiler = case os:getenv("BOUY_COMPILER") of
         false -> type_error(<<"eval and new Function need the Bouy compiler: run the program with `bouy run`">>);
         C -> C
@@ -90,7 +98,7 @@ compile(Source, Strict, Function) ->
     Name = "bouy_eval_" ++ integer_to_list(erlang:unique_integer([positive])),
     File = filename:join(temp_dir(), Name ++ ".js"),
     ok = file:write_file(File, bouy_ref_string:to_utf8(Source)),
-    Args = ["compile-eval"] ++ ["--strict" || Strict] ++ ["--function" || Function] ++ [Name, File],
+    Args = ["compile-eval"] ++ Flags ++ [Name, File],
     Port = open_port({spawn_executable, Compiler}, [{args, Args}, binary, exit_status, stream, use_stdio, hide]),
     {Status, Output} = collect(Port, []),
     _ = file:delete(File),

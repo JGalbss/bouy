@@ -106,10 +106,10 @@ impl<'a> Lowerer<'a, '_> {
             // A direct eval. The runtime checks that `eval` is still the intrinsic.
             let eval = self.identifier_read(ident);
             let args = self.args(&call.arguments);
-            let mode = Expr::atom(if self.frame.sloppy {
-                "sloppy"
-            } else {
-                "strict"
+            let mode = Expr::atom(match (self.frame.sloppy, self.frame.in_params) {
+                (true, true) => "sloppy_parameters",
+                (true, false) => "sloppy",
+                (false, _) => "strict",
             });
             let this = self.this_expr();
             return self.bind(Expr::call(

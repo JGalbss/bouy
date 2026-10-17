@@ -63,7 +63,21 @@ pub fn lower_eval(
     module: &graph::Module,
     strict: bool,
     function: bool,
+    parameters: bool,
 ) -> Result<String, Vec<Diagnostic>> {
+    if parameters && !strict {
+        let declares = with_program(&module.path, &module.source, |program, semantic| {
+            declares_arguments(program, semantic)
+        })?;
+        if declares {
+            let reporter = Reporter::new(&module.path, &module.source);
+            return Err(vec![reporter.at(
+                0,
+                Code::Syntax,
+                "a direct eval in a parameter default cannot declare `arguments`".to_owned(),
+            )]);
+        }
+    }
     if function {
         let complete = with_program(&module.path, &module.source, |program, _| {
             is_one_function(program, module.source.len())
@@ -78,6 +92,33 @@ pub fn lower_eval(
         }
     }
     lower(module, Some(strict))
+}
+
+/// Whether sloppy eval code declares `arguments` in its variable environment: a `var` or a
+/// function declaration of that name (ECMA-262 §19.2.1.3, `EvalDeclarationInstantiation`).
+fn declares_arguments(
+    program: &oxc::ast::ast::Program<'_>,
+    semantic: &oxc::semantic::Semantic<'_>,
+) -> bool {
+    use oxc::ast_visit::Visit;
+    let scoping = semantic.scoping();
+    if scoping
+        .scope_flags(scoping.root_scope_id())
+        .is_strict_mode()
+    {
+        return false;
+    }
+    let mut vars = analyze::VarDeclarations::default();
+    vars.visit_program(program);
+    let functions = program.body.iter().any(|statement| {
+        matches!(statement, oxc::ast::ast::Statement::FunctionDeclaration(function)
+            if function.id.as_ref().is_some_and(|id| id.name == "arguments"))
+    });
+    functions
+        || vars
+            .0
+            .iter()
+            .any(|symbol| scoping.symbol_name(*symbol) == "arguments")
 }
 
 /// Whether the program is one parenthesized function expression that ends where the source

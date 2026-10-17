@@ -110,12 +110,14 @@ fn compile_in_with(
 /// current realm with a `this` and returns its completion value. Strict code keeps its `var` names to
 /// itself; sloppy code makes them properties of the global object. With `function`, the
 /// source must be one parenthesized function expression, as the `Function` constructor
-/// builds it, so a body cannot close the function early.
+/// builds it, so a body cannot close the function early. With `parameters`, the code is a
+/// direct eval in a parameter default, which may not declare `arguments`.
 pub fn compile_eval(
     source: &str,
     name: &str,
     strict: bool,
     function: bool,
+    parameters: bool,
 ) -> Result<String, Vec<Diagnostic>> {
     let source = if strict {
         format!("\"use strict\";\n{source}")
@@ -129,7 +131,7 @@ pub fn compile_eval(
         imports: std::collections::HashMap::new(),
         exports: std::collections::HashMap::new(),
     };
-    reference::lower_eval(&module, strict, function)
+    reference::lower_eval(&module, strict, function, parameters)
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

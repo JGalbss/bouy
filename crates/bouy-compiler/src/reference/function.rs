@@ -175,7 +175,9 @@ impl<'a> Lowerer<'a, '_> {
             ));
             self.frame.arguments = Some(arguments);
         }
+        self.frame.in_params = true;
         code.extend(self.params(params, args));
+        self.frame.in_params = false;
         if mapped {
             code.push(self.mapped_arguments(params, args));
         }

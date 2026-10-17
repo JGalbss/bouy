@@ -60,6 +60,9 @@ enum Commands {
         /// The source is the function that the `Function` constructor builds.
         #[arg(long)]
         function: bool,
+        /// The source is a direct eval in a parameter default.
+        #[arg(long)]
+        parameters: bool,
         /// The Erlang module name.
         module: String,
         /// The file that holds the source text.
@@ -110,19 +113,22 @@ fn main() -> ExitCode {
         Commands::CompileEval {
             strict,
             function,
+            parameters,
             module,
             source,
-        } => compile_eval(&source, &module, strict, function),
+        } => compile_eval(&source, &module, [strict, function, parameters]),
     }
 }
 
 /// `bouy compile-eval`: the Erlang module of an `eval`, or its first diagnostic.
-fn compile_eval(source: &Path, module: &str, strict: bool, function: bool) -> ExitCode {
+/// `flags` are `--strict`, `--function`, and `--parameters`.
+fn compile_eval(source: &Path, module: &str, flags: [bool; 3]) -> ExitCode {
+    let [strict, function, parameters] = flags;
     let text = match fs::read_to_string(source) {
         Ok(text) => text,
         Err(error) => return fail(&format!("cannot read {}: {error}", source.display())),
     };
-    match bouy_compiler::compile_eval(&text, module, strict, function) {
+    match bouy_compiler::compile_eval(&text, module, strict, function, parameters) {
         Ok(erlang) => {
             print!("{erlang}");
             ExitCode::SUCCESS
