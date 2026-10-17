@@ -222,7 +222,7 @@ node({escape, Escape}, #c{v = true} = C) ->
     strings_node(Ranges, Strings, C);
 node({escape, Escape}, C) -> set_node(escape_ranges(Escape, C), false, C);
 node({seq, Nodes}, C) -> sequence(Nodes, C);
-node({alt, Nodes}, C) -> alternatives([node(N, C) || N <- Nodes]);
+node({alt, Nodes}, C) -> alternatives([node(N, C) || N <- Nodes], C);
 node({group, Index, Node}, C) -> group(Index, node(Node, C), C#c.dir);
 node({mods, Add, Remove, Node}, C) -> node(Node, modify(C, Add, Remove));
 node({repeat, Min, Max, Greedy, Node, ParenIndex, ParenCount}, C) ->
@@ -460,7 +460,7 @@ strings_node(Ranges, Strings, C) ->
     Sorted = lists:sort(fun(A, B) -> length(A) >= length(B) end, [S || S <- Strings, S =/= []]),
     Literals = [sequence_of([node({char, X}, C) || X <- S], C) || S <- Sorted],
     Empty = [{step, fun(_In, I) -> I end} || lists:member([], Strings)],
-    alternatives(Literals ++ [set_node(Ranges, false, C)] ++ Empty).
+    alternatives(Literals ++ [set_node(Ranges, false, C)] ++ Empty, C).
 
 %%% Sequences and alternatives
 
@@ -530,8 +530,19 @@ chain([Node | Rest]) ->
                   end}
     end.
 
-alternatives([Node]) -> Node;
-alternatives(Nodes) ->
+%% MatchTwoAlternatives. Alternatives of one character each become one
+%% character: when the first matches and the rest of the pattern fails, the
+%% second can only call the rest again with the same state.
+alternatives([Node], _C) -> Node;
+alternatives(Nodes, C) ->
+    case lists:all(fun(N) -> element(1, N) =:= char end, Nodes) of
+        true ->
+            Tests = [T || {char, T, _} <- Nodes],
+            char_node(fun(X) -> lists:any(fun(T) -> T(X) end, Tests) end, C);
+        false -> choice(Nodes)
+    end.
+
+choice(Nodes) ->
     Matchers = [M || {cps, M} <- [to_cps(N) || N <- Nodes]],
     {cps, fun(In, I, Caps, K) -> first(Matchers, In, I, Caps, K) end}.
 

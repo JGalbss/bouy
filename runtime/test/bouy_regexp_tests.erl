@@ -116,11 +116,23 @@ prefilter_test_() ->
      ?_assertEqual(nomatch, match("zz", "", "azbz")),
      ?_assertEqual({2, 3, []}, match("[^a]", "y", "aab", 2))].
 
-long_input_test() ->
-    %% A quantified character backtracks in a loop, so a long run does not grow the stack.
+long_input_test_() ->
+    %% A quantified character, and an alternative of single characters, backtrack in a
+    %% loop, so a long run fits in a small process heap.
     Long = lists:duplicate(200000, $a),
-    ?assertEqual({0, 200001, []}, match("^a*b$", "", Long ++ "b")),
-    ?assertEqual({0, 200000, []}, match("^\\p{L}+$", "u", Long)).
+    [?_assertEqual({0, 200001, []}, small_heap(fun() -> match("^a*b$", "", Long ++ "b") end)),
+     ?_assertEqual({0, 200000, []}, small_heap(fun() -> match("^\\p{L}+$", "u", Long) end)),
+     ?_assertEqual({0, 200000, []}, small_heap(fun() -> match("^(?:a|b|[cd])*$", "", Long) end))].
+
+%% The result of F in a process whose heap may not pass 4M words (32 MB).
+small_heap(F) ->
+    Self = self(),
+    {Pid, Ref} = spawn_opt(fun() -> Self ! {self(), F()} end,
+                           [monitor, {max_heap_size, #{size => 4194304, kill => true, error_logger => false}}]),
+    receive
+        {Pid, Result} -> erlang:demonitor(Ref, [flush]), Result;
+        {'DOWN', Ref, process, Pid, Reason} -> {down, Reason}
+    end.
 
 charset_test_() ->
     C = bouy_regexp_charset,
