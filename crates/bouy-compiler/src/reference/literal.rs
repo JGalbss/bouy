@@ -3,11 +3,12 @@
 
 use oxc::ast::ast::{
     ArrayExpression, ArrayExpressionElement, Expression, ObjectExpression, ObjectPropertyKind,
-    PropertyKind, TemplateLiteral,
+    PropertyKind, TaggedTemplateExpression, TemplateLiteral,
 };
 use oxc::syntax::operator::UnaryOperator;
 
 use super::context::Lowerer;
+use super::expr::strip;
 use super::member::index_of;
 use crate::erlang::Expr;
 
@@ -27,6 +28,63 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         self.bind(Expr::call("bouy_ref", "template", vec![Expr::List(parts)]))
+    }
+
+    /// A tagged template: the tag gets the template object of the site, which every
+    /// evaluation of the site shares, and the substitutions.
+    pub fn tagged_template(&mut self, tagged: &'a TaggedTemplateExpression<'a>) -> Expr {
+        let quasis = &tagged.quasi.quasis;
+        let cooked = quasis
+            .iter()
+            .map(|quasi| match &quasi.value.cooked {
+                Some(cooked) => js_string_literal(cooked.as_str(), quasi.lone_surrogates),
+                None => Expr::undefined(),
+            })
+            .collect();
+        let raw = quasis
+            .iter()
+            .map(|quasi| {
+                Expr::js_string(
+                    &quasi
+                        .value
+                        .raw
+                        .as_str()
+                        .replace("\r\n", "\n")
+                        .replace('\r', "\n"),
+                )
+            })
+            .collect();
+        let site = Expr::Tuple(vec![
+            Expr::atom(self.module.clone()),
+            Expr::Integer(i64::from(tagged.span.start)),
+        ]);
+        let callee = strip(&tagged.tag);
+        let member = callee
+            .as_member_expression()
+            .filter(|member| !matches!(member.object(), Expression::Super(_)));
+        let (function, this) = match member {
+            Some(member) => {
+                let (object, key) = self.member_parts(member);
+                (self.get(object.clone(), key), object)
+            }
+            None => (self.expr(callee), Expr::undefined()),
+        };
+        let function = self.bind(function);
+        let template = self.bind(Expr::call(
+            "bouy_ref",
+            "template_object",
+            vec![site, Expr::List(cooked), Expr::List(raw)],
+        ));
+        let mut args = vec![template];
+        for expression in &tagged.quasi.expressions {
+            let value = self.expr(expression);
+            args.push(self.bind(value));
+        }
+        self.bind(Expr::call(
+            "bouy_ref",
+            "call",
+            vec![function, this, Expr::List(args)],
+        ))
     }
 
     pub fn array(&mut self, array: &'a ArrayExpression<'a>) -> Expr {
@@ -146,6 +204,15 @@ pub fn literal_keys(object: &ObjectExpression<'_>) -> Option<Vec<String>> {
         keys.push(name);
     }
     Some(keys)
+}
+
+/// A `BigInt` literal from its base-10 digits: `{'$bigint', Integer}`.
+pub fn bigint(digits: &str) -> Expr {
+    let value = match digits.parse::<i64>() {
+        Ok(value) => Expr::Integer(value),
+        Err(_) => Expr::call("erlang", "binary_to_integer", vec![Expr::binary(digits)]),
+    };
+    Expr::Tuple(vec![Expr::atom("$bigint"), value])
 }
 
 /// A JavaScript number: an Erlang integer when it is one exactly.

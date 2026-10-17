@@ -1,0 +1,8 @@
+object 6 5 5.0 [Number: 5]
+object 5 é héllo! [ '0', '1', '2', '3', '4' ] [String: 'héllo']
+object truthy false false [Boolean: false]
+[object Number] [object String] [object Boolean]
+true true true
+ff UP
+$3.50 true
+TypeError

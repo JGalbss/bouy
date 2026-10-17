@@ -29,8 +29,8 @@ method(<<"Object">>, Name, _This, Args) -> object_static(Name, Args).
 
 object_call(_This, Args) ->
     case arg(1, Args) of
-        V when ?IS_OBJECT(V) -> V;
-        _ -> bouy_heap:new_object(?OBJECT_PROTO)
+        V when V =:= undefined; V =:= null -> bouy_heap:new_object(?OBJECT_PROTO);
+        V -> bouy_ref:to_object(V)
     end.
 
 object_proto(<<"hasOwnProperty">>, This, Args) -> has_own(This, bouy_ref:to_property_key(arg(1, Args)));
@@ -69,6 +69,9 @@ tag(V) when ?IS_OBJECT(V) ->
                 error -> <<"Error">>;
                 date -> <<"Date">>;
                 arguments -> <<"Arguments">>;
+                number -> <<"Number">>;
+                string -> <<"String">>;
+                boolean -> <<"Boolean">>;
                 _ -> <<"Object">>
             end
     end;

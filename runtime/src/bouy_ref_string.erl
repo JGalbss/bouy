@@ -17,7 +17,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, call_constructor/3]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3, wrap/2]).
 -export([from_utf8/1, to_utf8/1, from_units/1, units/1, code_points/1, from_code_points/1]).
 -export([length_of/1, unit_at/2, unit_string/2, slice/3, concat/1, concat/2, compare/2, get/2]).
 -export([index_of/3, is_whitespace/1]).
@@ -26,14 +26,23 @@
 
 -type js_string() :: binary() | {'$u16', binary()}.
 
--import(bouy_ref_realm, [arg/2, builtin/2, record/4, ctor_record/5]).
+-import(bouy_ref_realm, [arg/2, record/4, ctor_record/5]).
+
+%% The longest string, as in V8: 2^29 - 24 code units.
+-define(MAX_LENGTH, 536870888).
 
 %%% The family
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
-    [{'String.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"String.prototype">>, methods()) ++ [{<<"constructor">>, constructor()}, {?SYM(iterator), builtin(<<"String.prototype[Symbol.iterator]">>, fun(This, _) -> iterator(This) end)}], none)},
-     {{builtin, <<"String">>}, ctor_record(<<"String">>, 1, {'$o', 'String.prototype'}, ?METHODS(<<"String">>, [<<"fromCharCode">>, <<"fromCodePoint">>]), fun bouy_ref_realm:not_constructible/2)}].
+    Methods = ?METHODS(<<"String.prototype">>, methods()),
+    Alias = fun(Name) -> {_, F} = lists:keyfind(Name, 1, Methods), F end,
+    [{'String.prototype', record(string, ?OBJECT_PROTO, Methods
+         ++ [{<<"length">>, 0, 0}, {<<"constructor">>, constructor()},
+             {<<"trimLeft">>, Alias(<<"trimStart">>)}, {<<"trimRight">>, Alias(<<"trimEnd">>)},
+             {?SYM(iterator), bouy_ref_realm:function(<<"String.prototype[Symbol.iterator]">>, <<"[Symbol.iterator]">>, 0, fun(This, _) -> ?MODULE:method(<<"String.prototype">>, <<"[Symbol.iterator]">>, This, []) end)}], <<>>)},
+     {'StringIterator.prototype', record(object, ?ITERATOR_PROTO, ?METHODS(<<"StringIterator.prototype">>, [{<<"next">>, 0}]) ++ [{?SYM(toStringTag), <<"String Iterator">>, 4}], none)},
+     {{builtin, <<"String">>}, ctor_record(<<"String">>, 1, {'$o', 'String.prototype'}, ?METHODS(<<"String">>, [{<<"fromCharCode">>, 1}, {<<"fromCodePoint">>, 1}, {<<"raw">>, 1}]), fun construct/2)}].
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{<<"String">>, constructor()}].
@@ -41,35 +50,120 @@ globals() -> [{<<"String">>, constructor()}].
 constructor() -> bouy_ref_realm:constructor(?MODULE, <<"String">>).
 
 methods() ->
-    [<<"at">>, <<"charAt">>, <<"charCodeAt">>, <<"codePointAt">>, <<"concat">>, <<"endsWith">>, <<"includes">>, <<"indexOf">>,
-     <<"lastIndexOf">>, <<"localeCompare">>, <<"padEnd">>, <<"padStart">>, <<"repeat">>, <<"replace">>, <<"replaceAll">>,
-     <<"slice">>, <<"split">>, <<"startsWith">>, <<"substring">>, <<"substr">>, <<"toLowerCase">>, <<"toUpperCase">>,
-     <<"toLocaleLowerCase">>, <<"toLocaleUpperCase">>, <<"toString">>, <<"valueOf">>, <<"trim">>, <<"trimStart">>,
-     <<"trimEnd">>, <<"normalize">>].
+    [{<<"at">>, 1}, {<<"charAt">>, 1}, {<<"charCodeAt">>, 1}, {<<"codePointAt">>, 1}, {<<"concat">>, 1}, {<<"endsWith">>, 1},
+     {<<"includes">>, 1}, {<<"indexOf">>, 1}, {<<"isWellFormed">>, 0}, {<<"lastIndexOf">>, 1}, {<<"localeCompare">>, 1},
+     {<<"normalize">>, 0}, {<<"padEnd">>, 1}, {<<"padStart">>, 1}, {<<"repeat">>, 1}, {<<"replace">>, 2}, {<<"replaceAll">>, 2},
+     {<<"slice">>, 2}, {<<"split">>, 2}, {<<"startsWith">>, 1}, {<<"substring">>, 2}, {<<"substr">>, 2},
+     {<<"toLowerCase">>, 0}, {<<"toUpperCase">>, 0}, {<<"toLocaleLowerCase">>, 0}, {<<"toLocaleUpperCase">>, 0},
+     {<<"toString">>, 0}, {<<"valueOf">>, 0}, {<<"toWellFormed">>, 0}, {<<"trim">>, 0}, {<<"trimStart">>, 0}, {<<"trimEnd">>, 0}].
 
 -spec call_constructor(binary(), term(), list()) -> js_string().
 call_constructor(<<"String">>, _This, []) -> <<>>;
 call_constructor(<<"String">>, _This, [{'$sym', _, _} = S | _]) -> bouy_ref:describe(S);
 call_constructor(<<"String">>, _This, [V | _]) -> bouy_ref:to_string(V).
 
+construct(NewTarget, Args) ->
+    S = case Args of
+        [] -> <<>>;
+        [V | _] -> bouy_ref:to_string(V)
+    end,
+    wrap(S, bouy_ref_realm:proto_for(NewTarget, 'String.prototype')).
+
+%% StringCreate: a String object, with its code units as read-only index
+%% properties and its length.
+%% shortcut: the index properties are real properties, so a wrapper costs
+%% O(length); a String exotic [[GetOwnProperty]] in bouy_heap would make it
+%% constant.
+-spec wrap(js_string(), term()) -> term().
+wrap(S, Proto) ->
+    O = bouy_heap:new_exotic(string, Proto, S),
+    [bouy_heap:define(O, I, #{value => unit_string(S, I), writable => false, enumerable => true, configurable => false})
+     || I <- lists:seq(0, length_of(S) - 1)],
+    bouy_heap:define(O, <<"length">>, #{value => length_of(S), writable => false, enumerable => false, configurable => false}),
+    O.
+
 -spec method(binary(), binary(), term(), list()) -> term().
+method(<<"String.prototype">>, Name, This, _Args) when Name =:= <<"toString">>; Name =:= <<"valueOf">> ->
+    this_string_value(This, Name);
 method(<<"String.prototype">>, Name, This, Args) -> proto(Name, this_string(This, Name), Args);
+method(<<"StringIterator.prototype">>, <<"next">>, This, _Args) ->
+    ?IS_OBJECT(This) andalso bouy_heap:class_of(This) =:= string_iterator orelse
+        bouy_ref:type_error(<<"next method called on incompatible receiver">>),
+    case bouy_heap:slots(This) of
+        {S, I} ->
+            case I < length_of(S) of
+                true ->
+                    End = case code_unit_count(S, I) of
+                        2 -> I + 2;
+                        1 -> I + 1
+                    end,
+                    bouy_heap:set_slots(This, {S, End}),
+                    bouy_ref_iterator:result(slice(S, I, End), false);
+                false ->
+                    bouy_heap:set_slots(This, done),
+                    bouy_ref_iterator:result(undefined, true)
+            end;
+        done ->
+            bouy_ref_iterator:result(undefined, true)
+    end;
 method(<<"String">>, <<"fromCharCode">>, _This, Args) ->
     from_units([bouy_ref_number:to_uint32(bouy_ref:to_number(A)) band 16#FFFF || A <- Args]);
 method(<<"String">>, <<"fromCodePoint">>, _This, Args) ->
-    from_code_points([code_point(bouy_ref:to_number(A)) || A <- Args]).
+    from_code_points([code_point(bouy_ref:to_number(A)) || A <- Args]);
+method(<<"String">>, <<"raw">>, _This, Args) ->
+    Cooked = bouy_ref:to_object(arg(1, Args)),
+    Literals = bouy_ref:to_object(bouy_ref:get(Cooked, <<"raw">>)),
+    Count = bouy_ref_array:length_of(Literals),
+    raw(Literals, Count, 0, bouy_ref_realm:rest(2, Args), []).
+
+raw(_Literals, Count, _I, _Subs, Acc) when Count =< 0 -> concat(lists:reverse(Acc));
+raw(Literals, Count, I, Subs, Acc) ->
+    Acc1 = [bouy_ref:to_string(bouy_ref:get(Literals, I)) | Acc],
+    case I + 1 >= Count of
+        true -> concat(lists:reverse(Acc1));
+        false ->
+            case Subs of
+                [Sub | Rest] -> raw(Literals, Count, I + 1, Rest, [bouy_ref:to_string(Sub) | Acc1]);
+                [] -> raw(Literals, Count, I + 1, [], Acc1)
+            end
+    end.
 
 this_string(V, Name) when V =:= undefined; V =:= null ->
     bouy_ref:type_error(<<"String.prototype.", Name/binary, " called on null or undefined">>);
 this_string(V, _) -> bouy_ref:to_string(V).
 
-code_point(N) when is_integer(N), N >= 0, N =< 16#10FFFF -> N;
-code_point(N) -> bouy_heap:throw_error('RangeError', concat(<<"Invalid code point ">>, bouy_ref:to_string(N))).
+%% thisStringValue: a string, or the [[StringData]] of a String object.
+this_string_value(S, _Name) when ?IS_STRING(S) -> S;
+this_string_value({'$o', _} = O, Name) ->
+    case bouy_heap:class_of(O) of
+        string -> bouy_heap:slots(O);
+        _ -> not_a_string(Name)
+    end;
+this_string_value(_, Name) -> not_a_string(Name).
+
+-spec not_a_string(binary()) -> no_return().
+not_a_string(Name) -> bouy_ref:type_error(<<"String.prototype.", Name/binary, " requires that 'this' be a String">>).
+
+code_point(N) ->
+    case N of
+        I when is_integer(I), I >= 0, I =< 16#10FFFF -> I;
+        Z when Z == 0 -> 0;
+        _ -> bouy_heap:throw_error('RangeError', concat(<<"Invalid code point ">>, bouy_ref:to_string(N)))
+    end.
+
+%% The code units of the code point at index I: 2 for a surrogate pair.
+code_unit_count(S, I) ->
+    case unit_at(S, I) of
+        H when H >= 16#D800, H =< 16#DBFF ->
+            case I + 1 < length_of(S) andalso unit_at(S, I + 1) of
+                L when is_integer(L), L >= 16#DC00, L =< 16#DFFF -> 2;
+                _ -> 1
+            end;
+        _ -> 1
+    end.
 
 %% The iterator of a string yields its code points, a surrogate pair as one.
-iterator(This) ->
-    S = this_string(This, <<"[Symbol.iterator]">>),
-    bouy_ref_iterator:list_iterator(<<"String Iterator">>, [from_code_points([C]) || C <- code_points(S)]).
+iterator(S) -> bouy_heap:new_exotic(string_iterator, {'$o', 'StringIterator.prototype'}, {S, 0}).
 
 %%% The representation
 
@@ -228,6 +322,123 @@ last_index_of(S, Search, From) ->
     SearchLength = length_of(Search),
     last_at(S, Search, SearchLength, min(From, Length - SearchLength)).
 
+%% Whether the string holds no lone surrogate.
+is_well_formed(B) when is_binary(B) -> true;
+is_well_formed(S) -> not lists:any(fun(C) -> C >= 16#D800 andalso C =< 16#DFFF end, code_points(S)).
+
+%% Applies F, a function over a list of Unicode scalars, to each run of S
+%% between lone surrogates, which stay as they are.
+map_scalars(S, F) ->
+    Runs = runs(code_points(S), [], []),
+    from_code_points(lists:append([case Run of
+                                       {lone, C} -> [C];
+                                       Scalars -> F(Scalars)
+                                   end || Run <- Runs])).
+
+runs([], [], Acc) -> lists:reverse(Acc);
+runs([], Run, Acc) -> lists:reverse([lists:reverse(Run) | Acc]);
+runs([C | Rest], Run, Acc) when C >= 16#D800, C =< 16#DFFF ->
+    Acc1 = case Run of
+        [] -> Acc;
+        _ -> [lists:reverse(Run) | Acc]
+    end,
+    runs(Rest, [], [{lone, C} | Acc1]);
+runs([C | Rest], Run, Acc) -> runs(Rest, [C | Run], Acc).
+
+%% The full Unicode case mappings, with the Final_Sigma rule that
+%% string:lowercase/1 leaves out.
+lowercase(B) when is_binary(B) ->
+    case is_ascii(B) of
+        true -> string:lowercase(B);
+        false -> map_scalars(B, fun lowercase_scalars/1)
+    end;
+lowercase(S) -> map_scalars(S, fun lowercase_scalars/1).
+
+lowercase_scalars(Scalars) ->
+    Marked = final_sigmas(Scalars, []),
+    unicode:characters_to_list(string:lowercase(Marked)).
+
+uppercase(B) when is_binary(B) ->
+    case is_ascii(B) of
+        true -> string:uppercase(B);
+        false -> map_scalars(B, fun uppercase_scalars/1)
+    end;
+uppercase(S) -> map_scalars(S, fun uppercase_scalars/1).
+
+uppercase_scalars(Scalars) -> unicode:characters_to_list(string:uppercase(Scalars)).
+
+%% Replaces each capital sigma in the Final_Sigma context with the final
+%% small sigma: after a cased letter and case-ignorable characters, and not
+%% before case-ignorable characters and a cased letter.
+final_sigmas([], _Before) -> [];
+final_sigmas([16#3A3 | Rest], Before) ->
+    C = case after_cased(Before) andalso not after_cased(Rest) of
+        true -> 16#3C2;
+        false -> 16#3A3
+    end,
+    [C | final_sigmas(Rest, [16#3A3 | Before])];
+final_sigmas([C | Rest], Before) -> [C | final_sigmas(Rest, [C | Before])].
+
+%% Whether the nearest character that is not case-ignorable is cased.
+after_cased([]) -> false;
+after_cased([C | Rest]) ->
+    case is_case_ignorable(C) of
+        true -> after_cased(Rest);
+        false -> is_cased(C)
+    end.
+
+is_cased(C) ->
+    case unicode_util:category(C) of
+        {letter, uppercase} -> true;
+        {letter, lowercase} -> true;
+        {letter, titlecase} -> true;
+        _ -> false
+    end.
+
+is_case_ignorable(C) when C =:= $'; C =:= $.; C =:= $:; C =:= 16#B7; C =:= 16#2018; C =:= 16#2019; C =:= 16#2024; C =:= 16#FE52; C =:= 16#FF07; C =:= 16#FF0E -> true;
+is_case_ignorable(C) ->
+    case unicode_util:category(C) of
+        {mark, non_spacing} -> true;
+        {mark, enclosing} -> true;
+        {other, format} -> true;
+        {letter, modifier} -> true;
+        {symbol, modifier} -> true;
+        _ -> false
+    end.
+
+%% localeCompare in the root collation, approximated in three levels: the
+%% base letters without case, then the accents, then lowercase before
+%% uppercase. Canonically equivalent strings compare equal.
+locale_compare(A, B) ->
+    KeyA = collation_key(A),
+    KeyB = collation_key(B),
+    if
+        KeyA < KeyB -> -1;
+        KeyA > KeyB -> 1;
+        true -> 0
+    end.
+
+collation_key(S) ->
+    Decomposed = unicode:characters_to_nfd_list([scalar(C) || C <- code_points(S)]),
+    Base = [C || C <- Decomposed, not is_mark(C)],
+    Folded = unicode:characters_to_list(string:casefold(Base)),
+    Accents = unicode:characters_to_list(string:casefold(Decomposed)),
+    Cases = [case_weight(C) || C <- Base],
+    {Folded, Accents, Cases}.
+
+is_mark(C) ->
+    case unicode_util:category(C) of
+        {mark, _} -> true;
+        _ -> false
+    end.
+
+case_weight(C) ->
+    case unicode_util:category(C) of
+        {letter, uppercase} -> 1;
+        {letter, titlecase} -> 1;
+        _ -> 0
+    end.
+
 last_at(_S, _Search, _Length, I) when I < 0 -> -1;
 last_at(S, Search, Length, I) ->
     case slice(S, I, I + Length) =:= Search of
@@ -245,6 +456,7 @@ is_whitespace(C) ->
 
 %%% String.prototype
 
+proto(<<"[Symbol.iterator]">>, S, _Args) -> iterator(S);
 proto(<<"at">>, S, Args) ->
     Length = length_of(S),
     case integer(arg(1, Args)) of
@@ -264,7 +476,7 @@ proto(<<"charCodeAt">>, S, Args) ->
     end;
 proto(<<"codePointAt">>, S, Args) ->
     case position(S, arg(1, Args)) of
-        {ok, I} -> hd(pair(units(slice(S, I, min(I + 2, length_of(S))))));
+        {ok, I} -> hd(pair(units(slice(S, I, I + code_unit_count(S, I)))));
         none -> undefined
     end;
 proto(<<"concat">>, S, Args) -> concat([S | [bouy_ref:to_string(A) || A <- Args]]);
@@ -282,21 +494,33 @@ proto(<<"includes">>, S, Args) ->
     Search = search_string(<<"includes">>, arg(1, Args)),
     index_of(S, Search, clamp(arg(2, Args), 0, length_of(S))) >= 0;
 proto(<<"indexOf">>, S, Args) ->
-    index_of(S, bouy_ref:to_string(arg(1, Args)), clamp(arg(2, Args), 0, length_of(S)));
+    Search = bouy_ref:to_string(arg(1, Args)),
+    index_of(S, Search, clamp(arg(2, Args), 0, length_of(S)));
 proto(<<"lastIndexOf">>, S, Args) ->
     Search = bouy_ref:to_string(arg(1, Args)),
     From = case bouy_ref:to_number(arg(2, Args)) of
         'NaN' -> length_of(S);
-        N -> clamp(N, 0, length_of(S))
+        N -> bound(bouy_ref_number:to_integer_or_infinity(N), 0, length_of(S))
     end,
     last_index_of(S, Search, From);
-proto(<<"localeCompare">>, S, Args) ->
-    bouy_string:call(<<"localeCompare">>, to_utf8(S), [to_utf8(bouy_ref:to_string(arg(1, Args)))]);
+proto(<<"isWellFormed">>, S, _Args) -> is_well_formed(S);
+proto(<<"toWellFormed">>, S, _Args) ->
+    case is_well_formed(S) of
+        true -> S;
+        false -> from_units([scalar(C) || C <- lists:flatmap(fun code_units/1, code_points(S))])
+    end;
+proto(<<"localeCompare">>, S, Args) -> locale_compare(S, bouy_ref:to_string(arg(1, Args)));
 proto(<<"padEnd">>, S, Args) -> pad(S, arg(1, Args), arg(2, Args), trailing);
 proto(<<"padStart">>, S, Args) -> pad(S, arg(1, Args), arg(2, Args), leading);
 proto(<<"repeat">>, S, Args) ->
     case integer(arg(1, Args)) of
-        N when is_integer(N), N >= 0 -> concat(lists:duplicate(N, S));
+        N when is_integer(N), N >= 0 ->
+            N * length_of(S) > ?MAX_LENGTH andalso invalid_length(),
+            case S of
+                <<>> -> <<>>;
+                _ when is_binary(S) -> binary:copy(S, N);
+                {'$u16', W} -> {'$u16', binary:copy(W, N)}
+            end;
         _ -> bouy_heap:throw_error('RangeError', concat(<<"Invalid count value: ">>, bouy_ref:to_string(bouy_ref:to_number(arg(1, Args)))))
     end;
 proto(<<"replace">>, S, Args) -> replace(S, bouy_ref:to_string(arg(1, Args)), arg(2, Args), first);
@@ -332,11 +556,8 @@ proto(<<"split">>, S, Args) ->
         Separator -> split(S, bouy_ref:to_string(Separator))
     end,
     bouy_heap:new_array(lists:sublist(Parts, Limit));
-proto(Name, S, _Args) when Name =:= <<"toLowerCase">>; Name =:= <<"toLocaleLowerCase">> ->
-    from_utf8(string:lowercase(to_utf8(S)));
-proto(Name, S, _Args) when Name =:= <<"toUpperCase">>; Name =:= <<"toLocaleUpperCase">> ->
-    from_utf8(string:uppercase(to_utf8(S)));
-proto(Name, S, _Args) when Name =:= <<"toString">>; Name =:= <<"valueOf">> -> S;
+proto(Name, S, _Args) when Name =:= <<"toLowerCase">>; Name =:= <<"toLocaleLowerCase">> -> lowercase(S);
+proto(Name, S, _Args) when Name =:= <<"toUpperCase">>; Name =:= <<"toLocaleUpperCase">> -> uppercase(S);
 proto(<<"trim">>, S, _Args) -> trim(S, both);
 proto(<<"trimStart">>, S, _Args) -> trim(S, leading);
 proto(<<"trimEnd">>, S, _Args) -> trim(S, trailing);
@@ -345,22 +566,28 @@ proto(<<"normalize">>, S, Args) ->
         undefined -> <<"NFC">>;
         F -> bouy_ref:to_string(F)
     end,
-    Text = to_utf8(S),
-    Normal = case Form of
-        <<"NFC">> -> unicode:characters_to_nfc_binary(Text);
-        <<"NFD">> -> unicode:characters_to_nfd_binary(Text);
-        <<"NFKC">> -> unicode:characters_to_nfkc_binary(Text);
-        <<"NFKD">> -> unicode:characters_to_nfkd_binary(Text);
+    Normalize = case Form of
+        <<"NFC">> -> fun unicode:characters_to_nfc_list/1;
+        <<"NFD">> -> fun unicode:characters_to_nfd_list/1;
+        <<"NFKC">> -> fun unicode:characters_to_nfkc_list/1;
+        <<"NFKD">> -> fun unicode:characters_to_nfkd_list/1;
         _ -> bouy_heap:throw_error('RangeError', <<"The normalization form should be one of NFC, NFD, NFKC, NFKD.">>)
     end,
-    from_utf8(Normal).
+    map_scalars(S, Normalize).
 
-%% endsWith, startsWith, and includes reject a regular expression.
+%% endsWith, startsWith, and includes reject a regular expression: IsRegExp.
 search_string(Name, V) ->
-    case ?IS_OBJECT(V) andalso bouy_heap:class_of(V) =:= regexp of
+    IsRegExp = ?IS_OBJECT(V) andalso case bouy_ref:get(V, ?SYM(match)) of
+        undefined -> bouy_heap:class_of(V) =:= regexp;
+        Matcher -> bouy_ref:truthy(Matcher)
+    end,
+    case IsRegExp of
         true -> bouy_ref:type_error(<<"First argument to String.prototype.", Name/binary, " must not be a regular expression">>);
         false -> bouy_ref:to_string(V)
     end.
+
+-spec invalid_length() -> no_return().
+invalid_length() -> bouy_heap:throw_error('RangeError', <<"Invalid string length">>).
 
 %% ToIntegerOrInfinity of an argument.
 integer(V) -> bouy_ref_number:to_integer_or_infinity(bouy_ref:to_number(V)).
@@ -403,6 +630,7 @@ pad(S, MaxLengthArg, FillArg, Side) ->
     case MaxLength =< Length orelse Fill =:= <<>> of
         true -> S;
         false ->
+            MaxLength > ?MAX_LENGTH andalso invalid_length(),
             Needed = MaxLength - Length,
             Copies = Needed div length_of(Fill) + 1,
             Padding = slice(concat(lists:duplicate(Copies, Fill)), 0, Needed),

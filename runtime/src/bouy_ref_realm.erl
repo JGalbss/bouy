@@ -18,6 +18,7 @@
 
 -export([install/0, global/1, constructor/2]).
 -export([arg/2, rest/2, builtin/2, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
+-export([function/4, function_record/2, proto_for/2]).
 -export([intrinsics/0, globals/0, method/4]).
 
 families() ->
@@ -57,12 +58,26 @@ install() ->
     end,
     ok.
 
+%% A global binding. Until the realm writes to its global object, the
+%% bindings are the static ones; after, the global object holds them.
 -spec global(binary()) -> term().
 global(Name) ->
-    case persistent_term:get({?MODULE, globals}) of
-        #{Name := V} -> V;
-        _ -> bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat(Name, <<" is not defined">>))
+    case erlang:get('globalThis') of
+        undefined ->
+            case persistent_term:get({?MODULE, globals}) of
+                #{Name := V} -> V;
+                _ -> not_defined(Name)
+            end;
+        _ ->
+            case bouy_heap:has({'$o', 'globalThis'}, Name) of
+                true -> bouy_heap:get({'$o', 'globalThis'}, Name);
+                false -> not_defined(Name)
+            end
     end.
+
+-spec not_defined(binary()) -> no_return().
+not_defined(Name) -> bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat(Name, <<" is not defined">>)).
+
 
 %%% Builders for the intrinsics of a family
 
@@ -74,22 +89,56 @@ constructor(Module, Name) -> {'$f', {builtin, Name}, fun(This, Args) -> Module:c
 -spec builtin(binary(), fun((term(), list()) -> term())) -> term().
 builtin(Name, Fun) -> {'$f', {builtin, Name}, Fun}.
 
-%% A record whose properties are all builtin data: not enumerable.
--spec record(atom(), term(), [{term(), term()}], term()) -> tuple().
+%% A record whose properties are builtin data: an entry {Key, Value} is
+%% writable, configurable, and not enumerable, and {Key, Value, Bits} has the
+%% attribute bits of bouy_heap (writable 1, enumerable 2, configurable 4).
+-spec record(atom(), term(), [{term(), term()} | {term(), term(), 0..7}], term()) -> tuple().
 record(Class, Proto, Entries, Slots) ->
-    Props = maps:from_list(Entries),
-    Keys = lists:reverse([K || {K, _} <- Entries, not is_integer(K)]),
-    Attrs = maps:from_list([{K, ?HIDDEN} || {K, _} <- Entries]),
+    Triples = [entry(E) || E <- Entries],
+    Props = maps:from_list([{K, V} || {K, V, _} <- Triples]),
+    Keys = lists:reverse([K || {K, _, _} <- Triples, not is_integer(K)]),
+    Attrs = maps:from_list([{K, Bits} || {K, _, Bits} <- Triples, Bits =/= 7]),
     {Class, Proto, Props, Keys, Attrs, Slots}.
 
--spec methods(module(), binary(), [binary()]) -> [{binary(), term()}].
-methods(Module, Owner, Names) ->
-    [{Name, builtin(<<Owner/binary, ".", Name/binary>>, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)} || Name <- Names].
+entry({K, V}) -> {K, V, ?HIDDEN};
+entry({_, _, _} = E) -> E.
 
--spec ctor_record(binary(), non_neg_integer(), term(), [{term(), term()}], fun((term(), list()) -> term())) -> tuple().
+%% The builtin methods of Owner. A name is a binary, or {Name, Length} for a
+%% method that gets the name and length properties of a builtin function.
+-spec methods(module(), binary(), [binary() | {binary(), non_neg_integer()}]) -> [{binary(), term()}].
+methods(Module, Owner, Names) -> [method_entry(Module, Owner, N) || N <- Names].
+
+method_entry(Module, Owner, {Name, Length}) ->
+    {Name, function(<<Owner/binary, ".", Name/binary>>, Name, Length, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)};
+method_entry(Module, Owner, Name) ->
+    {Name, builtin(<<Owner/binary, ".", Name/binary>>, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)}.
+
+%% The builtin Id with the name and length properties of CreateBuiltinFunction.
+%% Families call it while the realm installs, so the record is in place before
+%% any realm reads it.
+-spec function(binary(), term(), non_neg_integer(), fun((term(), list()) -> term())) -> term().
+function(Id, Name, Length, Fun) ->
+    bouy_heap:install_intrinsic({builtin, Id}, function_record(Name, Length)),
+    builtin(Id, Fun).
+
+%% The record of a builtin function: length, then name, both configurable only.
+-spec function_record(term(), non_neg_integer()) -> tuple().
+function_record(Name, Length) ->
+    record(function, ?FUNCTION_PROTO, [{<<"length">>, Length, 4}, {<<"name">>, Name, 4}], #{}).
+
+-spec ctor_record(binary(), non_neg_integer(), term(), [tuple()], fun((term(), list()) -> term())) -> tuple().
 ctor_record(Name, Length, Proto, Statics, Construct) ->
-    Entries = [{<<"length">>, Length}, {<<"name">>, Name}, {<<"prototype">>, Proto} | Statics],
+    Entries = [{<<"length">>, Length, 4}, {<<"name">>, Name, 4}, {<<"prototype">>, Proto, 0} | Statics],
     record(function, ?FUNCTION_PROTO, Entries, #{construct => Construct, kind => builtin}).
+
+%% GetPrototypeFromConstructor: the prototype property of NewTarget, or the
+%% intrinsic Default when it is not an object.
+-spec proto_for(term(), atom()) -> term().
+proto_for(NewTarget, Default) ->
+    case bouy_ref:get(NewTarget, <<"prototype">>) of
+        P when ?IS_OBJECT(P) -> P;
+        _ -> {'$o', Default}
+    end.
 
 %% The [[Construct]] of a builtin that new does not support, such as new String().
 -spec not_constructible(term(), list()) -> no_return().
@@ -119,7 +168,14 @@ callable(F) ->
 %%% The global object and the global functions
 
 -spec intrinsics() -> [{term(), tuple()}].
-intrinsics() -> [{'globalThis', record(object, ?OBJECT_PROTO, [], none)}].
+intrinsics() ->
+    Bindings = lists:append([M:globals() || M <- families()]),
+    [{'globalThis', record(object, ?OBJECT_PROTO, [{Name, Value, global_attrs(Name)} || {Name, Value} <- Bindings], none)}].
+
+%% NaN, Infinity, and undefined are read-only; every other global property
+%% is writable and configurable, and none is enumerable.
+global_attrs(Name) when Name =:= <<"NaN">>; Name =:= <<"Infinity">>; Name =:= <<"undefined">> -> 0;
+global_attrs(_Name) -> ?HIDDEN.
 
 -spec globals() -> [{binary(), term()}].
 globals() ->

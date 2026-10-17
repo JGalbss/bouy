@@ -310,8 +310,10 @@ set({'$o', Id} = O, K, V) ->
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K), map_size(Attrs) =:= 0 ->
             erlang:put(Id, {array, P, Props, Keys, Attrs, {max(K + 1, Length), Elements#{K => V}}}),
             V;
-        {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">>, map_size(Attrs) =:= 0 ->
-            erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, V)}),
+        {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">> ->
+            NewLength = array_length_value(V),
+            writable(K, length_attrs(Attrs)) orelse read_only(K),
+            erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, NewLength)}),
             V;
         {Class, P, Props, Keys, Attrs, Slots} = R ->
             case Props of
@@ -340,6 +342,7 @@ set({'$f', Id, _} = F, K, V) ->
 
 write_checked(Id, {array, P, Props, Keys, Attrs, {Length, Elements}}, K, V) when is_integer(K) ->
     writable(K, Attrs) orelse read_only(K),
+    K < Length orelse writable(<<"length">>, length_attrs(Attrs)) orelse read_only(<<"length">>),
     erlang:put(Id, {array, P, Props, Keys, Attrs, {max(K + 1, Length), Elements#{K => V}}}),
     V;
 write_checked(Id, {Class, P, Props, Keys, Attrs, Slots}, K, V) ->
@@ -410,12 +413,29 @@ add_key(K, Props, Keys) ->
         _ -> [K | Keys]
     end.
 
-resize({Length, Elements}, NewLength) when is_integer(NewLength), NewLength >= Length ->
+resize({Length, Elements}, NewLength) when NewLength >= Length ->
     {NewLength, Elements};
-resize({_, Elements}, NewLength) when is_integer(NewLength), NewLength >= 0 ->
-    {NewLength, maps:filter(fun(I, _) -> I < NewLength end, Elements)};
-resize(_, NewLength) ->
-    throw_error('RangeError', text([<<"Invalid array length: ">>, bouy_ref:to_string(NewLength)])).
+resize({Length, Elements}, NewLength) when Length - NewLength < map_size(Elements) ->
+    {NewLength, maps:without(lists:seq(NewLength, Length - 1), Elements)};
+resize({_, Elements}, NewLength) ->
+    {NewLength, maps:filter(fun(I, _) -> I < NewLength end, Elements)}.
+
+%% The new length of an array from a written value: ToUint32 of the value,
+%% which must equal ToNumber of it (ArraySetLength).
+array_length_value(V) when is_integer(V), V >= 0, V =< 4294967295 -> V;
+array_length_value(V) ->
+    Number = bouy_ref:to_number(V),
+    case bouy_ref_number:to_uint32(Number) of
+        U when U == Number -> U;
+        _ -> throw_error('RangeError', <<"Invalid array length">>)
+    end.
+
+%% The attributes of an array's length: writable only, unless defined.
+length_attrs(Attrs) ->
+    case Attrs of
+        #{<<"length">> := _} -> Attrs;
+        _ -> Attrs#{<<"length">> => ?WRITABLE}
+    end.
 
 %% The `in` operator.
 -spec has(value(), key()) -> boolean().
@@ -445,6 +465,8 @@ delete(O, K) ->
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K) ->
             configurable(K, Attrs) orelse cannot_delete(K),
             erlang:put(Id, {array, P, Props, Keys, Attrs, {Length, maps:remove(K, Elements)}});
+        {array, _, _, _, _, _} when K =:= <<"length">> ->
+            cannot_delete(K);
         {Class, P, Props, Keys, Attrs, Slots} when is_map_key(K, Props) ->
             configurable(K, Attrs) orelse cannot_delete(K),
             erlang:put(Id, {Class, P, maps:remove(K, Props), lists:delete(K, Keys), maps:remove(K, Attrs), Slots});
@@ -465,19 +487,22 @@ cannot_delete(K) ->
 -spec own_keys(value()) -> [key()].
 own_keys(O) ->
     {_, _, Props, Keys, _, _} = R = record_of(O),
-    Indexes = case R of
-        {array, _, _, _, _, {_, Elements}} -> lists:sort(maps:keys(Elements));
-        _ -> []
+    {Indexes, Length} = case R of
+        {array, _, _, _, _, {_, Elements}} -> {lists:sort(maps:keys(Elements)), [<<"length">>]};
+        _ -> {[], []}
     end,
     Ordered = lists:reverse(Keys),
-    Indexes ++ lists:sort([K || K <- maps:keys(Props), is_integer(K)])
+    Indexes ++ lists:sort([K || K <- maps:keys(Props), is_integer(K)]) ++ Length
         ++ [K || K <- Ordered, ?IS_STRING(K)]
         ++ [K || {'$sym', _, _} = K <- Ordered].
 
 %% The enumerable own string keys, for Object.keys, for-in, spread, and JSON.
 -spec enumerable_keys(value()) -> [key()].
 enumerable_keys(O) ->
-    {_, _, _, _, Attrs, _} = record_of(O),
+    Attrs = case record_of(O) of
+        {array, _, _, _, A, _} -> length_attrs(A);
+        {_, _, _, _, A, _} -> A
+    end,
     [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs)].
 
 enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
@@ -503,6 +528,16 @@ define(O, K, Descriptor) ->
         _ -> Attrs#{K => Bits}
     end,
     case {Class, K} of
+        {array, <<"length">>} ->
+            Slots1 = case Descriptor of
+                #{value := NewLength} -> resize(Slots, array_length_value(NewLength));
+                _ -> Slots
+            end,
+            LengthBits = case maps:get(writable, Descriptor, maps:get(<<"length">>, length_attrs(Attrs), ?WRITABLE) band ?WRITABLE =/= 0) of
+                true -> ?WRITABLE;
+                _ -> 0
+            end,
+            erlang:put(Id, {Class, P, Props, Keys, Attrs#{<<"length">> => LengthBits}, Slots1});
         {array, I} when is_integer(I) ->
             {Length, Elements} = Slots,
             erlang:put(Id, {Class, P, Props, Keys, Attrs1, {max(I + 1, Length), Elements#{I => Slot}}});
@@ -526,9 +561,13 @@ get_own(O, K) ->
         {array, _, _, _, _, {Length, _}} when K =:= <<"length">> -> {ok, Length};
         _ -> maps:find(K, Props)
     end,
-    Bits = case Attrs of
-        #{'$frozen' := true} -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE;
-        _ -> maps:get(K, Attrs, ?ALL)
+    Attrs1 = case R of
+        {array, _, _, _, _, _} when K =:= <<"length">> -> length_attrs(Attrs);
+        _ -> Attrs
+    end,
+    Bits = case Attrs1 of
+        #{'$frozen' := true} -> maps:get(K, Attrs1, ?ALL) band ?ENUMERABLE;
+        _ -> maps:get(K, Attrs1, ?ALL)
     end,
     case Found of
         {ok, {'$accessor', G, S}} -> {accessor, G, S, Bits};

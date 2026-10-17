@@ -68,6 +68,7 @@ specifier($%, _) -> percent;
 specifier(_, _) -> none.
 
 text(V) when is_number(V) -> bouy_console:number_text(V);
+text({'$bigint', I}) -> <<(integer_to_binary(I))/binary, "n">>;
 text(V) -> bouy_ref_string:to_utf8(bouy_ref:to_string(V)).
 
 -spec inspect(term()) -> binary().
@@ -84,6 +85,7 @@ value(S, _, _, _) when ?IS_STRING(S) -> bouy_console:string(bouy_ref_string:to_u
 value(N, _, _, _) when is_number(N) -> bouy_console:number_text(N);
 value(A, _, _, _) when is_atom(A) -> atom_to_binary(A);
 value({'$sym', _, _} = S, _, _, _) -> bouy_ref:describe(S);
+value({'$bigint', I}, _, _, _) -> <<(integer_to_binary(I))/binary, "n">>;
 value({'$actor', _}, _, _, _) -> <<"[ActorRef]">>;
 value(V, Level, Indent, Stack) when ?IS_OBJECT(V) ->
     case lists:member(V, Stack) of
@@ -125,8 +127,17 @@ object(O, Level, Indent, Stack) ->
         generator -> <<"Object [Generator] {}">>;
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
         date -> bouy_date:call(<<"toISOString">>, {'$date', bouy_heap:slots(O)}, []);
+        number -> wrapper(<<"Number">>, O, Level, Indent, Stack);
+        string -> wrapper(<<"String">>, O, Level, Indent, Stack);
+        boolean -> wrapper(<<"Boolean">>, O, Level, Indent, Stack);
+        bigint -> wrapper(<<"BigInt">>, O, Level, Indent, Stack);
+        symbol -> wrapper(<<"Symbol">>, O, Level, Indent, Stack);
         _ -> plain(O, Level, Indent, Stack)
     end.
+
+%% A primitive wrapper object, as Node prints it: [Number: 5].
+wrapper(Name, O, Level, Indent, Stack) ->
+    <<"[", Name/binary, ": ", (value(bouy_heap:slots(O), Level, Indent, Stack))/binary, "]">>.
 
 plain(O, Level, Indent, Stack) ->
     Prefix = prefix(O),
