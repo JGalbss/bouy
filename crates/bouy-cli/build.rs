@@ -2,7 +2,9 @@
 //! The build fails when they are missing, because a binary without them cannot run a program.
 //!
 //! It also compiles the vendored Temporal polyfill into one more runtime source,
-//! `bouy_temporal.erl`, with the reference compiler (see `temporal_module`).
+//! `bouy_temporal.erl`, with the reference compiler (see `temporal_module`), and each Node
+//! built-in of `runtime/node/builtins.txt` into a runtime source `bouy_node@<id>.erl` (see
+//! `node_modules`).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -29,6 +31,8 @@ fn main() {
         &manifest.join("../../runtime/vendor/temporal-polyfill/global.js"),
         &out,
     ));
+    sources.extend(node_modules(&manifest.join("../../runtime"), &out));
+    sources.push(node_index(&manifest.join("../../runtime"), &sources, &out));
     sources.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
     let mut table = String::from(
         "/// The runtime sources: file name and contents.\npub const SOURCES: &[(&str, &str)] = &[\n",
@@ -130,6 +134,142 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
         )
     });
     let path = out.join("bouy_temporal.erl");
+    fs::write(&path, erlang).expect("OUT_DIR is writable");
+    path
+}
+
+/// Compiles each id of `runtime/node/builtins.txt` into `out/bouy_node@<id>.erl`, whose
+/// `'__eval__'/3` returns the function that Node wraps around the code of a built-in
+/// module (`BuiltinLoader::LookupAndCompile` in Node's `src/node_builtins.cc`). The code is
+/// `runtime/node/<id>.js` when Bouy has its own version of the id, else the file of
+/// Node's `lib/` in `runtime/vendor/node/lib`. `bouy_node` calls the function.
+fn node_modules(runtime: &Path, out: &Path) -> Vec<PathBuf> {
+    let list = runtime.join("node/builtins.txt");
+    println!("cargo:rerun-if-changed={}", list.display());
+    println!("cargo:rerun-if-changed={}", runtime.join("node").display());
+    let text = fs::read_to_string(&list)
+        .unwrap_or_else(|error| panic!("{} lists the Node built-ins: {error}", list.display()));
+    let ids: Vec<&str> = text
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or("").trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+    let mut names = std::collections::HashMap::new();
+    for id in &ids {
+        if let Some(other) = names.insert(node_module_name(id), *id) {
+            panic!("the built-ins {other} and {id} map to one Erlang module");
+        }
+    }
+    let workers = std::thread::available_parallelism().map_or(4, usize::from);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let compiled = std::sync::Mutex::new(Vec::new());
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                while let Some(id) =
+                    ids.get(next.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+                {
+                    let path = node_module(runtime, id, out);
+                    compiled.lock().expect("no worker panics").push(path);
+                }
+            });
+        }
+    });
+    compiled.into_inner().expect("no worker panics")
+}
+
+/// The Erlang module of the built-in `id`: `/` becomes `@` and `-` becomes `_`.
+fn node_module_name(id: &str) -> String {
+    format!("bouy_node@{}", id.replace('/', "@").replace('-', "_"))
+}
+
+/// The parameters of the function around the code of `id`, as Node's
+/// `BuiltinLoader::LookupAndCompileInternal` names them.
+fn node_parameters(id: &str) -> &'static str {
+    if id.starts_with("internal/per_context/") {
+        "exports, primordials, privateSymbols, perIsolateSymbols"
+    } else if id == "internal/bootstrap/realm" {
+        "process, getLinkedBinding, getInternalBinding, primordials"
+    } else if id.starts_with("internal/bootstrap/") || id.starts_with("internal/main/") {
+        "process, require, internalBinding, primordials"
+    } else {
+        "exports, require, module, process, internalBinding, primordials"
+    }
+}
+
+fn node_module(runtime: &Path, id: &str, out: &Path) -> PathBuf {
+    let own = runtime.join("node").join(format!("{id}.js"));
+    let path = if own.is_file() {
+        own
+    } else if let Some(dep) = id.strip_prefix("internal/deps/") {
+        // Node's build maps internal/deps/<path> to deps/<path>.js.
+        runtime.join("vendor/node/deps").join(format!("{dep}.js"))
+    } else {
+        runtime.join("vendor/node/lib").join(format!("{id}.js"))
+    };
+    println!("cargo:rerun-if-changed={}", path.display());
+    let code = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{} holds the built-in {id}: {error}", path.display()));
+    // The code starts on the line of the wrapper, so its line numbers stay.
+    let source = format!("(function ({}) {{ {code}\n}})", node_parameters(id));
+    let name = node_module_name(id);
+    let erlang = bouy_compiler::compile_eval(
+        &source,
+        &name,
+        false,
+        true,
+        &[],
+        &[],
+        &bouy_compiler::EvalContext::default(),
+    )
+    .unwrap_or_else(|diagnostics| {
+        panic!(
+            "the reference compiler rejects the built-in {id}: {}",
+            diagnostics
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    });
+    let target = out.join(format!("{name}.erl"));
+    fs::write(&target, erlang).expect("OUT_DIR is writable");
+    target
+}
+
+/// Writes `out/bouy_node_builtins.erl`: `ids/0`, the ids of `runtime/node/builtins.txt`,
+/// and `bindings/0`, the names of the bindings that a runtime source
+/// `bouy_binding_<name>.erl` implements.
+fn node_index(runtime: &Path, sources: &[PathBuf], out: &Path) -> PathBuf {
+    let text = fs::read_to_string(runtime.join("node/builtins.txt"))
+        .expect("runtime/node/builtins.txt lists the Node built-ins");
+    let quote = |text: &str| format!("<<\"{text}\">>");
+    let ids: Vec<String> = text
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or("").trim())
+        .filter(|line| !line.is_empty())
+        .map(quote)
+        .collect();
+    let mut bindings: Vec<String> = sources
+        .iter()
+        .filter_map(|path| {
+            path.file_name()?
+                .to_str()?
+                .strip_prefix("bouy_binding_")?
+                .strip_suffix(".erl")
+        })
+        .map(quote)
+        .collect();
+    bindings.sort();
+    let erlang = format!(
+        "%% Generated by crates/bouy-cli/build.rs from runtime/node/builtins.txt.\n\
+         -module(bouy_node_builtins).\n-export([ids/0, bindings/0]).\n\
+         -spec ids() -> [binary()].\nids() -> [{}].\n\
+         -spec bindings() -> [binary()].\nbindings() -> [{}].\n",
+        ids.join(", "),
+        bindings.join(", ")
+    );
+    let path = out.join("bouy_node_builtins.erl");
     fs::write(&path, erlang).expect("OUT_DIR is writable");
     path
 }

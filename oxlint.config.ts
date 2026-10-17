@@ -22,6 +22,9 @@ export default defineConfig({
     "bench/reference/**",
     // Third-party JavaScript that build.rs compiles into the runtime, kept as published.
     "runtime/vendor/**",
+    // Bouy's own versions of Node's lib/ files, in the style of Node's lib, which build.rs
+    // compiles into the runtime next to the vendored ones (docs/design/node-builtins.md).
+    "runtime/node/**",
     // Speed kernels: idiomatic TypeScript ports of Octane and other benchmarks, compiled by
     // the engine and run on Node and Bun as they are.
     "bench/speed/**",

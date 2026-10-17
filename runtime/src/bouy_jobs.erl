@@ -16,7 +16,7 @@
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
 -export([await/3, async_call/1, enqueue/1, drain/0]).
 -export([set_timer/4, clear_timer/1]).
--export([run_main/1, run_job/1, event_step/1, loop/0]).
+-export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
 -export([all/1]).
 
@@ -266,11 +266,15 @@ all(Promises) ->
 %%% Unhandled rejections: a promise rejected without a handler at the end of
 %%% a job ends the program, as in Node.
 
+%% In a realm that runs Node's lib, its rejection callback tracks them instead.
 track(P) ->
-    erlang:put(?UNHANDLED, [P | pending_list(?UNHANDLED)]).
+    {rejected, Reason, _} = bouy_heap:slots(P),
+    bouy_node_loop:reject_hook(0, P, Reason)
+        orelse erlang:put(?UNHANDLED, [P | pending_list(?UNHANDLED)]).
 
 untrack(P) ->
-    erlang:put(?UNHANDLED, lists:delete(P, pending_list(?UNHANDLED))).
+    bouy_node_loop:reject_hook(1, P, undefined)
+        orelse erlang:put(?UNHANDLED, lists:delete(P, pending_list(?UNHANDLED))).
 
 pending_list(Key) ->
     case erlang:get(Key) of
@@ -367,7 +371,7 @@ run_main(Body) ->
     update_now(),
     %% The result lives under a pdict key, a root, so a collection keeps it.
     run_job(fun() -> erlang:put(?MAIN, Body()) end),
-    loop(),
+    loop_until_exit(),
     case erlang:get(?MAIN) of
         {'$o', _} = P ->
             case is_promise(P) andalso bouy_heap:slots(P) of
@@ -387,12 +391,39 @@ run_main(Body) ->
 run_job(Job) ->
     try
         _ = Job(),
-        drain()
+        after_job()
     catch
-        error:Reason:Stack -> bouy_ref:report_uncaught(bouy_ref:caught(Reason, Stack))
+        error:Reason:Stack -> uncaught(bouy_ref:caught(Reason, Stack))
     end,
     check_unhandled(),
     maybe_gc().
+
+%% After a job: the microtasks, and in a realm that runs Node's lib, its
+%% ticks (bouy_node_loop).
+after_job() ->
+    case bouy_node:ready() of
+        true -> bouy_node_loop:after_callback();
+        false -> drain()
+    end.
+
+%% An exception that reached the top of a job: Node's lib decides in a realm
+%% that runs it, else the program ends.
+uncaught(Error) ->
+    case bouy_node:ready() of
+        true -> bouy_node_loop:uncaught(Error, false);
+        false -> bouy_ref:report_uncaught(Error)
+    end.
+
+%% The loop, then Node's 'beforeExit', which may queue more work.
+loop_until_exit() ->
+    loop(),
+    case bouy_node:ready() of
+        true ->
+            bouy_node_loop:finish(),
+            loop_until_exit();
+        false ->
+            ok
+    end.
 
 %% Collects when the realm allocated more ids since the last collection than
 %% twice the live count then, and at least ?GC_MIN, so the cost stays in
@@ -421,12 +452,17 @@ loop() ->
         true ->
             receive
                 stop -> ok;
-                Message -> event_step(Message), loop()
+                Message -> event_step(Message), bouy_node_loop:check(), loop()
+            after bouy_node_loop:poll_timeout() ->
+                bouy_node_loop:check(),
+                loop()
             end
     end.
 
+-spec has_work() -> boolean().
 has_work() ->
-    erlang:get(?THIS) =/= undefined orelse map_size(timers()) > 0 orelse map_size(pending()) > 0.
+    erlang:get(?THIS) =/= undefined orelse map_size(timers()) > 0 orelse map_size(pending()) > 0
+        orelse bouy_node_loop:has_work().
 
 pending() ->
     case erlang:get(?PENDING) of
@@ -436,6 +472,12 @@ pending() ->
 
 %% One BEAM message becomes at most one job.
 -spec event_step(term()) -> ok.
+event_step({'$bouy_node_timer', _} = Message) ->
+    _ = bouy_node_loop:event(Message),
+    ok;
+event_step({'$bouy_node_deferred', _} = Message) ->
+    _ = bouy_node_loop:event(Message),
+    ok;
 event_step({'$bouy_timer', _Id}) ->
     run_due_timers();
 event_step({'$bouy_reply', Tag, Outcome}) ->

@@ -249,6 +249,9 @@ pub struct Lowerer<'a, 'c> {
     pub early: std::collections::HashSet<SymbolId>,
     /// The resource cell of the `using` declaration being lowered.
     pub using_stacks: Vec<String>,
+    /// The function declarations that the code of the enclosing block already set when
+    /// the block began, which the rest of the block must not create again.
+    pub hoisted: std::collections::HashSet<SymbolId>,
     /// What the module's imports and exports refer to.
     pub linking: Linking<'c>,
 }

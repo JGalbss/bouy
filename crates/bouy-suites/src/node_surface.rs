@@ -164,9 +164,8 @@ struct Probed<'a> {
 
 /// Probes the entries of the manifest on Bouy and compares the run with the expectation file.
 pub fn run(options: &Options) -> Result<Report, String> {
-    if options.update && options.filter.is_some() {
-        return Err("--update runs every group, so it takes no --filter".to_owned());
-    }
+    // An update with --filter rewrites the lines of the groups that ran and keeps the
+    // others.
     let mut durations_ms = BTreeMap::new();
     let started = Instant::now();
     let (manifest, never) = load(&options.directory)?;
@@ -511,6 +510,7 @@ fn execute(
         .current_dir(programs)
         .env("BOUY_RESULT_FILE", &result_file)
         .arg("run")
+        .args(crate::node::ENGINE)
         .arg(file);
     let finished = crate::run(&mut command, options.deadline);
     let result = RunResult::read(&result_file);

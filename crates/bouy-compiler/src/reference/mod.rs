@@ -365,6 +365,7 @@ fn lower(
                 class_bindings: Vec::new(),
                 early: std::collections::HashSet::new(),
                 using_stacks: Vec::new(),
+                hoisted: std::collections::HashSet::new(),
                 linking,
             };
             let functions = if module.kind == Kind::CommonJs {

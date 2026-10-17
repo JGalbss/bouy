@@ -73,7 +73,7 @@ report_uncaught(Value) ->
 -spec exit_program(exit_status()) -> no_return().
 exit_program(Status) ->
     case erlang:get('$bouy_exit') of
-        undefined -> erlang:halt(Status);
+        undefined -> bouy_main:finish(Status, #{});
         _ -> exit({'$bouy_exit', Status})
     end.
 

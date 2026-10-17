@@ -30,7 +30,13 @@ pub fn with_program<R>(
     source_type: SourceType,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
-    parse_program(path, source, source_type, source_type.is_typescript(), use_program)
+    parse_program(
+        path,
+        source,
+        source_type,
+        source_type.is_typescript(),
+        use_program,
+    )
 }
 
 /// As `with_program`, for the JavaScript engine (`--semantics reference`): a `yield`

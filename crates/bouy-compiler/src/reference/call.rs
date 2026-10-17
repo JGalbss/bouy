@@ -122,6 +122,10 @@ impl<'a> Lowerer<'a, '_> {
             return self.bind(Expr::call("bouy_ref", "call", vec![method, this, args]));
         }
         let (object, key) = self.member_parts(member);
+        // `o?.m()`: the chain ends when `o` is null or undefined.
+        if member.optional() {
+            self.chain_guard(object.clone());
+        }
         if let MemberKey::Private(_) = key {
             if call.optional {
                 self.chain_guard(object.clone());

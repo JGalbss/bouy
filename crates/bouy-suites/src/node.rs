@@ -384,10 +384,17 @@ struct Execution {
     time_ms: u128,
 }
 
+/// The flags of `bouy run` and `bouy check` for Node's tests and the surface probe: the
+/// JavaScript engine with reference semantics, which runs Node's own `lib/` for the
+/// built-in modules (docs/design/node-builtins.md).
+pub const ENGINE: [&str; 2] = ["--semantics", "reference"];
+
 /// Runs Node's tests and compares the run with the expectation files.
 pub fn run(options: &Options) -> Result<Report, String> {
-    if options.update && (options.filter.is_some() || options.selection != Selection::All) {
-        return Err("--update runs every id, so it takes no --filter and no --select".to_owned());
+    // An update with --filter rewrites the lines of the ids that ran and keeps the others,
+    // so a change to one module can record its files without a run of the whole suite.
+    if options.update && options.selection != Selection::All {
+        return Err("--update takes no --select".to_owned());
     }
     let config = load_config(&options.directory)?;
     let mut durations_ms = BTreeMap::new();
@@ -535,6 +542,7 @@ fn rejected_common(
         bouy_env(&mut command, &temporary)
             .current_dir(suite)
             .arg("check")
+            .args(ENGINE)
             .arg(file);
         if !crate::run(&mut command, Duration::from_secs(60))
             .output
@@ -573,6 +581,7 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
         .env("NODE_TEST_DIR", &temporary)
         .envs(test.env.iter().map(|(name, value)| (name, value)))
         .arg("run")
+        .args(ENGINE)
         .arg(&test.id);
     let started = Instant::now();
     let finished = crate::run(&mut command, context.deadline);

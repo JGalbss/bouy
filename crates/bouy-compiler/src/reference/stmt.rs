@@ -20,6 +20,7 @@ use crate::erlang::{Clause, Expr};
 impl<'a> Lowerer<'a, '_> {
     pub fn stmts(&mut self, list: Vec<&'a Statement<'a>>, k: &Cont<'a>) -> Vec<Expr> {
         let saved = std::mem::take(&mut self.pre);
+        let saved_hoisted = self.hoisted.clone();
         let mut code = self.hoist(&list);
         let mut list = list;
         let mut index = 0;
@@ -84,11 +85,15 @@ impl<'a> Lowerer<'a, '_> {
             break;
         }
         self.pre = saved;
+        self.hoisted = saved_hoisted;
         self.seal(code)
     }
 
     /// The nested function declarations of a block: a cell each, set before the first
-    /// statement runs, so that they can call each other.
+    /// statement runs, so that they can call each other. The rest of a block, which
+    /// lowers as a continuation, finds them set: a second function object would lose
+    /// the properties that the code gave the first, as `Buffer.prototype` in Node's
+    /// lib/buffer.js.
     pub fn hoist(&mut self, list: &[&'a Statement<'a>]) -> Vec<Expr> {
         let functions: Vec<_> = list
             .iter()
@@ -97,7 +102,9 @@ impl<'a> Lowerer<'a, '_> {
                     .id
                     .as_ref()
                     .and_then(|id| id.symbol_id.get())
-                    .filter(|symbol| !self.tops.contains_key(symbol))
+                    .filter(|symbol| {
+                        !self.tops.contains_key(symbol) && !self.hoisted.contains(symbol)
+                    })
                     .map(|symbol| (symbol, function)),
                 _ => None,
             })
@@ -121,9 +128,10 @@ impl<'a> Lowerer<'a, '_> {
             self.frame.env.insert(*symbol, Local::Cell(cell.clone()));
             cells.push(cell);
         }
-        for ((_, function), cell) in functions.iter().zip(cells) {
+        for ((symbol, function), cell) in functions.iter().zip(cells) {
             let value = self.function_value(function, None);
             self.pre.push(cell_set(&cell, value));
+            self.hoisted.insert(*symbol);
         }
         std::mem::replace(&mut self.pre, saved)
     }

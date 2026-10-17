@@ -66,7 +66,8 @@ install() ->
             [bouy_heap:install_intrinsic(Id, Record) || M <- families(), {Id, Record} <- M:intrinsics()],
             Globals = lists:append([M:globals() || M <- families()]),
             bouy_heap:install_intrinsic('globalThis', global_object(Globals)),
-            persistent_term:put({?MODULE, globals}, maps:from_list(Globals)),
+            %% An accessor global, such as process, reads through the global object.
+            persistent_term:put({?MODULE, globals}, maps:from_list([G || {_, _} = G <- Globals])),
             persistent_term:put({?MODULE, installed}, Version)
     end,
     ok.
@@ -255,11 +256,19 @@ callable(F) ->
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() -> [].
 
--spec globals() -> [{binary(), term()}].
+-spec globals() -> [{binary(), term()} | {binary(), term(), 0..7}].
 globals() ->
     [{<<"globalThis">>, {'$o', 'globalThis'}}, {<<"undefined">>, undefined}]
     ++ ?METHODS(<<"globalThis">>, [<<"setTimeout">>, <<"setInterval">>, <<"clearTimeout">>, <<"clearInterval">>,
-                                   <<"queueMicrotask">>, <<"structuredClone">>]).
+                                   <<"queueMicrotask">>, <<"structuredClone">>])
+    ++ [node_global(Name) || Name <- bouy_node:lazy_globals()].
+
+%% A global of Node, such as process: an accessor that runs Node's bootstrap
+%% on first use (bouy_node), configurable and not enumerable.
+node_global(Name) ->
+    Get = builtin(<<"node:get ", Name/binary>>, <<"get ", Name/binary>>, 0, fun(_This, _Args) -> bouy_node:global_get(Name) end),
+    Set = builtin(<<"node:set ", Name/binary>>, <<"set ", Name/binary>>, 1, fun(_This, Args) -> bouy_node:global_set(Name, arg(1, Args)) end),
+    {Name, {'$accessor', Get, Set}, 4}.
 
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"globalThis">>, <<"setTimeout">>, _This, Args) -> bouy_jobs:set_timer(arg(1, Args), arg(2, Args), rest(3, Args), false);

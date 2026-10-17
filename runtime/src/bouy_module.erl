@@ -520,7 +520,11 @@ builtin_namespace(Name) ->
         error -> no_builtin(Name)
     end.
 
+%% `module` until Node's lib/module.js runs here; every other id is a module
+%% of Node's lib that bouy_node runs.
 builtin(<<"module">>) -> {ok, module_builtin()};
+builtin(<<"node:", Name/binary>>) -> builtin(Name);
+builtin(Name) when is_binary(Name) -> bouy_node:require(Name);
 builtin(_) -> error.
 
 -spec no_builtin(term()) -> no_return().
@@ -545,11 +549,26 @@ module_builtin() ->
             O
     end.
 
-builtin_names() -> [<<"module">>].
+%% require('module').builtinModules of Node 25.9.0.
+builtin_names() ->
+    [<<"_http_agent">>, <<"_http_client">>, <<"_http_common">>, <<"_http_incoming">>, <<"_http_outgoing">>,
+     <<"_http_server">>, <<"_stream_duplex">>, <<"_stream_passthrough">>, <<"_stream_readable">>,
+     <<"_stream_transform">>, <<"_stream_wrap">>, <<"_stream_writable">>, <<"_tls_common">>, <<"_tls_wrap">>,
+     <<"assert">>, <<"assert/strict">>, <<"async_hooks">>, <<"buffer">>, <<"child_process">>, <<"cluster">>,
+     <<"console">>, <<"constants">>, <<"crypto">>, <<"dgram">>, <<"diagnostics_channel">>, <<"dns">>,
+     <<"dns/promises">>, <<"domain">>, <<"events">>, <<"fs">>, <<"fs/promises">>, <<"http">>, <<"http2">>,
+     <<"https">>, <<"inspector">>, <<"inspector/promises">>, <<"module">>, <<"net">>, <<"os">>, <<"path">>,
+     <<"path/posix">>, <<"path/win32">>, <<"perf_hooks">>, <<"process">>, <<"punycode">>, <<"querystring">>,
+     <<"readline">>, <<"readline/promises">>, <<"repl">>, <<"stream">>, <<"stream/consumers">>,
+     <<"stream/promises">>, <<"stream/web">>, <<"string_decoder">>, <<"sys">>, <<"timers">>,
+     <<"timers/promises">>, <<"tls">>, <<"trace_events">>, <<"tty">>, <<"url">>, <<"util">>, <<"util/types">>,
+     <<"v8">>, <<"vm">>, <<"wasi">>, <<"worker_threads">>, <<"zlib">>, <<"node:sea">>, <<"node:sqlite">>,
+     <<"node:test">>, <<"node:test/reporters">>].
 
+is_builtin(<<"node:", Rest/binary>> = Name) ->
+    lists:member(Rest, builtin_names()) orelse lists:member(Name, builtin_names());
 is_builtin(Name) when is_binary(Name) ->
-    Bare = case Name of <<"node:", Rest/binary>> -> Rest; _ -> Name end,
-    lists:member(Bare, builtin_names());
+    lists:member(Name, builtin_names());
 is_builtin(_) -> false.
 
 %%% Bindings before initialization

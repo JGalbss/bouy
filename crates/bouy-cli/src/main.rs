@@ -53,6 +53,10 @@ enum Commands {
     /// print the Erlang module, or the first diagnostic as `<ErrorName>\t<message>` with
     /// status 2. With `--serve`, answer one framed request after another on stdin (see
     /// `serve_eval`). The runtime calls this through `BOUY_COMPILER`.
+    /// Build the runtime cache of this binary and print its directory. A test runner calls
+    /// it once before it starts its VMs, so no run spends its deadline on the build.
+    #[command(hide = true)]
+    Runtime,
     #[command(hide = true)]
     CompileEval {
         /// Answer requests on stdin until it closes.
@@ -189,6 +193,13 @@ fn main() -> ExitCode {
             Err(code) => code,
         },
         Commands::Build { semantics, entry } => build(&entry, semantics.into()),
+        Commands::Runtime => match runtime::locate() {
+            Ok(runtime) => {
+                println!("{}", runtime.ebin.display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => fail(&error),
+        },
         Commands::CompileEval { serve: true, .. } => serve_eval(),
         Commands::CompileEval { request, .. } => compile_eval(request),
     }

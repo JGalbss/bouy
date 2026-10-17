@@ -11,6 +11,7 @@
     ".bouy/",
     ".claude/",
     "runtime/vendor/",
+    "runtime/node/",
     "docs/COMPAT.md",
     "tests/fuzz/",
     "tests/node/suite/",

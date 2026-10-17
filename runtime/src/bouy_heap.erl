@@ -1360,6 +1360,9 @@ error_object(Proto, Message, Stack) ->
 -spec throw_error(atom(), binary()) -> no_return().
 throw_error(Name, Message) ->
     Stack = text([atom_to_binary(Name), <<": ">>, Message, <<"\n    at <bouy>">>]),
+    %% BOUY_NODE_DEBUG keeps the Erlang stack of the last error (bouy_node).
+    persistent_term:get({bouy_node, debug}, false) andalso
+        erlang:put('$bouy_last_throw', {Message, element(2, process_info(self(), current_stacktrace))}),
     erlang:error({'$throw', error_object(Name, Message, Stack)}).
 
 %%% Garbage collection
