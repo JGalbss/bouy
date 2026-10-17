@@ -24,17 +24,17 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 | Directory      | Tests | Baseline pass |  Pass | Fail | Compile | Timeout | Skip | Baseline rate | Pass rate |
 | -------------- | ----: | ------------: | ----: | ---: | ------: | ------: | ---: | ------------: | --------: |
-| test/language  | 23726 |         11354 | 23424 |  293 |       2 |       7 |    0 |         51.1% |     98.7% |
+| test/language  | 23726 |         11354 | 23603 |  121 |       2 |       0 |    0 |         51.1% |     99.4% |
 | test/built-ins | 23823 |          6193 | 18010 | 5810 |       0 |       1 |    2 |         26.2% |     75.6% |
-| **Total**      | 47549 |         17547 | 41434 | 6103 |       2 |       8 |    2 |         38.3% |     87.1% |
+| **Total**      | 47549 |         17547 | 41613 | 5931 |       2 |       1 |    2 |         38.3% |     87.5% |
 
 The same run without the proposal tests. A proposal test has a feature from the "Proposed language features" part of test262's `features.txt`. At the pinned commit, Temporal, `explicit-resource-management`, `joint-iteration`, `iterator-chunking`, and `iterator-includes` are in the standard part, so these counts keep them. The proposal tests are 532 in `test/language` and 285 in `test/built-ins`.
 
 | Directory      | Tests |  Pass | Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ---: | ------: | ------: | ---: | --------: |
-| test/language  | 23194 | 22914 |  273 |       0 |       7 |    0 |     98.7% |
+| test/language  | 23194 | 23093 |  101 |       0 |       0 |    0 |     99.5% |
 | test/built-ins | 23538 | 18004 | 5531 |       0 |       1 |    2 |     76.4% |
-| **Total**      | 46732 | 40918 | 5804 |       0 |       8 |    2 |     87.5% |
+| **Total**      | 46732 | 41097 | 5632 |       0 |       1 |    2 |     87.9% |
 
 Temporal is 4595 of the 5532 failures of `test/built-ins`. Without Temporal, `test/built-ins` passes 18004 of 18941 tests (95.0%).
 
@@ -51,6 +51,8 @@ Temporal is 4595 of the 5532 failures of `test/built-ins`. Without Temporal, `te
 - Each merge run was compared test by test with the five area runs. At `4c8687c`, 6 tests pass on an area branch and fail on `engine`. Four are the `*-element-function-nonconstructor` tests of `Promise.all`, `allSettled`, and `any`: the branches passed them only because the `then` of the thenable never ran and the old `hasOwnProperty` accepted undefined. Two are tests of the `nonextensible-applies-to-private` proposal, which the classes branch passed because adding a private field threw for another reason. The other passes of every branch hold.
 - 2026-10-17, commit `d93d434`, round 1 measurement: 23424 and 18010, with 8 jobs at a load average between 15 and 37. `test/built-ins` took 17 minutes. The engine code is the same as at `4c8687c`. The 2 fewer passes are 2 more timeouts: `test/language/comments/S7.4_A5.js` and `General_Category_-_Punctuation.js` of `RegExp/property-escapes`. Near test 23000 the VM halted with `no more index entries in fun_staged_index (max=524288)`: each test loads a module, and the fun table filled. The runner started a new VM, and the 8 Temporal tests that were running count as "the VM crashed".
 
+- 2026-10-17, branch `engine-r1-direct-eval-context` from `38d7857`, direct eval: `test/language` passes 23603 tests, 179 more than the round 1 run, with no timeouts. The directories of the cluster (`eval-code`, `statements`, `expressions/class/elements`, `expressions/super`, `statementList`, `comments`, and `literals/regexp`, 11588 tests) went from 11398 passes to 11554. The `Function`, `GeneratorFunction`, `AsyncFunction`, `AsyncGeneratorFunction`, `eval`, `global`, `String`, `Object`, and `RegExp` directories of `test/built-ins` keep their passes. With 6 jobs at a load average between 30 and 65, 52 `RegExp/property-escapes` tests timed out on this branch and on `38d7857` alike, and passed on both with a 60 s limit, so the `test/built-ins` row keeps the round 1 count.
+
 ## Causes left
 
 The failures of the round 1 run without the proposal tests (5812, timeouts included), grouped by root cause and largest first:
@@ -59,7 +61,7 @@ The failures of the round 1 run without the proposal tests (5812, timeouts inclu
 2. The Promise family does not follow the specification (249 tests: 247 in `test/built-ins/Promise` and the 2 `subclass-Promise` tests). The constructor ignores NewTarget. The statics ignore their `this` and never call `C.resolve`. `Symbol.species`, `Promise.try`, and the `length` and `name` of the resolving and element functions are missing. `all`, `allSettled`, `any`, and `race` read the whole iterable before they start, so the 20 tests with an endless iterator grow past 256 MB.
 3. `DisposableStack` and `AsyncDisposableStack` do not exist (197 tests).
 4. `Iterator.zip` and `Iterator.zipKeyed` (77 tests), `Iterator.prototype.chunks` and `windows` (69), and `Iterator.prototype.includes` (40) do not exist.
-5. Direct eval (179 language tests whose source calls `eval`). `compile-eval` parses the eval code alone, so `super`, `new.target`, private names, and the `arguments` rule of class fields fail (about 70). The completion value of a loop, `if`, `switch`, `try`, or labeled statement is lost (about 63). A sloppy `var` in eval code becomes a global instead of a binding of the caller's function (about 35). Each new source text starts a `bouy compile-eval` process, so the 7 tests that call eval once per character time out.
+5. Direct eval (179 language tests, fixed on `engine-r1-direct-eval-context`). What is left: a script's top-level `let`, `const`, and classes are not in a global lexical environment, so eval code cannot see them (3 tests); a template literal in eval code keeps one site per source text, not per eval (1 test); and eval code in an ES module does not see the module's own variables (no test262 case).
 6. `$262.createRealm` and `$262.evalScript`, which the runner does not provide (189 tests in 20 directories, such as `Proxy`, `TypedArrayConstructors`, `Symbol`, and `Array`). Intrinsics are shared through `persistent_term`, so a second realm in one process needs a redesign that touches every built-in module.
 7. `Atomics.wait`, `waitAsync`, and `notify` (116 tests): the runner gives no `$262.agent`, and no buffer keeps a waiter list yet.
 8. About 50 other tests in small groups, such as `with` scopes over a Proxy, PutValue on a deleted binding, and the 3 `copyWithin` tests that grow past 256 MB.
@@ -73,13 +75,13 @@ The proposal tests that fail (301) are mostly `Promise.allKeyed` and `allSettled
 | test/language/arguments-object        |   263 |           104 |   261 |    2 |       0 |       0 |    0 |         50.4% |     99.2% |
 | test/language/asi                     |   102 |           102 |   102 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
 | test/language/block-scope             |   145 |           143 |   145 |    0 |       0 |       0 |    0 |         98.6% |    100.0% |
-| test/language/comments                |    52 |            43 |    47 |    2 |       0 |       3 |    0 |         82.6% |     90.3% |
+| test/language/comments                |    52 |            43 |    52 |    0 |       0 |       0 |    0 |         82.6% |    100.0% |
 | test/language/computed-property-names |    48 |            39 |    48 |    0 |       0 |       0 |    0 |         81.2% |    100.0% |
 | test/language/destructuring           |    19 |            12 |    18 |    1 |       0 |       0 |    0 |         66.6% |     94.7% |
 | test/language/directive-prologue      |    62 |             5 |    62 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
-| test/language/eval-code               |   347 |             9 |   323 |   24 |       0 |       0 |    0 |          7.0% |     93.1% |
+| test/language/eval-code               |   347 |             9 |   344 |    3 |       0 |       0 |    0 |          7.0% |     99.1% |
 | test/language/export                  |     3 |             3 |     3 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
-| test/language/expressions             | 11102 |          4492 | 10995 |  106 |       1 |       0 |    0 |         42.7% |     99.0% |
+| test/language/expressions             | 11102 |          4492 | 11045 |   56 |       1 |       0 |    0 |         42.7% |     99.4% |
 | test/language/function-code           |   217 |            91 |   217 |    0 |       0 |       0 |    0 |         84.2% |    100.0% |
 | test/language/future-reserved-words   |    55 |            47 |    55 |    0 |       0 |       0 |    0 |         97.9% |    100.0% |
 | test/language/global-code             |    42 |            15 |    31 |   11 |       0 |       0 |    0 |         40.5% |     73.8% |
@@ -88,14 +90,14 @@ The proposal tests that fail (301) are mostly `Promise.allKeyed` and `allSettled
 | test/language/import                  |   129 |            10 |   117 |   12 |       0 |       0 |    0 |          7.7% |     90.7% |
 | test/language/keywords                |    25 |            25 |    25 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
 | test/language/line-terminators        |    41 |            32 |    41 |    0 |       0 |       0 |    0 |         78.0% |    100.0% |
-| test/language/literals                |   536 |           279 |   532 |    0 |       0 |       4 |    0 |         53.4% |     99.3% |
+| test/language/literals                |   536 |           279 |   536 |    0 |       0 |       0 |    0 |         53.4% |    100.0% |
 | test/language/module-code             |   599 |           335 |   593 |    6 |       0 |       0 |    0 |         55.9% |     99.0% |
 | test/language/punctuators             |    11 |            10 |    11 |    0 |       0 |       0 |    0 |         90.9% |    100.0% |
 | test/language/reserved-words          |    27 |            26 |    27 |    0 |       0 |       0 |    0 |         96.2% |    100.0% |
 | test/language/rest-parameters         |    11 |            10 |    11 |    0 |       0 |       0 |    0 |         90.9% |    100.0% |
 | test/language/source-text             |     1 |             1 |     1 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
-| test/language/statementList           |    80 |            32 |    76 |    4 |       0 |       0 |    0 |         40.0% |     95.0% |
-| test/language/statements              |  9347 |          5109 |  9225 |  121 |       1 |       0 |    0 |         57.5% |     98.7% |
+| test/language/statementList           |    80 |            32 |    80 |    0 |       0 |       0 |    0 |         40.0% |    100.0% |
+| test/language/statements              |  9347 |          5109 |  9320 |   26 |       1 |       0 |    0 |         57.5% |     99.7% |
 | test/language/types                   |   113 |            84 |   110 |    3 |       0 |       0 |    0 |         80.7% |     97.3% |
 | test/language/white-space             |    67 |            26 |    67 |    0 |       0 |       0 |    0 |         38.8% |    100.0% |
 
