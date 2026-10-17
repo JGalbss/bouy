@@ -4,3 +4,5 @@ ReferenceError, then 1
 default before its parameter: ReferenceError
 5
 [ 0, 2, 4 ]
+loop binding 1
+loop head: ReferenceError outside

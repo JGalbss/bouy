@@ -13,6 +13,7 @@ use oxc::ast::ast::{
     PropertyDefinition, PropertyDefinitionType, PropertyKey, StaticBlock,
 };
 use oxc::ast_visit::Visit;
+use oxc::span::GetSpan;
 
 use super::analyze::VarDeclarations;
 use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, Top};
@@ -101,6 +102,12 @@ impl<'a> Lowerer<'a, '_> {
         register: Option<Expr>,
     ) -> Expr {
         self.declare_privates(class);
+        if let (Some(symbol), Some(heritage)) = (
+            class.id.as_ref().and_then(|id| id.symbol_id.get()),
+            &class.heritage,
+        ) {
+            self.heritage_binding(symbol, heritage.expression.span());
+        }
         let parent = class.heritage.as_ref().map(|heritage| {
             let value = self.expr(&heritage.expression);
             self.bind(value)

@@ -56,3 +56,14 @@ function perIteration(): number[] {
   return out;
 }
 console.log(perIteration());
+
+let shadowed = "outside";
+let probe: () => string = () => "unset";
+for (const shadowed of ((probe = () => typeof shadowed), [1])) {
+  console.log("loop binding", shadowed);
+}
+try {
+  probe();
+} catch (error) {
+  console.log("loop head:", (error as Error).constructor.name, shadowed);
+}

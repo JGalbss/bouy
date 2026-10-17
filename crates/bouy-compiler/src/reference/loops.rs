@@ -166,7 +166,9 @@ impl<'a> Lowerer<'a, '_> {
         statement: &'a ForOfStatement<'a>,
         k: &Cont<'a>,
     ) -> Vec<Expr> {
+        let head = self.head_bindings(&statement.left, statement.right.span());
         let right = self.expr(&statement.right);
+        self.end_head_bindings(head);
         if statement.r#await {
             let state = Expr::call("bouy_ref_generator", "async_iterator", vec![right]);
             return self.each(
@@ -194,7 +196,9 @@ impl<'a> Lowerer<'a, '_> {
         statement: &'a ForInStatement<'a>,
         k: &Cont<'a>,
     ) -> Vec<Expr> {
+        let head = self.head_bindings(&statement.left, statement.right.span());
         let right = self.expr(&statement.right);
+        self.end_head_bindings(head);
         let state = Expr::Tuple(vec![
             Expr::atom("list"),
             Expr::call("bouy_ref_iterator", "for_in_keys", vec![right]),

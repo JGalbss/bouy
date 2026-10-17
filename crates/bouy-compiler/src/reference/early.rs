@@ -4,7 +4,7 @@
 //! `'$uninitialized'` until the declaration runs, and a read before then throws a
 //! `ReferenceError`: the temporal dead zone.
 
-use oxc::ast::ast::{FormalParameters, Statement};
+use oxc::ast::ast::{ForStatementLeft, FormalParameters, Statement};
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
@@ -68,6 +68,70 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         code
+    }
+
+    /// The bindings of a `for...of` or `for...in` head that its right side reads: a
+    /// separate scope whose bindings are never initialized. Returns what to restore.
+    pub fn head_bindings(
+        &mut self,
+        left: &'a ForStatementLeft<'a>,
+        right: Span,
+    ) -> Vec<(SymbolId, Option<Local>)> {
+        let ForStatementLeft::VariableDeclaration(declaration) = left else {
+            return Vec::new();
+        };
+        if !declaration.kind.is_lexical() {
+            return Vec::new();
+        }
+        let nodes = self.semantic.nodes();
+        let mut saved = Vec::new();
+        for declarator in &declaration.declarations {
+            for id in declarator.id.get_binding_identifiers() {
+                let Some(symbol) = id.symbol_id.get() else {
+                    continue;
+                };
+                let read = self
+                    .semantic
+                    .scoping()
+                    .get_resolved_references(symbol)
+                    .any(|reference| contains(right, nodes.get_node(reference.node_id()).span()));
+                if read {
+                    let previous = self.frame.env.get(&symbol).cloned();
+                    let cell = self.early_cell(symbol);
+                    self.pre.push(cell);
+                    saved.push((symbol, previous));
+                }
+            }
+        }
+        saved
+    }
+
+    /// Ends the scope of `head_bindings`: each iteration declares its own bindings.
+    pub fn end_head_bindings(&mut self, saved: Vec<(SymbolId, Option<Local>)>) {
+        for (symbol, previous) in saved {
+            self.early.remove(&symbol);
+            match previous {
+                Some(local) => self.frame.env.insert(symbol, local),
+                None => self.frame.env.remove(&symbol),
+            };
+        }
+    }
+
+    /// The early cell of a class binding that the `extends` clause reads.
+    pub fn heritage_binding(&mut self, symbol: SymbolId, heritage: Span) {
+        if self.frame.env.contains_key(&symbol) {
+            return;
+        }
+        let nodes = self.semantic.nodes();
+        let read = self
+            .semantic
+            .scoping()
+            .get_resolved_references(symbol)
+            .any(|reference| contains(heritage, nodes.get_node(reference.node_id()).span()));
+        if read {
+            let cell = self.early_cell(symbol);
+            self.pre.push(cell);
+        }
     }
 
     /// Whether a reference to `symbol` comes before `end` or inside a hoisted function.
