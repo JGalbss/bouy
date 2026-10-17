@@ -14,7 +14,9 @@ use oxc::ast_visit::Visit;
 use oxc::semantic::{ScopeFlags, ScopeId};
 use oxc::span::Span;
 
-use super::analyze::{BlockFunctions, UsesArguments, UsesThis, VarDeclarations, is_simple};
+use super::analyze::{
+    BlockFunctions, ContainsDirectEval, UsesArguments, UsesThis, VarDeclarations, is_simple,
+};
 use super::class::method_kind;
 use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, cell_get, cell_set};
 use crate::erlang::{Clause, Expr};
@@ -88,35 +90,39 @@ impl<'a> Lowerer<'a, '_> {
                 frame.this_cell.clone_from(&outer.this_cell);
                 frame.new_target.clone_from(&outer.new_target);
                 frame.callee.clone_from(&outer.callee);
+                frame.in_function = outer.in_function;
+                frame.in_field = outer.in_field;
             }
             Callee::Function(itself) => {
                 frame.this = Some(this_param.clone());
                 frame.new_target.clone_from(&new_target_param);
                 frame.callee = itself;
+                frame.in_function = true;
             }
             Callee::Method(class) => {
                 frame.this = Some(this_param.clone());
                 frame.class = class;
+                frame.in_function = true;
             }
         }
         self.frame = frame;
         let own = own.unwrap_or_else(Expr::undefined);
         let code = match kind {
             Kind::Sync => {
-                let mut code = self.entry(params, body, &args, own_arguments);
+                let mut code = self.entry(params, body, &args, own_arguments, scope);
                 code.extend(self.body(body));
                 code
             }
             Kind::Async => {
                 let args_var = args.clone();
                 self.async_body(move |me| {
-                    let mut code = me.entry(params, body, &args_var, own_arguments);
+                    let mut code = me.entry(params, body, &args_var, own_arguments, scope);
                     code.extend(me.body(body));
                     code
                 })
             }
             Kind::Generator => {
-                let mut code = self.entry(params, body, &args, own_arguments);
+                let mut code = self.entry(params, body, &args, own_arguments, scope);
                 self.frame.ret = Ret::Generator;
                 let inner = self.body(body);
                 code.push(Expr::call(
@@ -137,7 +143,7 @@ impl<'a> Lowerer<'a, '_> {
                 code
             }
             Kind::AsyncGenerator => {
-                let mut code = self.entry(params, body, &args, own_arguments);
+                let mut code = self.entry(params, body, &args, own_arguments, scope);
                 code.push(self.async_generator_body(body, own));
                 code
             }
@@ -201,6 +207,7 @@ impl<'a> Lowerer<'a, '_> {
         body: FnBody<'a>,
         args: &str,
         own_arguments: bool,
+        scope: Option<ScopeId>,
     ) -> Vec<Expr> {
         let mut uses = UsesArguments::default();
         uses.visit_formal_parameters(params);
@@ -216,6 +223,7 @@ impl<'a> Lowerer<'a, '_> {
         if own_arguments {
             code.extend(self.receiver(&reads));
         }
+        code.extend(self.eval_vars(params, body, scope));
         let mapped = uses.0 && own_arguments && self.frame.sloppy && is_simple(params);
         if uses.0 && own_arguments && !mapped {
             let arguments = self.fresh("Arguments");
@@ -277,6 +285,42 @@ impl<'a> Lowerer<'a, '_> {
         }
         code.extend(std::mem::replace(&mut self.pre, saved));
         code
+    }
+
+    /// The variables of a sloppy function that calls eval directly: an object that holds the
+    /// `var` names and functions of its eval code, which its code resolves through like a
+    /// `with` object around its body (ECMA-262 §19.2.1.3, `EvalDeclarationInstantiation`).
+    fn eval_vars(
+        &mut self,
+        params: &'a FormalParameters<'a>,
+        body: FnBody<'a>,
+        scope: Option<ScopeId>,
+    ) -> Vec<Expr> {
+        let Some(scope) = scope.filter(|_| self.frame.sloppy) else {
+            return Vec::new();
+        };
+        let mut calls = ContainsDirectEval::default();
+        calls.visit_formal_parameters(params);
+        match body {
+            FnBody::Block(block) => calls.visit_function_body(block),
+            FnBody::Expr(expression) => calls.visit_expression(expression),
+        }
+        if !calls.0 {
+            return Vec::new();
+        }
+        let scoping = self.semantic.scoping();
+        let span =
+            oxc::span::GetSpan::span(self.semantic.nodes().get_node(scoping.get_node_id(scope)));
+        let vars = self.fresh("Vars");
+        self.frame.withs.push(super::with::WithScope {
+            object: vars.clone(),
+            span,
+            vars: true,
+        });
+        vec![Expr::matches(
+            Expr::var(vars),
+            Expr::call("bouy_ref_eval", "var_object", vec![]),
+        )]
     }
 
     /// The `this` of a sloppy function: the global object when the caller passed undefined
@@ -514,11 +558,13 @@ impl<'a> Lowerer<'a, '_> {
             .filter(|_| function.is_expression())
             .and_then(|id| id.symbol_id.get())
             .filter(|symbol| {
+                // A direct eval inside may read it too: the analysis made it a cell.
                 !self
                     .semantic
                     .scoping()
                     .get_resolved_reference_ids(*symbol)
                     .is_empty()
+                    || self.analysis.cells.contains(symbol)
             });
         let callee = self.needs_callee(function);
         let cell = (symbol.is_some() || callee).then(|| {
@@ -658,12 +704,18 @@ fn int(value: usize) -> Expr {
 }
 
 /// Whether a function reads `new.target`: in its own code or in an arrow function inside
-/// it, which shares it.
+/// it, which shares it, or through a direct eval.
 pub struct UsesNewTarget(pub bool);
 
 impl<'a> Visit<'a> for UsesNewTarget {
     fn visit_new_target(&mut self, _it: &NewTarget) {
         self.0 = true;
+    }
+    /// The code of a direct eval may read `new.target` too.
+    fn visit_identifier_reference(&mut self, it: &oxc::ast::ast::IdentifierReference<'a>) {
+        if it.name == "eval" {
+            self.0 = true;
+        }
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_class(&mut self, _it: &Class<'a>) {}

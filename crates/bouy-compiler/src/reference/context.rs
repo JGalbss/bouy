@@ -204,6 +204,14 @@ pub struct Frame<'a> {
     /// In a parameter default: the names that the parameter scope binds, the parameters
     /// and `arguments`, which a direct eval there may not declare.
     pub param_bindings: Vec<String>,
+    /// In the top-level code of an `eval`: the cell of its completion value, which each
+    /// expression statement sets.
+    pub completion: Option<String>,
+    /// In a function other than an arrow, or in an arrow inside one, where eval code may
+    /// read `new.target`.
+    pub in_function: bool,
+    /// In a class field initializer, where eval code may not read `arguments`.
+    pub in_field: bool,
 }
 
 pub struct Lowerer<'a, 'c> {
@@ -225,10 +233,12 @@ pub struct Lowerer<'a, 'c> {
     pub script_globals: Vec<String>,
     pub script_functions: Vec<(String, usize, &'static str)>,
     /// The code of an `eval`, and whether it is strict: the module runs in the realm that
-    /// compiled it, and its `'__eval__'/2` returns the completion value.
+    /// compiled it, and its `'__eval__'/3` returns the completion value.
     pub eval: Option<bool>,
+    /// What the code of a direct eval may use from the place of its call.
+    pub eval_context: super::EvalContext,
     /// The local bindings of the caller of a direct eval, by name, and the Erlang variables
-    /// of their cells in `'__eval__'/2`.
+    /// of their cells in `'__eval__'/3`.
     pub eval_bindings: Vec<(String, String)>,
     /// The private names of the class bodies around the code, innermost last: each
     /// name and the Erlang expression of its key.
@@ -325,8 +335,17 @@ impl Lowerer<'_, '_> {
     pub fn eval_binding(&self, name: &str) -> Option<String> {
         self.eval_bindings
             .iter()
-            .find(|(binding, _)| binding == name)
+            .find(|(binding, _)| binding_name(binding) == name)
             .map(|(_, cell)| cell.clone())
+    }
+
+    /// Whether the binding `name` of the caller of a direct eval is immutable, such as the
+    /// name of a function expression: its scope entry starts with `!`.
+    pub fn is_eval_constant(&self, name: &str) -> bool {
+        self.eval_bindings
+            .iter()
+            .find(|(binding, _)| binding_name(binding) == name)
+            .is_some_and(|(binding, _)| binding.starts_with('!'))
     }
 
     /// The nesting order of the next reified `try` or finally frame.
@@ -372,6 +391,11 @@ impl Lowerer<'_, '_> {
         self.pre.push(Expr::matches(Expr::var(name.clone()), value));
         Expr::var(name)
     }
+}
+
+/// The name of a scope entry of a direct eval, without the `!` of an immutable binding.
+pub fn binding_name(entry: &str) -> &str {
+    entry.strip_prefix('!').unwrap_or(entry)
 }
 
 pub fn cell_get(name: &str) -> Expr {

@@ -28,10 +28,7 @@ impl<'a> Lowerer<'a, '_> {
                 "arguments" if self.frame.arguments.is_some() => {
                     Expr::var(self.frame.arguments.clone().unwrap_or_default())
                 }
-                name if self.eval_binding(name).is_some() => {
-                    let cell = self.eval_binding(name).unwrap_or_default();
-                    self.bind(cell_get(&cell))
-                }
+                name if self.eval_binding(name).is_some() => self.eval_binding_read(name),
                 name => self.bind(Expr::call(
                     "bouy_ref",
                     "global",
@@ -105,13 +102,24 @@ impl<'a> Lowerer<'a, '_> {
     /// The value of a name that no scope of the code declares: a binding of the caller of
     /// a direct eval, else a global.
     pub fn identifier_read(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
-        if let Some(cell) = self.eval_binding(ident.name.as_str()) {
-            return self.bind(cell_get(&cell));
+        if self.eval_binding(ident.name.as_str()).is_some() {
+            return self.eval_binding_read(ident.name.as_str());
         }
         self.bind(Expr::call(
             "bouy_ref",
             "global",
             vec![Expr::js_string(ident.name.as_str())],
+        ))
+    }
+
+    /// The read of a binding of the caller of a direct eval, which may still be in its
+    /// dead zone.
+    fn eval_binding_read(&mut self, name: &str) -> Expr {
+        let cell = self.eval_binding(name).unwrap_or_default();
+        self.bind(Expr::call(
+            "bouy_ref_class",
+            "initialized",
+            vec![cell_get(&cell), Expr::js_string(name)],
         ))
     }
 

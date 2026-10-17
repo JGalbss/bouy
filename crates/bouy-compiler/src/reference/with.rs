@@ -11,14 +11,17 @@ use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
 use super::analyze::contains;
-use super::context::{Cont, Lowerer, boolean_case};
+use super::context::{Cont, Lowerer, Top, boolean_case};
 use crate::erlang::{Clause, Expr};
 
-/// A `with` statement around the code: the variable of its object and its span.
+/// A `with` statement around the code: the variable of its object and its span. A sloppy
+/// function that calls eval directly has one too, around its body: the object that holds
+/// the variables that its eval code declares (`vars`), whose functions get no `this`.
 #[derive(Debug, Clone)]
 pub struct WithScope {
     pub object: String,
     pub span: Span,
+    pub vars: bool,
 }
 
 impl<'a> Lowerer<'a, '_> {
@@ -33,6 +36,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.withs.push(WithScope {
             object,
             span: statement.span,
+            vars: false,
         });
         code.extend(self.stmt(&statement.body, k));
         self.frame.withs.pop();
@@ -42,16 +46,18 @@ impl<'a> Lowerer<'a, '_> {
     /// The objects of the `with` statements that `ident` resolves through, innermost first:
     /// those around the reference that do not hold the declaration of its binding.
     pub fn with_objects(&self, ident: &IdentifierReference<'a>) -> Vec<String> {
-        self.with_objects_for(self.symbol_of(ident.reference_id.get()))
+        self.with_objects_for(
+            self.symbol_of(ident.reference_id.get()),
+            ident.name.as_str(),
+        )
     }
 
     /// The objects of the `with` statements that a name bound to `symbol` resolves through:
     /// those that do not hold the scope of the binding. A `var` belongs to its function, so
-    /// a `with` inside the function holds its declaration but not its scope.
-    pub fn with_objects_for(&self, symbol: Option<SymbolId>) -> Vec<String> {
-        if self.frame.withs.is_empty() {
-            return Vec::new();
-        }
+    /// a `with` inside the function holds its declaration but not its scope. In eval code,
+    /// a name that the code does not declare, or declares in the caller's variables, then
+    /// resolves through the objects of the caller's scope in front of its binding there.
+    pub fn with_objects_for(&self, symbol: Option<SymbolId>, name: &str) -> Vec<String> {
         let scoping = self.semantic.scoping();
         let bound = symbol.map(|symbol| {
             let scope = scoping.symbol_scope_id(symbol);
@@ -67,7 +73,35 @@ impl<'a> Lowerer<'a, '_> {
             }
             objects.push(scope.object.clone());
         }
+        let free =
+            symbol.is_none_or(|symbol| matches!(self.tops.get(&symbol), Some(Top::Global(_))));
+        if free {
+            objects.extend(self.eval_objects(name));
+        }
         objects
+    }
+
+    /// In eval code, the objects of the caller's scope in front of its binding of `name`.
+    pub fn eval_objects(&self, name: &str) -> Vec<String> {
+        self.eval_bindings
+            .iter()
+            .take_while(|(binding, _)| super::context::binding_name(binding) != name)
+            .filter(|(binding, _)| binding.starts_with('@'))
+            .map(|(_, object)| object.clone())
+            .collect()
+    }
+
+    /// Whether the object variable `object` holds the variables of a function's eval code,
+    /// whose environment gives its functions no `this`.
+    fn is_var_object(&self, object: &str) -> bool {
+        self.frame
+            .withs
+            .iter()
+            .any(|scope| scope.vars && scope.object == object)
+            || self
+                .eval_bindings
+                .iter()
+                .any(|(binding, var)| binding == "@vars" && var == object)
     }
 
     /// `var name = value` inside a `with` statement: the name resolves through the objects
@@ -219,13 +253,17 @@ impl<'a> Lowerer<'a, '_> {
         let pair = self.through_withs(
             objects,
             name,
-            |_, object| {
+            |me, object| {
                 let function = Expr::call(
                     "bouy_ref",
                     "get",
                     vec![object.clone(), Expr::js_string(name)],
                 );
-                vec![Expr::Tuple(vec![function, object])]
+                let this = match &object {
+                    Expr::Var(var) if me.is_var_object(var) => Expr::undefined(),
+                    _ => object,
+                };
+                vec![Expr::Tuple(vec![function, this])]
             },
             fallback,
         );

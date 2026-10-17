@@ -301,13 +301,47 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// Stores `value` in the global `name`, as the mode of the code allows, or in the binding
-    /// of the caller of a direct eval.
+    /// of the caller of a direct eval, after the objects in front of it there.
     pub fn set_global(&mut self, name: &str, value: Expr) -> Expr {
         let value = self.bind(value);
-        if let Some(cell) = self.eval_binding(name) {
-            self.pre
-                .push(super::context::cell_set(&cell, value.clone()));
+        let objects = self.eval_objects(name);
+        if objects.is_empty() {
+            self.set_binding(name, value.clone());
             return value;
+        }
+        let fallback = self.branch(|me| {
+            me.set_binding(name, value.clone());
+            Expr::ok()
+        });
+        let stored = value.clone();
+        let _ = self.through_withs(
+            &objects,
+            name,
+            |_, object| {
+                vec![Expr::call(
+                    "bouy_ref",
+                    "sloppy_set",
+                    vec![object, Expr::js_string(name), stored.clone()],
+                )]
+            },
+            fallback,
+        );
+        value
+    }
+
+    /// Stores `value` in the binding `name` of the caller of a direct eval, else in the
+    /// global.
+    fn set_binding(&mut self, name: &str, value: Expr) {
+        // Strict code may not write an immutable binding; sloppy code writes nothing.
+        if self.is_eval_constant(name) {
+            if !self.frame.sloppy {
+                self.pre.push(Expr::call("bouy_ref", "const_error", vec![]));
+            }
+            return;
+        }
+        if let Some(cell) = self.eval_binding(name) {
+            self.pre.push(super::context::cell_set(&cell, value));
+            return;
         }
         let mode = Expr::atom(if self.frame.sloppy {
             "sloppy"
@@ -317,9 +351,8 @@ impl<'a> Lowerer<'a, '_> {
         self.pre.push(Expr::call(
             "bouy_ref_realm",
             "set_global",
-            vec![Expr::js_string(name), value.clone(), mode],
+            vec![Expr::js_string(name), value, mode],
         ));
-        value
     }
 
     pub fn assign_member(

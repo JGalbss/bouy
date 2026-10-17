@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 pub use diagnostic::{Code, Diagnostic};
 use graph::{module_name, project_root};
+pub use reference::{EvalContext, EvalPlace};
 
 /// The Erlang modules of a program.
 #[derive(Debug, Clone)]
@@ -173,13 +174,15 @@ fn finish(
 }
 
 /// Compiles the code of an `eval` or of the `Function` constructor at run time (reference
-/// semantics) into the Erlang module `name`, whose `'__eval__'/1` runs the code in the
-/// current realm with a `this` and returns its completion value. Strict code keeps its `var` names to
+/// semantics) into the Erlang module `name`, whose `'__eval__'/3` runs the code in the
+/// current realm with a `this`, the caller's scope, and a context map, and returns its
+/// completion value. Strict code keeps its `var` names to
 /// itself; sloppy code makes them properties of the global object. With `function`, the
 /// source must be one parenthesized function expression, as the `Function` constructor
 /// builds it, so a body cannot close the function early. `lexical` names the bindings that
 /// sloppy direct eval code may not declare with `var`. `scope` names the
-/// local bindings of the caller of a direct eval, which `'__eval__'/2` gets as cells.
+/// local bindings of the caller of a direct eval, which `'__eval__'/3` gets as cells, and
+/// `context` what the place of the call permits, such as `super.x` in a method.
 pub fn compile_eval(
     source: &str,
     name: &str,
@@ -187,13 +190,15 @@ pub fn compile_eval(
     function: bool,
     lexical: &[String],
     scope: &[String],
+    context: &EvalContext,
 ) -> Result<String, Vec<Diagnostic>> {
-    let source = if strict {
-        format!("\"use strict\";\n{source}")
-    } else {
-        source.to_owned()
+    // The directive goes first, and a hashbang comment stays a comment after it.
+    let source = match (strict, source.strip_prefix("#!")) {
+        (true, Some(rest)) => format!("\"use strict\";\n//{rest}"),
+        (true, None) => format!("\"use strict\";\n{source}"),
+        (false, _) => source.to_owned(),
     };
-    reference::lower_eval(source, name, strict, function, lexical, scope)
+    reference::lower_eval(source, name, strict, function, lexical, scope, context)
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

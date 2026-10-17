@@ -377,12 +377,18 @@ pub fn literal(expression: &Expression<'_>) -> Option<Expr> {
     }
 }
 
-/// Whether a method uses `super`, in its own code or in an arrow function inside it.
+/// Whether a method uses `super`, in its own code or in an arrow function inside it, or
+/// may through a direct eval.
 fn uses_super(value: &Expression<'_>) -> bool {
     struct Finder(bool);
-    impl Visit<'_> for Finder {
+    impl<'a> Visit<'a> for Finder {
         fn visit_super(&mut self, _it: &Super) {
             self.0 = true;
+        }
+        fn visit_identifier_reference(&mut self, it: &oxc::ast::ast::IdentifierReference<'a>) {
+            if it.name == "eval" {
+                self.0 = true;
+            }
         }
     }
     let Expression::FunctionExpression(function) = value else {

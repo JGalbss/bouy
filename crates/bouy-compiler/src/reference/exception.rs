@@ -9,7 +9,9 @@ use oxc::ast_visit::Visit;
 use oxc::semantic::ScopeFlags;
 
 use super::analyze::Suspends;
-use super::context::{Cont, FinallyFrame, Kind, Lowerer, Reify, block, throw_value};
+use super::context::{
+    Cont, FinallyFrame, Kind, Lowerer, Reify, block, cell_get, cell_set, throw_value,
+};
 use super::stmt::jump_tuple;
 use crate::erlang::{CatchClause as ErlangCatch, Clause, Expr};
 
@@ -68,6 +70,10 @@ impl<'a> Lowerer<'a, '_> {
                 self.declare_pattern(&param.pattern, Expr::var(error.clone()));
             }
             let mut catch = std::mem::replace(&mut self.pre, saved);
+            // The completion of a catch clause starts over (ECMA-262 §14.15.3).
+            if let Some(completion) = &self.frame.completion {
+                catch.push(cell_set(completion, Expr::undefined()));
+            }
             catch.extend(self.stmts(
                 handler.body.body.iter().collect(),
                 &Cont::Value(normal.clone()),
@@ -96,26 +102,8 @@ impl<'a> Lowerer<'a, '_> {
             result = Expr::var(second);
         }
         if let Some(finalizer) = &statement.finalizer {
-            let finally = self.stmts(
-                finalizer.body.iter().collect(),
-                &Cont::Value(normal.clone()),
-            );
+            result = self.reified_finally(finalizer, result, &mut code);
             self.frame.env.clone_from(&saved_env);
-            let completion = self.fresh("F");
-            code.push(Expr::matches(Expr::var(completion.clone()), block(finally)));
-            let third = self.fresh("R");
-            let other = self.fresh("Other");
-            code.push(Expr::matches(
-                Expr::var(third.clone()),
-                Expr::case(
-                    Expr::var(completion),
-                    vec![
-                        Clause::new(normal.clone(), vec![result]),
-                        Clause::new(Expr::var(other.clone()), vec![Expr::var(other)]),
-                    ],
-                ),
-            ));
-            result = Expr::var(third);
         }
         let reify = self.frame.reify.pop().unwrap_or(Reify {
             base,
@@ -138,6 +126,49 @@ impl<'a> Lowerer<'a, '_> {
         clauses.extend(self.jump_clauses(&reify.jumps));
         code.push(Expr::case(result, clauses));
         code
+    }
+
+    /// The finally block of a reified `try`: it runs after `result`, the completion of the
+    /// try block and the catch clause, and replaces it unless it completes normally.
+    fn reified_finally(
+        &mut self,
+        finalizer: &'a BlockStatement<'a>,
+        result: Expr,
+        code: &mut Vec<Expr>,
+    ) -> Expr {
+        let normal = Expr::atom("normal");
+        // A finally block that completes normally keeps the completion value of the try
+        // statement in eval code; one that breaks out gives its own (ECMA-262 §14.15.3).
+        let kept = self.frame.completion.clone().map(|completion| {
+            let kept = self.fresh("Kept");
+            code.push(Expr::matches(
+                Expr::var(kept.clone()),
+                cell_get(&completion),
+            ));
+            code.push(cell_set(&completion, Expr::undefined()));
+            cell_set(&completion, Expr::var(kept))
+        });
+        let finally = self.stmts(
+            finalizer.body.iter().collect(),
+            &Cont::Value(normal.clone()),
+        );
+        let completion = self.fresh("F");
+        code.push(Expr::matches(Expr::var(completion.clone()), block(finally)));
+        let after = self.fresh("R");
+        let other = self.fresh("Other");
+        let mut normal_code: Vec<Expr> = kept.into_iter().collect();
+        normal_code.push(result);
+        code.push(Expr::matches(
+            Expr::var(after.clone()),
+            Expr::case(
+                Expr::var(completion),
+                vec![
+                    Clause::new(normal, normal_code),
+                    Clause::new(Expr::var(other.clone()), vec![Expr::var(other)]),
+                ],
+            ),
+        ));
+        Expr::var(after)
     }
 
     /// The clauses that go on with each jump out of a `try` or a `for...of`, after the

@@ -117,10 +117,10 @@ impl<'a> Visit<'a> for WithVars {
 }
 
 /// The local bindings that a direct eval can see: every binding of the scopes around a call
-/// of the unresolved name `eval`, below the module scope. The eval code reads and writes
-/// them through their cells.
+/// of the unresolved name `eval`. The eval code reads and writes them through their cells.
+/// The top-level bindings of a module or a script are module variables or globals, which
+/// stay as they are, and those of `CommonJS` code and eval code are locals.
 fn eval_visible(scoping: &Scoping) -> Vec<SymbolId> {
-    let root = scoping.root_scope_id();
     let mut found = Vec::new();
     for reference in scoping
         .root_unresolved_references()
@@ -130,9 +130,6 @@ fn eval_visible(scoping: &Scoping) -> Vec<SymbolId> {
     {
         let scope = scoping.get_reference(*reference).scope_id();
         for ancestor in scoping.scope_ancestors(scope) {
-            if ancestor == root {
-                break;
-            }
             found.extend(scoping.get_bindings(ancestor).values().copied());
         }
     }
@@ -349,7 +346,7 @@ pub fn is_simple(params: &FormalParameters<'_>) -> bool {
 }
 
 /// Whether a function reads `this`, in its own code or in an arrow function inside it,
-/// which shares it.
+/// which shares it, or through a direct eval.
 #[derive(Default)]
 pub struct UsesThis {
     pub this: bool,
@@ -358,6 +355,11 @@ pub struct UsesThis {
 impl<'a> Visit<'a> for UsesThis {
     fn visit_this_expression(&mut self, _it: &ThisExpression) {
         self.this = true;
+    }
+    fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+        if it.name == "eval" {
+            self.this = true;
+        }
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_class(&mut self, _it: &Class<'a>) {}
@@ -385,6 +387,25 @@ impl<'a> Visit<'a> for BlockFunctions {
         self.depth += 1;
         walk::walk_statement(self, it);
         self.depth -= 1;
+    }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+    fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// Whether the code of a function, without the functions inside it, calls eval directly:
+/// then sloppy eval code there may declare variables in the function's scope.
+#[derive(Default)]
+pub struct ContainsDirectEval(pub bool);
+
+impl<'a> Visit<'a> for ContainsDirectEval {
+    fn visit_call_expression(&mut self, it: &oxc::ast::ast::CallExpression<'a>) {
+        if !it.optional
+            && matches!(&it.callee, oxc::ast::ast::Expression::Identifier(ident) if ident.name == "eval")
+        {
+            self.0 = true;
+        }
+        walk::walk_call_expression(self, it);
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}

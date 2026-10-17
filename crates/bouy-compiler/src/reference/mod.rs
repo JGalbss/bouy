@@ -56,7 +56,7 @@ use std::collections::HashMap;
 
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::erlang;
-use crate::parse::{with_js_program, with_program_as};
+use crate::parse::{with_js_program, with_program_allowing};
 
 use context::{Frame, Lowerer};
 use graph::{Graph, Kind};
@@ -89,6 +89,123 @@ pub fn lower_unit(
     lower(linking, None, &[])
 }
 
+/// What the code of a direct eval may use from the place of its call (ECMA-262 §19.2.1.1,
+/// `PerformEval`). The runtime passes the values in the context map of `'__eval__'/3`.
+#[derive(Debug, Default, Clone)]
+pub struct EvalContext {
+    pub place: EvalPlace,
+    /// The private names that the call sees (`privates`, their keys in this order).
+    pub privates: Vec<String>,
+}
+
+/// Where a direct eval is called, which decides what its code may use.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum EvalPlace {
+    /// Outside functions, or in an arrow outside them.
+    #[default]
+    Global,
+    /// In a function other than an arrow, or in an arrow inside one: the code may read
+    /// `new.target` (`new_target`).
+    Function,
+    /// In a method, which has a home object: the code may use `super.x` (`home`).
+    Method,
+    /// In a class field initializer, where `arguments` is a `SyntaxError`.
+    Field,
+    /// In a derived constructor: the code may call `super(...)` (`this_cell`, `class`, and
+    /// `init`).
+    Constructor,
+}
+
+impl EvalPlace {
+    /// The place that the `--place` option of `bouy compile-eval` names.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "global" => Self::Global,
+            "function" => Self::Function,
+            "method" => Self::Method,
+            "field" => Self::Field,
+            "constructor" => Self::Constructor,
+            _ => return None,
+        })
+    }
+
+    #[must_use]
+    pub fn has_new_target(self) -> bool {
+        self != Self::Global
+    }
+
+    #[must_use]
+    pub fn has_home(self) -> bool {
+        matches!(self, Self::Method | Self::Field | Self::Constructor)
+    }
+}
+
+impl EvalContext {
+    /// Whether the context permits the early error `message` at `offset` of `program`.
+    fn allows(&self, program: &oxc::ast::ast::Program<'_>, message: &str, offset: usize) -> bool {
+        if let Some(name) = message
+            .strip_prefix("Private identifier '#")
+            .or_else(|| message.strip_prefix("Private field '#"))
+            .and_then(|rest| rest.split('\'').next())
+        {
+            return self.privates.iter().any(|private| private == name);
+        }
+        let place = self.place;
+        let permitted = (place.has_new_target() && message == "Unexpected new.target expression")
+            || (place.has_home() && message.starts_with("'super' can only be referenced"))
+            || (place == EvalPlace::Constructor
+                && message.starts_with("Super calls are not permitted"));
+        permitted && !in_function(program, offset)
+    }
+}
+
+/// Whether `offset` lies in a function of `program` other than an arrow, which has its own
+/// `super`, `new.target`, and `arguments`.
+fn in_function(program: &oxc::ast::ast::Program<'_>, offset: usize) -> bool {
+    use oxc::ast_visit::{Visit, walk};
+    struct Functions(Vec<oxc::span::Span>);
+    impl<'a> Visit<'a> for Functions {
+        fn visit_function(
+            &mut self,
+            it: &oxc::ast::ast::Function<'a>,
+            flags: oxc::semantic::ScopeFlags,
+        ) {
+            self.0.push(it.span);
+            walk::walk_function(self, it, flags);
+        }
+    }
+    let mut functions = Functions(Vec::new());
+    functions.visit_program(program);
+    functions
+        .0
+        .iter()
+        .any(|span| (span.start as usize) <= offset && offset < span.end as usize)
+}
+
+/// The offset of the first `arguments` of eval code outside its functions other than
+/// arrows: a `SyntaxError` in a class field initializer.
+fn arguments_offset(program: &oxc::ast::ast::Program<'_>) -> Option<u32> {
+    use oxc::ast_visit::Visit;
+    struct Arguments(Option<u32>);
+    impl<'a> Visit<'a> for Arguments {
+        fn visit_identifier_reference(&mut self, it: &oxc::ast::ast::IdentifierReference<'a>) {
+            if it.name == "arguments" && self.0.is_none() {
+                self.0 = Some(it.span.start);
+            }
+        }
+        fn visit_function(
+            &mut self,
+            _it: &oxc::ast::ast::Function<'a>,
+            _flags: oxc::semantic::ScopeFlags,
+        ) {
+        }
+    }
+    let mut found = Arguments(None);
+    found.visit_program(program);
+    found.0
+}
+
 /// Lowers the code of an `eval` (`compile_eval` of the crate): a classic script of one
 /// module, without imports, named `name`.
 pub fn lower_eval(
@@ -98,6 +215,7 @@ pub fn lower_eval(
     function: bool,
     lexical: &[String],
     scope: &[String],
+    context: &EvalContext,
 ) -> Result<String, Vec<Diagnostic>> {
     let path = std::path::PathBuf::from("eval.js");
     if !lexical.is_empty() && !strict {
@@ -147,7 +265,7 @@ pub fn lower_eval(
         link: &link,
         entry: false,
     };
-    lower(linking, Some(strict), scope)
+    lower(linking, Some((strict, context)), scope)
 }
 
 /// The names that sloppy eval code declares in its variable environment: its top-level
@@ -197,15 +315,31 @@ fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool 
 
 fn lower(
     linking: Linking<'_>,
-    eval: Option<bool>,
+    eval: Option<(bool, &EvalContext)>,
     scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
     let module = linking.unit();
-    with_program_as(
+    let context = eval.map(|(_, context)| context.clone()).unwrap_or_default();
+    let allowed = |program: &oxc::ast::ast::Program<'_>, message: &str, offset: usize| {
+        context.allows(program, message, offset)
+    };
+    with_program_allowing(
         &module.path,
         &module.source,
         module.source_type(),
+        &allowed,
         |program, semantic| {
+            if context.place == EvalPlace::Field
+                && let Some(offset) = arguments_offset(program)
+            {
+                let mut reporter = Reporter::new(&module.path, &module.source);
+                reporter.report(
+                    oxc::span::Span::new(offset, offset),
+                    Code::Syntax,
+                    "'arguments' is not allowed in class field initializer or static initialization block".to_owned(),
+                );
+                return Err(reporter.diagnostics);
+            }
             let analysis = analyze::analyze(program, semantic);
             let mut lowerer = Lowerer {
                 semantic,
@@ -220,7 +354,8 @@ fn lower(
                 classes: Vec::new(),
                 script_globals: Vec::new(),
                 script_functions: Vec::new(),
-                eval,
+                eval: eval.map(|(strict, _)| strict),
+                eval_context: context.clone(),
                 eval_bindings: scope
                     .iter()
                     .enumerate()
@@ -234,6 +369,8 @@ fn lower(
             };
             let functions = if module.kind == Kind::CommonJs {
                 lowerer.commonjs_functions(program)
+            } else if lowerer.eval.is_some() {
+                lowerer.eval_module_functions(program, &module.source)
             } else {
                 lowerer.declare(program);
                 lowerer.module_functions(program, &module.source)

@@ -1,0 +1,11 @@
+262 262 SyntaxError
+undefined function
+SyntaxError
+base undefined
+SyntaxError SyntaxError false
+true SyntaxError
+42 true false static
+SyntaxError TypeError
+[ true, 'TypeError' ]
+undefined undefined undefined 1
+a[/]b gi SyntaxError
