@@ -67,7 +67,7 @@ object_proto(<<"propertyIsEnumerable">>, This, Args) ->
     enumerable(get_own(require_object(This), K));
 object_proto(<<"toString">>, This, _Args) -> bouy_ref_string:concat([<<"[object ">>, tag(This), <<"]">>]);
 object_proto(<<"toLocaleString">>, This, _Args) -> bouy_ref:call_method(This, <<"toString">>, []);
-object_proto(<<"valueOf">>, This, _Args) -> require_object(This);
+object_proto(<<"valueOf">>, This, _Args) -> to_object(This);
 object_proto(<<"proto_get">>, This, _Args) -> prototype(require_object(This));
 object_proto(<<"proto_set">>, This, Args) ->
     O = require_object(This),
