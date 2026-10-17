@@ -49,6 +49,7 @@ families() ->
      bouy_ref_proxy,
      bouy_ref_weak,
      bouy_ref_eval,
+     bouy_ref_temporal,
      ?MODULE].
 
 %%% Installation

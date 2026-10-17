@@ -8,9 +8,13 @@
 %% mean time of a zone, as ICU and V8 use it), and the POSIX rule of the
 %% footer gives it after the last one. The parsed zone lives in
 %% persistent_term, keyed by the value of TZ.
+%%
+%% Temporal reads any zone of the database by its identifier (named/1,
+%% offset_in/2), and the identifier of the system zone (system_id/0).
 -module(bouy_ref_tz).
 
 -export([offset/1, local_to_utc/1, name/1, zone/0, parse_posix/1, parse_tzif/1]).
+-export([named/1, offset_in/2, system_id/0, civil_from_days/1]).
 
 -define(DAY_MS, 86400000).
 
@@ -123,6 +127,104 @@ long_name(<<"KST">>) -> <<"Korean Standard Time">>;
 long_name(<<"AEST">>) -> <<"Australian Eastern Standard Time">>;
 long_name(<<"AEDT">>) -> <<"Australian Eastern Daylight Time">>;
 long_name(_) -> undefined.
+
+%%% Zones by identifier
+
+%% The primary identifier of the zone that Name names, in any case, as
+%% ECMA-402 resolves it: a link of the database resolves to its target, and
+%% the zones of UTC to "UTC". An identifier is a file of the zoneinfo
+%% directory, so no other text reaches the file system.
+-spec named(binary()) -> {ok, binary()} | error.
+named(Name) -> maps:find(string:uppercase(Name), index()).
+
+%% The offset from UTC, in milliseconds, of the zone with the primary
+%% identifier Id at the UTC time T in milliseconds.
+-spec offset_in(binary(), integer()) -> integer().
+offset_in(Id, T) ->
+    Key = {?MODULE, named, Id},
+    Zone = case persistent_term:get(Key, undefined) of
+        undefined ->
+            Z = file_zone(filename:join(zoneinfo(), binary_to_list(Id))),
+            persistent_term:put(Key, Z),
+            Z;
+        Z -> Z
+    end,
+    element(1, lookup(Zone, floor_div(T, 1000))).
+
+%% The primary identifier of the system zone: the zone of TZ, or the file
+%% that /etc/localtime links to.
+%% shortcut: a TZ that is a POSIX rule, and no file of the database, gives
+%% "UTC"; give it an offset zone such as "+05:30" when programs need one.
+-spec system_id() -> binary().
+system_id() ->
+    Name = case os:getenv("TZ") of
+        false ->
+            case file:read_link_all("/etc/localtime") of
+                {ok, Target} -> lists:last(string:split(Target, "zoneinfo/", trailing));
+                {error, _} -> "UTC"
+            end;
+        ":" ++ Rest -> Rest;
+        Rest -> Rest
+    end,
+    case named(unicode:characters_to_binary(Name)) of
+        {ok, Id} -> Id;
+        error -> <<"UTC">>
+    end.
+
+%% The identifiers of the database in upper case, each to its primary
+%% identifier, built once per VM from the zones and links of tzdata.zi in
+%% the zoneinfo directory, or from its TZif files when it has no tzdata.zi.
+index() ->
+    case persistent_term:get({?MODULE, index}, undefined) of
+        undefined ->
+            Dir = zoneinfo(),
+            {Zones, Links} = case file:read_file(filename:join(Dir, "tzdata.zi")) of
+                {ok, Data} -> zi_names(binary:split(Data, <<"\n">>, [global]), [], #{});
+                {error, _} -> {zone_files(Dir, <<>>), #{}}
+            end,
+            Index = maps:from_list([{string:uppercase(Name), primary(maps:get(Name, Links, Name))} || Name <- Zones ++ maps:keys(Links)]),
+            persistent_term:put({?MODULE, index}, Index),
+            Index;
+        Index -> Index
+    end.
+
+primary(<<"Etc/UTC">>) -> <<"UTC">>;
+primary(<<"Etc/GMT">>) -> <<"UTC">>;
+primary(Name) -> Name.
+
+%% The zones of tzdata.zi, its lines "Z Name ...", and its links, its lines
+%% "L Target Link".
+zi_names([], Zones, Links) -> {Zones, Links};
+zi_names([<<"Z ", Line/binary>> | Rest], Zones, Links) ->
+    [Name | _] = binary:split(Line, <<" ">>),
+    zi_names(Rest, [Name | Zones], Links);
+zi_names([<<"L ", Line/binary>> | Rest], Zones, Links) ->
+    [Target, Link | _] = binary:split(Line, <<" ">>, [global]),
+    zi_names(Rest, Zones, Links#{Link => Target});
+zi_names([_ | Rest], Zones, Links) -> zi_names(Rest, Zones, Links).
+
+%% The files under Dir that hold TZif data, as identifiers relative to the
+%% zoneinfo directory. posix/ and right/ repeat the zones with other leap
+%% second rules.
+zone_files(Dir, Prefix) ->
+    {ok, Names} = file:list_dir(Dir),
+    lists:append([zone_file(filename:join(Dir, Name), relative(Prefix, Name)) || Name <- Names, Name =/= "posix", Name =/= "right"]).
+
+zone_file(Path, Id) ->
+    case filelib:is_dir(Path) of
+        true -> zone_files(Path, Id);
+        false ->
+            case file:open(Path, [read, binary, raw]) of
+                {ok, File} ->
+                    Magic = file:read(File, 4),
+                    ok = file:close(File),
+                    [Id || Magic =:= {ok, <<"TZif">>}, Id =/= <<"posixrules">>, Id =/= <<"localtime">>];
+                {error, _} -> []
+            end
+    end.
+
+relative(<<>>, Name) -> unicode:characters_to_binary(Name);
+relative(Prefix, Name) -> <<Prefix/binary, "/", (unicode:characters_to_binary(Name))/binary>>.
 
 %%% The zone
 
@@ -321,6 +423,8 @@ days_from_civil(Y0, M, D) ->
     Doe = Yoe * 365 + Yoe div 4 - Yoe div 100 + Doy,
     Era * 146097 + Doe - 719468.
 
+%% The proleptic Gregorian date of a count of days since 1970-01-01.
+-spec civil_from_days(integer()) -> {integer(), 1..12, 1..31}.
 civil_from_days(Z0) ->
     Z = Z0 + 719468,
     Era = floor_div(Z, 146097),
