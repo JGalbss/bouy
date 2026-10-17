@@ -99,18 +99,27 @@ method(<<"Atomics">>, Name, _This, Args) when Name =:= <<"wait">>; Name =:= <<"w
         {{'$bigint', A}, {'$bigint', B}} -> A =:= bouy_ref_bigint:as_int_n(64, B);
         _ -> Current == V
     end,
-    Outcome = case Equal of
-        false -> <<"not-equal">>;
-        true when Timeout =:= infinity -> bouy_ref:type_error(<<"Atomics.wait would block forever: no agent can notify it">>);
-        true ->
-            Name =:= <<"wait">> andalso timer:sleep(trunc(Timeout)),
-            <<"timed-out">>
-    end,
-    case Name of
-        <<"wait">> -> Outcome;
-        <<"waitAsync">> ->
-            bouy_heap:object(?OBJECT_PROTO, [{<<"async">>, false}, {<<"value">>, Outcome}])
+    case {Name, Equal} of
+        {<<"wait">>, false} -> <<"not-equal">>;
+        {<<"wait">>, true} when Timeout =:= infinity -> bouy_ref:type_error(<<"Atomics.wait would block forever: no agent can notify it">>);
+        {<<"wait">>, true} ->
+            timer:sleep(trunc(Timeout)),
+            <<"timed-out">>;
+        {_, false} -> async_result(false, <<"not-equal">>);
+        {_, true} when Timeout =:= 0 -> async_result(false, <<"timed-out">>);
+        {_, true} ->
+            %% The promise settles with "timed-out" when the timeout ends.
+            {P, Resolve, _} = bouy_jobs:capability(),
+            case Timeout of
+                infinity -> ok;
+                _ ->
+                    Settle = bouy_ref_realm:builtin(<<"Atomics.waitAsync timeout">>, fun(_, _) -> Resolve(<<"timed-out">>) end),
+                    bouy_jobs:set_timer(Settle, Timeout, [], false)
+            end,
+            async_result(true, P)
     end.
+
+async_result(Async, Value) -> bouy_heap:object(?OBJECT_PROTO, [{<<"async">>, Async}, {<<"value">>, Value}]).
 
 %% ValidateIntegerTypedArray.
 validate(TA, Waitable) ->
@@ -126,8 +135,10 @@ validate(TA, Waitable) ->
 
 %% ValidateAtomicAccess: the index, below the length.
 access(TA, Index) ->
+    %% The length is read before the index converts, which can run user code.
+    Length = bouy_ref:get(TA, <<"length">>),
     I = bouy_ref_buffer:to_index(Index),
-    I < bouy_ref:get(TA, <<"length">>) orelse bouy_heap:throw_error('RangeError', <<"Invalid atomic access index">>),
+    I < Length orelse bouy_heap:throw_error('RangeError', <<"Invalid atomic access index">>),
     I.
 
 %% The checks after the conversions, which can run user code.
