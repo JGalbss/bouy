@@ -19,9 +19,8 @@
 %%   {backref, [Index]}           \1, or \k<name> with every group of that name
 %%
 %% An Escape is digit, not_digit, space, not_space, word, not_word,
-%% {property, Key, Negated, Folds}, where Key names the ranges of
-%% bouy_regexp_unicode and Folds is false for a lone General_Category value,
-%% which MaybeSimpleCaseFolding skips, or {strings, Name} for a property of strings.
+%% {property, Key, Negated}, where Key names the ranges of bouy_regexp_unicode,
+%% or {strings, Name} for a property of strings.
 -module(bouy_regexp_syntax).
 
 -export([parse/3, has_strings/1]).
@@ -418,7 +417,7 @@ property_escape(Negated, [${ | S], P) ->
     lists:all(fun(C) -> ?IS_LETTER(C) orelse ?IS_DIGIT(C) orelse C =:= $_ orelse C =:= $= end, Text)
         orelse fail(<<"Invalid property name">>),
     Escape = case string:split(Text, "=") of
-        [Name, Value] -> {property, property_key(Name, Value), Negated, true};
+        [Name, Value] -> {property, property_key(Name, Value), Negated};
         [Lone] -> lone_property(Lone, Negated, P)
     end,
     {Escape, tl(S1)};
@@ -448,8 +447,8 @@ lone_property(Lone, Negated, P) ->
                 true -> {strings, Name};
                 false -> fail(<<"Invalid property name">>)
             end;
-        {false, Key} -> {property, Key, Negated, true};
-        {Gc, _} -> {property, <<"gc=", Gc/binary>>, Negated, false}
+        {false, Key} -> {property, Key, Negated};
+        {Gc, _} -> {property, <<"gc=", Gc/binary>>, Negated}
     end.
 
 %%% Character classes without v

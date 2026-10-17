@@ -312,8 +312,8 @@ escape_ranges(space, _C) -> bouy_regexp_charset:space();
 escape_ranges(not_space, C) -> complement(bouy_regexp_charset:space(), C);
 escape_ranges(word, C) -> word(C);
 escape_ranges(not_word, C) -> complement(word(C), C);
-escape_ranges({property, Key, false, _Folds}, _C) -> bouy_regexp_charset:property(Key);
-escape_ranges({property, Key, true, _Folds}, C) -> complement(bouy_regexp_charset:property(Key), C).
+escape_ranges({property, Key, false}, _C) -> bouy_regexp_charset:property(Key);
+escape_ranges({property, Key, true}, C) -> complement(bouy_regexp_charset:property(Key), C).
 
 word(C) -> bouy_regexp_charset:word(C#c.u andalso C#c.i).
 
@@ -361,12 +361,11 @@ escape_set(word, C) -> maybe_fold({word(C), []}, C);
 escape_set(not_word, C) ->
     {Word, []} = maybe_fold({word(C), []}, C),
     {complement(Word, C), []};
-escape_set({property, Key, Negated, Folds}, C) ->
-    Ranges = bouy_regexp_charset:property(Key),
-    {Set, []} = case Folds of
-        true -> maybe_fold({Ranges, []}, C);
-        false -> {Ranges, []}
-    end,
+%% A lone General_Category value folds too, as V8 does: the spec text of
+%% UnicodePropertyValueExpression skips MaybeSimpleCaseFolding for it, and test262
+%% does not tell the two apart.
+escape_set({property, Key, Negated}, C) ->
+    {Set, []} = maybe_fold({bouy_regexp_charset:property(Key), []}, C),
     case Negated of
         true -> {complement(Set, C), []};
         false -> {Set, []}
