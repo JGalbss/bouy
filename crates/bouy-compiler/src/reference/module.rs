@@ -1056,7 +1056,7 @@ fn top_level_vars(program: &Program<'_>) -> Vec<oxc::semantic::SymbolId> {
 
 /// `'$source'/0`, the source text of the module, and `'$span'/1`, where the text of
 /// each module-level function is in it, for Function.prototype.toString.
-fn source_functions(program: &Program<'_>, source: &str) -> Vec<Function> {
+pub(super) fn source_functions(program: &Program<'_>, source: &str) -> Vec<Function> {
     let mut spans: Vec<Clause> = program
         .body
         .iter()
