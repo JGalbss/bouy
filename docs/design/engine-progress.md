@@ -23,14 +23,14 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 | Directory      | Tests |  Pass |  Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ----: | ------: | ------: | ---: | --------: |
-| test/language  | 23726 | 19182 |  1718 |    1282 |       0 | 1544 |     86.4% |
-| test/built-ins | 23823 |  6756 | 12392 |    4475 |       2 |  198 |     28.5% |
-| **Total**      | 47549 | 25938 | 14110 |    5757 |       2 | 1742 |     56.6% |
+| test/language  | 23726 | 19204 |  1700 |    1278 |       0 | 1544 |     86.5% |
+| test/built-ins | 23823 |  6757 | 12391 |    4475 |       2 |  198 |     28.6% |
+| **Total**      | 47549 | 25961 | 14091 |    5753 |       2 | 1742 |     56.6% |
 
 ## Run log
 
 - 2026-10-17, commit `7090eb1`: the baseline. Other workflows kept the load average between 40 and 95 during the run, so the 3 timeouts are an upper bound.
-- 2026-10-17, branch `engine-classes`, commit `c0a4efa`: classes, generators, async iteration, iterator closing, the iterator helpers, function names, and the temporal dead zone (section "Classes and iteration"). `test/language` 11354 to 19182 passes, `test/built-ins` 6193 to 6756. The `test/language` rows other than `statements` come from the run at commit `14bf518`, the commit before; commit `c0a4efa` changed only `for` heads and `extends` clauses.
+- 2026-10-17, branch `engine-classes`, commit `bbf22f9`: classes, generators, async iteration, iterator closing, the iterator helpers, function names, and the temporal dead zone (section "Classes and iteration"). `test/language` 11354 to 19204 passes, `test/built-ins` 6193 to 6757. The `test/built-ins` rows come from the run at commit `c0a4efa`, with the row of `Iterator` from the run at `bbf22f9`; the commits between changed only `Iterator` among the built-ins.
 
 ## test/language
 
@@ -45,7 +45,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/language/directive-prologue      |    62 |    5 |    0 |       0 |       0 |   57 |    100.0% |
 | test/language/eval-code               |   347 |    9 |  117 |       1 |       0 |  220 |      7.0% |
 | test/language/export                  |     3 |    3 |    0 |       0 |       0 |    0 |    100.0% |
-| test/language/expressions             | 11102 | 8900 |  769 |     845 |       0 |  588 |     84.6% |
+| test/language/expressions             | 11102 | 8907 |  763 |     844 |       0 |  588 |     84.7% |
 | test/language/function-code           |   217 |   91 |   17 |       0 |       0 |  109 |     84.2% |
 | test/language/future-reserved-words   |    55 |   48 |    0 |       0 |       0 |    7 |    100.0% |
 | test/language/global-code             |    42 |   17 |   19 |       1 |       0 |    5 |     45.9% |
@@ -61,7 +61,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/language/rest-parameters         |    11 |   11 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/source-text             |     1 |    1 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/statementList           |    80 |   32 |   40 |       8 |       0 |    0 |     40.0% |
-| test/language/statements              |  9347 | 8383 |  456 |      36 |       0 |  472 |     94.4% |
+| test/language/statements              |  9347 | 8398 |  444 |      33 |       0 |  472 |     94.6% |
 | test/language/types                   |   113 |   84 |   16 |       4 |       0 |    9 |     80.7% |
 | test/language/white-space             |    67 |   26 |   16 |      25 |       0 |    0 |     38.8% |
 
@@ -92,7 +92,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/GeneratorFunction              |    23 |    4 |   19 |       0 |       0 |    0 |     17.3% |
 | test/built-ins/GeneratorPrototype             |    61 |   61 |    0 |       0 |       0 |    0 |    100.0% |
 | test/built-ins/Infinity                       |     6 |    2 |    2 |       0 |       0 |    2 |     50.0% |
-| test/built-ins/Iterator                       |   654 |  426 |  206 |      22 |       0 |    0 |     65.1% |
+| test/built-ins/Iterator                       |   654 |  427 |  205 |      22 |       0 |    0 |     65.2% |
 | test/built-ins/JSON                           |   166 |   93 |   66 |       7 |       0 |    0 |     56.0% |
 | test/built-ins/Map                            |   204 |  114 |   86 |       3 |       0 |    1 |     56.1% |
 | test/built-ins/MapIteratorPrototype           |    11 |    8 |    3 |       0 |       0 |    0 |     72.7% |
@@ -178,7 +178,7 @@ The area of the `engine-classes` branch: classes, generators, async functions, a
 | ---------------------------------------------- | ----: | ----------: | ---------: | ----------: | ---------: |
 | test/language/statements/class                 |  4367 |        2646 |       4126 |       61.2% |      95.5% |
 | test/language/expressions/class                |  4059 |         592 |       3860 |       14.8% |      96.7% |
-| test/language/statements/for-of                |   751 |         503 |        664 |       70.5% |      93.1% |
+| test/language/statements/for-of                |   751 |         503 |        671 |       70.5% |      94.1% |
 | test/language/statements/for-await-of          |  1234 |          87 |       1197 |        7.2% |      99.4% |
 | test/language/expressions/yield                |    63 |          18 |         60 |       29.5% |      98.3% |
 | test/language/statements/generators            |   266 |         203 |        244 |       82.5% |      99.1% |
@@ -194,11 +194,11 @@ The area of the `engine-classes` branch: classes, generators, async functions, a
 | test/language/expressions/new.target           |    14 |           2 |         11 |       14.2% |      78.5% |
 | test/built-ins/GeneratorPrototype              |    61 |          31 |         61 |       50.8% |     100.0% |
 | test/built-ins/AsyncGeneratorPrototype         |    48 |           0 |         48 |        0.0% |     100.0% |
-| test/built-ins/Iterator                        |   654 |          14 |        426 |        2.1% |      65.1% |
+| test/built-ins/Iterator                        |   654 |          14 |        427 |        2.1% |      65.2% |
 | test/built-ins/GeneratorFunction               |    23 |           0 |          4 |        0.0% |      17.3% |
 | test/built-ins/AsyncGeneratorFunction          |    23 |           0 |          4 |        0.0% |      17.3% |
 | test/built-ins/AsyncFromSyncIteratorPrototype  |    38 |           0 |         38 |        0.0% |     100.0% |
-| **Total**                                      | 13182 |        4789 |      12203 |       37.1% |      94.7% |
+| **Total**                                      | 13182 |        4789 |      12211 |       37.1% |      94.8% |
 
 What the area changed:
 
