@@ -22,3 +22,4 @@ delete require.cache[require.resolve("./loads.cjs")];
 console.log("loads", require("./loads.cjs").n, require("./loads.cjs").n);
 delete require.cache[require.resolve("./loads.cjs")];
 console.log("loads again", require("./loads.cjs").n);
+console.log("toString", String(function named(a) { return a; }), String((b) => b));

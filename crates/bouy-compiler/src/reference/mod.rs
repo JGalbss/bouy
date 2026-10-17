@@ -369,7 +369,7 @@ fn lower(
                 linking,
             };
             let functions = if module.kind == Kind::CommonJs {
-                lowerer.commonjs_functions(program)
+                lowerer.commonjs_functions(program, &module.source)
             } else if lowerer.eval.is_some() {
                 lowerer.eval_module_functions(program, &module.source)
             } else {

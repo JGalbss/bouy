@@ -355,8 +355,9 @@ fn path_text(path: &std::path::Path) -> String {
 }
 
 impl<'a> Lowerer<'a, '_> {
-    /// The functions of a `CommonJS` module: `'$cjs'/0` evaluates the wrapper function.
-    pub fn commonjs_functions(&mut self, program: &'a Program<'a>) -> Vec<Function> {
+    /// The functions of a `CommonJS` module: `'$cjs'/0` evaluates the wrapper function, and
+    /// `'$source'/0` holds the wrapped text for Function.prototype.toString.
+    pub fn commonjs_functions(&mut self, program: &'a Program<'a>, source: &str) -> Vec<Function> {
         let wrapper = program.body.iter().find_map(|statement| match statement {
             Statement::ExpressionStatement(statement) => Some(&statement.expression),
             _ => None,
@@ -369,6 +370,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         let mut functions = self.linking.interface();
         functions.push(constant_body("$cjs", body));
+        functions.extend(super::module::source_functions(program, source));
         functions.push(foreign_export(&self.module));
         functions.append(&mut self.extra);
         functions
