@@ -85,10 +85,14 @@ struct Test {
     group: String,
 }
 
-/// A test after compilation: decided already, or compiled into an Erlang file to run.
+/// A test after compilation: decided already, or compiled into Erlang files to run, the
+/// entry module first.
 enum Prepared {
     Decided(Outcome),
-    Compiled { meta: Frontmatter, erlang: PathBuf },
+    Compiled {
+        meta: Frontmatter,
+        erlang: Vec<PathBuf>,
+    },
 }
 
 /// What the VM reports for one test.
@@ -123,6 +127,7 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
         fs::create_dir_all(scratch.join(dir))
             .map_err(|error| format!("cannot write {}: {error}", scratch.display()))?;
     }
+    copy_fixtures(&options.test262, scratch, tests)?;
     let jobs = options
         .jobs
         .unwrap_or_else(|| {
@@ -132,11 +137,11 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
     let prepared = parallel(jobs, tests, |index, test| {
         prepare(&options.test262, scratch, index, &test.path)
     });
-    let compiled: Vec<(usize, &Path)> = prepared
+    let compiled: Vec<(usize, &[PathBuf])> = prepared
         .iter()
         .enumerate()
         .filter_map(|(index, prepared)| match prepared {
-            Prepared::Compiled { erlang, .. } => Some((index, erlang.as_path())),
+            Prepared::Compiled { erlang, .. } => Some((index, erlang.as_slice())),
             Prepared::Decided(_) => None,
         })
         .collect();
@@ -152,6 +157,34 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
             },
         })
         .collect())
+}
+
+/// Copies the fixtures of each directory of the tests into the scratch tree, where each
+/// test is written at its own relative path, so that a test imports its fixtures by the
+/// specifiers it names. A `package.json` of `"type": "module"` makes every `.js` file
+/// an ES module, as test262 expects.
+fn copy_fixtures(test262: &Path, scratch: &Path, tests: &[Test]) -> Result<(), String> {
+    let source = scratch.join("src");
+    fs::write(source.join("package.json"), "{\"type\":\"module\"}\n")
+        .map_err(|error| format!("cannot write the scratch package.json: {error}"))?;
+    let dirs: HashSet<&Path> = tests.iter().filter_map(|test| test.path.parent()).collect();
+    for dir in dirs {
+        let target = source.join(relative(test262, dir));
+        fs::create_dir_all(&target)
+            .map_err(|error| format!("cannot write {}: {error}", target.display()))?;
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            let name = entry.file_name();
+            if path.is_file() && name.to_string_lossy().contains("_FIXTURE") {
+                fs::copy(&path, target.join(&name))
+                    .map_err(|error| format!("cannot copy {}: {error}", path.display()))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The test files under the paths, sorted, without the fixtures that other tests import.
@@ -252,31 +285,46 @@ fn prepare(test262: &Path, scratch: &Path, index: usize, path: &Path) -> Prepare
         Ok(program) => program,
         Err(error) => return Prepared::Decided(Outcome::Fail(error)),
     };
-    let extension = if meta.has_flag("module") { "mjs" } else { "js" };
-    let file = scratch.join("src").join(format!("t{index}.{extension}"));
+    let file = scratch.join("src").join(relative(test262, path));
     if let Err(error) = fs::write(&file, program) {
         return Prepared::Decided(Outcome::Fail(format!("cannot write the program: {error}")));
     }
-    let project = match bouy_compiler::compile_with(&file, Semantics::Reference) {
+    let compiled = if meta.has_flag("module") {
+        bouy_compiler::compile_with(&file, Semantics::Reference)
+    } else {
+        bouy_compiler::compile_script(&file)
+    };
+    let project = match compiled {
         Ok(project) => project,
         Err(diagnostics) => {
             return Prepared::Decided(compile_failure(&meta, &diagnostics, prelude_lines));
         }
     };
+    // A module that does not link throws when the program starts, so a test of phase
+    // `resolution` runs.
     if let Some(negative) = &meta.negative
-        && negative.phase != "runtime"
+        && negative.phase == "parse"
     {
         return Prepared::Decided(Outcome::Fail(format!(
             "expected a {} in phase {}; the test compiled",
             negative.error, negative.phase
         )));
     }
-    let Some(module) = project.modules.first() else {
+    if project.modules.is_empty() {
         return Prepared::Decided(Outcome::Fail("the compiler made no module".to_owned()));
-    };
-    let erlang = scratch.join("erl").join(format!("{}.erl", module.name));
-    if let Err(error) = fs::write(&erlang, &module.erlang) {
-        return Prepared::Decided(Outcome::Fail(format!("cannot write the Erlang: {error}")));
+    }
+    let mut erlang = Vec::new();
+    for module in &project.modules {
+        let file = scratch.join("erl").join(format!("{}.erl", module.name));
+        // Tests that share a fixture write the same file: through a rename, so that the
+        // VM never reads half of it.
+        let staging = file.with_extension(format!("erl.{index}"));
+        if let Err(error) =
+            fs::write(&staging, &module.erlang).and_then(|()| fs::rename(&staging, &file))
+        {
+            return Prepared::Decided(Outcome::Fail(format!("cannot write the Erlang: {error}")));
+        }
+        erlang.push(file);
     }
     Prepared::Compiled { meta, erlang }
 }
@@ -321,6 +369,11 @@ fn program(test262: &Path, meta: &Frontmatter, source: &str) -> Result<(String, 
             prelude.push('\n');
         }
     }
+    // A host runs the harness as a script, whose functions are global properties, and
+    // asyncHelpers.js looks for `$DONE` on the global object.
+    if meta.has_flag("async") {
+        prelude.push_str("globalThis.$DONE = $DONE;\n");
+    }
     let lines = prelude.lines().count();
     prelude.push_str(source);
     Ok((prelude, lines))
@@ -345,7 +398,7 @@ fn compile_failure(
             negative.error
         )),
         Some(negative) if negative.phase == "resolution" => Outcome::Fail(format!(
-            "expected a {} at module resolution, which the engine does not build yet",
+            "expected a {} at module resolution; {first}",
             negative.error
         )),
         _ => Outcome::Compile(first),
@@ -373,20 +426,24 @@ fn run_vm(
     options: &Options,
     scratch: &Path,
     jobs: usize,
-    compiled: &[(usize, &Path)],
+    compiled: &[(usize, &[PathBuf])],
 ) -> Result<HashMap<usize, Run>, String> {
     let runtime = runtime::locate()?;
     let runner = scratch.join("bouy_test262.erl");
     fs::write(&runner, VM_RUNNER).map_err(|error| format!("cannot write the runner: {error}"))?;
     let mut runs = HashMap::new();
-    let mut remaining: Vec<(usize, &Path)> = compiled.to_vec();
+    let mut remaining: Vec<(usize, &[PathBuf])> = compiled.to_vec();
     while !remaining.is_empty() {
         let mut manifest = String::new();
         for (index, erlang) in &remaining {
+            let files: Vec<String> = erlang
+                .iter()
+                .map(|file| file.display().to_string())
+                .collect();
             let _ = writeln!(
                 manifest,
                 "{index}\t{}\t{}",
-                erlang.display(),
+                files.join(","),
                 options.timeout_ms
             );
         }

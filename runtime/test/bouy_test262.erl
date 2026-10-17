@@ -5,10 +5,12 @@
 %%   erl ... -pa <runtime ebin> -pa <dir of this module> -eval 'bouy_test262:main()'
 %%       -extra <manifest> <jobs> <output dir>
 %%
-%% Each line of the manifest is "<index>\t<erl file>\t<timeout ms>". For each test, the
-%% runner prints "START <index>", compiles and loads the module, runs its top-level code
-%% with stdout and stderr captured into <output dir>/<index>.out and .err, and prints
-%% "DONE <index> <status>": the exit status, timeout, memory, or compile.
+%% Each line of the manifest is "<index>\t<erl file>,...\t<timeout ms>": the entry module
+%% of the test, then the modules it imports. For each test, the runner prints
+%% "START <index>", loads the imported modules once per VM (tests share fixtures), compiles
+%% and loads the entry module, runs it with stdout and stderr captured into
+%% <output dir>/<index>.out and .err, and prints "DONE <index> <status>": the exit status,
+%% timeout, memory, or compile.
 -module(bouy_test262).
 
 -export([main/0]).
@@ -26,28 +28,64 @@ main() ->
     {ok, Runtime} = bouy_app:start(normal, []),
     true = unlink(Runtime),
     Next = atomics:new(1, []),
-    Workers = [spawn_monitor(fun() -> worker(Tests, Next, Out) end) || _ <- lists:seq(1, list_to_integer(Jobs))],
+    Loader = spawn(fun() -> loader(#{}) end),
+    Workers = [spawn_monitor(fun() -> worker(Tests, Next, Out, Loader) end) || _ <- lists:seq(1, list_to_integer(Jobs))],
     [receive {'DOWN', Ref, process, Pid, _} -> ok end || {Pid, Ref} <- Workers],
     erlang:halt(0).
 
 parse(Line) ->
-    [Index, File, Timeout] = binary:split(Line, <<"\t">>, [global]),
-    {Index, binary_to_list(File), binary_to_integer(Timeout)}.
+    [Index, Files, Timeout] = binary:split(Line, <<"\t">>, [global]),
+    [File | Imports] = [binary_to_list(F) || F <- binary:split(Files, <<",">>, [global])],
+    {Index, File, Imports, binary_to_integer(Timeout)}.
 
-worker(Tests, Next, Out) ->
+worker(Tests, Next, Out, Loader) ->
     I = atomics:add_get(Next, 1, 1),
     case I =< tuple_size(Tests) of
         true ->
-            run(element(I, Tests), Out),
-            worker(Tests, Next, Out);
+            run(element(I, Tests), Out, Loader),
+            worker(Tests, Next, Out, Loader);
         false ->
             ok
     end.
 
-run({Index, File, Timeout}, Out) ->
+%% Loads each imported module once: tests that run at once share fixtures, and a
+%% second load of a module in use would purge the code that a realm runs.
+loader(Loaded) ->
+    receive
+        {load, File, From} ->
+            Result = case Loaded of
+                #{File := Known} -> Known;
+                _ -> load(File)
+            end,
+            From ! {loaded, File, Result},
+            loader(Loaded#{File => Result})
+    end.
+
+load(File) ->
+    case compile:file(File, [binary, return_errors, nowarn_unused_vars]) of
+        {ok, Module, Binary} ->
+            {module, Module} = code:load_binary(Module, File, Binary),
+            ok;
+        Failed ->
+            {error, Failed}
+    end.
+
+load_imports(Imports, Loader) ->
+    lists:foldl(fun(File, ok) ->
+                        Loader ! {load, File, self()},
+                        receive {loaded, File, Result} -> Result end;
+                   (_, Failed) ->
+                        Failed
+                end, ok, Imports).
+
+run({Index, File, Imports, Timeout}, Out, Loader) ->
     io:format("START ~ts~n", [Index]),
     Base = filename:join(Out, binary_to_list(Index)),
-    Status = case compile:file(File, [binary, return_errors, nowarn_unused_vars]) of
+    Compiled = case load_imports(Imports, Loader) of
+        ok -> compile:file(File, [binary, return_errors, nowarn_unused_vars]);
+        ImportFailed -> ImportFailed
+    end,
+    Status = case Compiled of
         {ok, Module, Binary} ->
             {module, Module} = code:load_binary(Module, File, Binary),
             Result = execute(Module, Timeout, Base),
@@ -55,6 +93,10 @@ run({Index, File, Timeout}, Out) ->
             _ = code:delete(Module),
             _ = code:purge(Module),
             Result;
+        {error, Rejected} ->
+            ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected an imported module: ~0tP~n", [Rejected, 12])),
+            ok = file:write_file(Base ++ ".out", <<>>),
+            "compile";
         Failed ->
             ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected the module: ~0tP~n", [Failed, 12])),
             ok = file:write_file(Base ++ ".out", <<>>),
