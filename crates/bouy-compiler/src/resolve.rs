@@ -209,11 +209,11 @@ impl Resolver {
             return Ok(Target::Builtin(name));
         }
         if let Some(path) = specifier.strip_prefix("file://") {
-            return finish_esm(PathBuf::from(decode(path)), specifier, importer);
+            return finish_esm(PathBuf::from(decode(path)), importer);
         }
         if is_path(specifier) {
             let base = importer.parent().unwrap_or(Path::new("/"));
-            return finish_esm(normalize(&base.join(specifier)), specifier, importer);
+            return finish_esm(normalize(&base.join(specifier)), importer);
         }
         if specifier.starts_with('#') {
             let target = self.imports_resolve(specifier, importer, Mode::Import)?;
@@ -244,7 +244,7 @@ impl Resolver {
         mode: Mode,
     ) -> Result<Target, Failure> {
         match (target, mode) {
-            (Target::File(path), Mode::Import) => finish_esm(path, specifier, importer),
+            (Target::File(path), Mode::Import) => finish_esm(path, importer),
             (Target::File(path), Mode::Require) => self
                 .load_file_or_directory(&path)
                 .map(Target::File)
@@ -746,7 +746,7 @@ fn split_package(specifier: &str) -> Option<(&str, String)> {
 }
 
 /// The end of ESM resolution: the file must exist and must not be a directory.
-fn finish_esm(path: PathBuf, specifier: &str, importer: &Path) -> Result<Target, Failure> {
+fn finish_esm(path: PathBuf, importer: &Path) -> Result<Target, Failure> {
     if path.is_file() {
         return Ok(Target::File(path));
     }
@@ -763,15 +763,11 @@ fn finish_esm(path: PathBuf, specifier: &str, importer: &Path) -> Result<Target,
             ),
         });
     }
-    let shown = if is_path(specifier) || specifier.starts_with("file:") {
-        path.display().to_string()
-    } else {
-        specifier.to_owned()
-    };
     Err(Failure {
         code: "ERR_MODULE_NOT_FOUND",
         message: format!(
-            "Cannot find module '{shown}' imported from {}",
+            "Cannot find module '{}' imported from {}",
+            path.display(),
             importer.display()
         ),
     })

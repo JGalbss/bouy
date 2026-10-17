@@ -1,0 +1,9 @@
+import condition esm util for node dual-pkg
+require condition cjs util for node
+patterns an ES module found by syntax | a CommonJS module found by syntax
+not exported ERR_PACKAGE_PATH_NOT_EXPORTED
+not exported ERR_PACKAGE_PATH_NOT_EXPORTED
+legacy main main without an extension | a subpath of a package without exports
+require probes true
+import does not probe ERR_MODULE_NOT_FOUND
+type module a .js file of a package of type module

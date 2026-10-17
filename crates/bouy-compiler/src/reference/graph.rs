@@ -192,36 +192,7 @@ pub fn load(entry: &Path, root: &Path, script: bool) -> Result<Graph, Vec<Diagno
                 continue;
             }
         };
-        let mut specifiers = scanned.specifiers;
-        // A module that only `require.resolve` names is not loaded.
-        specifiers.sort_by_key(|(_, _, resolve_only)| *resolve_only);
-        let mut requests = Vec::new();
-        for (specifier, mode, resolve_only) in &specifiers {
-            if requests
-                .iter()
-                .any(|request: &Request| &request.specifier == specifier && request.mode == *mode)
-            {
-                continue;
-            }
-            let target = match resolver.resolve(specifier, &path, *mode) {
-                Ok(Target::File(found)) if *resolve_only && !index.contains_key(&found) => {
-                    Resolved::Path(found)
-                }
-                Ok(Target::File(found)) => {
-                    Resolved::Unit(enqueue(&mut index, &mut queue, found.clone()), found)
-                }
-                Ok(Target::Builtin(builtin)) => Resolved::Builtin(builtin),
-                Err(failure) => Resolved::Missing(failure),
-            };
-            requests.push(Request {
-                specifier: specifier.clone(),
-                mode: *mode,
-                resolved: target,
-            });
-        }
-        for found in speculative(&path, &scanned.dynamic) {
-            enqueue(&mut index, &mut queue, found);
-        }
+        let requests = requests_of(&resolver, &path, &scanned, &mut index, &mut queue);
         units.push(Unit {
             path,
             name,
@@ -234,6 +205,103 @@ pub fn load(entry: &Path, root: &Path, script: bool) -> Result<Graph, Vec<Diagno
         });
     }
     Ok(Graph { units })
+}
+
+/// The requests of a module: its string specifiers, then the bare strings that a
+/// computed specifier may be. It queues the files of the program that they name.
+fn requests_of(
+    resolver: &Resolver,
+    path: &Path,
+    scanned: &Scanned,
+    index: &mut HashMap<PathBuf, usize>,
+    queue: &mut VecDeque<PathBuf>,
+) -> Vec<Request> {
+    let mut specifiers = scanned.specifiers.clone();
+    // A module that only `require.resolve` names is not loaded.
+    specifiers.sort_by_key(|(_, _, resolve_only)| *resolve_only);
+    let mut requests: Vec<Request> = Vec::new();
+    for (specifier, mode, resolve_only) in specifiers {
+        if requests
+            .iter()
+            .any(|request| request.specifier == specifier && request.mode == mode)
+        {
+            continue;
+        }
+        let target = match resolver.resolve(&specifier, path, mode) {
+            Ok(Target::File(found)) if resolve_only && !index.contains_key(&found) => {
+                Resolved::Path(found)
+            }
+            result => resolved_of(result, index, queue),
+        };
+        requests.push(Request {
+            specifier,
+            mode,
+            resolved: target,
+        });
+    }
+    for found in speculative(path, &scanned.dynamic) {
+        enqueue(index, queue, found);
+    }
+    for (specifier, mode, result) in bare_requests(resolver, path, &scanned.dynamic, &requests) {
+        requests.push(Request {
+            specifier,
+            mode,
+            resolved: resolved_of(result, index, queue),
+        });
+    }
+    requests
+}
+
+fn resolved_of(
+    result: Result<Target, Failure>,
+    index: &mut HashMap<PathBuf, usize>,
+    queue: &mut VecDeque<PathBuf>,
+) -> Resolved {
+    match result {
+        Ok(Target::File(found)) => Resolved::Unit(enqueue(index, queue, found.clone()), found),
+        Ok(Target::Builtin(builtin)) => Resolved::Builtin(builtin),
+        Err(failure) => Resolved::Missing(failure),
+    }
+}
+
+/// Whether a string looks like a bare specifier: a package name, then a subpath.
+fn looks_bare(text: &str) -> bool {
+    let first = text.chars().next();
+    text.len() < 214
+        && first.is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '@')
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "@/._-".contains(c))
+}
+
+/// The requests of the bare strings of a module that computes a specifier: each that
+/// resolves, or fails for a reason other than a missing package, such as a subpath
+/// that `exports` does not export.
+fn bare_requests(
+    resolver: &Resolver,
+    path: &Path,
+    dynamic: &Dynamic,
+    known: &[Request],
+) -> Vec<(String, Mode, Result<Target, Failure>)> {
+    if !dynamic.computed {
+        return Vec::new();
+    }
+    let mut found = Vec::new();
+    for text in &dynamic.bare {
+        for mode in [Mode::Require, Mode::Import] {
+            if known
+                .iter()
+                .any(|request| request.specifier == *text && request.mode == mode)
+            {
+                continue;
+            }
+            match resolver.resolve(text, path, mode) {
+                Err(failure) if failure.code.ends_with("MODULE_NOT_FOUND") => {}
+                result => found.push((text.clone(), mode, result)),
+            }
+        }
+    }
+    found
 }
 
 /// The index of the module at `found`, queued when it is new.
@@ -343,6 +411,8 @@ struct Dynamic {
     computed: bool,
     /// The strings of the module that look like relative paths.
     strings: Vec<String>,
+    /// The strings of the module that look like bare specifiers, such as `pkg/sub`.
+    bare: Vec<String>,
     /// The templates of computed specifiers, each expression as `*`.
     patterns: Vec<String>,
 }
@@ -812,6 +882,8 @@ impl<'a> Visit<'a> for Requests {
         let text = it.value.as_str();
         if (text.starts_with("./") || text.starts_with("../")) && text.len() < 256 {
             self.dynamic.strings.push(text.to_owned());
+        } else if looks_bare(text) {
+            self.dynamic.bare.push(text.to_owned());
         }
     }
 
