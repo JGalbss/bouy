@@ -31,9 +31,6 @@ const HOST: &str = "function print(message) { console.log(String(message)); }\n"
 /// The VM half of the runner, which the VM compiles when it starts.
 const VM_RUNNER: &str = include_str!("../../../../runtime/test/bouy_test262.erl");
 
-/// The times the runner starts a new VM for the tests that a crashed VM did not run.
-const VM_STARTS: usize = 5;
-
 #[derive(Debug, Parser)]
 #[command(
     name = "test262-dev",
@@ -370,7 +367,8 @@ fn describe(diagnostic: &Diagnostic, prelude_lines: usize) -> String {
 }
 
 /// Runs the compiled tests in one VM, and starts another for the tests that a VM which
-/// crashed did not start. Returns the run of each test that finished.
+/// crashed did not start, as long as each VM starts a test. Returns the run of each test
+/// that finished.
 fn run_vm(
     options: &Options,
     scratch: &Path,
@@ -382,10 +380,7 @@ fn run_vm(
     fs::write(&runner, VM_RUNNER).map_err(|error| format!("cannot write the runner: {error}"))?;
     let mut runs = HashMap::new();
     let mut remaining: Vec<(usize, &Path)> = compiled.to_vec();
-    for _ in 0..VM_STARTS {
-        if remaining.is_empty() {
-            break;
-        }
+    while !remaining.is_empty() {
         let mut manifest = String::new();
         for (index, erlang) in &remaining {
             let _ = writeln!(
@@ -399,6 +394,10 @@ fn run_vm(
         fs::write(&manifest_path, manifest)
             .map_err(|error| format!("cannot write the manifest: {error}"))?;
         let started = vm_pass(&runtime, scratch, &runner, &manifest_path, jobs, &mut runs)?;
+        if started.is_empty() {
+            eprintln!("test262-dev: the VM stopped before it started a test");
+            break;
+        }
         remaining.retain(|(index, _)| !runs.contains_key(index) && !started.contains(index));
     }
     Ok(runs)
