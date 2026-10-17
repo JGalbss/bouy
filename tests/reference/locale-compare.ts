@@ -1,6 +1,7 @@
 // localeCompare against ICU's root collation: punctuation, digits, and
 // letters in order, accents and case as later levels, and the letters
-// that expand, such as ß; a fixed list and a generated sort.
+// that expand, such as ß; a fixed list, a generated sort, and the
+// sensitivity, numeric, and caseFirst options.
 const words = [
   "apple",
   "Apple",
@@ -108,4 +109,28 @@ console.log(
     .slice()
     .sort((a, b) => a.localeCompare(b) || (a < b ? -1 : a > b ? 1 : 0))
     .join("|"),
+);
+const c = (a: string, b: string, o?: Intl.CollatorOptions) => a.localeCompare(b, undefined, o);
+console.log(
+  c("a", "A", { sensitivity: "base" }),
+  c("a", "á", { sensitivity: "base" }),
+  c("a", "á", { sensitivity: "accent" }),
+  c("a", "A", { sensitivity: "accent" }),
+  c("a", "A", { sensitivity: "case" }),
+  c("a", "á", { sensitivity: "case" }),
+  c("a", "b", { sensitivity: "base" }),
+);
+console.log(
+  c("file10", "file2", { numeric: true }),
+  c("file10", "file2"),
+  c("a01", "a1", { numeric: true }),
+  c("a1", "a01", { numeric: true }),
+  c("x9", "x10", { numeric: true }),
+  c("1.5", "1.10", { numeric: true }),
+  c("A", "a", { caseFirst: "upper" }),
+);
+console.log(
+  ["b10", "a2", "b9", "A1", "a10"]
+    .sort((x, y) => c(x, y, { numeric: true, sensitivity: "base" }))
+    .join(","),
 );

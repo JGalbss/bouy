@@ -428,23 +428,67 @@ is_case_ignorable(C) ->
 %% order, then digits, then letters without case or accents), then the
 %% accents in ICU's order of their weights, then lowercase before
 %% uppercase. Canonically equivalent strings compare equal.
-locale_compare(A, B) ->
-    KeyA = collation_key(A),
-    KeyB = collation_key(B),
+%% The options of Intl.Collator that localeCompare honors: sensitivity,
+%% numeric, and caseFirst.
+locale_compare(A, B, Options) ->
+    KeyA = collation_key(A, Options),
+    KeyB = collation_key(B, Options),
     if
         KeyA < KeyB -> -1;
         KeyA > KeyB -> 1;
         true -> 0
     end.
 
-collation_key(S) ->
+collation_options(O) when ?IS_OBJECT(O) ->
+    Sensitivity = case bouy_ref:get(O, <<"sensitivity">>) of
+        undefined -> variant;
+        V ->
+            case bouy_ref:to_string(V) of
+                <<"base">> -> base;
+                <<"accent">> -> accent;
+                <<"case">> -> 'case';
+                <<"variant">> -> variant;
+                _ -> bouy_heap:throw_error('RangeError', <<"Value of sensitivity is out of range">>)
+            end
+    end,
+    CaseFirst = case bouy_ref:get(O, <<"caseFirst">>) of
+        undefined -> lower;
+        F ->
+            case bouy_ref:to_string(F) of
+                <<"upper">> -> upper;
+                _ -> lower
+            end
+    end,
+    #{sensitivity => Sensitivity, numeric => bouy_ref:truthy(bouy_ref:get(O, <<"numeric">>)), case_first => CaseFirst};
+collation_options(_) -> #{sensitivity => variant, numeric => false, case_first => lower}.
+
+collation_key(S, #{sensitivity := Sensitivity, numeric := Numeric, case_first := CaseFirst}) ->
     Decomposed = unicode:characters_to_nfd_list([scalar(C) || C <- code_points(S)]),
-    Elements = collation_elements(Decomposed),
-    {[P || {P, _, _} <- Elements], [W || {_, W, _} <- Elements], [T || {_, _, T} <- Elements]}.
+    Elements = collation_elements(case Numeric of
+                                      true -> numbers(Decomposed);
+                                      false -> Decomposed
+                                  end),
+    Primary = [P || {P, _, _} <- Elements],
+    Secondary = [W || {_, W, _} <- Elements],
+    Tertiary = [case CaseFirst of upper -> 1 - T; lower -> T end || {_, _, T} <- Elements],
+    case Sensitivity of
+        base -> {Primary};
+        accent -> {Primary, Secondary};
+        'case' -> {Primary, Tertiary};
+        variant -> {Primary, Secondary, Tertiary}
+    end.
+
+%% For numeric collation, each run of ASCII digits becomes {number, Value}.
+numbers([]) -> [];
+numbers([C | _] = Chars) when C >= $0, C =< $9 ->
+    {Digits, Rest} = lists:splitwith(fun(D) -> D >= $0 andalso D =< $9 end, Chars),
+    [{number, list_to_integer(Digits)} | numbers(Rest)];
+numbers([C | Rest]) -> [C | numbers(Rest)].
 
 %% The {Primary, Secondary, Tertiary} weights of each base character, its
 %% accents folded into its secondary weight.
 collation_elements([]) -> [];
+collation_elements([{number, N} | Rest]) -> [{{2, N}, [], 0} | collation_elements(Rest)];
 collation_elements([C | Rest]) ->
     {Marks, Rest1} = lists:splitwith(fun is_mark/1, Rest),
     Accents = [mark_weight(M) || M <- Marks],
@@ -487,6 +531,7 @@ mark_weight(M) ->
         I -> I
     end.
 
+is_mark({number, _}) -> false;
 is_mark(C) ->
     case unicode_util:category(C) of
         {mark, _} -> true;
@@ -582,7 +627,7 @@ proto(<<"toWellFormed">>, S, _Args) ->
         true -> S;
         false -> from_code_points([scalar(C) || C <- code_points(S)])
     end;
-proto(<<"localeCompare">>, S, Args) -> locale_compare(S, bouy_ref:to_string(arg(1, Args)));
+proto(<<"localeCompare">>, S, Args) -> locale_compare(S, bouy_ref:to_string(arg(1, Args)), collation_options(arg(3, Args)));
 proto(<<"padEnd">>, S, Args) -> pad(S, arg(1, Args), arg(2, Args), trailing);
 proto(<<"padStart">>, S, Args) -> pad(S, arg(1, Args), arg(2, Args), leading);
 proto(<<"repeat">>, S, Args) ->
