@@ -42,8 +42,8 @@ constructor() -> bouy_ref_realm:constructor(?MODULE, <<"String">>).
 
 methods() ->
     [<<"at">>, <<"charAt">>, <<"charCodeAt">>, <<"codePointAt">>, <<"concat">>, <<"endsWith">>, <<"includes">>, <<"indexOf">>,
-     <<"lastIndexOf">>, <<"localeCompare">>, <<"padEnd">>, <<"padStart">>, <<"repeat">>, <<"replace">>, <<"replaceAll">>,
-     <<"slice">>, <<"split">>, <<"startsWith">>, <<"substring">>, <<"substr">>, <<"toLowerCase">>, <<"toUpperCase">>,
+     <<"lastIndexOf">>, <<"localeCompare">>, <<"match">>, <<"matchAll">>, <<"padEnd">>, <<"padStart">>, <<"repeat">>,
+     <<"replace">>, <<"replaceAll">>, <<"search">>, <<"slice">>, <<"split">>, <<"startsWith">>, <<"substring">>, <<"substr">>, <<"toLowerCase">>, <<"toUpperCase">>,
      <<"toLocaleLowerCase">>, <<"toLocaleUpperCase">>, <<"toString">>, <<"valueOf">>, <<"trim">>, <<"trimStart">>,
      <<"trimEnd">>, <<"normalize">>].
 
@@ -53,6 +53,10 @@ call_constructor(<<"String">>, _This, [{'$sym', _, _} = S | _]) -> bouy_ref:desc
 call_constructor(<<"String">>, _This, [V | _]) -> bouy_ref:to_string(V).
 
 -spec method(binary(), binary(), term(), list()) -> term().
+method(<<"String.prototype">>, Name, This, Args)
+  when Name =:= <<"match">>; Name =:= <<"matchAll">>; Name =:= <<"replace">>; Name =:= <<"replaceAll">>;
+       Name =:= <<"search">>; Name =:= <<"split">> ->
+    bouy_ref_regexp:string_method(Name, This, Args);
 method(<<"String.prototype">>, Name, This, Args) -> proto(Name, this_string(This, Name), Args);
 method(<<"String">>, <<"fromCharCode">>, _This, Args) ->
     from_units([bouy_ref_number:to_uint32(bouy_ref:to_number(A)) band 16#FFFF || A <- Args]);
@@ -299,8 +303,6 @@ proto(<<"repeat">>, S, Args) ->
         N when is_integer(N), N >= 0 -> concat(lists:duplicate(N, S));
         _ -> bouy_heap:throw_error('RangeError', concat(<<"Invalid count value: ">>, bouy_ref:to_string(bouy_ref:to_number(arg(1, Args)))))
     end;
-proto(<<"replace">>, S, Args) -> replace(S, bouy_ref:to_string(arg(1, Args)), arg(2, Args), first);
-proto(<<"replaceAll">>, S, Args) -> replace(S, bouy_ref:to_string(arg(1, Args)), arg(2, Args), all);
 proto(<<"slice">>, S, Args) ->
     Length = length_of(S),
     Start = relative(arg(1, Args), 0, Length),
@@ -322,16 +324,6 @@ proto(<<"substr">>, S, Args) ->
         C -> clamp(C, 0, Length - Start)
     end,
     slice(S, Start, Start + Count);
-proto(<<"split">>, S, Args) ->
-    Limit = case arg(2, Args) of
-        undefined -> 16#FFFFFFFF;
-        L -> bouy_ref_number:to_uint32(bouy_ref:to_number(L))
-    end,
-    Parts = case arg(1, Args) of
-        undefined -> [S];
-        Separator -> split(S, bouy_ref:to_string(Separator))
-    end,
-    bouy_heap:new_array(lists:sublist(Parts, Limit));
 proto(Name, S, _Args) when Name =:= <<"toLowerCase">>; Name =:= <<"toLocaleLowerCase">> ->
     from_utf8(string:lowercase(to_utf8(S)));
 proto(Name, S, _Args) when Name =:= <<"toUpperCase">>; Name =:= <<"toLocaleUpperCase">> ->
@@ -355,9 +347,9 @@ proto(<<"normalize">>, S, Args) ->
     end,
     from_utf8(Normal).
 
-%% endsWith, startsWith, and includes reject a regular expression.
+%% endsWith, startsWith, and includes reject a regular expression (IsRegExp).
 search_string(Name, V) ->
-    case ?IS_OBJECT(V) andalso bouy_heap:class_of(V) =:= regexp of
+    case bouy_ref_regexp:is_regexp(V) of
         true -> bouy_ref:type_error(<<"First argument to String.prototype.", Name/binary, " must not be a regular expression">>);
         false -> bouy_ref:to_string(V)
     end.
@@ -423,44 +415,3 @@ trim(S, Side) ->
         _ -> lists:reverse(lists:dropwhile(fun is_whitespace/1, lists:reverse(Start)))
     end,
     from_units(Both).
-
-split(S, <<>>) -> [unit_string(S, I) || I <- lists:seq(0, length_of(S) - 1)];
-split(S, Separator) -> split(S, Separator, 0, []).
-
-split(S, Separator, From, Acc) ->
-    case index_of(S, Separator, From) of
-        -1 -> lists:reverse([slice(S, From, length_of(S)) | Acc]);
-        I -> split(S, Separator, I + length_of(Separator), [slice(S, From, I) | Acc])
-    end.
-
-%% String.prototype.replace and replaceAll with a string pattern.
-replace(S, Pattern, Replacement, Count) ->
-    Positions = matches(S, Pattern, 0, Count),
-    PatternLength = length_of(Pattern),
-    Replace = case bouy_heap:is_callable(Replacement) of
-        true ->
-            fun(Pos) -> bouy_ref:to_string(bouy_ref:call(Replacement, undefined, [Pattern, Pos, S])) end;
-        false ->
-            Template = bouy_ref:to_string(Replacement),
-            fun(Pos) -> substitution(units(Template), S, Pattern, Pos) end
-    end,
-    {Parts, End} = lists:mapfoldl(fun(Pos, From) ->
-                                          {[slice(S, From, Pos), Replace(Pos)], Pos + PatternLength}
-                                  end, 0, Positions),
-    concat(lists:append(Parts) ++ [slice(S, End, length_of(S))]).
-
-matches(S, Pattern, From, Count) ->
-    case index_of(S, Pattern, From) of
-        -1 -> [];
-        I when Count =:= first -> [I];
-        I -> [I | matches(S, Pattern, I + max(1, length_of(Pattern)), Count)]
-    end.
-
-%% GetSubstitution without captures: $$, $&, $`, and $'.
-substitution([$$, $$ | Rest], S, Matched, Pos) -> concat(<<"$">>, substitution(Rest, S, Matched, Pos));
-substitution([$$, $& | Rest], S, Matched, Pos) -> concat(Matched, substitution(Rest, S, Matched, Pos));
-substitution([$$, $` | Rest], S, Matched, Pos) -> concat(slice(S, 0, Pos), substitution(Rest, S, Matched, Pos));
-substitution([$$, $' | Rest], S, Matched, Pos) ->
-    concat(slice(S, min(Pos + length_of(Matched), length_of(S)), length_of(S)), substitution(Rest, S, Matched, Pos));
-substitution([U | Rest], S, Matched, Pos) -> concat(from_units([U]), substitution(Rest, S, Matched, Pos));
-substitution([], _S, _Matched, _Pos) -> <<>>.

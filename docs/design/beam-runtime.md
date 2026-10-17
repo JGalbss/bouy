@@ -465,7 +465,7 @@ Text crosses the boundary of the engine in two functions. `bouy_ref_string:from_
 
 The heap entry of an object is the record `{Class, Proto, Props, Keys, Attrs, Slots}` under its integer id in the process dictionary:
 
-- `Class` is the kind of the object: `object`, `array`, `function`, `error`, `map`, `set`, `promise`, `generator`, `list_iterator`, or `date`.
+- `Class` is the kind of the object: `object`, `array`, `function`, `error`, `map`, `set`, `promise`, `generator`, `list_iterator`, `date`, `regexp`, or `regexp_string_iterator`.
 - `Proto` is `null` or an object or function value.
 - `Props` maps each key to a value, or to `{'$accessor', Get, Set}`.
 - `Keys` holds the string and symbol keys, newest first.
@@ -508,6 +508,7 @@ The runtime has these modules:
 | `bouy_jobs`         | The job queue, promises, timers, and actors                                                                                                                                                                   |
 | `bouy_ref_realm`    | Installs the intrinsics of every family, and holds the global object and the global functions                                                                                                                 |
 | `bouy_ref_<family>` | One family of built-ins each: `object`, `function`, `boolean`, `symbol`, `error`, `number`, `math`, `bigint`, `string`, `regexp`, `array`, `iterator`, `collection`, `promise`, `json`, `date`, and `console` |
+| `bouy_regexp_*`     | The regular expression engine of section 17.8: `syntax`, `match`, `charset`, and `unicode`                                                                                                                    |
 
 A family exports `intrinsics/0`, its static records as `[{Id, Record}]`, and `globals/0`, its global bindings as `[{Name, Value}]`. Its builtin methods call its `method(Owner, Name, This, Args)`, and a constructor called without `new` calls its `call_constructor(Name, This, Args)`. `bouy_ref_realm:families/0` lists the families. `runtime/src/bouy_ref.hrl` holds the macros that the modules share, such as `?IS_STRING/1` and `?IS_NUMBER/1`.
 
@@ -515,4 +516,17 @@ A family exports `intrinsics/0`, its static records as `[{Id, Record}]`, and `gl
 
 - `tests/reference/*.ts`: programs whose output must equal the output that Node recorded (section 15). `number-representation.ts` and `string-representation.ts` check the forms of section 17.1.
 - `runtime/test/bouy_ref_number_tests.erl` and `bouy_ref_string_tests.erl`: the canonical forms, the arithmetic edge cases, and the string boundaries.
+- `runtime/test/bouy_regexp_tests.erl`: the parser and its early errors, the matcher on the examples of 22.2.2, the CharSets, and the Unicode tables. `tests/reference/regexp-*.ts` check RegExp and the String pattern methods against Node.
 - `scripts/test262-dev.sh <path>...`: the development runner for test262. It fetches tc39/test262 at the commit that the test harness pins into `~/.cache/bouy/test262` and builds `crates/bouy-cli/src/bin/test262-dev.rs`. The runner writes `"use strict";`, a `print` function for the host, `assert.js`, `sta.js`, `doneprintHandle.js` for an `async` test, and the `includes` of the frontmatter before each test, and compiles the program with `--semantics reference`. A `raw` test runs as it is, and a `module` test is a `.mjs` file. Then one VM runs the compiled tests with `runtime/test/bouy_test262.erl`, each in a realm process of its own with its stdout and stderr captured. Such a realm sets `'$bouy_exit'` and `'$bouy_stderr'` in its process dictionary, so `bouy_ref:exit_program/1` ends the realm instead of the VM and `bouy_ref:stderr/0` names the capture. A `negative` test passes when its error happens in its phase: a `BOUY200` diagnostic for `parse`, and an uncaught error of its type for `runtime`. The engine compiles every file as strict code, so the runner skips `noStrict` tests. It prints each failure with its first error line, and then a table per directory. `--jobs`, `--timeout-ms` (10,000 by default), and `--failures <file>` change the run. `--jobs` defaults to half the cores, at most 8. The VM runs `bouy_guard` with a `BOUY_MAX_MEMORY` of 1 GB plus 256 MB for each job, and each realm process has a `max_heap_size` of 256 MB that counts its large binaries. When the VM stops, the runner starts a new VM for the tests that did not start, as long as each VM starts a test. `docs/design/engine-progress.md` records the counts of each run over `test/language` and `test/built-ins`.
+
+### 17.8 Regular expressions
+
+The engine matches regular expressions in Erlang, with the semantics of ECMA-262 22.2, and does not use the PCRE library of OTP `re`. PCRE reads Latin-1 or UTF-8, so it cannot hold a lone surrogate. It also differs from JavaScript in the captures of a repeated group, the empty check of a quantifier, and a backreference to a group that has not matched. Bun runs JSC's Yarr, and Boa runs regress: both are backtracking engines of their own, and Bouy follows them.
+
+- `bouy_regexp_syntax` parses a pattern with the grammar of 22.2.1, the extensions of Annex B.1.2 for a pattern without `u` or `v`, and the early errors. It reads code points with `u` or `v` and code units without them.
+- `bouy_regexp_match` compiles the tree into the Matcher closures of 22.2.2 and runs them. A Matcher is `fun(Input, Index, Captures, Continue)`, and a failure returns `false` to the last choice point. A node without choice points, such as a character, a class, a literal, or an assertion, compiles to a step `fun(Input, Index) -> Index | false`. A quantified step backtracks in a loop, so a long run does not deepen the stack. Indexes count code units in every mode, and with `u` or `v` a surrogate pair is one character.
+- `bouy_regexp_charset` holds the CharSets as sorted range lists, the class escapes, the properties, and the case mappings. With `i`, a class compiles to its closure under Canonicalize, so the matcher tests membership only.
+- `bouy_regexp_unicode` holds the Unicode data: the properties of Tables 65, 66, and 67, simple case folding, and the uppercase mapping of a BMP pattern. `scripts/regexp-unicode.escript` writes it from the Unicode Character Database, at the version that the test262 property escape tests name.
+- `bouy_ref_regexp` holds `RegExp`, `RegExp.prototype`, the RegExp String Iterator, and the six methods of `String.prototype` that take a pattern. A RegExp object has the class `regexp`. Its slots hold the source, the flags, the compiled matcher, and the group names. Each realm keeps the matchers it compiled, keyed by source and flags, so a literal in a loop compiles once.
+
+The compiler lowers a regular expression literal to `bouy_ref_regexp:literal/2`, which makes a new object each time it runs. The parser of oxc checks the pattern of each literal, so an invalid literal is a `BOUY200` diagnostic, as an early error must be.

@@ -125,6 +125,7 @@ object(O, Level, Indent, Stack) ->
         generator -> <<"Object [Generator] {}">>;
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
         date -> bouy_date:call(<<"toISOString">>, {'$date', bouy_heap:slots(O)}, []);
+        regexp -> bouy_ref_regexp:display(O);
         _ -> plain(O, Level, Indent, Stack)
     end.
 

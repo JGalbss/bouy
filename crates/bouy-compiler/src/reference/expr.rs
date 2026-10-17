@@ -26,6 +26,7 @@ impl<'a> Lowerer<'a, '_> {
                 js_string_literal(literal.value.as_str(), literal.lone_surrogates)
             }
             Expression::TemplateLiteral(template) => self.template(template),
+            Expression::RegExpLiteral(literal) => self.regexp(literal),
             Expression::Identifier(ident) => self.identifier(ident),
             Expression::ThisExpression(_) => self.this_expr(),
             Expression::ArrayExpression(array) => self.array(array),
@@ -79,7 +80,6 @@ impl<'a> Lowerer<'a, '_> {
             other => {
                 let what = match other {
                     Expression::BigIntLiteral(_) => "a BigInt literal",
-                    Expression::RegExpLiteral(_) => "a regular expression literal",
                     Expression::ClassExpression(_) => "a class expression",
                     Expression::TaggedTemplateExpression(_) => "a tagged template",
                     Expression::ImportExpression(_) => "`import()`",

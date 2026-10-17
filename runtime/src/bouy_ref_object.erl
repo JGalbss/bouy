@@ -69,6 +69,7 @@ tag(V) when ?IS_OBJECT(V) ->
                 error -> <<"Error">>;
                 date -> <<"Date">>;
                 arguments -> <<"Arguments">>;
+                regexp -> <<"RegExp">>;
                 _ -> <<"Object">>
             end
     end;

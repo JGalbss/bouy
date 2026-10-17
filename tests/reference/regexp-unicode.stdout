@@ -1,0 +1,14 @@
+["a","\ud83d","\ude00","b"] ["a","😀","b"] true false
+true true false true
+["DÉF","Ω"] ["αβγ"] ["12;"]
+["😀","🎉"] true true
+false true true false true true
+false true true false false true
+["DEF"] ["abc"] ["x","x","abc","d"]
+["👍🏽","🇫🇷"] ["12;"] false
+["22"] 3 4
+\x61\.b\*c\? \x31\+1\x3d2 \x68ello\x20world _\x2d\$
+SyntaxError Invalid regular expression: /\p{Unknown_Property}/u: Invalid property name
+SyntaxError Invalid regular expression: /[a-z&&b]/v: Invalid set operation in character class
+SyntaxError Invalid regular expression: /\P{RGI_Emoji}/v: Invalid property name
+SyntaxError Invalid regular expression: /(?i-i:a)/: Repeated flag in flag group

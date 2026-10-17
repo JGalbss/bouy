@@ -13,7 +13,7 @@
 intrinsics() ->
     [{'Symbol.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Symbol.prototype">>, [<<"toString">>, <<"valueOf">>]) ++ [{<<"constructor">>, constructor()}], none)},
      {{builtin, <<"Symbol">>}, ctor_record(<<"Symbol">>, 0, {'$o', 'Symbol.prototype'}, ?METHODS(<<"Symbol">>, [<<"for">>, <<"keyFor">>])
-         ++ [{atom_to_binary(W), ?SYM(W)} || W <- [iterator, asyncIterator, hasInstance, toPrimitive, toStringTag]], fun bouy_ref_realm:not_constructible/2)}].
+         ++ [{atom_to_binary(W), ?SYM(W)} || W <- [iterator, asyncIterator, hasInstance, toPrimitive, toStringTag, match, matchAll, replace, search, split, species]], fun bouy_ref_realm:not_constructible/2)}].
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{<<"Symbol">>, constructor()}].
