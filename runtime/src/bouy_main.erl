@@ -33,6 +33,7 @@ boot() ->
     %% mangle the characters outside latin1.
     ok = io:setopts(standard_io, [{encoding, unicode}]),
     ok = io:setopts(standard_error, [{encoding, unicode}]),
+    ok = bouy_guard:start(),
     persistent_term:put({bouy, stdout}, group_leader()),
     case init:get_plain_arguments() of
         [Build, Entry, EntryPath, Modules | Args] ->

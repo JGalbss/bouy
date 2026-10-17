@@ -128,7 +128,9 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
     }
     let jobs = options
         .jobs
-        .unwrap_or_else(|| thread::available_parallelism().map_or(4, usize::from))
+        .unwrap_or_else(|| {
+            thread::available_parallelism().map_or(4, |cores| (usize::from(cores) / 2).clamp(1, 8))
+        })
         .max(1);
     let prepared = parallel(jobs, tests, |index, test| {
         prepare(&options.test262, scratch, index, &test.path)
@@ -433,6 +435,8 @@ fn vm_pass(
     .arg(jobs.to_string())
     .arg(&out)
     .env("ERL_CRASH_DUMP_SECONDS", "0")
+    // Each realm may hold 256 MB (bouy_test262.erl); the VM gets that per job plus 1 GB.
+    .env("BOUY_MAX_MEMORY", format!("{}M", 1024 + jobs * 256))
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::inherit());
@@ -478,7 +482,7 @@ fn classify(meta: &Frontmatter, run: &Run) -> Outcome {
     let first = first_error(&run.stderr);
     match run.status.as_str() {
         "timeout" => return Outcome::Timeout,
-        "memory" => return Outcome::Fail("the realm grew past 512 MB".to_owned()),
+        "memory" => return Outcome::Fail("the realm grew past 256 MB".to_owned()),
         "compile" => return Outcome::Fail(format!("generated Erlang does not compile: {first}")),
         _ => {}
     }

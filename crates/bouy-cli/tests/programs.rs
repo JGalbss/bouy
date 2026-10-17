@@ -364,6 +364,19 @@ fn an_uncaught_actor_failure_exits_with_status_1() {
 }
 
 #[test]
+fn a_program_past_the_memory_limit_stops_with_status_1() {
+    check_on_vm(
+        bouy("memory-limit.ts").env("BOUY_MAX_MEMORY", "128M"),
+        &Outcome {
+            stdout: "",
+            stderr: "bouy: the program used more than 128 MiB of memory and was stopped; \
+                     set BOUY_MAX_MEMORY to change the limit\n",
+            status: 1,
+        },
+    );
+}
+
+#[test]
 fn program_arguments_reach_process_argv() {
     check_on_vm(
         bouy("arguments.ts").args(["one", "--two", "three four"]),

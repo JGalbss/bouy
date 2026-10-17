@@ -13,11 +13,13 @@
 
 -export([main/0]).
 
-%% A realm that grows past this many words (512 MB) ends.
--define(MAX_HEAP_WORDS, 64 * 1024 * 1024).
+%% A realm that grows past this many words (256 MB), counting the large binaries it
+%% holds, ends with the outcome `memory`. bouy_guard caps the whole VM.
+-define(MAX_HEAP_WORDS, 32 * 1024 * 1024).
 
 -spec main() -> no_return().
 main() ->
+    ok = bouy_guard:start(),
     [Manifest, Jobs, Out] = init:get_plain_arguments(),
     {ok, Text} = file:read_file(Manifest),
     Tests = list_to_tuple([parse(Line) || Line <- binary:split(Text, <<"\n">>, [global, trim_all])]),
@@ -65,7 +67,7 @@ execute(Module, Timeout, Base) ->
     Stdout = capture(),
     Stderr = capture(),
     {Pid, Ref} = spawn_opt(fun() -> realm(Module, Stdout, Stderr) end,
-                           [monitor, {max_heap_size, #{size => ?MAX_HEAP_WORDS, kill => true, error_logger => false}}]),
+                           [monitor, {max_heap_size, #{size => ?MAX_HEAP_WORDS, kill => true, error_logger => false, include_shared_binaries => true}}]),
     Status = receive
         {'DOWN', Ref, process, Pid, {'$bouy_exit', Code}} -> integer_to_list(Code);
         {'DOWN', Ref, process, Pid, killed} -> "memory";
