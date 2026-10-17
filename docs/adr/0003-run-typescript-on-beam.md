@@ -260,6 +260,8 @@ The documentation must state:
 
 ## 6. Plan
 
+**Reference project: Bun.** The owner: "good probs ref project is bun". Bun already runs npm on a runtime that is not Node. So each phase first reads how Bun builds the same thing (oven-sh/bun: `src/js/node/` and `src/js/internal/` for the built-ins, `test/` for the tiers, the docs for the CLI) and follows it, unless BEAM forces a difference that the phase records. For the built-ins, Bouy prefers to run MIT-licensed JavaScript, from Node's own `lib/` at the pinned tag or from Bun's `src/js`, on top of native bindings written in Erlang. Node's tests check Node's exact error codes and messages, and Node's own `lib/` produces them.
+
 Three numbers measure each phase. [testing.md](../design/testing.md) defines each one:
 
 - **T, test262:** the pass rate of the group that predicts npm success, ES5 to ES2022 without `intl402`, `staging`, and proposals (testing.md §5.5). Silent failures count apart.
