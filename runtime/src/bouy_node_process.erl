@@ -7,7 +7,7 @@
 
 -include("bouy_ref.hrl").
 
--export([create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
+-export([exec_argv/0, create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
 
 -define(VERSION, <<"v25.9.0">>).
 %% The fields of Environment::ExitInfoField: kExiting, kExitCode, kHasExitCode.
@@ -50,9 +50,14 @@ patch(Process) ->
     Title = bouy_node:fn(<<"get title">>, 0, fun(_, _) -> <<"node">> end),
     bouy_heap:define(Process, <<"title">>, #{get => Title, set => bouy_node:fn(<<"set title">>, 1, fun(_, _) -> undefined end),
                                              enumerable => true, configurable => true}),
-    [_ | Argv] = persistent_term:get({bouy, argv}, [<<"bouy">>]),
+    [_ | Argv0] = persistent_term:get({bouy, argv}, [<<"bouy">>]),
+    %% The code of -e and -p is no script of process.argv.
+    Argv = case {init:get_argument(bouy_eval), Argv0} of
+        {{ok, _}, [_ | Args]} -> Args;
+        _ -> Argv0
+    end,
     bouy_heap:set(Process, <<"argv">>, bouy_heap:new_array([exec_path() | [bouy_ref_string:from_utf8(A) || A <- Argv]])),
-    bouy_heap:set(Process, <<"execArgv">>, bouy_heap:new_array([])),
+    bouy_heap:set(Process, <<"execArgv">>, bouy_heap:new_array([bouy_ref_string:from_utf8(A) || A <- exec_argv()])),
     readonly(Process, <<"pid">>, list_to_integer(os:getpid())),
     Ppid = bouy_node:fn(<<"get ppid">>, 0, fun(_, _) -> parent_pid() end),
     bouy_heap:define(Process, <<"ppid">>, #{get => Ppid, enumerable => true, configurable => true}),
@@ -61,6 +66,21 @@ patch(Process) ->
     bouy_heap:define(Process, <<"debugPort">>, #{get => Port, set => bouy_node:fn(<<"set debugPort">>, 1, fun(_, _) -> undefined end),
                                                  enumerable => true, configurable => true}),
     undefined.
+
+%% The node options of the command line: the JSON array that the CLI passes
+%% with -bouy_exec_argv.
+-spec exec_argv() -> [binary()].
+exec_argv() ->
+    case init:get_argument(bouy_exec_argv) of
+        {ok, [[Json | _] | _]} ->
+            try json:decode(unicode:characters_to_binary(Json)) of
+                List when is_list(List) -> [A || A <- List, is_binary(A)];
+                _ -> []
+            catch _:_ -> []
+            end;
+        _ ->
+            []
+    end.
 
 %% The path of the bouy binary, which Node's tests start as process.execPath.
 -spec exec_path() -> term().

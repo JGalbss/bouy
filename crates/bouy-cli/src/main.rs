@@ -1,5 +1,6 @@
 //! `bouy`: compiles a TypeScript program to Erlang and runs it on one BEAM VM.
 
+mod node;
 mod runtime;
 
 use std::env;
@@ -167,6 +168,14 @@ const DIAGNOSTICS: u8 = 2;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().collect();
+    // `bouy [node options] <script> [args...]`, `bouy -e <code>`, and `bouy -p <code>` run
+    // as `node` does, on the reference engine, so a program that starts `process.execPath`
+    // as node starts Bouy.
+    if let Some(first) = arguments.get(1)
+        && is_node_invocation(first)
+    {
+        return node::run(&arguments[1..]);
+    }
     // `bouy run <entry> [args...]` passes each argument after the entry to the program as
     // it is, `--help` and `--` included, as `node <entry> [args...]` does.
     if let [_, command, entry, program_arguments @ ..] = arguments.as_slice()
@@ -273,7 +282,36 @@ fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
         Ok(project) => project,
         Err(code) => return code,
     };
-    let build = match write(&project) {
+    start_program(&project, entry, args, &node::Options::default())
+}
+
+/// Whether the first argument starts a run as `node` does: a script or a node option, not
+/// a subcommand of bouy.
+fn is_node_invocation(first: &OsString) -> bool {
+    let first = first.to_string_lossy();
+    !matches!(
+        first.as_ref(),
+        "run"
+            | "check"
+            | "build"
+            | "runtime"
+            | "compile-eval"
+            | "help"
+            | "--help"
+            | "-h"
+            | "--version"
+            | "-V"
+    )
+}
+
+/// Starts the VM on a compiled program, with the node options of the invocation.
+fn start_program(
+    project: &Project,
+    entry: &Path,
+    args: &[OsString],
+    options: &node::Options,
+) -> ExitCode {
+    let build = match write(project) {
         Ok(build) => build,
         Err(error) => return fail(&error),
     };
@@ -305,6 +343,14 @@ fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
         "-pa",
     ])
     .arg(&runtime.ebin)
+    .args(["-bouy_exec_argv", &options.exec_argv_json()])
+    .args(
+        options
+            .eval
+            .then_some(["-bouy_eval", "true"])
+            .into_iter()
+            .flatten(),
+    )
     .args(["-eval", "bouy_main:start()", "-extra"])
     .arg(&build)
     .arg(&project.entry)

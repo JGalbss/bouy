@@ -2972,17 +2972,17 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "5e1d3e5",
+      "updated": "41d87cf",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 1532,
+        "pass": 1545,
         "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 2288,
-        "timeout": 4,
+        "fail": 2272,
+        "timeout": 7,
         "harness_error": 0,
         "crash": 12
       },
@@ -2994,17 +2994,17 @@
             "fail": 180
           },
           "parallel": {
-            "pass": 1473,
+            "pass": 1486,
             "skip": 545,
-            "fail": 2047,
-            "timeout": 3,
+            "fail": 2032,
+            "timeout": 5,
             "crash": 11
           },
           "sequential": {
             "pass": 33,
             "skip": 22,
-            "fail": 61,
-            "timeout": 1,
+            "fail": 60,
+            "timeout": 2,
             "crash": 1
           }
         },
@@ -3013,10 +3013,10 @@
             "skip": 343
           },
           "public": {
-            "pass": 1532,
+            "pass": 1545,
             "skip": 240,
-            "fail": 2288,
-            "timeout": 4,
+            "fail": 2272,
+            "timeout": 7,
             "crash": 12
           }
         },
@@ -3039,9 +3039,10 @@
             "crash": 1
           },
           "child_process": {
-            "pass": 6,
+            "pass": 13,
             "skip": 7,
-            "fail": 101
+            "fail": 92,
+            "timeout": 2
           },
           "cluster": {
             "pass": 11,
@@ -3140,9 +3141,10 @@
             "crash": 1
           },
           "process": {
-            "pass": 54,
+            "pass": 60,
             "skip": 8,
-            "fail": 69
+            "fail": 62,
+            "timeout": 1
           },
           "punycode": {
             "pass": 1

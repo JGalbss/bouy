@@ -125,8 +125,26 @@ pub fn compile_script(entry: &Path) -> Result<Project, Vec<Diagnostic>> {
 }
 
 /// The reference engine: every module that the entry reaches, from `node_modules` too.
+/// Compiles, on the reference engine, a program whose entry module is the source `text`,
+/// as if it were the file `entry`, which need not exist: the code of `node -e`, which
+/// resolves its imports from the directory of `entry`.
+pub fn compile_source(entry: &Path, text: String) -> Result<Project, Vec<Diagnostic>> {
+    let root = project_root(entry);
+    let root = root.canonicalize().unwrap_or(root);
+    compile_reference_text(entry, &root, false, Some(text))
+}
+
 fn compile_reference(entry: &Path, root: &Path, script: bool) -> Result<Project, Vec<Diagnostic>> {
-    let graph = reference::graph::load(entry, root, script)?;
+    compile_reference_text(entry, root, script, None)
+}
+
+fn compile_reference_text(
+    entry: &Path,
+    root: &Path,
+    script: bool,
+    text: Option<String>,
+) -> Result<Project, Vec<Diagnostic>> {
+    let graph = reference::graph::load(entry, root, script, text)?;
     let links = reference::link::link(&graph);
     let mut modules = Vec::with_capacity(graph.units.len());
     let mut diagnostics = Vec::new();

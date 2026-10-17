@@ -439,6 +439,9 @@ rm_sync(Args) ->
     [Target, _Retries, Recursive] = [bouy_node:arg(I, Args) || I <- lists:seq(1, 3)],
     Path = path(Target),
     case file:read_link_info(Path) of
+        %% A missing path is no error: lib/fs.js checks it first unless force is set.
+        {error, enoent} ->
+            undefined;
         {error, Reason} ->
             uv_error(Reason, <<"rm">>, Path);
         {ok, #file_info{type = directory}} ->

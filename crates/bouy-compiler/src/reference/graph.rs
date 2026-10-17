@@ -145,8 +145,14 @@ pub struct Record {
 
 /// Reads the entry module and every module it reaches. A module other than the entry
 /// that does not parse becomes a broken unit, which throws when the program loads it.
-/// When `script` holds, the entry is a classic script.
-pub fn load(entry: &Path, root: &Path, script: bool) -> Result<Graph, Vec<Diagnostic>> {
+/// When `script` holds, the entry is a classic script. `text`, when given, is the source of
+/// the entry, which then need not exist as a file.
+pub fn load(
+    entry: &Path,
+    root: &Path,
+    script: bool,
+    mut text: Option<String>,
+) -> Result<Graph, Vec<Diagnostic>> {
     let resolver = Resolver::default();
     let mut units: Vec<Unit> = Vec::new();
     let mut index: HashMap<PathBuf, usize> = HashMap::new();
@@ -165,6 +171,9 @@ pub fn load(entry: &Path, root: &Path, script: bool) -> Result<Graph, Vec<Diagno
                     path.display()
                 ),
             )]),
+            None if units.is_empty() && text.is_some() => {
+                scan(&resolver, &path, text.take().unwrap_or_default(), script)
+            }
             None => fs::read_to_string(&path)
                 .map_err(|error| {
                     vec![Reporter::new(&path, "").at(
