@@ -32,7 +32,12 @@ function measure(rounds: number): string {
     for (const f of figures) total += f.scaled(2);
   }
   const end = Date.now();
-  return JSON.stringify({ bench: "classes", n: rounds * 1000, total_ms: end - start, check: total });
+  return JSON.stringify({
+    bench: "classes",
+    n: rounds * 1000,
+    total_ms: end - start,
+    check: total,
+  });
 }
 
 console.log(measure(1000));
