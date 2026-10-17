@@ -161,7 +161,15 @@ array_length_test() ->
                   ?assertError({'$throw', _}, bouy_heap:delete(A, <<"length">>)),
                   bouy_heap:define(A, <<"length">>, #{writable => false}),
                   ?assertEqual({data, 1, 0}, bouy_heap:get_own(A, <<"length">>)),
-                  ?assertError({'$throw', _}, bouy_heap:set(A, 5, x))
+                  ?assertError({'$throw', _}, bouy_heap:set(A, 5, x)),
+                  %% A read-only length keeps its value, and the length is never
+                  %% configurable, enumerable, or an accessor.
+                  ?assertError({'$throw', _}, bouy_heap:define(A, <<"length">>, #{value => 3})),
+                  ?assertEqual(A, bouy_heap:define(A, <<"length">>, #{value => 1})),
+                  B = bouy_heap:new_array([]),
+                  ?assertError({'$throw', _}, bouy_heap:define(B, <<"length">>, #{configurable => true})),
+                  ?assertError({'$throw', _}, bouy_heap:define(B, <<"length">>, #{enumerable => true})),
+                  ?assertError({'$throw', _}, bouy_heap:define(B, <<"length">>, #{get => undefined}))
           end).
 
 gc_cycles_test() ->
