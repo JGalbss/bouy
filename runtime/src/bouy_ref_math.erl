@@ -134,9 +134,19 @@ sum_result({0, minus_zero}) -> -0.0;
 sum_result({0, _}) -> 0;
 sum_result({Sum, _}) when abs(Sum) < 1 bsl 53 -> bouy_ref_number:canonical(Sum * 5.0e-324);
 sum_result({Sum, _}) ->
-    try float(Sum) of
-        F -> bouy_ref_number:canonical(F * 5.0e-324)
+    %% Sum is in units of 2^-1074: round it to 53 bits, then scale.
+    Magnitude = abs(Sum),
+    Shift = bit_length(Magnitude) - 53,
+    Rounded = round_half_even(Magnitude, -Shift),
+    Exponent = Shift - 1074,
+    Value = try float(Rounded) * math:pow(2, Exponent div 2) * math:pow(2, Exponent - Exponent div 2) of
+        V -> V
     catch
-        error:badarg when Sum > 0 -> 'Infinity';
-        error:badarg -> '-Infinity'
+        error:badarith -> infinity
+    end,
+    case {Value, Sum > 0} of
+        {infinity, true} -> 'Infinity';
+        {infinity, false} -> '-Infinity';
+        {_, true} -> bouy_ref_number:canonical(Value);
+        {_, false} -> bouy_ref_number:canonical(-Value)
     end.

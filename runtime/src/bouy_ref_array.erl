@@ -868,7 +868,8 @@ guarded(O, Join) ->
     end.
 
 join(O, Len, Sep, Text) ->
-    bouy_ref_string:concat(lists:join(Sep, [Text(V) || V <- values(O, 0, Len - 1)])).
+    Parts = lists:reverse(fold_up(0, Len - 1, fun(K, Acc) -> [Text(value_at(O, K)) | Acc] end, [])),
+    bouy_ref_string:concat(lists:join(Sep, Parts)).
 
 join_text(undefined) -> <<>>;
 join_text(null) -> <<>>;

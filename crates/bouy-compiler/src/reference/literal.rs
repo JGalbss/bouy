@@ -14,6 +14,9 @@ use crate::erlang::Expr;
 
 const OBJECT_PROTO: &str = "Object.prototype";
 
+/// The items of an array literal that one list of the generated code holds.
+const ARRAY_CHUNK: usize = 256;
+
 impl<'a> Lowerer<'a, '_> {
     pub fn template(&mut self, template: &'a TemplateLiteral<'a>) -> Expr {
         let mut parts = Vec::new();
@@ -97,20 +100,37 @@ impl<'a> Lowerer<'a, '_> {
             .iter()
             .any(|element| matches!(element, ArrayExpressionElement::Elision(_)));
         if !spread {
-            let items = array
-                .elements
-                .iter()
-                .map(|element| match element.as_expression() {
+            // A long literal builds its list in chunks, each bound to a variable, so the
+            // values of one chunk stay live at a time: BEAM has 1024 registers.
+            let mut chunks = Vec::new();
+            let mut items = Vec::new();
+            for element in &array.elements {
+                items.push(match element.as_expression() {
                     Some(expression) => self.expr(expression),
                     None => Expr::atom("$hole"),
-                })
-                .collect();
+                });
+                if items.len() == ARRAY_CHUNK {
+                    // A remote call, which the Erlang compiler does not move.
+                    let chunk = Expr::call(
+                        "bouy_ref",
+                        "chunk",
+                        vec![Expr::List(std::mem::take(&mut items))],
+                    );
+                    chunks.push(self.bind(chunk));
+                }
+            }
+            let list = if chunks.is_empty() {
+                Expr::List(items)
+            } else {
+                chunks.push(Expr::List(items));
+                Expr::call("lists", "append", vec![Expr::List(chunks)])
+            };
             let (module, function) = if holes {
                 ("bouy_ref", "array_holes")
             } else {
                 ("bouy_heap", "new_array")
             };
-            return self.bind(Expr::call(module, function, vec![Expr::List(items)]));
+            return self.bind(Expr::call(module, function, vec![list]));
         }
         let parts = array
             .elements

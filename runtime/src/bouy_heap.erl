@@ -163,7 +163,7 @@ array_items({'$o', Id}) ->
 -spec array_push(value(), [value()]) -> non_neg_integer().
 array_push({'$o', Id} = O, Items) ->
     case erlang:get(Id) of
-        {array, ?ARRAY_PROTO = P, Props, Keys, Attrs, {Length, Elements}} when map_size(Attrs) =:= 0 ->
+        {array, ?ARRAY_PROTO = P, Props, Keys, Attrs, {Length, Elements}} when map_size(Attrs) =:= 0, Length + length(Items) =< ?MAX_INDEX + 1 ->
             %% The intrinsic prototypes hold no index until a realm writes them, so
             %% no setter on the chain can see the new elements.
             case erlang:get('Array.prototype') =:= undefined andalso erlang:get('Object.prototype') =:= undefined of
@@ -176,9 +176,12 @@ array_push({'$o', Id} = O, Items) ->
         _ -> push_each(O, Items)
     end.
 
+index_key(L) when L =< ?MAX_INDEX -> L;
+index_key(L) -> integer_to_binary(L).
+
 %% Array.prototype.push step by step: Set of each element, then of length.
 push_each(O, Items) ->
-    Length = lists:foldl(fun(V, L) -> set(O, L, V), L + 1 end, array_length(O), Items),
+    Length = lists:foldl(fun(V, L) -> set(O, index_key(L), V), L + 1 end, array_length(O), Items),
     set(O, <<"length">>, Length),
     Length.
 
