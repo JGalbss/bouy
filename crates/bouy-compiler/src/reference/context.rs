@@ -184,8 +184,9 @@ pub struct Frame<'a> {
     pub class: Option<ClassFrame>,
     /// Labels for the next loop, from labeled statements.
     pub labels: Vec<String>,
-    /// The Erlang variable of the `arguments` object of the nearest non-arrow function.
-    pub arguments: Option<String>,
+    /// The `arguments` binding of the nearest non-arrow function: the variable of its
+    /// object, or a cell when the function assigns `arguments`.
+    pub arguments: Option<Local>,
     /// The cell of `this` in a derived constructor, which `super(...)` binds.
     pub this_cell: Option<String>,
     /// The Erlang variable of `new.target`, or none for `undefined`.

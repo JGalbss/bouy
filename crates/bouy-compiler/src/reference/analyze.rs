@@ -19,8 +19,8 @@ pub struct Analysis {
     /// `try` statement or a conditional expression changes. Every other local variable is
     /// a single-assignment Erlang variable with versions.
     pub cells: HashSet<SymbolId>,
-    /// Cells declared in the head of a `for (let ...)` loop whose body creates closures:
-    /// each iteration copies them, as the per-iteration bindings of JavaScript.
+    /// Cells declared in the head of a `for (let ...)` loop that creates closures: each
+    /// iteration copies them, as the per-iteration bindings of JavaScript.
     pub per_iteration: HashSet<SymbolId>,
 }
 
@@ -209,10 +209,7 @@ impl<'a> Visit<'a> for LoopHeads<'_> {
             && declaration.kind != VariableDeclarationKind::Var
         {
             let mut closures = HasClosure(false);
-            closures.visit_statement(&it.body);
-            if let Some(update) = &it.update {
-                closures.visit_expression(update);
-            }
+            closures.visit_for_statement(it);
             if closures.0 {
                 for declarator in &declaration.declarations {
                     for id in declarator.id.get_binding_identifiers() {

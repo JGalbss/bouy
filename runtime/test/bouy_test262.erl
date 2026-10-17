@@ -153,6 +153,7 @@ realm(Module, Stdout, Stderr) ->
     erlang:put('$bouy_exit', true),
     erlang:put('$bouy_stderr', Stderr),
     erlang:put('$bouy_rejections', ignore),
+    host_functions(),
     try Module:'__init__'() of
         _ -> exit({'$bouy_exit', 0})
     catch
@@ -162,6 +163,15 @@ realm(Module, Stdout, Stderr) ->
             io:put_chars(Stderr, io_lib:format("Uncaught ~p: ~0tP ~0tP~n", [Class, Reason, 12, Stack, 12])),
             exit({'$bouy_exit', 1})
     end.
+
+%% The host functions of $262 that only the engine can give, as hidden
+%% globals that the host code of the runner (HOST in test262-dev.rs) wraps.
+host_functions() ->
+    bouy_ref:init_realm(),
+    EvalScript = bouy_ref_realm:builtin(<<"evalScript">>, fun(_This, Args) -> bouy_ref_eval:script(bouy_ref_realm:arg(1, Args)) end),
+    _ = bouy_heap:define({'$o', 'globalThis'}, <<"__bouyEvalScript">>,
+                         #{value => EvalScript, writable => true, enumerable => false, configurable => true}),
+    ok.
 
 %%% An I/O server that keeps what a realm writes.
 

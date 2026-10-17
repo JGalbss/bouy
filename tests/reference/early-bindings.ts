@@ -95,3 +95,35 @@ function cases(n: number): string {
   }
 }
 console.log("switch cases share a scope:", cases(1), cases(2), cases(3));
+
+// A hoisted function that writes a `let` before its declaration runs throws too.
+function earlyWrite(): string {
+  let before: string;
+  try {
+    assign(1);
+    before = "no error";
+  } catch (error) {
+    before = (error as Error).constructor.name;
+  }
+  let later = 0;
+  assign(2);
+  return `${before}, then ${later}`;
+  function assign(value: number): void {
+    later = value;
+  }
+}
+console.log(earlyWrite());
+
+// The `extends` clause of a class sees the class's own binding once the class exists,
+// apart from the binding outside the class.
+function heritageBinding(): string {
+  let probeDeclared = (): unknown => undefined;
+  let probeExpression = (): unknown => undefined;
+  class Base {}
+  class Declared extends ((probeDeclared = () => Declared), Base) {}
+  let Expressed = class Inner extends ((probeExpression = () => Inner), Base) {};
+  const original = Expressed;
+  Expressed = class extends Base {};
+  return `${probeDeclared() === Declared}, ${probeExpression() === original}, ${probeExpression() === Expressed}`;
+}
+console.log(heritageBinding());

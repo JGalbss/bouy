@@ -13,7 +13,7 @@
 -export([get/2, get_from/3, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1, member_key/2]).
 -export([sloppy_set/3, sloppy_set_computed/3, sloppy_delete/2, sloppy_delete_computed/2, sloppy_this/1]).
 -export([mapped_arguments/3, function_name/2, literal_proto/2, tdz_error/1]).
--export([with_object/1, with_has/2, const_error/0]).
+-export([with_object/1, with_has/2, with_get/3, with_set/4, const_error/0]).
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, named_fn/3, named_fn/4, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
@@ -335,7 +335,7 @@ const_error() -> type_error(<<"Assignment to constant variable.">>).
 
 %% The object of `with (v)`: ToObject, a TypeError for undefined and null.
 -spec with_object(term()) -> term().
-with_object(V) -> bouy_ref_object:require_object(V).
+with_object(V) -> to_object(V).
 
 %% Whether the object environment of a `with` statement binds Name
 %% (HasBinding of ECMA-262 §9.1.1.2.1): the object has the property, and its
@@ -349,6 +349,32 @@ with_has(P, Name) ->
 
 unscopable(U, K) when ?IS_OBJECT(U) -> truthy(get(U, K));
 unscopable(_U, _K) -> false.
+
+%% GetBindingValue of an object environment (ECMA-262 §9.1.1.2.6): the
+%% property may be gone since the name resolved, which strict code reports.
+-spec with_get(term(), bouy_ref_string:js_string(), boolean()) -> term().
+with_get(O, Name, Strict) when ?IS_OBJECT(O) ->
+    K = bouy_heap:to_key(Name),
+    case bouy_heap:has(O, K) of
+        true -> get(O, K);
+        false when Strict -> bouy_ref_realm:not_defined(Name);
+        false -> undefined
+    end;
+with_get(P, Name, _Strict) ->
+    get(P, bouy_heap:to_key(Name)).
+
+%% SetMutableBinding of an object environment (§9.1.1.2.5): strict code
+%% reports a property that went away, and its failed Set throws.
+-spec with_set(term(), bouy_ref_string:js_string(), term(), boolean()) -> term().
+with_set(O, Name, V, Strict) when ?IS_OBJECT(O) ->
+    K = bouy_heap:to_key(Name),
+    case {bouy_heap:has(O, K), Strict} of
+        {false, true} -> bouy_ref_realm:not_defined(Name);
+        {true, true} -> set(O, K, V);
+        {_, false} -> sloppy_set(O, K, V)
+    end;
+with_set(P, Name, V, _Strict) ->
+    sloppy_set(P, bouy_heap:to_key(Name), V).
 
 -spec tdz_error(bouy_ref_string:js_string()) -> no_return().
 tdz_error(Name) ->
@@ -732,9 +758,9 @@ typeof(S) when ?IS_STRING(S) -> <<"string">>.
 %% `typeof name` for a name that no scope declares: "undefined" for a missing global.
 -spec typeof_global(binary()) -> binary().
 typeof_global(Name) ->
-    try typeof(global(Name))
-    catch
-        error:{'$throw', _} -> <<"undefined">>
+    case bouy_ref_realm:has_binding(Name) of
+        true -> typeof(global(Name));
+        false -> <<"undefined">>
     end.
 
 %% InstanceofOperator: Symbol.hasInstance, else OrdinaryHasInstance.

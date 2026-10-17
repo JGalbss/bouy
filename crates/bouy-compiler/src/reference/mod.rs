@@ -246,6 +246,28 @@ pub fn lower_eval(
             )]);
         }
     }
+    lower_one_script(path, name, source, Some((strict, context)), scope)
+}
+
+/// Lowers a classic script of its own (`compile_script` of the crate), named `name`.
+pub fn lower_script(source: String, name: &str) -> Result<String, Vec<Diagnostic>> {
+    lower_one_script(
+        std::path::PathBuf::from("script.js"),
+        name,
+        source,
+        None,
+        &[],
+    )
+}
+
+/// Lowers source text that no module imports: eval code, or a script.
+fn lower_one_script(
+    path: std::path::PathBuf,
+    name: &str,
+    source: String,
+    eval: Option<(bool, &EvalContext)>,
+    scope: &[String],
+) -> Result<String, Vec<Diagnostic>> {
     let graph = Graph {
         units: vec![graph::Unit {
             path,
@@ -265,7 +287,7 @@ pub fn lower_eval(
         link: &link,
         entry: false,
     };
-    lower(linking, Some((strict, context)), scope)
+    lower(linking, eval, scope)
 }
 
 /// The names that sloppy eval code declares in its variable environment: its top-level

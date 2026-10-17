@@ -83,10 +83,12 @@ impl<'a> Lowerer<'a, '_> {
                 Some(Declaration::VariableDeclaration(variables)) if !variables.declare => {
                     for declarator in &variables.declarations {
                         // An exported `const` is a variable, so that an import of it
-                        // before its declaration throws.
+                        // before its declaration throws. So is a script's `const`, a binding
+                        // of the global declarative record that other code reads.
                         let literal = match (&declarator.id, &declarator.init) {
                             (BindingPattern::BindingIdentifier(id), Some(init))
                                 if variables.kind == VariableDeclarationKind::Const
+                                    && !self.is_script()
                                     && !self.is_exported(id.name.as_str())
                                     && id.symbol_id.get().is_some_and(|symbol| {
                                         self.read_only_after(symbol, declarator.span.end)
@@ -227,15 +229,15 @@ impl<'a> Lowerer<'a, '_> {
         self.tops.insert(symbol, top);
     }
 
-    /// A top-level class: created by `'$class'/1`, or, when the code assigns to its name,
-    /// a module variable that its declaration sets.
+    /// A top-level class: created by `'$class'/1`, or, when the code assigns to its name or
+    /// it is a binding of a script, a module variable that its declaration sets.
     fn declare_class_binding(&mut self, symbol: oxc::semantic::SymbolId, name: &str) {
         let assigned = self
             .semantic
             .scoping()
             .get_resolved_references(symbol)
             .any(oxc::semantic::Reference::is_write);
-        if assigned {
+        if assigned || self.is_script() {
             self.tops.insert(symbol, Top::Var(name.to_owned()));
             let lazy = Expr::local_call("$class", vec![Expr::binary(name.to_owned())]);
             self.var_getter(name, Vec::new(), lazy, Absent::Uninitialized);
@@ -365,9 +367,37 @@ impl<'a> Lowerer<'a, '_> {
         functions
     }
 
-    /// The call that makes a script's `var` names and functions properties of the global
-    /// object before its code runs.
-    fn declare_globals_call(&self) -> Expr {
+    /// The call that declares a script's top-level names before its code runs
+    /// (`GlobalDeclarationInstantiation`): its `let`, `const`, and classes in the global
+    /// declarative record, and its `var` names and functions as properties of the global
+    /// object.
+    fn declare_script_call(&self, body: &[&'a Statement<'a>]) -> Expr {
+        let lexical =
+            |name: &str, kind: &str| Expr::Tuple(vec![Expr::js_string(name), Expr::atom(kind)]);
+        let lexicals = body
+            .iter()
+            .flat_map(|statement| match statement {
+                Statement::VariableDeclaration(variables) if variables.kind.is_lexical() => {
+                    let kind = if variables.kind == VariableDeclarationKind::Const {
+                        "immutable"
+                    } else {
+                        "mutable"
+                    };
+                    variables
+                        .declarations
+                        .iter()
+                        .flat_map(|declarator| declarator.id.get_binding_identifiers())
+                        .map(|id| lexical(id.name.as_str(), kind))
+                        .collect()
+                }
+                Statement::ClassDeclaration(class) => class
+                    .id
+                    .iter()
+                    .map(|id| lexical(id.name.as_str(), "mutable"))
+                    .collect(),
+                _ => Vec::new(),
+            })
+            .collect();
         let vars = self
             .script_globals
             .iter()
@@ -385,8 +415,13 @@ impl<'a> Lowerer<'a, '_> {
             .collect();
         Expr::call(
             "bouy_ref_realm",
-            "declare_globals",
-            vec![Expr::List(vars), Expr::List(functions), Expr::atom("false")],
+            "declare_script",
+            vec![
+                Expr::atom(self.module.clone()),
+                Expr::List(lexicals),
+                Expr::List(vars),
+                Expr::List(functions),
+            ],
         )
     }
 
@@ -409,7 +444,7 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::Tuple(vec![Expr::atom("$o"), Expr::atom("globalThis")]),
             ));
             self.frame.this = Some(this);
-            code.push(self.declare_globals_call());
+            code.push(self.declare_script_call(body));
         }
         let statements = body.to_vec();
         code.extend(if suspends.0 {

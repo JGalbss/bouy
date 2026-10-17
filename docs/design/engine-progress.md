@@ -24,17 +24,17 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 | Directory      | Tests | Baseline pass |  Pass | Fail | Compile | Timeout | Skip | Baseline rate | Pass rate |
 | -------------- | ----: | ------------: | ----: | ---: | ------: | ------: | ---: | ------------: | --------: |
-| test/language  | 23726 |         11354 | 23608 |  116 |       2 |       0 |    0 |         51.1% |     99.5% |
-| test/built-ins | 23823 |          6193 | 23232 |  585 |       0 |       4 |    2 |         26.2% |     97.5% |
-| **Total**      | 47549 |         17547 | 46840 |  701 |       2 |       4 |    2 |         38.3% |     98.5% |
+| test/language  | 23726 |         11354 | 23659 |   65 |       2 |       0 |    0 |         51.1% |     99.7% |
+| test/built-ins | 23823 |          6193 | 23236 |  581 |       0 |       4 |    2 |         26.2% |     97.5% |
+| **Total**      | 47549 |         17547 | 46895 |  646 |       2 |       4 |    2 |         38.3% |     98.6% |
 
 The same run without the proposal tests. A proposal test has a feature from the "Proposed language features" part of test262's `features.txt`. At the pinned commit, Temporal, `explicit-resource-management`, `joint-iteration`, `iterator-chunking`, and `iterator-includes` are in the standard part, so these counts keep them. The proposal tests are 532 in `test/language` and 285 in `test/built-ins`.
 
 | Directory      | Tests |  Pass | Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ---: | ------: | ------: | ---: | --------: |
-| test/language  | 23194 | 23097 |   97 |       0 |       0 |    0 |     99.6% |
-| test/built-ins | 23538 | 23216 |  316 |       0 |       4 |    2 |     98.6% |
-| **Total**      | 46732 | 46313 |  413 |       0 |       4 |    2 |     99.1% |
+| test/language  | 23194 | 23148 |   46 |       0 |       0 |    0 |     99.8% |
+| test/built-ins | 23538 | 23220 |  312 |       0 |       4 |    2 |     98.6% |
+| **Total**      | 46732 | 46368 |  358 |       0 |       4 |    2 |     99.2% |
 
 Temporal passes 4589 of its 4605 tests in this run and 4597 when the 8 tests that the runner lost run alone (cause 5 and the rest, below).
 
@@ -57,6 +57,7 @@ Temporal passes 4589 of its 4605 tests in this run and 4597 when the 8 tests tha
 - 2026-10-17, branch `engine-r1-disposable-stacks` at `974bbcd`: `DisposableStack` and `AsyncDisposableStack`. Their two directories pass 195 of 197 tests, up from 0. The 2 failures are the `proto-from-ctor-realm.js` tests, which need `$262.createRealm`.
 - 2026-10-17, commit `a7a0b11`, the round 1 merge of the five branches above into `engine`: 23608 and 23231, with 8 jobs. `test/language` took 16 minutes at a load average between 15 and 60, and `test/built-ins` took 24 minutes at a load average between 17 and 79. Compared test by test with the round 1 run and the branch runs, no test that passed before fails, apart from the 13 tests that the runner lost. `test/language` passes the 179 tests of the eval branch and 5 tests of the Promise branch: the 2 `yield-thenable-create-resolving-functions` tests, the 2 `subclass-Promise` tests, and `import-defer-transitive-async-module/promise-prototype-then-not-called.js`. `test/built-ins` passes 23244 of its tests when the 13 tests that the runner lost run alone. Near test 20000 the fun table filled again, and 8 tests of `Temporal/ZonedDateTime/from` count as "the VM crashed". 5 tests of `RegExp/property-escapes` timed out. A rerun of these 13 tests alone passes all of them. The merge changes one call: `crates/bouy-cli/build.rs` passes the default `EvalContext` to `compile_eval`, and `bouy_ref_temporal` calls `'__eval__'/3`.
 - 2026-10-17, commit `f433f10`, round 2 measurement: 23608 and 23232, with 8 jobs. `test/language` took 18 minutes and `test/built-ins` 19 minutes, at a load average between 19 and 46. The engine code is the same as at `a7a0b11`. `test/language` fails the same 118 tests. `test/built-ins` fails the same tests apart from the ones that the runner lost: the fun table filled near test 20000 again, so 8 tests of `Temporal/ZonedDateTime/from` count as "the VM crashed", and 4 `RegExp/property-escapes` tests timed out instead of 5. These 12 tests pass when they run alone, so `test/built-ins` passes 23244. The causes below come from this run.
+- 2026-10-17, branch `engine-r2-environment-records`, the environment records of ECMA-262 §9.1: `test/language` passes 23659 tests, the 51 tests of cause 3 more than the round 2 run, with no test that passed before failing. `statements` 9321 to 9340, `expressions` 11049 to 11067, `global-code` 31 to 42, `eval-code` 344 to 346, and `identifier-resolution` 13 to 14. The write of a new key through a typed array in the prototype chain now goes through the typed array's [[Set]], so 4 `TypedArrayConstructors/internals/Set/*-prototype-chain-set.js` tests of cause 4 pass too. The full `test/built-ins` run, with 8 jobs at a load average between 110 and 150, lost 57 tests: 49 `RegExp` timeouts, and 8 `Temporal/PlainYearMonth/prototype/since` tests when the fun table filled (cause 5). All 57 pass alone with a 60 s limit, and no other test that passed in round 2 fails, so the `test/built-ins` row is the round 2 count plus 4.
 
 ## Causes left
 
@@ -64,7 +65,7 @@ The failures of the round 2 run without the proposal tests (417, timeouts includ
 
 1. **Realms (181 tests).** The runner gives no `$262.createRealm`, and one process can hold only one realm: each intrinsic is an atom key with a static record in `persistent_term` (`bouy_heap:intrinsic_record/2`), and a builtin function is the same term in every realm. The tests are in `Proxy` (37), `TypedArrayConstructors` (24), `Symbol` (17), `language/expressions` (16), `Array` (16), `Function` (13), `RegExp` (12), and 30 other directories. Most check the realm of the default prototype in GetPrototypeFromConstructor (44 `proto-from-ctor-realm.js` and more variants), `cross-realm.js` (28), and the realm of the TypeError of a Proxy trap check (13 `trap-is-not-callable-realm.js`).
 2. **Agents (116 tests, all in `Atomics`).** The runner gives no `$262.agent`, so 112 tests fail at `getReport`. `bouy_ref_atomics` keeps no waiter list: `Atomics.notify` wakes nobody, and 4 `waitAsync` tests never settle.
-3. **Environment records (51 tests, all in `test/language`).** The object environment of `with` (24): a write does not check HasProperty again before it sets, so strict code does not throw a ReferenceError when the binding is gone (16 `*-calls-putvalue-*` tests), and the order of Proxy traps differs (8 `statements/with` tests). The global environment (15): the runner gives no `$262.evalScript` (10 `global-code` tests), the top-level `let`, `const`, and `class` of a script are not in a global declarative record, so indirect eval cannot see them (3), `let undefined;` does not throw a SyntaxError, and a strict assignment to a name that its right side creates does not throw a ReferenceError. Other bindings (12): a closure that writes a `let` before its initialization (4), the per-iteration copy of a `for` head and the inner name of a class heritage (3), and `arguments` as a destructuring target of sloppy `for await` (5).
+3. **Environment records (51 tests, all in `test/language`), fixed by the branch `engine-r2-environment-records`.** The object environment of `with`, the global declarative record with `$262.evalScript`, the dead zone of a closure write, the per-iteration copy before the first test, the inner binding of a class heritage, and `arguments` as an assignment target.
 4. **Object operations out of specification order (29 tests).** CopyDataProperties reads the string keys and then the symbols, not the [[OwnPropertyKeys]] of a Proxy with [[GetOwnProperty]] for each key (6). ArraySetLength and `splice` (4). The TypedArray [[Set]] through a prototype chain, the TypedArray constructor, and `Object.freeze` over a resizable buffer (6). PutValue on a primitive base and a `super` write in sloppy code (3). `JSON.parse` revivers that ignore a failed delete (2). 8 others: `Object.prototype.valueOf` on a primitive, GetPrototypeFromConstructor in `WeakRef` and `FinalizationRegistry`, a revoked Proxy as new.target, the order of `null[key]`, the order of keyed destructuring, and `concat` of sloppy `arguments` with duplicate parameter names.
 5. **The runner (13 tests).** The fun table of the VM fills near test 20000 of `test/built-ins` (`no more index entries in fun_staged_index (max=524288)`), although the runner purges the module of each test, and the 8 tests that run then count as "the VM crashed". 4 `RegExp/property-escapes/generated` tests time out at a load average near 40 and pass alone. The frontmatter parser does not split on CR, so `line-terminator-normalisation-CR.js` loses its `includes`.
 
@@ -83,13 +84,13 @@ The proposal tests that fail (290) are `await-dictionary` (87), ShadowRealm (64)
 | test/language/computed-property-names |    48 |            39 |    48 |    0 |       0 |       0 |    0 |         81.2% |    100.0% |
 | test/language/destructuring           |    19 |            12 |    18 |    1 |       0 |       0 |    0 |         66.6% |     94.7% |
 | test/language/directive-prologue      |    62 |             5 |    62 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
-| test/language/eval-code               |   347 |             9 |   344 |    3 |       0 |       0 |    0 |          7.0% |     99.1% |
+| test/language/eval-code               |   347 |             9 |   346 |    1 |       0 |       0 |    0 |          7.0% |     99.7% |
 | test/language/export                  |     3 |             3 |     3 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
-| test/language/expressions             | 11102 |          4492 | 11049 |   52 |       1 |       0 |    0 |         42.7% |     99.5% |
+| test/language/expressions             | 11102 |          4492 | 11067 |   34 |       1 |       0 |    0 |         42.7% |     99.6% |
 | test/language/function-code           |   217 |            91 |   217 |    0 |       0 |       0 |    0 |         84.2% |    100.0% |
 | test/language/future-reserved-words   |    55 |            47 |    55 |    0 |       0 |       0 |    0 |         97.9% |    100.0% |
-| test/language/global-code             |    42 |            15 |    31 |   11 |       0 |       0 |    0 |         40.5% |     73.8% |
-| test/language/identifier-resolution   |    14 |             3 |    13 |    1 |       0 |       0 |    0 |         33.3% |     92.9% |
+| test/language/global-code             |    42 |            15 |    42 |    0 |       0 |       0 |    0 |         40.5% |    100.0% |
+| test/language/identifier-resolution   |    14 |             3 |    14 |    0 |       0 |       0 |    0 |         33.3% |    100.0% |
 | test/language/identifiers             |   268 |           267 |   268 |    0 |       0 |       0 |    0 |         99.6% |    100.0% |
 | test/language/import                  |   129 |            10 |   117 |   12 |       0 |       0 |    0 |          7.7% |     90.7% |
 | test/language/keywords                |    25 |            25 |    25 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
@@ -101,7 +102,7 @@ The proposal tests that fail (290) are `await-dictionary` (87), ShadowRealm (64)
 | test/language/rest-parameters         |    11 |            10 |    11 |    0 |       0 |       0 |    0 |         90.9% |    100.0% |
 | test/language/source-text             |     1 |             1 |     1 |    0 |       0 |       0 |    0 |        100.0% |    100.0% |
 | test/language/statementList           |    80 |            32 |    80 |    0 |       0 |       0 |    0 |         40.0% |    100.0% |
-| test/language/statements              |  9347 |          5109 |  9321 |   25 |       1 |       0 |    0 |         57.5% |     99.7% |
+| test/language/statements              |  9347 |          5109 |  9340 |    6 |       1 |       0 |    0 |         57.5% |     99.9% |
 | test/language/types                   |   113 |            84 |   110 |    3 |       0 |       0 |    0 |         80.7% |     97.3% |
 | test/language/white-space             |    67 |            26 |    67 |    0 |       0 |       0 |    0 |         38.8% |    100.0% |
 
@@ -157,7 +158,7 @@ The proposal tests that fail (290) are `await-dictionary` (87), ShadowRealm (64)
 | test/built-ins/Temporal                       |  4605 |             0 | 4589 |   16 |       0 |       0 |    0 |          0.0% |     99.7% |
 | test/built-ins/ThrowTypeError                 |    14 |             7 |   13 |    1 |       0 |       0 |    0 |         50.0% |     92.9% |
 | test/built-ins/TypedArray                     |  1453 |             0 | 1442 |   11 |       0 |       0 |    0 |          0.0% |     99.2% |
-| test/built-ins/TypedArrayConstructors         |   738 |             0 |  707 |   31 |       0 |       0 |    0 |          0.0% |     95.8% |
+| test/built-ins/TypedArrayConstructors         |   738 |             0 |  711 |   27 |       0 |       0 |    0 |          0.0% |     96.3% |
 | test/built-ins/Uint8Array                     |    70 |             0 |   68 |    2 |       0 |       0 |    0 |          0.0% |     97.1% |
 | test/built-ins/WeakMap                        |   141 |            86 |  140 |    1 |       0 |       0 |    0 |         60.9% |     99.3% |
 | test/built-ins/WeakRef                        |    29 |             0 |   27 |    2 |       0 |       0 |    0 |          0.0% |     93.1% |
