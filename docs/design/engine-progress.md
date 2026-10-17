@@ -31,6 +31,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 - 2026-10-17, commit `7090eb1`: the baseline. Other workflows kept the load average between 40 and 95 during the run, so the 3 timeouts are an upper bound.
 - 2026-10-17, branch `engine-objects` at commit `9a6ba4d` (the functions and objects area, alone): 22663 passes, up from 17547. `noStrict` tests now run as sloppy code instead of being skipped. The area directories, before and after: built-ins Object 1761 → 3011 of 3411, Function 97 → 391 of 509, Reflect 0 → 151 of 153, Proxy 0 → 257 of 311, Symbol 35 → 71 of 98, WeakMap 86 → 140 of 141, WeakSet 62 → 84 of 85, WeakRef 0 → 27 of 29, FinalizationRegistry 0 → 45 of 47; language (rerun at `219bd27`) expressions/call 69 → 90 of 92, expressions/new 56 → 56 of 59, arguments-object 104 → 161 of 263, function-code 91 → 211 of 217, statements/function 295 → 443 of 451, statements/variable 131 → 173 of 178. Most of the rest wait for primitive wrapper objects, regular expressions, class expressions, async generators, and `$262.createRealm`. The load average stayed between 35 and 175.
+- 2026-10-17, branch `engine-objects` at commit `c516f2c`, reruns of single directories after later fixes (weak collection, array methods on proxies, eval declaration checks): built-ins Function 392 of 509, WeakMap, WeakSet, WeakRef, and FinalizationRegistry 296 of 302; language statements/function 446 of 451, eval-code 311 of 347, statements/with 170 of 181. The totals above are from `9a6ba4d`.
 
 ## test/language
 
