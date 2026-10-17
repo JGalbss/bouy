@@ -9,6 +9,8 @@ use oxc::semantic::{Semantic, SymbolId};
 use oxc::span::Span;
 
 use super::analyze::Analysis;
+use super::link::Binding;
+use super::linking::Linking;
 use crate::diagnostic::{Code, Reporter};
 use crate::erlang::{Clause, Expr, Function};
 
@@ -35,6 +37,8 @@ pub enum Top {
     /// A `var` or a function of a script's top-level code: a property of the global
     /// object (ECMA-262 §16.1.7).
     Global(String),
+    /// An import binding of another module.
+    Import(Binding),
 }
 
 #[derive(Debug, Clone)]
@@ -235,6 +239,8 @@ pub struct Lowerer<'a, 'c> {
     pub early: std::collections::HashSet<SymbolId>,
     /// The resource cell of the `using` declaration being lowered.
     pub using_stacks: Vec<String>,
+    /// What the module's imports and exports refer to.
+    pub linking: Linking<'c>,
 }
 
 impl Lowerer<'_, '_> {

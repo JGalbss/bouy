@@ -127,10 +127,25 @@ compile_modules(Build, Modules) ->
         {error, Reason} -> stop(1, io_lib:format("bouy: cannot write ~ts: ~ts~n", [Ebin, file:format_error(Reason)]))
     end,
     true = code:add_patha(Ebin),
-    case lists:flatmap(fun(Module) -> compile_module(Build, Ebin, Module) end, Modules) of
+    case compile_parallel(Build, Ebin, Modules) of
         [] -> ok;
         Errors -> {error, Errors}
     end.
+
+%% A program that loads packages from node_modules has hundreds of modules, so up to
+%% eight processes compile them, each a share of the list.
+compile_parallel(Build, Ebin, Modules) ->
+    Jobs = max(1, min(8, erlang:system_info(schedulers_online))),
+    Shares = [[M || {I, M} <- lists:enumerate(0, Modules), I rem Jobs =:= J] || J <- lists:seq(0, Jobs - 1)],
+    Workers = [spawn_monitor(fun() -> exit({compiled, lists:flatmap(fun(M) -> compile_module(Build, Ebin, M) end, Share)}) end)
+               || Share <- Shares, Share =/= []],
+    lists:flatmap(fun({Pid, Ref}) ->
+                          receive
+                              {'DOWN', Ref, process, Pid, {compiled, Errors}} -> Errors;
+                              {'DOWN', Ref, process, Pid, Reason} ->
+                                  [io_lib:format("bouy: compiling the program failed: ~tp~n", [Reason])]
+                          end
+                  end, Workers).
 
 %% Compiles one module when its source changed since the last build, and loads it.
 compile_module(Build, Ebin, Module) ->

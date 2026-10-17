@@ -348,11 +348,16 @@ pending_list(Key) ->
         L -> L
     end.
 
+%% A test262 host, as bouy_test262 is, sets '$bouy_rejections' to ignore: such hosts
+%% do not end a test for a rejection that no handler takes.
 check_unhandled() ->
-    case pending_list(?UNHANDLED) of
-        [] ->
+    case {pending_list(?UNHANDLED), erlang:get('$bouy_rejections')} of
+        {[], _} ->
             ok;
-        [P | _] ->
+        {_, ignore} ->
+            erlang:erase(?UNHANDLED),
+            ok;
+        {[P | _], _} ->
             {rejected, Reason, _} = bouy_heap:slots(P),
             bouy_ref:report_uncaught(Reason)
     end.
@@ -546,7 +551,11 @@ event_step(_Other) ->
 %%% promise of the method settles, and the next call waits for it, so turns
 %%% never interleave even when a method awaits.
 
--spec spawn_actor({module(), binary()}, list()) -> {'$actor', pid()}.
+%% The class is {Module, Name}, a class of Module, or {export, Module, Key}, an
+%% export of Module that the actor's module imports.
+-spec spawn_actor({module(), binary() | {export, binary()}} | {export, module(), binary()}, list()) -> {'$actor', pid()}.
+spawn_actor({export, Module, Key}, Args) ->
+    spawn_actor({Module, {export, Key}}, Args);
 spawn_actor({Module, Class}, Args) ->
     Term = bouy_heap:clone_out(bouy_heap:new_array(Args)),
     Parent = self(),
@@ -568,7 +577,11 @@ actor_init(Parent, Tag, Module, Class, ArgsTerm) ->
     bouy_ref:init_realm(),
     update_now(),
     try
-        C = Module:'$class'(Class),
+        bouy_module:evaluate_dependencies(Module),
+        C = case Class of
+            {export, Key} -> Module:'$export'(Key);
+            _ -> Module:'$class'(Class)
+        end,
         This = bouy_heap:construct(C, bouy_heap:array_items(bouy_heap:clone_in(ArgsTerm)), C),
         erlang:put(?THIS, This),
         drain(),

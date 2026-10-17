@@ -567,8 +567,10 @@ const RESERVED: &[&str] = &[
     "orelse", "receive", "rem", "try", "when", "xor",
 ];
 
-/// The longest atom and variable name Erlang accepts, in characters.
-const NAME_LIMIT: usize = 255;
+/// The longest atom and variable name that Bouy writes, in characters. Erlang accepts 255,
+/// but its compiler names a fun after its function, as `-Name/0-fun-0-`, in an atom of
+/// its own, so a name leaves room for that suffix.
+const NAME_LIMIT: usize = 230;
 
 /// `name`, or when it has more than `limit` characters, a prefix of it and a hash of the
 /// whole name, so that two long names stay apart.
@@ -722,7 +724,7 @@ mod tests {
     fn shortens_names_erlang_cannot_hold() {
         let long = "f".repeat(300);
         let other = format!("{}g", "f".repeat(299));
-        assert_eq!(atom(&long).chars().count(), 255);
+        assert_eq!(atom(&long).chars().count(), NAME_LIMIT);
         assert_ne!(atom(&long), atom(&other));
         assert_eq!(shorten("short", 10), "short");
     }

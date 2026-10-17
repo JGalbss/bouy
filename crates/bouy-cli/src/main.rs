@@ -108,8 +108,15 @@ fn main() -> ExitCode {
             entry,
             args,
         } => run(&entry, &args, semantics.into()),
+        // A module that only throws when it loads still fails the check.
         Commands::Check { semantics, entry } => match compile(&entry, semantics.into()) {
-            Ok(_) => ExitCode::SUCCESS,
+            Ok(project) if project.deferred.is_empty() => ExitCode::SUCCESS,
+            Ok(project) => {
+                for diagnostic in &project.deferred {
+                    eprintln!("{}", relative(diagnostic));
+                }
+                ExitCode::from(DIAGNOSTICS)
+            }
             Err(code) => code,
         },
         Commands::Build { semantics, entry } => build(&entry, semantics.into()),

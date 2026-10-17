@@ -19,7 +19,8 @@ pub fn with_program<R>(
     source: &str,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
-    parse_program(path, source, true, use_program)
+    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
+    parse_program(path, source, source_type, true, use_program)
 }
 
 /// As `with_program`, for the JavaScript engine (`--semantics reference`): a `yield`
@@ -29,17 +30,28 @@ pub fn with_js_program<R>(
     source: &str,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
-    parse_program(path, source, false, use_program)
+    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
+    parse_program(path, source, source_type, false, use_program)
+}
+
+/// `with_js_program` with an explicit source type, such as a `CommonJS` script.
+pub fn with_program_as<R>(
+    path: &Path,
+    source: &str,
+    source_type: SourceType,
+    use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
+) -> Result<R, Vec<Diagnostic>> {
+    parse_program(path, source, source_type, false, use_program)
 }
 
 fn parse_program<R>(
     path: &Path,
     source: &str,
+    source_type: SourceType,
     effect_hint: bool,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
     let parsed = Parser::new(&allocator, source, source_type).parse();
     if parsed.fatal_error || parsed.diagnostics.has_errors() {
         return Err(syntax_errors(
@@ -57,6 +69,25 @@ fn parse_program<R>(
         return Err(syntax_errors(path, source, &built.diagnostics, effect_hint));
     }
     Ok(use_program(&parsed.program, &built.semantic))
+}
+
+/// Parses `source` without semantic analysis and hands the program and whether it has
+/// `import` or `export` syntax to `inspect`. `None` when it does not parse.
+pub fn parses<R>(
+    _path: &Path,
+    source: &str,
+    source_type: SourceType,
+    inspect: impl for<'a> FnOnce(&Program<'a>, bool) -> R,
+) -> Option<R> {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if parsed.fatal_error || parsed.diagnostics.has_errors() {
+        return None;
+    }
+    Some(inspect(
+        &parsed.program,
+        parsed.module_record.has_module_syntax,
+    ))
 }
 
 fn syntax_errors(

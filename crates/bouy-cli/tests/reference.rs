@@ -17,3 +17,35 @@ fn programs_print_what_node_printed() {
         });
     }
 }
+
+/// A module that does not compile, other than the entry, throws when the program loads
+/// it, as Node throws a `SyntaxError`, and `bouy check` reports it.
+#[test]
+fn a_dependency_that_does_not_compile_throws_when_it_loads() {
+    let dir = std::env::temp_dir().join(format!("bouy-broken-dependency-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    std::fs::write(dir.join("package.json"), "{\"type\":\"module\"}").expect("package.json");
+    std::fs::write(
+        dir.join("main.js"),
+        "import { x } from \"./bad.js\";\nconsole.log(x);\n",
+    )
+    .expect("main.js");
+    std::fs::write(dir.join("bad.js"), "export const x = ;\n").expect("bad.js");
+    let bouy = |command: &str| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_bouy"))
+            .args([command, "--semantics", "reference"])
+            .arg(dir.join("main.js"))
+            .output()
+            .expect("bouy runs")
+    };
+    let check = bouy("check");
+    assert_eq!(check.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&check.stderr).contains("bad.js:1:18: BOUY200"));
+    if common::vm_available() {
+        let run = bouy("run");
+        assert_eq!(run.status.code(), Some(1));
+        assert!(run.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&run.stderr).contains("Uncaught SyntaxError"));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -1,7 +1,9 @@
 //! Calls: argument lists with spread, method calls, calls of module functions and of
 //! the functions of "bouy", and `new`.
 
-use oxc::ast::ast::{Argument, CallExpression, Expression, IdentifierReference, NewExpression};
+use oxc::ast::ast::{
+    Argument, CallExpression, Expression, IdentifierReference, MemberExpression, NewExpression,
+};
 
 use super::context::{Local, Lowerer, Top, cell_get};
 use super::expr::strip;
@@ -47,54 +49,7 @@ impl<'a> Lowerer<'a, '_> {
             return self.super_constructor_call(parent, args);
         }
         if let Some(member) = callee.as_member_expression() {
-            if let Expression::Super(_) = member.object() {
-                let (object, key) = self.member_parts(member);
-                let method = self.get(object.clone(), key);
-                let args = self.args(&call.arguments);
-                let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
-                return self.bind(Expr::call("bouy_ref", "call", vec![method, this, args]));
-            }
-            let (object, key) = self.member_parts(member);
-            if let MemberKey::Private(_) = key {
-                if call.optional {
-                    self.chain_guard(object.clone());
-                }
-                let method = self.get(object.clone(), key);
-                let args = self.args(&call.arguments);
-                return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
-            }
-            if call.optional {
-                let key = self.fix_key(key);
-                let method = self.get(object.clone(), key);
-                self.chain_guard(method.clone());
-                let args = self.args(&call.arguments);
-                return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
-            }
-            if !call.arguments.iter().all(is_pure) {
-                // The method is read before the arguments run (ECMA-262 §13.3.6.1).
-                let key = self.fix_key(key);
-                let method = self.get(object.clone(), key.clone());
-                let args = self.args(&call.arguments);
-                let MemberKey::Static(key) = key else {
-                    return Expr::undefined();
-                };
-                return self.bind(Expr::call(
-                    "bouy_ref",
-                    "call_method_value",
-                    vec![method, object, key, args],
-                ));
-            }
-            let args = self.args(&call.arguments);
-            let value = match key {
-                MemberKey::Static(key) => {
-                    Expr::call("bouy_ref", "call_method", vec![object, key, args])
-                }
-                MemberKey::Dynamic(key) => {
-                    Expr::call("bouy_ref", "call_method_computed", vec![object, key, args])
-                }
-                MemberKey::Private(_) => Expr::undefined(),
-            };
-            return self.bind(value);
+            return self.method_call(call, member);
         }
         if let Expression::Identifier(ident) = callee
             && !call.optional
@@ -122,6 +77,16 @@ impl<'a> Lowerer<'a, '_> {
                     return self.bind(Expr::local_call(&name, vec![Expr::undefined(), args]));
                 }
                 Some(Top::Bouy(name)) => return self.bouy_call(&name, call),
+                Some(Top::Import(binding)) if !call.optional => {
+                    if let Some((module, function)) = self.linking.direct_function(&binding) {
+                        let args = self.args(&call.arguments);
+                        return self.bind(Expr::call(
+                            &module,
+                            &function,
+                            vec![Expr::undefined(), args],
+                        ));
+                    }
+                }
                 _ => {}
             }
         }
@@ -135,6 +100,63 @@ impl<'a> Lowerer<'a, '_> {
             "call",
             vec![function, Expr::undefined(), args],
         ))
+    }
+
+    /// A call of a member: `o.m(...)`, `o[k](...)`, `o.#m(...)`, `super.m(...)`, and their
+    /// optional forms, with `o` as `this`.
+    fn method_call(
+        &mut self,
+        call: &'a CallExpression<'a>,
+        member: &'a MemberExpression<'a>,
+    ) -> Expr {
+        if let Expression::Super(_) = member.object() {
+            let (object, key) = self.member_parts(member);
+            let method = self.get(object.clone(), key);
+            let args = self.args(&call.arguments);
+            let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
+            return self.bind(Expr::call("bouy_ref", "call", vec![method, this, args]));
+        }
+        let (object, key) = self.member_parts(member);
+        if let MemberKey::Private(_) = key {
+            if call.optional {
+                self.chain_guard(object.clone());
+            }
+            let method = self.get(object.clone(), key);
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
+        }
+        if call.optional {
+            let key = self.fix_key(key);
+            let method = self.get(object.clone(), key);
+            self.chain_guard(method.clone());
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
+        }
+        if !call.arguments.iter().all(is_pure) {
+            // The method is read before the arguments run (ECMA-262 §13.3.6.1).
+            let key = self.fix_key(key);
+            let method = self.get(object.clone(), key.clone());
+            let args = self.args(&call.arguments);
+            let MemberKey::Static(key) = key else {
+                return Expr::undefined();
+            };
+            return self.bind(Expr::call(
+                "bouy_ref",
+                "call_method_value",
+                vec![method, object, key, args],
+            ));
+        }
+        let args = self.args(&call.arguments);
+        let value = match key {
+            MemberKey::Static(key) => {
+                Expr::call("bouy_ref", "call_method", vec![object, key, args])
+            }
+            MemberKey::Dynamic(key) => {
+                Expr::call("bouy_ref", "call_method_computed", vec![object, key, args])
+            }
+            MemberKey::Private(_) => Expr::undefined(),
+        };
+        self.bind(value)
     }
 
     /// A direct eval. The runtime checks that `eval` is still the intrinsic.
@@ -236,11 +258,26 @@ impl<'a> Lowerer<'a, '_> {
                         .and_then(|symbol| self.tops.get(&symbol).cloned()),
                     _ => None,
                 };
-                let Some(Top::Class(class)) = class else {
-                    return self.unsupported(
-                        call.span,
-                        "`spawn` of a value that is not a module-level class",
-                    );
+                // An imported class: the actor's realm reads it through its module.
+                let target = match class {
+                    Some(Top::Class(class)) => {
+                        Expr::Tuple(vec![Expr::atom(self.module.clone()), Expr::binary(class)])
+                    }
+                    Some(Top::Import(super::link::Binding::Export { unit, key }))
+                        if self.linking.graph.units[unit].kind == super::graph::Kind::Esm =>
+                    {
+                        Expr::Tuple(vec![
+                            Expr::atom("export"),
+                            Expr::atom(self.linking.graph.units[unit].name.clone()),
+                            Expr::binary(key),
+                        ])
+                    }
+                    _ => {
+                        return self.unsupported(
+                            call.span,
+                            "`spawn` of a value that is not a module-level class",
+                        );
+                    }
                 };
                 let options = match call.arguments.get(1).and_then(Argument::as_expression) {
                     Some(options) => self.expr(options),
@@ -249,10 +286,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.bind(Expr::call(
                     "bouy_jobs",
                     "spawn_actor",
-                    vec![
-                        Expr::Tuple(vec![Expr::atom(self.module.clone()), Expr::binary(class)]),
-                        Expr::call("bouy_ref", "spawn_args", vec![options]),
-                    ],
+                    vec![target, Expr::call("bouy_ref", "spawn_args", vec![options])],
                 ))
             }
             "stop" => {

@@ -16,10 +16,11 @@ use oxc::ast_visit::Visit;
 use oxc::span::GetSpan;
 
 use super::analyze::VarDeclarations;
-use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, Top};
+use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret};
 use super::expr::strip;
 use super::function::{Callee, FnBody, length_of};
 use super::member::super_object;
+use super::module::heritage_suspends;
 use crate::erlang::{Clause, Expr, Function};
 
 /// The elements of a class that run after its methods are defined.
@@ -43,7 +44,10 @@ impl<'a> Lowerer<'a, '_> {
         self.frame = Frame::default();
         self.pre.clear();
         let key = self.class_key(name);
-        let c = self.class_value(class, Expr::js_string(name), Some(key));
+        // A superclass expression that awaits runs in the top-level code, which leaves
+        // its value under the heritage key.
+        let heritage = heritage_suspends(class).then(|| self.heritage_key(name));
+        let c = self.class_value(class, Expr::js_string(name), Some((key, heritage)));
         let mut body = std::mem::take(&mut self.pre);
         body.push(c);
         self.extra.push(Function {
@@ -57,21 +61,9 @@ impl<'a> Lowerer<'a, '_> {
         self.frame = Frame::default();
     }
 
-    /// A class declaration in a function or a block: its value, bound to its name. At
-    /// module level, the class of the realm, made here if no code used it before.
+    /// A class declaration in a function or a block: its value, bound to its name. A
+    /// module-level class is `declare_class`.
     pub fn class_declaration(&mut self, class: &'a Class<'a>) {
-        if class.id.is_none() && self.classes.iter().any(|name| name == "default") {
-            // `export default class {}`: its class is made once per realm too.
-            self.pre
-                .push(Expr::local_call("$class", vec![Expr::binary("default")]));
-            return;
-        }
-        let symbol = class.id.as_ref().and_then(|id| id.symbol_id.get());
-        if let Some(Top::Class(name)) = symbol.and_then(|symbol| self.tops.get(&symbol).cloned()) {
-            self.pre
-                .push(Expr::local_call("$class", vec![Expr::binary(name)]));
-            return;
-        }
         let name = class
             .id
             .as_ref()
@@ -94,14 +86,19 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// `ClassDefinitionEvaluation`: the code goes to `pre`, and the value is the class.
-    /// `register` is the key under which a module-level class is stored in the realm
-    /// before its static elements run.
+    /// `register` holds, for a module-level class, the key under which the class is stored
+    /// in the realm before its static elements run, and the key of the value of its
+    /// superclass expression when the top-level code evaluated it.
     pub fn class_value(
         &mut self,
         class: &'a Class<'a>,
         name: Expr,
-        register: Option<Expr>,
+        register: Option<(Expr, Option<Expr>)>,
     ) -> Expr {
+        let (register, heritage_key) = match register {
+            Some((key, heritage)) => (Some(key), heritage),
+            None => (None, None),
+        };
         self.declare_privates(class);
         if let (Some(symbol), Some(heritage)) = (
             class.id.as_ref().and_then(|id| id.symbol_id.get()),
@@ -110,7 +107,10 @@ impl<'a> Lowerer<'a, '_> {
             self.heritage_binding(symbol, heritage.expression.span());
         }
         let parent = class.heritage.as_ref().map(|heritage| {
-            let value = self.expr(&heritage.expression);
+            let value = match heritage_key {
+                Some(key) => Expr::call("erlang", "get", vec![key]),
+                None => self.expr(&heritage.expression),
+            };
             self.bind(value)
         });
         let constructor = class.body.body.iter().find_map(|element| match element {

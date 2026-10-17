@@ -12,7 +12,7 @@ use oxc::span::{GetSpan, Span};
 
 use super::analyze::{Assigned, completes_normally};
 use super::context::{
-    Cont, Kind, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
+    Cont, Kind, Local, Lowerer, Target, TargetKind, Top, boolean_case, cell_set, throw_value,
 };
 use super::function::binding_name;
 use crate::erlang::{Clause, Expr};
@@ -157,15 +157,32 @@ impl<'a> Lowerer<'a, '_> {
             Statement::ExportDeclaration(export) => match &export.declaration {
                 Declaration::VariableDeclaration(declaration) => self.variables(declaration),
                 Declaration::ClassDeclaration(class) if !class.declare => {
-                    self.class_declaration(class);
+                    if let Some(id) = &class.id {
+                        self.declare_class(id.name.as_str(), class);
+                    }
                 }
                 _ => {}
             },
-            Statement::ExportDefaultDeclaration(export) => {
-                if let oxc::ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) =
-                    &export.declaration
-                {
-                    self.class_declaration(class);
+            Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+                oxc::ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+                    let name = class.id.as_ref().map_or("default", |id| id.name.as_str());
+                    self.declare_class(name, class);
+                }
+                other => {
+                    if let Some(expression) = other.as_expression() {
+                        self.export_default(expression);
+                    }
+                }
+            },
+            Statement::ClassDeclaration(class)
+                if class.id.as_ref().is_some_and(|id| {
+                    id.symbol_id.get().is_some_and(|symbol| {
+                        matches!(self.tops.get(&symbol), Some(Top::Class(_) | Top::Var(_)))
+                    })
+                }) =>
+            {
+                if let Some(id) = &class.id {
+                    self.declare_class(id.name.as_str(), class);
                 }
             }
             Statement::ClassDeclaration(class) if !class.declare => {
@@ -597,6 +614,7 @@ pub fn is_simple(statement: &Statement<'_>) -> bool {
             | Statement::TSInterfaceDeclaration(_)
             | Statement::ExportDeclaration(_)
             | Statement::ExportNamedDeclaration(_)
+            | Statement::ExportDefaultDeclaration(_)
             | Statement::DebuggerStatement(_)
     )
 }

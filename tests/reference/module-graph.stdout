@@ -1,0 +1,24 @@
+live 0 0
+live 2 2 2
+label counter 12 42
+default class Counter 1
+namespace keys [
+  'colors',
+  'default',
+  'green',
+  'increment',
+  'red',
+  'the answer',
+  'total'
+]
+namespace tag [object Module]
+star #f00 #0f0 colors default
+null prototype true
+write TypeError
+same namespace true
+order b,a
+cycle A B sees A ReferenceError
+meta true true
+meta dirname true
+meta resolve true
+meta main true

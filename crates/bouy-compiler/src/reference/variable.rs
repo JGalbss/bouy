@@ -60,8 +60,10 @@ impl<'a> Lowerer<'a, '_> {
         }
         match self.tops.get(&symbol).cloned() {
             Some(Top::Function { name, length, form }) => self.static_function(&name, length, form),
+            // A class reads as uninitialized until its declaration runs.
             Some(Top::Class(name)) => {
-                self.bind(Expr::local_call("$class", vec![Expr::binary(name)]))
+                let read = self.declared_class(&name);
+                self.bind(read)
             }
             Some(Top::Var(name)) => self.bind(Expr::local_call(&format!("$get_{name}"), vec![])),
             Some(Top::Global(name)) => self.bind(Expr::call(
@@ -71,6 +73,10 @@ impl<'a> Lowerer<'a, '_> {
             )),
             Some(Top::Literal(value)) => value,
             Some(Top::Bouy(_)) => self.unsupported(span, "a function of \"bouy\" used as a value"),
+            Some(Top::Import(binding)) => {
+                let read = self.linking.read(&binding);
+                self.bind(read)
+            }
             None if self.is_local_binding(symbol) => {
                 // A read before the declaration ran: the temporal dead zone.
                 let binding = self.semantic.scoping().symbol_name(symbol).to_owned();
@@ -168,6 +174,14 @@ impl<'a> Lowerer<'a, '_> {
                 self.pre
                     .push(Expr::call("erlang", "put", vec![key, value.clone()]));
                 value
+            }
+            Some(Top::Import(_)) => {
+                let _ = self.bind(value);
+                self.bind(Expr::call(
+                    "bouy_ref",
+                    "type_error",
+                    vec![Expr::js_string("Assignment to constant variable.")],
+                ))
             }
             _ => self.unsupported(span, "an assignment to this name"),
         }

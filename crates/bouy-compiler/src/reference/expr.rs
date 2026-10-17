@@ -90,6 +90,8 @@ impl<'a> Lowerer<'a, '_> {
             Expression::StaticMemberExpression(member) => self.static_member(member),
             Expression::ComputedMemberExpression(member) => self.computed_member(member),
             Expression::PrivateFieldExpression(member) => self.private_member(member),
+            Expression::ImportExpression(import) => self.dynamic_import(import),
+            Expression::ImportMeta(_) => self.import_meta(),
             other => {
                 let what = match other {
                     Expression::BigIntLiteral(_) => "a BigInt literal",
@@ -130,6 +132,16 @@ impl<'a> Lowerer<'a, '_> {
                 let value = self.bind(value);
                 self.assign_target(&assignment.left, value.clone());
                 value
+            }
+            // `(x) = function () {}`: a parenthesized name is no identifier reference, so
+            // the function gets no name (ECMA-262 §13.15.2).
+            AssignmentTarget::AssignmentTargetIdentifier(ident)
+                if assignment.operator == AssignmentOperator::Assign
+                    && self.semantic.source_text()[assignment.span.start as usize..]
+                        .starts_with('(') =>
+            {
+                let value = self.expr(&assignment.right);
+                self.assign_name_value(ident, value)
             }
             other => match other.as_simple_assignment_target() {
                 Some(target) => self.assign_simple(target, assignment.operator, &assignment.right),

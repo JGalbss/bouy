@@ -5,10 +5,12 @@
 %%   erl ... -pa <runtime ebin> -pa <dir of this module> -eval 'bouy_test262:main()'
 %%       -extra <manifest> <jobs> <output dir>
 %%
-%% Each line of the manifest is "<index>\t<erl file>\t<timeout ms>". For each test, the
-%% runner prints "START <index>", compiles and loads the module, runs its top-level code
-%% with stdout and stderr captured into <output dir>/<index>.out and .err, and prints
-%% "DONE <index> <status>": the exit status, timeout, memory, or compile.
+%% Each line of the manifest is "<index>\t<erl file>,...\t<timeout ms>": the entry module
+%% of the test, then the modules it imports. For each test, the runner prints
+%% "START <index>", loads the imported modules once per VM (tests share fixtures), compiles
+%% and loads the entry module, runs it with stdout and stderr captured into
+%% <output dir>/<index>.out and .err, and prints "DONE <index> <status>": the exit status,
+%% timeout, memory, or compile.
 -module(bouy_test262).
 
 -export([main/0]).
@@ -26,37 +28,99 @@ main() ->
     {ok, Runtime} = bouy_app:start(normal, []),
     true = unlink(Runtime),
     Next = atomics:new(1, []),
-    Workers = [spawn_monitor(fun() -> worker(Tests, Next, Out) end) || _ <- lists:seq(1, list_to_integer(Jobs))],
+    Loader = spawn(fun() -> loader(#{}) end),
+    Workers = [spawn_monitor(fun() -> worker(Tests, Next, Out, Loader) end) || _ <- lists:seq(1, list_to_integer(Jobs))],
     [receive {'DOWN', Ref, process, Pid, _} -> ok end || {Pid, Ref} <- Workers],
     erlang:halt(0).
 
 parse(Line) ->
-    [Index, File, Timeout] = binary:split(Line, <<"\t">>, [global]),
-    {Index, binary_to_list(File), binary_to_integer(Timeout)}.
+    [Index, Files, Timeout] = binary:split(Line, <<"\t">>, [global]),
+    [File | Imports] = [binary_to_list(F) || F <- binary:split(Files, <<",">>, [global])],
+    {Index, File, Imports, binary_to_integer(Timeout)}.
 
-worker(Tests, Next, Out) ->
+worker(Tests, Next, Out, Loader) ->
     I = atomics:add_get(Next, 1, 1),
     case I =< tuple_size(Tests) of
         true ->
-            run(element(I, Tests), Out),
-            worker(Tests, Next, Out);
+            run(element(I, Tests), Out, Loader),
+            worker(Tests, Next, Out, Loader);
         false ->
             ok
     end.
 
-run({Index, File, Timeout}, Out) ->
+%% Loads the modules of the tests. A module loads once: tests share fixtures, a test may
+%% import another test, and a second load of a module in use would purge the code that a
+%% realm runs. Each test holds its modules. The module of a test is released when the
+%% test ends, and purged when no test holds it and no test imports it; an imported module
+%% stays loaded. The workers compile, so the loader only loads.
+loader(Held) ->
+    receive
+        {loaded, File, From} ->
+            From ! {loaded, File, maps:find(File, Held)},
+            loader(Held);
+        {load, File, Module, Binary, Entry, From} ->
+            Held1 = case Held of
+                #{File := {Known, Count, Transient}} ->
+                    Held#{File => {Known, Count + 1, Transient andalso Entry}};
+                _ ->
+                    {module, Module} = code:load_binary(Module, File, Binary),
+                    Held#{File => {Module, 1, Entry}}
+            end,
+            {Loaded, _, _} = maps:get(File, Held1),
+            From ! {held, File, Loaded},
+            loader(Held1);
+        {release, File} ->
+            case Held of
+                #{File := {Module, 1, true}} ->
+                    _ = code:purge(Module),
+                    _ = code:delete(Module),
+                    _ = code:purge(Module),
+                    loader(maps:remove(File, Held));
+                #{File := {Module, Count, Transient}} ->
+                    loader(Held#{File => {Module, Count - 1, Transient}});
+                _ ->
+                    loader(Held)
+            end
+    end.
+
+%% Holds a module for a test: compiled here unless the loader has it already.
+hold(File, Entry, Loader) ->
+    Loader ! {loaded, File, self()},
+    Compiled = receive
+        {loaded, File, {ok, {Module, _, _}}} -> {ok, Module, none};
+        {loaded, File, error} -> compile:file(File, [binary, return_errors, nowarn_unused_vars])
+    end,
+    case Compiled of
+        {ok, Name, Binary} ->
+            Loader ! {load, File, Name, Binary, Entry, self()},
+            receive {held, File, Loaded} -> {ok, Loaded} end;
+        Failed ->
+            {error, Failed}
+    end.
+
+run({Index, File, Imports, Timeout}, Out, Loader) ->
     io:format("START ~ts~n", [Index]),
     Base = filename:join(Out, binary_to_list(Index)),
-    Status = case compile:file(File, [binary, return_errors, nowarn_unused_vars]) of
-        {ok, Module, Binary} ->
-            {module, Module} = code:load_binary(Module, File, Binary),
+    Held = lists:foldl(fun(Import, ok) ->
+                               case hold(Import, false, Loader) of
+                                   {ok, _} -> ok;
+                                   {error, Failed} -> {import, Failed}
+                               end;
+                          (_, Failed) ->
+                               Failed
+                       end, ok, Imports),
+    Status = case Held =:= ok andalso hold(File, true, Loader) of
+        {ok, Module} ->
             Result = execute(Module, Timeout, Base),
-            _ = code:purge(Module),
-            _ = code:delete(Module),
-            _ = code:purge(Module),
+            Loader ! {release, File},
             Result;
-        Failed ->
+        {error, Failed} ->
             ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected the module: ~0tP~n", [Failed, 12])),
+            ok = file:write_file(Base ++ ".out", <<>>),
+            "compile";
+        false ->
+            {import, Rejected} = Held,
+            ok = file:write_file(Base ++ ".err", io_lib:format("the Erlang compiler rejected an imported module: ~0tP~n", [Rejected, 12])),
             ok = file:write_file(Base ++ ".out", <<>>),
             "compile"
     end,
@@ -87,6 +151,7 @@ realm(Module, Stdout, Stderr) ->
     group_leader(Stdout, self()),
     erlang:put('$bouy_exit', true),
     erlang:put('$bouy_stderr', Stderr),
+    erlang:put('$bouy_rejections', ignore),
     try Module:'__init__'() of
         _ -> exit({'$bouy_exit', 0})
     catch

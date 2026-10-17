@@ -378,6 +378,8 @@ from_record({array, Proto, _, _, _, {_, Elements}}, K, Receiver) when is_integer
     end;
 from_record({array, _, _, _, _, {Length, _}}, <<"length">>, _Receiver) ->
     Length;
+from_record({deferred_namespace, _, Props, _, _, M}, K, Receiver) ->
+    deferred_get(M, Props, K, Receiver);
 from_record({proxy, _, Props, _, _, _}, {'#', _, _} = K, _Receiver) ->
     maps:get(K, Props, undefined);
 from_record({proxy, _, _, _, _, Handler}, K, Receiver) ->
@@ -393,6 +395,25 @@ from_record({_, Proto, Props, _, _, _}, K, Receiver) ->
 inherited(null, _K, _Receiver) -> undefined;
 inherited(Proto, K, Receiver) -> get(Proto, K, Receiver).
 
+%% A deferred namespace (bouy_module) evaluates its module when code first uses a
+%% string key other than "then". "then" and symbols act as on an ordinary object,
+%% and the namespace holds no ordinary "then".
+deferred_get(M, Props, K, Receiver) ->
+    case deferred_key(M, K) of
+        absent -> undefined;
+        _ ->
+            case Props of
+                #{K := V} -> resolve(V, Receiver);
+                _ -> undefined
+            end
+    end.
+
+deferred_key(_M, <<"then">>) -> absent;
+deferred_key(_M, {'$sym', _, _}) -> ordinary;
+deferred_key(M, _K) -> ok = bouy_module:ensure_deferred(M), export.
+
+%% A live binding of a module namespace (bouy_module) reads its module.
+resolve({'$live', Read}, _Receiver) -> Read();
 resolve({'$accessor', undefined, _}, _Receiver) -> undefined;
 resolve({'$accessor', Getter, _}, Receiver) -> call(Getter, Receiver, []);
 resolve(V, _Receiver) -> V.
@@ -429,6 +450,8 @@ assign({'$o', Id} = O, K, V, Mode) ->
             erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, V)}),
             V;
         {array, _, _, _, _, _} when is_integer(K); K =:= <<"length">> ->
+            strict_set(O, K, V, Mode);
+        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace ->
             strict_set(O, K, V, Mode);
         {Class, P, Props, Keys, Attrs, Slots} = R when Class =/= proxy, (Class =/= arguments orelse not is_map(Slots)) ->
             case Props of
@@ -563,6 +586,9 @@ set(O, K, V, Receiver) ->
             true;
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:set(Handler, K, V, Receiver);
+        %% A namespace object has no writable binding.
+        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace ->
+            false;
         {arguments, _, _, _, _, Map} = R when is_map_key(K, Map), O =:= Receiver ->
             _ = cell_set(maps:get(K, Map), V),
             ordinary_set(R, K, V, Receiver);
@@ -630,6 +656,11 @@ has(O, K) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:has(Handler, K);
+        %% [[HasProperty]] of a namespace does not read the binding.
+        {namespace, _, Props, _, _, _} ->
+            is_map_key(K, Props);
+        {deferred_namespace, _, Props, _, _, M} ->
+            deferred_key(M, K) =/= absent andalso is_map_key(K, Props);
         R ->
             case own_of(R, K) of
                 none ->
@@ -659,6 +690,9 @@ delete_property(O, K) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:delete_property(Handler, K);
+        {deferred_namespace, _, _, _, _, M} = R ->
+            deferred_key(M, K),
+            own_of(R, K) =:= none;
         R ->
             case own_of(R, K) of
                 none -> true;
@@ -691,6 +725,7 @@ cannot_delete(K) ->
 own_keys(O) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} -> bouy_ref_proxy:own_keys(Handler);
+        {deferred_namespace, _, _, _, _, M} = R -> ok = bouy_module:ensure_deferred(M), record_keys(R);
         R -> record_keys(R)
     end.
 
@@ -710,6 +745,9 @@ record_keys({Class, _, Props, Keys, _, Slots}) ->
 enumerable_keys(O) ->
     case record_of(O) of
         {proxy, _, _, _, _, _} ->
+            [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), is_enumerable(get_own(O, K))];
+        %% Each key of a namespace reads its binding, as [[GetOwnProperty]] does.
+        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace ->
             [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), is_enumerable(get_own(O, K))];
         {Class, _, _, _, Attrs, _} = R ->
             [K || K <- record_keys(R), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs),
@@ -757,6 +795,11 @@ define_own_property(O, {'#', _, _} = K, Desc) ->
     true;
 define_own_property(O, K, Desc) ->
     case record_of(O) of
+        {namespace, _, _, _, _, _} ->
+            bouy_module:define_namespace(O, K, Desc);
+        {deferred_namespace, _, _, _, _, M} ->
+            deferred_key(M, K),
+            bouy_module:define_namespace(O, K, Desc);
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:define_own_property(Handler, K, Desc);
         {array, _, _, _, _, _} = R when K =:= <<"length">> ->
@@ -952,6 +995,11 @@ unmap(O, K) ->
 get_own(O, K) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} -> bouy_ref_proxy:get_own_property(Handler, K);
+        {deferred_namespace, _, _, _, _, M} = R ->
+            case deferred_key(M, K) of
+                absent -> none;
+                _ -> own_of(R, K)
+            end;
         R -> own_of(R, K)
     end.
 
@@ -969,6 +1017,8 @@ own_bits(K, #{'$frozen' := true} = Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUM
 own_bits(K, Attrs) -> maps:get(K, Attrs, ?ALL).
 
 found({ok, {'$accessor', G, S}}, Bits) -> {accessor, G, S, Bits};
+%% [[GetOwnProperty]] of a namespace reads the binding, which may be uninitialized.
+found({ok, {'$live', Read}}, Bits) -> {data, Read(), Bits};
 found({ok, V}, Bits) -> {data, V, Bits};
 found(error, _Bits) -> none.
 
@@ -983,6 +1033,8 @@ prototype_of(O) ->
 %% Sets the prototype for internal use, without checks.
 -spec set_prototype_of(value(), value()) -> value().
 set_prototype_of(O, Proto) ->
+    lists:member(class_of(O), [namespace, deferred_namespace]) andalso Proto =/= null andalso
+        throw_error('TypeError', <<"Cannot set the prototype of a module namespace object">>),
     Id = id_for_write(O),
     erlang:put(Id, setelement(2, erlang:get(Id), Proto)),
     O.
@@ -1038,6 +1090,8 @@ prevent_extensions(O) ->
 %% read-only and non-configurable, and the object non-extensible.
 -spec freeze(value()) -> value().
 freeze(O) ->
+    class_of(O) =:= namespace andalso own_keys(O) =/= [] andalso
+        throw_error('TypeError', <<"Cannot freeze a module namespace object">>),
     Id = id_for_write(O),
     {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
     erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$frozen' => true}, Slots}),

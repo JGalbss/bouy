@@ -156,6 +156,11 @@ trim(Prefix) -> binary:part(Prefix, 0, byte_size(Prefix) - 1).
 %% object, `[Object: null prototype]` without a prototype.
 prefix(O) ->
     case bouy_heap:prototype_of(O) of
+        null when element(1, O) =:= '$o' ->
+            case bouy_heap:class_of(O) of
+                namespace -> <<"[Module: null prototype] ">>;
+                _ -> <<"[Object: null prototype] ">>
+            end;
         null -> <<"[Object: null prototype] ">>;
         _ -> tagged(constructor_name(O), tag(O))
     end.
