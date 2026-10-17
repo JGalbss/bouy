@@ -23,14 +23,14 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 
 | Directory      | Tests |  Pass |  Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ----: | ------: | ------: | ---: | --------: |
-| test/language  | 23726 | 19204 |  1700 |    1278 |       0 | 1544 |     86.5% |
-| test/built-ins | 23823 |  6757 | 12391 |    4475 |       2 |  198 |     28.6% |
-| **Total**      | 47549 | 25961 | 14091 |    5753 |       2 | 1742 |     56.6% |
+| test/language  | 23726 | 19265 |  1641 |    1276 |       0 | 1544 |     86.8% |
+| test/built-ins | 23823 |  6785 | 12363 |    4475 |       2 |  198 |     28.7% |
+| **Total**      | 47549 | 26050 | 14004 |    5751 |       2 | 1742 |     56.8% |
 
 ## Run log
 
 - 2026-10-17, commit `7090eb1`: the baseline. Other workflows kept the load average between 40 and 95 during the run, so the 3 timeouts are an upper bound.
-- 2026-10-17, branch `engine-classes`, commit `bbf22f9`: classes, generators, async iteration, iterator closing, the iterator helpers, function names, and the temporal dead zone (section "Classes and iteration"). `test/language` 11354 to 19204 passes, `test/built-ins` 6193 to 6757. The `test/built-ins` rows come from the run at commit `c0a4efa`, with the row of `Iterator` from the run at `bbf22f9`; the commits between changed only `Iterator` among the built-ins.
+- 2026-10-17, branch `engine-classes`, commit `bccdd13`: classes, generators, async iteration, iterator closing, the iterator helpers, function names, the temporal dead zone, and `using` declarations (section "Classes and iteration"). `test/language` 11354 to 19265 passes, `test/built-ins` 6193 to 6785. The `test/built-ins` rows come from the run at commit `c0a4efa`, with the rows of `Iterator`, `AsyncIteratorPrototype`, `SuppressedError`, and `Symbol` from the run at `bccdd13`; the commits between changed no other built-ins.
 
 ## test/language
 
@@ -45,11 +45,11 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/language/directive-prologue      |    62 |    5 |    0 |       0 |       0 |   57 |    100.0% |
 | test/language/eval-code               |   347 |    9 |  117 |       1 |       0 |  220 |      7.0% |
 | test/language/export                  |     3 |    3 |    0 |       0 |       0 |    0 |    100.0% |
-| test/language/expressions             | 11102 | 8907 |  763 |     844 |       0 |  588 |     84.7% |
+| test/language/expressions             | 11102 | 8909 |  763 |     842 |       0 |  588 |     84.7% |
 | test/language/function-code           |   217 |   91 |   17 |       0 |       0 |  109 |     84.2% |
 | test/language/future-reserved-words   |    55 |   48 |    0 |       0 |       0 |    7 |    100.0% |
 | test/language/global-code             |    42 |   17 |   19 |       1 |       0 |    5 |     45.9% |
-| test/language/identifier-resolution   |    14 |    3 |    5 |       1 |       0 |    5 |     33.3% |
+| test/language/identifier-resolution   |    14 |    5 |    3 |       1 |       0 |    5 |     55.5% |
 | test/language/identifiers             |   268 |  268 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/import                  |   129 |   10 |    3 |     116 |       0 |    0 |      7.7% |
 | test/language/keywords                |    25 |   25 |    0 |       0 |       0 |    0 |    100.0% |
@@ -61,7 +61,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/language/rest-parameters         |    11 |   11 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/source-text             |     1 |    1 |    0 |       0 |       0 |    0 |    100.0% |
 | test/language/statementList           |    80 |   32 |   40 |       8 |       0 |    0 |     40.0% |
-| test/language/statements              |  9347 | 8398 |  444 |      33 |       0 |  472 |     94.6% |
+| test/language/statements              |  9347 | 8455 |  387 |      33 |       0 |  472 |     95.2% |
 | test/language/types                   |   113 |   84 |   16 |       4 |       0 |    9 |     80.7% |
 | test/language/white-space             |    67 |   26 |   16 |      25 |       0 |    0 |     38.8% |
 
@@ -79,7 +79,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/AsyncFunction                  |    18 |   10 |    8 |       0 |       0 |    0 |     55.5% |
 | test/built-ins/AsyncGeneratorFunction         |    23 |    4 |   19 |       0 |       0 |    0 |     17.3% |
 | test/built-ins/AsyncGeneratorPrototype        |    48 |   48 |    0 |       0 |       0 |    0 |    100.0% |
-| test/built-ins/AsyncIteratorPrototype         |    13 |    3 |    9 |       1 |       0 |    0 |     23.0% |
+| test/built-ins/AsyncIteratorPrototype         |    13 |   12 |    0 |       1 |       0 |    0 |     92.3% |
 | test/built-ins/Atomics                        |   389 |    0 |  274 |     113 |       0 |    2 |      0.0% |
 | test/built-ins/BigInt                         |    77 |    0 |   34 |      43 |       0 |    0 |      0.0% |
 | test/built-ins/Boolean                        |    51 |   28 |   22 |       1 |       0 |    0 |     54.9% |
@@ -92,7 +92,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/GeneratorFunction              |    23 |    4 |   19 |       0 |       0 |    0 |     17.3% |
 | test/built-ins/GeneratorPrototype             |    61 |   61 |    0 |       0 |       0 |    0 |    100.0% |
 | test/built-ins/Infinity                       |     6 |    2 |    2 |       0 |       0 |    2 |     50.0% |
-| test/built-ins/Iterator                       |   654 |  427 |  205 |      22 |       0 |    0 |     65.2% |
+| test/built-ins/Iterator                       |   654 |  433 |  199 |      22 |       0 |    0 |     66.2% |
 | test/built-ins/JSON                           |   166 |   93 |   66 |       7 |       0 |    0 |     56.0% |
 | test/built-ins/Map                            |   204 |  114 |   86 |       3 |       0 |    1 |     56.1% |
 | test/built-ins/MapIteratorPrototype           |    11 |    8 |    3 |       0 |       0 |    0 |     72.7% |
@@ -112,7 +112,7 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/SharedArrayBuffer              |   104 |    0 |  102 |       2 |       0 |    0 |      0.0% |
 | test/built-ins/String                         |  1223 |  673 |  432 |     115 |       0 |    3 |     55.1% |
 | test/built-ins/StringIteratorPrototype        |     7 |    4 |    3 |       0 |       0 |    0 |     57.1% |
-| test/built-ins/SuppressedError                |    22 |    0 |   22 |       0 |       0 |    0 |      0.0% |
+| test/built-ins/SuppressedError                |    22 |   13 |    9 |       0 |       0 |    0 |     59.0% |
 | test/built-ins/Symbol                         |    98 |   35 |   61 |       0 |       0 |    2 |     36.4% |
 | test/built-ins/Temporal                       |  4605 |    0 | 2280 |    2325 |       0 |    0 |      0.0% |
 | test/built-ins/ThrowTypeError                 |    14 |    7 |    7 |       0 |       0 |    0 |     50.0% |
@@ -194,11 +194,11 @@ The area of the `engine-classes` branch: classes, generators, async functions, a
 | test/language/expressions/new.target           |    14 |           2 |         11 |       14.2% |      78.5% |
 | test/built-ins/GeneratorPrototype              |    61 |          31 |         61 |       50.8% |     100.0% |
 | test/built-ins/AsyncGeneratorPrototype         |    48 |           0 |         48 |        0.0% |     100.0% |
-| test/built-ins/Iterator                        |   654 |          14 |        427 |        2.1% |      65.2% |
+| test/built-ins/Iterator                        |   654 |          14 |        433 |        2.1% |      66.2% |
 | test/built-ins/GeneratorFunction               |    23 |           0 |          4 |        0.0% |      17.3% |
 | test/built-ins/AsyncGeneratorFunction          |    23 |           0 |          4 |        0.0% |      17.3% |
 | test/built-ins/AsyncFromSyncIteratorPrototype  |    38 |           0 |         38 |        0.0% |     100.0% |
-| **Total**                                      | 13182 |        4789 |      12211 |       37.1% |      94.8% |
+| **Total**                                      | 13182 |        4789 |      12217 |       37.1% |      94.8% |
 
 What the area changed:
 
@@ -208,16 +208,17 @@ What the area changed:
 - Every function has a name and a length, from `NamedEvaluation` or its own name, and the name of a function expression refers to the function.
 - A binding that code reads before its declaration runs is a cell that throws a `ReferenceError` until then (`early`).
 - `Iterator` and its helpers of ES2025, and `Iterator.concat` (`bouy_ref_iterator_prototype`).
+- `using` and `await using` dispose their resources at the end of their block, as a `finally` does, and `SuppressedError` (`bouy_ref_dispose`).
 
 What the area leaves, by the cause of the first error:
 
-| Cause                                                                                            |    Tests | Owner                                |
-| ------------------------------------------------------------------------------------------------ | -------: | ------------------------------------ |
-| `eval` (direct eval in the class element tests)                                                  |      193 | eval and the global scope            |
-| Iterator proposals: `zip`, `zipKeyed`, `windows`, `chunks`, `includes`, `join`, `Symbol.dispose` |      211 | not at stage 4                       |
-| `Function()` and the constructors of the function kinds, which compile source text               |       34 | eval                                 |
-| `Proxy`, `Reflect`, typed arrays, `RegExp`, `BigInt`                                             | about 90 | built-ins                            |
-| Bound functions and `Boolean`, `Number`, `String`, `Function` as constructors of a subclass      | about 30 | built-ins                            |
-| Assignment to an undeclared name                                                                 |       15 | the global scope                     |
-| A `Map` or a `Set` that changes while a `for...of` reads it                                      |        4 | `Map` and `Set` keep a snapshot list |
-| The `accessor` keyword of the decorators proposal                                                |        2 | not at stage 4                       |
+| Cause                                                                                       |    Tests | Owner                                |
+| ------------------------------------------------------------------------------------------- | -------: | ------------------------------------ |
+| `eval` (direct eval in the class element tests)                                             |      193 | eval and the global scope            |
+| Iterator proposals: `zip`, `zipKeyed`, `windows`, `chunks`, `includes`, `join`              |      205 | not at stage 4                       |
+| `Function()` and the constructors of the function kinds, which compile source text          |       34 | eval                                 |
+| `Proxy`, `Reflect`, typed arrays, `RegExp`, `BigInt`                                        | about 90 | built-ins                            |
+| Bound functions and `Boolean`, `Number`, `String`, `Function` as constructors of a subclass | about 30 | built-ins                            |
+| Assignment to an undeclared name                                                            |       15 | the global scope                     |
+| A `Map` or a `Set` that changes while a `for...of` reads it                                 |        4 | `Map` and `Set` keep a snapshot list |
+| The `accessor` keyword of the decorators proposal                                           |        2 | not at stage 4                       |
