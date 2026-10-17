@@ -76,7 +76,21 @@ impl<'a> Lowerer<'a, '_> {
             Expression::StaticMemberExpression(member) => self.static_member(member),
             Expression::ComputedMemberExpression(member) => self.computed_member(member),
             Expression::PrivateFieldExpression(member) => self.private_member(member),
-            other => self.unsupported(other.span(), "this syntax"),
+            other => {
+                let what = match other {
+                    Expression::BigIntLiteral(_) => "a BigInt literal",
+                    Expression::RegExpLiteral(_) => "a regular expression literal",
+                    Expression::ClassExpression(_) => "a class expression",
+                    Expression::TaggedTemplateExpression(_) => "a tagged template",
+                    Expression::ImportExpression(_) => "`import()`",
+                    Expression::ImportMeta(_) => "`import.meta`",
+                    Expression::NewTarget(_) => "`new.target`",
+                    Expression::PrivateInExpression(_) => "`#name in`",
+                    Expression::Super(_) => "this use of `super`",
+                    _ => "this syntax",
+                };
+                self.unsupported(other.span(), what)
+            }
         }
     }
 
