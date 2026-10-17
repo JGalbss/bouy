@@ -16,6 +16,7 @@ This file is the objective and the definition of done. The owner sets it, and ev
 8. **Tests on the model of Bun.** test262 covers the language. Node's own test suite covers each built-in module. web-platform-tests cover the web APIs. The test suites of popular packages cover the ecosystem. A `bouy test` runner is compatible with `bun:test`. Differential fuzzing compares Bouy with Node. A dashboard publishes the pass rates. Node is the oracle, and the tests never run it.
 9. **Repository practice.** A Turborepo monorepo with `crates/` and packages, clean directories, the guardrails oxlint rules, Conventional Commits, and the public GitHub repository.
 10. **Examples** that draw on the best agent and actor examples online.
+11. **Fast.** Bun is the speed bar. Bouy beats Bun on concurrent workloads (throughput across cores and p99 latency under load) and closes the gap on single-thread code: type-directed compilation, native built-ins, and a native tier for hot typed code that still yields to the BEAM scheduler. `bench/` measures both kinds against Bun and Node.
 
 ## Definition of done
 
@@ -25,7 +26,8 @@ This file is the objective and the definition of done. The owner sets it, and ev
 - Real npm packages run unchanged, and the compatibility dashboard states the pass rate for each tier.
 - Every Node built-in module reaches 100% on both Node coverage numbers, apart from the named `never` entries.
 - The compiler implements actor-aware lowering.
-- The end-to-end tests pass, and the benchmarks against equivalent Node programs are reproducible.
+- The end-to-end tests pass, and the benchmarks against equivalent Node and Bun programs are reproducible.
+- On the concurrent suites, Bouy is faster than Bun. On the single-thread suites, `bench/results` shows the gap to Bun for each program.
 - The documents state the limitations and the next milestones.
 - Tests prove each invariant: fault isolation, state isolation, message ordering, supervision recovery, cancellation, bounded mailboxes, npm equivalence, and stability under load.
 
@@ -41,3 +43,4 @@ The owner added these on 2026-10-16, in order:
 - "we need to be able to use all npm packages otherwise what is the point"
 - "really good tests for these take inspiration from bun"
 - "we need complete coverage of node and like a verifiable way to have that with tests"
+- "shoudlnt this also be super fast", then "we shold i think be able to make it fast as hell"
