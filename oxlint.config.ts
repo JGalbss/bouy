@@ -16,6 +16,9 @@ export default defineConfig({
     // Benchmark programs: Bouy compiler inputs and the plain Node baselines that they
     // measure against, which await in loops on purpose to time one call at a time.
     "bench/programs/**",
+    // The same kind of programs for the reference-semantics prototype: compiler inputs and
+    // their Node baselines.
+    "bench/reference/**",
   ],
   overrides: [...(preset.overrides ?? [])],
 });
