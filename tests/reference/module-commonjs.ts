@@ -7,6 +7,7 @@ import replaced from "./modules/replaced.cjs";
 import flagged, * as flaggedNamespace from "./modules/esm-flag.cjs";
 import report from "./modules/requires-esm.cjs";
 import data from "./modules/data.json" with { type: "json" };
+import * as babel from "./modules/babel-reexport.cjs";
 
 console.log(greet("bouy"), kind, helper);
 console.log(legacy.self, legacy.file, legacy.dir, legacy.loaded);
@@ -16,3 +17,4 @@ console.log(replaced(), replaced.extra);
 console.log(flagged.default, flagged.other, Object.keys(flaggedNamespace));
 console.log(report.esm, report.data, report.cached, report.resolved, report.inCache);
 console.log(data.name, data.items);
+console.log("babel re-export", Object.keys(babel), babel.helper());

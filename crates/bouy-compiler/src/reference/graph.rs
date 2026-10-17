@@ -479,6 +479,7 @@ fn scan(
             names: Vec::new(),
             reexports: Vec::new(),
             dynamic: Dynamic::default(),
+            required: Vec::new(),
         };
         requests.visit_program(program);
         facts.specifiers.append(&mut requests.found);
@@ -803,6 +804,8 @@ struct Requests {
     names: Vec<String>,
     reexports: Vec<String>,
     dynamic: Dynamic,
+    /// `var ID = require('x')`, by `ID`, for Babel's re-export of `x`.
+    required: Vec<(String, String)>,
 }
 
 impl Requests {
@@ -887,7 +890,41 @@ impl<'a> Visit<'a> for Requests {
         }
     }
 
+    fn visit_variable_declarator(&mut self, it: &oxc::ast::ast::VariableDeclarator<'a>) {
+        if let (Some(id), Some(init)) = (it.id.get_binding_identifier(), &it.init) {
+            // Babel wraps the require: `_interopRequireWildcard(require('x'))`.
+            let specifier = required(init).or_else(|| match init.without_parentheses() {
+                Expression::CallExpression(call) => call
+                    .arguments
+                    .first()
+                    .and_then(Argument::as_expression)
+                    .and_then(required),
+                _ => None,
+            });
+            if let Some(specifier) = specifier {
+                self.required.push((id.name.to_string(), specifier));
+            }
+        }
+        walk::walk_variable_declarator(self, it);
+    }
+
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        // Babel's re-export: `Object.keys(_x).forEach(...)` over `var _x = require('x')`.
+        if let Expression::StaticMemberExpression(member) = &it.callee
+            && member.property.name == "forEach"
+            && let Expression::CallExpression(keys) = &member.object
+            && let Expression::StaticMemberExpression(callee) = &keys.callee
+            && callee.property.name == "keys"
+            && matches!(&callee.object, Expression::Identifier(object) if object.name == "Object")
+            && let Some(Expression::Identifier(source)) =
+                keys.arguments.first().and_then(Argument::as_expression)
+            && let Some((_, specifier)) = self
+                .required
+                .iter()
+                .find(|(name, _)| name == source.name.as_str())
+        {
+            self.reexports.push(specifier.clone());
+        }
         let first = it.arguments.first().and_then(Argument::as_expression);
         match &it.callee {
             Expression::Identifier(callee) if callee.name == "require" => {
