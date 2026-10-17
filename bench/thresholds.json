@@ -33,6 +33,7 @@
   },
   "fan-out": {
     "calls_per_s": 0.5,
+    "max_round_ms": 3.0,
     "peak_rss_mib": 1.25,
     "wall_ms": 3.0
   },
@@ -54,8 +55,8 @@
     "p99_ms": 5.0,
     "peak_rss_mib": 1.15,
     "pings": 0.5,
-    "recovered_ms": 2.0,
-    "stopped_ms": 2.0,
+    "recovered_ms": 1.5,
+    "stopped_ms": 1.5,
     "wall_ms": 1.5
   },
   "spawn": {

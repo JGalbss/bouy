@@ -3,16 +3,19 @@
 // the agents run in a pool of worker threads, a shard of agents in each one. A worker
 // hosts its agents as mailbox actors from node-actor.ts. The main thread calls an agent
 // with a timeout. When a worker ends, by terminate() or by the heap limit of its
-// resourceLimits, its pending calls fail and the pool starts the shard again.
+// resourceLimits, its pending calls fail and the pool starts the shard again. The isolated
+// programs of the speed suites use the same pool, with calls that have no timeout and
+// casts that have no reply.
 import { type ResourceLimits, Worker, parentPort, workerData } from "node:worker_threads";
 import { Actor } from "./node-actor.ts";
 
-type Request = { id: number; agent: number; method: string; args: unknown[] };
+// A cast has no id, and the worker sends no reply.
+type Request = { id?: number; agent: number; method: string; args: unknown[] };
 type Reply = { id: number; value?: unknown; error?: string };
 type Pending = {
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | undefined;
   worker: Worker;
 };
 
@@ -52,19 +55,29 @@ export class Shards {
     return Promise.all(this.#ready);
   }
 
+  // A timeout of Infinity sets no timer, so a speed suite times the call alone.
   call(agent: number, method: string, timeoutMs: number, ...args: unknown[]): Promise<unknown> {
     const worker = this.#workers[this.shardOf(agent)];
     if (worker === undefined) return Promise.reject(new Error(`no shard for agent ${agent}`));
     const id = this.#next++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.#pending.delete(id);
-        reject(new Error(`agent ${agent} did not answer within ${timeoutMs} ms`));
-      }, timeoutMs);
+      const timer = Number.isFinite(timeoutMs)
+        ? setTimeout(() => {
+            this.#pending.delete(id);
+            reject(new Error(`agent ${agent} did not answer within ${timeoutMs} ms`));
+          }, timeoutMs)
+        : undefined;
       this.#pending.set(id, { resolve, reject, timer, worker });
       const request: Request = { id, agent, method, args };
       worker.postMessage(request);
     });
+  }
+
+  cast(agent: number, method: string, ...args: unknown[]): void {
+    const worker = this.#workers[this.shardOf(agent)];
+    if (worker === undefined) throw new Error(`no shard for agent ${agent}`);
+    const request: Request = { agent, method, args };
+    worker.postMessage(request);
   }
 
   // Starts a new worker for the shard, terminates the old one, and resolves with the
@@ -139,6 +152,10 @@ export function serveShard(make: (agent: number) => object): void {
   port.on("message", (request: Request) => {
     const actor = actors.get(request.agent);
     if (actor === undefined) return;
+    if (request.id === undefined) {
+      actor.cast(request.method, ...request.args);
+      return;
+    }
     actor.call(request.method, ...request.args).then(
       (value) => port.postMessage({ id: request.id, value }),
       (error) => port.postMessage({ id: request.id, error: String(error) }),

@@ -1,6 +1,7 @@
 //! `bouy-bench`: runs each suite in `bench/programs/` as a Bouy program and as an
-//! equivalent plain Node program on Node and on Bun, records every run in
-//! `bench/results/`, and prints a Markdown table of the medians and ranges.
+//! equivalent plain Node program on Node and on Bun, and the isolated program of the suite,
+//! when it has one, on Node and on Bun. It records every run in `bench/results/` and prints
+//! a Markdown table of the medians and ranges.
 //! `bouy-bench compare` checks nightly runs against the limits of `bench/thresholds.json`.
 
 mod compare;
@@ -21,7 +22,7 @@ use crate::results::{Outcome, Program, Results, Run, Suite};
 #[derive(Debug, Parser)]
 #[command(
     name = "bouy-bench",
-    about = "Run each Bouy benchmark next to an equivalent plain Node program, on Node and on Bun",
+    about = "Run each Bouy benchmark next to equivalent plain Node programs, on Node and on Bun",
     args_conflicts_with_subcommands = true
 )]
 struct Cli {
@@ -185,8 +186,8 @@ struct Start {
 }
 
 /// One warm-up run of each program, which compiles the Bouy module and fills the file
-/// cache, then the measured runs, alternating between Bouy, Node, and Bun so that a
-/// change in the load of the machine reaches all three.
+/// cache, then the measured runs, alternating between the programs so that a change in
+/// the load of the machine reaches all of them.
 fn bench_suite(cli: &Cli, directory: &Path) -> Suite {
     let name = directory
         .file_name()
@@ -194,13 +195,18 @@ fn bench_suite(cli: &Cli, directory: &Path) -> Suite {
     let bun_program = Some(directory.join("bun.ts"))
         .filter(|program| program.is_file())
         .unwrap_or_else(|| directory.join("node.ts"));
-    let node_program = directory.join("node.ts");
-    let node_arguments: Vec<&OsStr> = if NODE_WORKER_LIMITS.contains(&name.as_str()) {
-        vec![node_program.as_os_str()]
-    } else {
-        vec![OsStr::new(NODE_HEAP_LIMIT), node_program.as_os_str()]
+    let node = |program: &Path| {
+        if NODE_WORKER_LIMITS.contains(&name.as_str()) {
+            arguments(&cli.node, &[program.as_os_str()])
+        } else {
+            arguments(
+                &cli.node,
+                &[OsStr::new(NODE_HEAP_LIMIT), program.as_os_str()],
+            )
+        }
     };
-    let starts = [
+    let bun = |program: &Path| arguments(&cli.bun, &[OsStr::new("run"), program.as_os_str()]);
+    let mut starts = vec![
         Start {
             runtime: "bouy",
             command: arguments(
@@ -211,19 +217,34 @@ fn bench_suite(cli: &Cli, directory: &Path) -> Suite {
         },
         Start {
             runtime: "node",
-            command: arguments(&cli.node, &node_arguments),
+            command: node(&directory.join("node.ts")),
             env: None,
         },
         Start {
             runtime: "bun",
-            command: arguments(&cli.bun, &[OsStr::new("run"), bun_program.as_os_str()]),
+            command: bun(&bun_program),
             env: None,
         },
     ];
+    let isolated = directory.join("isolated.ts");
+    if isolated.is_file() {
+        starts.extend([
+            Start {
+                runtime: "node-isolated",
+                command: node(&isolated),
+                env: None,
+            },
+            Start {
+                runtime: "bun-isolated",
+                command: bun(&isolated),
+                env: None,
+            },
+        ]);
+    }
     for start in &starts {
         report(&name, start.runtime, "warm-up", &run(start));
     }
-    let mut runs: [Vec<Run>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    let mut runs: Vec<Vec<Run>> = starts.iter().map(|_| Vec::new()).collect();
     for round in 1..=cli.runs {
         for (start, runs) in starts.iter().zip(&mut runs) {
             let run = run(start);

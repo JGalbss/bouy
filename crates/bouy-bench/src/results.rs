@@ -27,14 +27,16 @@ pub struct Results {
 #[derive(Debug, Serialize)]
 pub struct Suite {
     pub name: String,
-    /// The Bouy program, then the Node program on Node, then on Bun.
+    /// The Bouy program, then the Node program on Node, then on Bun, then the isolated
+    /// program on Node and on Bun when the suite has one.
     pub programs: Vec<Program>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Program {
-    /// `bouy` runs `programs/<suite>/bouy.ts`, `node` runs `programs/<suite>/node.ts`, and
-    /// `bun` runs `programs/<suite>/bun.ts`, or `node.ts` when the suite has no `bun.ts`.
+    /// `bouy` runs `programs/<suite>/bouy.ts`, `node` runs `programs/<suite>/node.ts`,
+    /// `bun` runs `programs/<suite>/bun.ts`, or `node.ts` when the suite has no `bun.ts`,
+    /// and `node-isolated` and `bun-isolated` run `programs/<suite>/isolated.ts`.
     pub runtime: &'static str,
     pub failed: usize,
     /// The median, minimum, and maximum of each metric over the measured runs.

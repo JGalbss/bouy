@@ -45,11 +45,13 @@ struct RecordedProgram {
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 enum Runtime {
     Bouy,
     Node,
     Bun,
+    NodeIsolated,
+    BunIsolated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,6 +248,9 @@ mod tests {
                     "programs": [
                         { "runtime": "bouy", "summary": { *metric: spread(*median) } },
                         { "runtime": "node", "summary": { *metric: spread(1.0e9) } },
+                        { "runtime": "bun", "summary": { *metric: spread(1.0e9) } },
+                        { "runtime": "node-isolated", "summary": { *metric: spread(1.0e9) } },
+                        { "runtime": "bun-isolated", "summary": { *metric: spread(1.0e9) } },
                     ],
                 })
             })
