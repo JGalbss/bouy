@@ -40,7 +40,8 @@ intrinsics() ->
         [{<<"constructor">>, constructor(<<"GeneratorFunction">>)}, {<<"prototype">>, ?GENERATOR_PROTO},
          Tag(<<"GeneratorFunction">>)], none), Fixed)},
      {'AsyncIterator.prototype', record(object, ?OBJECT_PROTO,
-        [{?SYM(asyncIterator), builtin(<<"AsyncIterator.prototype.[Symbol.asyncIterator]">>, fun(This, _) -> This end)}], none)},
+        [{?SYM(asyncIterator), builtin(<<"AsyncIterator.prototype.[Symbol.asyncIterator]">>, fun(This, _) -> This end)},
+         {?SYM(asyncDispose), builtin(<<"AsyncIterator.prototype.[Symbol.asyncDispose]">>, fun(This, _) -> async_dispose(This) end)}], none)},
      {'AsyncGenerator.prototype', fixed(record(object, {'$o', 'AsyncIterator.prototype'},
         ?METHODS(<<"AsyncGenerator.prototype">>, Methods)
         ++ [{<<"constructor">>, {'$o', 'AsyncGeneratorFunction.prototype'}}, Tag(<<"AsyncGenerator">>)], none), Fixed)},
@@ -51,7 +52,8 @@ intrinsics() ->
         [{<<"constructor">>, constructor(<<"AsyncFunction">>)}, Tag(<<"AsyncFunction">>)], none), Fixed)},
      {'AsyncFromSyncIterator.prototype', record(object, {'$o', 'AsyncIterator.prototype'},
         ?METHODS(<<"AsyncFromSyncIterator.prototype">>, Methods), none)}]
-    ++ [{{builtin, <<"AsyncIterator.prototype.[Symbol.asyncIterator]">>}, function_record(<<"[Symbol.asyncIterator]">>, 0)}]
+    ++ [{{builtin, <<"AsyncIterator.prototype.[Symbol.asyncIterator]">>}, function_record(<<"[Symbol.asyncIterator]">>, 0)},
+        {{builtin, <<"AsyncIterator.prototype.[Symbol.asyncDispose]">>}, function_record(<<"[Symbol.asyncDispose]">>, 0)}]
     ++ [{{builtin, <<Owner/binary, ".", Name/binary>>}, function_record(Name, 1)}
         || Owner <- [<<"Generator.prototype">>, <<"AsyncGenerator.prototype">>, <<"AsyncFromSyncIterator.prototype">>],
            Name <- Methods]
@@ -485,6 +487,21 @@ async_close(Iterator, _IsThrow, Continue, Throw) ->
             end;
         {error, E} -> Throw(E)
     end.
+
+%% %AsyncIteratorPrototype%[@@asyncDispose]: a promise of the result of the
+%% return method, if any, fulfilled with undefined.
+async_dispose(O) ->
+    {P, Resolve, Reject} = bouy_jobs:capability(),
+    case attempt(fun() -> get_method(O, <<"return">>) end) of
+        {ok, undefined} -> Resolve(undefined);
+        {ok, Method} ->
+            case attempt(fun() -> bouy_jobs:promise_resolve(bouy_ref:call(Method, O, [])) end) of
+                {ok, Wrapper} -> bouy_jobs:perform_then(Wrapper, fun(_) -> undefined end, undefined, {P, Resolve, Reject});
+                {error, E} -> Reject(E)
+            end;
+        {error, E} -> Reject(E)
+    end,
+    P.
 
 %%% Async iteration
 

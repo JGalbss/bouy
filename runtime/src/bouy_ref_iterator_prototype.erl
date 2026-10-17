@@ -32,7 +32,8 @@ intrinsics() ->
          builtin(<<"Iterator.prototype.set ", Name/binary>>, fun(This, Args) -> setter(Name, This, arg(1, Args)) end)}
     end,
     Proto = record(object, ?OBJECT_PROTO,
-                   [{?SYM(iterator), builtin(<<"Iterator.prototype.[Symbol.iterator]">>, fun(This, _) -> This end)}]
+                   [{?SYM(iterator), builtin(<<"Iterator.prototype.[Symbol.iterator]">>, fun(This, _) -> This end)},
+                    {?SYM(dispose), builtin(<<"Iterator.prototype.[Symbol.dispose]">>, fun(This, _) -> dispose(This) end)}]
                    ++ ?METHODS(<<"Iterator.prototype">>, [Name || {Name, _} <- Methods])
                    ++ [{?SYM(toStringTag), Accessor(<<"toStringTag">>)}, {<<"constructor">>, Accessor(<<"constructor">>)}],
                    none),
@@ -43,7 +44,8 @@ intrinsics() ->
          ?METHODS(<<"WrapForValidIterator.prototype">>, [<<"next">>, <<"return">>]), none)},
      {{builtin, <<"Iterator">>}, fixed(ctor_record(<<"Iterator">>, 0, ?ITERATOR_PROTO,
          ?METHODS(<<"Iterator">>, [<<"from">>, <<"concat">>]), fun construct/2))},
-     {{builtin, <<"Iterator.prototype.[Symbol.iterator]">>}, function_record(<<"[Symbol.iterator]">>, 0)}]
+     {{builtin, <<"Iterator.prototype.[Symbol.iterator]">>}, function_record(<<"[Symbol.iterator]">>, 0)},
+     {{builtin, <<"Iterator.prototype.[Symbol.dispose]">>}, function_record(<<"[Symbol.dispose]">>, 0)}]
     ++ [{{builtin, <<"Iterator.prototype.", Name/binary>>}, function_record(Name, Length)} || {Name, Length} <- Methods]
     ++ [{{builtin, <<"Iterator.from">>}, function_record(<<"from">>, 1)},
         {{builtin, <<"Iterator.concat">>}, function_record(<<"concat">>, 0)},
@@ -117,6 +119,14 @@ from(O) ->
         true -> Iterator;
         false -> bouy_heap:new_exotic(wrap_for_valid_iterator, ?WRAP_PROTO, {Iterator, Next})
     end.
+
+%% %IteratorPrototype%[@@dispose]: calls the return method, if any.
+dispose(O) ->
+    case get_method(O, <<"return">>) of
+        undefined -> ok;
+        Method -> bouy_ref:call(Method, O, [])
+    end,
+    undefined.
 
 %% Iterator.concat: a helper over the iterables in order. Each iterable and its
 %% iterator method are checked first; each iterator opens when the one before
