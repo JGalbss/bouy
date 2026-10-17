@@ -356,8 +356,11 @@ set({'$o', Id} = O, K, V) ->
                 #{K := _} -> write_checked(Id, R, K, V);
                 _ -> add(Id, R, K, V, O)
             end;
-        {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">> ->
+        {array, _, _, _, _, _} when K =:= <<"length">> ->
             NewLength = array_length_value(V),
+            %% The conversion can run user code that changes the array, so the
+            %% record is read again after it.
+            {array, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
             writable(K, length_attrs(Attrs)) orelse read_only(K),
             erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, NewLength)}),
             V;
@@ -514,9 +517,10 @@ resize({_, Elements}, NewLength) ->
 %% which must equal ToNumber of it (ArraySetLength).
 array_length_value(V) when is_integer(V), V >= 0, V =< 4294967295 -> V;
 array_length_value(V) ->
-    Number = bouy_ref:to_number(V),
-    case bouy_ref_number:to_uint32(Number) of
-        U when U == Number -> U;
+    %% ToUint32 and ToNumber each convert the value, as an object sees.
+    Uint32 = bouy_ref_number:to_uint32(bouy_ref:to_number(V)),
+    case bouy_ref:to_number(V) of
+        Number when Uint32 == Number -> Uint32;
         _ -> throw_error('RangeError', <<"Invalid array length">>)
     end.
 
@@ -655,15 +659,30 @@ ordinary_define(O, K, Descriptor) ->
     end,
     case {Class, K} of
         {array, <<"length">>} ->
-            Slots1 = case Descriptor of
-                #{value := NewLength} -> resize(Slots, array_length_value(NewLength));
-                _ -> Slots
+            NewLength = case Descriptor of
+                #{value := V0} -> array_length_value(V0);
+                _ -> none
             end,
-            LengthBits = case maps:get(writable, Descriptor, maps:get(<<"length">>, length_attrs(Attrs), ?WRITABLE) band ?WRITABLE =/= 0) of
+            %% The conversion can run user code, so the record is read again.
+            {array, LP, LProps, LKeys, LAttrs, LSlots} = erlang:get(Id),
+            Writable = maps:get(<<"length">>, length_attrs(LAttrs)) band ?WRITABLE =/= 0,
+            %% The length is not configurable, not enumerable, and a data
+            %% property, and a read-only length keeps its value.
+            Rejected = maps:get(configurable, Descriptor, false) =:= true
+                orelse maps:get(enumerable, Descriptor, false) =:= true
+                orelse is_map_key(get, Descriptor) orelse is_map_key(set, Descriptor)
+                orelse (not Writable andalso (maps:get(writable, Descriptor, false) =:= true
+                                              orelse (NewLength =/= none andalso NewLength =/= element(1, LSlots)))),
+            Rejected andalso throw_error('TypeError', <<"Cannot redefine property: length">>),
+            Slots1 = case NewLength of
+                none -> LSlots;
+                _ -> resize(LSlots, NewLength)
+            end,
+            LengthBits = case maps:get(writable, Descriptor, Writable) of
                 true -> ?WRITABLE;
                 _ -> 0
             end,
-            erlang:put(Id, {Class, P, Props, Keys, Attrs#{<<"length">> => LengthBits}, Slots1});
+            erlang:put(Id, {array, LP, LProps, LKeys, LAttrs#{<<"length">> => LengthBits}, Slots1});
         {array, I} when is_integer(I) ->
             {Length, Elements} = Slots,
             erlang:put(Id, {Class, P, Props, Keys, Attrs1, {max(I + 1, Length), Elements#{I => Slot}}});
