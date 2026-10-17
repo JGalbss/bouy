@@ -33,6 +33,7 @@ families() ->
      bouy_ref_regexp,
      bouy_ref_array,
      bouy_ref_iterator,
+     bouy_ref_generator,
      bouy_ref_collection,
      bouy_ref_promise,
      bouy_ref_json,

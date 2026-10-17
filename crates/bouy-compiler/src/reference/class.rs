@@ -1,80 +1,48 @@
-//! Classes: `'Name#make'/0` creates the class once per realm, with `class_create`, the
-//! methods and accessors on the prototype or the class, the construct fun, and the static
-//! members in order.
+//! Classes: `ClassDefinitionEvaluation`. A module-level class is made once per realm by
+//! `'Name#make'/0`; a class expression or a class in a function is made each time its
+//! code runs. Each evaluation makes new private names, so the methods of two
+//! evaluations do not share them.
+//!
+//! The class code creates the constructor and the prototype, evaluates the elements in
+//! order (methods, accessors, and the computed keys of fields), makes the `Init` fun
+//! that adds the private methods and the fields to a new instance, sets the
+//! [[Construct]] fun, and then runs the static fields and blocks in order.
 
 use oxc::ast::ast::{
-    BindingPattern, Class, ClassElement, MethodDefinitionKind, PropertyDefinition,
+    BindingPattern, Class, ClassElement, Expression, MethodDefinition, MethodDefinitionKind,
+    PropertyDefinition, PropertyDefinitionType, PropertyKey, StaticBlock,
 };
+use oxc::ast_visit::Visit;
 
-use super::context::{ClassFrame, Cont, Frame, Kind, Lowerer, Ret};
-use super::function::{FnBody, length_of};
+use super::analyze::VarDeclarations;
+use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret};
+use super::function::{Callee, FnBody, length_of};
 use crate::erlang::{Clause, Expr, Function};
 
+/// The elements of a class that run after its methods are defined.
+struct Elements<'a> {
+    instance: Vec<Deferred<'a>>,
+    statics: Vec<Deferred<'a>>,
+    private_methods: Vec<Expr>,
+    static_private_methods: Vec<Expr>,
+}
+
+/// A field or a static block, which runs after the methods are defined.
+enum Deferred<'a> {
+    Field(Expr, &'a PropertyDefinition<'a>, bool),
+    Block(&'a StaticBlock<'a>),
+}
+
 impl<'a> Lowerer<'a, '_> {
+    /// `'Name#make'/0`: the class of a module-level class declaration in this realm.
     pub fn module_class(&mut self, name: &str, class: &'a Class<'a>) {
         self.classes.push(name.to_owned());
         self.frame = Frame::default();
         self.pre.clear();
-        let parent = match &class.heritage {
-            Some(heritage) => {
-                let value = self.expr(&heritage.expression);
-                let var = self.fresh("Parent");
-                self.pre.push(Expr::matches(Expr::var(var.clone()), value));
-                Some(var)
-            }
-            None => None,
-        };
-        let constructor = class.body.body.iter().find_map(|element| match element {
-            ClassElement::MethodDefinition(method)
-                if method.kind == MethodDefinitionKind::Constructor =>
-            {
-                Some(&**method)
-            }
-            _ => None,
-        });
-        let length = constructor.map_or(0, |method| length_of(&method.value.params));
-        let c = self.fresh("C");
-        let proto = self.fresh("Proto");
-        self.pre.push(Expr::matches(
-            Expr::Tuple(vec![Expr::var(c.clone()), Expr::var(proto.clone())]),
-            Expr::call(
-                "bouy_ref",
-                "class_create",
-                vec![
-                    Expr::js_string(name),
-                    parent.clone().map_or_else(|| Expr::atom("none"), Expr::var),
-                    Expr::Integer(i64::try_from(length).unwrap_or(0)),
-                ],
-            ),
-        ));
-        self.pre.push(Expr::call(
-            "erlang",
-            "put",
-            vec![self.class_key(name), Expr::var(c.clone())],
-        ));
-        let frame = ClassFrame {
-            name: name.to_owned(),
-            home: proto.clone(),
-            parent,
-            new_target: None,
-            span: class.span,
-        };
-        self.define_methods(class, &frame, &c);
-        let construct = self.construct_fun(class, constructor, &frame);
-        self.pre.push(Expr::call(
-            "bouy_ref",
-            "set_construct",
-            vec![Expr::var(c.clone()), construct],
-        ));
-        self.static_members(
-            class,
-            ClassFrame {
-                home: c.clone(),
-                ..frame
-            },
-        );
+        let key = self.class_key(name);
+        let c = self.class_value(class, Expr::js_string(name), Some(key));
         let mut body = std::mem::take(&mut self.pre);
-        body.push(Expr::var(c));
+        body.push(c);
         self.extra.push(Function {
             name: format!("{name}#make"),
             clauses: vec![Clause {
@@ -86,148 +54,450 @@ impl<'a> Lowerer<'a, '_> {
         self.frame = Frame::default();
     }
 
-    /// The methods and accessors: on the prototype, or on the class `c` when static.
-    fn define_methods(&mut self, class: &'a Class<'a>, frame: &ClassFrame, c: &str) {
-        self.frame.class = Some(frame.clone());
-        for element in &class.body.body {
-            let ClassElement::MethodDefinition(method) = element else {
-                continue;
-            };
-            if method.kind == MethodDefinitionKind::Constructor || method.value.body.is_none() {
-                continue;
-            }
-            let home = if method.r#static {
-                c.to_owned()
-            } else {
-                frame.home.clone()
-            };
-            let key = self.property_key(&method.key, method.computed);
-            let method_frame = ClassFrame {
-                home: home.clone(),
-                ..frame.clone()
-            };
-            let fun = self.function_fun(&method.value, Some(method_frame));
-            let value = self.bind(Expr::call("bouy_ref", "fn", vec![fun]));
-            let function = match method.kind {
-                MethodDefinitionKind::Get => "define_getter",
-                MethodDefinitionKind::Set => "define_setter",
-                _ => "define_method",
-            };
-            self.pre.push(Expr::call(
-                "bouy_ref",
-                function,
-                vec![Expr::var(home), key, value],
-            ));
+    /// A class declaration in a function or a block: its value, bound to its name.
+    pub fn class_declaration(&mut self, class: &'a Class<'a>) {
+        let name = class
+            .id
+            .as_ref()
+            .map_or_else(String::new, |id| id.name.to_string());
+        let c = self.class_value(class, Expr::js_string(&name), None);
+        if let Some(symbol) = class.id.as_ref().and_then(|id| id.symbol_id.get()) {
+            self.declare_symbol(symbol, c);
         }
     }
 
-    /// The static fields and blocks in order, with `this` the class.
-    fn static_members(&mut self, class: &'a Class<'a>, frame: ClassFrame) {
-        let c = frame.home.clone();
-        self.frame.this = Some(c.clone());
-        self.frame.class = Some(frame);
+    /// A class expression. `name` is the key that `NamedEvaluation` names an anonymous
+    /// class after.
+    pub fn class_expression(&mut self, class: &'a Class<'a>, name: Option<Expr>) -> Expr {
+        let name = match (&class.id, name) {
+            (Some(id), _) => Expr::js_string(id.name.as_str()),
+            (None, Some(name)) => name,
+            (None, None) => Expr::js_string(""),
+        };
+        self.class_value(class, name, None)
+    }
+
+    /// `ClassDefinitionEvaluation`: the code goes to `pre`, and the value is the class.
+    /// `register` is the key under which a module-level class is stored in the realm
+    /// before its static elements run.
+    pub fn class_value(
+        &mut self,
+        class: &'a Class<'a>,
+        name: Expr,
+        register: Option<Expr>,
+    ) -> Expr {
+        self.declare_privates(class);
+        let parent = class.heritage.as_ref().map(|heritage| {
+            let value = self.expr(&heritage.expression);
+            self.bind(value)
+        });
+        let constructor = class.body.body.iter().find_map(|element| match element {
+            ClassElement::MethodDefinition(method)
+                if method.kind == MethodDefinitionKind::Constructor
+                    && method.value.body.is_some() =>
+            {
+                Some(&**method)
+            }
+            _ => None,
+        });
+        let length = constructor.map_or(0, |method| length_of(&method.value.params));
+        let c = self.fresh("C");
+        let proto = self.fresh("Proto");
+        self.pre.push(Expr::matches(
+            Expr::Tuple(vec![Expr::var(c.clone()), Expr::var(proto.clone())]),
+            Expr::call(
+                "bouy_ref_class",
+                "create",
+                vec![
+                    name,
+                    parent.clone().unwrap_or_else(|| Expr::atom("none")),
+                    int(length),
+                ],
+            ),
+        ));
+        if let Some(key) = register {
+            self.pre
+                .push(Expr::call("erlang", "put", vec![key, Expr::var(c.clone())]));
+        }
+        // The class binding inside the body is the class itself.
+        let binding = class.id.as_ref().and_then(|id| id.symbol_id.get());
+        let saved = binding.map(|symbol| (symbol, self.frame.env.get(&symbol).cloned()));
+        if let Some(symbol) = binding {
+            self.frame.env.insert(symbol, Local::Var(c.clone()));
+        }
+        let Elements {
+            instance,
+            statics,
+            private_methods,
+            static_private_methods,
+        } = self.class_elements(class, &c, &proto);
+        let init = self.init_fun(&c, &proto, private_methods, instance);
+        let frame = ClassFrame {
+            home: proto.clone(),
+            class: Some(c.clone()),
+            init,
+        };
+        let construct = self.construct_fun(constructor, &frame, parent.is_some());
+        self.pre.push(Expr::call(
+            "bouy_ref_class",
+            "set_construct",
+            vec![Expr::var(c.clone()), construct],
+        ));
+        if !static_private_methods.is_empty() {
+            self.pre.push(Expr::call(
+                "bouy_ref_class",
+                "add_private_methods",
+                vec![Expr::var(c.clone()), Expr::List(static_private_methods)],
+            ));
+        }
+        for element in statics {
+            let this = self.fresh("This");
+            let frame = ClassFrame {
+                home: c.clone(),
+                class: Some(c.clone()),
+                init: None,
+            };
+            let fun = self.class_closure(&this, frame, |me| me.deferred(&this, element));
+            self.pre
+                .push(Expr::Apply(Box::new(fun), vec![Expr::var(c.clone())]));
+        }
+        if let Some((symbol, previous)) = saved {
+            match previous {
+                Some(local) => self.frame.env.insert(symbol, local),
+                None => self.frame.env.remove(&symbol),
+            };
+        }
+        self.privates.pop();
+        Expr::var(c)
+    }
+
+    /// `ClassElementEvaluation` in order: defines the methods and accessors, and evaluates
+    /// the keys of the fields, which run later.
+    fn class_elements(&mut self, class: &'a Class<'a>, c: &str, proto: &str) -> Elements<'a> {
+        let mut elements = Elements {
+            instance: Vec::new(),
+            statics: Vec::new(),
+            private_methods: Vec::new(),
+            static_private_methods: Vec::new(),
+        };
         for element in &class.body.body {
             match element {
-                ClassElement::PropertyDefinition(property) if property.r#static => {
-                    self.define_field(&c, property);
+                ClassElement::MethodDefinition(method) => {
+                    if method.kind == MethodDefinitionKind::Constructor
+                        || method.value.body.is_none()
+                    {
+                        continue;
+                    }
+                    let home = if method.r#static { c } else { proto };
+                    if let Some(private) = self.define_method(method, home, c) {
+                        if method.r#static {
+                            elements.static_private_methods.push(private);
+                        } else {
+                            elements.private_methods.push(private);
+                        }
+                    }
                 }
-                ClassElement::StaticBlock(block) => {
-                    let code = self.stmts(block.body.iter().collect(), &Cont::Value(Expr::ok()));
-                    self.pre.extend(code);
+                ClassElement::PropertyDefinition(property) => {
+                    if property.declare
+                        || property.r#type == PropertyDefinitionType::TSAbstractPropertyDefinition
+                    {
+                        continue;
+                    }
+                    let private = matches!(property.key, PropertyKey::PrivateIdentifier(_));
+                    let key = self.property_key(&property.key, property.computed);
+                    let field = Deferred::Field(key, property, private);
+                    if property.r#static {
+                        elements.statics.push(field);
+                    } else {
+                        elements.instance.push(field);
+                    }
                 }
+                ClassElement::StaticBlock(block) => elements.statics.push(Deferred::Block(block)),
                 ClassElement::AccessorProperty(accessor) => {
                     self.unsupported(accessor.span, "`accessor` fields");
                 }
-                _ => {}
+                ClassElement::TSIndexSignature(_) => {}
             }
+        }
+        elements
+    }
+
+    /// A new private name for each `#name` that the class body declares.
+    fn declare_privates(&mut self, class: &'a Class<'a>) {
+        let mut names: Vec<(String, String)> = Vec::new();
+        for element in &class.body.body {
+            let key = match element {
+                ClassElement::MethodDefinition(method) => &method.key,
+                ClassElement::PropertyDefinition(property) => &property.key,
+                ClassElement::AccessorProperty(accessor) => &accessor.key,
+                _ => continue,
+            };
+            let PropertyKey::PrivateIdentifier(private) = key else {
+                continue;
+            };
+            let name = private.name.to_string();
+            if names.iter().any(|(known, _)| *known == name) {
+                continue;
+            }
+            let var = self.fresh("Private");
+            self.pre.push(Expr::matches(
+                Expr::var(var.clone()),
+                Expr::call(
+                    "bouy_ref_class",
+                    "private_name",
+                    vec![Expr::js_string(&name)],
+                ),
+            ));
+            names.push((name, var));
+        }
+        self.privates.push(names);
+    }
+
+    /// The key of a private name: the variable of the innermost class that declares it.
+    pub fn private_key(&mut self, name: &str) -> Expr {
+        let found = self.privates.iter().rev().find_map(|scope| {
+            scope
+                .iter()
+                .find(|(known, _)| known == name)
+                .map(|(_, var)| var.clone())
+        });
+        match found {
+            Some(var) => Expr::var(var),
+            None => self.unsupported(
+                oxc::span::Span::default(),
+                &format!("the private name `#{name}` outside its class"),
+            ),
         }
     }
 
-    /// `define_field(This, Key, Value)` for a field of the class.
-    fn define_field(&mut self, this: &str, property: &'a PropertyDefinition<'a>) {
-        let key = self.property_key(&property.key, property.computed);
-        let value = match &property.value {
-            Some(value) => self.expr(value),
-            None => Expr::undefined(),
+    /// Defines a method or an accessor on `home`. A private one is returned as
+    /// `{Name, Kind, Function}` for `add_private_methods`.
+    fn define_method(
+        &mut self,
+        method: &'a MethodDefinition<'a>,
+        home: &str,
+        class: &str,
+    ) -> Option<Expr> {
+        let private = matches!(method.key, PropertyKey::PrivateIdentifier(_));
+        let key = self.property_key(&method.key, method.computed);
+        let frame = ClassFrame {
+            home: home.to_owned(),
+            class: Some(class.to_owned()),
+            init: None,
+        };
+        let kind = match method.kind {
+            MethodDefinitionKind::Get => "get",
+            MethodDefinitionKind::Set => "set",
+            _ => method_kind(method.value.r#async, method.value.generator),
+        };
+        let fun = self.function_fun(&method.value, Callee::Method(Some(frame)));
+        let value = self.bind(Expr::call(
+            "bouy_ref_class",
+            "method",
+            vec![
+                fun,
+                key.clone(),
+                int(length_of(&method.value.params)),
+                Expr::atom(kind),
+            ],
+        ));
+        let slot = match method.kind {
+            MethodDefinitionKind::Get => "get",
+            MethodDefinitionKind::Set => "set",
+            _ => "method",
+        };
+        if private {
+            return Some(Expr::Tuple(vec![key, Expr::atom(slot), value]));
+        }
+        let function = match method.kind {
+            MethodDefinitionKind::Get => "define_getter",
+            MethodDefinitionKind::Set => "define_setter",
+            _ => "define_method",
         };
         self.pre.push(Expr::call(
             "bouy_ref",
-            "define_field",
-            vec![Expr::var(this.to_owned()), key, value],
+            function,
+            vec![Expr::var(home.to_owned()), key, value],
         ));
+        None
     }
 
-    /// The instance fields of the class, defined on `this`.
-    fn init_fields(&mut self, class: &'a Class<'a>, this: &str) {
-        for element in &class.body.body {
-            if let ClassElement::PropertyDefinition(property) = element
-                && !property.r#static
-            {
-                self.define_field(this, property);
+    /// The `Init` fun of the class: adds the private methods and the fields to `this`.
+    fn init_fun(
+        &mut self,
+        class: &str,
+        proto: &str,
+        private_methods: Vec<Expr>,
+        fields: Vec<Deferred<'a>>,
+    ) -> Option<String> {
+        if private_methods.is_empty() && fields.is_empty() {
+            return None;
+        }
+        let this = self.fresh("This");
+        let frame = ClassFrame {
+            home: proto.to_owned(),
+            class: Some(class.to_owned()),
+            init: None,
+        };
+        let fun = self.class_closure(&this, frame, |me| {
+            let mut code = Vec::new();
+            if !private_methods.is_empty() {
+                code.push(Expr::call(
+                    "bouy_ref_class",
+                    "add_private_methods",
+                    vec![Expr::var(this.clone()), Expr::List(private_methods)],
+                ));
+            }
+            for field in fields {
+                code.extend(me.deferred(&this, field));
+            }
+            code
+        });
+        let name = self.fresh("Init");
+        self.pre.push(Expr::matches(Expr::var(name.clone()), fun));
+        Some(name)
+    }
+
+    /// The code of a field or a static block, with `this` the instance or the class.
+    fn deferred(&mut self, this: &str, element: Deferred<'a>) -> Vec<Expr> {
+        match element {
+            Deferred::Field(key, property, private) => {
+                let value = match &property.value {
+                    Some(value) => self.named_expr(value, key.clone()),
+                    None => Expr::undefined(),
+                };
+                let function = if private {
+                    "private_add"
+                } else {
+                    "define_field"
+                };
+                let mut code = std::mem::take(&mut self.pre);
+                code.push(Expr::call(
+                    "bouy_ref_class",
+                    function,
+                    vec![Expr::var(this.to_owned()), key, value],
+                ));
+                code
+            }
+            Deferred::Block(block) => {
+                let mut vars = VarDeclarations::default();
+                for statement in &block.body {
+                    vars.visit_statement(statement);
+                }
+                for symbol in vars.0 {
+                    if !self.frame.env.contains_key(&symbol) {
+                        self.declare_symbol(symbol, Expr::undefined());
+                    }
+                }
+                let mut code = std::mem::take(&mut self.pre);
+                code.extend(self.stmts(block.body.iter().collect(), &Cont::Return));
+                code
             }
         }
     }
 
-    /// The [[Construct]] of the class: `fun(NewTarget, Args) -> This end`.
+    /// `fun(This) -> Code end` for code that the class definition runs with its own
+    /// `this`: the field initializers and the static elements.
+    fn class_closure(
+        &mut self,
+        this: &str,
+        class: ClassFrame,
+        build: impl FnOnce(&mut Self) -> Vec<Expr>,
+    ) -> Expr {
+        let outer = std::mem::take(&mut self.frame);
+        let outer_pre = std::mem::take(&mut self.pre);
+        self.frame = Frame {
+            env: outer.env.clone(),
+            this: Some(this.to_owned()),
+            kind: Kind::Sync,
+            class: Some(class),
+            ..Frame::default()
+        };
+        let mut code = build(self);
+        code.push(Expr::ok());
+        self.frame = outer;
+        self.pre = outer_pre;
+        Expr::Fun {
+            name: None,
+            clauses: vec![Clause::new(Expr::var(this.to_owned()), code)],
+        }
+    }
+
+    /// The [[Construct]] of the class: `fun(NewTarget, Args) -> This end`. A base class
+    /// creates `this` from new.target and initializes it before its parameters; a derived
+    /// class gets `this` from `super(...)`.
     fn construct_fun(
         &mut self,
-        class: &'a Class<'a>,
-        constructor: Option<&'a oxc::ast::ast::MethodDefinition<'a>>,
-        frame: &ClassFrame,
+        constructor: Option<&'a MethodDefinition<'a>>,
+        class: &ClassFrame,
+        derived: bool,
     ) -> Expr {
         let new_target = self.fresh("NewTarget");
         let args = self.fresh("Args");
         let outer = std::mem::take(&mut self.frame);
         let outer_pre = std::mem::take(&mut self.pre);
-        let parent = frame.parent.clone();
         self.frame = Frame {
+            env: outer.env.clone(),
             ret: Ret::Constructor,
             kind: Kind::Sync,
-            class: Some(ClassFrame {
-                new_target: Some(new_target.clone()),
-                ..frame.clone()
-            }),
+            class: Some(class.clone()),
+            new_target: Some(new_target.clone()),
             ..Frame::default()
         };
-        let code = match (&parent, constructor) {
-            (None, _) => {
-                let this = self.fresh("This");
-                self.pre.push(Expr::matches(
-                    Expr::var(this.clone()),
-                    Expr::call("bouy_ref", "new_this", vec![Expr::var(new_target.clone())]),
+        let mut code = Vec::new();
+        if derived {
+            let Some(c) = &class.class else {
+                return Expr::undefined();
+            };
+            if let Some(constructor) = constructor {
+                let cell = self.fresh("ThisCell");
+                code.push(Expr::matches(
+                    Expr::var(cell.clone()),
+                    Expr::call("bouy_heap", "cell", vec![Expr::atom("$uninitialized")]),
                 ));
-                self.frame.this = Some(this.clone());
-                self.init_fields(class, &this);
-                let mut code = std::mem::take(&mut self.pre);
-                if let Some(constructor) = constructor {
-                    code.extend(self.constructor_body(constructor, &args));
-                } else {
-                    code.push(Expr::var(this));
-                }
-                code
-            }
-            (Some(parent), None) => {
+                self.frame.this_cell = Some(cell);
+                code.extend(self.constructor_body(constructor, &args));
+            } else {
+                // The default constructor passes its arguments on as they are.
                 let this = self.fresh("This");
-                self.pre.push(Expr::matches(
+                code.push(Expr::matches(
                     Expr::var(this.clone()),
                     Expr::call(
-                        "bouy_ref",
+                        "bouy_ref_class",
                         "super_construct",
                         vec![
-                            Expr::var(parent.clone()),
+                            Expr::var(c.clone()),
                             Expr::var(args.clone()),
                             Expr::var(new_target.clone()),
                         ],
                     ),
                 ));
-                self.frame.this = Some(this.clone());
-                self.init_fields(class, &this);
-                let mut code = std::mem::take(&mut self.pre);
+                if let Some(init) = &class.init {
+                    code.push(Expr::Apply(
+                        Box::new(Expr::var(init.clone())),
+                        vec![Expr::var(this.clone())],
+                    ));
+                }
                 code.push(Expr::var(this));
-                code
             }
-            (Some(_), Some(constructor)) => self.constructor_body(constructor, &args),
-        };
+        } else {
+            let this = self.fresh("This");
+            code.push(Expr::matches(
+                Expr::var(this.clone()),
+                Expr::call("bouy_ref", "new_this", vec![Expr::var(new_target.clone())]),
+            ));
+            if let Some(init) = &class.init {
+                code.push(Expr::Apply(
+                    Box::new(Expr::var(init.clone())),
+                    vec![Expr::var(this.clone())],
+                ));
+            }
+            self.frame.this = Some(this.clone());
+            match constructor {
+                Some(constructor) => code.extend(self.constructor_body(constructor, &args)),
+                None => code.push(Expr::var(this)),
+            }
+        }
         self.frame = outer;
         self.pre = outer_pre;
         Expr::Fun {
@@ -240,14 +510,14 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// The parameters, the parameter properties, and the body of a constructor.
-    fn constructor_body(
-        &mut self,
-        constructor: &'a oxc::ast::ast::MethodDefinition<'a>,
-        args: &str,
-    ) -> Vec<Expr> {
+    /// The `arguments` object, the parameters, the parameter properties, the `var`
+    /// names, and the body of a constructor.
+    fn constructor_body(&mut self, constructor: &'a MethodDefinition<'a>, args: &str) -> Vec<Expr> {
         let function = &constructor.value;
-        let mut code = self.params(&function.params, args);
+        let Some(body) = &function.body else {
+            return vec![];
+        };
+        let mut code = self.entry(&function.params, FnBody::Block(body), args, true);
         for param in &function.params.items {
             if param.accessibility.is_none() && !param.readonly {
                 continue;
@@ -257,97 +527,121 @@ impl<'a> Lowerer<'a, '_> {
             {
                 let value = self.read_symbol(symbol, param.span);
                 let this = self.this_expr();
+                let this = self.bind(this);
                 self.pre.push(Expr::call(
-                    "bouy_ref",
+                    "bouy_ref_class",
                     "define_field",
                     vec![this, Expr::js_string(id.name.as_str()), value],
                 ));
             }
         }
         code.append(&mut self.pre);
-        if let Some(body) = &function.body {
-            let saved = self.frame.kind;
-            code.extend(self.body_of(FnBody::Block(body)));
-            self.frame.kind = saved;
-        }
+        code.extend(self.body(FnBody::Block(body)));
         code
     }
 
-    fn body_of(&mut self, body: FnBody<'a>) -> Vec<Expr> {
-        match body {
-            FnBody::Block(block) => self.stmts(block.statements.iter().collect(), &Cont::Return),
-            FnBody::Expr(expression) => {
-                let value = self.expr(expression);
-                let mut code = std::mem::take(&mut self.pre);
-                code.push(self.ret(value));
-                code
-            }
-        }
+    /// `super(...args)` in a derived constructor. The parent is the prototype of the
+    /// class, read before the arguments, as `GetSuperConstructor`.
+    pub fn super_constructor(&mut self) -> Option<Expr> {
+        let class = self.frame.class.clone()?.class?;
+        Some(self.bind(Expr::call(
+            "bouy_heap",
+            "prototype_of",
+            vec![Expr::var(class)],
+        )))
     }
 
-    /// `super(...args)` in a derived constructor: the parent constructs `this`, then the
-    /// fields of this class are defined on it.
-    pub fn super_constructor_call(&mut self, args: Expr) -> Expr {
-        let Some(class) = self.frame.class.clone() else {
-            return Expr::undefined();
-        };
-        let (Some(parent), Some(new_target)) = (class.parent.clone(), class.new_target.clone())
-        else {
-            self.reporter.report(
-                class.span,
-                crate::diagnostic::Code::Unsupported,
-                "`super(...)` outside a derived constructor is not supported by the reference-semantics prototype",
+    /// Constructs `this` with the parent, binds it, and initializes it.
+    pub fn super_constructor_call(&mut self, parent: Option<Expr>, args: Expr) -> Expr {
+        let (Some(parent), Some(cell), Some(new_target)) = (
+            parent,
+            self.frame.this_cell.clone(),
+            self.frame.new_target.clone(),
+        ) else {
+            return self.unsupported(
+                oxc::span::Span::default(),
+                "`super(...)` outside a derived constructor",
             );
-            return Expr::undefined();
         };
-        let this = self.fresh("This");
-        self.pre.push(Expr::matches(
-            Expr::var(this.clone()),
-            Expr::call(
-                "bouy_ref",
-                "super_construct",
-                vec![Expr::var(parent), args, Expr::var(new_target)],
-            ),
+        let init = self
+            .frame
+            .class
+            .as_ref()
+            .and_then(|class| class.init.clone());
+        let this = self.bind(Expr::call(
+            "bouy_ref_class",
+            "construct_parent",
+            vec![parent, args, Expr::var(new_target)],
         ));
-        self.frame.this = Some(this.clone());
-        if let Some(class_node) = self.class_node(class.span) {
-            self.init_fields(class_node, &this);
+        self.pre.push(Expr::call(
+            "bouy_ref_class",
+            "bind_this",
+            vec![Expr::var(cell), this.clone()],
+        ));
+        if let Some(init) = init {
+            self.pre
+                .push(Expr::Apply(Box::new(Expr::var(init)), vec![this.clone()]));
         }
-        Expr::undefined()
+        this
     }
 
-    /// The class at `span`, to find its instance fields.
-    fn class_node(&self, span: oxc::span::Span) -> Option<&'a Class<'a>> {
-        self.semantic
-            .nodes()
-            .iter()
-            .find_map(|node| match node.kind() {
-                oxc::ast::AstKind::Class(class) if class.span == span => Some(class),
-                _ => None,
-            })
-    }
-
-    pub fn super_method_call(&mut self, key: Expr, args: Expr) -> Expr {
-        let Some(home) = self.frame.class.as_ref().map(|class| class.home.clone()) else {
-            return Expr::undefined();
-        };
-        let this = self.this_expr();
-        self.bind(Expr::call(
-            "bouy_ref",
-            "super_call",
-            vec![Expr::var(home), key, this, args],
-        ))
+    fn home(&self) -> Option<String> {
+        self.frame.class.as_ref().map(|class| class.home.clone())
     }
 
     pub fn super_get(&mut self, key: Expr) -> Expr {
-        let Some(home) = self.frame.class.as_ref().map(|class| class.home.clone()) else {
-            return Expr::undefined();
+        let Some(home) = self.home() else {
+            return self.unsupported(oxc::span::Span::default(), "`super` outside a method");
         };
         let this = self.this_expr();
+        let this = self.bind(this);
         self.bind(Expr::call(
-            "bouy_ref",
+            "bouy_ref_class",
             "super_get",
             vec![Expr::var(home), key, this],
         ))
     }
+
+    pub fn super_set(&mut self, key: Expr, value: Expr) {
+        let Some(home) = self.home() else {
+            self.unsupported(oxc::span::Span::default(), "`super` outside a method");
+            return;
+        };
+        let this = self.this_expr();
+        let this = self.bind(this);
+        self.pre.push(Expr::call(
+            "bouy_ref_class",
+            "super_set",
+            vec![Expr::var(home), key, value, this],
+        ));
+    }
+
+    /// `NamedEvaluation`: an anonymous function or class gets its name from `key`.
+    pub fn named_expr(&mut self, expression: &'a Expression<'a>, key: Expr) -> Expr {
+        match expression {
+            Expression::ParenthesizedExpression(inner) => self.named_expr(&inner.expression, key),
+            Expression::FunctionExpression(function) if function.id.is_none() => {
+                self.function_value(function, Some(key))
+            }
+            Expression::ArrowFunctionExpression(arrow) => self.arrow_value(arrow, Some(key)),
+            Expression::ClassExpression(class) if class.id.is_none() => {
+                self.class_expression(class, Some(key))
+            }
+            other => self.expr(other),
+        }
+    }
+}
+
+/// The kind of a method for `bouy_ref_class:method/4`.
+pub fn method_kind(is_async: bool, generator: bool) -> &'static str {
+    match (is_async, generator) {
+        (false, false) => "method",
+        (true, false) => "async",
+        (false, true) => "generator",
+        (true, true) => "async_generator",
+    }
+}
+
+fn int(value: usize) -> Expr {
+    Expr::Integer(i64::try_from(value).unwrap_or(0))
 }

@@ -8,8 +8,8 @@ use oxc::ast::ast::{
 use oxc::ast_visit::Visit;
 
 use super::analyze;
-use super::context::{Cont, Frame, Lowerer, Top};
-use super::function::{Callee, FnBody, kind_of, length_of};
+use super::context::{Cont, Frame, Kind, Lowerer, Top};
+use super::function::{Callee, FnBody, UsesNewTarget, kind_of, length_of};
 use super::literal::literal;
 use crate::diagnostic::Code;
 use crate::erlang::{Clause, Expr, Function};
@@ -54,13 +54,7 @@ impl<'a> Lowerer<'a, '_> {
                         if let Some(id) = &function.id
                             && let Some(symbol) = id.symbol_id.get()
                         {
-                            self.tops.insert(
-                                symbol,
-                                Top::Function {
-                                    name: id.name.to_string(),
-                                    length: length_of(&function.params),
-                                },
-                            );
+                            self.tops.insert(symbol, top_function(function));
                         }
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
@@ -80,13 +74,7 @@ impl<'a> Lowerer<'a, '_> {
                         && let Some(symbol) = id.symbol_id.get()
                         && function.body.is_some()
                     {
-                        self.tops.insert(
-                            symbol,
-                            Top::Function {
-                                name: id.name.to_string(),
-                                length: length_of(&function.params),
-                            },
-                        );
+                        self.tops.insert(symbol, top_function(function));
                     }
                 }
                 Some(Declaration::ClassDeclaration(class)) => {
@@ -138,7 +126,7 @@ impl<'a> Lowerer<'a, '_> {
                 Statement::ExportDefaultDeclaration(export) => match &export.declaration {
                     ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
                         if let Some(id) = &function.id {
-                            functions.push(self.module_function(id.name.as_str(), function));
+                            functions.extend(self.module_function(id.name.as_str(), function));
                         }
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
@@ -155,7 +143,7 @@ impl<'a> Lowerer<'a, '_> {
                         if let Some(id) = &function.id
                             && function.body.is_some()
                         {
-                            functions.push(self.module_function(id.name.as_str(), function));
+                            functions.extend(self.module_function(id.name.as_str(), function));
                         }
                     }
                     Some(Declaration::ClassDeclaration(class)) => {
@@ -348,41 +336,72 @@ impl<'a> Lowerer<'a, '_> {
         });
     }
 
-    /// A module-level function declaration: `'name'(This, Args)`.
+    /// A module-level function declaration: `'name'(This, Args)`, and `'name'/3`, which
+    /// takes new.target, for a function that reads it.
     pub fn module_function(
         &mut self,
         name: &str,
         function: &'a oxc::ast::ast::Function<'a>,
-    ) -> Function {
+    ) -> Vec<Function> {
         self.frame = Frame::default();
         let Some(body) = &function.body else {
-            return Function {
-                name: name.to_owned(),
-                clauses: vec![],
-            };
+            return vec![];
         };
-        let (this, args, code) = self.function_code(
+        let length = length_of(&function.params);
+        let form = form_of(function);
+        let kind = kind_of(function.r#async, function.generator);
+        let own = matches!(kind, Kind::Generator | Kind::AsyncGenerator)
+            .then(|| self.static_function(name, length, form));
+        let code = self.function_code(
             &function.params,
             FnBody::Block(body),
-            kind_of(function.r#async, function.generator),
-            Callee::Function(None),
+            kind,
+            Callee::Function,
+            own,
         );
-        Function {
-            name: name.to_owned(),
-            clauses: vec![Clause {
-                patterns: vec![Expr::var(this), Expr::var(args)],
-                guards: vec![],
-                body: code,
-            }],
-        }
+        let Some(new_target) = code.new_target else {
+            return vec![Function {
+                name: name.to_owned(),
+                clauses: vec![Clause {
+                    patterns: vec![Expr::var(code.this), Expr::var(code.args)],
+                    guards: vec![],
+                    body: code.body,
+                }],
+            }];
+        };
+        vec![
+            Function {
+                name: name.to_owned(),
+                clauses: vec![Clause {
+                    patterns: vec![Expr::var("This"), Expr::var("Args")],
+                    guards: vec![],
+                    body: vec![Expr::local_call(
+                        name,
+                        vec![Expr::var("This"), Expr::var("Args"), Expr::undefined()],
+                    )],
+                }],
+            },
+            Function {
+                name: name.to_owned(),
+                clauses: vec![Clause {
+                    patterns: vec![
+                        Expr::var(code.this),
+                        Expr::var(code.args),
+                        Expr::var(new_target),
+                    ],
+                    guards: vec![],
+                    body: code.body,
+                }],
+            },
+        ]
     }
 
     /// The value of a module-level function used as a value: the same term in every realm.
-    pub fn static_function(&self, name: &str, length: usize) -> Expr {
+    pub fn static_function(&self, name: &str, length: usize, form: &str) -> Expr {
         Expr::Tuple(vec![
             Expr::atom("$f"),
             Expr::Tuple(vec![
-                Expr::atom("fn"),
+                Expr::atom(form),
                 Expr::atom(self.module.clone()),
                 Expr::js_string(name),
                 Expr::Integer(i64::try_from(length).unwrap_or(0)),
@@ -393,6 +412,35 @@ impl<'a> Lowerer<'a, '_> {
                 arity: 2,
             },
         ])
+    }
+}
+
+/// What the name of a module-level function declaration refers to.
+fn top_function(function: &oxc::ast::ast::Function<'_>) -> Top {
+    Top::Function {
+        name: function
+            .id
+            .as_ref()
+            .map_or_else(String::new, |id| id.name.to_string()),
+        length: length_of(&function.params),
+        form: form_of(function),
+    }
+}
+
+/// The form of the static value of a module-level function declaration.
+fn form_of(function: &oxc::ast::ast::Function<'_>) -> &'static str {
+    match (function.r#async, function.generator) {
+        (true, true) => "async_generator",
+        (false, true) => "generator",
+        (true, false) => "async",
+        (false, false) => {
+            let mut uses = UsesNewTarget(false);
+            uses.visit_formal_parameters(&function.params);
+            if let Some(body) = &function.body {
+                uses.visit_function_body(body);
+            }
+            if uses.0 { "fn_nt" } else { "fn" }
+        }
     }
 }
 

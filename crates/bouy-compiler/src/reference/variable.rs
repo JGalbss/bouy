@@ -36,7 +36,7 @@ impl<'a> Lowerer<'a, '_> {
             };
         }
         match self.tops.get(&symbol).cloned() {
-            Some(Top::Function { name, length }) => self.static_function(&name, length),
+            Some(Top::Function { name, length, form }) => self.static_function(&name, length, form),
             Some(Top::Class(name)) => {
                 self.bind(Expr::local_call("$class", vec![Expr::binary(name)]))
             }

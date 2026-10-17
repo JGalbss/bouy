@@ -42,21 +42,32 @@ impl<'a> Lowerer<'a, '_> {
     pub fn call(&mut self, call: &'a CallExpression<'a>) -> Expr {
         let callee = strip(&call.callee);
         if let Expression::Super(_) = callee {
+            let parent = self.super_constructor();
             let args = self.args(&call.arguments);
-            return self.super_constructor_call(args);
+            return self.super_constructor_call(parent, args);
         }
         if let Some(member) = callee.as_member_expression() {
             if let Expression::Super(_) = member.object() {
                 let key = match self.member_key(member) {
-                    MemberKey::Static(key) => key,
+                    MemberKey::Static(key) | MemberKey::Private(key) => key,
                     MemberKey::Dynamic(value) => {
                         self.bind(Expr::call("bouy_ref", "to_property_key", vec![value]))
                     }
                 };
+                let method = self.super_get(key);
                 let args = self.args(&call.arguments);
-                return self.super_method_call(key, args);
+                let this = self.this_expr();
+                return self.bind(Expr::call("bouy_ref", "call", vec![method, this, args]));
             }
             let (object, key) = self.member_parts(member);
+            if let MemberKey::Private(_) = key {
+                if call.optional {
+                    self.chain_guard(object.clone());
+                }
+                let method = self.get(object.clone(), key);
+                let args = self.args(&call.arguments);
+                return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
+            }
             if call.optional {
                 let key = self.fix_key(key);
                 let method = self.get(object.clone(), key);
@@ -72,6 +83,7 @@ impl<'a> Lowerer<'a, '_> {
                 MemberKey::Dynamic(key) => {
                     Expr::call("bouy_ref", "call_method_computed", vec![object, key, args])
                 }
+                MemberKey::Private(_) => Expr::undefined(),
             };
             return self.bind(value);
         }

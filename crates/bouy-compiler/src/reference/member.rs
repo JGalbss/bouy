@@ -12,11 +12,19 @@ use crate::erlang::{CatchClause, Clause, Expr};
 
 const CHAIN: &str = "$bouy_chain";
 
-/// The key of a member expression: known at compile time, or a value to convert.
+/// The key of a member expression: known at compile time, a value to convert, or a
+/// private name.
 #[derive(Debug, Clone)]
 pub enum MemberKey {
     Static(Expr),
     Dynamic(Expr),
+    Private(Expr),
+}
+
+/// The object of a `super.k` member expression, which `get` and `set` look up on the
+/// prototype of the home object.
+pub fn super_object() -> Expr {
+    Expr::atom("$super")
 }
 
 impl<'a> Lowerer<'a, '_> {
@@ -35,19 +43,6 @@ impl<'a> Lowerer<'a, '_> {
             }
             None => Expr::undefined(),
         }
-    }
-
-    pub fn private_key(&mut self, name: &str) -> Expr {
-        let class = self
-            .frame
-            .class
-            .as_ref()
-            .map_or_else(String::new, |class| class.name.clone());
-        Expr::Tuple(vec![
-            Expr::atom("#"),
-            Expr::js_string(&class),
-            Expr::js_string(name),
-        ])
     }
 
     pub fn chain(&mut self, chain: &'a ChainExpression<'a>) -> Expr {
@@ -120,7 +115,7 @@ impl<'a> Lowerer<'a, '_> {
             self.chain_guard(object.clone());
         }
         let key = self.private_key(member.field.name.as_str());
-        self.get(object, MemberKey::Static(key))
+        self.get(object, MemberKey::Private(key))
     }
 
     /// The object and the key of a member expression, lowered in order.
@@ -128,6 +123,10 @@ impl<'a> Lowerer<'a, '_> {
         &mut self,
         member: &'a oxc::ast::ast::MemberExpression<'a>,
     ) -> (Expr, MemberKey) {
+        if let Expression::Super(_) = member.object() {
+            let key = self.member_key(member);
+            return (super_object(), self.fix_key(key));
+        }
         let object = self.expr(member.object());
         let object = self.bind(object);
         let key = self.member_key(member);
@@ -143,7 +142,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.computed_key(&member.expression)
             }
             oxc::ast::ast::MemberExpression::PrivateFieldExpression(member) => {
-                MemberKey::Static(self.private_key(member.field.name.as_str()))
+                MemberKey::Private(self.private_key(member.field.name.as_str()))
             }
         }
     }
@@ -167,26 +166,44 @@ impl<'a> Lowerer<'a, '_> {
     /// A key that a compound operation uses twice: converted once.
     pub fn fix_key(&mut self, key: MemberKey) -> MemberKey {
         match key {
-            MemberKey::Static(key) => MemberKey::Static(key),
             MemberKey::Dynamic(value) => {
                 MemberKey::Static(self.bind(Expr::call("bouy_ref", "to_property_key", vec![value])))
             }
+            other => other,
         }
     }
 
     pub fn get(&mut self, object: Expr, key: MemberKey) -> Expr {
+        if object == super_object() {
+            let MemberKey::Static(key) = self.fix_key(key) else {
+                return Expr::undefined();
+            };
+            return self.super_get(key);
+        }
         let value = match key {
             MemberKey::Static(key) => Expr::call("bouy_ref", "get", vec![object, key]),
             MemberKey::Dynamic(key) => Expr::call("bouy_ref", "get_computed", vec![object, key]),
+            MemberKey::Private(key) => {
+                Expr::call("bouy_ref_class", "private_get", vec![object, key])
+            }
         };
         self.bind(value)
     }
 
     pub fn set(&mut self, object: Expr, key: MemberKey, value: Expr) {
+        if object == super_object() {
+            if let MemberKey::Static(key) = self.fix_key(key) {
+                self.super_set(key, value);
+            }
+            return;
+        }
         let call = match key {
             MemberKey::Static(key) => Expr::call("bouy_ref", "set", vec![object, key, value]),
             MemberKey::Dynamic(key) => {
                 Expr::call("bouy_ref", "set_computed", vec![object, key, value])
+            }
+            MemberKey::Private(key) => {
+                Expr::call("bouy_ref_class", "private_set", vec![object, key, value])
             }
         };
         self.pre.push(call);

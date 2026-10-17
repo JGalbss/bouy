@@ -482,7 +482,11 @@ An array has the class `array` and the slots `{Length, Elements}`. `Elements` ma
 
 ### 17.4 Functions
 
-A function value carries its Erlang fun, so a call needs no heap read. A function gets a heap record only when it needs one: an arrow function or a method has none until a program writes a property to it. A function expression or a nested function declaration gets a record with its `name`, `length`, and `prototype`, and its slots hold `kind => normal`. A class holds `kind => class`, its parent, and the fun of its `[[Construct]]`. A builtin is the same term in every realm, so its identity holds across realms.
+A function value carries its Erlang fun, so a call needs no heap read. A function gets a heap record only when it needs one: an arrow function without a name has none until a program writes a property to it. A function expression or a nested function declaration gets a record with its `name`, `length`, and `prototype`, and its slots hold `kind => normal`. A method, an accessor, and an arrow function that `NamedEvaluation` names (`const f = () => {}`) get a record with their `name` and `length` (`bouy_ref_class:method/4`). A class holds `kind => class` and the fun of its `[[Construct]]`. A builtin is the same term in every realm, so its identity holds across realms.
+
+A generator or an async generator function compiles to a maker, `fun(SelfId) -> fun(This, Args) end`, so that its body finds its own `prototype` for the generators it makes, and its `[[Prototype]]` is `%GeneratorFunction.prototype%` or `%AsyncGeneratorFunction.prototype%`. A function that reads `new.target` compiles to `fun(This, Args, NewTarget)`, and its record holds a `construct` fun that passes new.target. A module-level function declaration is `{'$f', {Form, Module, Name, Length}, Fun}`: `Form` is `fn`, `fn_nt` for one that reads `new.target`, `async`, `generator`, or `async_generator`, and each realm makes the record of its form on first use.
+
+A class is made where its code runs: a class expression or a class in a function each time, a module-level class once per realm. Each evaluation makes new private names. `this` of a derived constructor is a cell that `super(...)` binds once, and `super(...)` constructs the `[[Prototype]]` of the class.
 
 ### 17.5 Property keys
 
@@ -491,7 +495,7 @@ A property key is one of these terms:
 - an array index, `0 =< K =< 2^32 - 2`, as an integer;
 - any other string, as a string of section 17.1;
 - a symbol;
-- a private name, `{'#', ClassName, Name}`, which is never an own key that reflection returns.
+- a private name, `{'#', Unique, Name}`, with a unique integer for each evaluation of the class body that declares it. A private element is in the `Props` of its object under its name, and reflection never returns it: a field holds its value, a method `{'$method', F}`, and an accessor `{'$accessor', Get, Set}`.
 
 ToPropertyKey turns a canonical numeric string such as `"7"` into the integer, and a number into its string, so `o[7]` and `o["7"]` are one key. `bouy_heap:own_keys/1` returns the keys in the order of OrdinaryOwnPropertyKeys: array indexes in ascending order, then string keys in the order of their creation, then symbols in the order of their creation.
 
@@ -501,13 +505,14 @@ The compiler lowers in `crates/bouy-compiler/src/reference/`, one file for each 
 
 The runtime has these modules:
 
-| Module              | Role                                                                                                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bouy_ref`          | The operations that compiled code calls: properties, calls, classes, operators, equality, and conversions                                                                                                     |
-| `bouy_heap`         | The heap: records, properties, descriptors, prototypes, own keys, cells, the collector, and the structured clone                                                                                              |
-| `bouy_jobs`         | The job queue, promises, timers, and actors                                                                                                                                                                   |
-| `bouy_ref_realm`    | Installs the intrinsics of every family, and holds the global object and the global functions                                                                                                                 |
-| `bouy_ref_<family>` | One family of built-ins each: `object`, `function`, `boolean`, `symbol`, `error`, `number`, `math`, `bigint`, `string`, `regexp`, `array`, `iterator`, `collection`, `promise`, `json`, `date`, and `console` |
+| Module              | Role                                                                                                                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bouy_ref`          | The operations that compiled code calls: properties, calls, classes, operators, equality, and conversions                                                                                                                  |
+| `bouy_heap`         | The heap: records, properties, descriptors, prototypes, own keys, cells, the collector, and the structured clone                                                                                                           |
+| `bouy_jobs`         | The job queue, promises, timers, and actors                                                                                                                                                                                |
+| `bouy_ref_class`    | Class definitions, the function objects of methods, the `this` of a derived constructor, `super`, and private names                                                                                                        |
+| `bouy_ref_realm`    | Installs the intrinsics of every family, and holds the global object and the global functions                                                                                                                              |
+| `bouy_ref_<family>` | One family of built-ins each: `object`, `function`, `boolean`, `symbol`, `error`, `number`, `math`, `bigint`, `string`, `regexp`, `array`, `iterator`, `generator`, `collection`, `promise`, `json`, `date`, and `console` |
 
 A family exports `intrinsics/0`, its static records as `[{Id, Record}]`, and `globals/0`, its global bindings as `[{Name, Value}]`. Its builtin methods call its `method(Owner, Name, This, Args)`, and a constructor called without `new` calls its `call_constructor(Name, This, Args)`. `bouy_ref_realm:families/0` lists the families. `runtime/src/bouy_ref.hrl` holds the macros that the modules share, such as `?IS_STRING/1` and `?IS_NUMBER/1`.
 

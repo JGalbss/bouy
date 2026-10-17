@@ -19,23 +19,52 @@ pub fn with_program<R>(
     source: &str,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
+    parse_program(path, source, true, use_program)
+}
+
+/// As `with_program`, for the JavaScript engine (`--semantics reference`): a `yield`
+/// outside a generator is a syntax error there, not a `yield*` of an Effect.
+pub fn with_js_program<R>(
+    path: &Path,
+    source: &str,
+    use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
+) -> Result<R, Vec<Diagnostic>> {
+    parse_program(path, source, false, use_program)
+}
+
+fn parse_program<R>(
+    path: &Path,
+    source: &str,
+    effect_hint: bool,
+    use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
+) -> Result<R, Vec<Diagnostic>> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
     let parsed = Parser::new(&allocator, source, source_type).parse();
     if parsed.fatal_error || parsed.diagnostics.has_errors() {
-        return Err(syntax_errors(path, source, &parsed.diagnostics));
+        return Err(syntax_errors(
+            path,
+            source,
+            &parsed.diagnostics,
+            effect_hint,
+        ));
     }
     let built = SemanticBuilder::new()
         .with_build_nodes(true)
         .with_check_syntax_error(true)
         .build(&parsed.program);
     if built.diagnostics.has_errors() {
-        return Err(syntax_errors(path, source, &built.diagnostics));
+        return Err(syntax_errors(path, source, &built.diagnostics, effect_hint));
     }
     Ok(use_program(&parsed.program, &built.semantic))
 }
 
-fn syntax_errors(path: &Path, source: &str, diagnostics: &Diagnostics) -> Vec<Diagnostic> {
+fn syntax_errors(
+    path: &Path,
+    source: &str,
+    diagnostics: &Diagnostics,
+    effect_hint: bool,
+) -> Vec<Diagnostic> {
     let reporter = Reporter::new(path, source);
     diagnostics
         .errors()
@@ -43,7 +72,8 @@ fn syntax_errors(path: &Path, source: &str, diagnostics: &Diagnostics) -> Vec<Di
             let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
             // oxc rejects `yield` outside a generator as a reserved word. In Bouy that is a
             // `yield*` in a function nested in an Effect body (section 13).
-            if error.message.contains("reserved")
+            if effect_hint
+                && error.message.contains("reserved")
                 && source.get(offset..).is_some_and(|rest| rest.starts_with("yield"))
             {
                 return reporter.at(

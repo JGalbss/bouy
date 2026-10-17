@@ -1,0 +1,21 @@
+caught rejected
+finally after await
+settled
+numbers 1
+numbers 2
+numbers finally
+sync iterable p1
+sync iterable p2
+{ value: 1, done: false }
+numbers finally
+{ value: 0, done: true }
+{ value: undefined, done: true }
+break at 1
+numbers finally
+delegate 1
+delegate 2
+numbers finally
+delegate 10
+delegate 11
+await in a default 7
+outer catch thrown after an inner try

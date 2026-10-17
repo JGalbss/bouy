@@ -13,7 +13,7 @@ use oxc::syntax::operator::{
 
 use super::context::{Kind, Lowerer, boolean_case};
 use super::literal::{js_string_literal, number};
-use super::member::MemberKey;
+use super::member::{MemberKey, super_object};
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -35,21 +35,37 @@ impl<'a> Lowerer<'a, '_> {
             Expression::AssignmentExpression(assignment) => self.assign(assignment),
             Expression::UpdateExpression(update) => self.update(update),
             Expression::AwaitExpression(expression) => {
-                if self.frame.kind != Kind::Async {
+                if !matches!(self.frame.kind, Kind::Async | Kind::AsyncGenerator) {
                     return self.unsupported(expression.span, "`await` outside an async function");
                 }
                 let value = self.expr(&expression.argument);
                 self.marker("await", value)
             }
             Expression::YieldExpression(expression) => {
-                if expression.delegate {
-                    return self.unsupported(expression.span, "`yield*`");
-                }
                 let value = match &expression.argument {
                     Some(argument) => self.expr(argument),
                     None => Expr::undefined(),
                 };
-                self.marker("yield", value)
+                let kind = if expression.delegate {
+                    "yield_star"
+                } else {
+                    "yield"
+                };
+                self.marker(kind, value)
+            }
+            Expression::ClassExpression(class) => self.class_expression(class, None),
+            Expression::NewTarget(_) => match &self.frame.new_target {
+                Some(new_target) => Expr::var(new_target.clone()),
+                None => Expr::undefined(),
+            },
+            Expression::PrivateInExpression(expression) => {
+                let key = self.private_key(expression.left.name.as_str());
+                let object = self.expr(&expression.right);
+                self.bind(Expr::call(
+                    "bouy_ref_class",
+                    "private_in",
+                    vec![key, object],
+                ))
             }
             Expression::BinaryExpression(binary) => self.binary(binary),
             Expression::LogicalExpression(logical) => self.logical(logical),
@@ -80,12 +96,9 @@ impl<'a> Lowerer<'a, '_> {
                 let what = match other {
                     Expression::BigIntLiteral(_) => "a BigInt literal",
                     Expression::RegExpLiteral(_) => "a regular expression literal",
-                    Expression::ClassExpression(_) => "a class expression",
                     Expression::TaggedTemplateExpression(_) => "a tagged template",
                     Expression::ImportExpression(_) => "`import()`",
                     Expression::ImportMeta(_) => "`import.meta`",
-                    Expression::NewTarget(_) => "`new.target`",
-                    Expression::PrivateInExpression(_) => "`#name in`",
                     Expression::Super(_) => "this use of `super`",
                     _ => "this syntax",
                 };
@@ -139,11 +152,11 @@ impl<'a> Lowerer<'a, '_> {
                     return self.unsupported(ident.span, "an assignment to a global");
                 };
                 if operator == AssignmentOperator::Assign {
-                    let value = self.expr(right);
+                    let value = self.named_expr(right, Expr::js_string(ident.name.as_str()));
                     return self.assign_symbol(symbol, value, ident.span);
                 }
                 let current = self.read_symbol(symbol, ident.span);
-                let value = self.combine(operator, current, right);
+                let value = self.combine(operator, current, right, Some(ident.name.as_str()));
                 self.assign_symbol(symbol, value, ident.span)
             }
             SimpleAssignmentTarget::TSAsExpression(inner) => {
@@ -196,7 +209,7 @@ impl<'a> Lowerer<'a, '_> {
                     return self.assign_symbol(symbol, value, ident.span);
                 }
                 let current = self.read_symbol(symbol, ident.span);
-                let value = self.combine(operator, current, right);
+                let value = self.combine(operator, current, right, None);
                 self.assign_symbol(symbol, value, ident.span)
             }
             other => self.unsupported(other.span(), "this assignment target"),
@@ -218,7 +231,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         let key = self.fix_key(key);
         let current = self.get(object.clone(), key.clone());
-        let value = self.combine(operator, current, right);
+        let value = self.combine(operator, current, right, None);
         let value = self.bind(value);
         self.set(object, key, value.clone());
         value
@@ -230,6 +243,7 @@ impl<'a> Lowerer<'a, '_> {
         operator: AssignmentOperator,
         current: Expr,
         right: &'a Expression<'a>,
+        name: Option<&str>,
     ) -> Expr {
         let logical = match operator {
             AssignmentOperator::LogicalAnd => Some(LogicalOperator::And),
@@ -238,7 +252,10 @@ impl<'a> Lowerer<'a, '_> {
             _ => None,
         };
         if let Some(logical) = logical {
-            let other = self.branch(|me| me.expr(right));
+            let other = self.branch(|me| match name {
+                Some(name) => me.named_expr(right, Expr::js_string(name)),
+                None => me.expr(right),
+            });
             return self.bind(logical_case(logical, current, other, false));
         }
         let value = self.expr(right);
@@ -375,6 +392,16 @@ impl<'a> Lowerer<'a, '_> {
             UnaryOperator::Delete => match unary.argument.as_member_expression() {
                 Some(member) => {
                     let (object, key) = self.member_parts(member);
+                    if object == super_object() {
+                        return self.bind(Expr::call(
+                            "bouy_heap",
+                            "throw_error",
+                            vec![
+                                Expr::atom("ReferenceError"),
+                                Expr::js_string("Unsupported reference to 'super'"),
+                            ],
+                        ));
+                    }
                     let value = match key {
                         MemberKey::Static(key) => {
                             Expr::call("bouy_ref", "delete", vec![object, key])
@@ -382,6 +409,7 @@ impl<'a> Lowerer<'a, '_> {
                         MemberKey::Dynamic(key) => {
                             Expr::call("bouy_ref", "delete_computed", vec![object, key])
                         }
+                        MemberKey::Private(_) => Expr::atom("true"),
                     };
                     self.bind(value)
                 }

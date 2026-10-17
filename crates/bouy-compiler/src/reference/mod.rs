@@ -11,12 +11,14 @@
 //! named fun that calls itself. Expressions lower in A-normal form: each step binds a
 //! fresh variable, so the Erlang code keeps the evaluation order of JavaScript.
 //!
-//! `await` and `yield` leave a marker in the code of a statement. `seal` splits a body at
-//! each marker: the rest of the body becomes the fun that a promise reaction or `next()`
-//! calls later. A `try` that holds a suspension point is a region: each segment of its
-//! body runs inside an Erlang `try` whose handler is the `catch` clause, and a jump out of
-//! the region returns `{'$k', Fun, Args}` so that the wrapper calls `Fun` outside the
-//! Erlang `try`.
+//! `await`, `yield`, and `yield*` leave a marker in the code of a statement. `seal` splits
+//! a body at each marker: the rest of the body becomes the fun that a promise reaction or
+//! `next()` calls later. A `try` that holds a suspension point, and the body of a
+//! `for...of`, are regions: each segment runs inside an Erlang `try` whose handler is the
+//! `catch` clause or closes the iterator, and a jump out of the region returns
+//! `{'$k', Fun, Args, Level}` so that the wrapper of the level above `Level` calls `Fun`
+//! outside the inner Erlang `try`s. A `finally` block, and the closing of an iterator, is
+//! a fun that takes the completion (`suspend` and `exception`).
 //!
 //! The files, by area:
 //!
@@ -48,13 +50,13 @@ use std::collections::HashMap;
 use crate::diagnostic::{Diagnostic, Reporter};
 use crate::erlang;
 use crate::graph;
-use crate::parse::with_program;
+use crate::parse::with_js_program;
 
 use context::{Frame, Lowerer};
 
 /// Lowers `module` with reference semantics.
 pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
-    with_program(&module.path, &module.source, |program, semantic| {
+    with_js_program(&module.path, &module.source, |program, semantic| {
         let analysis = analyze::analyze(program, semantic);
         let mut lowerer = Lowerer {
             semantic,
@@ -67,6 +69,7 @@ pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
             frame: Frame::default(),
             pre: Vec::new(),
             classes: Vec::new(),
+            privates: Vec::new(),
         };
         lowerer.declare(program);
         let functions = lowerer.module_functions(program);

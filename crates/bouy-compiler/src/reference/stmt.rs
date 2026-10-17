@@ -9,9 +9,8 @@ use oxc::span::{GetSpan, Span};
 
 use super::analyze::{Assigned, completes_normally};
 use super::context::{
-    Cont, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
+    Cont, Kind, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
 };
-use super::function::length_of;
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -103,21 +102,7 @@ impl<'a> Lowerer<'a, '_> {
             cells.push(cell);
         }
         for ((_, function), cell) in functions.iter().zip(cells) {
-            let fun = self.function_fun(function, None);
-            let name = function
-                .id
-                .as_ref()
-                .map_or_else(String::new, |id| id.name.to_string());
-            let length = length_of(&function.params);
-            let value = self.bind(Expr::call(
-                "bouy_ref",
-                "named_fn",
-                vec![
-                    fun,
-                    Expr::js_string(&name),
-                    Expr::Integer(i64::try_from(length).unwrap_or(0)),
-                ],
-            ));
+            let value = self.function_value(function, None);
             self.pre.push(cell_set(&cell, value));
         }
         std::mem::replace(&mut self.pre, saved)
@@ -155,7 +140,7 @@ impl<'a> Lowerer<'a, '_> {
                 }
             }
             Statement::ClassDeclaration(class) if !class.declare => {
-                self.unsupported(class.span, "a class declared inside a function");
+                self.class_declaration(class);
             }
             _ => {}
         }
@@ -172,9 +157,12 @@ impl<'a> Lowerer<'a, '_> {
             if declaration.kind.is_var() && declarator.init.is_none() {
                 continue;
             }
-            let value = match &declarator.init {
-                Some(init) => self.expr(init),
-                None => Expr::undefined(),
+            let value = match (&declarator.init, &declarator.id) {
+                (Some(init), oxc::ast::ast::BindingPattern::BindingIdentifier(id)) => {
+                    self.named_expr(init, Expr::js_string(id.name.as_str()))
+                }
+                (Some(init), _) => self.expr(init),
+                (None, _) => Expr::undefined(),
             };
             self.declare_pattern(&declarator.id, value);
         }
@@ -196,6 +184,11 @@ impl<'a> Lowerer<'a, '_> {
             Statement::BlockStatement(inner) => self.stmts(inner.body.iter().collect(), k),
             Statement::ReturnStatement(statement) => {
                 let value = match &statement.argument {
+                    // An async generator awaits the value that it returns.
+                    Some(argument) if self.frame.kind == Kind::AsyncGenerator => {
+                        let value = self.expr(argument);
+                        self.marker("await", value)
+                    }
                     Some(argument) => self.expr(argument),
                     None => Expr::undefined(),
                 };
@@ -258,6 +251,7 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::atom("$k"),
                 Expr::var(name.to_owned()),
                 Expr::List(args),
+                Expr::Integer(i64::try_from(region).unwrap_or(0)),
             ])
         } else {
             Expr::Apply(Box::new(Expr::var(name.to_owned())), args)
@@ -453,14 +447,60 @@ impl<'a> Lowerer<'a, '_> {
         self.jump_target(index, is_continue)
     }
 
+    /// The variables that the continuation of a jump to target `index` passes on.
+    pub fn target_vars(&self, index: usize, is_continue: bool) -> Vec<SymbolId> {
+        let target = &self.frame.targets[index];
+        let k = match (&target.cont, is_continue) {
+            (Some(cont), true) => cont,
+            _ => &target.brk,
+        };
+        match k {
+            Cont::Call { vars, .. } | Cont::Next { vars, .. } | Cont::Test { vars, .. } => {
+                vars.clone()
+            }
+            Cont::Return | Cont::Value(_) => Vec::new(),
+        }
+    }
+
+    fn target_values(&self, index: usize, is_continue: bool) -> Expr {
+        Expr::List(
+            self.target_vars(index, is_continue)
+                .iter()
+                .map(|symbol| self.carried(*symbol))
+                .collect(),
+        )
+    }
+
     pub fn jump_target(&mut self, index: usize, is_continue: bool) -> Vec<Expr> {
-        if let Some(reify) = self.frame.reify.last_mut()
+        if self.reify_innermost()
+            && let Some(reify) = self.frame.reify.last()
             && index < reify.base
         {
-            if !reify.jumps.contains(&(index, is_continue)) {
+            let values = self.target_values(index, is_continue);
+            if let Some(reify) = self.frame.reify.last_mut()
+                && !reify.jumps.contains(&(index, is_continue))
+            {
                 reify.jumps.push((index, is_continue));
             }
-            return vec![jump_tuple(index, is_continue)];
+            return vec![jump_tuple(index, is_continue, values)];
+        }
+        if !self.reify_innermost()
+            && let Some(finally) = self.frame.finally.last()
+            && index < finally.base
+            && !(is_continue && finally.stays == Some(index))
+        {
+            let (fun, region) = (finally.fun.clone(), finally.region);
+            let values = self.target_values(index, is_continue);
+            if let Some(finally) = self.frame.finally.last_mut()
+                && !finally.jumps.contains(&(index, is_continue))
+            {
+                finally.jumps.push((index, is_continue));
+            }
+            return vec![self.call_cont(
+                &fun,
+                vec![jump_tuple(index, is_continue, values)],
+                region,
+            )];
         }
         let target = &self.frame.targets[index];
         let k = match (&target.cont, is_continue) {
@@ -471,11 +511,14 @@ impl<'a> Lowerer<'a, '_> {
     }
 }
 
-pub fn jump_tuple(index: usize, is_continue: bool) -> Expr {
+/// The completion of a jump out of a `try` or a `for...of`: the target, and the values
+/// of the variables that the target passes on.
+pub fn jump_tuple(index: usize, is_continue: bool, values: Expr) -> Expr {
     Expr::Tuple(vec![
         Expr::atom("jump"),
         Expr::Integer(i64::try_from(index).unwrap_or(0)),
         Expr::atom(is_continue.to_string()),
+        values,
     ])
 }
 
