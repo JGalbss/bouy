@@ -3,17 +3,18 @@
 %% The runtime has no compiler of its own. It hands the source text to the
 %% Bouy binary that BOUY_COMPILER names (`bouy compile-eval`), which prints an
 %% Erlang module, and loads that module into the VM. The module's
-%% '__eval__'/1 runs the code in the calling realm with a this and returns its
-%% completion value. A source text compiles once per VM.
+%% '__eval__'/2 runs the code in the calling realm with a this and the cells
+%% of the caller's local bindings, and returns its completion value. A source
+%% text compiles once per VM for each list of binding names.
 %%
-%% shortcut: direct eval runs as global code, so the code does not see the
-%% local variables of its caller. Doing better needs the compiler to know the
-%% scope of the call.
+%% shortcut: a `var` or a function that sloppy direct eval code declares,
+%% and that the caller does not bind already, becomes a global instead of a
+%% binding of the caller's function.
 -module(bouy_ref_eval).
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/4, create_function/1, create_function/2]).
+-export([intrinsics/0, globals/0, method/4, direct/5, create_function/1, create_function/2]).
 
 -import(bouy_ref, [type_error/1]).
 
@@ -33,25 +34,30 @@ method(<<"globalThis">>, <<"eval">>, _This, Args) -> indirect(bouy_ref_realm:arg
 
 %% PerformEval of an indirect eval: global code, sloppy unless it says
 %% otherwise.
-indirect(Source) when ?IS_STRING(Source) -> run(Source, [], ?GLOBAL);
+indirect(Source) when ?IS_STRING(Source) -> run(Source, [], ?GLOBAL, []);
 indirect(Value) -> Value.
 
 %% `eval(...)` where eval is the name of the global: a direct eval when it
 %% still is the intrinsic, else a plain call.
 %% A direct eval in a parameter default (sloppy_parameters) may not declare
-%% `arguments`.
--spec direct(term(), list(), strict | sloppy | sloppy_parameters, term()) -> term().
-direct({'$f', {builtin, <<"eval">>}, _}, Args, Mode, This) ->
+%% `arguments`. Scope holds the caller's local bindings as [{Name, Cell}].
+-spec direct(term(), list(), strict | sloppy | sloppy_parameters, term(), [{binary(), term()}]) -> term().
+direct({'$f', {builtin, <<"eval">>}, _}, Args, Mode, This, Scope) ->
     Flags = case Mode of
         strict -> ["--strict"];
         sloppy -> [];
         sloppy_parameters -> ["--parameters"]
     end,
+    Names = [binary_to_list(bouy_ref_string:to_utf8(Name)) || {Name, _} <- Scope],
+    ScopeFlags = case Names of
+        [] -> [];
+        _ -> ["--scope=" ++ lists:join(",", Names)]
+    end,
     case bouy_ref_realm:arg(1, Args) of
-        Source when ?IS_STRING(Source) -> run(Source, Flags, This);
+        Source when ?IS_STRING(Source) -> run(Source, Flags ++ ScopeFlags, This, Scope);
         Value -> Value
     end;
-direct(F, Args, _Mode, _This) ->
+direct(F, Args, _Mode, _This, _Scope) ->
     bouy_ref:call(F, undefined, Args).
 
 %% CreateDynamicFunction: new Function(p1, ..., body).
@@ -75,20 +81,20 @@ create_function(Kind, Args) ->
         async_generator -> <<"(async function* anonymous(">>
     end,
     Source = bouy_ref_string:concat([Prefix, P, <<"\n) {\n">>, B, <<"\n})">>]),
-    run(Source, ["--function"], ?GLOBAL).
+    run(Source, ["--function"], ?GLOBAL, []).
 
 %% Flags are the options of `bouy compile-eval`.
-run(Source, Flags, This) ->
+run(Source, Flags, This, Scope) ->
     Key = {?MODULE, erlang:md5(term_to_binary({Source, Flags}))},
     Module = case persistent_term:get(Key, undefined) of
         undefined ->
-            M = compile(Source, Flags),
+            M = compile(Source, [lists:flatten(Flag) || Flag <- Flags]),
             persistent_term:put(Key, M),
             M;
         M ->
             M
     end,
-    Module:'__eval__'(This).
+    Module:'__eval__'(This, Scope).
 
 compile(Source, Flags) ->
     Compiler = case os:getenv("BOUY_COMPILER") of

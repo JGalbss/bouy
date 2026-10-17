@@ -28,6 +28,10 @@ impl<'a> Lowerer<'a, '_> {
                 "arguments" if self.frame.arguments.is_some() => {
                     Expr::var(self.frame.arguments.clone().unwrap_or_default())
                 }
+                name if self.eval_binding(name).is_some() => {
+                    let cell = self.eval_binding(name).unwrap_or_default();
+                    self.bind(cell_get(&cell))
+                }
                 name => self.bind(Expr::call(
                     "bouy_ref",
                     "global",
@@ -35,15 +39,6 @@ impl<'a> Lowerer<'a, '_> {
                 )),
             },
         }
-    }
-
-    /// The value of an identifier that no scope declares: a global.
-    pub fn identifier_read(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
-        self.bind(Expr::call(
-            "bouy_ref",
-            "global",
-            vec![Expr::js_string(ident.name.as_str())],
-        ))
     }
 
     /// `new.target`: the variable of the function or of the class constructor, else
@@ -116,6 +111,19 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
+    /// The value of a name that no scope of the code declares: a binding of the caller of
+    /// a direct eval, else a global.
+    pub fn identifier_read(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        if let Some(cell) = self.eval_binding(ident.name.as_str()) {
+            return self.bind(cell_get(&cell));
+        }
+        self.bind(Expr::call(
+            "bouy_ref",
+            "global",
+            vec![Expr::js_string(ident.name.as_str())],
+        ))
+    }
+
     /// Whether `symbol` is a `let`, `const`, class, or parameter: a binding whose read
     /// before its declaration is a `ReferenceError`.
     fn is_local_binding(&self, symbol: SymbolId) -> bool {
@@ -184,22 +192,22 @@ impl<'a> Lowerer<'a, '_> {
             Some(Top::Literal(_)) => return,
             _ => {}
         }
+        // A `var` declaration after the start of the function writes the cell that the
+        // start of the function made, which closures may hold, and so does a binding that
+        // a function read before its declaration, or that an eval shares with its caller.
+        if let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
+            && (self
+                .semantic
+                .scoping()
+                .symbol_flags(symbol)
+                .is_function_scoped_declaration()
+                || self.analysis.early.contains(&symbol))
+        {
+            let value = self.bind(value);
+            self.pre.push(cell_set(&cell, value));
+            return;
+        }
         if self.analysis.cells.contains(&symbol) {
-            // A `var` declaration after the start of the function writes the cell that
-            // the start of the function made, which closures may hold, and so does a
-            // binding that a function read before its declaration.
-            if let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
-                && (self
-                    .semantic
-                    .scoping()
-                    .symbol_flags(symbol)
-                    .is_function_scoped_declaration()
-                    || self.analysis.early.contains(&symbol))
-            {
-                let value = self.bind(value);
-                self.pre.push(cell_set(&cell, value));
-                return;
-            }
             let cell = self.fresh("Cell");
             self.pre.push(Expr::matches(
                 Expr::var(cell.clone()),

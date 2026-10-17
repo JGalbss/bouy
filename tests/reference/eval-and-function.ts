@@ -29,3 +29,10 @@ console.log(
   "|",
   new Function("a", "return a").toString().split("\n").join("\\n"),
 );
+function locals(a: number): unknown[] {
+  let x = 1;
+  eval("x = x + a; var hidden = 3;");
+  const inner = (): unknown => eval("x * 10 + arguments.length");
+  return [x, eval("typeof hidden"), inner()];
+}
+console.log(locals(5));

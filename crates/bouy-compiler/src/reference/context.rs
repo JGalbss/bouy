@@ -194,8 +194,11 @@ pub struct Lowerer<'a, 'c> {
     pub script_globals: Vec<String>,
     pub script_functions: Vec<(String, usize, &'static str)>,
     /// The code of an `eval`, and whether it is strict: the module runs in the realm that
-    /// compiled it, and its `'__eval__'/0` returns the completion value.
+    /// compiled it, and its `'__eval__'/2` returns the completion value.
     pub eval: Option<bool>,
+    /// The local bindings of the caller of a direct eval, by name, and the Erlang variables
+    /// of their cells in `'__eval__'/2`.
+    pub eval_bindings: Vec<(String, String)>,
 }
 
 impl Lowerer<'_, '_> {
@@ -274,6 +277,14 @@ impl Lowerer<'_, '_> {
     pub fn is_script(&self) -> bool {
         let source_type = self.semantic.source_type();
         !source_type.is_typescript() && !source_type.is_module()
+    }
+
+    /// The cell of a binding that the caller of a direct eval shares, by name.
+    pub fn eval_binding(&self, name: &str) -> Option<String> {
+        self.eval_bindings
+            .iter()
+            .find(|(binding, _)| binding == name)
+            .map(|(_, cell)| cell.clone())
     }
 
     pub fn this_expr(&self) -> Expr {

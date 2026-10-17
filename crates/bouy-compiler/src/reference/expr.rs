@@ -227,6 +227,7 @@ impl<'a> Lowerer<'a, '_> {
         if self.symbol_of(ident.reference_id.get()).is_none()
             && !matches!(ident.name.as_str(), "undefined" | "NaN" | "Infinity")
             && !(ident.name == "arguments" && self.frame.arguments.is_some())
+            && self.eval_binding(ident.name.as_str()).is_none()
         {
             let name = Expr::js_string(ident.name.as_str());
             return self.bind(Expr::call("bouy_ref", "typeof_global", vec![name]));
@@ -260,7 +261,10 @@ impl<'a> Lowerer<'a, '_> {
 
     fn delete_binding(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
         let global = match self.symbol_of(ident.reference_id.get()) {
-            None => !(ident.name == "arguments" && self.frame.arguments.is_some()),
+            None => {
+                !(ident.name == "arguments" && self.frame.arguments.is_some())
+                    && self.eval_binding(ident.name.as_str()).is_none()
+            }
             Some(symbol) => {
                 !self.frame.env.contains_key(&symbol)
                     && matches!(self.tops.get(&symbol), Some(Top::Global(_)))
@@ -276,9 +280,15 @@ impl<'a> Lowerer<'a, '_> {
         ))
     }
 
-    /// Stores `value` in the global `name`, as the mode of the code allows.
+    /// Stores `value` in the global `name`, as the mode of the code allows, or in the binding
+    /// of the caller of a direct eval.
     pub fn set_global(&mut self, name: &str, value: Expr) -> Expr {
         let value = self.bind(value);
+        if let Some(cell) = self.eval_binding(name) {
+            self.pre
+                .push(super::context::cell_set(&cell, value.clone()));
+            return value;
+        }
         let mode = Expr::atom(if self.frame.sloppy {
             "sloppy"
         } else {

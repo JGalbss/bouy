@@ -62,6 +62,7 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     cells.extend(mapped.found);
     let early = early_bindings(scoping, nodes);
     cells.extend(early.iter().copied());
+    cells.extend(eval_visible(scoping));
     let mut loops = LoopHeads {
         cells: &cells,
         found: HashSet::new(),
@@ -73,6 +74,29 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
         per_iteration,
         early,
     }
+}
+
+/// The local bindings that a direct eval can see: every binding of the scopes around a call
+/// of the unresolved name `eval`, below the module scope. The eval code reads and writes
+/// them through their cells.
+fn eval_visible(scoping: &Scoping) -> Vec<SymbolId> {
+    let root = scoping.root_scope_id();
+    let mut found = Vec::new();
+    for reference in scoping
+        .root_unresolved_references()
+        .get("eval")
+        .into_iter()
+        .flatten()
+    {
+        let scope = scoping.get_reference(*reference).scope_id();
+        for ancestor in scoping.scope_ancestors(scope) {
+            if ancestor == root {
+                break;
+            }
+            found.extend(scoping.get_bindings(ancestor).values().copied());
+        }
+    }
+    found
 }
 
 /// The block-scoped bindings that a nested function can read before their declaration
@@ -336,8 +360,9 @@ impl<'a> Visit<'a> for UsesThis {
 pub struct UsesArguments(pub bool);
 
 impl<'a> Visit<'a> for UsesArguments {
+    /// A direct eval may read `arguments` too.
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
-        if it.name == "arguments" {
+        if it.name == "arguments" || it.name == "eval" {
             self.0 = true;
         }
     }

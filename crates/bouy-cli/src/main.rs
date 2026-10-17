@@ -63,6 +63,9 @@ enum Commands {
         /// The source is a direct eval in a parameter default.
         #[arg(long)]
         parameters: bool,
+        /// The local bindings of the caller of a direct eval, separated by commas.
+        #[arg(long, value_delimiter = ',')]
+        scope: Vec<String>,
         /// The Erlang module name.
         module: String,
         /// The file that holds the source text.
@@ -114,21 +117,22 @@ fn main() -> ExitCode {
             strict,
             function,
             parameters,
+            scope,
             module,
             source,
-        } => compile_eval(&source, &module, [strict, function, parameters]),
+        } => compile_eval(&source, &module, [strict, function, parameters], &scope),
     }
 }
 
 /// `bouy compile-eval`: the Erlang module of an `eval`, or its first diagnostic.
 /// `flags` are `--strict`, `--function`, and `--parameters`.
-fn compile_eval(source: &Path, module: &str, flags: [bool; 3]) -> ExitCode {
+fn compile_eval(source: &Path, module: &str, flags: [bool; 3], scope: &[String]) -> ExitCode {
     let [strict, function, parameters] = flags;
     let text = match fs::read_to_string(source) {
         Ok(text) => text,
         Err(error) => return fail(&format!("cannot read {}: {error}", source.display())),
     };
-    match bouy_compiler::compile_eval(&text, module, strict, function, parameters) {
+    match bouy_compiler::compile_eval(&text, module, strict, function, parameters, scope) {
         Ok(erlang) => {
             print!("{erlang}");
             ExitCode::SUCCESS

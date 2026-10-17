@@ -8,7 +8,7 @@ use oxc::ast::ast::{
 use oxc::ast_visit::Visit;
 
 use super::analyze;
-use super::context::{Cont, Frame, Lowerer, Top};
+use super::context::{Cont, Frame, Local, Lowerer, Top};
 use super::function::{Callee, FnBody, Itself, kind_of, length_of};
 use super::literal::literal;
 use crate::diagnostic::Code;
@@ -128,6 +128,11 @@ impl<'a> Lowerer<'a, '_> {
         }
         for symbol in top_level_vars(program) {
             let name = self.semantic.scoping().symbol_name(symbol).to_owned();
+            // A `var` of sloppy eval code that the caller already binds is that binding.
+            if self.eval_binding(&name).is_some() {
+                self.tops.remove(&symbol);
+                continue;
+            }
             if !function_symbols.contains(&symbol) {
                 self.script_globals.push(name.clone());
             }
@@ -309,9 +314,18 @@ impl<'a> Lowerer<'a, '_> {
         self.frame = Frame::default();
         self.frame.sloppy = self.is_sloppy(None);
         // The `this` of the eval: the caller's for a direct eval, else the global object.
+        // The scope holds the cells of the caller's bindings, in the order of
+        // `eval_bindings`.
         let this = self.fresh("This");
         let mut code = Vec::new();
         self.frame.this = Some(this.clone());
+        let cells = self
+            .eval_bindings
+            .iter()
+            .map(|(_, cell)| Expr::Tuple(vec![Expr::var("_"), Expr::var(cell.clone())]))
+            .collect();
+        code.push(Expr::matches(Expr::List(cells), Expr::var("Scope")));
+        self.bind_eval_vars(body);
         if !self.script_globals.is_empty() || !self.script_functions.is_empty() {
             code.push(self.declare_globals_call());
         }
@@ -350,10 +364,27 @@ impl<'a> Lowerer<'a, '_> {
         Function {
             name: "__eval__".to_owned(),
             clauses: vec![Clause {
-                patterns: vec![Expr::var(this)],
+                patterns: vec![Expr::var(this), Expr::var("Scope")],
                 guards: vec![],
                 body: code,
             }],
+        }
+    }
+
+    /// Maps each top-level `var` of sloppy eval code that the caller binds to the caller's
+    /// cell.
+    fn bind_eval_vars(&mut self, body: &[&'a Statement<'a>]) {
+        let mut vars = analyze::VarDeclarations::default();
+        for statement in body {
+            vars.visit_statement(statement);
+        }
+        for symbol in vars.0 {
+            let name = self.semantic.scoping().symbol_name(symbol).to_owned();
+            if !self.tops.contains_key(&symbol)
+                && let Some(cell) = self.eval_binding(&name)
+            {
+                self.frame.env.insert(symbol, Local::Cell(cell));
+            }
         }
     }
 

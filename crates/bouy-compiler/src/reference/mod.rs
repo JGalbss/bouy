@@ -55,7 +55,7 @@ use context::{Frame, Lowerer};
 
 /// Lowers `module` with reference semantics.
 pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
-    lower(module, None)
+    lower(module, None, &[])
 }
 
 /// Lowers the code of an `eval` (`compile_eval` of the crate).
@@ -64,6 +64,7 @@ pub fn lower_eval(
     strict: bool,
     function: bool,
     parameters: bool,
+    scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
     if parameters && !strict {
         let declares = with_program(&module.path, &module.source, |program, semantic| {
@@ -91,7 +92,7 @@ pub fn lower_eval(
             )]);
         }
     }
-    lower(module, Some(strict))
+    lower(module, Some(strict), scope)
 }
 
 /// Whether sloppy eval code declares `arguments` in its variable environment: a `var` or a
@@ -135,7 +136,11 @@ fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool 
         if function.span.end as usize + 1 == length)
 }
 
-fn lower(module: &graph::Module, eval: Option<bool>) -> Result<String, Vec<Diagnostic>> {
+fn lower(
+    module: &graph::Module,
+    eval: Option<bool>,
+    scope: &[String],
+) -> Result<String, Vec<Diagnostic>> {
     with_program(&module.path, &module.source, |program, semantic| {
         let analysis = analyze::analyze(program, semantic);
         let mut lowerer = Lowerer {
@@ -152,6 +157,11 @@ fn lower(module: &graph::Module, eval: Option<bool>) -> Result<String, Vec<Diagn
             script_globals: Vec::new(),
             script_functions: Vec::new(),
             eval,
+            eval_bindings: scope
+                .iter()
+                .enumerate()
+                .map(|(index, name)| (name.clone(), format!("Scope_{index}")))
+                .collect(),
         };
         lowerer.declare(program);
         let functions = lowerer.module_functions(program, &module.source);

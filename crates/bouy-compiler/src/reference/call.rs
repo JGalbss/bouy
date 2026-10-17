@@ -1,9 +1,9 @@
 //! Calls: argument lists with spread, method calls, calls of module functions and of
 //! the functions of "bouy", and `new`.
 
-use oxc::ast::ast::{Argument, CallExpression, Expression, NewExpression};
+use oxc::ast::ast::{Argument, CallExpression, Expression, IdentifierReference, NewExpression};
 
-use super::context::{Lowerer, Top};
+use super::context::{Local, Lowerer, Top};
 use super::expr::strip;
 use super::member::MemberKey;
 use crate::erlang::Expr;
@@ -112,10 +112,11 @@ impl<'a> Lowerer<'a, '_> {
                 (false, _) => "strict",
             });
             let this = self.this_expr();
+            let scope = self.eval_scope(ident);
             return self.bind(Expr::call(
                 "bouy_ref_eval",
                 "direct",
-                vec![eval, args, mode, this],
+                vec![eval, args, mode, this, scope],
             ));
         }
         if let Expression::Identifier(ident) = callee
@@ -141,6 +142,42 @@ impl<'a> Lowerer<'a, '_> {
             "call",
             vec![function, Expr::undefined(), args],
         ))
+    }
+
+    /// The local bindings that a direct eval at `ident` sees, innermost first:
+    /// `[{Name, Cell}]`, with the arguments object in a cell of its own.
+    fn eval_scope(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        let scoping = self.semantic.scoping();
+        let root = scoping.root_scope_id();
+        let Some(reference) = ident.reference_id.get() else {
+            return Expr::List(vec![]);
+        };
+        let mut names: Vec<String> = Vec::new();
+        let mut entries = Vec::new();
+        for scope in scoping.scope_ancestors(scoping.get_reference(reference).scope_id()) {
+            if scope == root {
+                break;
+            }
+            for (name, symbol) in scoping.get_bindings(scope) {
+                if names.iter().any(|seen| seen == name.as_str()) {
+                    continue;
+                }
+                if let Some(Local::Cell(cell)) = self.frame.env.get(symbol) {
+                    names.push(name.to_string());
+                    entries.push(Expr::Tuple(vec![
+                        Expr::js_string(name),
+                        Expr::var(cell.clone()),
+                    ]));
+                }
+            }
+        }
+        if let Some(arguments) = self.frame.arguments.clone()
+            && !names.iter().any(|name| name == "arguments")
+        {
+            let cell = self.bind(Expr::call("bouy_heap", "cell", vec![Expr::var(arguments)]));
+            entries.push(Expr::Tuple(vec![Expr::js_string("arguments"), cell]));
+        }
+        Expr::List(entries)
     }
 
     /// A function imported from "bouy".

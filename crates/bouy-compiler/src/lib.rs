@@ -111,13 +111,15 @@ fn compile_in_with(
 /// itself; sloppy code makes them properties of the global object. With `function`, the
 /// source must be one parenthesized function expression, as the `Function` constructor
 /// builds it, so a body cannot close the function early. With `parameters`, the code is a
-/// direct eval in a parameter default, which may not declare `arguments`.
+/// direct eval in a parameter default, which may not declare `arguments`. `scope` names the
+/// local bindings of the caller of a direct eval, which `'__eval__'/2` gets as cells.
 pub fn compile_eval(
     source: &str,
     name: &str,
     strict: bool,
     function: bool,
     parameters: bool,
+    scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
     let source = if strict {
         format!("\"use strict\";\n{source}")
@@ -131,7 +133,7 @@ pub fn compile_eval(
         imports: std::collections::HashMap::new(),
         exports: std::collections::HashMap::new(),
     };
-    reference::lower_eval(&module, strict, function, parameters)
+    reference::lower_eval(&module, strict, function, parameters, scope)
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

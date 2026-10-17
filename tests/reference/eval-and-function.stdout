@@ -6,3 +6,4 @@ undefined
 SyntaxError SyntaxError
 42 undefined
 8 function named(x) { return x * 2; } | function anonymous(a\n) {\nreturn a\n}
+[ 6, 'undefined', 61 ]
