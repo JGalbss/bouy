@@ -82,7 +82,7 @@ method(<<"Array.prototype">>, <<"toSorted">>, This, Args) ->
     O = object(This, <<"toSorted">>),
     Len = length_of(O),
     A = array_create(Len),
-    Sorted = sort_values([get(O, K) || K <- seq(0, Len - 1)], Compare),
+    Sorted = sort_values(values(O, 0, Len - 1), Compare),
     [create_property(A, K, V) || {K, V} <- lists:enumerate(0, Sorted)],
     A;
 method(<<"Array.prototype">>, Name, This, Args) ->
@@ -192,8 +192,24 @@ create_property(A, K, V) ->
 -spec cannot_define(term()) -> no_return().
 cannot_define(K) -> type_error(bouy_ref_string:concat([<<"Cannot redefine property: ">>, bouy_ref:to_string(bouy_heap:key_to_value(K))])).
 
-seq(From, To) when From > To -> [];
-seq(From, To) -> lists:seq(From, To).
+%% Calls F with each index from From up to To, or down to To: a loop, so a
+%% length near 2^53 costs nothing until F runs.
+up(From, To, _F) when From > To -> ok;
+up(From, To, F) ->
+    F(From),
+    up(From + 1, To, F).
+
+down(From, To, _F) when From < To -> ok;
+down(From, To, F) ->
+    F(From),
+    down(From - 1, To, F).
+
+%% Folds over the indexes From up to To.
+fold_up(From, To, _F, Acc) when From > To -> Acc;
+fold_up(From, To, F, Acc) -> fold_up(From + 1, To, F, F(From, Acc)).
+
+%% The values at the indexes From up to To, holes read through.
+values(O, From, To) -> lists:reverse(fold_up(From, To, fun(K, Acc) -> [get(O, K) | Acc] end, [])).
 
 %% ToIntegerOrInfinity of an argument.
 integer(V) -> bouy_ref_number:to_integer_or_infinity(bouy_ref:to_number(V)).
@@ -278,7 +294,7 @@ proto(<<"fill">>, O, Args) ->
     V = arg(1, Args),
     K = relative(arg(2, Args), Len),
     Final = relative_end(arg(3, Args), Len),
-    [set(O, I, V) || I <- seq(K, Final - 1)],
+    up(K, Final - 1, fun(I) -> set(O, I, V) end),
     O;
 proto(<<"find">>, O, Args) -> find(O, Args, forward, value);
 proto(<<"findIndex">>, O, Args) -> find(O, Args, forward, index);
@@ -382,11 +398,11 @@ proto(<<"push">>, O, Items) ->
 proto(<<"reduce">>, O, Args) ->
     Len = length_of(O),
     F = callable(arg(1, Args)),
-    reduce(O, F, Args, seq(0, Len - 1));
+    reduce(O, F, Args, 0, Len - 1, 1);
 proto(<<"reduceRight">>, O, Args) ->
     Len = length_of(O),
     F = callable(arg(1, Args)),
-    reduce(O, F, Args, lists:reverse(seq(0, Len - 1)));
+    reduce(O, F, Args, Len - 1, 0, -1);
 proto(<<"reverse">>, O, _) ->
     Len = length_of(O),
     reverse(O, 0, Len - 1),
@@ -410,10 +426,12 @@ proto(<<"unshift">>, O, Items) ->
         0 -> ok;
         _ ->
             Len + Count > ?MAX_LENGTH andalso too_long(),
-            [case has(O, K - 1) of
-                 true -> set(O, K + Count - 1, get(O, K - 1));
-                 false -> delete(O, K + Count - 1)
-             end || K <- lists:reverse(seq(1, Len))],
+            down(Len, 1, fun(K) ->
+                                 case has(O, K - 1) of
+                                     true -> set(O, K + Count - 1, get(O, K - 1));
+                                     false -> delete(O, K + Count - 1)
+                                 end
+                         end),
             [set(O, J, V) || {J, V} <- lists:enumerate(0, Items)]
     end,
     set_length(O, Len + Count),
@@ -424,13 +442,13 @@ proto(<<"slice">>, O, Args) ->
     Final = relative_end(arg(2, Args), Len),
     Count = max(Final - K, 0),
     A = species_create(O, Count),
-    N = lists:foldl(fun(I, N0) ->
-                            case has(O, I) of
-                                true -> create_property(A, N0, get(O, I));
-                                false -> ok
-                            end,
-                            N0 + 1
-                    end, 0, seq(K, Final - 1)),
+    N = fold_up(K, Final - 1, fun(I, N0) ->
+                                      case has(O, I) of
+                                          true -> create_property(A, N0, get(O, I));
+                                          false -> ok
+                                      end,
+                                      N0 + 1
+                              end, 0),
     set_length(A, N),
     A;
 proto(<<"splice">>, O, Args) ->
@@ -448,20 +466,24 @@ proto(<<"splice">>, O, Args) ->
     ItemCount = length(Items),
     Len + ItemCount - DeleteCount > ?MAX_LENGTH andalso too_long(),
     A = species_create(O, DeleteCount),
-    [case has(O, Start + K) of
-         true -> create_property(A, K, get(O, Start + K));
-         false -> ok
-     end || K <- seq(0, DeleteCount - 1)],
+    up(0, DeleteCount - 1, fun(K) ->
+                                   case has(O, Start + K) of
+                                       true -> create_property(A, K, get(O, Start + K));
+                                       false -> ok
+                                   end
+                           end),
     set_length(A, DeleteCount),
     if
         ItemCount < DeleteCount ->
             move(O, Start + DeleteCount, Len - 1, ItemCount - DeleteCount),
-            [delete(O, K - 1) || K <- lists:reverse(seq(Len - DeleteCount + ItemCount + 1, Len))];
+            down(Len, Len - DeleteCount + ItemCount + 1, fun(K) -> delete(O, K - 1) end);
         ItemCount > DeleteCount ->
-            [case has(O, K + DeleteCount - 1) of
-                 true -> set(O, K + ItemCount - 1, get(O, K + DeleteCount - 1));
-                 false -> delete(O, K + ItemCount - 1)
-             end || K <- lists:reverse(seq(Start + 1, Len - DeleteCount))];
+            down(Len - DeleteCount, Start + 1, fun(K) ->
+                                                       case has(O, K + DeleteCount - 1) of
+                                                           true -> set(O, K + ItemCount - 1, get(O, K + DeleteCount - 1));
+                                                           false -> delete(O, K + ItemCount - 1)
+                                                       end
+                                               end);
         true -> ok
     end,
     [set(O, Start + J, V) || {J, V} <- lists:enumerate(0, Items)],
@@ -470,7 +492,7 @@ proto(<<"splice">>, O, Args) ->
 proto(<<"toReversed">>, O, _) ->
     Len = length_of(O),
     A = array_create(Len),
-    [create_property(A, K, get(O, Len - K - 1)) || K <- seq(0, Len - 1)],
+    up(0, Len - 1, fun(K) -> create_property(A, K, get(O, Len - K - 1)) end),
     A;
 proto(<<"toSpliced">>, O, Args) ->
     Len = length_of(O),
@@ -487,8 +509,8 @@ proto(<<"toSpliced">>, O, Args) ->
     NewLen = Len + length(Items) - Skip,
     NewLen > ?MAX_LENGTH andalso too_long(),
     A = array_create(NewLen),
-    Before = [get(O, K) || K <- seq(0, Start - 1)],
-    After = [get(O, K) || K <- seq(Start + Skip, Len - 1)],
+    Before = values(O, 0, Start - 1),
+    After = values(O, Start + Skip, Len - 1),
     [create_property(A, K, V) || {K, V} <- lists:enumerate(0, Before ++ Items ++ After)],
     A;
 proto(<<"with">>, O, Args) ->
@@ -501,7 +523,7 @@ proto(<<"with">>, O, Args) ->
     Index >= 0 andalso Index < Len orelse bouy_heap:throw_error('RangeError', <<"Invalid index">>),
     A = array_create(Len),
     V = arg(2, Args),
-    [create_property(A, K, case K of Index -> V; _ -> get(O, K) end) || K <- seq(0, Len - 1)],
+    up(0, Len - 1, fun(K) -> create_property(A, K, case K of Index -> V; _ -> get(O, K) end) end),
     A.
 
 bound('-Infinity', Low, _High) -> Low;
@@ -560,20 +582,20 @@ some(O, F, This, K, Len) ->
 find(O, Args, Direction, What) ->
     Len = length_of(O),
     F = callable(arg(1, Args)),
-    Indexes = case Direction of
-        forward -> seq(0, Len - 1);
-        backward -> lists:reverse(seq(0, Len - 1))
-    end,
-    find_in(Indexes, O, F, arg(2, Args), What).
+    This = arg(2, Args),
+    case Direction of
+        forward -> find_in(O, F, This, What, 0, Len, 1);
+        backward -> find_in(O, F, This, What, Len - 1, -1, -1)
+    end.
 
-find_in([], _O, _F, _This, value) -> undefined;
-find_in([], _O, _F, _This, index) -> -1;
-find_in([K | Rest], O, F, This, What) ->
+find_in(_O, _F, _This, value, K, End, _Step) when K =:= End -> undefined;
+find_in(_O, _F, _This, index, K, End, _Step) when K =:= End -> -1;
+find_in(O, F, This, What, K, End, Step) ->
     V = get(O, K),
     case bouy_ref:truthy(bouy_ref:call(F, This, [V, K, O])) of
         true when What =:= value -> V;
         true -> K;
-        false -> find_in(Rest, O, F, This, What)
+        false -> find_in(O, F, This, What, K + Step, End, Step)
     end.
 
 includes(_O, _Search, K, Len) when K >= Len -> false;
@@ -600,23 +622,28 @@ last_index_of(O, Search, K) ->
         false -> last_index_of(O, Search, K - 1)
     end.
 
-reduce(O, F, Args, Indexes) ->
-    {Acc0, Rest} = case Args of
-        [_, Init | _] -> {Init, Indexes};
-        _ -> first_present(O, Indexes)
+%% reduce and reduceRight over the indexes From to To, by Step.
+reduce(O, F, Args, From, To, Step) ->
+    {Acc0, Start} = case Args of
+        [_, Init | _] -> {Init, From};
+        _ -> first_present(O, From, To, Step)
     end,
-    lists:foldl(fun(K, Acc) ->
-                        case has(O, K) of
-                            true -> bouy_ref:call(F, undefined, [Acc, get(O, K), K, O]);
-                            false -> Acc
-                        end
-                end, Acc0, Rest).
+    reduce_steps(O, F, Start, To, Step, Acc0).
 
-first_present(_O, []) -> type_error(<<"Reduce of empty array with no initial value">>);
-first_present(O, [K | Rest]) ->
+reduce_steps(_O, _F, K, To, Step, Acc) when (Step > 0 andalso K > To); (Step < 0 andalso K < To) -> Acc;
+reduce_steps(O, F, K, To, Step, Acc) ->
+    Acc1 = case has(O, K) of
+        true -> bouy_ref:call(F, undefined, [Acc, get(O, K), K, O]);
+        false -> Acc
+    end,
+    reduce_steps(O, F, K + Step, To, Step, Acc1).
+
+first_present(_O, K, To, Step) when (Step > 0 andalso K > To); (Step < 0 andalso K < To) ->
+    type_error(<<"Reduce of empty array with no initial value">>);
+first_present(O, K, To, Step) ->
     case has(O, K) of
-        true -> {get(O, K), Rest};
-        false -> first_present(O, Rest)
+        true -> {get(O, K), K + Step};
+        false -> first_present(O, K + Step, To, Step)
     end.
 
 reverse(O, Lower, Upper) when Lower < Upper ->
@@ -642,15 +669,16 @@ reverse(_O, _Lower, _Upper) -> ok.
 %% Moves the elements From..To by Shift, in the order that keeps the source
 %% intact: ascending for a shift down, descending for a shift up.
 move(O, From, To, Shift) ->
-    Indexes = case Shift < 0 of
-        true -> seq(From, To);
-        false -> lists:reverse(seq(From, To))
-    end,
-    [case has(O, K) of
-         true -> set(O, K + Shift, get(O, K));
-         false -> delete(O, K + Shift)
-     end || K <- Indexes],
-    ok.
+    Move = fun(K) ->
+                   case has(O, K) of
+                       true -> set(O, K + Shift, get(O, K));
+                       false -> delete(O, K + Shift)
+                   end
+           end,
+    case Shift < 0 of
+        true -> up(From, To, Move);
+        false -> down(To, From, Move)
+    end.
 
 copy_within(_O, _From, _To, _Direction, Count) when Count =< 0 -> ok;
 copy_within(O, From, To, Direction, Count) ->
@@ -665,10 +693,12 @@ concat_item(A, E, N) ->
         true ->
             Len = length_of(E),
             N + Len > ?MAX_LENGTH andalso too_long(),
-            [case has(E, K) of
-                 true -> create_property(A, N + K, get(E, K));
-                 false -> ok
-             end || K <- seq(0, Len - 1)],
+            up(0, Len - 1, fun(K) ->
+                                   case has(E, K) of
+                                       true -> create_property(A, N + K, get(E, K));
+                                       false -> ok
+                                   end
+                           end),
             N + Len;
         false ->
             N >= ?MAX_LENGTH andalso too_long(),
@@ -685,7 +715,7 @@ is_spreadable(_) -> false.
 
 %% FlattenIntoArray: the next target index.
 flatten_into(Target, Source, Len, Start, Depth, Mapper) ->
-    lists:foldl(fun(K, TargetIndex) ->
+    fold_up(0, Len - 1, fun(K, TargetIndex) ->
                         case has(Source, K) of
                             false -> TargetIndex;
                             true ->
@@ -707,7 +737,7 @@ flatten_into(Target, Source, Len, Start, Depth, Mapper) ->
                                         TargetIndex + 1
                                 end
                         end
-                end, Start, seq(0, Len - 1)).
+                end, Start).
 
 %% join and toLocaleString return "" for an array that they are already
 %% joining, as V8 does, so a cycle ends.
@@ -726,7 +756,7 @@ guarded(O, Join) ->
     end.
 
 join(O, Len, Sep, Text) ->
-    bouy_ref_string:concat(lists:join(Sep, [Text(get(O, K)) || K <- seq(0, Len - 1)])).
+    bouy_ref_string:concat(lists:join(Sep, [Text(V) || V <- values(O, 0, Len - 1)])).
 
 join_text(undefined) -> <<>>;
 join_text(null) -> <<>>;
@@ -746,11 +776,16 @@ comparator(F) ->
 %% SortIndexedProperties with holes skipped, then the writes back.
 sort(O, Compare) ->
     Len = length_of(O),
-    Present = [get(O, K) || K <- seq(0, Len - 1), has(O, K)],
+    Present = lists:reverse(fold_up(0, Len - 1, fun(K, Acc) ->
+                                                          case has(O, K) of
+                                                              true -> [get(O, K) | Acc];
+                                                              false -> Acc
+                                                          end
+                                                  end, [])),
     Sorted = sort_values(Present, Compare),
     Count = length(Sorted),
     [set(O, K, V) || {K, V} <- lists:enumerate(0, Sorted)],
-    [delete(O, K) || K <- seq(Count, Len - 1), has(O, K)],
+    up(Count, Len - 1, fun(K) -> delete(O, K) end),
     O.
 
 %% Undefined values go last; the rest sort by the comparator, or by their
@@ -834,7 +869,7 @@ from_array_like(C, O, Mapper) ->
         true -> bouy_ref:construct(C, [Len]);
         false -> array_create(Len)
     end,
-    [create_property(A, K, mapped(Mapper, get(O, K), K)) || K <- seq(0, Len - 1)],
+    up(0, Len - 1, fun(K) -> create_property(A, K, mapped(Mapper, get(O, K), K)) end),
     set_length(A, Len),
     A.
 

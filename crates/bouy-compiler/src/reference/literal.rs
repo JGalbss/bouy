@@ -56,7 +56,7 @@ impl<'a> Lowerer<'a, '_> {
             .collect();
         let site = Expr::Tuple(vec![
             Expr::atom(self.module.clone()),
-            Expr::Integer(i64::from(tagged.span.start)),
+            Expr::Integer(i64::from(tagged.quasi.span.start)),
         ]);
         let callee = strip(&tagged.tag);
         let member = callee
@@ -92,20 +92,25 @@ impl<'a> Lowerer<'a, '_> {
             .elements
             .iter()
             .any(|element| matches!(element, ArrayExpressionElement::SpreadElement(_)));
+        let holes = array
+            .elements
+            .iter()
+            .any(|element| matches!(element, ArrayExpressionElement::Elision(_)));
         if !spread {
             let items = array
                 .elements
                 .iter()
                 .map(|element| match element.as_expression() {
                     Some(expression) => self.expr(expression),
-                    None => Expr::undefined(),
+                    None => Expr::atom("$hole"),
                 })
                 .collect();
-            return self.bind(Expr::call(
-                "bouy_heap",
-                "new_array",
-                vec![Expr::List(items)],
-            ));
+            let (module, function) = if holes {
+                ("bouy_ref", "array_holes")
+            } else {
+                ("bouy_heap", "new_array")
+            };
+            return self.bind(Expr::call(module, function, vec![Expr::List(items)]));
         }
         let parts = array
             .elements
@@ -116,7 +121,7 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 other => match other.as_expression() {
                     Some(expression) => Expr::tagged("item", self.expr(expression)),
-                    None => Expr::tagged("item", Expr::undefined()),
+                    None => Expr::atom("hole"),
                 },
             })
             .collect();

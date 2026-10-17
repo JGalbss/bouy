@@ -10,11 +10,11 @@
 -export_type([exit_status/0]).
 
 -type exit_status() :: 0..255.
--export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
+-export([get/2, get_from/3, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1, member_key/2]).
 -export([call/3, call_method/3, call_method_computed/3, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, fn/1, named_fn/3, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
--export([array/1, array_spread/1, object_spread/2, object_rest/2, template/1, template_object/3]).
+-export([array/1, array_holes/1, array_spread/1, object_spread/2, object_rest/2, template/1, template_object/3]).
 -export([add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1, plus/1]).
 -export([bit_and/2, bit_or/2, bit_xor/2, bit_not/1, shift_left/2, shift_right/2, shift_right_unsigned/2]).
 -export([strict_eq/2, loose_eq/2, lt/2, le/2, gt/2, ge/2, typeof/1, instance_of/2, truthy/1]).
@@ -99,11 +99,11 @@ get({'$f', _, _} = F, K) -> bouy_heap:get(F, K);
 get(S, K) when ?IS_STRING(S) -> bouy_ref_string:get(S, K);
 get(undefined, K) -> read_error(<<"undefined">>, K);
 get(null, K) -> read_error(<<"null">>, K);
-get(B, K) when is_boolean(B) -> bouy_heap:get({'$o', 'Boolean.prototype'}, K);
-get(N, K) when ?IS_NUMBER(N) -> bouy_heap:get({'$o', 'Number.prototype'}, K);
-get({'$bigint', _}, K) -> bouy_heap:get({'$o', 'BigInt.prototype'}, K);
+get(B, K) when is_boolean(B) -> lookup({'$o', 'Boolean.prototype'}, K, B);
+get(N, K) when ?IS_NUMBER(N) -> lookup({'$o', 'Number.prototype'}, K, N);
+get({'$bigint', _} = B, K) -> lookup({'$o', 'BigInt.prototype'}, K, B);
 get({'$sym', _, Description}, <<"description">>) -> Description;
-get({'$sym', _, _}, K) -> bouy_heap:get({'$o', 'Symbol.prototype'}, K);
+get({'$sym', _, _} = S, K) -> lookup({'$o', 'Symbol.prototype'}, K, S);
 get({'$actor', Pid}, K) when ?IS_STRING(K) -> {'$f', {actor, Pid, K}, fun(_This, Args) -> bouy_jobs:actor_call(Pid, K, Args) end};
 get({'$actor', _}, _K) -> undefined.
 
@@ -140,6 +140,16 @@ delete_computed(O, K) -> delete(O, to_property_key(K)).
 -spec in(term(), term()) -> boolean().
 in(K, O) when ?IS_OBJECT(O) -> bouy_heap:has(O, to_property_key(K));
 in(K, O) -> type_error(text([<<"Cannot use 'in' operator to search for '">>, to_string(K), <<"' in ">>, describe(O)])).
+
+%% The key of o[k] in an update or a compound assignment: the base must not
+%% be undefined or null before the key converts.
+-spec member_key(term(), term()) -> bouy_heap:key().
+member_key(undefined, K) -> read_error(<<"undefined">>, key_preview(K));
+member_key(null, K) -> read_error(<<"null">>, key_preview(K));
+member_key(_O, K) -> to_property_key(K).
+
+key_preview(K) when ?IS_OBJECT(K) -> <<"[object]">>;
+key_preview(K) -> to_property_key(K).
 
 -spec to_property_key(term()) -> bouy_heap:key().
 to_property_key(K) when ?IS_OBJECT(K) -> to_property_key(to_primitive(K, string));
@@ -193,6 +203,11 @@ super_construct(Parent, Args, NewTarget) -> bouy_heap:construct(Parent, Args, Ne
 %% super.k inside a method whose home object is Home, with this as receiver.
 -spec super_get(term(), bouy_heap:key(), term()) -> term().
 super_get(Home, K, This) -> lookup(bouy_heap:prototype_of(Home), K, This).
+
+%% [[Get]] of K on the object O with Receiver as this for a getter, as a
+%% property read on a primitive does on its prototype.
+-spec get_from(term(), bouy_heap:key(), term()) -> term().
+get_from(O, K, Receiver) -> lookup(O, K, Receiver).
 
 lookup(null, _K, _Receiver) ->
     undefined;
@@ -312,12 +327,21 @@ define_field(O, K, V) ->
 -spec array(list()) -> term().
 array(Items) -> bouy_heap:new_array(Items).
 
-%% [a, ...b]: Parts are {item, V} and {spread, Iterable}.
+%% An array literal with elisions: each '$hole' is an index without a
+%% property, as in [1, , 3].
+-spec array_holes(list()) -> term().
+array_holes(Items) ->
+    A = bouy_heap:new_array(Items),
+    [bouy_heap:delete(A, I) || {I, '$hole'} <- lists:enumerate(0, Items)],
+    A.
+
+%% [a, ...b]: Parts are {item, V}, {spread, Iterable}, and hole.
 -spec array_spread(list()) -> term().
 array_spread(Parts) ->
-    bouy_heap:new_array(lists:append([spread_part(P) || P <- Parts])).
+    array_holes(lists:append([spread_part(P) || P <- Parts])).
 
 spread_part({item, V}) -> [V];
+spread_part(hole) -> ['$hole'];
 spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
 
 %% {...source} into Target: CopyDataProperties.

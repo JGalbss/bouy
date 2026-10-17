@@ -163,14 +163,24 @@ array_items({'$o', Id}) ->
 -spec array_push(value(), [value()]) -> non_neg_integer().
 array_push({'$o', Id} = O, Items) ->
     case erlang:get(Id) of
-        {array, P, Props, Keys, Attrs, {Length, Elements}} when map_size(Attrs) =:= 0 ->
-            {Length1, Elements1} = lists:foldl(fun(V, {L, E}) -> {L + 1, E#{L => V}} end, {Length, Elements}, Items),
-            erlang:put(Id, {array, P, Props, Keys, Attrs, {Length1, Elements1}}),
-            Length1;
-        _ ->
-            lists:foreach(fun(V) -> set(O, array_length(O), V) end, Items),
-            array_length(O)
+        {array, ?ARRAY_PROTO = P, Props, Keys, Attrs, {Length, Elements}} when map_size(Attrs) =:= 0 ->
+            %% The intrinsic prototypes hold no index until a realm writes them, so
+            %% no setter on the chain can see the new elements.
+            case erlang:get('Array.prototype') =:= undefined andalso erlang:get('Object.prototype') =:= undefined of
+                true ->
+                    {Length1, Elements1} = lists:foldl(fun(V, {L, E}) -> {L + 1, E#{L => V}} end, {Length, Elements}, Items),
+                    erlang:put(Id, {array, P, Props, Keys, Attrs, {Length1, Elements1}}),
+                    Length1;
+                false -> push_each(O, Items)
+            end;
+        _ -> push_each(O, Items)
     end.
+
+%% Array.prototype.push step by step: Set of each element, then of length.
+push_each(O, Items) ->
+    Length = lists:foldl(fun(V, L) -> set(O, L, V), L + 1 end, array_length(O), Items),
+    set(O, <<"length">>, Length),
+    Length.
 
 %% Replaces every item, as sort, splice, and shift do.
 -spec array_set_items(value(), [value()]) -> ok.
@@ -237,7 +247,7 @@ get({'$o', Id} = O, K) ->
     case erlang:get(Id) of
         {array, _, _, _, _, {_, Elements}} = R when is_integer(K) ->
             case Elements of
-                #{K := V} -> V;
+                #{K := V} -> resolve(V, O);
                 _ -> inherited(element(2, R), K, O)
             end;
         {array, _, _, _, _, {Length, _}} when K =:= <<"length">> ->
@@ -272,7 +282,7 @@ fn_default_get(K, F) ->
 
 from_record({array, _, _, _, _, {_, Elements}} = R, K, O) when is_integer(K) ->
     case Elements of
-        #{K := V} -> V;
+        #{K := V} -> resolve(V, O);
         _ -> inherited(element(2, R), K, O)
     end;
 from_record({array, _, _, _, _, {Length, _}}, <<"length">>, _O) ->
@@ -293,6 +303,13 @@ inherited({'$o', Id} = O, K, Receiver) ->
 inherited({'$f', _, _} = F, K, Receiver) ->
     inherited_from(fn_record(F), K, Receiver).
 
+inherited_from({array, Proto, _, _, _, {_, Elements}}, K, Receiver) when is_integer(K) ->
+    case Elements of
+        #{K := V} -> resolve(V, Receiver);
+        _ -> inherited(Proto, K, Receiver)
+    end;
+inherited_from({array, _, _, _, _, {Length, _}}, <<"length">>, _Receiver) ->
+    Length;
 inherited_from({_, Proto, Props, _, _, _}, K, Receiver) ->
     case Props of
         #{K := V} -> resolve(V, Receiver);
@@ -308,8 +325,19 @@ resolve(V, _Receiver) -> V.
 set({'$o', Id} = O, K, V) ->
     case erlang:get(Id) of
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K), map_size(Attrs) =:= 0 ->
-            erlang:put(Id, {array, P, Props, Keys, Attrs, {max(K + 1, Length), Elements#{K => V}}}),
-            V;
+            case Elements of
+                #{K := {'$accessor', _, Setter}} -> call_setter(Setter, O, K, V);
+                #{K := _} ->
+                    erlang:put(Id, {array, P, Props, Keys, Attrs, {Length, Elements#{K := V}}}),
+                    V;
+                _ -> add(Id, erlang:get(Id), K, V, O)
+            end;
+        {array, _, _, _, _, {_, Elements}} = R when is_integer(K) ->
+            case Elements of
+                #{K := {'$accessor', _, Setter}} -> call_setter(Setter, O, K, V);
+                #{K := _} -> write_checked(Id, R, K, V);
+                _ -> add(Id, R, K, V, O)
+            end;
         {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">> ->
             NewLength = array_length_value(V),
             writable(K, length_attrs(Attrs)) orelse read_only(K),
@@ -364,13 +392,17 @@ add(Id, {Class, P, Props, Keys, Attrs, Slots} = R, K, V, O) ->
         read_only ->
             read_only(K);
         none when Class =:= array, is_integer(K) ->
+            extensible(Attrs) orelse not_extensible(K),
             write_checked(Id, R, K, V);
         none ->
-            extensible(Attrs) orelse
-                throw_error('TypeError', text([<<"Cannot add property ">>, key_text(K), <<", object is not extensible">>])),
+            extensible(Attrs) orelse not_extensible(K),
             erlang:put(Id, {Class, P, Props#{K => V}, add_key(K, Props, Keys), Attrs, Slots}),
             V
     end.
+
+-spec not_extensible(key()) -> no_return().
+not_extensible(K) ->
+    throw_error('TypeError', text([<<"Cannot add property ">>, key_text(K), <<", object is not extensible">>])).
 
 extensible(#{'$frozen' := true}) -> false;
 extensible(#{'$noext' := true}) -> false;
@@ -394,6 +426,16 @@ inherited_setter({'$o', Id} = O, K) ->
 inherited_setter({'$f', _, _} = F, K) ->
     setter_in(fn_record(F), K).
 
+setter_in({array, Proto, _, _, Attrs, {_, Elements}}, K) when is_integer(K) ->
+    case Elements of
+        #{K := {'$accessor', _, Setter}} -> {setter, Setter};
+        #{K := _} ->
+            case writable(K, Attrs) of
+                true -> none;
+                false -> read_only
+            end;
+        _ -> inherited_setter(Proto, K)
+    end;
 setter_in({_, Proto, Props, _, Attrs, _}, K) ->
     case Props of
         #{K := {'$accessor', _, Setter}} -> {setter, Setter};
@@ -513,7 +555,12 @@ enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 define(O, K, Descriptor) ->
     Id = id_for_write(O),
     {Class, P, Props, Keys, Attrs, Slots} = record_of(O),
-    Existing = maps:get(K, Attrs, case is_map_key(K, Props) of true -> ?ALL; false -> 0 end),
+    %% The own properties of the key: the elements of an array for an index.
+    Own = case Class =:= array andalso is_integer(K) of
+        true -> element(2, Slots);
+        false -> Props
+    end,
+    Existing = maps:get(K, Attrs, case is_map_key(K, Own) of true -> ?ALL; false -> 0 end),
     Bits = bit(writable, ?WRITABLE, Descriptor, Existing)
         bor bit(enumerable, ?ENUMERABLE, Descriptor, Existing)
         bor bit(configurable, ?CONFIGURABLE, Descriptor, Existing),
@@ -521,7 +568,7 @@ define(O, K, Descriptor) ->
         #{get := G} -> {'$accessor', G, maps:get(set, Descriptor, undefined)};
         #{set := S} -> {'$accessor', undefined, S};
         #{value := V} -> V;
-        _ -> maps:get(K, Props, undefined)
+        _ -> maps:get(K, Own, undefined)
     end,
     Attrs1 = case Bits of
         ?ALL -> maps:remove(K, Attrs);

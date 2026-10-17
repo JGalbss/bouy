@@ -186,10 +186,10 @@ operate(shift_left, X, Y) -> {'$bigint', shift(X, Y)};
 operate(shift_right, X, Y) -> {'$bigint', shift(X, -Y)};
 operate(shift_right_unsigned, _X, _Y) -> bouy_ref:type_error(<<"BigInts have no unsigned right shift, use >> instead">>).
 
+power(_X, 0) -> 1;
 power(X, _Y) when X =:= 0; X =:= 1 -> X;
 power(-1, Y) when Y rem 2 =:= 0 -> 1;
 power(-1, _Y) -> -1;
-power(_X, 0) -> 1;
 power(X, Y) ->
     bit_length(abs(X)) * Y > ?MAX_BITS andalso too_big(),
     integer_pow(X, Y).

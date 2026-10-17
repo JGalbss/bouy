@@ -216,7 +216,7 @@ impl<'a> Lowerer<'a, '_> {
             self.set(object, key, value.clone());
             return value;
         }
-        let key = self.fix_key(key);
+        let key = self.member_key_of(&object, key);
         let current = self.get(object.clone(), key.clone());
         let value = self.combine(operator, current, right);
         let value = self.bind(value);
@@ -270,7 +270,7 @@ impl<'a> Lowerer<'a, '_> {
                     return self.unsupported(ident.span, "an update of a global");
                 };
                 let old = self.read_symbol(symbol, ident.span);
-                let old = self.bind(old);
+                let old = self.bind(Expr::call("bouy_ref", "to_numeric", vec![old]));
                 let new = self.bind(Expr::call("bouy_ref", function, vec![old.clone()]));
                 let new = self.assign_symbol(symbol, new, ident.span);
                 if update.prefix { new } else { old }
@@ -278,14 +278,28 @@ impl<'a> Lowerer<'a, '_> {
             other => match other.as_member_expression() {
                 Some(member) => {
                     let (object, key) = self.member_parts(member);
-                    let key = self.fix_key(key);
+                    let key = self.member_key_of(&object, key);
                     let old = self.get(object.clone(), key.clone());
+                    let old = self.bind(Expr::call("bouy_ref", "to_numeric", vec![old]));
                     let new = self.bind(Expr::call("bouy_ref", function, vec![old.clone()]));
                     self.set(object, key, new.clone());
                     if update.prefix { new } else { old }
                 }
                 None => self.unsupported(update.span, "this update"),
             },
+        }
+    }
+
+    /// The key of a member that an update or a compound assignment reads and writes:
+    /// converted once, after the check that the base is not undefined or null.
+    fn member_key_of(&mut self, object: &Expr, key: MemberKey) -> MemberKey {
+        match key {
+            MemberKey::Static(key) => MemberKey::Static(key),
+            MemberKey::Dynamic(value) => MemberKey::Static(self.bind(Expr::call(
+                "bouy_ref",
+                "member_key",
+                vec![object.clone(), value],
+            ))),
         }
     }
 

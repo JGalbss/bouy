@@ -81,6 +81,12 @@ inspect(V) ->
 
 %% Level counts the containers around the value, Indent is the column of
 %% its lines, and Stack holds the objects being printed, for [Circular].
+value({'$u16', _} = S, _, _, _) ->
+    Points = bouy_ref_string:code_points(S),
+    case lists:any(fun(C) -> C >= 16#D800 andalso C =< 16#DFFF end, Points) of
+        true -> lone_surrogates(Points);
+        false -> bouy_console:string(bouy_ref_string:to_utf8(S))
+    end;
 value(S, _, _, _) when ?IS_STRING(S) -> bouy_console:string(bouy_ref_string:to_utf8(S));
 value(N, _, _, _) when is_number(N) -> bouy_console:number_text(N);
 value(A, _, _, _) when is_atom(A) -> atom_to_binary(A);
@@ -126,7 +132,7 @@ object(O, Level, Indent, Stack) ->
         error -> error_text(O);
         generator -> <<"Object [Generator] {}">>;
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
-        date -> bouy_date:call(<<"toISOString">>, {'$date', bouy_heap:slots(O)}, []);
+        date -> bouy_ref_date:inspect(O);
         number -> wrapper(<<"Number">>, O, Level, Indent, Stack);
         string -> wrapper(<<"String">>, O, Level, Indent, Stack);
         boolean -> wrapper(<<"Boolean">>, O, Level, Indent, Stack);
@@ -134,6 +140,24 @@ object(O, Level, Indent, Stack) ->
         symbol -> wrapper(<<"Symbol">>, O, Level, Indent, Stack);
         _ -> plain(O, Level, Indent, Stack)
     end.
+
+%% A string with a lone surrogate, which Node prints as an escape.
+lone_surrogates(Points) ->
+    Has = fun(C) -> lists:member(C, Points) end,
+    Quote = case {Has($'), Has($")} of
+        {false, _} -> $';
+        {true, false} -> $";
+        {true, true} -> $'
+    end,
+    iolist_to_binary([Quote, [point(C, Quote) || C <- Points], Quote]).
+
+point(C, C) -> [$\\, C];
+point($\\, _) -> <<"\\\\">>;
+point($\n, _) -> <<"\\n">>;
+point($\t, _) -> <<"\\t">>;
+point(C, _) when C >= 16#D800, C =< 16#DFFF -> io_lib:format("\\u~4.16.0b", [C]);
+point(C, _) when C < 16#20 -> io_lib:format("\\x~2.16.0B", [C]);
+point(C, _) -> <<C/utf8>>.
 
 %% A primitive wrapper object, as Node prints it: [Number: 5].
 wrapper(Name, O, Level, Indent, Stack) ->
