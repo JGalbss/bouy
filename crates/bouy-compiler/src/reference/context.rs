@@ -207,6 +207,8 @@ pub struct Lowerer<'a, 'c> {
     pub privates: Vec<Vec<(String, Expr)>>,
     /// The class bindings of the class bodies around the code, which are constant there.
     pub class_bindings: Vec<SymbolId>,
+    /// The bindings that code reads before their declaration runs (`early`).
+    pub early: std::collections::HashSet<SymbolId>,
 }
 
 impl Lowerer<'_, '_> {

@@ -223,6 +223,8 @@ impl<'a> Lowerer<'a, '_> {
     /// Binds the parameters from the argument list `args`.
     pub fn params(&mut self, params: &'a FormalParameters<'a>, args: &str) -> Vec<Expr> {
         let saved = std::mem::take(&mut self.pre);
+        let early = self.early_params(params);
+        self.pre.extend(early);
         for (index, param) in params.items.iter().enumerate() {
             let position = Expr::Integer(i64::try_from(index + 1).unwrap_or(i64::MAX));
             let arg = Expr::call("bouy_rt", "arg", vec![position, Expr::var(args)]);

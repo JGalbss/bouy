@@ -42,10 +42,11 @@ intrinsics() ->
      {'WrapForValidIterator.prototype', record(object, ?ITERATOR_PROTO,
          ?METHODS(<<"WrapForValidIterator.prototype">>, [<<"next">>, <<"return">>]), none)},
      {{builtin, <<"Iterator">>}, fixed(ctor_record(<<"Iterator">>, 0, ?ITERATOR_PROTO,
-         ?METHODS(<<"Iterator">>, [<<"from">>]), fun construct/2))},
+         ?METHODS(<<"Iterator">>, [<<"from">>, <<"concat">>]), fun construct/2))},
      {{builtin, <<"Iterator.prototype.[Symbol.iterator]">>}, function_record(<<"[Symbol.iterator]">>, 0)}]
     ++ [{{builtin, <<"Iterator.prototype.", Name/binary>>}, function_record(Name, Length)} || {Name, Length} <- Methods]
     ++ [{{builtin, <<"Iterator.from">>}, function_record(<<"from">>, 1)},
+        {{builtin, <<"Iterator.concat">>}, function_record(<<"concat">>, 0)},
         {{builtin, <<"IteratorHelper.prototype.next">>}, function_record(<<"next">>, 0)},
         {{builtin, <<"IteratorHelper.prototype.return">>}, function_record(<<"return">>, 0)},
         {{builtin, <<"WrapForValidIterator.prototype.next">>}, function_record(<<"next">>, 0)},
@@ -99,6 +100,7 @@ setter(Name, This, V) ->
 
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"Iterator">>, <<"from">>, _This, Args) -> from(arg(1, Args));
+method(<<"Iterator">>, <<"concat">>, _This, Args) -> concat(Args);
 method(<<"IteratorHelper.prototype">>, <<"next">>, This, _Args) -> helper_next(This);
 method(<<"IteratorHelper.prototype">>, <<"return">>, This, _Args) -> helper_return(This);
 method(<<"WrapForValidIterator.prototype">>, Name, This, _Args) -> wrap(Name, This);
@@ -115,6 +117,19 @@ from(O) ->
         true -> Iterator;
         false -> bouy_heap:new_exotic(wrap_for_valid_iterator, ?WRAP_PROTO, {Iterator, Next})
     end.
+
+%% Iterator.concat: a helper over the iterables in order. Each iterable and its
+%% iterator method are checked first; each iterator opens when the one before
+%% it is done.
+concat(Items) ->
+    Iterables = [begin
+                     ?IS_OBJECT(Item) orelse bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(Item), <<" is not an object">>)),
+                     case get_method(Item, bouy_heap:well_known(iterator)) of
+                         undefined -> bouy_ref:type_error(<<"The value is not iterable">>);
+                         Method -> {Item, Method}
+                     end
+                 end || Item <- Items],
+    bouy_heap:new_exotic(iterator_helper, ?HELPER_PROTO, {suspended_start, none, {concat, Iterables, none}}).
 
 %% GetIteratorFlattenable.
 flattenable(O, Primitives) ->
@@ -309,6 +324,13 @@ helper_return(H) ->
     case helper_slots(H) of
         {executing, _, _} -> bouy_ref:type_error(<<"Generator is already running">>);
         {completed, _, _} -> bouy_ref_iterator:result(undefined, true);
+        {_, none, {concat, _, Current} = Step} ->
+            bouy_heap:set_slots(H, {completed, none, Step}),
+            case Current of
+                {Inner, _} -> bouy_ref_iterator:close(Inner);
+                none -> ok
+            end,
+            bouy_ref_iterator:result(undefined, true);
         {_, {Iterator, _} = Underlying, Step} ->
             bouy_heap:set_slots(H, {completed, Underlying, Step}),
             case Step of
@@ -372,6 +394,17 @@ step({Iterator, _} = Underlying, {flat_map, Mapper, Counter, Inner} = Step) ->
             end,
     case Value of
         done -> step(Underlying, {flat_map, Mapper, Counter, none});
+        {value, V} -> {yield, V, Step}
+    end;
+step(_None, {concat, [], none}) ->
+    done;
+step(None, {concat, [{Iterable, Method} | Rest], none}) ->
+    Iterator = bouy_ref:call(Method, Iterable, []),
+    ?IS_OBJECT(Iterator) orelse bouy_ref:type_error(<<"The iterator is not an object">>),
+    step(None, {concat, Rest, direct(Iterator)});
+step(None, {concat, Rest, Current} = Step) ->
+    case step_value(Current) of
+        done -> step(None, {concat, Rest, none});
         {value, V} -> {yield, V, Step}
     end.
 

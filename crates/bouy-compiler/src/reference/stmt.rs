@@ -91,6 +91,8 @@ impl<'a> Lowerer<'a, '_> {
             })
             .collect();
         let saved = std::mem::take(&mut self.pre);
+        let early = self.early_bindings(list);
+        self.pre.extend(early);
         let mut cells = Vec::new();
         for (symbol, _) in &functions {
             let cell = self.fresh("Fn");

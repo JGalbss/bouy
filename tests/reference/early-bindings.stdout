@@ -1,0 +1,6 @@
+42
+ReferenceError, then 1
+3
+default before its parameter: ReferenceError
+5
+[ 0, 2, 4 ]

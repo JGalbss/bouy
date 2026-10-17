@@ -501,7 +501,7 @@ ToPropertyKey turns a canonical numeric string such as `"7"` into the integer, a
 
 ### 17.6 Modules
 
-The compiler lowers in `crates/bouy-compiler/src/reference/`, one file for each area: `context` (the lowering state), `module`, `function`, `class`, `suspend` (`await` and `yield`), `stmt`, `loops`, `exception` (`try`), `expr`, `variable`, `member`, `call`, `literal`, `pattern`, and `analyze`.
+The compiler lowers in `crates/bouy-compiler/src/reference/`, one file for each area: `context` (the lowering state), `module`, `function`, `class`, `suspend` (`await` and `yield`), `stmt`, `loops`, `exception` (`try`), `expr`, `variable`, `early` (bindings that code reads before their declaration runs), `member`, `call`, `literal`, `pattern`, and `analyze`. A `let`, `const`, or `class` that a hoisted function or earlier code reads, and a parameter that an earlier default reads, is a cell from the start of its scope that holds `'$uninitialized'` until its declaration runs; a read before then throws a `ReferenceError`.
 
 The runtime has these modules:
 

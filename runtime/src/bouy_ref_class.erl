@@ -12,7 +12,7 @@
 -include("bouy_ref.hrl").
 
 -export([create/3, set_construct/2, method/4, function_name/2, define_field/3, define_method/4, set_literal_proto/3]).
--export([base_return/2]).
+-export([base_return/2, initialized/2]).
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
 -export([super_get/3, super_set/4]).
 -export([private_name/1, private_names/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
@@ -160,6 +160,13 @@ bind_this(Cell, This) ->
         ?UNINITIALIZED -> bouy_heap:cell_set(Cell, This), This;
         _ -> bouy_heap:throw_error('ReferenceError', <<"Super constructor may only be called once">>)
     end.
+
+%% The value of a binding that code may read before its declaration ran: a
+%% ReferenceError until then (the temporal dead zone).
+-spec initialized(term(), bouy_ref_string:js_string()) -> term().
+initialized(?UNINITIALIZED, Name) ->
+    bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat([<<"Cannot access '">>, Name, <<"' before initialization">>]));
+initialized(V, _Name) -> V.
 
 %% The result of a base constructor that returns V: V when it is an object.
 -spec base_return(term(), term()) -> term().

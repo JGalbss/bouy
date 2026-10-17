@@ -32,6 +32,7 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(local) = self.frame.env.get(&symbol) {
             return match local.clone() {
                 Local::Var(name) => Expr::var(name),
+                Local::Cell(name) if self.early.contains(&symbol) => self.early_read(symbol, &name),
                 Local::Cell(name) => self.bind(cell_get(&name)),
             };
         }
@@ -107,6 +108,13 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Declares `symbol` with `value`: a version, a cell, or a module variable.
     pub fn declare_symbol(&mut self, symbol: SymbolId, value: Expr) {
+        if self.early.contains(&symbol)
+            && let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
+        {
+            let value = self.bind(value);
+            self.pre.push(cell_set(&cell, value));
+            return;
+        }
         match self.tops.get(&symbol).cloned() {
             Some(Top::Var(name)) => {
                 let value = self.bind(value);

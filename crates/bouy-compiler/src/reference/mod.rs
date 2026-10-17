@@ -33,6 +33,7 @@ mod analyze;
 mod call;
 mod class;
 mod context;
+mod early;
 mod exception;
 mod expr;
 mod function;
@@ -71,6 +72,7 @@ pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
             classes: Vec::new(),
             privates: Vec::new(),
             class_bindings: Vec::new(),
+            early: std::collections::HashSet::new(),
         };
         lowerer.declare(program);
         let functions = lowerer.module_functions(program);
