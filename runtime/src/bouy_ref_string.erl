@@ -419,8 +419,10 @@ is_case_ignorable(C) ->
         _ -> false
     end.
 
-%% localeCompare in the root collation, approximated in three levels: the
-%% base letters without case, then the accents, then lowercase before
+%% localeCompare in the root collation, approximated in three levels as
+%% ICU orders them: the base characters (punctuation and spaces in ICU's
+%% order, then digits, then letters without case or accents), then the
+%% accents in ICU's order of their weights, then lowercase before
 %% uppercase. Canonically equivalent strings compare equal.
 locale_compare(A, B) ->
     KeyA = collation_key(A),
@@ -433,11 +435,53 @@ locale_compare(A, B) ->
 
 collation_key(S) ->
     Decomposed = unicode:characters_to_nfd_list([scalar(C) || C <- code_points(S)]),
-    Base = [C || C <- Decomposed, not is_mark(C)],
-    Folded = unicode:characters_to_list(string:casefold(Base)),
-    Accents = unicode:characters_to_list(string:casefold(Decomposed)),
-    Cases = [case_weight(C) || C <- Base],
-    {Folded, Accents, Cases}.
+    Elements = collation_elements(Decomposed),
+    {[P || {P, _, _} <- Elements], [W || {_, W, _} <- Elements], [T || {_, _, T} <- Elements]}.
+
+%% The {Primary, Secondary, Tertiary} weights of each base character, its
+%% accents folded into its secondary weight.
+collation_elements([]) -> [];
+collation_elements([C | Rest]) ->
+    {Marks, Rest1} = lists:splitwith(fun is_mark/1, Rest),
+    Accents = [mark_weight(M) || M <- Marks],
+    Case = case_weight(C),
+    Expanded = case expansion(C) of
+        {Letters, Extra} -> [{primary(L), Accents ++ Extra, Case} || L <- Letters];
+        none -> [{primary(C), Accents, Case}]
+    end,
+    Expanded ++ collation_elements(Rest1).
+
+%% The letters that the root collation spells as others with a secondary
+%% difference: ß as ss, æ as ae, ø as o, and so on.
+expansion(C) when C =:= 16#DF; C =:= 16#1E9E -> {"ss", [90]};
+expansion(C) when C =:= 16#E6; C =:= 16#C6 -> {"ae", [90]};
+expansion(C) when C =:= 16#153; C =:= 16#152 -> {"oe", [90]};
+expansion(C) when C =:= 16#F8; C =:= 16#D8 -> {"o", [90]};
+expansion(C) when C =:= 16#F0; C =:= 16#D0 -> {"d", [90]};
+expansion(C) when C =:= 16#FE; C =:= 16#DE -> {"th", [90]};
+expansion(_) -> none.
+
+%% Spaces and ASCII punctuation in ICU's order, then other symbols, then
+%% digits, then letters.
+primary(C) ->
+    case string:chr(" _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$", C) of
+        I when I > 0 -> {0, I};
+        0 when C >= $0, C =< $9 -> {2, C};
+        0 ->
+            case unicode_util:category(C) of
+                {letter, _} -> {3, hd(unicode:characters_to_list(string:casefold([C])) ++ [C])};
+                {number, _} -> {2, C};
+                _ when C < 128 -> {0, 100 + C};
+                _ -> {1, C}
+            end
+    end.
+
+%% The secondary weights of the common accents, in ICU's order.
+mark_weight(M) ->
+    case string:chr([16#301, 16#300, 16#306, 16#302, 16#30C, 16#30A, 16#308, 16#30B, 16#303, 16#307, 16#327, 16#328, 16#304, 16#323, 16#331], M) of
+        0 -> 100 + M;
+        I -> I
+    end.
 
 is_mark(C) ->
     case unicode_util:category(C) of
