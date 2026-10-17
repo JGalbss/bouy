@@ -60,6 +60,14 @@ map_passes_item_and_index() ->
     %% The callback gets the array too, and a namespace such as String is callable.
     ?assertEqual([3, 3, 3], bouy_task:map([10, 20, 30], fun([_, _, Items]) -> length(Items) end)),
     ?assertEqual([<<"1">>, <<"2">>], bouy_task:map([1, 2], {'$namespace', bouy_string})),
+    %% A function literal with at most two parameters cannot read the array,
+    %% so its workers get only the item and the index.
+    ?assertEqual([[10, 0], [20, 1]], bouy_task:map([10, 20], fun(Args) -> Args end, 2)),
+    ?assertMatch(
+        [#{<<"value">> := [10, 0]}, #{<<"value">> := [20, 1]}],
+        bouy_task:map_settled([10, 20], fun(Args) -> Args end, 1)
+    ),
+    ?assertEqual([10, 0, [10]], bouy_task:map_race([10], fun(Args) -> Args end, 3)),
     %% A value that is not an array runs its own map.
     Box = #{<<"map">> => fun([F]) -> [bouy_rt:call(F, [1]), bouy_rt:call(F, [2])] end},
     ?assertEqual([10, 20], bouy_task:map(Box, fun([X | _]) -> X * 10 end)).

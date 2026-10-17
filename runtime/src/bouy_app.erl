@@ -31,6 +31,7 @@ drop_supervisor_reports(#{msg := {report, #{label := {supervisor, _}, report := 
     case lists:keyfind(supervisor, 1, Report) of
         {supervisor, {_, bouy_sup}} -> stop;
         {supervisor, {local, bouy_root_sup}} -> stop;
+        {supervisor, {local, bouy_groups}} -> stop;
         _ -> ignore
     end;
 drop_supervisor_reports(_Event, []) ->

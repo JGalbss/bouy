@@ -9,8 +9,6 @@
 -export([spawn/1, cast/1, stop/1, inspect/1, supervise/1, child/1]).
 -export([schedule/1, cancelSchedule/1, sleep/1, withTimeout/1, self/1]).
 
-%% A top-level actor gets a group supervisor of its own with this budget.
--define(ALONE, #{strategy => one_for_one, intensity => 3, period => 5}).
 -define(CAPACITY, 1024).
 %% The longest timeout of one `receive ... after`.
 -define(MAX_AFTER, 16#FFFFFFFF).
@@ -19,17 +17,20 @@
 -type class() :: {'$class', module(), binary()}.
 -type options() :: #{binary() => term()}.
 
+%% A spawned actor is one process that bouy_keeper restarts. The actor that
+%% a constructor starts belongs to the process of that constructor.
 -spec spawn([term()]) -> ref().
 spawn([Class | Rest]) ->
     Options = options(Rest),
     #{id := Id} = Spec = spec(Class, Options, name(option(<<"name">>, Options))),
-    Group = new_group(?ALONE, [Id]),
-    case bouy_actor:start(Spec#{supervisor => Group, group => alone}) of
-        ok ->
-            {'$ref', Id};
-        {error, Failure} ->
-            ok = bouy_sup:stop_group(Group),
-            raise(Failure)
+    Owner =
+        case bouy_actor:constructing() of
+            true -> bouy_actor:owner();
+            false -> none
+        end,
+    case bouy_actor:start(Spec#{supervisor => whereis(bouy_keeper), group => alone, owner => Owner}) of
+        ok -> {'$ref', Id};
+        {error, Failure} -> raise(Failure)
     end;
 spawn([]) ->
     type_error(<<"spawn() needs an actor class">>).
@@ -84,8 +85,9 @@ start_children(Group, [{Key, #{id := Id} = Spec} | Rest], Refs) ->
 %% does not leave the actors of the previous start running.
 new_group(Flags, Ids) ->
     Group = bouy_sup:new_group(Flags),
+    ok = bouy_keeper:watch_group(Group, Ids),
     case bouy_actor:constructing() of
-        true -> ok = bouy_sup:own(Group, bouy_actor:owner(), Ids);
+        true -> ok = bouy_keeper:own(bouy_actor:owner(), {group, Group, Ids});
         false -> ok
     end,
     Group.
@@ -158,17 +160,9 @@ spec(_Class, _Options, _Name) ->
 %% An actor class compiles to a module with `'C#dispatch'/3`; an error
 %% class has none.
 actor_class({'$class', Module, Class}) ->
-    Loaded = code:ensure_loaded(Module) =:= {module, Module},
-    try binary_to_existing_atom(<<Class/binary, "#dispatch">>) of
-        Dispatch when Loaded ->
-            case erlang:function_exported(Module, Dispatch, 3) of
-                true -> ok;
-                false -> type_error(<<"spawn() needs an actor class">>)
-            end;
-        _ ->
-            type_error(<<"spawn() needs an actor class">>)
-    catch
-        error:badarg -> type_error(<<"spawn() needs an actor class">>)
+    case bouy_actor:class_functions(Module, Class) of
+        error -> type_error(<<"spawn() needs an actor class">>);
+        _Functions -> ok
     end.
 
 child_spec(Key, {'$child', Class, Options}) -> spec(Class, Options, Key);

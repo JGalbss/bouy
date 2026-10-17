@@ -22,6 +22,16 @@ now_test_() ->
         ?_assert(is_integer(bouy_rt:call(bouy_date:'$member'(<<"now">>), [])))
     ].
 
+%% performance.now(): milliseconds since the VM started, a float that never
+%% decreases.
+performance_now_test() ->
+    First = bouy_performance:now([]),
+    Second = bouy_rt:call(bouy_performance:'$member'(<<"now">>), []),
+    ?assert(is_float(First)),
+    ?assert(First >= 0),
+    ?assert(Second >= First),
+    ?assert(First =< element(1, erlang:statistics(wall_clock)) + 1).
+
 construct_test_() ->
     [
         ?_assertEqual(<<"1970-01-01T00:00:00.000Z">>, d(<<"toISOString">>, bouy_date:new([0]))),

@@ -15,6 +15,7 @@ actor_test_() ->
         {"two actors of one class keep separate state", fun state_is_per_actor/0},
         {"a crash fails the caller and spares other actors", fun crash_is_isolated/0},
         {"a crash restarts the actor with fresh state and the same id", fun crash_restarts/0},
+        {"an actor process that dies of a runtime fault restarts", fun fault_restarts/0},
         {"a crash prints one line to stderr", fun crash_prints_one_line/0},
         {"bouy supervisors log no OTP reports", fun supervisors_are_quiet/0},
         {"a used-up restart budget stops the actor", fun budget_stops_actor/0},
@@ -94,6 +95,17 @@ crash_restarts() ->
     <<"ActorFailed">> = tag(fun() -> bouy_actor:call(Counter, <<"fail">>, [<<"x">>]) end),
     %% The next call waits for the restart and reaches the new process.
     ?assertEqual(10, bouy_actor:call(Counter, <<"get">>, [])),
+    ?assertNotEqual(OldPid, pid(Counter)),
+    ?assertMatch(#{<<"restarts">> := 1, <<"status">> := <<"running">>}, entry(Counter)).
+
+%% Not a JavaScript exception: an exit signal ends the process, and the
+%% keeper restarts it as after a crash. The next call waits for the restart.
+fault_restarts() ->
+    Counter = bouy:spawn([counter()]),
+    1 = bouy_actor:call(Counter, <<"inc">>, []),
+    OldPid = pid(Counter),
+    true = exit(OldPid, fault),
+    ?assertEqual(1, bouy_actor:call(Counter, <<"inc">>, [])),
     ?assertNotEqual(OldPid, pid(Counter)),
     ?assertMatch(#{<<"restarts">> := 1, <<"status">> := <<"running">>}, entry(Counter)).
 
@@ -345,17 +357,16 @@ self_returns_ref() ->
     ?assertEqual(Counter, bouy_actor:call(Counter, <<"me">>, [])),
     ?assertMatch(#{<<"name">> := <<"Error">>}, thrown(fun() -> bouy:self([#{}]) end)).
 
-%% A sender counts its request before it sends it, and takes the count back
-%% only within the same start: a restart sets the count to zero, since the
-%% mailbox of the dead process is gone.
+%% A sender counts its request before it sends it in the counter of the
+%% current start: a restart starts a new count of zero, since the mailbox of
+%% the dead process is gone.
 request_count_per_start() ->
     {'$ref', Id} = Counter = bouy:spawn([counter()]),
-    ?assertEqual({1, 1}, bouy_registry:occupy(Id)),
-    ok = bouy_registry:release(Id, 1),
-    ?assertEqual({1, 1}, bouy_registry:occupy(Id)),
+    {running, _, First, _} = bouy_registry:mode(Id),
+    ?assertEqual(1, atomics:add_get(First, 1, 1)),
     <<"ActorFailed">> = tag(fun() -> bouy_actor:call(Counter, <<"fail">>, [<<"x">>]) end),
     0 = bouy_actor:call(Counter, <<"get">>, []),
-    ok = bouy_registry:release(Id, 1),
-    ?assertEqual({1, 2}, bouy_registry:occupy(Id)),
-    ok = bouy_registry:release(Id, 2),
-    ?assertEqual(stopped, bouy_registry:occupy(999999999)).
+    {running, _, Second, _} = bouy_registry:mode(Id),
+    ?assertNotEqual(First, Second),
+    ?assertEqual(0, atomics:get(Second, 1)),
+    ?assertEqual(forgotten, bouy_registry:mode(999999999)).

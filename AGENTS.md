@@ -5,13 +5,15 @@
 - `crates/bouy-compiler`: the Rust compiler. oxc parses each TypeScript module, and the compiler lowers it to one Erlang module.
 - `crates/bouy-cli`: the `bouy` command. It embeds the runtime sources, writes the generated Erlang, and starts one BEAM VM.
 - `runtime`: the `bouy` OTP application in Erlang: the JavaScript value core, actors, supervision, and the library modules. rebar3 builds and tests it.
-- `tests`: TypeScript programs that the Rust end-to-end tests compile and run.
+- `crates/bouy-bench`: the benchmark harness. It runs each suite in `bench/programs` with Bouy and with plain Node, and records the results in `bench/results`.
+- `tests`: TypeScript programs that the Rust tests compile and run. `tests/conformance` holds language programs, `tests/equivalence` holds `effect` and `ai` programs, and `tests/programs` holds actor programs, which `crates/bouy-cli/tests/programs.rs` checks against the contract. Each conformance and equivalence program has a frozen `.stdout` file that `scripts/freeze-expectations.sh` records with node, the oracle. The tests never run node.
 - `docs/design/beam-runtime.md`: the contract between the compiler, the CLI, and the runtime. `docs/adr/` holds the decision records, and `docs/research/` holds the research notes.
 
 Turborepo orders and caches the runtime tasks. Cargo builds the crates. `rust-toolchain.toml` pins Rust, so use the rustup toolchain, not a system `cargo`.
 
 ## Rules
 
+- `docs/goal.md` holds the objective and the definition of done. Check your work against it.
 - The product runs on BEAM only. Do not add a Node, Bun, or V8 dependency to the compiler, the CLI, or the runtime. Node may appear only as a test oracle for JavaScript semantics and as a benchmark baseline.
 - Run `pnpm check` before every commit. It runs the oxfmt and rustfmt checks, oxlint, clippy, the Cargo tests, and the rebar3 EUnit tests and dialyzer.
 - Write commit subjects as Conventional Commits: `<type>(<scope>): <summary>`. The `commit-msg` hook in `.githooks/` and the CI `commits` job reject other subjects.

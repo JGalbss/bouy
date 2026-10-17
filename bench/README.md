@@ -41,7 +41,7 @@ Build the CLI from the same tree as the programs. The results file records `git 
 | ----------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `startup`         | Print one line.                                                                                               | `wall_ms`, `peak_rss_mib`                                     |
 | `spawn`           | Start 100,000 actors that each hold a number, and keep their refs.                                            | `per_actor_us`, `rss_per_actor_bytes`                         |
-| `call-latency`    | 100,000 sequential calls to one actor.                                                                        | `mean_us`, `max_ms`; Node also `p50_us`, `p99_us`             |
+| `call-latency`    | 100,000 sequential calls to one actor.                                                                        | `mean_us`, `max_ms`, `p50_us`, `p99_us`                       |
 | `cast-throughput` | 1,000,000 casts to one actor, then one call that waits for them.                                              | `casts_per_s`                                                 |
 | `fan-out`         | 10 rounds of 10,000 parallel calls over 1,000 actors with `Promise.all`.                                      | `calls_per_s`, `max_round_ms`                                 |
 | `fairness`        | 8 actors run CPU-bound loops for 2 s. Meanwhile the main code pings another actor and sleeps 1 ms, in a loop. | `pings`, `p50_ms`, `p99_ms`, `max_ms` of the ping round trips |
@@ -54,9 +54,8 @@ Every suite also has `wall_ms` and `peak_rss_mib`, which the harness measures fr
 ## Read the results
 
 - A table cell is the median of the runs, with the minimum and the maximum in parentheses. A cell without a range rounds to the same value in every run. `—` means that the program does not report the metric.
-- The Bouy clock is `Date.now()`, in whole milliseconds, because Bouy has no `performance.now()`. So a Bouy sample in `fairness` or `crash-recovery` is a whole number of milliseconds, and 0 means under 1 ms. A Bouy mean, such as `mean_us` or `recovery_us`, comes from a total over many operations, so it is finer than 1 ms. Node uses `performance.now()`.
-- `call-latency` reports percentiles only for Node, because no Bouy clock can time one call of a few microseconds.
-- `rss_per_actor_bytes` is the peak RSS of each `spawn` run, less the median peak RSS of `startup` on the same runtime, divided by the actor count. It exists only when the same session ran `startup`. It includes everything that an actor costs: for Bouy, the process, its supervisor, and its rows in the actor table.
+- Both programs of `call-latency`, `fairness`, and `crash-recovery` time each operation with `performance.now()`. The Bouy clock counts whole microseconds, so a Bouy sample is a multiple of 0.001 ms, and the Bouy `call-latency` program keeps its samples in a histogram of whole microseconds.
+- `rss_per_actor_bytes` is the peak RSS of each `spawn` run, less the median peak RSS of `startup` on the same runtime, divided by the actor count. It exists only when the same session ran `startup`. It includes everything that an actor costs: for Bouy, the process, its row in the actor table, and its mailbox counter.
 - The Bouy mailbox holds 1024 messages by default and applies backpressure: a cast to a full mailbox waits. The Node queue is unbounded. Compare `peak_rss_mib` as well as the rate in `cast-throughput` and `payload`.
 - Bouy copies a message into the heap of the receiving actor. Node passes a reference. `payload` shows the cost of that copy.
 - In `fairness`, one Node event loop runs every actor, so the first CPU-bound loop blocks every ping until the 2 s end. `pings` counts the pings that the window allowed.
