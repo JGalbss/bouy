@@ -1,18 +1,18 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "65a364988cf53eb2342d261a990290bd6a47a184",
+  "updated": "06131cdb0c852cb3ed26adde1fa0b0ff3cef132a",
   "total": 4419,
   "outcomes": {
-    "pass": 1550,
+    "pass": 1561,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 2267,
-    "timeout": 7,
+    "fail": 2258,
+    "timeout": 6,
     "harness_error": 0,
-    "crash": 12
+    "crash": 11
   },
   "groups": {
     "directory": {
@@ -22,11 +22,11 @@
         "fail": 180
       },
       "parallel": {
-        "pass": 1491,
+        "pass": 1502,
         "skip": 545,
-        "fail": 2027,
-        "timeout": 5,
-        "crash": 11
+        "fail": 2018,
+        "timeout": 4,
+        "crash": 10
       },
       "sequential": {
         "pass": 33,
@@ -41,11 +41,11 @@
         "skip": 343
       },
       "public": {
-        "pass": 1550,
+        "pass": 1561,
         "skip": 240,
-        "fail": 2267,
-        "timeout": 7,
-        "crash": 12
+        "fail": 2258,
+        "timeout": 6,
+        "crash": 11
       }
     },
     "module": {
@@ -61,10 +61,9 @@
         "fail": 30
       },
       "buffer": {
-        "pass": 45,
+        "pass": 55,
         "skip": 6,
-        "fail": 17,
-        "crash": 1
+        "fail": 8
       },
       "child_process": {
         "pass": 13,
@@ -210,8 +209,7 @@
         "crash": 1
       },
       "string_decoder": {
-        "pass": 2,
-        "timeout": 1
+        "pass": 3
       },
       "sys": {
         "pass": 1

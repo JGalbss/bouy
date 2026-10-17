@@ -9,7 +9,7 @@ The pass rate of each test tier that exists today. `bouy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 1,550 | 4,419 | 35.1% | 2,274 | 12 | 65a3649 | `tests/node/expectations.txt` |
+| node | node | v25.9.0 | 1,561 | 4,419 | 35.3% | 2,264 | 11 | 06131cd | `tests/node/expectations.txt` |
 | node api surface | node-surface | v25.9.0 | 3,449 | 4,460 | 77.3% | 1,011 | 0 | 5e1d3e5 | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/conformance.rs` |
@@ -950,15 +950,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at 65a3649. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at 06131cd. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 1,550 | 35.1% | 0 | 0 | 583 | 0 | 2,267 | 7 | 0 | 12 |
+| every test | 4,419 | 1,561 | 35.3% | 0 | 0 | 583 | 0 | 2,258 | 6 | 0 | 11 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 1,550 | 38.0% | 0 | 0 | 240 | 0 | 2,267 | 7 | 0 | 12 |
+| kind: public | 4,076 | 1,561 | 38.3% | 0 | 0 | 240 | 0 | 2,258 | 6 | 0 | 11 |
 
 ### By module
 
@@ -968,7 +968,7 @@ node at v25.9.0, updated at 65a3649. Evidence: `tests/node/expectations.txt`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | assert | 14 | 7 | 50.0% | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 1 |
 | async_hooks | 56 | 15 | 26.8% | 0 | 0 | 11 | 0 | 30 | 0 | 0 | 0 |
-| buffer | 69 | 45 | 65.2% | 0 | 0 | 6 | 0 | 17 | 0 | 0 | 1 |
+| buffer | 69 | 55 | 79.7% | 0 | 0 | 6 | 0 | 8 | 0 | 0 | 0 |
 | child_process | 114 | 13 | 11.4% | 0 | 0 | 7 | 0 | 92 | 2 | 0 | 0 |
 | cluster | 88 | 11 | 12.5% | 0 | 0 | 2 | 0 | 75 | 0 | 0 | 0 |
 | console | 22 | 13 | 59.1% | 0 | 0 | 1 | 0 | 4 | 0 | 0 | 4 |
@@ -999,7 +999,7 @@ node at v25.9.0, updated at 65a3649. Evidence: `tests/node/expectations.txt`.
 | sea | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | sqlite | 18 | 15 | 83.3% | 0 | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 | stream | 263 | 188 | 71.5% | 0 | 0 | 8 | 0 | 66 | 0 | 0 | 1 |
-| string_decoder | 3 | 2 | 66.7% | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |
+| string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | test | 65 | 3 | 4.6% | 0 | 0 | 5 | 0 | 57 | 0 | 0 | 0 |
 | timers | 60 | 38 | 63.3% | 0 | 0 | 12 | 0 | 10 | 0 | 0 | 0 |
@@ -1030,7 +1030,7 @@ node at v25.9.0, updated at 65a3649. Evidence: `tests/node/expectations.txt`.
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | es-module | 222 | 26 | 11.7% | 0 | 0 | 16 | 0 | 180 | 0 | 0 | 0 |
-| parallel | 4,079 | 1,491 | 36.6% | 0 | 0 | 545 | 0 | 2,027 | 5 | 0 | 11 |
+| parallel | 4,079 | 1,502 | 36.8% | 0 | 0 | 545 | 0 | 2,018 | 4 | 0 | 10 |
 | sequential | 118 | 33 | 28.0% | 0 | 0 | 22 | 0 | 60 | 2 | 0 | 1 |
 
 ### Blockers

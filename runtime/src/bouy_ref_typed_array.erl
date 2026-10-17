@@ -182,6 +182,21 @@ write_element({Kind, Buffer, Offset, _}, I, Value) ->
     Size = bouy_ref_buffer:element_size(Kind),
     bouy_ref_buffer:write(Buffer, Offset + I * Size, bouy_ref_buffer:encode(Kind, Value)).
 
+%% Writes Value to the elements From to To - 1 in blocks of bytes, so a fill
+%% of a large array costs a few writes, not one for each element.
+fill_range({Kind, Buffer, Offset, _}, From, To, Value) when To > From ->
+    Size = bouy_ref_buffer:element_size(Kind),
+    Block = binary:copy(bouy_ref_buffer:encode(Kind, Value), min(To - From, 65536)),
+    fill_blocks(Buffer, Offset + From * Size, (To - From) * Size, Block);
+fill_range(_Slots, _From, _To, _Value) ->
+    ok.
+
+fill_blocks(_Buffer, _At, 0, _Block) -> ok;
+fill_blocks(Buffer, At, Remaining, Block) ->
+    Part = binary:part(Block, 0, min(Remaining, byte_size(Block))),
+    bouy_ref_buffer:write(Buffer, At, Part),
+    fill_blocks(Buffer, At + byte_size(Part), Remaining - byte_size(Part), Block).
+
 -spec element_has(term(), term()) -> boolean().
 element_has(O, N) -> valid_index(slots(O), N) =/= invalid.
 
@@ -222,7 +237,12 @@ index_keys(O) ->
 
 construct(Kind, NewTarget, [First | _]) when not ?IS_OBJECT(First) ->
     %% ToIndex of the length runs before the prototype of NewTarget is read.
-    Length = bouy_ref_buffer:to_index(First),
+    %% A length out of range is RangeError "Invalid typed array length: <n>", as V8 says.
+    Number = case First of undefined -> 0; _ -> bouy_ref:to_number(First) end,
+    Length = case bouy_ref_number:to_integer_or_infinity(Number) of
+        I when is_integer(I), I >= 0, I =< 9007199254740991 -> I;
+        _ -> bouy_heap:throw_error('RangeError', bouy_ref_string:to_utf8(bouy_ref_string:concat(<<"Invalid typed array length: ">>, bouy_ref:to_string(Number))))
+    end,
     allocate(Kind, bouy_ref_realm:proto_for(NewTarget, proto_id(Kind)), Length);
 construct(Kind, NewTarget, Args) ->
     Proto = bouy_ref_realm:proto_for(NewTarget, proto_id(Kind)),
@@ -724,7 +744,7 @@ proto(<<"fill">>, O, {Kind, _, _, _}, Len, Args) ->
     Slots1 = slots(O),
     case length_of(Slots1) of
         out_of_bounds -> type_error(<<"Cannot perform %TypedArray%.prototype.fill on a detached ArrayBuffer">>);
-        NewLen -> up(K, min(Final, NewLen) - 1, fun(I) -> write_element(Slots1, I, Value) end)
+        NewLen -> fill_range(Slots1, K, min(Final, NewLen), Value)
     end,
     O;
 proto(<<"filter">>, O, _, Len, Args) ->

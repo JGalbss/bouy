@@ -22,7 +22,20 @@ binding() ->
         {<<"moveMessagePortToContext">>, bouy_node:not_implemented(<<"messaging">>, <<"moveMessagePortToContext">>)},
         {<<"setDeserializerCreateObjectFunction">>, F(<<"setDeserializerCreateObjectFunction">>, 1, fun(_, _) -> undefined end)},
         {<<"broadcastChannel">>, bouy_node:not_implemented(<<"messaging">>, <<"broadcastChannel">>)},
-        {<<"structuredClone">>, F(<<"structuredClone">>, 2, fun(_, Args) ->
-            bouy_heap:clone_in(bouy_heap:clone_out(A(1, Args)))
-        end)},
+        {<<"structuredClone">>, F(<<"structuredClone">>, 2, fun(_, Args) -> structured_clone(A(1, Args), A(2, Args)) end)},
         {<<"DOMException">>, DOMException}]).
+
+%% structuredClone(value, { transfer }): the clone, with each ArrayBuffer of
+%% transfer detached afterwards, as a transfer moves its bytes to the clone.
+structured_clone(Value, Options) ->
+    Transfer = case bouy_heap:is_object(Options) andalso bouy_heap:get(Options, <<"transfer">>) of
+        false -> [];
+        undefined -> [];
+        List -> bouy_heap:array_items(List)
+    end,
+    Buffers = [B || B <- Transfer, bouy_heap:is_object(B), bouy_heap:class_of(B) =:= array_buffer],
+    [bouy_heap:throw_error('DataCloneError', <<"An ArrayBuffer is detached and could not be cloned.">>)
+     || B <- Buffers, bouy_ref_buffer:is_detached(B)],
+    Clone = bouy_heap:clone_in(bouy_heap:clone_out(Value)),
+    [bouy_ref_buffer:detach(B) || B <- Buffers],
+    Clone.

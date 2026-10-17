@@ -75,8 +75,12 @@ create(Class, Proto, ByteLength, Max) ->
         none -> ByteLength;
         _ -> Max
     end,
-    Capacity > ?MAX_BYTES andalso bouy_heap:throw_error('RangeError', <<"Array buffer allocation failed">>),
+    %% A buffer that the memory limit of the VM cannot hold fails here, as V8's
+    %% allocator fails, before the guard stops the VM.
+    (Capacity > ?MAX_BYTES orelse (Capacity > 67108864 andalso Capacity > room())) andalso bouy_heap:throw_error('RangeError', <<"Array buffer allocation failed">>),
     bouy_heap:new_exotic(Class, Proto, {data(Capacity), ByteLength, Max}).
+
+room() -> bouy_guard:limit(os:getenv("BOUY_MAX_MEMORY", "")) - erlang:memory(total).
 
 data(Bytes) -> atomics:new(max(1, (Bytes + 7) div 8), [{signed, false}]).
 
@@ -114,8 +118,12 @@ read_bytes(_Ref, _Offset, 0) -> <<>>;
 read_bytes(Ref, Offset, Count) ->
     First = Offset div 8,
     Last = (Offset + Count - 1) div 8,
-    Words = << <<(atomics:get(Ref, W + 1)):64/little>> || W <- lists:seq(First, Last) >>,
+    Words = read_words(Ref, First + 1, Last + 1, <<>>),
     binary:part(Words, Offset - First * 8, Count).
+
+%% The words from Index to Last, appended in place, so a large read builds no list.
+read_words(_Ref, Index, Last, Acc) when Index > Last -> Acc;
+read_words(Ref, Index, Last, Acc) -> read_words(Ref, Index + 1, Last, <<Acc/binary, (atomics:get(Ref, Index)):64/little>>).
 
 %% Writes Bytes at Offset.
 -spec write(term(), non_neg_integer(), binary()) -> ok.
@@ -124,6 +132,8 @@ write(Buffer, Offset, Bytes) ->
     write_bytes(Ref, Offset, Bytes).
 
 write_bytes(_Ref, _Offset, <<>>) -> ok;
+write_bytes(Ref, Offset, Bytes) when Offset rem 8 =:= 0, byte_size(Bytes) >= 8 ->
+    write_words(Ref, Offset div 8 + 1, Bytes);
 write_bytes(Ref, Offset, Bytes) ->
     Word = Offset div 8,
     Start = Offset rem 8,
@@ -131,6 +141,14 @@ write_bytes(Ref, Offset, Bytes) ->
     <<Part:Take/binary, Rest/binary>> = Bytes,
     write_word(Ref, Word + 1, Start, Part),
     write_bytes(Ref, Offset + Take, Rest).
+
+%% Whole words replace their word with one store; the bytes after them go
+%% through write_bytes.
+write_words(Ref, Index, <<Word:64/little, Rest/binary>>) ->
+    atomics:put(Ref, Index, Word),
+    write_words(Ref, Index + 1, Rest);
+write_words(Ref, Index, Rest) ->
+    write_bytes(Ref, (Index - 1) * 8, Rest).
 
 %% Replaces the bytes of a word from Start with Part, through a
 %% compare-and-swap, so that a write does not undo the write of another

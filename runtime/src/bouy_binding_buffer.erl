@@ -46,10 +46,11 @@ binding() ->
         {<<"compareOffset">>, F(<<"compareOffset">>, 6, fun(_, Args) -> compare_offset(Args) end)},
         {<<"fill">>, F(<<"fill">>, 5, fun(_, Args) -> fill(Args) end)},
         {<<"indexOfBuffer">>, F(<<"indexOfBuffer">>, 5, fun(_, Args) ->
-            index_of(A(1, Args), view_bytes(A(2, Args)), A(3, Args), A(5, Args), 1)
+            Step = case bouy_node_encoding:from_enum(A(4, Args)) of ucs2 -> 2; _ -> 1 end,
+            index_of(A(1, Args), view_bytes(A(2, Args)), A(3, Args), A(5, Args), Step)
         end)},
         {<<"indexOfNumber">>, F(<<"indexOfNumber">>, 4, fun(_, Args) ->
-            index_of(A(1, Args), <<(int(A(2, Args)) band 255)>>, A(3, Args), A(4, Args), 1)
+            index_of_number(view_bytes(A(1, Args)), int(A(2, Args)) band 255, A(3, Args), bouy_ref:truthy(A(4, Args)))
         end)},
         {<<"indexOfString">>, F(<<"indexOfString">>, 5, fun(_, Args) ->
             Encoding = bouy_node_encoding:from_enum(A(4, Args)),
@@ -59,8 +60,8 @@ binding() ->
         {<<"swap16">>, F(<<"swap16">>, 1, fun(_, Args) -> swap(A(1, Args), 2) end)},
         {<<"swap32">>, F(<<"swap32">>, 1, fun(_, Args) -> swap(A(1, Args), 4) end)},
         {<<"swap64">>, F(<<"swap64">>, 1, fun(_, Args) -> swap(A(1, Args), 8) end)},
-        {<<"isUtf8">>, F(<<"isUtf8">>, 1, fun(_, Args) -> is_utf8(view_bytes(A(1, Args))) end)},
-        {<<"isAscii">>, F(<<"isAscii">>, 1, fun(_, Args) -> lists:all(fun(C) -> C < 128 end, binary_to_list(view_bytes(A(1, Args)))) end)},
+        {<<"isUtf8">>, F(<<"isUtf8">>, 1, fun(_, Args) -> is_utf8(validated_bytes(A(1, Args))) end)},
+        {<<"isAscii">>, F(<<"isAscii">>, 1, fun(_, Args) -> lists:all(fun(C) -> C < 128 end, binary_to_list(validated_bytes(A(1, Args)))) end)},
         {<<"kMaxLength">>, ?K_MAX_LENGTH},
         {<<"kStringMaxLength">>, ?K_STRING_MAX_LENGTH},
         {<<"atob">>, F(<<"atob">>, 1, fun(_, Args) -> atob(A(1, Args)) end)},
@@ -97,8 +98,20 @@ slice(Encoding, View, Start, End) ->
             E0 = index_arg(End, Length),
             E = max(S, E0),
             E =< Length orelse out_of_range(),
+            string_length(Encoding, E - S) > 16#1fffffe8 andalso too_long(),
             bouy_node_encoding:decode(Encoding, view_bytes(View, S, E))
     end.
+
+%% The length of the string that Count bytes decode to, at most: V8 makes no
+%% string longer than 0x1fffffe8 code units, so Node throws before it reads.
+string_length(ucs2, Count) -> Count div 2;
+string_length(hex, Count) -> Count * 2;
+string_length(Base64, Count) when Base64 =:= base64; Base64 =:= base64url -> (Count + 2) div 3 * 4;
+string_length(_, Count) -> Count.
+
+-spec too_long() -> no_return().
+too_long() ->
+    bouy_node:throw_code('Error', <<"ERR_STRING_TOO_LONG">>, <<"Cannot create a string longer than 0x1fffffe8 characters">>).
 
 write(Encoding, View, String, Offset, MaxLength) ->
     ?IS_STRING(String) orelse bouy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>, <<"argument must be a string">>),
@@ -214,27 +227,65 @@ fill(Args) ->
 %% indexOf over the bytes of View: the first match at or after the offset,
 %% or for a backward search the last match at or before it. Step is 2 for
 %% UTF-16, whose matches start at even indexes.
+%% IndexOfString and IndexOfBuffer of node_buffer.cc: the byte index of the
+%% first match at or after the offset, or of the last one at or before it.
+%% A UCS-2 search runs over whole code units.
 index_of(View, Needle, ByteOffset, Forward, Step) ->
     Haystack = view_bytes(View),
     Length = byte_size(Haystack),
     NeedleLength = byte_size(Needle),
-    Offset0 = case bouy_ref:to_number(ByteOffset) of
+    IsForward = bouy_ref:truthy(Forward),
+    Offset = search_offset(Length, integer(ByteOffset), NeedleLength, IsForward),
+    if
+        NeedleLength =:= 0 -> Offset;
+        Length =:= 0 -> -1;
+        Offset =< -1 -> -1;
+        IsForward andalso NeedleLength + Offset > Length -> -1;
+        NeedleLength > Length -> -1;
+        Step =:= 2 andalso (Length < 2 orelse NeedleLength < 2) -> -1;
+        Step =:= 2 ->
+            Units = binary:part(Haystack, 0, Length - Length rem 2),
+            Unit = binary:part(Needle, 0, NeedleLength - NeedleLength rem 2),
+            Start = (Offset div 2) * 2,
+            case IsForward of
+                true -> search_forward(Units, Unit, Start, 2);
+                false -> search_backward(Units, Unit, min(Start, byte_size(Units) - byte_size(Unit)) div 2 * 2, 2)
+            end;
+        IsForward -> search_forward(Haystack, Needle, Offset, 1);
+        true -> search_backward(Haystack, Needle, min(Offset, Length - NeedleLength), 1)
+    end.
+
+%% IndexOfNumber: memchr from the offset, or memrchr up to it.
+index_of_number(Haystack, Byte, ByteOffset, IsForward) ->
+    Length = byte_size(Haystack),
+    case search_offset(Length, integer(ByteOffset), 1, IsForward) of
+        Offset when Offset =< -1; Length =:= 0 -> -1;
+        Offset when IsForward -> search_forward(Haystack, <<Byte>>, Offset, 1);
+        Offset -> search_backward(Haystack, <<Byte>>, min(Offset, Length - 1), 1)
+    end.
+
+integer(V) ->
+    case bouy_ref:to_number(V) of
         N when is_integer(N) -> N;
         N when is_float(N) -> trunc(N);
+        'Infinity' -> 16#7FFFFFFF;
+        '-Infinity' -> -16#80000000;
         _ -> 0
-    end,
-    Offset = case Offset0 < 0 of
-        true -> Length + Offset0;
-        false -> Offset0
-    end,
-    IsForward = bouy_ref:truthy(Forward),
+    end.
+
+%% IndexOfOffset: where a search starts, or -1 when none can match.
+search_offset(Length, Offset, NeedleLength, IsForward) when Offset < 0 ->
     if
-        NeedleLength =:= 0 -> -1;
-        Length < NeedleLength -> -1;
-        IsForward, Offset < 0 -> search_forward(Haystack, Needle, 0, Step);
-        IsForward -> search_forward(Haystack, Needle, Offset, Step);
-        Offset < 0 -> -1;
-        true -> search_backward(Haystack, Needle, min(Offset, Length - NeedleLength), Step)
+        Offset + Length >= 0 -> Length + Offset;
+        IsForward orelse NeedleLength =:= 0 -> 0;
+        true -> -1
+    end;
+search_offset(Length, Offset, NeedleLength, IsForward) ->
+    if
+        Offset + NeedleLength =< Length -> Offset;
+        NeedleLength =:= 0 -> Length;
+        IsForward -> -1;
+        true -> Length - 1
     end.
 
 search_forward(Haystack, Needle, From, Step) when From + byte_size(Needle) =< byte_size(Haystack) ->
@@ -259,6 +310,18 @@ swap(View, Size) ->
     undefined.
 
 reverse(Bin) -> list_to_binary(lists:reverse(binary_to_list(Bin))).
+
+%% The bytes that isUtf8 and isAscii check: a detached buffer is
+%% ERR_INVALID_STATE, as in node_buffer.cc.
+validated_bytes(View) ->
+    Buffer = case bouy_heap:class_of(View) of
+        typed_array -> element(2, bouy_heap:slots(View));
+        data_view -> element(1, bouy_heap:slots(View));
+        _ -> View
+    end,
+    bouy_ref_buffer:is_detached(Buffer) andalso
+        bouy_node:throw_code('Error', <<"ERR_INVALID_STATE">>, <<"Cannot validate on a detached buffer">>),
+    view_bytes(View).
 
 is_utf8(Bytes) ->
     case unicode:characters_to_list(Bytes, utf8) of

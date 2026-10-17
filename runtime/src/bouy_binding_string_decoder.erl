@@ -36,6 +36,9 @@ save(State, Chars, Missing, Buffered) ->
     bouy_node_encoding:view_write(State, 0, <<Padded/binary, Missing, Buffered>>).
 
 decode(State, Chunk) ->
+    %% V8 makes no string longer than 0x1fffffe8 code units (StringBytes::Encode).
+    bouy_node_encoding:view_length(Chunk) > 16#1fffffe8 andalso
+        bouy_node:throw_code('Error', <<"ERR_STRING_TOO_LONG">>, <<"Cannot create a string longer than 0x1fffffe8 characters">>),
     Data = bouy_node_encoding:view_bytes(Chunk),
     {Chars, Missing, Buffered, Encoding} = state(State),
     case lists:member(Encoding, [utf8, ucs2, base64, base64url]) of
