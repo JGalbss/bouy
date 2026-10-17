@@ -610,7 +610,8 @@ proto(<<"with">>, O, Args) ->
         I when is_integer(I) -> Len + I;
         _ -> -1
     end,
-    Index >= 0 andalso Index < Len orelse bouy_heap:throw_error('RangeError', <<"Invalid index">>),
+    Index >= 0 andalso Index < Len orelse
+        bouy_heap:throw_error('RangeError', bouy_ref_string:concat(<<"Invalid index : ">>, bouy_ref:to_string(bouy_ref:to_number(arg(1, Args))))),
     A = array_create(Len),
     V = arg(2, Args),
     up(0, Len - 1, fun(K) -> create_property(A, K, case K of Index -> V; _ -> get(O, K) end) end),

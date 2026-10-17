@@ -532,7 +532,7 @@ proto(<<"isWellFormed">>, S, _Args) -> is_well_formed(S);
 proto(<<"toWellFormed">>, S, _Args) ->
     case is_well_formed(S) of
         true -> S;
-        false -> from_units([scalar(C) || C <- lists:flatmap(fun code_units/1, code_points(S))])
+        false -> from_code_points([scalar(C) || C <- code_points(S)])
     end;
 proto(<<"localeCompare">>, S, Args) -> locale_compare(S, bouy_ref:to_string(arg(1, Args)));
 proto(<<"padEnd">>, S, Args) -> pad(S, arg(1, Args), arg(2, Args), trailing);

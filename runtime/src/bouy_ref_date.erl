@@ -401,7 +401,12 @@ iso(T) ->
 locale('NaN', _Part) -> <<"Invalid Date">>;
 locale(T, Part) ->
     L = local(T),
-    Date = [integer_to_list(month(L) + 1), "/", integer_to_list(date(L)), "/", integer_to_list(year(L))],
+    %% The year of the era, as ICU writes it: 1 BC is year 0 of the calendar.
+    EraYear = case year(L) of
+        Y when Y =< 0 -> 1 - Y;
+        Y -> Y
+    end,
+    Date = [integer_to_list(month(L) + 1), "/", integer_to_list(date(L)), "/", integer_to_list(EraYear)],
     H = hour(L),
     {H12, Suffix} = case H of
         0 -> {12, "AM"};
@@ -646,6 +651,7 @@ legacy_value(State) ->
         #{month := M, numbers := [D]} -> {M, D, 2001};
         _ -> throw(invalid)
     end,
+    Year >= 0 orelse throw(invalid),
     FullYear = case Year of
         _ when Year >= 0, Year =< 49 -> 2000 + Year;
         _ when Year >= 50, Year =< 99 -> 1900 + Year;

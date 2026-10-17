@@ -35,6 +35,7 @@ families() ->
      bouy_ref_array,
      bouy_ref_buffer,
      bouy_ref_typed_array,
+     bouy_ref_atomics,
      bouy_ref_iterator,
      bouy_ref_collection,
      bouy_ref_promise,

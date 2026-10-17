@@ -13,7 +13,7 @@
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3]).
 -export([numeric_key/1, element_get/2, element_set/3, element_has/2, element_define/3, element_delete/2, index_keys/1]).
--export([iterated_length/1, create/2]).
+-export([iterated_length/1, create/2, validate/2]).
 
 -import(bouy_ref_realm, [arg/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).

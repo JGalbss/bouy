@@ -38,24 +38,52 @@ local_to_utc(L) ->
     end.
 
 %% The long name of the zone at the UTC time T, as V8 prints it in
-%% toString: "Eastern Standard Time".
+%% toString: "Eastern Standard Time". V8 names the zone's standard or
+%% daylight time, not the time type of the instant, and outside 1970 to
+%% 2038 it decides daylight time in an equivalent year of 2008 to 2035
+%% (EquivalentTime in V8's date.cc).
 -spec name(integer()) -> binary().
 name(T) ->
-    {Offset, Dst, Abbreviation} = offset(T),
-    case long_name(Abbreviation) of
-        undefined when Abbreviation =:= <<"LMT">> -> standard_name(Offset, Dst);
+    {Offset, _, _} = offset(T),
+    {_, Dst, _} = offset(equivalent_time(T)),
+    case zone_name(Dst) of
         undefined -> gmt_name(Offset);
         Name -> Name
     end.
 
-%% The name for local mean time: the name of the zone's standard time.
-standard_name(Offset, _Dst) ->
-    #{types := Types} = zone(),
-    Names = [long_name(A) || {_, false, A} <- tuple_to_list(Types), A =/= <<"LMT">>],
+%% The long name of the zone's standard or daylight time, from the time
+%% types of its file or its rule.
+zone_name(Dst) ->
+    Zone = zone(),
+    Abbreviations = case Zone of
+        #{rule := {dst, {_, Std}, {_, Daylight}, _, _}} -> [{false, Std}, {true, Daylight}];
+        #{rule := {fixed, _, Std}} -> [{false, Std}];
+        _ -> []
+    end ++ [{D, A} || {_, D, A} <- lists:reverse(tuple_to_list(maps:get(types, Zone)))],
+    Names = [long_name(A) || {D, A} <- Abbreviations, D =:= Dst],
     case [N || N <- Names, N =/= undefined] of
         [Name | _] -> Name;
-        [] -> gmt_name(Offset)
+        [] when Dst -> zone_name(false);
+        [] -> undefined
     end.
+
+-define(MAX_EPOCH_MS, 2147483647000).
+
+equivalent_time(T) when T >= 0, T =< ?MAX_EPOCH_MS -> T;
+equivalent_time(T) ->
+    Days = floor_div(T, ?DAY_MS),
+    Within = T - Days * ?DAY_MS,
+    {Year, Month, Day} = civil_from_days(Days),
+    NewDays = days_from_civil(equivalent_year(Year), Month, Day),
+    NewDays * ?DAY_MS + Within.
+
+equivalent_year(Year) ->
+    WeekDay = weekday(days_from_civil(Year, 1, 1)),
+    Recent = case is_leap(Year) of
+        true -> 1956;
+        false -> 1967
+    end + (WeekDay * 12) rem 28,
+    2008 + (Recent + 3 * 28 - 2008) rem 28.
 
 gmt_name(0) -> <<"GMT">>;
 gmt_name(Offset) ->
