@@ -11,7 +11,7 @@ use super::analyze::{Assigned, completes_normally};
 use super::context::{
     Cont, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
 };
-use super::function::length_of;
+use super::function::binding_name;
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -103,21 +103,7 @@ impl<'a> Lowerer<'a, '_> {
             cells.push(cell);
         }
         for ((_, function), cell) in functions.iter().zip(cells) {
-            let fun = self.function_fun(function, None);
-            let name = function
-                .id
-                .as_ref()
-                .map_or_else(String::new, |id| id.name.to_string());
-            let length = length_of(&function.params);
-            let value = self.bind(Expr::call(
-                "bouy_ref",
-                "named_fn",
-                vec![
-                    fun,
-                    Expr::js_string(&name),
-                    Expr::Integer(i64::try_from(length).unwrap_or(0)),
-                ],
-            ));
+            let value = self.function_value(function, None, false);
             self.pre.push(cell_set(&cell, value));
         }
         std::mem::replace(&mut self.pre, saved)
@@ -173,7 +159,7 @@ impl<'a> Lowerer<'a, '_> {
                 continue;
             }
             let value = match &declarator.init {
-                Some(init) => self.expr(init),
+                Some(init) => self.named_expr(init, binding_name(&declarator.id)),
                 None => Expr::undefined(),
             };
             self.declare_pattern(&declarator.id, value);

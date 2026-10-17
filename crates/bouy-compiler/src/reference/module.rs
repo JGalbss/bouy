@@ -9,7 +9,7 @@ use oxc::ast_visit::Visit;
 
 use super::analyze;
 use super::context::{Cont, Frame, Lowerer, Top};
-use super::function::{Callee, FnBody, kind_of, length_of};
+use super::function::{Callee, FnBody, Itself, kind_of, length_of};
 use super::literal::literal;
 use crate::diagnostic::Code;
 use crate::erlang::{Clause, Expr, Function};
@@ -51,17 +51,7 @@ impl<'a> Lowerer<'a, '_> {
             if let Statement::ExportDefaultDeclaration(export) = statement {
                 match &export.declaration {
                     ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
-                        if let Some(id) = &function.id
-                            && let Some(symbol) = id.symbol_id.get()
-                        {
-                            self.tops.insert(
-                                symbol,
-                                Top::Function {
-                                    name: id.name.to_string(),
-                                    length: length_of(&function.params),
-                                },
-                            );
-                        }
+                        self.declare_function(function);
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
                         if let Some(id) = &class.id
@@ -75,19 +65,8 @@ impl<'a> Lowerer<'a, '_> {
                 continue;
             }
             match declaration(statement) {
-                Some(Declaration::FunctionDeclaration(function)) => {
-                    if let Some(id) = &function.id
-                        && let Some(symbol) = id.symbol_id.get()
-                        && function.body.is_some()
-                    {
-                        self.tops.insert(
-                            symbol,
-                            Top::Function {
-                                name: id.name.to_string(),
-                                length: length_of(&function.params),
-                            },
-                        );
-                    }
+                Some(Declaration::FunctionDeclaration(function)) if function.body.is_some() => {
+                    self.declare_function(function);
                 }
                 Some(Declaration::ClassDeclaration(class)) => {
                     if let Some(id) = &class.id
@@ -125,6 +104,53 @@ impl<'a> Lowerer<'a, '_> {
         for symbol in top_level_vars(program) {
             let name = self.semantic.scoping().symbol_name(symbol).to_owned();
             self.tops.entry(symbol).or_insert(Top::Var(name));
+        }
+        if self.is_script() {
+            self.declare_script_globals(program);
+        }
+    }
+
+    /// A script's top-level `var` names and functions are properties of the global object.
+    /// A function that the code never assigns keeps its Erlang function for calls.
+    fn declare_script_globals(&mut self, program: &'a Program<'a>) {
+        for symbol in top_level_vars(program) {
+            let name = self.semantic.scoping().symbol_name(symbol).to_owned();
+            self.script_globals.push(name.clone());
+            self.tops.insert(symbol, Top::Global(name));
+        }
+        for statement in &program.body {
+            if let Statement::FunctionDeclaration(function) = statement
+                && let Some(id) = &function.id
+                && let Some(symbol) = id.symbol_id.get()
+                && let Some(Top::Function { name, length, kind }) = self.tops.get(&symbol).cloned()
+            {
+                self.script_functions.push((name.clone(), length, kind));
+                let assigned = self
+                    .semantic
+                    .scoping()
+                    .get_resolved_references(symbol)
+                    .any(oxc::semantic::Reference::is_write);
+                if assigned {
+                    self.tops.insert(symbol, Top::Global(name));
+                }
+            }
+        }
+    }
+
+    /// A module-level function declaration: the Erlang function of its name.
+    fn declare_function(&mut self, function: &'a oxc::ast::ast::Function<'a>) {
+        if let Some(id) = &function.id
+            && let Some(symbol) = id.symbol_id.get()
+        {
+            let kind = self.value_kind(function);
+            self.tops.insert(
+                symbol,
+                Top::Function {
+                    name: id.name.to_string(),
+                    length: length_of(&function.params),
+                    kind,
+                },
+            );
         }
     }
 
@@ -189,12 +215,45 @@ impl<'a> Lowerer<'a, '_> {
             suspends.visit_statement(statement);
         }
         self.frame = Frame::default();
+        self.frame.sloppy = self.is_sloppy(None);
+        let mut code = Vec::new();
+        // The `this` of a script's top-level code is the global object; a module's is
+        // undefined.
+        if self.is_script() {
+            let this = self.fresh("This");
+            code.push(Expr::matches(
+                Expr::var(this.clone()),
+                Expr::Tuple(vec![Expr::atom("$o"), Expr::atom("globalThis")]),
+            ));
+            self.frame.this = Some(this);
+            let vars = self
+                .script_globals
+                .iter()
+                .map(|name| Expr::js_string(name))
+                .collect();
+            let functions = self
+                .script_functions
+                .clone()
+                .into_iter()
+                .map(|(name, length, kind)| {
+                    Expr::Tuple(vec![
+                        Expr::js_string(&name),
+                        self.static_function(&name, length, kind),
+                    ])
+                })
+                .collect();
+            code.push(Expr::call(
+                "bouy_ref_realm",
+                "declare_globals",
+                vec![Expr::List(vars), Expr::List(functions)],
+            ));
+        }
         let statements = body.to_vec();
-        let code = if suspends.0 {
+        code.extend(if suspends.0 {
             self.async_body(|me| me.stmts(statements, &Cont::Return))
         } else {
             self.stmts(statements, &Cont::Value(Expr::undefined()))
-        };
+        });
         let main = Expr::Fun {
             name: None,
             clauses: vec![Clause {
@@ -292,7 +351,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.frame = Frame::default();
                 self.pre.clear();
                 let value = match simple {
-                    Some(init) => self.expr(init),
+                    Some(init) => self.named_expr(init, Some(Expr::js_string(id.name.as_str()))),
                     None => Expr::undefined(),
                 };
                 let init = std::mem::take(&mut self.pre);
@@ -361,11 +420,22 @@ impl<'a> Lowerer<'a, '_> {
                 clauses: vec![],
             };
         };
+        let itself = if self.needs_callee(function) {
+            Itself::Static(self.static_function(
+                name,
+                length_of(&function.params),
+                self.value_kind(function),
+            ))
+        } else {
+            Itself::None
+        };
         let (this, args, code) = self.function_code(
             &function.params,
             FnBody::Block(body),
             kind_of(function.r#async, function.generator),
             Callee::Function(None),
+            function.scope_id.get(),
+            &itself,
         );
         Function {
             name: name.to_owned(),
@@ -378,15 +448,20 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The value of a module-level function used as a value: the same term in every realm.
-    pub fn static_function(&self, name: &str, length: usize) -> Expr {
+    /// A function that is not `normal` carries its kind as a fifth element of its id.
+    pub fn static_function(&self, name: &str, length: usize, kind: &str) -> Expr {
+        let mut id = vec![
+            Expr::atom("fn"),
+            Expr::atom(self.module.clone()),
+            Expr::js_string(name),
+            Expr::Integer(i64::try_from(length).unwrap_or(0)),
+        ];
+        if kind != "normal" {
+            id.push(Expr::atom(kind));
+        }
         Expr::Tuple(vec![
             Expr::atom("$f"),
-            Expr::Tuple(vec![
-                Expr::atom("fn"),
-                Expr::atom(self.module.clone()),
-                Expr::js_string(name),
-                Expr::Integer(i64::try_from(length).unwrap_or(0)),
-            ]),
+            Expr::Tuple(id),
             Expr::FunRef {
                 module: Some(self.module.clone()),
                 function: name.to_owned(),

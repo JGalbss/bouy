@@ -28,6 +28,32 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
+    /// The value of an identifier that no scope declares: a global.
+    pub fn identifier_read(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        self.bind(Expr::call(
+            "bouy_ref",
+            "global",
+            vec![Expr::js_string(ident.name.as_str())],
+        ))
+    }
+
+    /// `new.target`: the variable of the function or of the class constructor, else
+    /// undefined.
+    pub fn new_target_expr(&self) -> Expr {
+        if let Some(new_target) = &self.frame.new_target {
+            return Expr::var(new_target.clone());
+        }
+        match self
+            .frame
+            .class
+            .as_ref()
+            .and_then(|class| class.new_target.clone())
+        {
+            Some(new_target) => Expr::var(new_target),
+            None => Expr::undefined(),
+        }
+    }
+
     pub fn read_symbol(&mut self, symbol: SymbolId, span: Span) -> Expr {
         if let Some(local) = self.frame.env.get(&symbol) {
             return match local.clone() {
@@ -36,11 +62,16 @@ impl<'a> Lowerer<'a, '_> {
             };
         }
         match self.tops.get(&symbol).cloned() {
-            Some(Top::Function { name, length }) => self.static_function(&name, length),
+            Some(Top::Function { name, length, kind }) => self.static_function(&name, length, kind),
             Some(Top::Class(name)) => {
                 self.bind(Expr::local_call("$class", vec![Expr::binary(name)]))
             }
             Some(Top::Var(name)) => self.bind(Expr::local_call(&format!("$get_{name}"), vec![])),
+            Some(Top::Global(name)) => self.bind(Expr::call(
+                "bouy_ref",
+                "global",
+                vec![Expr::js_string(&name)],
+            )),
             Some(Top::Literal(value)) => value,
             Some(Top::Bouy(_)) => self.unsupported(span, "a function of \"bouy\" used as a value"),
             None => self.unsupported(
@@ -74,6 +105,7 @@ impl<'a> Lowerer<'a, '_> {
                 ));
                 value
             }
+            Some(Top::Global(name)) => self.set_global(&name, value),
             _ => self.unsupported(span, "an assignment to this name"),
         }
     }
@@ -89,6 +121,10 @@ impl<'a> Lowerer<'a, '_> {
                     "put",
                     vec![key, Expr::tagged("v", value)],
                 ));
+                return;
+            }
+            Some(Top::Global(name)) => {
+                self.set_global(&name, value);
                 return;
             }
             Some(Top::Literal(_)) => return,

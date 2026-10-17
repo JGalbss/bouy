@@ -5,9 +5,9 @@ use std::collections::HashSet;
 
 use oxc::ast::AstKind;
 use oxc::ast::ast::{
-    ArrowFunctionExpression, AwaitExpression, Class, ForOfStatement, ForStatement,
-    ForStatementInit, Function, IdentifierReference, Program, Statement, VariableDeclaration,
-    VariableDeclarationKind, YieldExpression,
+    ArrowFunctionExpression, AwaitExpression, BindingPattern, Class, ForOfStatement, ForStatement,
+    ForStatementInit, FormalParameters, Function, IdentifierReference, NewTarget, Program,
+    Statement, ThisExpression, VariableDeclaration, VariableDeclarationKind, YieldExpression,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{NodeId, ScopeFlags, ScopeId, Scoping, Semantic, SymbolId};
@@ -49,6 +49,13 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
             cells.insert(symbol);
         }
     }
+    let mut mapped = MappedParameters {
+        scoping,
+        javascript: !semantic.source_type().is_typescript(),
+        found: Vec::new(),
+    };
+    mapped.visit_program(program);
+    cells.extend(mapped.found);
     let mut loops = LoopHeads {
         cells: &cells,
         found: HashSet::new(),
@@ -212,6 +219,68 @@ impl<'a> Visit<'a> for VarDeclarations {
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// The parameters of each sloppy function whose `arguments` object maps them (ECMA-262
+/// §10.4.4.7): a write to one shows in the other, so they live in heap cells.
+struct MappedParameters<'s> {
+    scoping: &'s Scoping,
+    javascript: bool,
+    found: Vec<SymbolId>,
+}
+
+impl<'a> Visit<'a> for MappedParameters<'_> {
+    fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        let sloppy = self.javascript
+            && it
+                .scope_id
+                .get()
+                .is_some_and(|scope| !self.scoping.scope_flags(scope).is_strict_mode());
+        if sloppy && is_simple(&it.params) {
+            let mut uses = UsesArguments::default();
+            if let Some(body) = &it.body {
+                uses.visit_function_body(body);
+            }
+            if uses.0 {
+                for param in &it.params.items {
+                    if let BindingPattern::BindingIdentifier(id) = &param.pattern
+                        && let Some(symbol) = id.symbol_id.get()
+                    {
+                        self.found.push(symbol);
+                    }
+                }
+            }
+        }
+        walk::walk_function(self, it, flags);
+    }
+}
+
+/// Whether a parameter list is simple: names only, without defaults, patterns, or a rest.
+pub fn is_simple(params: &FormalParameters<'_>) -> bool {
+    params.rest.is_none()
+        && params.items.iter().all(|param| {
+            param.initializer.is_none()
+                && matches!(param.pattern, BindingPattern::BindingIdentifier(_))
+        })
+}
+
+/// Whether a function reads `this` or `new.target`, in its own code or in an arrow function
+/// inside it, which shares them.
+#[derive(Default)]
+pub struct UsesThis {
+    pub this: bool,
+    pub new_target: bool,
+}
+
+impl<'a> Visit<'a> for UsesThis {
+    fn visit_this_expression(&mut self, _it: &ThisExpression) {
+        self.this = true;
+    }
+    fn visit_new_target(&mut self, _it: &NewTarget) {
+        self.new_target = true;
+    }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_class(&mut self, _it: &Class<'a>) {}
 }
 

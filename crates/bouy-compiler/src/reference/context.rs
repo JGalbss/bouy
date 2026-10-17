@@ -16,8 +16,13 @@ use crate::erlang::{Clause, Expr, Function};
 /// What a module-level name refers to.
 #[derive(Debug, Clone)]
 pub enum Top {
-    /// A function declaration: the Erlang function `'name'/2`, and its `length`.
-    Function { name: String, length: usize },
+    /// A function declaration: the Erlang function `'name'/2`, its `length`, and its kind
+    /// (`normal`, `generator`, `async`, or `async_generator`).
+    Function {
+        name: String,
+        length: usize,
+        kind: &'static str,
+    },
     /// A class: created once per realm by `'$class'/1`.
     Class(String),
     /// A `const` or `let`: one per realm, in the process dictionary.
@@ -26,6 +31,9 @@ pub enum Top {
     Literal(Expr),
     /// A function imported from "bouy".
     Bouy(String),
+    /// A `var` or a function of a script's top-level code: a property of the global
+    /// object (ECMA-262 §16.1.7).
+    Global(String),
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +162,13 @@ pub struct Frame<'a> {
     pub labels: Vec<String>,
     /// The Erlang variable of the `arguments` object of the nearest non-arrow function.
     pub arguments: Option<String>,
+    /// The Erlang variable of `new.target` in an ordinary function that reads it.
+    pub new_target: Option<String>,
+    /// Sloppy-mode code: a failed write does not throw, and a function called without a
+    /// receiver sees the global object as `this`.
+    pub sloppy: bool,
+    /// The value of the function itself, for `arguments.callee`.
+    pub callee: Option<Expr>,
 }
 
 pub struct Lowerer<'a, 'c> {
@@ -170,6 +185,10 @@ pub struct Lowerer<'a, 'c> {
     pub pre: Vec<Expr>,
     /// The classes of the module, for `'$class'/1`.
     pub classes: Vec<String>,
+    /// The `var` names and the function declarations of a script's top-level code, which
+    /// become properties of the global object before the code runs.
+    pub script_globals: Vec<String>,
+    pub script_functions: Vec<(String, usize, &'static str)>,
 }
 
 impl Lowerer<'_, '_> {
@@ -231,6 +250,23 @@ impl Lowerer<'_, '_> {
                 Expr::var(fresh)
             })
             .collect()
+    }
+
+    /// Whether the code of `scope` is sloppy. Bouy runs TypeScript as ES modules, which are
+    /// strict, as Node does for a package of `"type": "module"`. A JavaScript script is
+    /// sloppy unless a directive makes it strict.
+    pub fn is_sloppy(&self, scope: Option<oxc::semantic::ScopeId>) -> bool {
+        let scoping = self.semantic.scoping();
+        !self.semantic.source_type().is_typescript()
+            && !scoping
+                .scope_flags(scope.unwrap_or_else(|| scoping.root_scope_id()))
+                .is_strict_mode()
+    }
+
+    /// Whether the code is a JavaScript script, whose top-level `this` is the global object.
+    pub fn is_script(&self) -> bool {
+        let source_type = self.semantic.source_type();
+        !source_type.is_typescript() && !source_type.is_module()
     }
 
     pub fn this_expr(&self) -> Expr {

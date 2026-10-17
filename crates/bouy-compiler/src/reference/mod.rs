@@ -67,6 +67,8 @@ pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
             frame: Frame::default(),
             pre: Vec::new(),
             classes: Vec::new(),
+            script_globals: Vec::new(),
+            script_functions: Vec::new(),
         };
         lowerer.declare(program);
         let functions = lowerer.module_functions(program);
