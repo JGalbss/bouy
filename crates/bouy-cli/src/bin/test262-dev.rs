@@ -6,8 +6,8 @@
 //! `scripts/test262-dev.sh` fetches test262 at the pinned commit and runs this binary. It
 //! is the quick loop of engine work and does not depend on the `bouy-suites` crate.
 //!
-//! The engine compiles every file as strict code, so a test runs once, in strict mode, and
-//! a `noStrict` test is skipped.
+//! A test runs once: a `noStrict` test as sloppy code, and every other test in strict
+//! mode.
 
 #[path = "../runtime.rs"]
 mod runtime;
@@ -282,9 +282,6 @@ fn prepare(test262: &Path, scratch: &Path, index: usize, path: &Path) -> Prepare
 }
 
 fn skip_reason(meta: &Frontmatter) -> Option<&'static str> {
-    if meta.has_flag("noStrict") {
-        return Some("sloppy mode");
-    }
     if meta.has_flag("CanBlockIsFalse") {
         return Some("can-block");
     }
@@ -294,14 +291,18 @@ fn skip_reason(meta: &Frontmatter) -> Option<&'static str> {
     None
 }
 
-/// The program that runs a test: the strict directive, the host functions, the harness,
-/// then the test. A `raw` test runs as it is. Returns the program and the count of the
+/// The program that runs a test: the strict directive unless the test is `noStrict`, the
+/// host functions, the harness, then the test. A `raw` test runs as it is. Returns the program and the count of the
 /// lines before the test.
 fn program(test262: &Path, meta: &Frontmatter, source: &str) -> Result<(String, usize), String> {
     if meta.has_flag("raw") {
         return Ok((source.to_owned(), 0));
     }
-    let mut prelude = String::from("\"use strict\";\n");
+    let mut prelude = if meta.has_flag("noStrict") {
+        String::new()
+    } else {
+        String::from("\"use strict\";\n")
+    };
     prelude.push_str(HOST);
     let mut includes = vec!["assert.js".to_owned(), "sta.js".to_owned()];
     if meta.has_flag("async") {
