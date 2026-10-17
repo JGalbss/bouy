@@ -11,7 +11,7 @@ use oxc::span::Span;
 
 use super::analyze::contains;
 use super::context::{Cont, Lowerer, boolean_case};
-use crate::erlang::Expr;
+use crate::erlang::{Clause, Expr};
 
 /// A `with` statement around the code: the variable of its object and its span.
 #[derive(Debug, Clone)]
@@ -98,28 +98,66 @@ impl<'a> Lowerer<'a, '_> {
         )
     }
 
-    /// A write of `value` to `ident` through the `with` objects.
-    pub fn with_write(
+    /// Resolves `ident` through the `with` objects before the value of a write runs: the
+    /// term `{with, Object}` for the object that has the name, else `none`
+    /// (ECMA-262 §13.15.2: the reference comes first).
+    pub fn with_resolve(&mut self, objects: &[String], name: &str) -> Expr {
+        self.through_withs(
+            objects,
+            name,
+            |_, object| vec![Expr::tagged("with", object)],
+            vec![Expr::atom("none")],
+        )
+    }
+
+    /// A read through a reference from `with_resolve`.
+    pub fn with_read_ref(&mut self, ident: &'a IdentifierReference<'a>, reference: &Expr) -> Expr {
+        let fallback = self.branch(|me| me.identifier_plain(ident));
+        let object = self.fresh("O");
+        let get = Expr::call(
+            "bouy_ref",
+            "get",
+            vec![
+                Expr::var(object.clone()),
+                Expr::js_string(ident.name.as_str()),
+            ],
+        );
+        self.bind(Expr::case(
+            reference.clone(),
+            vec![
+                Clause::new(Expr::tagged("with", Expr::var(object)), vec![get]),
+                Clause::new(Expr::atom("none"), fallback),
+            ],
+        ))
+    }
+
+    /// A write of `value` through a reference from `with_resolve`.
+    pub fn with_write_ref(
         &mut self,
         ident: &'a IdentifierReference<'a>,
-        objects: &[String],
+        reference: &Expr,
         value: Expr,
     ) -> Expr {
         let value = self.bind(value);
         let fallback = self.branch(|me| me.assign_name_value(ident, value.clone()));
-        let name = ident.name.as_str();
-        self.through_withs(
-            objects,
-            name,
-            |_, object| {
-                vec![Expr::call(
-                    "bouy_ref",
-                    "sloppy_set",
-                    vec![object, Expr::js_string(name), value.clone()],
-                )]
-            },
-            fallback,
-        )
+        let object = self.fresh("O");
+        let set = Expr::call(
+            "bouy_ref",
+            "sloppy_set",
+            vec![
+                Expr::var(object.clone()),
+                Expr::js_string(ident.name.as_str()),
+                value.clone(),
+            ],
+        );
+        self.bind(Expr::case(
+            reference.clone(),
+            vec![
+                Clause::new(Expr::tagged("with", Expr::var(object)), vec![set]),
+                Clause::new(Expr::atom("none"), fallback),
+            ],
+        ));
+        value
     }
 
     /// The function and the `this` of a call of `ident` through the `with` objects: the

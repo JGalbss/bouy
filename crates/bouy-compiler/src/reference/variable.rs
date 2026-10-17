@@ -11,7 +11,7 @@ use crate::erlang::Expr;
 impl<'a> Lowerer<'a, '_> {
     pub fn identifier(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
         let objects = self.with_objects(ident);
-        if !objects.is_empty() && !matches!(ident.name.as_str(), "undefined" | "NaN" | "Infinity") {
+        if !objects.is_empty() {
             return self.with_read(ident, &objects);
         }
         self.identifier_plain(ident)
@@ -126,6 +126,17 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Stores `value` in the variable `symbol` and returns the stored value.
     pub fn assign_symbol(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
+        if self
+            .semantic
+            .scoping()
+            .symbol_flags(symbol)
+            .is_const_variable()
+        {
+            // An assignment to a constant: the value runs, then a TypeError.
+            let value = self.bind(value);
+            self.pre.push(Expr::call("bouy_ref", "const_error", vec![]));
+            return value;
+        }
         if let Some(local) = self.frame.env.get(&symbol).cloned() {
             return match local {
                 Local::Var(_) => {

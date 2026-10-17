@@ -3,3 +3,5 @@ ReferenceError: Cannot access 'value' before initialization / 7
 ReferenceError: Cannot access 'second' before initialization 3
 get method, argument
 TypeError: Cannot read properties of undefined (reading 'call') false
+42
+TypeError: Assignment to constant variable.

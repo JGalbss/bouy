@@ -195,13 +195,14 @@ impl<'a> Lowerer<'a, '_> {
         let name = Some(Expr::js_string(ident.name.as_str()));
         let objects = self.with_objects(ident);
         if !objects.is_empty() {
+            let reference = self.with_resolve(&objects, ident.name.as_str());
             let value = if operator == AssignmentOperator::Assign {
                 self.named_expr(right, name)
             } else {
-                let current = self.with_read(ident, &objects);
+                let current = self.with_read_ref(ident, &reference);
                 self.combine(operator, current, right, name)
             };
-            return self.with_write(ident, &objects, value);
+            return self.with_write_ref(ident, &reference, value);
         }
         let Some(symbol) = self.symbol_of(ident.reference_id.get()) else {
             let value = if operator == AssignmentOperator::Assign {
@@ -357,10 +358,11 @@ impl<'a> Lowerer<'a, '_> {
             SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
                 let objects = self.with_objects(ident);
                 if !objects.is_empty() {
-                    let old = self.with_read(ident, &objects);
+                    let reference = self.with_resolve(&objects, ident.name.as_str());
+                    let old = self.with_read_ref(ident, &reference);
                     let old = self.bind(Expr::call("bouy_ref", "to_numeric", vec![old]));
                     let new = self.bind(Expr::call("bouy_ref", function, vec![old.clone()]));
-                    let new = self.with_write(ident, &objects, new);
+                    let new = self.with_write_ref(ident, &reference, new);
                     return if update.prefix { new } else { old };
                 }
                 let Some(symbol) = self.symbol_of(ident.reference_id.get()) else {

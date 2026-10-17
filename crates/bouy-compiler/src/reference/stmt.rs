@@ -96,7 +96,11 @@ impl<'a> Lowerer<'a, '_> {
         // now, holding '$tdz' until the declaration runs.
         for symbol in list.iter().flat_map(|statement| block_bindings(statement)) {
             // The rest of a block after a compound statement hoists again; keep the cell.
-            if self.analysis.early.contains(&symbol) && !self.frame.env.contains_key(&symbol) {
+            // A module-level binding lives in the process dictionary instead.
+            if self.analysis.early.contains(&symbol)
+                && !self.frame.env.contains_key(&symbol)
+                && !self.tops.contains_key(&symbol)
+            {
                 let cell = self.fresh("Tdz");
                 self.pre.push(Expr::matches(
                     Expr::var(cell.clone()),

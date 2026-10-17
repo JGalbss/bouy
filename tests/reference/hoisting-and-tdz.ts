@@ -53,3 +53,18 @@ console.log(
   errorText(() => empty.nested.call((evaluated = true))),
   evaluated,
 );
+function declaredAfter(): number {
+  const base = 40;
+  function add(): number {
+    return base + 2;
+  }
+  return add();
+}
+console.log(declaredAfter());
+function constWrite(): string {
+  const fixed = 1;
+  return errorText(() => {
+    (fixed as number) = 2;
+  });
+}
+console.log(constWrite());

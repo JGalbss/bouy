@@ -13,7 +13,7 @@
 -export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
 -export([sloppy_set/3, sloppy_set_computed/3, sloppy_delete/2, sloppy_delete_computed/2, sloppy_this/1]).
 -export([mapped_arguments/3, function_name/2, literal_proto/2, named_fn/5, to_numeric/1, tdz_get/2, tdz_error/1]).
--export([with_object/1, with_has/2]).
+-export([with_object/1, with_has/2, const_error/0]).
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, fn/1, fn/3, fn/4, named_fn/3, named_fn/4, new_target/1, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
@@ -257,7 +257,7 @@ arguments_object(Args) ->
     O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
     [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
     bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
-    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, <<"values">>),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, ?SYM(iterator)),
                                           writable => true, enumerable => false, configurable => true}),
     Thrower = bouy_ref_function:throw_type_error(),
     bouy_heap:define(O, <<"callee">>, #{get => Thrower, set => Thrower, enumerable => false, configurable => false}),
@@ -271,7 +271,7 @@ mapped_arguments(Args, Cells, Callee) ->
     O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
     [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
     bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
-    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, <<"values">>),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, ?SYM(iterator)),
                                           writable => true, enumerable => false, configurable => true}),
     bouy_heap:define(O, <<"callee">>, #{value => Callee, writable => true, enumerable => false, configurable => true}),
     Count = min(length(Args), length(Cells)),
@@ -336,6 +336,10 @@ literal_proto(O, Proto) when ?IS_OBJECT(Proto); Proto =:= null ->
     ok;
 literal_proto(_O, _Proto) ->
     ok.
+
+%% An assignment to a const binding.
+-spec const_error() -> no_return().
+const_error() -> type_error(<<"Assignment to constant variable.">>).
 
 %% The object of `with (v)`: ToObject, a TypeError for undefined and null.
 -spec with_object(term()) -> term().

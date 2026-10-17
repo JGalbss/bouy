@@ -75,8 +75,9 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     }
 }
 
-/// The block-scoped bindings that a nested function reads at a place before their
-/// declaration.
+/// The block-scoped bindings that a nested function can read before their declaration
+/// runs: a function written before the declaration, or a function declaration, which
+/// exists from the start of its block.
 fn early_bindings(scoping: &Scoping, nodes: &oxc::semantic::AstNodes<'_>) -> HashSet<SymbolId> {
     scoping
         .symbol_ids()
@@ -86,10 +87,26 @@ fn early_bindings(scoping: &Scoping, nodes: &oxc::semantic::AstNodes<'_>) -> Has
             let declared = scoping.symbol_span(*symbol);
             scoping.get_resolved_references(*symbol).any(|reference| {
                 function_scope(scoping, reference.scope_id()) != home
-                    && nodes.get_node(reference.node_id()).span().start < declared.start
+                    && (nodes.get_node(reference.node_id()).span().start < declared.start
+                        || in_hoisted_function(nodes, reference.node_id(), home))
             })
         })
         .collect()
+}
+
+/// Whether a node sits in a function declaration inside the function of scope `home`.
+fn in_hoisted_function(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, home: ScopeId) -> bool {
+    for ancestor in nodes.ancestors(node) {
+        if let AstKind::Function(function) = ancestor.kind() {
+            if function.scope_id.get() == Some(home) {
+                return false;
+            }
+            if function.is_declaration() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// The scope of the function that holds `scope`: a function, an arrow, a static block, or
