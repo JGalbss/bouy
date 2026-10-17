@@ -67,16 +67,24 @@ iterate(V) -> bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(V), <
 
 %% A builtin iterator whose next method is the intrinsic one steps without
 %% the result objects of the protocol: {native, Module, Iterator}.
-native(Class, O) ->
-    {Module, Next} = case Class of
-        array_iterator -> {bouy_ref_array, <<"ArrayIterator.prototype.next">>};
-        map_iterator -> {bouy_ref_collection, <<"MapIterator.prototype.next">>};
-        set_iterator -> {bouy_ref_collection, <<"SetIterator.prototype.next">>};
-        string_iterator -> {bouy_ref_string, <<"StringIterator.prototype.next">>}
+native(_Class, O) ->
+    case native_state(O, bouy_heap:get(O, <<"next">>)) of
+        none -> protocol(O);
+        State -> State
+    end.
+
+native_state(Iterator, Next) ->
+    %% A return method, which IteratorClose would call, keeps the protocol.
+    Class = case bouy_heap:get(Iterator, <<"return">>) of
+        undefined -> bouy_heap:class_of(Iterator);
+        _ -> protocol
     end,
-    case bouy_heap:get(O, <<"next">>) of
-        {'$f', {builtin, Next}, _} -> {native, Module, O};
-        _ -> protocol(O)
+    case {Class, Next} of
+        {array_iterator, {'$f', {builtin, <<"ArrayIterator.prototype.next">>}, _}} -> {native, bouy_ref_array, Iterator};
+        {map_iterator, {'$f', {builtin, <<"MapIterator.prototype.next">>}, _}} -> {native, bouy_ref_collection, Iterator};
+        {set_iterator, {'$f', {builtin, <<"SetIterator.prototype.next">>}, _}} -> {native, bouy_ref_collection, Iterator};
+        {string_iterator, {'$f', {builtin, <<"StringIterator.prototype.next">>}, _}} -> {native, bouy_ref_string, Iterator};
+        _ -> none
     end.
 
 protocol(O) ->
@@ -84,7 +92,11 @@ protocol(O) ->
         {'$f', _, _} = Method ->
             Iterator = bouy_ref:call(Method, O, []),
             ?IS_OBJECT(Iterator) orelse bouy_ref:type_error(<<"Result of the Symbol.iterator method is not an object">>),
-            {protocol, Iterator, bouy_ref:get(Iterator, <<"next">>)};
+            Next = bouy_ref:get(Iterator, <<"next">>),
+            case native_state(Iterator, Next) of
+                none -> {protocol, Iterator, Next};
+                State -> State
+            end;
         _ ->
             bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(O), <<" is not iterable">>))
     end.
