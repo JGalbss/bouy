@@ -167,11 +167,20 @@ new_exotic(Class, Proto, Slots) ->
     erlang:put(Id, {Class, Proto, #{}, [], #{}, Slots}),
     {'$o', Id}.
 
-%% The items of an array, holes as undefined.
+%% The items of an array, holes as undefined. Another object, such as a proxy
+%% of an array or an arguments object, gives its elements 0 to length - 1
+%% through [[Get]], as the generic array methods read them.
 -spec array_items(value()) -> [value()].
-array_items({'$o', Id}) ->
-    {array, _, _, _, _, {Length, Elements}} = erlang:get(Id),
-    [maps:get(I, Elements, undefined) || I <- lists:seq(0, Length - 1)].
+array_items({'$o', Id} = O) ->
+    case erlang:get(Id) of
+        {array, _, _, _, _, {Length, Elements}} -> [element_value(maps:get(I, Elements, undefined), O) || I <- lists:seq(0, Length - 1)];
+        _ -> [get(O, I) || I <- lists:seq(0, array_length(O) - 1)]
+    end;
+array_items(O) ->
+    [get(O, I) || I <- lists:seq(0, array_length(O) - 1)].
+
+element_value({'$accessor', _, _} = A, O) -> resolve(A, O);
+element_value(V, _O) -> V.
 
 %% Array.prototype.push: one read and one write of the record for any count.
 -spec array_push(value(), [value()]) -> non_neg_integer().
@@ -182,23 +191,56 @@ array_push({'$o', Id} = O, Items) ->
             erlang:put(Id, {array, P, Props, Keys, Attrs, {Length1, Elements1}}),
             Length1;
         _ ->
-            lists:foreach(fun(V) -> set(O, array_length(O), V) end, Items),
-            array_length(O)
-    end.
+            generic_push(O, Items)
+    end;
+array_push(O, Items) ->
+    generic_push(O, Items).
+
+%% Push on any object: Set of each index, then of length.
+generic_push(O, Items) ->
+    Length = lists:foldl(fun(V, L) -> _ = set(O, L, V), L + 1 end, array_length(O), Items),
+    _ = set(O, <<"length">>, Length),
+    Length.
 
 %% Replaces every item, as sort, splice, and shift do.
 -spec array_set_items(value(), [value()]) -> ok.
 array_set_items({'$o', Id} = O, Items) ->
-    {array, P, Props, Keys, Attrs, _} = record_of(O),
-    map_size(Attrs) =:= 0 orelse set_failed(O, 0),
-    Elements = maps:from_list(lists:enumerate(0, Items)),
-    erlang:put(Id, {array, P, Props, Keys, Attrs, {length(Items), Elements}}),
+    case erlang:get(Id) of
+        {array, P, Props, Keys, Attrs, _} when map_size(Attrs) =:= 0 ->
+            Elements = maps:from_list(lists:enumerate(0, Items)),
+            erlang:put(Id, {array, P, Props, Keys, Attrs, {length(Items), Elements}}),
+            ok;
+        _ ->
+            generic_set_items(O, Items)
+    end;
+array_set_items(O, Items) ->
+    generic_set_items(O, Items).
+
+%% Writes each item, deletes the indexes past the new length, and sets length.
+generic_set_items(O, Items) ->
+    Old = array_length(O),
+    New = length(Items),
+    lists:foreach(fun({I, V}) -> _ = set(O, I, V) end, lists:enumerate(0, Items)),
+    lists:foreach(fun(I) -> delete(O, I) end, lists:seq(Old - 1, New, -1)),
+    _ = set(O, <<"length">>, New),
     ok.
 
+%% The length of an array, or LengthOfArrayLike of another object.
 -spec array_length(value()) -> non_neg_integer().
-array_length({'$o', Id}) ->
-    {array, _, _, _, _, {Length, _}} = erlang:get(Id),
-    Length.
+array_length({'$o', Id} = O) ->
+    case erlang:get(Id) of
+        {array, _, _, _, _, {Length, _}} -> Length;
+        _ -> length_of_array_like(O)
+    end;
+array_length(O) ->
+    length_of_array_like(O).
+
+length_of_array_like(O) ->
+    case bouy_ref_number:to_integer_or_infinity(bouy_ref:to_number(get(O, <<"length">>))) of
+        L when is_integer(L), L > 0 -> min(L, 9007199254740991);
+        'Infinity' -> 9007199254740991;
+        _ -> 0
+    end.
 
 %%% Functions
 

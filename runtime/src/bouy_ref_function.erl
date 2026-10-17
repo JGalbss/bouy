@@ -16,7 +16,8 @@ intrinsics() ->
     Methods = ?METHODS(<<"Function.prototype">>, [{<<"call">>, 1}, {<<"apply">>, 2}, {<<"bind">>, 1}, {<<"toString">>, 0}]),
     HasInstance = bouy_ref_realm:builtin(<<"Function.prototype[Symbol.hasInstance]">>, <<"[Symbol.hasInstance]">>, 1,
                                          fun(This, Args) -> ?MODULE:method(<<"Function.prototype">>, <<"hasInstance">>, This, Args) end),
-    Entries = Methods ++ [{<<"name">>, <<>>}, {<<"length">>, 0}, {<<"constructor">>, constructor()},
+    %% length comes before name, as on every builtin function.
+    Entries = [{<<"length">>, 0}, {<<"name">>, <<>>}] ++ Methods ++ [{<<"constructor">>, constructor()},
                           {?SYM(hasInstance), HasInstance},
                           {<<"caller">>, {'$accessor', Thrower, Thrower}}, {<<"arguments">>, {'$accessor', Thrower, Thrower}}],
     {Class, Proto, Props, Keys, Attrs, Slots} = record(function, ?OBJECT_PROTO, Entries, #{}),
