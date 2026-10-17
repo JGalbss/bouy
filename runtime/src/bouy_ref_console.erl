@@ -117,6 +117,8 @@ object({'$f', _, _} = F, Level, Indent, Stack) ->
     end;
 object(O, Level, Indent, Stack) ->
     case bouy_heap:class_of(O) of
+        %% Node prints the target of a proxy.
+        proxy -> proxy(O, Level, Indent, Stack);
         array -> array(O, Level, Indent, Stack);
         map -> collection(O, <<"Map">>, map_items(O, Level, Indent, Stack), Level, Indent);
         set -> collection(O, <<"Set">>, [value(K, Level + 1, Indent + 2, Stack) || K <- set_members(O)], Level, Indent);
@@ -128,6 +130,12 @@ object(O, Level, Indent, Stack) ->
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
         date -> bouy_date:call(<<"toISOString">>, {'$date', bouy_heap:slots(O)}, []);
         _ -> plain(O, Level, Indent, Stack)
+    end.
+
+proxy(O, Level, Indent, Stack) ->
+    case bouy_heap:slots(O) of
+        {revoked, _} -> <<"<Revoked Proxy>">>;
+        {Target, _} -> object(Target, Level, Indent, Stack)
     end.
 
 plain(O, Level, Indent, Stack) ->

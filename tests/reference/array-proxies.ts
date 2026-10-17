@@ -27,3 +27,5 @@ Array.prototype.push.call(args, 3);
 console.log(args.length, Array.prototype.slice.call(args));
 const like = { length: 2, 0: "a", 1: "b" } as unknown as string[];
 console.log(Array.prototype.join.call(like, "-"));
+const wrapped = new Proxy([1, { a: 2 }], {});
+console.log(JSON.stringify({ list: wrapped }), wrapped, [...wrapped].length);
