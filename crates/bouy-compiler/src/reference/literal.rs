@@ -80,7 +80,7 @@ impl<'a> Lowerer<'a, '_> {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
                     let name = Expr::js_string(key);
                     let value = if property.method {
-                        self.method_value(&property.value, name)
+                        self.method_value(&property.value, name, property.span)
                     } else {
                         self.named_expr(&property.value, Some(name))
                     };
@@ -130,18 +130,21 @@ impl<'a> Lowerer<'a, '_> {
                         ),
                     };
                     let (function, value) = match property.kind {
-                        PropertyKind::Init if property.method => {
-                            ("define_field", self.method_value(&property.value, name))
-                        }
+                        PropertyKind::Init if property.method => (
+                            "define_field",
+                            self.method_value(&property.value, name, property.span),
+                        ),
                         PropertyKind::Init => {
                             ("define_field", self.named_expr(&property.value, Some(name)))
                         }
-                        PropertyKind::Get => {
-                            ("literal_getter", self.method_value(&property.value, name))
-                        }
-                        PropertyKind::Set => {
-                            ("literal_setter", self.method_value(&property.value, name))
-                        }
+                        PropertyKind::Get => (
+                            "literal_getter",
+                            self.method_value(&property.value, name, property.span),
+                        ),
+                        PropertyKind::Set => (
+                            "literal_setter",
+                            self.method_value(&property.value, name, property.span),
+                        ),
                     };
                     self.pre.push(Expr::call(
                         "bouy_ref",

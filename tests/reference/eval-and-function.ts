@@ -22,3 +22,10 @@ console.log(
   errorName(() => Function("}, function() {")),
 );
 console.log(eval(42 as unknown as string), Function()());
+const made = eval("(function named(x) { return x * 2; })") as (x: number) => number;
+console.log(
+  made(4),
+  made.toString(),
+  "|",
+  new Function("a", "return a").toString().split("\n").join("\\n"),
+);

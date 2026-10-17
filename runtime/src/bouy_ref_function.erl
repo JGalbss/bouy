@@ -126,11 +126,25 @@ in_chain(O, Proto) -> in_chain(bouy_heap:prototype_of(O), Proto).
 %% Function.prototype.toString: the source text that the compiler kept, or
 %% the NativeFunction form.
 source_text(F) ->
-    case bouy_heap:slots(F) of
-        #{source := Source} -> Source;
-        #{kind := class} -> bouy_ref_string:concat([<<"class ">>, name_of(F), <<" { }">>]);
-        _ -> bouy_ref_string:concat([<<"function ">>, name_of(F), <<"() { [native code] }">>])
+    case {bouy_heap:slots(F), F} of
+        {#{source := {Module, Start, End}}, _} -> slice(Module, Start, End);
+        {_, {'$f', {fn, Module, Name, _}, _}} -> module_function_text(F, Module, Name);
+        {_, {'$f', {fn, Module, Name, _, _}, _}} -> module_function_text(F, Module, Name);
+        {#{kind := class}, _} -> bouy_ref_string:concat([<<"class ">>, name_of(F), <<" { }">>]);
+        _ -> native_text(F)
     end.
+
+module_function_text(F, Module, Name) ->
+    case Module:'$span'(Name) of
+        {Start, End} -> slice(Module, Start, End);
+        none -> native_text(F)
+    end.
+
+%% The source text from byte Start to byte End of the module's '$source'/0.
+slice(Module, Start, End) ->
+    bouy_ref_string:from_utf8(binary:part(Module:'$source'(), Start, End - Start)).
+
+native_text(F) -> bouy_ref_string:concat([<<"function ">>, name_of(F), <<"() { [native code] }">>]).
 
 name_of(F) ->
     case bouy_ref:get(F, <<"name">>) of

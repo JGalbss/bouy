@@ -15,7 +15,7 @@
 -export([mapped_arguments/3, function_name/2, literal_proto/2, named_fn/5, to_numeric/1, tdz_get/2, tdz_error/1]).
 -export([with_object/1, with_has/2]).
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
--export([arguments_object/1, throw_type_error/2, fn/1, fn/3, named_fn/3, named_fn/4, new_target/1, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
+-export([arguments_object/1, throw_type_error/2, fn/1, fn/3, fn/4, named_fn/3, named_fn/4, new_target/1, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
 -export([array/1, array_spread/1, object_spread/2, object_rest/2, template/1]).
 -export([add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1, plus/1]).
@@ -293,6 +293,11 @@ fn(Fun) -> bouy_heap:function(Fun).
 -spec fn(fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer()) -> term().
 fn(Fun, Name, Length) -> bouy_heap:function(Fun, Name, Length, #{}).
 
+%% fn/3 with the place of its source text, {Module, Start, End}, for
+%% Function.prototype.toString.
+-spec fn(fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer(), {module(), non_neg_integer(), non_neg_integer()}) -> term().
+fn(Fun, Name, Length, Source) -> bouy_heap:function(Fun, Name, Length, #{source => Source}).
+
 %% new.target in an ordinary function whose this is This.
 -spec new_target(term()) -> term().
 new_target(This) -> bouy_heap:new_target(This).
@@ -304,10 +309,10 @@ named_fn(Fun, Name, Length) -> named_fn(Fun, Name, Length, normal).
 
 %% named_fn/4 under an id from bouy_heap:new_id/0, for a function whose code
 %% refers to itself.
--spec named_fn(pos_integer(), fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer(), atom()) -> term().
+-spec named_fn(pos_integer(), fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer(), atom() | {atom(), tuple()}) -> term().
 named_fn(Id, Fun, Name, Length, Kind) ->
-    F = bouy_heap:function(Id, Fun, Name, Length, #{kind => slot_kind(Kind)}),
-    finish_fn(F, Kind).
+    F = bouy_heap:function(Id, Fun, Name, Length, slots(Kind)),
+    finish_fn(F, kind(Kind)).
 
 %% The name of a function from a property key, as SetFunctionName gives it:
 %% a symbol's description in brackets, and a prefix such as "get".
@@ -369,9 +374,17 @@ to_numeric(V) -> to_number(V).
 %% A function of a kind: normal, which new can construct, generator or
 %% async_generator, whose prototype object is the prototype of the
 %% generators it makes, or async, which has no prototype.
--spec named_fn(fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer(), normal | sloppy | generator | async | async_generator) -> term().
+-type fn_kind() :: normal | sloppy | generator | async | async_generator.
+-spec named_fn(fun((term(), list()) -> term()), bouy_ref_string:js_string(), non_neg_integer(), fn_kind() | {fn_kind(), tuple()}) -> term().
 named_fn(Fun, Name, Length, Kind) ->
-    finish_fn(bouy_heap:function(Fun, Name, Length, #{kind => slot_kind(Kind)}), Kind).
+    finish_fn(bouy_heap:function(Fun, Name, Length, slots(Kind)), kind(Kind)).
+
+%% The kind of named_fn may carry the place of the source text: {Kind, Source}.
+slots({Kind, Source}) -> #{kind => slot_kind(Kind), source => Source};
+slots(Kind) -> #{kind => slot_kind(Kind)}.
+
+kind({Kind, _Source}) -> Kind;
+kind(Kind) -> Kind.
 
 %% A sloppy function is a normal one with the caller and arguments
 %% properties that V8 gives it, both null.

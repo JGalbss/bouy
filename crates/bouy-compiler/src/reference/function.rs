@@ -7,6 +7,7 @@ use oxc::ast::ast::{
 
 use oxc::ast_visit::Visit;
 use oxc::semantic::{ScopeId, SymbolId};
+use oxc::span::Span;
 
 use super::analyze::{UsesArguments, UsesThis, VarDeclarations, is_simple};
 use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret};
@@ -332,19 +333,34 @@ impl<'a> Lowerer<'a, '_> {
 
     /// The function value of an object literal method, getter, or setter, whose `name` is
     /// `name`: its own `this`, and no `prototype` unless it is a generator.
-    pub fn method_value(&mut self, value: &'a Expression<'a>, name: Expr) -> Expr {
+    /// `span` is the source text of the method, from its key to its body.
+    pub fn method_value(&mut self, value: &'a Expression<'a>, name: Expr, span: Span) -> Expr {
         match value {
             Expression::FunctionExpression(function) => {
                 let kind = fn_kind(function);
                 if kind != "normal" {
-                    return self.function_value(function, Some(name), false);
+                    return self.function_value_at(function, Some(name), false, span);
                 }
                 let fun = self.function_fun(function, None);
                 let length = Expr::Integer(i64::try_from(length_of(&function.params)).unwrap_or(0));
-                self.bind(Expr::call("bouy_ref", "fn", vec![fun, name, length]))
+                let source = self.source_span(span);
+                self.bind(Expr::call(
+                    "bouy_ref",
+                    "fn",
+                    vec![fun, name, length, source],
+                ))
             }
             other => self.expr(other),
         }
+    }
+
+    /// `{Module, Start, End}`: where the source text of a function is in `'$source'/0`.
+    pub fn source_span(&self, span: Span) -> Expr {
+        Expr::Tuple(vec![
+            Expr::atom(self.module.clone()),
+            Expr::Integer(i64::from(span.start)),
+            Expr::Integer(i64::from(span.end)),
+        ])
     }
 
     /// An expression whose value is named `name` when it is an anonymous function: the
@@ -382,7 +398,12 @@ impl<'a> Lowerer<'a, '_> {
         );
         let fun = fun2(None, this_param, args, code);
         let length = Expr::Integer(i64::try_from(length_of(&arrow.params)).unwrap_or(0));
-        self.bind(Expr::call("bouy_ref", "fn", vec![fun, name, length]))
+        let source = self.source_span(arrow.span);
+        self.bind(Expr::call(
+            "bouy_ref",
+            "fn",
+            vec![fun, name, length, source],
+        ))
     }
 
     pub fn function_expression(&mut self, function: &'a Function<'a>) -> Expr {
@@ -398,13 +419,28 @@ impl<'a> Lowerer<'a, '_> {
         name: Option<Expr>,
         expression: bool,
     ) -> Expr {
+        self.function_value_at(function, name, expression, function.span)
+    }
+
+    /// `function_value` whose source text is at `span`.
+    fn function_value_at(
+        &mut self,
+        function: &'a Function<'a>,
+        name: Option<Expr>,
+        expression: bool,
+        span: Span,
+    ) -> Expr {
         let name = match (&function.id, name) {
             (Some(id), _) => Expr::js_string(id.name.as_str()),
             (None, Some(name)) => name,
             (None, None) => Expr::js_string(""),
         };
         let length = Expr::Integer(i64::try_from(length_of(&function.params)).unwrap_or(0));
-        let kind = Expr::atom(self.value_kind(function));
+        // The kind carries where the source text is, for Function.prototype.toString.
+        let kind = Expr::Tuple(vec![
+            Expr::atom(self.value_kind(function)),
+            self.source_span(span),
+        ]);
         let symbol = function
             .id
             .as_ref()

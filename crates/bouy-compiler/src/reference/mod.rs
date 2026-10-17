@@ -113,7 +113,7 @@ fn lower(module: &graph::Module, eval: Option<bool>) -> Result<String, Vec<Diagn
             eval,
         };
         lowerer.declare(program);
-        let functions = lowerer.module_functions(program);
+        let functions = lowerer.module_functions(program, &module.source);
         if lowerer.reporter.diagnostics.is_empty() {
             Ok(erlang::print_module(&erlang::Module {
                 name: module.name.clone(),

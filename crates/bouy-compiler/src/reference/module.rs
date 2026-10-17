@@ -164,7 +164,7 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// Every Erlang function of the module.
-    pub fn module_functions(&mut self, program: &'a Program<'a>) -> Vec<Function> {
+    pub fn module_functions(&mut self, program: &'a Program<'a>, source: &str) -> Vec<Function> {
         let mut functions = Vec::new();
         let mut body: Vec<&'a Statement<'a>> = Vec::new();
         for statement in &program.body {
@@ -223,6 +223,7 @@ impl<'a> Lowerer<'a, '_> {
             None => self.init(&body),
         });
         functions.push(self.class_dispatch());
+        functions.extend(source_functions(program, source));
         functions.append(&mut self.extra);
         functions
     }
@@ -577,4 +578,40 @@ fn top_level_vars(program: &Program<'_>) -> Vec<oxc::semantic::SymbolId> {
         vars.visit_statement(statement);
     }
     vars.0
+}
+
+/// `'$source'/0`, the source text of the module, and `'$span'/1`, where the text of
+/// each module-level function is in it, for Function.prototype.toString.
+fn source_functions(program: &Program<'_>, source: &str) -> Vec<Function> {
+    let mut spans: Vec<Clause> = program
+        .body
+        .iter()
+        .filter_map(|statement| match declaration(statement) {
+            Some(Declaration::FunctionDeclaration(function)) => function.id.as_ref().map(|id| {
+                Clause::new(
+                    Expr::js_string(id.name.as_str()),
+                    vec![Expr::Tuple(vec![
+                        Expr::Integer(i64::from(function.span.start)),
+                        Expr::Integer(i64::from(function.span.end)),
+                    ])],
+                )
+            }),
+            _ => None,
+        })
+        .collect();
+    spans.push(Clause::new(Expr::var("_"), vec![Expr::atom("none")]));
+    vec![
+        Function {
+            name: "$source".to_owned(),
+            clauses: vec![Clause {
+                patterns: vec![],
+                guards: vec![],
+                body: vec![Expr::binary(source.to_owned())],
+            }],
+        },
+        Function {
+            name: "$span".to_owned(),
+            clauses: spans,
+        },
+    ]
 }
