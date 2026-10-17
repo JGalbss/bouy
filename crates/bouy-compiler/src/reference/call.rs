@@ -103,21 +103,7 @@ impl<'a> Lowerer<'a, '_> {
             && !call.optional
             && self.symbol_of(ident.reference_id.get()).is_none()
         {
-            // A direct eval. The runtime checks that `eval` is still the intrinsic.
-            let eval = self.identifier_read(ident);
-            let args = self.args(&call.arguments);
-            let mode = Expr::atom(match (self.frame.sloppy, self.frame.in_params) {
-                (true, true) => "sloppy_parameters",
-                (true, false) => "sloppy",
-                (false, _) => "strict",
-            });
-            let this = self.this_expr();
-            let scope = self.eval_scope(ident);
-            return self.bind(Expr::call(
-                "bouy_ref_eval",
-                "direct",
-                vec![eval, args, mode, this, scope],
-            ));
+            return self.direct_eval(ident, call);
         }
         if let Expression::Identifier(ident) = callee
             && let Some(symbol) = self.symbol_of(ident.reference_id.get())
@@ -141,6 +127,29 @@ impl<'a> Lowerer<'a, '_> {
             "bouy_ref",
             "call",
             vec![function, Expr::undefined(), args],
+        ))
+    }
+
+    /// A direct eval. The runtime checks that `eval` is still the intrinsic.
+    fn direct_eval(
+        &mut self,
+        ident: &'a IdentifierReference<'a>,
+        call: &'a CallExpression<'a>,
+    ) -> Expr {
+        let eval = self.identifier_read(ident);
+        let args = self.args(&call.arguments);
+        let mode = Expr::atom(if self.frame.sloppy {
+            "sloppy"
+        } else {
+            "strict"
+        });
+        let this = self.this_expr();
+        let scope = self.eval_scope(ident);
+        let lexical = self.eval_lexical(ident);
+        self.bind(Expr::call(
+            "bouy_ref_eval",
+            "direct",
+            vec![eval, args, mode, this, scope, lexical],
         ))
     }
 
@@ -178,6 +187,32 @@ impl<'a> Lowerer<'a, '_> {
             entries.push(Expr::Tuple(vec![Expr::js_string("arguments"), cell]));
         }
         Expr::List(entries)
+    }
+
+    /// The names that a sloppy direct eval at `ident` may not declare with `var`: the
+    /// lexical bindings between the call and its function's variables, and in a parameter
+    /// default the bindings of the parameter scope (ECMA-262 §19.2.1.3).
+    fn eval_lexical(&self, ident: &'a IdentifierReference<'a>) -> Expr {
+        let scoping = self.semantic.scoping();
+        let Some(reference) = ident.reference_id.get() else {
+            return Expr::List(vec![]);
+        };
+        let mut names: Vec<String> = self.frame.param_bindings.clone();
+        let scope = scoping.get_reference(reference).scope_id();
+        let home = super::analyze::function_scope(scoping, scope);
+        for ancestor in scoping.scope_ancestors(scope) {
+            for (name, symbol) in scoping.get_bindings(ancestor) {
+                if scoping.symbol_flags(*symbol).is_block_scoped()
+                    && !names.iter().any(|seen| seen == name.as_str())
+                {
+                    names.push(name.to_string());
+                }
+            }
+            if ancestor == home {
+                break;
+            }
+        }
+        Expr::List(names.iter().map(|name| Expr::js_string(name)).collect())
     }
 
     /// A function imported from "bouy".

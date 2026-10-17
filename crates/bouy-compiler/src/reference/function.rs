@@ -175,16 +175,20 @@ impl<'a> Lowerer<'a, '_> {
             ));
             self.frame.arguments = Some(arguments);
         }
-        // The parameter scope binds `arguments`: the arguments object of an ordinary
-        // function, or a parameter of that name. A direct eval there may not declare it.
-        self.frame.in_params = own_arguments
-            || params
-                .items
-                .iter()
-                .flat_map(|param| param.pattern.get_binding_identifiers())
-                .any(|id| id.name == "arguments");
+        // The parameter scope binds the parameters, and `arguments` in an ordinary
+        // function. A direct eval in a default may not declare them.
+        let mut bindings: Vec<String> = params
+            .items
+            .iter()
+            .flat_map(|param| param.pattern.get_binding_identifiers())
+            .map(|id| id.name.to_string())
+            .collect();
+        if own_arguments {
+            bindings.push("arguments".to_owned());
+        }
+        self.frame.param_bindings = bindings;
         code.extend(self.params(params, args));
-        self.frame.in_params = false;
+        self.frame.param_bindings = Vec::new();
         if mapped {
             code.push(self.mapped_arguments(params, args));
         }

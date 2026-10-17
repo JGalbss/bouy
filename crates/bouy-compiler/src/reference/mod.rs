@@ -63,19 +63,21 @@ pub fn lower_eval(
     module: &graph::Module,
     strict: bool,
     function: bool,
-    parameters: bool,
+    lexical: &[String],
     scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
-    if parameters && !strict {
-        let declares = with_program(&module.path, &module.source, |program, semantic| {
-            declares_arguments(program, semantic)
+    if !lexical.is_empty() && !strict {
+        let conflict = with_program(&module.path, &module.source, |program, semantic| {
+            declared_var_names(program, semantic)
+                .into_iter()
+                .find(|name| lexical.contains(name))
         })?;
-        if declares {
+        if let Some(name) = conflict {
             let reporter = Reporter::new(&module.path, &module.source);
             return Err(vec![reporter.at(
                 0,
                 Code::Syntax,
-                "a direct eval in a parameter default cannot declare `arguments`".to_owned(),
+                format!("Identifier '{name}' has already been declared"),
             )]);
         }
     }
@@ -95,31 +97,35 @@ pub fn lower_eval(
     lower(module, Some(strict), scope)
 }
 
-/// Whether sloppy eval code declares `arguments` in its variable environment: a `var` or a
-/// function declaration of that name (ECMA-262 §19.2.1.3, `EvalDeclarationInstantiation`).
-fn declares_arguments(
+/// The names that sloppy eval code declares in its variable environment: its top-level
+/// `var` names and function declarations (`EvalDeclarationInstantiation`).
+fn declared_var_names(
     program: &oxc::ast::ast::Program<'_>,
     semantic: &oxc::semantic::Semantic<'_>,
-) -> bool {
+) -> Vec<String> {
     use oxc::ast_visit::Visit;
     let scoping = semantic.scoping();
     if scoping
         .scope_flags(scoping.root_scope_id())
         .is_strict_mode()
     {
-        return false;
+        return Vec::new();
     }
     let mut vars = analyze::VarDeclarations::default();
     vars.visit_program(program);
-    let functions = program.body.iter().any(|statement| {
-        matches!(statement, oxc::ast::ast::Statement::FunctionDeclaration(function)
-            if function.id.as_ref().is_some_and(|id| id.name == "arguments"))
-    });
-    functions
-        || vars
-            .0
-            .iter()
-            .any(|symbol| scoping.symbol_name(*symbol) == "arguments")
+    let mut names: Vec<String> = vars
+        .0
+        .iter()
+        .map(|symbol| scoping.symbol_name(*symbol).to_owned())
+        .collect();
+    for statement in &program.body {
+        if let oxc::ast::ast::Statement::FunctionDeclaration(function) = statement
+            && let Some(id) = &function.id
+        {
+            names.push(id.name.to_string());
+        }
+    }
+    names
 }
 
 /// Whether the program is one parenthesized function expression that ends where the source

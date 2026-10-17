@@ -60,9 +60,9 @@ enum Commands {
         /// The source is the function that the `Function` constructor builds.
         #[arg(long)]
         function: bool,
-        /// The source is a direct eval in a parameter default.
-        #[arg(long)]
-        parameters: bool,
+        /// The bindings that sloppy direct eval code may not declare with `var`.
+        #[arg(long, value_delimiter = ',')]
+        lexical: Vec<String>,
         /// The local bindings of the caller of a direct eval, separated by commas.
         #[arg(long, value_delimiter = ',')]
         scope: Vec<String>,
@@ -116,23 +116,24 @@ fn main() -> ExitCode {
         Commands::CompileEval {
             strict,
             function,
-            parameters,
+            lexical,
             scope,
             module,
             source,
-        } => compile_eval(&source, &module, [strict, function, parameters], &scope),
+        } => compile_eval(&source, &module, [strict, function], [&lexical, &scope]),
     }
 }
 
 /// `bouy compile-eval`: the Erlang module of an `eval`, or its first diagnostic.
-/// `flags` are `--strict`, `--function`, and `--parameters`.
-fn compile_eval(source: &Path, module: &str, flags: [bool; 3], scope: &[String]) -> ExitCode {
-    let [strict, function, parameters] = flags;
+/// `flags` are `--strict` and `--function`, and `names` the `--lexical` and `--scope` lists.
+fn compile_eval(source: &Path, module: &str, flags: [bool; 2], names: [&[String]; 2]) -> ExitCode {
+    let [strict, function] = flags;
+    let [lexical, scope] = names;
     let text = match fs::read_to_string(source) {
         Ok(text) => text,
         Err(error) => return fail(&format!("cannot read {}: {error}", source.display())),
     };
-    match bouy_compiler::compile_eval(&text, module, strict, function, parameters, scope) {
+    match bouy_compiler::compile_eval(&text, module, strict, function, lexical, scope) {
         Ok(erlang) => {
             print!("{erlang}");
             ExitCode::SUCCESS

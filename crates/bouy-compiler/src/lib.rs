@@ -110,15 +110,15 @@ fn compile_in_with(
 /// current realm with a `this` and returns its completion value. Strict code keeps its `var` names to
 /// itself; sloppy code makes them properties of the global object. With `function`, the
 /// source must be one parenthesized function expression, as the `Function` constructor
-/// builds it, so a body cannot close the function early. With `parameters`, the code is a
-/// direct eval in a parameter default, which may not declare `arguments`. `scope` names the
+/// builds it, so a body cannot close the function early. `lexical` names the bindings that
+/// sloppy direct eval code may not declare with `var`. `scope` names the
 /// local bindings of the caller of a direct eval, which `'__eval__'/2` gets as cells.
 pub fn compile_eval(
     source: &str,
     name: &str,
     strict: bool,
     function: bool,
-    parameters: bool,
+    lexical: &[String],
     scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
     let source = if strict {
@@ -133,7 +133,7 @@ pub fn compile_eval(
         imports: std::collections::HashMap::new(),
         exports: std::collections::HashMap::new(),
     };
-    reference::lower_eval(&module, strict, function, parameters, scope)
+    reference::lower_eval(&module, strict, function, lexical, scope)
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

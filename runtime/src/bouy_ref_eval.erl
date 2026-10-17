@@ -14,7 +14,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/5, create_function/1, create_function/2]).
+-export([intrinsics/0, globals/0, method/4, direct/6, create_function/1, create_function/2]).
 
 -import(bouy_ref, [type_error/1]).
 
@@ -39,26 +39,26 @@ indirect(Value) -> Value.
 
 %% `eval(...)` where eval is the name of the global: a direct eval when it
 %% still is the intrinsic, else a plain call.
-%% A direct eval in a parameter default (sloppy_parameters) may not declare
-%% `arguments`. Scope holds the caller's local bindings as [{Name, Cell}].
--spec direct(term(), list(), strict | sloppy | sloppy_parameters, term(), [{binary(), term()}]) -> term().
-direct({'$f', {builtin, <<"eval">>}, _}, Args, Mode, This, Scope) ->
+%% Scope holds the caller's local bindings as [{Name, Cell}], and Lexical the
+%% names that sloppy eval code may not declare with `var`.
+-spec direct(term(), list(), strict | sloppy, term(), [{binary(), term()}], [binary()]) -> term().
+direct({'$f', {builtin, <<"eval">>}, _}, Args, Mode, This, Scope, Lexical) ->
     Flags = case Mode of
         strict -> ["--strict"];
-        sloppy -> [];
-        sloppy_parameters -> ["--parameters"]
-    end,
-    Names = [binary_to_list(bouy_ref_string:to_utf8(Name)) || {Name, _} <- Scope],
-    ScopeFlags = case Names of
-        [] -> [];
-        _ -> ["--scope=" ++ lists:join(",", Names)]
+        sloppy -> []
     end,
     case bouy_ref_realm:arg(1, Args) of
-        Source when ?IS_STRING(Source) -> run(Source, Flags ++ ScopeFlags, This, Scope);
-        Value -> Value
+        Source when ?IS_STRING(Source) ->
+            run(Source, Flags ++ names("--scope=", [Name || {Name, _} <- Scope]) ++ names("--lexical=", Lexical), This, Scope);
+        Value ->
+            Value
     end;
-direct(F, Args, _Mode, _This, _Scope) ->
+direct(F, Args, _Mode, _This, _Scope, _Lexical) ->
     bouy_ref:call(F, undefined, Args).
+
+%% A flag that lists names, or nothing for no names.
+names(_Flag, []) -> [];
+names(Flag, Names) -> [Flag ++ lists:join(",", [binary_to_list(bouy_ref_string:to_utf8(N)) || N <- Names])].
 
 %% CreateDynamicFunction: new Function(p1, ..., body).
 -spec create_function(list()) -> term().
