@@ -5,6 +5,9 @@ use oxc::ast::ast::{
     ArrowFunctionExpression, Expression, FormalParameters, Function, FunctionBody,
 };
 
+use oxc::ast_visit::Visit;
+
+use super::analyze::{UsesArguments, VarDeclarations};
 use super::context::{ClassFrame, Cont, Frame, Kind, Lowerer, Ret};
 use crate::erlang::{Clause, Expr};
 
@@ -22,33 +25,39 @@ impl<'a> Lowerer<'a, '_> {
         let args = self.fresh("Args");
         let outer = std::mem::take(&mut self.frame);
         let outer_pre = std::mem::take(&mut self.pre);
-        let (this, class) = match callee {
-            Callee::Arrow => (outer.this.clone(), outer.class.clone()),
-            Callee::Function(class) => (Some(this_param.clone()), class),
+        let own_arguments = matches!(callee, Callee::Function(_));
+        let (this, class, arguments) = match callee {
+            Callee::Arrow => (
+                outer.this.clone(),
+                outer.class.clone(),
+                outer.arguments.clone(),
+            ),
+            Callee::Function(class) => (Some(this_param.clone()), class, None),
         };
         self.frame = Frame {
             env: outer.env.clone(),
             this,
             kind,
             class,
+            arguments,
             ..Frame::default()
         };
         let code = match kind {
             Kind::Sync => {
-                let mut code = self.params(params, &args);
+                let mut code = self.entry(params, body, &args, own_arguments);
                 code.extend(self.body(body));
                 code
             }
             Kind::Async => {
                 let args_var = args.clone();
                 self.async_body(move |me| {
-                    let mut code = me.params(params, &args_var);
+                    let mut code = me.entry(params, body, &args_var, own_arguments);
                     code.extend(me.body(body));
                     code
                 })
             }
             Kind::Generator => {
-                let mut code = self.params(params, &args);
+                let mut code = self.entry(params, body, &args, own_arguments);
                 self.frame.ret = Ret::Generator;
                 let inner = self.body(body);
                 code.push(Expr::call(
@@ -81,6 +90,42 @@ impl<'a> Lowerer<'a, '_> {
                 self.seal(code)
             }
         }
+    }
+
+    /// The code at the start of a function: its `arguments` object when it reads one, its
+    /// parameters, and its `var` names, which hold `undefined` until their declarations run.
+    fn entry(
+        &mut self,
+        params: &'a FormalParameters<'a>,
+        body: FnBody<'a>,
+        args: &str,
+        own_arguments: bool,
+    ) -> Vec<Expr> {
+        let mut uses = UsesArguments::default();
+        uses.visit_formal_parameters(params);
+        let mut vars = VarDeclarations::default();
+        if let FnBody::Block(block) = body {
+            uses.visit_function_body(block);
+            vars.visit_function_body(block);
+        }
+        let mut code = Vec::new();
+        if uses.0 && own_arguments {
+            let arguments = self.fresh("Arguments");
+            code.push(Expr::matches(
+                Expr::var(arguments.clone()),
+                Expr::call("bouy_ref", "arguments_object", vec![Expr::var(args)]),
+            ));
+            self.frame.arguments = Some(arguments);
+        }
+        code.extend(self.params(params, args));
+        let saved = std::mem::take(&mut self.pre);
+        for symbol in vars.0 {
+            if !self.frame.env.contains_key(&symbol) {
+                self.declare_symbol(symbol, Expr::undefined());
+            }
+        }
+        code.extend(std::mem::replace(&mut self.pre, saved));
+        code
     }
 
     /// Binds the parameters from the argument list `args`.
@@ -189,12 +234,7 @@ impl<'a> Lowerer<'a, '_> {
             .id
             .as_ref()
             .map_or_else(String::new, |id| id.name.to_string());
-        let length = function
-            .params
-            .items
-            .iter()
-            .take_while(|param| param.initializer.is_none())
-            .count();
+        let length = length_of(&function.params);
         self.bind(Expr::call(
             "bouy_ref",
             "named_fn",
@@ -235,6 +275,15 @@ pub enum Callee {
 pub enum FnBody<'a> {
     Block(&'a FunctionBody<'a>),
     Expr(&'a Expression<'a>),
+}
+
+/// The `length` of a function: the parameters before the first default or rest.
+pub fn length_of(params: &FormalParameters<'_>) -> usize {
+    params
+        .items
+        .iter()
+        .take_while(|param| param.initializer.is_none())
+        .count()
 }
 
 pub fn kind_of(is_async: bool, generator: bool) -> Kind {

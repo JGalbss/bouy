@@ -208,8 +208,8 @@ call(V, _This, _Args) -> throw_error('TypeError', text([describe(V), <<" is not 
 
 %% [[Construct]] for a function whose slots hold construct => fun((NewTarget, Args) -> Object).
 -spec construct(value(), list(), value()) -> value().
-construct({'$f', Id, Fun} = F, Args, NewTarget) ->
-    case fn_record(Id) of
+construct({'$f', _, Fun} = F, Args, NewTarget) ->
+    case fn_record(F) of
         {function, _, _, _, _, #{construct := Construct}} ->
             Construct(NewTarget, Args);
         {function, _, _, _, _, #{kind := normal}} ->
@@ -258,11 +258,11 @@ get({'$f', Id, _} = F, K) ->
                 _ -> inherited(Proto, K, F)
             end;
         undefined ->
-            fn_default_get(Id, K, F)
+            fn_default_get(K, F)
     end.
 
-fn_default_get(Id, K, F) ->
-    case fn_record(Id) of
+fn_default_get(K, F) ->
+    case fn_record(F) of
         {_, Proto, Props, _, _, _} ->
             case Props of
                 #{K := V} -> resolve(V, F);
@@ -290,8 +290,8 @@ inherited({'$o', Id} = O, K, Receiver) ->
         undefined -> inherited_from(intrinsic_record(Id, O), K, Receiver);
         R -> inherited_from(R, K, Receiver)
     end;
-inherited({'$f', Id, _}, K, Receiver) ->
-    inherited_from(fn_record(Id), K, Receiver).
+inherited({'$f', _, _} = F, K, Receiver) ->
+    inherited_from(fn_record(F), K, Receiver).
 
 inherited_from({_, Proto, Props, _, _, _}, K, Receiver) ->
     case Props of
@@ -330,7 +330,7 @@ set({'$o', Id} = O, K, V) ->
             set(O, K, V)
     end;
 set({'$f', Id, _} = F, K, V) ->
-    R = fn_record(Id),
+    R = fn_record(F),
     {_, _, Props, _, _, _} = R,
     case Props of
         #{K := {'$accessor', _, Setter}} -> call_setter(Setter, F, K, V);
@@ -388,8 +388,8 @@ inherited_setter({'$o', Id} = O, K) ->
         undefined -> setter_in(intrinsic_record(Id, O), K);
         R -> setter_in(R, K)
     end;
-inherited_setter({'$f', Id, _}, K) ->
-    setter_in(fn_record(Id), K).
+inherited_setter({'$f', _, _} = F, K) ->
+    setter_in(fn_record(F), K).
 
 setter_in({_, Proto, Props, _, Attrs, _}, K) ->
     case Props of
@@ -583,19 +583,19 @@ record_of({'$o', Id} = O) ->
         undefined -> intrinsic_record(Id, O);
         R -> R
     end;
-record_of({'$f', Id, _}) ->
-    fn_record(Id).
+record_of({'$f', _, _} = F) ->
+    fn_record(F).
 
-fn_record(Id) ->
+fn_record({'$f', Id, _} = F) ->
     case erlang:get(Id) of
-        undefined when is_tuple(Id) -> static_function_record(Id);
+        undefined when is_tuple(Id) -> static_function_record(F);
         undefined -> {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}};
         R -> R
     end.
 
 %% A builtin function value is {'$f', {builtin, Name}, Fun}: the same term in
 %% every realm, so its identity holds, and it needs no allocation.
-static_function_record({builtin, Name} = Id) ->
+static_function_record({'$f', {builtin, Name} = Id, _}) ->
     case persistent_term:get({?MODULE, Id}, undefined) of
         undefined ->
             Short = lists:last(binary:split(Name, <<".">>, [global])),
@@ -603,9 +603,17 @@ static_function_record({builtin, Name} = Id) ->
         R ->
             R
     end;
-static_function_record({fn, _Module, Name}) ->
-    {function, ?FUNCTION_PROTO, #{<<"name">> => Name}, [<<"name">>], #{<<"name">> => ?CONFIGURABLE}, #{kind => normal}};
-static_function_record(_Id) ->
+%% A module-level function declaration is {'$f', {fn, Module, Name, Length}, Fun}.
+%% Each realm makes its record, with a new prototype object, on first use.
+static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
+    Proto = new_object(?OBJECT_PROTO),
+    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto},
+    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE, <<"prototype">> => ?WRITABLE},
+    Record = {function, ?FUNCTION_PROTO, Props, [<<"prototype">>, <<"name">>, <<"length">>], Attrs, #{kind => normal}},
+    erlang:put(Id, Record),
+    define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
+    Record;
+static_function_record(_F) ->
     {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}}.
 
 intrinsic_record(Id, _O) when is_atom(Id) ->
@@ -624,9 +632,9 @@ id_for_write({'$o', Id} = O) ->
         _ -> ok
     end,
     Id;
-id_for_write({'$f', Id, _}) ->
+id_for_write({'$f', Id, _} = F) ->
     case erlang:get(Id) of
-        undefined -> erlang:put(Id, fn_record(Id));
+        undefined -> erlang:put(Id, fn_record(F));
         _ -> ok
     end,
     Id.

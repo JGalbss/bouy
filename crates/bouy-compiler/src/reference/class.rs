@@ -7,7 +7,7 @@ use oxc::ast::ast::{
 };
 
 use super::context::{ClassFrame, Cont, Frame, Kind, Lowerer, Ret};
-use super::function::FnBody;
+use super::function::{FnBody, length_of};
 use crate::erlang::{Clause, Expr, Function};
 
 impl<'a> Lowerer<'a, '_> {
@@ -32,15 +32,7 @@ impl<'a> Lowerer<'a, '_> {
             }
             _ => None,
         });
-        let length = constructor.map_or(0, |method| {
-            method
-                .value
-                .params
-                .items
-                .iter()
-                .take_while(|param| param.initializer.is_none())
-                .count()
-        });
+        let length = constructor.map_or(0, |method| length_of(&method.value.params));
         let c = self.fresh("C");
         let proto = self.fresh("Proto");
         self.pre.push(Expr::matches(

@@ -80,7 +80,7 @@ impl<'a> Lowerer<'a, '_> {
             && !self.frame.env.contains_key(&symbol)
         {
             match self.tops.get(&symbol).cloned() {
-                Some(Top::Function(name)) if !call.optional => {
+                Some(Top::Function { name, .. }) if !call.optional => {
                     let args = self.args(&call.arguments);
                     return self.bind(Expr::local_call(&name, vec![Expr::undefined(), args]));
                 }

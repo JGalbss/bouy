@@ -68,6 +68,7 @@ tag(V) when ?IS_OBJECT(V) ->
                 function -> <<"Function">>;
                 error -> <<"Error">>;
                 date -> <<"Date">>;
+                arguments -> <<"Arguments">>;
                 _ -> <<"Object">>
             end
     end;

@@ -9,7 +9,7 @@ use oxc::ast_visit::Visit;
 
 use super::analyze;
 use super::context::{Cont, Frame, Lowerer, Top};
-use super::function::{Callee, FnBody, kind_of};
+use super::function::{Callee, FnBody, kind_of, length_of};
 use super::literal::literal;
 use crate::diagnostic::Code;
 use crate::erlang::{Clause, Expr, Function};
@@ -54,7 +54,13 @@ impl<'a> Lowerer<'a, '_> {
                         if let Some(id) = &function.id
                             && let Some(symbol) = id.symbol_id.get()
                         {
-                            self.tops.insert(symbol, Top::Function(id.name.to_string()));
+                            self.tops.insert(
+                                symbol,
+                                Top::Function {
+                                    name: id.name.to_string(),
+                                    length: length_of(&function.params),
+                                },
+                            );
                         }
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
@@ -74,7 +80,13 @@ impl<'a> Lowerer<'a, '_> {
                         && let Some(symbol) = id.symbol_id.get()
                         && function.body.is_some()
                     {
-                        self.tops.insert(symbol, Top::Function(id.name.to_string()));
+                        self.tops.insert(
+                            symbol,
+                            Top::Function {
+                                name: id.name.to_string(),
+                                length: length_of(&function.params),
+                            },
+                        );
                     }
                 }
                 Some(Declaration::ClassDeclaration(class)) => {
@@ -108,6 +120,11 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 _ => {}
             }
+        }
+        // A `var` in a block or a loop of the top-level code is a module variable too.
+        for symbol in top_level_vars(program) {
+            let name = self.semantic.scoping().symbol_name(symbol).to_owned();
+            self.tops.entry(symbol).or_insert(Top::Var(name));
         }
     }
 
@@ -157,6 +174,7 @@ impl<'a> Lowerer<'a, '_> {
                 },
             }
         }
+        self.nested_var_getters(program);
         functions.push(self.init(&body));
         functions.push(self.class_dispatch());
         functions.append(&mut self.extra);
@@ -266,7 +284,9 @@ impl<'a> Lowerer<'a, '_> {
                 let Some(symbol) = id.symbol_id.get() else {
                     continue;
                 };
-                if !matches!(self.tops.get(&symbol), Some(Top::Var(_))) {
+                if !matches!(self.tops.get(&symbol), Some(Top::Var(_)))
+                    || self.has_getter(id.name.as_str())
+                {
                     continue;
                 }
                 self.frame = Frame::default();
@@ -275,35 +295,57 @@ impl<'a> Lowerer<'a, '_> {
                     Some(init) => self.expr(init),
                     None => Expr::undefined(),
                 };
-                let mut init = std::mem::take(&mut self.pre);
-                let key = self.var_key(id.name.as_str());
-                init.push(Expr::matches(Expr::var("V"), value));
-                init.push(Expr::call(
-                    "erlang",
-                    "put",
-                    vec![key.clone(), Expr::tagged("v", Expr::var("V"))],
-                ));
-                init.push(Expr::var("V"));
-                self.extra.push(Function {
-                    name: format!("$get_{}", id.name),
-                    clauses: vec![Clause {
-                        patterns: vec![],
-                        guards: vec![],
-                        body: vec![Expr::case(
-                            Expr::call("erlang", "get", vec![key]),
-                            vec![
-                                Clause::new(
-                                    Expr::tagged("v", Expr::var("Found")),
-                                    vec![Expr::var("Found")],
-                                ),
-                                Clause::new(Expr::undefined(), init),
-                            ],
-                        )],
-                    }],
-                });
+                let init = std::mem::take(&mut self.pre);
+                self.var_getter(id.name.as_str(), init, value);
             }
         }
         self.frame = Frame::default();
+    }
+
+    /// `'$get_x'/0` for a `var` of a block or a loop of the top-level code: undefined
+    /// until its declaration runs.
+    fn nested_var_getters(&mut self, program: &'a Program<'a>) {
+        for symbol in top_level_vars(program) {
+            let name = self.semantic.scoping().symbol_name(symbol).to_owned();
+            if matches!(self.tops.get(&symbol), Some(Top::Var(_))) && !self.has_getter(&name) {
+                self.var_getter(&name, Vec::new(), Expr::undefined());
+            }
+        }
+    }
+
+    fn has_getter(&self, name: &str) -> bool {
+        let getter = format!("$get_{name}");
+        self.extra.iter().any(|function| function.name == getter)
+    }
+
+    /// `'$get_x'/0`: the value of the module variable in this realm, from `init` and
+    /// `value` on the first read in a realm whose top-level code did not set it.
+    fn var_getter(&mut self, name: &str, mut init: Vec<Expr>, value: Expr) {
+        let key = self.var_key(name);
+        init.push(Expr::matches(Expr::var("V"), value));
+        init.push(Expr::call(
+            "erlang",
+            "put",
+            vec![key.clone(), Expr::tagged("v", Expr::var("V"))],
+        ));
+        init.push(Expr::var("V"));
+        self.extra.push(Function {
+            name: format!("$get_{name}"),
+            clauses: vec![Clause {
+                patterns: vec![],
+                guards: vec![],
+                body: vec![Expr::case(
+                    Expr::call("erlang", "get", vec![key]),
+                    vec![
+                        Clause::new(
+                            Expr::tagged("v", Expr::var("Found")),
+                            vec![Expr::var("Found")],
+                        ),
+                        Clause::new(Expr::undefined(), init),
+                    ],
+                )],
+            }],
+        });
     }
 
     /// A module-level function declaration: `'name'(This, Args)`.
@@ -336,13 +378,14 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The value of a module-level function used as a value: the same term in every realm.
-    pub fn static_function(&self, name: &str) -> Expr {
+    pub fn static_function(&self, name: &str, length: usize) -> Expr {
         Expr::Tuple(vec![
             Expr::atom("$f"),
             Expr::Tuple(vec![
                 Expr::atom("fn"),
                 Expr::atom(self.module.clone()),
                 Expr::js_string(name),
+                Expr::Integer(i64::try_from(length).unwrap_or(0)),
             ]),
             Expr::FunRef {
                 module: Some(self.module.clone()),
@@ -351,4 +394,13 @@ impl<'a> Lowerer<'a, '_> {
             },
         ])
     }
+}
+
+/// The `var` names of the top-level code, outside functions.
+fn top_level_vars(program: &Program<'_>) -> Vec<oxc::semantic::SymbolId> {
+    let mut vars = analyze::VarDeclarations::default();
+    for statement in &program.body {
+        vars.visit_statement(statement);
+    }
+    vars.0
 }

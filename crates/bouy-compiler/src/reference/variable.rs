@@ -16,6 +16,9 @@ impl<'a> Lowerer<'a, '_> {
                 "undefined" => Expr::undefined(),
                 "NaN" => Expr::atom("NaN"),
                 "Infinity" => Expr::atom("Infinity"),
+                "arguments" if self.frame.arguments.is_some() => {
+                    Expr::var(self.frame.arguments.clone().unwrap_or_default())
+                }
                 name => self.bind(Expr::call(
                     "bouy_ref",
                     "global",
@@ -33,7 +36,7 @@ impl<'a> Lowerer<'a, '_> {
             };
         }
         match self.tops.get(&symbol).cloned() {
-            Some(Top::Function(name)) => self.static_function(&name),
+            Some(Top::Function { name, length }) => self.static_function(&name, length),
             Some(Top::Class(name)) => {
                 self.bind(Expr::local_call("$class", vec![Expr::binary(name)]))
             }
@@ -92,6 +95,19 @@ impl<'a> Lowerer<'a, '_> {
             _ => {}
         }
         if self.analysis.cells.contains(&symbol) {
+            // A `var` declaration after the start of the function writes the cell that
+            // the start of the function made, which closures may hold.
+            if let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
+                && self
+                    .semantic
+                    .scoping()
+                    .symbol_flags(symbol)
+                    .is_function_scoped_declaration()
+            {
+                let value = self.bind(value);
+                self.pre.push(cell_set(&cell, value));
+                return;
+            }
             let cell = self.fresh("Cell");
             self.pre.push(Expr::matches(
                 Expr::var(cell.clone()),

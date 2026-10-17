@@ -6,8 +6,8 @@ use std::collections::HashSet;
 use oxc::ast::AstKind;
 use oxc::ast::ast::{
     ArrowFunctionExpression, AwaitExpression, Class, ForOfStatement, ForStatement,
-    ForStatementInit, Function, IdentifierReference, Program, Statement, VariableDeclarationKind,
-    YieldExpression,
+    ForStatementInit, Function, IdentifierReference, Program, Statement, VariableDeclaration,
+    VariableDeclarationKind, YieldExpression,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{NodeId, ScopeFlags, ScopeId, Scoping, Semantic, SymbolId};
@@ -190,7 +190,48 @@ impl<'a> Visit<'a> for Suspends {
     }
 }
 
-/// The variables, declared outside `span`, that the code assigns.
+/// The `var` declarations of a function body or a program, outside nested functions and
+/// classes: the names that exist from the start of the function.
+#[derive(Default)]
+pub struct VarDeclarations(pub Vec<SymbolId>);
+
+impl<'a> Visit<'a> for VarDeclarations {
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        if it.kind == VariableDeclarationKind::Var {
+            for declarator in &it.declarations {
+                for id in declarator.id.get_binding_identifiers() {
+                    if let Some(symbol) = id.symbol_id.get()
+                        && !self.0.contains(&symbol)
+                    {
+                        self.0.push(symbol);
+                    }
+                }
+            }
+        }
+        walk::walk_variable_declaration(self, it);
+    }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+    fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// Whether a function reads its `arguments` object: in its own code or in an arrow
+/// function inside it, which shares it.
+#[derive(Default)]
+pub struct UsesArguments(pub bool);
+
+impl<'a> Visit<'a> for UsesArguments {
+    fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+        if it.name == "arguments" {
+            self.0 = true;
+        }
+    }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// The variables, declared outside `span` or by a `var`, which exists from the start of its
+/// function, that the code assigns.
 pub struct Assigned<'s> {
     pub scoping: &'s Scoping,
     pub span: Span,
@@ -205,11 +246,30 @@ impl<'a> Visit<'a> for Assigned<'_> {
         let reference = self.scoping.get_reference(reference);
         if reference.is_write()
             && let Some(symbol) = reference.symbol_id()
-            && !contains(self.span, self.scoping.symbol_span(symbol))
+            && (!contains(self.span, self.scoping.symbol_span(symbol))
+                || self
+                    .scoping
+                    .symbol_flags(symbol)
+                    .is_function_scoped_declaration())
             && !self.found.contains(&symbol)
         {
             self.found.push(symbol);
         }
+    }
+    /// A `var` declaration writes a name that the code after the statement can read.
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        if it.kind == VariableDeclarationKind::Var {
+            for declarator in &it.declarations {
+                for id in declarator.id.get_binding_identifiers() {
+                    if let Some(symbol) = id.symbol_id.get()
+                        && !self.found.contains(&symbol)
+                    {
+                        self.found.push(symbol);
+                    }
+                }
+            }
+        }
+        walk::walk_variable_declaration(self, it);
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}

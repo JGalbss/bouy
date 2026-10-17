@@ -9,7 +9,7 @@
 -export([init_realm/0, global/1, caught/2, report_uncaught/1, type_error/1]).
 -export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
 -export([call/3, call_method/3, call_method_computed/3, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
--export([fn/1, named_fn/3, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
+-export([arguments_object/1, throw_type_error/2, fn/1, named_fn/3, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
 -export([array/1, array_spread/1, object_spread/2, object_rest/2, template/1]).
 -export([add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1, plus/1]).
@@ -184,6 +184,24 @@ lookup(O, K, Receiver) ->
 super_call(Home, K, This, Args) -> invoke(super_get(Home, K, This), This, K, Args).
 
 %%% Functions and classes
+
+%% The unmapped arguments object of a function call, as in strict code: the
+%% arguments by index, length, the array iterator, and a callee that throws.
+-spec arguments_object(list()) -> term().
+arguments_object(Args) ->
+    O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
+    [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
+    bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, <<"values">>),
+                                          writable => true, enumerable => false, configurable => true}),
+    Thrower = bouy_ref_realm:builtin(<<"ThrowTypeError">>, fun ?MODULE:throw_type_error/2),
+    bouy_heap:define(O, <<"callee">>, #{get => Thrower, set => Thrower, enumerable => false, configurable => false}),
+    O.
+
+%% %ThrowTypeError%: the accessor of callee on an arguments object.
+-spec throw_type_error(term(), list()) -> no_return().
+throw_type_error(_This, _Args) ->
+    type_error(<<"'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them">>).
 
 %% An arrow function or a method: no record until something needs one.
 -spec fn(fun((term(), list()) -> term())) -> term().

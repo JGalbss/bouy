@@ -346,6 +346,7 @@ impl<'a> Lowerer<'a, '_> {
                 if let Expression::Identifier(ident) = &unary.argument
                     && self.symbol_of(ident.reference_id.get()).is_none()
                     && !matches!(ident.name.as_str(), "undefined" | "NaN" | "Infinity")
+                    && !(ident.name == "arguments" && self.frame.arguments.is_some())
                 {
                     let name = Expr::js_string(ident.name.as_str());
                     return self.bind(Expr::call("bouy_ref", "typeof_global", vec![name]));

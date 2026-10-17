@@ -40,7 +40,13 @@ array_methods() ->
      <<"fill">>, <<"at">>, <<"flat">>, <<"flatMap">>, <<"keys">>, <<"values">>, <<"entries">>, <<"toString">>,
      <<"toSorted">>, <<"toReversed">>].
 
-items(A) -> bouy_heap:array_items(A).
+%% The items of an array, or of an array-like object by its length, as the
+%% methods that only read take them.
+items(A) ->
+    case is_array(A) of
+        true -> bouy_heap:array_items(A);
+        false -> [bouy_ref:get(A, I) || I <- lists:seq(0, max(0, int(bouy_ref:get(A, <<"length">>))) - 1)]
+    end.
 
 array_proto(<<"push">>, A, Items) -> bouy_heap:array_push(A, Items);
 array_proto(<<"pop">>, A, _) ->

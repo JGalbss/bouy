@@ -16,8 +16,8 @@ use crate::erlang::{Clause, Expr, Function};
 /// What a module-level name refers to.
 #[derive(Debug, Clone)]
 pub enum Top {
-    /// A function declaration: the Erlang function `'name'/2`.
-    Function(String),
+    /// A function declaration: the Erlang function `'name'/2`, and its `length`.
+    Function { name: String, length: usize },
     /// A class: created once per realm by `'$class'/1`.
     Class(String),
     /// A `const` or `let`: one per realm, in the process dictionary.
@@ -152,6 +152,8 @@ pub struct Frame<'a> {
     pub class: Option<ClassFrame>,
     /// Labels for the next loop, from labeled statements.
     pub labels: Vec<String>,
+    /// The Erlang variable of the `arguments` object of the nearest non-arrow function.
+    pub arguments: Option<String>,
 }
 
 pub struct Lowerer<'a, 'c> {

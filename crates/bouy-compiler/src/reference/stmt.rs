@@ -11,6 +11,7 @@ use super::analyze::{Assigned, completes_normally};
 use super::context::{
     Cont, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
 };
+use super::function::length_of;
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -107,12 +108,7 @@ impl<'a> Lowerer<'a, '_> {
                 .id
                 .as_ref()
                 .map_or_else(String::new, |id| id.name.to_string());
-            let length = function
-                .params
-                .items
-                .iter()
-                .take_while(|p| p.initializer.is_none())
-                .count();
+            let length = length_of(&function.params);
             let value = self.bind(Expr::call(
                 "bouy_ref",
                 "named_fn",
@@ -171,6 +167,11 @@ impl<'a> Lowerer<'a, '_> {
             return;
         }
         for declarator in &declaration.declarations {
+            // A `var` exists from the start of its function, so a declaration without an
+            // initializer does nothing.
+            if declaration.kind.is_var() && declarator.init.is_none() {
+                continue;
+            }
             let value = match &declarator.init {
                 Some(init) => self.expr(init),
                 None => Expr::undefined(),
