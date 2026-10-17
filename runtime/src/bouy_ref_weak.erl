@@ -44,7 +44,7 @@ constructor(Name) -> bouy_ref_realm:constructor(?MODULE, Name).
 call_constructor(Name, _This, _Args) -> type_error(<<"Constructor ", Name/binary, " requires 'new'">>).
 
 weak_map(NewTarget, Args) ->
-    M = bouy_heap:new_exotic(weakmap, proto_of(NewTarget, 'WeakMap.prototype'), #{}),
+    M = bouy_heap:new_exotic(weakmap, bouy_ref_realm:proto_for(NewTarget, 'WeakMap.prototype'), #{}),
     fill(M, arg(1, Args), <<"set">>, fun(Adder, Entry) ->
                                              ?IS_OBJECT(Entry) orelse type_error(<<"Iterator value is not an entry object">>),
                                              K = bouy_ref:get(Entry, 0),
@@ -53,7 +53,7 @@ weak_map(NewTarget, Args) ->
                                      end).
 
 weak_set(NewTarget, Args) ->
-    S = bouy_heap:new_exotic(weakset, proto_of(NewTarget, 'WeakSet.prototype'), #{}),
+    S = bouy_heap:new_exotic(weakset, bouy_ref_realm:proto_for(NewTarget, 'WeakSet.prototype'), #{}),
     fill(S, arg(1, Args), <<"add">>, fun(Adder, Value) -> bouy_ref:call(Adder, S, [Value]) end).
 
 %% AddEntriesFromIterable: the adder of the new collection runs for each
@@ -98,20 +98,12 @@ close(_State) ->
 weak_ref(NewTarget, Args) ->
     Target = arg(1, Args),
     can_be_held_weakly(Target) orelse type_error(<<"WeakRef: invalid target">>),
-    bouy_heap:new_exotic(weak_ref, proto_of(NewTarget, 'WeakRef.prototype'), Target).
+    bouy_heap:new_exotic(weak_ref, bouy_ref_realm:proto_for(NewTarget, 'WeakRef.prototype'), Target).
 
 registry(NewTarget, Args) ->
     Cleanup = arg(1, Args),
     bouy_heap:is_callable(Cleanup) orelse type_error(<<"FinalizationRegistry: cleanup must be callable">>),
-    bouy_heap:new_exotic(finalization_registry, proto_of(NewTarget, 'FinalizationRegistry.prototype'), {Cleanup, []}).
-
-%% GetPrototypeFromConstructor.
-proto_of({'$f', {builtin, _}, _}, Default) -> {'$o', Default};
-proto_of(NewTarget, Default) ->
-    case bouy_ref:get(NewTarget, <<"prototype">>) of
-        P when ?IS_OBJECT(P) -> P;
-        _ -> {'$o', Default}
-    end.
+    bouy_heap:new_exotic(finalization_registry, bouy_ref_realm:proto_for(NewTarget, 'FinalizationRegistry.prototype'), {Cleanup, []}).
 
 %% CanBeHeldWeakly: an object, or a symbol that Symbol.for did not make.
 -spec can_be_held_weakly(term()) -> boolean().
