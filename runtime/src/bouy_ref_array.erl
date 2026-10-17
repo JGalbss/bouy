@@ -158,13 +158,14 @@ species(O, Len) ->
         true ->
             C = case bouy_ref:get(O, <<"constructor">>) of
                 C0 when ?IS_OBJECT(C0) ->
-                    case bouy_ref:get(C0, ?SYM(species)) of
+                    case foreign_array(C0) orelse bouy_ref:get(C0, ?SYM(species)) of
+                        true -> undefined;
                         null -> undefined;
                         S -> S
                     end;
                 C0 -> C0
             end,
-            Array = constructor(),
+            Array = bouy_ref_realm:current(constructor()),
             case C of
                 undefined -> {fresh, array_create(Len)};
                 Array -> {fresh, array_create(Len)};
@@ -172,6 +173,20 @@ species(O, Len) ->
                     is_constructor(C) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
                     {object, bouy_ref:construct(C, [Len])}
             end
+    end.
+
+%% Whether C is %Array% of a realm other than the current one, which
+%% ArraySpeciesCreate replaces with the current realm's.
+foreign_array(C) ->
+    case C =:= constructor() of
+        true ->
+            bouy_heap:realm() =/= 0;
+        false ->
+            bouy_heap:is_constructor(C) andalso
+                begin
+                    Realm = bouy_ref_realm:function_realm(C),
+                    Realm =/= bouy_heap:realm() andalso Realm =/= 0 andalso C =:= bouy_ref_realm:localize(Realm, constructor())
+                end
     end.
 
 %% Writes the elements of a fresh array at once.
@@ -242,16 +257,7 @@ create_property({'$o', Id} = A, K, V) when is_integer(Id), is_integer(K), K =< 4
 create_property(A, K, V) -> create_slow(A, K, V).
 
 create_slow(A, K, V) ->
-    Key = key(K),
-    case bouy_heap:get_own(A, Key) of
-        {data, _, Bits} when Bits band 4 =:= 0 -> cannot_define(Key);
-        {accessor, _, _, Bits} when Bits band 4 =:= 0 -> cannot_define(Key);
-        _ -> ok
-    end,
-    bouy_heap:define(A, Key, #{value => V, writable => true, enumerable => true, configurable => true}).
-
--spec cannot_define(term()) -> no_return().
-cannot_define(K) -> type_error(bouy_ref_string:concat([<<"Cannot redefine property: ">>, bouy_ref:to_string(bouy_heap:key_to_value(K))])).
+    bouy_heap:define(A, key(K), #{value => V, writable => true, enumerable => true, configurable => true}).
 
 %% Calls F with each index from From up to To, or down to To: a loop, so a
 %% length near 2^53 costs nothing until F runs.

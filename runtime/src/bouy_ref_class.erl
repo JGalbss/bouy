@@ -14,7 +14,7 @@
 -export([create/4, set_construct/2, method/4, method/5, function_name/2, define_field/3, define_method/4]).
 -export([base_return/2, initialized/2, set_module/3]).
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
--export([super_get/3, super_set/4]).
+-export([super_get/3, super_set/4, sloppy_super_set/4]).
 -export([private_name/1, private_names/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
 
 -define(UNINITIALIZED, '$uninitialized').
@@ -48,7 +48,12 @@ create(Name, Parent, Length, Source) ->
 %% The [[Construct]] of the class C: fun((NewTarget, Args) -> This).
 -spec set_construct(term(), fun((term(), list()) -> term())) -> ok.
 set_construct(C, Construct) ->
-    bouy_heap:set_slots(C, (bouy_heap:slots(C))#{construct => Construct}).
+    Slots = bouy_heap:slots(C),
+    Construct1 = case Slots of
+        #{realm := N} -> bouy_ref_realm:realm_fun(N, Construct);
+        _ -> Construct
+    end,
+    bouy_heap:set_slots(C, Slots#{construct => Construct1}).
 
 is_constructor({'$f', _, _} = F) ->
     case bouy_heap:slots(F) of
@@ -220,38 +225,25 @@ lookup(O, K, Receiver) ->
         none -> lookup(bouy_heap:prototype_of(O), K, Receiver)
     end.
 
-%% super.k = V: [[Set]] on Base with this as receiver.
+%% super.k = V: [[Set]] on Base with this as receiver. Strict code throws
+%% when [[Set]] returns false, and sloppy code ignores it.
 -spec super_set(term(), term(), term(), term()) -> term().
 super_set(null, K, _V, _This) ->
-    bouy_ref:type_error(<<"Cannot set properties of null (setting '", (key_text(K))/binary, "')">>);
+    null_super_base(K);
 super_set(Base, K, V, This) ->
-    case find_setter(Base, K) of
-        {setter, undefined} -> bouy_ref:type_error(<<"Cannot set property ", (key_text(K))/binary, " which has only a getter">>);
-        {setter, S} -> bouy_ref:call(S, This, [V]);
-        read_only -> bouy_ref:type_error(<<"Cannot assign to read only property '", (key_text(K))/binary, "'">>);
-        data -> receiver_set(This, K, V)
-    end,
+    bouy_heap:set(Base, K, V, This) orelse bouy_heap:set_failed(This, K),
     V.
 
-find_setter(null, _K) -> data;
-find_setter(O, K) ->
-    case bouy_heap:get_own(O, K) of
-        {data, _, Bits} when Bits band 1 =:= 0 -> read_only;
-        {data, _, _} -> data;
-        {accessor, _, S, _} -> {setter, S};
-        none -> find_setter(bouy_heap:prototype_of(O), K)
-    end.
+-spec sloppy_super_set(term(), term(), term(), term()) -> term().
+sloppy_super_set(null, K, _V, _This) ->
+    null_super_base(K);
+sloppy_super_set(Base, K, V, This) ->
+    _ = bouy_heap:set(Base, K, V, This),
+    V.
 
-%% The last steps of OrdinarySet: the receiver gets an own data property.
-receiver_set(This, K, V) when ?IS_OBJECT(This) ->
-    case bouy_heap:get_own(This, K) of
-        {accessor, _, _, _} -> bouy_ref:type_error(<<"Cannot redefine property: ", (key_text(K))/binary>>);
-        {data, _, Bits} when Bits band 1 =:= 0 -> bouy_ref:type_error(<<"Cannot assign to read only property '", (key_text(K))/binary, "'">>);
-        {data, _, _} -> bouy_heap:define(This, K, #{value => V});
-        none -> define_field(This, K, V)
-    end;
-receiver_set(_This, K, _V) ->
-    bouy_ref:type_error(<<"Cannot create property '", (key_text(K))/binary, "' on a primitive">>).
+-spec null_super_base(term()) -> no_return().
+null_super_base(K) ->
+    bouy_ref:type_error(<<"Cannot set properties of null (setting '", (key_text(K))/binary, "')">>).
 
 key_text(K) ->
     case function_name(K, <<>>) of

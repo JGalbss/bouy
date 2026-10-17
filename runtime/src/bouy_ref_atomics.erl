@@ -3,15 +3,21 @@
 %% holds the element, so it is atomic even when actors share the memory of
 %% a SharedArrayBuffer.
 %%
-%% shortcut: Atomics.wait only checks the value and sleeps for its timeout,
-%% and Atomics.notify wakes nobody and returns 0, because no other agent
-%% can wait on the memory yet; a waiter registry per buffer would complete
-%% them.
+%% Atomics.wait, waitAsync, and notify use the waiter lists of
+%% bouy_ref_waiters. A sync wait blocks the realm process in a receive. An
+%% async wait keeps its promise under '$bouy_async_waiters' until the realm
+%% loop hands over its wake message or the end of its timeout
+%% (async_event/1). As in Node, a pending async wait does not keep the
+%% realm alive, so its timeout is a plain BEAM timer and not a realm timer.
 -module(bouy_ref_atomics).
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4]).
+-export([intrinsics/0, globals/0, method/4, async_event/1]).
+
+-define(ASYNC_WAITERS, '$bouy_async_waiters').
+%% The longest timeout that a receive and a BEAM timer take here, in ms; a longer one waits forever.
+-define(MAX_TIMEOUT, 2147483647).
 
 -import(bouy_ref_realm, [arg/2, record/4]).
 
@@ -73,13 +79,21 @@ method(<<"Atomics">>, Op, _This, Args) when Op =:= <<"add">>; Op =:= <<"sub">>; 
     revalidate(TA, I),
     modify(TA, I, fun(Old) -> operate(Op, Old, V) end);
 method(<<"Atomics">>, <<"notify">>, _This, Args) ->
-    {TA, _} = validate(arg(1, Args), true),
-    _ = access(TA, arg(2, Args)),
-    case arg(3, Args) of
-        undefined -> ok;
-        C -> bouy_ref_number:to_integer_or_infinity(bouy_ref:to_number(C))
+    {TA, {_, Buffer, _, _}} = validate(arg(1, Args), true),
+    I = access(TA, arg(2, Args)),
+    Count = case arg(3, Args) of
+        undefined -> infinity;
+        C ->
+            case bouy_ref_number:to_integer_or_infinity(bouy_ref:to_number(C)) of
+                'Infinity' -> infinity;
+                N when is_integer(N) -> max(N, 0);
+                _ -> 0
+            end
     end,
-    0;
+    case bouy_heap:class_of(Buffer) of
+        shared_array_buffer -> bouy_ref_waiters:notify(cell(TA, I), Count);
+        _ -> 0
+    end;
 method(<<"Atomics">>, Name, _This, Args) when Name =:= <<"wait">>; Name =:= <<"waitAsync">> ->
     {TA, {Kind, Buffer, _, _}} = validate(arg(1, Args), true),
     bouy_heap:class_of(Buffer) =:= shared_array_buffer orelse bouy_ref:type_error(<<"Atomics.wait requires a shared typed array">>),
@@ -94,30 +108,88 @@ method(<<"Atomics">>, Name, _This, Args) when Name =:= <<"wait">>; Name =:= <<"w
         '-Infinity' -> 0;
         Q -> max(0, Q)
     end,
-    Current = value_at(TA, I),
-    Equal = case {Current, V} of
-        {{'$bigint', A}, {'$bigint', B}} -> A =:= bouy_ref_bigint:as_int_n(64, B);
-        _ -> Current == V
-    end,
-    case {Name, Equal} of
-        {<<"wait">>, false} -> <<"not-equal">>;
-        {<<"wait">>, true} when Timeout =:= infinity -> bouy_ref:type_error(<<"Atomics.wait would block forever: no agent can notify it">>);
-        {<<"wait">>, true} ->
-            timer:sleep(trunc(Timeout)),
-            <<"timed-out">>;
-        {_, false} -> async_result(false, <<"not-equal">>);
-        {_, true} when Timeout =:= 0 -> async_result(false, <<"timed-out">>);
-        {_, true} ->
-            %% The promise settles with "timed-out" when the timeout ends.
+    Expected = bouy_ref_buffer:encode(Kind, V),
+    do_wait(Name, cell(TA, I), Expected, Timeout).
+
+%% DoWait after the conversions: Timeout is infinity or a number of ms.
+do_wait(<<"wait">>, Cell, Expected, Timeout) ->
+    Tag = make_ref(),
+    case bouy_ref_waiters:wait(Cell, Expected, Tag) of
+        not_equal -> <<"not-equal">>;
+        waiting ->
+            receive
+                {'$bouy_atomics_wake', Tag} -> <<"ok">>
+            after receive_timeout(Timeout) ->
+                case bouy_ref_waiters:cancel(Cell, Tag) of
+                    removed -> <<"timed-out">>;
+                    gone -> receive {'$bouy_atomics_wake', Tag} -> <<"ok">> end
+                end
+            end
+    end;
+do_wait(<<"waitAsync">>, Cell, Expected, Timeout) when Timeout == 0 ->
+    %% An async wait without time to wait adds no waiter.
+    case bouy_ref_waiters:holds(Cell, Expected) of
+        true -> async_result(false, <<"timed-out">>);
+        false -> async_result(false, <<"not-equal">>)
+    end;
+do_wait(<<"waitAsync">>, Cell, Expected, Timeout) ->
+    Tag = make_ref(),
+    case bouy_ref_waiters:wait(Cell, Expected, Tag) of
+        not_equal ->
+            async_result(false, <<"not-equal">>);
+        waiting ->
             {P, Resolve, _} = bouy_jobs:capability(),
-            case Timeout of
-                infinity -> ok;
-                _ ->
-                    Settle = bouy_ref_realm:builtin(<<"Atomics.waitAsync timeout">>, fun(_, _) -> Resolve(<<"timed-out">>) end),
-                    bouy_jobs:set_timer(Settle, Timeout, [], false)
+            _ = case receive_timeout(Timeout) of
+                infinity -> none;
+                Ms -> erlang:send_after(Ms, self(), {'$bouy_atomics_timeout', Tag})
             end,
+            erlang:put(?ASYNC_WAITERS, (async_waiters())#{Tag => {Cell, Resolve}}),
             async_result(true, P)
     end.
+
+%% An event of an async wait, which the realm loop hands over: the wake
+%% message of a notify, or the end of the timeout. The promise settles in a
+%% job of its own.
+-spec async_event({'$bouy_atomics_wake' | '$bouy_atomics_timeout', reference()}) -> ok.
+async_event({'$bouy_atomics_wake', Tag}) ->
+    settle(Tag, <<"ok">>);
+async_event({'$bouy_atomics_timeout', Tag}) ->
+    case async_waiters() of
+        #{Tag := {Cell, _}} ->
+            %% A notify that came first sent a wake message, which settles the promise.
+            case bouy_ref_waiters:cancel(Cell, Tag) of
+                removed -> settle(Tag, <<"timed-out">>);
+                gone -> ok
+            end;
+        _ ->
+            ok
+    end.
+
+settle(Tag, Result) ->
+    case maps:take(Tag, async_waiters()) of
+        {{_, Resolve}, Rest} ->
+            erlang:put(?ASYNC_WAITERS, Rest),
+            bouy_jobs:run_job(fun() -> Resolve(Result) end);
+        error ->
+            ok
+    end.
+
+async_waiters() ->
+    case erlang:get(?ASYNC_WAITERS) of
+        undefined -> #{};
+        Waiters -> Waiters
+    end.
+
+receive_timeout(infinity) -> infinity;
+receive_timeout(Ms) when Ms > ?MAX_TIMEOUT -> infinity;
+receive_timeout(Ms) -> ceil(Ms).
+
+%% The element at index I of a shared typed array, for the waiter lists.
+cell(TA, I) ->
+    {Kind, Buffer, Offset, _} = bouy_heap:slots(TA),
+    {Ref, _, _} = bouy_heap:slots(Buffer),
+    Size = bouy_ref_buffer:element_size(Kind),
+    {Ref, Offset + I * Size, Size}.
 
 async_result(Async, Value) -> bouy_heap:object(?OBJECT_PROTO, [{<<"async">>, Async}, {<<"value">>, Value}]).
 

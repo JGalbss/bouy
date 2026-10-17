@@ -28,3 +28,15 @@ for (const name of ["x", "y"]) {
 }
 handlers.x();
 console.log(handlers.x(), handlers.y());
+
+// The first per-iteration copy comes before the first test: a closure of the initializer
+// keeps the initial value, and a closure of the test sees its own iteration.
+const fromInit: (() => number)[] = [];
+const fromTest: (() => number)[] = [];
+for (let i = 0, first = () => i; fromTest.push(() => i), i < 3; i++) {
+  fromInit.push(first);
+}
+console.log(
+  fromInit.map((f) => f()),
+  fromTest.map((f) => f()),
+);

@@ -5,7 +5,9 @@
 %% can reach them. Values:
 %%
 %%   {'$o', Id}           an object. Id is a positive integer, or an atom for
-%%                        an intrinsic such as 'Object.prototype'.
+%%                        an intrinsic such as 'Object.prototype', or {N, Atom}
+%%                        for that intrinsic of the realm N > 0 of the process
+%%                        (bouy_ref_realm:create/0).
 %%   {'$f', Id, Fun}      a function. Fun is fun((This, Args) -> Result). A
 %%                        function gets a record only when it needs one, so
 %%                        an arrow function costs one id and no record.
@@ -47,10 +49,10 @@
 -export([cell/1, cell_get/1, cell_set/2]).
 -export([symbol/1, symbol_for/1, well_known/1]).
 -export([to_key/1, key_to_value/1]).
--export([install_intrinsic/2, intrinsic/1, throw_error/2, error_object/3]).
+-export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
 -export([clone_out/1, clone_in/1]).
--export([private_find/2, private_put/3]).
+-export([private_find/2, private_put/3, set_failed/2]).
 
 -export_type([value/0, key/0, property/0]).
 
@@ -141,7 +143,7 @@ literal(Proto, Props, Keys) ->
     {'$o', Id}.
 
 -spec new_array([value()]) -> value().
-new_array(Items) -> new_array(Items, ?ARRAY_PROTO).
+new_array(Items) -> new_array(Items, intrinsic('Array.prototype')).
 
 -spec new_array([value()], value()) -> value().
 new_array(Items, Proto) ->
@@ -267,8 +269,12 @@ function(Fun, Name, Length, Slots) ->
     Id = next_id(),
     Props = #{<<"length">> => Length, <<"name">> => Name},
     Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
-    erlang:put(Id, {function, ?FUNCTION_PROTO, Props, [<<"name">>, <<"length">>], Attrs, Slots}),
-    {'$f', Id, Fun}.
+    {Fun1, Slots1} = case erlang:get(?REALM_KEY) of
+        undefined -> {Fun, Slots};
+        N -> {bouy_ref_realm:realm_fun(N, Fun), Slots#{realm => N}}
+    end,
+    erlang:put(Id, {function, function_prototype(), Props, [<<"name">>, <<"length">>], Attrs, Slots1}),
+    {'$f', Id, Fun1}.
 
 -spec call(value(), value(), list()) -> value().
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
@@ -313,11 +319,7 @@ is_constructor({'$f', _, _} = F) ->
 is_constructor(_) ->
     false.
 
-prototype_for(NewTarget) ->
-    case get(NewTarget, <<"prototype">>) of
-        Proto when ?is_obj(Proto) -> Proto;
-        _ -> ?OBJECT_PROTO
-    end.
+prototype_for(NewTarget) -> bouy_ref_realm:proto_for(NewTarget, 'Object.prototype').
 
 %%% Properties
 %%
@@ -514,12 +516,14 @@ call_setter(Setter, O, _K, V, _Mode) ->
     V.
 
 %% What the prototype chain says about a write of a new own key K: none, a
-%% setter, read_only, or slow when a proxy or an array length is in the way.
+%% setter, read_only, or slow when a proxy, a typed array, or an array length
+%% is in the way.
 inherited_setter(null, _K) ->
     none;
 inherited_setter(P, K) ->
     case record_of(P) of
         {proxy, _, _, _, _, _} -> slow;
+        {typed_array, _, _, _, _, _} -> slow;
         {array, _, _, _, _, _} when K =:= <<"length">> -> slow;
         {array, Proto, _, _, Attrs, {_, Elements}} when is_integer(K) -> setter_from(maps:find(K, Elements), K, Attrs, Proto);
         {arguments, _, _, _, _, Map} when is_map_key(K, Map) -> slow;
@@ -838,8 +842,8 @@ define_own_property(O, K, Desc) ->
             end;
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:define_own_property(Handler, K, Desc);
-        {array, _, _, _, _, _} = R when K =:= <<"length">> ->
-            array_set_length(O, R, Desc);
+        {array, _, _, _, _, _} when K =:= <<"length">> ->
+            array_set_length(O, Desc);
         {array, _, _, _, Attrs, {Length, _}} = R when is_integer(K), K >= Length ->
             case length_bits(Attrs) band ?WRITABLE of
                 0 -> false;
@@ -948,21 +952,21 @@ bits_into(K, Bits, _Default, Attrs) -> Attrs#{K => Bits}.
 length_bits(#{'$frozen' := true}) -> 0;
 length_bits(Attrs) -> maps:get(<<"length">>, Attrs, ?WRITABLE).
 
-%% ArraySetLength (§10.4.2.4).
-array_set_length(O, {array, _, _, _, Attrs, {OldLength, _}}, Desc) ->
+%% ArraySetLength (§10.4.2.4). The coercion of the value runs user code, so
+%% the current length property is read after it.
+array_set_length(O, #{value := Value} = Desc) ->
+    NewLength = bouy_ref_number:to_uint32(bouy_ref:to_number(Value)),
+    NewLength == bouy_ref:to_number(Value) orelse throw_error('RangeError', <<"Invalid array length">>),
+    Desc1 = Desc#{value := NewLength},
+    {array, _, _, _, Attrs, {OldLength, _}} = record_of(O),
     Current = {data, OldLength, length_bits(Attrs)},
-    case Desc of
-        #{value := Value} ->
-            NewLength = bouy_ref_number:to_uint32(bouy_ref:to_number(Value)),
-            NewLength == bouy_ref:to_number(Value) orelse throw_error('RangeError', <<"Invalid array length">>),
-            Desc1 = Desc#{value := NewLength},
-            case NewLength >= OldLength of
-                true -> validate_and_apply(O, <<"length">>, true, Desc1, Current);
-                false -> shrink(O, NewLength, Desc1, Current)
-            end;
-        _ ->
-            validate_and_apply(O, <<"length">>, true, Desc, Current)
-    end.
+    case NewLength >= OldLength of
+        true -> validate_and_apply(O, <<"length">>, true, Desc1, Current);
+        false -> shrink(O, NewLength, Desc1, Current)
+    end;
+array_set_length(O, Desc) ->
+    {array, _, _, _, Attrs, {OldLength, _}} = record_of(O),
+    validate_and_apply(O, <<"length">>, true, Desc, {data, OldLength, length_bits(Attrs)}).
 
 %% Deletes the elements from the end down to NewLength, and stops at one that
 %% is not configurable.
@@ -1093,14 +1097,17 @@ set_prototype(O, Proto) ->
             bouy_ref_proxy:set_prototype_of(Handler, Proto);
         {_, Proto, _, _, _, _} ->
             true;
-        _ when O =:= ?OBJECT_PROTO ->
-            false;
         {_, _, _, _, Attrs, _} ->
-            case extensible(Attrs) andalso not in_chain(Proto, O) of
+            case not immutable_prototype(O) andalso extensible(Attrs) andalso not in_chain(Proto, O) of
                 true -> _ = set_prototype_of(O, Proto), true;
                 false -> false
             end
     end.
+
+%% Object.prototype of every realm is an immutable prototype exotic object.
+immutable_prototype({'$o', 'Object.prototype'}) -> true;
+immutable_prototype({'$o', {_, 'Object.prototype'}}) -> true;
+immutable_prototype(_) -> false.
 
 in_chain(null, _O) -> false;
 in_chain(O, O) -> true;
@@ -1124,12 +1131,18 @@ prevent_extensions(O) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:prevent_extensions(Handler);
+        %% A typed array whose length can change stays extensible (§10.4.5.3).
+        {typed_array, _, _, _, _, _} ->
+            bouy_ref_typed_array:is_fixed_length(O) andalso ordinary_prevent_extensions(O);
         _ ->
-            Id = id_for_write(O),
-            {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
-            erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
-            true
+            ordinary_prevent_extensions(O)
     end.
+
+ordinary_prevent_extensions(O) ->
+    Id = id_for_write(O),
+    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
+    true.
 
 %% Object.freeze of an ordinary object: one flag makes every property
 %% read-only and non-configurable, and the object non-extensible.
@@ -1197,12 +1210,16 @@ fn_record({'$f', Id, _} = F) ->
     end.
 
 %% A builtin function value is {'$f', {builtin, Name}, Fun}: the same term in
-%% every realm, so its identity holds, and it needs no allocation.
+%% every process, so its identity holds, and it needs no allocation. Its twin
+%% in the realm N > 0 is {'$f', {N, {builtin, Name}}, Fun1}, and Function.prototype
+%% of that realm is {'$f', {N, 'Function.prototype'}, Fun}.
+static_function_record({'$f', {N, _} = Id, _} = F) when is_integer(N) ->
+    intrinsic_record(Id, F);
 static_function_record({'$f', {builtin, Name} = Id, _}) ->
     case persistent_term:get({?MODULE, Id}, undefined) of
         undefined ->
             Short = lists:last(binary:split(Name, <<".">>, [global])),
-            {function, ?FUNCTION_PROTO, #{<<"name">> => Short}, [<<"name">>], #{<<"name">> => ?CONFIGURABLE}, #{}};
+            {function, {'$f', 'Function.prototype', fun bouy_ref_function:prototype_call/2}, #{<<"name">> => Short}, [<<"name">>], #{<<"name">> => ?CONFIGURABLE}, #{}};
         R ->
             R
     end;
@@ -1243,6 +1260,16 @@ intrinsic_record(Id, _O) when is_atom(Id) ->
         {lazy, Module} -> Module:load(Id);
         Record -> Record
     end;
+%% The realm N > 0 copies the record of realm 0 on first use, with each
+%% intrinsic in it replaced by its twin of realm N.
+intrinsic_record({N, Base} = Id, _O) when is_integer(N) ->
+    Static = case Base of
+        {builtin, _} -> static_function_record({'$f', Base, undefined});
+        _ -> intrinsic_record(Base, {'$o', Base})
+    end,
+    Record = bouy_ref_realm:localize(N, Static),
+    erlang:put(Id, Record),
+    Record;
 intrinsic_record(Id, O) ->
     erlang:error({dangling_reference, O, Id}).
 
@@ -1272,8 +1299,32 @@ install_intrinsic(Id, Record) ->
         _ -> persistent_term:put({?MODULE, Id}, Record)
     end.
 
+%% The current realm: 0 for the first realm of the process.
+-spec realm() -> non_neg_integer().
+realm() ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> 0;
+        N -> N
+    end.
+
+%% The intrinsic object Id of the current realm.
 -spec intrinsic(atom()) -> value().
-intrinsic(Id) -> {'$o', Id}.
+intrinsic(Id) ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> {'$o', Id};
+        N -> {'$o', {N, Id}}
+    end.
+
+%% The intrinsic Id of the realm N. Function.prototype is a function.
+-spec intrinsic(non_neg_integer(), atom()) -> value().
+intrinsic(0, 'Function.prototype') -> {'$f', 'Function.prototype', fun bouy_ref_function:prototype_call/2};
+intrinsic(N, 'Function.prototype') -> {'$f', {N, 'Function.prototype'}, fun bouy_ref_function:prototype_call/2};
+intrinsic(0, Id) -> {'$o', Id};
+intrinsic(N, Id) -> {'$o', {N, Id}}.
+
+%% Function.prototype of the current realm.
+-spec function_prototype() -> value().
+function_prototype() -> intrinsic(realm(), 'Function.prototype').
 
 %%% Cells
 
@@ -1349,7 +1400,7 @@ describe(V) -> bouy_ref:describe(V).
 %% An error object of the intrinsic class Name, such as 'TypeError'.
 -spec error_object(atom() | value(), binary(), binary()) -> value().
 error_object(Name, Message, Stack) when is_atom(Name) ->
-    error_object({'$o', list_to_atom(atom_to_list(Name) ++ ".prototype")}, Message, Stack);
+    error_object(intrinsic(list_to_atom(atom_to_list(Name) ++ ".prototype")), Message, Stack);
 error_object(Proto, Message, Stack) ->
     Props = #{<<"message">> => Message, <<"stack">> => Stack},
     Attrs = #{<<"message">> => ?WRITABLE bor ?CONFIGURABLE, <<"stack">> => ?WRITABLE bor ?CONFIGURABLE},

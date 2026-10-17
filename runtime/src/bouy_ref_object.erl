@@ -67,7 +67,7 @@ object_proto(<<"propertyIsEnumerable">>, This, Args) ->
     enumerable(get_own(require_object(This), K));
 object_proto(<<"toString">>, This, _Args) -> bouy_ref_string:concat([<<"[object ">>, tag(This), <<"]">>]);
 object_proto(<<"toLocaleString">>, This, _Args) -> bouy_ref:call_method(This, <<"toString">>, []);
-object_proto(<<"valueOf">>, This, _Args) -> require_object(This);
+object_proto(<<"valueOf">>, This, _Args) -> to_object(This);
 object_proto(<<"proto_get">>, This, _Args) -> prototype(require_object(This));
 object_proto(<<"proto_set">>, This, Args) ->
     O = require_object(This),
@@ -292,7 +292,7 @@ define_properties(O, Properties) ->
 %% SetIntegrityLevel. An ordinary object takes one flag for frozen.
 integrity(O, Level) when ?IS_OBJECT(O) ->
     case {Level, bouy_heap:class_of(O)} of
-        {frozen, Class} when Class =/= proxy, Class =/= arguments ->
+        {frozen, Class} when Class =/= proxy, Class =/= arguments, Class =/= typed_array ->
             bouy_heap:freeze(O);
         _ ->
             bouy_heap:prevent_extensions(O) orelse type_error(<<"Cannot prevent extensions">>),
@@ -455,7 +455,7 @@ get_own(S, K) when ?IS_STRING(S) ->
 get_own(_, _) -> none.
 
 prototype(O) when ?IS_OBJECT(O) -> bouy_heap:prototype_of(O);
-prototype(S) when ?IS_STRING(S) -> {'$o', 'String.prototype'};
-prototype(B) when is_boolean(B) -> {'$o', 'Boolean.prototype'};
-prototype({'$sym', _, _}) -> {'$o', 'Symbol.prototype'};
-prototype(_) -> {'$o', 'Number.prototype'}.
+prototype(S) when ?IS_STRING(S) -> bouy_heap:intrinsic('String.prototype');
+prototype(B) when is_boolean(B) -> bouy_heap:intrinsic('Boolean.prototype');
+prototype({'$sym', _, _}) -> bouy_heap:intrinsic('Symbol.prototype');
+prototype(_) -> bouy_heap:intrinsic('Number.prototype').

@@ -231,7 +231,8 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::var(arguments.clone()),
                 Expr::call("bouy_ref", "arguments_object", vec![Expr::var(args)]),
             ));
-            self.frame.arguments = Some(arguments);
+            self.frame.arguments = Some(Local::Var(arguments));
+            code.extend(self.arguments_cell(scope));
         }
         // The parameter scope binds the parameters, and `arguments` in an ordinary
         // function. A direct eval in a default may not declare them.
@@ -249,6 +250,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.param_bindings = Vec::new();
         if mapped {
             code.push(self.mapped_arguments(params, args));
+            code.extend(self.arguments_cell(scope));
         }
         let saved = std::mem::take(&mut self.pre);
         if self.frame.sloppy
@@ -272,13 +274,12 @@ impl<'a> Lowerer<'a, '_> {
         for symbol in vars.0 {
             if !self.frame.env.contains_key(&symbol) {
                 // `var arguments` keeps the arguments object (ECMA-262 §10.2.11).
-                let value = match &self.frame.arguments {
-                    Some(arguments)
-                        if self.semantic.scoping().symbol_name(symbol) == "arguments" =>
-                    {
-                        Expr::var(arguments.clone())
-                    }
-                    _ => Expr::undefined(),
+                let value = if self.frame.arguments.is_some()
+                    && self.semantic.scoping().symbol_name(symbol) == "arguments"
+                {
+                    self.arguments_value()
+                } else {
+                    Expr::undefined()
                 };
                 self.declare_symbol(symbol, value);
             }
@@ -338,27 +339,68 @@ impl<'a> Lowerer<'a, '_> {
         code
     }
 
+    /// A cell for the `arguments` binding of a sloppy function that assigns `arguments`,
+    /// in its own code or in an arrow inside it.
+    fn arguments_cell(&mut self, scope: Option<ScopeId>) -> Option<Expr> {
+        let scoping = self.semantic.scoping();
+        let scope = scope?;
+        let assigned = scoping
+            .root_unresolved_references()
+            .get("arguments")
+            .into_iter()
+            .flatten()
+            .map(|reference| scoping.get_reference(*reference))
+            .any(|reference| {
+                reference.is_write()
+                    && scoping
+                        .scope_ancestors(reference.scope_id())
+                        .find(|ancestor| {
+                            let flags = scoping.scope_flags(*ancestor);
+                            flags.contains(ScopeFlags::Function)
+                                && !flags.contains(ScopeFlags::Arrow)
+                        })
+                        == Some(scope)
+            });
+        let Some(Local::Var(arguments)) = self.frame.arguments.clone().filter(|_| assigned) else {
+            return None;
+        };
+        let cell = self.fresh("ArgumentsCell");
+        self.frame.arguments = Some(Local::Cell(cell.clone()));
+        Some(Expr::matches(
+            Expr::var(cell),
+            Expr::call("bouy_heap", "cell", vec![Expr::var(arguments)]),
+        ))
+    }
+
     /// The mapped `arguments` object of a sloppy function with simple parameters: each
-    /// index below the argument count shares the cell of its parameter.
+    /// index below the argument count shares the cell of its parameter. Of duplicate
+    /// parameter names, only the last maps (ECMA-262 10.4.4.7).
     fn mapped_arguments(&mut self, params: &'a FormalParameters<'a>, args: &str) -> Expr {
         let cells = params
             .items
             .iter()
-            .map(|param| match &param.pattern {
-                BindingPattern::BindingIdentifier(id) => match id
-                    .symbol_id
-                    .get()
-                    .and_then(|symbol| self.frame.env.get(&symbol))
+            .enumerate()
+            .map(|(index, param)| match &param.pattern {
+                BindingPattern::BindingIdentifier(id)
+                    if !params.items[index + 1..].iter().any(|later| {
+                        matches!(&later.pattern, BindingPattern::BindingIdentifier(other) if other.name == id.name)
+                    }) =>
                 {
-                    Some(Local::Cell(cell)) => Expr::var(cell.clone()),
-                    _ => Expr::undefined(),
-                },
+                    match id
+                        .symbol_id
+                        .get()
+                        .and_then(|symbol| self.frame.env.get(&symbol))
+                    {
+                        Some(Local::Cell(cell)) => Expr::var(cell.clone()),
+                        _ => Expr::undefined(),
+                    }
+                }
                 _ => Expr::undefined(),
             })
             .collect();
         let arguments = self.fresh("Arguments");
         let callee = self.frame.callee.clone().unwrap_or_else(Expr::undefined);
-        self.frame.arguments = Some(arguments.clone());
+        self.frame.arguments = Some(Local::Var(arguments.clone()));
         Expr::matches(
             Expr::var(arguments),
             Expr::call(

@@ -2,10 +2,14 @@
 %% representation they test is in the contract, section "Reference semantics".
 
 -define(IS_OBJECT(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
--define(OBJECT_PROTO, {'$o', 'Object.prototype'}).
+%% The pdict key of the current realm: absent for the realm of the process, N
+%% for the realm that bouy_ref_realm:create/0 made N-th.
+-define(REALM_KEY, '$bouy_realm').
+%% These intrinsics are the ones of the current realm (bouy_heap:intrinsic/1).
+-define(OBJECT_PROTO, bouy_heap:intrinsic('Object.prototype')).
 %% Function.prototype is itself a function that returns undefined.
--define(FUNCTION_PROTO, {'$f', 'Function.prototype', fun bouy_ref_function:prototype_call/2}).
--define(ITERATOR_PROTO, {'$o', 'Iterator.prototype'}).
+-define(FUNCTION_PROTO, bouy_heap:function_prototype()).
+-define(ITERATOR_PROTO, bouy_heap:intrinsic('Iterator.prototype')).
 %% The attributes of a builtin data property: writable and configurable.
 -define(HIDDEN, 5).
 -define(SYM(Name), {'$sym', Name, <<"Symbol.", (atom_to_binary(Name))/binary>>}).

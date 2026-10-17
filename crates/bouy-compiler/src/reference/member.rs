@@ -232,10 +232,10 @@ impl<'a> Lowerer<'a, '_> {
 
     /// `o[k] = v`. In sloppy code a failed write does nothing.
     pub fn set(&mut self, object: Expr, key: MemberKey, value: Expr) {
-        let (fixed, computed) = if self.frame.sloppy {
-            ("sloppy_set", "sloppy_set_computed")
+        let (fixed, computed, sup) = if self.frame.sloppy {
+            ("sloppy_set", "sloppy_set_computed", "sloppy_super_set")
         } else {
-            ("set", "set_computed")
+            ("set", "set_computed", "super_set")
         };
         if let Some((base, this)) = super_parts(&object) {
             let key = match key {
@@ -246,7 +246,7 @@ impl<'a> Lowerer<'a, '_> {
             };
             self.pre.push(Expr::call(
                 "bouy_ref_class",
-                "super_set",
+                sup,
                 vec![base, key, value, this],
             ));
             return;

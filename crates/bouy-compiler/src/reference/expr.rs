@@ -12,7 +12,7 @@ use oxc::syntax::operator::{
     AssignmentOperator, BinaryOperator, LogicalOperator, UnaryOperator, UpdateOperator,
 };
 
-use super::context::{Kind, Lowerer, Top, boolean_case};
+use super::context::{Kind, Local, Lowerer, Top, boolean_case};
 use super::literal::{bigint, js_string_literal, number};
 use super::member::{MemberKey, super_parts};
 use crate::erlang::{Clause, Expr};
@@ -225,6 +225,24 @@ impl<'a> Lowerer<'a, '_> {
             return self.with_write_ref(ident, &reference, value);
         }
         let Some(symbol) = self.symbol_of(ident.reference_id.get()) else {
+            if operator == AssignmentOperator::Assign && self.is_global_reference(ident) {
+                // Strict code resolves the name before the right side runs, which may
+                // create it (PutValue, ECMA-262 §6.2.5.6).
+                let name_text = Expr::js_string(ident.name.as_str());
+                let resolved = self.bind(Expr::call(
+                    "bouy_ref_realm",
+                    "has_binding",
+                    vec![name_text.clone()],
+                ));
+                let value = self.named_expr(right, name);
+                let value = self.bind(value);
+                self.pre.push(Expr::call(
+                    "bouy_ref_realm",
+                    "set_resolved",
+                    vec![name_text, value.clone(), resolved],
+                ));
+                return value;
+            }
             let value = if operator == AssignmentOperator::Assign {
                 self.named_expr(right, name)
             } else {
@@ -300,10 +318,27 @@ impl<'a> Lowerer<'a, '_> {
         ))
     }
 
+    /// Whether strict code writes `ident`, which no scope declares, in the global
+    /// environment: no scope of the caller of a direct eval binds it either.
+    fn is_global_reference(&self, ident: &IdentifierReference<'a>) -> bool {
+        let name = ident.name.as_str();
+        !self.frame.sloppy
+            && self.eval_binding(name).is_none()
+            && self.eval_objects(name).is_empty()
+            && !(name == "arguments" && self.frame.arguments.is_some())
+    }
+
     /// Stores `value` in the global `name`, as the mode of the code allows, or in the binding
     /// of the caller of a direct eval, after the objects in front of it there.
     pub fn set_global(&mut self, name: &str, value: Expr) -> Expr {
         let value = self.bind(value);
+        // Sloppy code may assign the `arguments` binding of its function.
+        if name == "arguments"
+            && let Some(Local::Cell(cell)) = &self.frame.arguments
+        {
+            self.pre.push(super::context::cell_set(cell, value.clone()));
+            return value;
+        }
         let objects = self.eval_objects(name);
         if objects.is_empty() {
             self.set_binding(name, value.clone());
@@ -317,13 +352,7 @@ impl<'a> Lowerer<'a, '_> {
         let _ = self.through_withs(
             &objects,
             name,
-            |_, object| {
-                vec![Expr::call(
-                    "bouy_ref",
-                    "sloppy_set",
-                    vec![object, Expr::js_string(name), stored.clone()],
-                )]
-            },
+            |me, object| vec![me.with_set(object, name, stored.clone())],
             fallback,
         );
         value
@@ -551,12 +580,8 @@ impl<'a> Lowerer<'a, '_> {
                         return self.through_withs(
                             &objects,
                             name,
-                            |_, object| {
-                                let value = Expr::call(
-                                    "bouy_ref",
-                                    "get",
-                                    vec![object, Expr::js_string(name)],
-                                );
+                            |me, object| {
+                                let value = me.with_get(object, name);
                                 vec![Expr::call("bouy_ref", "typeof", vec![value])]
                             },
                             fallback,

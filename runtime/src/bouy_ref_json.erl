@@ -325,21 +325,12 @@ internalize(Holder, Name, Reviver, Record) ->
     end,
     bouy_ref:call(Reviver, Holder, [bouy_heap:key_to_value(Name), Val, Context]).
 
+%% A false result of [[Delete]] or of CreateDataProperty is ignored, and
+%% an abrupt one propagates.
 revive(O, K, Reviver, Record) ->
     case internalize(O, K, Reviver, Record) of
-        undefined ->
-            try bouy_heap:delete(O, K)
-            catch error:{'$throw', _} -> false
-            end;
-        V -> define_data(O, K, V)
-    end.
-
-%% CreateDataProperty, which returns false instead of throwing.
-define_data(O, K, V) ->
-    case bouy_heap:get_own(O, K) of
-        {data, _, Bits} when Bits band 4 =:= 0 -> false;
-        {accessor, _, _, Bits} when Bits band 4 =:= 0 -> false;
-        _ -> bouy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true})
+        undefined -> bouy_heap:delete_property(O, K);
+        V -> bouy_heap:define_own_property(O, K, #{value => V, writable => true, enumerable => true, configurable => true})
     end.
 
 child(none, _K) -> none;

@@ -39,6 +39,23 @@ storage_test() ->
             ?assertEqual(16, Length)
     end.
 
+%% A write of part of a word keeps what another process writes to the rest of the word
+%% meanwhile, as an Atomics.add of another agent does to the memory of a
+%% SharedArrayBuffer.
+shared_word_test() ->
+    Pid = self(),
+    Count = 20000,
+    spawn(fun() ->
+                  B = bouy_ref_buffer:allocate(8),
+                  {Ref, _, _} = bouy_heap:slots(B),
+                  Adder = spawn(fun() -> [atomics:add(Ref, 1, 1 bsl 32) || _ <- lists:seq(1, Count)], Pid ! added end),
+                  [bouy_ref_buffer:write(B, 0, <<I:32/little>>) || I <- lists:seq(1, Count)],
+                  Pid ! {written, Ref, Adder}
+          end),
+    receive {written, Ref, _} -> ok end,
+    receive added -> ok end,
+    ?assertEqual({Count, Count}, {atomics:get(Ref, 1) bsr 32, atomics:get(Ref, 1) band 16#FFFFFFFF}).
+
 %% Uint8Array.fromBase64 and fromHex decode with the chunk rules of the
 %% proposal, through the method of the family.
 base64_test() ->

@@ -26,7 +26,7 @@ intrinsics() ->
                      #{<<"length">> => 0, <<"name">> => 0, '$noext' => true}, #{}},
     [{'Function.prototype', {Class, Proto, Props, Keys, maps:merge(Attrs, Fixed), Slots}},
      {{builtin, <<"ThrowTypeError">>}, ThrowerRecord},
-     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Args) end)}].
+     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(NewTarget, Args) -> bouy_ref_eval:create_function(normal, Args, NewTarget) end)}].
 
 %% The id of the prototype of the functions of a kind (bouy_ref_generator
 %% holds the records).
@@ -51,9 +51,9 @@ constructor() -> bouy_ref_realm:constructor(?MODULE, <<"Function">>).
 
 -spec call_constructor(binary(), term(), list()) -> term().
 call_constructor(<<"Function">>, _This, Args) -> bouy_ref_eval:create_function(Args);
-call_constructor(<<"GeneratorFunction">>, _This, Args) -> bouy_ref_eval:create_function(generator, Args);
-call_constructor(<<"AsyncFunction">>, _This, Args) -> bouy_ref_eval:create_function(async, Args);
-call_constructor(<<"AsyncGeneratorFunction">>, _This, Args) -> bouy_ref_eval:create_function(async_generator, Args).
+call_constructor(<<"GeneratorFunction">>, _This, Args) -> bouy_ref_eval:create_function(generator, Args, undefined);
+call_constructor(<<"AsyncFunction">>, _This, Args) -> bouy_ref_eval:create_function(async, Args, undefined);
+call_constructor(<<"AsyncGeneratorFunction">>, _This, Args) -> bouy_ref_eval:create_function(async_generator, Args, undefined).
 
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"Function.prototype">>, Name, This, Args) -> function_proto(Name, This, Args).

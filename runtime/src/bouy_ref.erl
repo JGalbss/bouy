@@ -13,7 +13,7 @@
 -export([get/2, get_from/3, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1, member_key/2]).
 -export([sloppy_set/3, sloppy_set_computed/3, sloppy_delete/2, sloppy_delete_computed/2, sloppy_this/1]).
 -export([mapped_arguments/3, function_name/2, literal_proto/2, tdz_error/1]).
--export([with_object/1, with_has/2, const_error/0]).
+-export([with_object/1, with_has/2, with_get/3, with_set/4, const_error/0]).
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, named_fn/3, named_fn/4, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
@@ -102,11 +102,11 @@ get({'$f', _, _} = F, K) -> bouy_heap:get(F, K);
 get(S, K) when ?IS_STRING(S) -> bouy_ref_string:get(S, K);
 get(undefined, K) -> read_error(<<"undefined">>, K);
 get(null, K) -> read_error(<<"null">>, K);
-get(B, K) when is_boolean(B) -> lookup({'$o', 'Boolean.prototype'}, K, B);
-get(N, K) when ?IS_NUMBER(N) -> lookup({'$o', 'Number.prototype'}, K, N);
-get({'$bigint', _} = B, K) -> lookup({'$o', 'BigInt.prototype'}, K, B);
+get(B, K) when is_boolean(B) -> lookup(bouy_heap:intrinsic('Boolean.prototype'), K, B);
+get(N, K) when ?IS_NUMBER(N) -> lookup(bouy_heap:intrinsic('Number.prototype'), K, N);
+get({'$bigint', _} = B, K) -> lookup(bouy_heap:intrinsic('BigInt.prototype'), K, B);
 get({'$sym', _, Description}, <<"description">>) -> Description;
-get({'$sym', _, _} = S, K) -> lookup({'$o', 'Symbol.prototype'}, K, S);
+get({'$sym', _, _} = S, K) -> lookup(bouy_heap:intrinsic('Symbol.prototype'), K, S);
 get({'$actor', Pid}, K) when ?IS_STRING(K) -> {'$f', {actor, Pid, K}, fun(_This, Args) -> bouy_jobs:actor_call(Pid, K, Args) end};
 get({'$actor', _}, _K) -> undefined.
 
@@ -118,16 +118,19 @@ read_error(What, K) ->
 text(Parts) -> bouy_ref_string:concat(Parts).
 
 -spec get_computed(term(), term()) -> term().
-get_computed(O, K) -> get(O, to_property_key(K)).
+get_computed(O, K) -> get(O, member_key(O, K)).
 
 -spec set(term(), bouy_heap:key(), term()) -> term().
 set({'$o', _} = O, K, V) -> bouy_heap:set(O, K, V);
 set({'$f', _, _} = F, K, V) -> bouy_heap:set(F, K, V);
 set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
 set(null, K, _V) -> cannot_set(<<"null">>, K);
-set(P, K, _V) -> type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])).
+set(P, K, V) ->
+    primitive_set(P, K, V) orelse type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])),
+    V.
 
 -spec set_computed(term(), term(), term()) -> term().
+set_computed(O, K, _V) when O =:= undefined; O =:= null -> cannot_set(atom_to_binary(O), key_preview(K));
 set_computed(O, K, V) -> set(O, to_property_key(K), V).
 
 -spec cannot_set(binary(), bouy_heap:key()) -> no_return().
@@ -140,17 +143,27 @@ sloppy_set({'$o', _} = O, K, V) -> bouy_heap:sloppy_set(O, K, V);
 sloppy_set({'$f', _, _} = F, K, V) -> bouy_heap:sloppy_set(F, K, V);
 sloppy_set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
 sloppy_set(null, K, _V) -> cannot_set(<<"null">>, K);
-sloppy_set({'$actor', _}, _K, V) -> V;
 sloppy_set(P, K, V) ->
-    _ = bouy_heap:set(primitive_proto(P), K, V, P),
+    _ = primitive_set(P, K, V),
     V.
 
-primitive_proto(S) when ?IS_STRING(S) -> {'$o', 'String.prototype'};
-primitive_proto(B) when is_boolean(B) -> {'$o', 'Boolean.prototype'};
-primitive_proto({'$sym', _, _}) -> {'$o', 'Symbol.prototype'};
-primitive_proto(_) -> {'$o', 'Number.prototype'}.
+%% PutValue on a primitive base: [[Set]] of ToObject(base) with the
+%% primitive as the receiver, so only a setter up the chain takes the
+%% write. The own indexes and length of a string are read-only.
+primitive_set({'$actor', _}, _K, _V) -> false;
+primitive_set(S, <<"length">>, _V) when ?IS_STRING(S) -> false;
+primitive_set(S, I, V) when ?IS_STRING(S), is_integer(I) ->
+    I >= bouy_ref_string:length_of(S) andalso bouy_heap:set(primitive_proto(S), I, V, S);
+primitive_set(P, K, V) -> bouy_heap:set(primitive_proto(P), K, V, P).
+
+primitive_proto(S) when ?IS_STRING(S) -> bouy_heap:intrinsic('String.prototype');
+primitive_proto(B) when is_boolean(B) -> bouy_heap:intrinsic('Boolean.prototype');
+primitive_proto({'$sym', _, _}) -> bouy_heap:intrinsic('Symbol.prototype');
+primitive_proto({'$bigint', _}) -> bouy_heap:intrinsic('BigInt.prototype');
+primitive_proto(_) -> bouy_heap:intrinsic('Number.prototype').
 
 -spec sloppy_set_computed(term(), term(), term()) -> term().
+sloppy_set_computed(O, K, _V) when O =:= undefined; O =:= null -> cannot_set(atom_to_binary(O), key_preview(K));
 sloppy_set_computed(O, K, V) -> sloppy_set(O, to_property_key(K), V).
 
 %% `delete o[k]` in sloppy code: false for a property that cannot go.
@@ -159,11 +172,12 @@ sloppy_delete(O, K) when ?IS_OBJECT(O) -> bouy_heap:delete_property(O, K);
 sloppy_delete(O, K) -> delete(O, K).
 
 -spec sloppy_delete_computed(term(), term()) -> boolean().
+sloppy_delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
 sloppy_delete_computed(O, K) -> sloppy_delete(O, to_property_key(K)).
 
 %% The this of a sloppy function: the global object for undefined and null.
 -spec sloppy_this(term()) -> term().
-sloppy_this(This) when This =:= undefined; This =:= null -> {'$o', 'globalThis'};
+sloppy_this(This) when This =:= undefined; This =:= null -> bouy_ref_realm:global_object();
 sloppy_this(This) -> to_object(This).
 
 -spec delete(term(), bouy_heap:key()) -> boolean().
@@ -173,6 +187,7 @@ delete(null, K) -> delete(undefined, K);
 delete(_P, _K) -> true.
 
 -spec delete_computed(term(), term()) -> boolean().
+delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
 delete_computed(O, K) -> delete(O, to_property_key(K)).
 
 %% `k in o`.
@@ -180,8 +195,8 @@ delete_computed(O, K) -> delete(O, to_property_key(K)).
 in(K, O) when ?IS_OBJECT(O) -> bouy_heap:has(O, to_property_key(K));
 in(K, O) -> type_error(text([<<"Cannot use 'in' operator to search for '">>, to_string(K), <<"' in ">>, describe(O)])).
 
-%% The key of o[k] in an update or a compound assignment: the base must not
-%% be undefined or null before the key converts.
+%% The key of o[k]: the base must not be undefined or null before the key
+%% converts (GetValue and PutValue run ToObject before ToPropertyKey).
 -spec member_key(term(), term()) -> bouy_heap:key().
 member_key(undefined, K) -> read_error(<<"undefined">>, key_preview(K));
 member_key(null, K) -> read_error(<<"null">>, key_preview(K));
@@ -233,12 +248,7 @@ construct(F, Args) -> bouy_heap:construct(F, Args, F).
 %% The this of a base class constructor: an object whose prototype is the
 %% prototype of new.target.
 -spec new_this(term()) -> term().
-new_this(NewTarget) ->
-    Proto = case get(NewTarget, <<"prototype">>) of
-        P when ?IS_OBJECT(P) -> P;
-        _ -> ?OBJECT_PROTO
-    end,
-    bouy_heap:new_object(Proto).
+new_this(NewTarget) -> bouy_heap:new_object(bouy_ref_realm:proto_for(NewTarget, 'Object.prototype')).
 
 -spec super_construct(term(), list(), term()) -> term().
 super_construct(Parent, Args, NewTarget) -> bouy_heap:construct(Parent, Args, NewTarget).
@@ -274,9 +284,9 @@ arguments_object(Args) ->
     O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
     [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
     bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
-    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, ?SYM(iterator)),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get(bouy_heap:intrinsic('Array.prototype'), ?SYM(iterator)),
                                           writable => true, enumerable => false, configurable => true}),
-    Thrower = bouy_ref_function:throw_type_error(),
+    Thrower = bouy_ref_realm:current(bouy_ref_function:throw_type_error()),
     bouy_heap:define(O, <<"callee">>, #{get => Thrower, set => Thrower, enumerable => false, configurable => false}),
     O.
 
@@ -288,7 +298,7 @@ mapped_arguments(Args, Cells, Callee) ->
     O = bouy_heap:new_exotic(arguments, ?OBJECT_PROTO, none),
     [bouy_heap:define(O, I, #{value => V, writable => true, enumerable => true, configurable => true}) || {I, V} <- lists:enumerate(0, Args)],
     bouy_heap:define(O, <<"length">>, #{value => length(Args), writable => true, enumerable => false, configurable => true}),
-    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get({'$o', 'Array.prototype'}, ?SYM(iterator)),
+    bouy_heap:define(O, ?SYM(iterator), #{value => bouy_heap:get(bouy_heap:intrinsic('Array.prototype'), ?SYM(iterator)),
                                           writable => true, enumerable => false, configurable => true}),
     bouy_heap:define(O, <<"callee">>, #{value => Callee, writable => true, enumerable => false, configurable => true}),
     Count = min(length(Args), length(Cells)),
@@ -335,7 +345,7 @@ const_error() -> type_error(<<"Assignment to constant variable.">>).
 
 %% The object of `with (v)`: ToObject, a TypeError for undefined and null.
 -spec with_object(term()) -> term().
-with_object(V) -> bouy_ref_object:require_object(V).
+with_object(V) -> to_object(V).
 
 %% Whether the object environment of a `with` statement binds Name
 %% (HasBinding of ECMA-262 §9.1.1.2.1): the object has the property, and its
@@ -349,6 +359,32 @@ with_has(P, Name) ->
 
 unscopable(U, K) when ?IS_OBJECT(U) -> truthy(get(U, K));
 unscopable(_U, _K) -> false.
+
+%% GetBindingValue of an object environment (ECMA-262 §9.1.1.2.6): the
+%% property may be gone since the name resolved, which strict code reports.
+-spec with_get(term(), bouy_ref_string:js_string(), boolean()) -> term().
+with_get(O, Name, Strict) when ?IS_OBJECT(O) ->
+    K = bouy_heap:to_key(Name),
+    case bouy_heap:has(O, K) of
+        true -> get(O, K);
+        false when Strict -> bouy_ref_realm:not_defined(Name);
+        false -> undefined
+    end;
+with_get(P, Name, _Strict) ->
+    get(P, bouy_heap:to_key(Name)).
+
+%% SetMutableBinding of an object environment (§9.1.1.2.5): strict code
+%% reports a property that went away, and its failed Set throws.
+-spec with_set(term(), bouy_ref_string:js_string(), term(), boolean()) -> term().
+with_set(O, Name, V, Strict) when ?IS_OBJECT(O) ->
+    K = bouy_heap:to_key(Name),
+    case {bouy_heap:has(O, K), Strict} of
+        {false, true} -> bouy_ref_realm:not_defined(Name);
+        {true, true} -> set(O, K, V);
+        {_, false} -> sloppy_set(O, K, V)
+    end;
+with_set(P, Name, V, _Strict) ->
+    sloppy_set(P, bouy_heap:to_key(Name), V).
 
 -spec tdz_error(bouy_ref_string:js_string()) -> no_return().
 tdz_error(Name) ->
@@ -384,14 +420,14 @@ finish_fn(F, normal) ->
     bouy_heap:define(F, <<"prototype">>, #{value => Proto, writable => true, enumerable => false, configurable => false}),
     F;
 finish_fn(F, async) ->
-    bouy_heap:set_prototype_of(F, {'$o', bouy_ref_function:kind_prototype_id(async)});
+    bouy_heap:set_prototype_of(F, bouy_heap:intrinsic(bouy_ref_function:kind_prototype_id(async)));
 finish_fn(F, Kind) ->
     Parent = case Kind of
-        generator -> {'$o', 'Generator.prototype'};
-        async_generator -> {'$o', 'AsyncGenerator.prototype'}
+        generator -> bouy_heap:intrinsic('Generator.prototype');
+        async_generator -> bouy_heap:intrinsic('AsyncGenerator.prototype')
     end,
     bouy_heap:define(F, <<"prototype">>, #{value => bouy_heap:new_object(Parent), writable => true, enumerable => false, configurable => false}),
-    bouy_heap:set_prototype_of(F, {'$o', bouy_ref_function:kind_prototype_id(Kind)}).
+    bouy_heap:set_prototype_of(F, bouy_heap:intrinsic(bouy_ref_function:kind_prototype_id(Kind))).
 
 %% ClassDefinitionEvaluation up to the methods: the constructor function
 %% and its prototype object. Parent is none without extends.
@@ -489,35 +525,31 @@ spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
 %% {...source} into Target: CopyDataProperties.
 -spec object_spread(term(), term()) -> term().
 object_spread(Target, Source) when ?IS_OBJECT(Source) ->
-    [define_field(Target, K, get(Source, K)) || K <- own_enumerable_keys(Source)],
-    Target;
+    copy_data_properties(Target, Source, []);
 object_spread(Target, S) when ?IS_STRING(S) ->
     [define_field(Target, I, bouy_ref_string:unit_string(S, I)) || I <- lists:seq(0, bouy_ref_string:length_of(S) - 1)],
     Target;
 object_spread(Target, _Primitive) ->
     Target.
 
-own_enumerable_keys(O) ->
-    Enumerable = bouy_heap:enumerable_keys(O),
-    Symbols = [K || {'$sym', _, _} = K <- bouy_heap:own_keys(O), is_enumerable(O, K)],
-    Enumerable ++ Symbols.
-
-is_enumerable(O, K) ->
-    case bouy_heap:get_own(O, K) of
-        {data, _, Bits} -> Bits band 2 =/= 0;
-        {accessor, _, _, Bits} -> Bits band 2 =/= 0;
-        none -> false
-    end.
-
 %% const { a, ...rest } = source: the enumerable own properties not named.
 -spec object_rest(term(), [bouy_heap:key()]) -> term().
-object_rest(Source, Excluded) ->
-    Rest = bouy_heap:new_object(?OBJECT_PROTO),
-    case ?IS_OBJECT(Source) of
-        true -> [define_field(Rest, K, get(Source, K)) || K <- own_enumerable_keys(Source), not lists:member(K, Excluded)];
-        false -> ok
-    end,
-    Rest.
+object_rest(Source, Excluded) when ?IS_OBJECT(Source) ->
+    copy_data_properties(bouy_heap:new_object(?OBJECT_PROTO), Source, Excluded);
+object_rest(_Primitive, _Excluded) ->
+    bouy_heap:new_object(?OBJECT_PROTO).
+
+%% CopyDataProperties of an object: the keys in [[OwnPropertyKeys]] order,
+%% each excluded key skipped before [[GetOwnProperty]], and Get only when
+%% the property is still there and enumerable.
+copy_data_properties(Target, Source, Excluded) ->
+    lists:foreach(fun(K) ->
+                          case not lists:member(K, Excluded) andalso bouy_heap:is_enumerable(bouy_heap:get_own(Source, K)) of
+                              true -> define_field(Target, K, get(Source, K));
+                              false -> ok
+                          end
+                  end, bouy_heap:own_keys(Source)),
+    Target.
 
 -spec template(list()) -> bouy_ref_string:js_string().
 template(Parts) -> text([to_string(P) || P <- Parts]).
@@ -732,9 +764,9 @@ typeof(S) when ?IS_STRING(S) -> <<"string">>.
 %% `typeof name` for a name that no scope declares: "undefined" for a missing global.
 -spec typeof_global(binary()) -> binary().
 typeof_global(Name) ->
-    try typeof(global(Name))
-    catch
-        error:{'$throw', _} -> <<"undefined">>
+    case bouy_ref_realm:has_binding(Name) of
+        true -> typeof(global(Name));
+        false -> <<"undefined">>
     end.
 
 %% InstanceofOperator: Symbol.hasInstance, else OrdinaryHasInstance.
@@ -801,11 +833,11 @@ to_numeric(V) -> to_number(V).
 -spec to_object(term()) -> term().
 to_object(V) when ?IS_OBJECT(V) -> V;
 to_object(V) when V =:= undefined; V =:= null -> type_error(<<"Cannot convert undefined or null to object">>);
-to_object(N) when ?IS_NUMBER(N) -> bouy_ref_number:wrap(N, {'$o', 'Number.prototype'});
-to_object(S) when ?IS_STRING(S) -> bouy_ref_string:wrap(S, {'$o', 'String.prototype'});
-to_object(B) when is_boolean(B) -> bouy_ref_boolean:wrap(B, {'$o', 'Boolean.prototype'});
-to_object({'$bigint', _} = B) -> bouy_ref_bigint:wrap(B, {'$o', 'BigInt.prototype'});
-to_object({'$sym', _, _} = S) -> bouy_heap:new_exotic(symbol, {'$o', 'Symbol.prototype'}, S);
+to_object(N) when ?IS_NUMBER(N) -> bouy_ref_number:wrap(N, bouy_heap:intrinsic('Number.prototype'));
+to_object(S) when ?IS_STRING(S) -> bouy_ref_string:wrap(S, bouy_heap:intrinsic('String.prototype'));
+to_object(B) when is_boolean(B) -> bouy_ref_boolean:wrap(B, bouy_heap:intrinsic('Boolean.prototype'));
+to_object({'$bigint', _} = B) -> bouy_ref_bigint:wrap(B, bouy_heap:intrinsic('BigInt.prototype'));
+to_object({'$sym', _, _} = S) -> bouy_heap:new_exotic(symbol, bouy_heap:intrinsic('Symbol.prototype'), S);
 to_object(V) -> V.
 
 %% ToPrimitive: Symbol.toPrimitive, else valueOf and toString in the order

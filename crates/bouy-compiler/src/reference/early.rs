@@ -154,20 +154,24 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// The early cell of a class binding that the `extends` clause reads.
-    pub fn heritage_binding(&mut self, symbol: SymbolId, heritage: Span) {
-        if self.frame.env.contains_key(&symbol) {
-            return;
-        }
+    /// The inner binding of a class name that its `extends` clause refers to: a cell of its
+    /// own, apart from the binding outside the class, which the class initializes once it
+    /// exists (`ClassDefinitionEvaluation`, ECMA-262 §15.7.14).
+    pub fn heritage_binding(&mut self, symbol: SymbolId, heritage: Span) -> Option<String> {
         let nodes = self.semantic.nodes();
         let read = self
             .semantic
             .scoping()
             .get_resolved_references(symbol)
             .any(|reference| contains(heritage, nodes.get_node(reference.node_id()).span()));
-        if read {
-            let cell = self.early_cell(symbol);
-            self.pre.push(cell);
+        if !read {
+            return None;
+        }
+        let cell = self.early_cell(symbol);
+        self.pre.push(cell);
+        match self.frame.env.get(&symbol) {
+            Some(Local::Cell(cell)) => Some(cell.clone()),
+            _ => None,
         }
     }
 
@@ -212,12 +216,19 @@ impl<'a> Lowerer<'a, '_> {
     /// The read of an early binding: its value, or a `ReferenceError` before its
     /// declaration ran.
     pub fn early_read(&mut self, symbol: SymbolId, cell: &str) -> Expr {
-        let name = self.semantic.scoping().symbol_name(symbol).to_owned();
-        self.bind(Expr::call(
+        let read = self.initialized(symbol, cell);
+        self.bind(read)
+    }
+
+    /// The value of the early binding `symbol` in `cell`, which throws a `ReferenceError`
+    /// before its declaration ran.
+    pub fn initialized(&self, symbol: SymbolId, cell: &str) -> Expr {
+        let name = self.semantic.scoping().symbol_name(symbol);
+        Expr::call(
             "bouy_ref_class",
             "initialized",
-            vec![cell_get(cell), Expr::js_string(&name)],
-        ))
+            vec![cell_get(cell), Expr::js_string(name)],
+        )
     }
 }
 

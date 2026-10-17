@@ -320,11 +320,16 @@ impl<'a> Lowerer<'a, '_> {
 
     /// The entry of the arguments object in the scope of a direct eval, unless a binding
     /// named `arguments` hides it.
-    fn arguments_entry(&mut self, names: &[String], object: String) -> Option<Expr> {
+    fn arguments_entry(&mut self, names: &[String], binding: Local) -> Option<Expr> {
         if names.iter().any(|name| name == "arguments") {
             return None;
         }
-        let cell = self.bind(Expr::call("bouy_heap", "cell", vec![Expr::var(object)]));
+        let cell = match binding {
+            Local::Cell(cell) => Expr::var(cell),
+            Local::Var(object) => {
+                self.bind(Expr::call("bouy_heap", "cell", vec![Expr::var(object)]))
+            }
+        };
         Some(Expr::Tuple(vec![Expr::js_string("arguments"), cell]))
     }
 

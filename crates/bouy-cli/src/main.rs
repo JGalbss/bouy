@@ -78,6 +78,9 @@ struct EvalRequest {
     /// The source is the function that the `Function` constructor builds.
     #[arg(long)]
     function: bool,
+    /// The source is a classic script of its own, as a host's `evalScript` runs it.
+    #[arg(long)]
+    script: bool,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -120,16 +123,20 @@ impl EvalRequest {
             place: self.place,
             privates: self.private,
         };
-        bouy_compiler::compile_eval(
-            text,
-            &module,
-            self.strict,
-            self.function,
-            &self.lexical,
-            &self.scope,
-            &context,
-        )
-        .map_err(|diagnostics| {
+        let compiled = if self.script {
+            bouy_compiler::compile_eval_script(text, &module)
+        } else {
+            bouy_compiler::compile_eval(
+                text,
+                &module,
+                self.strict,
+                self.function,
+                &self.lexical,
+                &self.scope,
+                &context,
+            )
+        };
+        compiled.map_err(|diagnostics| {
             let name = if diagnostics
                 .iter()
                 .any(|d| d.code == bouy_compiler::Code::Syntax)

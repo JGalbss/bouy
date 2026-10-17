@@ -365,6 +365,17 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The code that completes a statement normally with continuation `k`.
+    /// A new cell for the per-iteration binding `symbol` that holds its current value.
+    pub fn copy_cell(&mut self, symbol: SymbolId) -> Expr {
+        let value = self.current(symbol);
+        let cell = self.fresh("Cell");
+        self.frame.env.insert(symbol, Local::Cell(cell.clone()));
+        Expr::matches(
+            Expr::var(cell),
+            Expr::call("bouy_heap", "cell", vec![value]),
+        )
+    }
+
     pub fn jump(&mut self, k: &Cont<'a>) -> Vec<Expr> {
         match k {
             Cont::Call {
@@ -389,13 +400,8 @@ impl<'a> Lowerer<'a, '_> {
                 let saved_env = self.frame.env.clone();
                 let saved = std::mem::take(&mut self.pre);
                 for symbol in copies {
-                    let value = self.current(*symbol);
-                    let cell = self.fresh("Cell");
-                    self.pre.push(Expr::matches(
-                        Expr::var(cell.clone()),
-                        Expr::call("bouy_heap", "cell", vec![value]),
-                    ));
-                    self.frame.env.insert(*symbol, Local::Cell(cell));
+                    let copy = self.copy_cell(*symbol);
+                    self.pre.push(copy);
                 }
                 if let Some(update) = update {
                     self.effect(update);
