@@ -32,6 +32,31 @@ global_functions_declare_all_or_nothing_test() ->
     ?assertEqual(<<"TypeError">>, Name),
     ?assertEqual(none, Declared).
 
+%% The global declarative record: a script's let and const shadow the global
+%% object, are in their dead zone until the script declares them, and keep
+%% later scripts and eval code from declaring their names again. A script may
+%% not declare a lexical name that is a non-configurable global either.
+script_lexical_declarations_test() ->
+    Results = in_realm(fun() ->
+        ok = bouy_ref_realm:declare_script(script_a, [{<<"x">>, mutable}, {<<"k">>, immutable}], [<<"v">>], []),
+        Dead = error_name(fun() -> bouy_ref_realm:global(<<"x">>) end),
+        put({'$m', script_a, <<"x">>}, {v, 1}),
+        put({'$m', script_a, <<"k">>}, {v, 2}),
+        Read = bouy_ref_realm:global(<<"x">>),
+        Written = bouy_ref_realm:set_global(<<"x">>, 3, sloppy),
+        {Dead, Read, Written, get({'$m', script_a, <<"x">>}),
+         error_name(fun() -> bouy_ref_realm:set_global(<<"k">>, 4, sloppy) end),
+         bouy_ref_realm:delete_global(<<"x">>),
+         bouy_heap:get_own({'$o', 'globalThis'}, <<"x">>),
+         [error_name(fun() -> bouy_ref_realm:declare_script(script_b, [{Name, mutable}], [], []) end)
+          || Name <- [<<"x">>, <<"v">>, <<"undefined">>]],
+         error_name(fun() -> bouy_ref_realm:declare_globals([<<"k">>], [], true) end),
+         error_name(fun() -> bouy_ref_realm:set_resolved(<<"missing">>, 1, false) end)}
+    end),
+    ?assertEqual({<<"ReferenceError">>, 1, 3, {v, 3}, <<"TypeError">>, false, none,
+                  [<<"SyntaxError">>, <<"SyntaxError">>, <<"SyntaxError">>],
+                  <<"SyntaxError">>, <<"ReferenceError">>}, Results).
+
 in_realm(Run) ->
     Self = self(),
     Compiler = os:getenv("BOUY_COMPILER"),

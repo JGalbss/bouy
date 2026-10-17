@@ -25,9 +25,7 @@ impl<'a> Lowerer<'a, '_> {
                 "undefined" => Expr::undefined(),
                 "NaN" => Expr::atom("NaN"),
                 "Infinity" => Expr::atom("Infinity"),
-                "arguments" if self.frame.arguments.is_some() => {
-                    Expr::var(self.frame.arguments.clone().unwrap_or_default())
-                }
+                "arguments" if self.frame.arguments.is_some() => self.arguments_value(),
                 name if self.eval_binding(name).is_some() => self.eval_binding_read(name),
                 name => self.bind(Expr::call(
                     "bouy_ref",
@@ -99,9 +97,21 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// The value of a name that no scope of the code declares: a binding of the caller of
-    /// a direct eval, else a global.
+    /// The value of the `arguments` binding of the function.
+    pub fn arguments_value(&mut self) -> Expr {
+        match self.frame.arguments.clone() {
+            Some(Local::Var(arguments)) => Expr::var(arguments),
+            Some(Local::Cell(cell)) => self.bind(cell_get(&cell)),
+            None => Expr::undefined(),
+        }
+    }
+
+    /// The value of a name that no scope of the code declares: the `arguments` of the
+    /// function, a binding of the caller of a direct eval, else a global.
     pub fn identifier_read(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        if ident.name == "arguments" && self.frame.arguments.is_some() {
+            return self.arguments_value();
+        }
         if self.eval_binding(ident.name.as_str()).is_some() {
             return self.eval_binding_read(ident.name.as_str());
         }
@@ -133,6 +143,20 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Stores `value` in the variable `symbol` and returns the stored value.
     pub fn assign_symbol(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
+        // A write before the declaration ran, such as from a hoisted function, is in the
+        // temporal dead zone (SetMutableBinding, ECMA-262 §9.1.1.1.5).
+        if self.early.contains(&symbol)
+            && let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
+        {
+            let value = self.bind(value);
+            let check = self.initialized(symbol, &cell);
+            self.pre.push(check);
+            return self.assign_initialized(symbol, value, span);
+        }
+        self.assign_initialized(symbol, value, span)
+    }
+
+    fn assign_initialized(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
         // The name of a function expression is immutable: sloppy code ignores a write to
         // it (ECMA-262 §9.1.1.1.5).
         if self.class_bindings.contains(&symbol) && self.frame.sloppy {

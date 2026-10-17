@@ -13,10 +13,11 @@ use oxc::ast::ast::{
     PropertyDefinition, PropertyDefinitionType, PropertyKey, StaticBlock,
 };
 use oxc::ast_visit::Visit;
+use oxc::semantic::SymbolId;
 use oxc::span::GetSpan;
 
 use super::analyze::VarDeclarations;
-use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret};
+use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, cell_set};
 use super::expr::strip;
 use super::function::{Callee, FnBody, length_of};
 use super::member::super_object;
@@ -85,6 +86,33 @@ impl<'a> Lowerer<'a, '_> {
         self.class_value(class, name, None)
     }
 
+    /// The value of the `extends` clause, or of the key where the top-level code left it,
+    /// and the cell of the class binding that the clause refers to: immutable, and in its
+    /// dead zone until the class exists.
+    fn heritage(
+        &mut self,
+        class: &'a Class<'a>,
+        binding: Option<SymbolId>,
+        key: Option<Expr>,
+    ) -> (Option<Expr>, Option<String>) {
+        let Some(heritage) = &class.heritage else {
+            return (None, None);
+        };
+        let inner =
+            binding.and_then(|symbol| self.heritage_binding(symbol, heritage.expression.span()));
+        let constant = binding.filter(|_| inner.is_some());
+        self.class_bindings.extend(constant);
+        let value = match key {
+            Some(key) => Expr::call("erlang", "get", vec![key]),
+            None => self.expr(&heritage.expression),
+        };
+        let parent = self.bind(value);
+        if constant.is_some() {
+            self.class_bindings.pop();
+        }
+        (Some(parent), inner)
+    }
+
     /// `ClassDefinitionEvaluation`: the code goes to `pre`, and the value is the class.
     /// `register` holds, for a module-level class, the key under which the class is stored
     /// in the realm before its static elements run, and the key of the value of its
@@ -100,19 +128,16 @@ impl<'a> Lowerer<'a, '_> {
             None => (None, None),
         };
         self.declare_privates(class);
-        if let (Some(symbol), Some(heritage)) = (
-            class.id.as_ref().and_then(|id| id.symbol_id.get()),
-            &class.heritage,
-        ) {
-            self.heritage_binding(symbol, heritage.expression.span());
-        }
-        let parent = class.heritage.as_ref().map(|heritage| {
-            let value = match heritage_key {
-                Some(key) => Expr::call("erlang", "get", vec![key]),
-                None => self.expr(&heritage.expression),
-            };
-            self.bind(value)
+        let binding = class.id.as_ref().and_then(|id| id.symbol_id.get());
+        // The binding outside the class, which the code after the class sees again.
+        let saved = binding.map(|symbol| {
+            (
+                symbol,
+                self.frame.env.get(&symbol).cloned(),
+                self.early.contains(&symbol),
+            )
         });
+        let (parent, inner) = self.heritage(class, binding, heritage_key);
         let constructor = class.body.body.iter().find_map(|element| match element {
             ClassElement::MethodDefinition(method)
                 if method.kind == MethodDefinitionKind::Constructor
@@ -143,9 +168,10 @@ impl<'a> Lowerer<'a, '_> {
             self.pre
                 .push(Expr::call("erlang", "put", vec![key, Expr::var(c.clone())]));
         }
+        if let Some(cell) = &inner {
+            self.pre.push(cell_set(cell, Expr::var(c.clone())));
+        }
         // The class binding inside the body is the class itself.
-        let binding = class.id.as_ref().and_then(|id| id.symbol_id.get());
-        let saved = binding.map(|symbol| (symbol, self.frame.env.get(&symbol).cloned()));
         if let Some(symbol) = binding {
             self.frame.env.insert(symbol, Local::Var(c.clone()));
             self.class_bindings.push(symbol);
@@ -186,12 +212,15 @@ impl<'a> Lowerer<'a, '_> {
             self.pre
                 .push(Expr::Apply(Box::new(fun), vec![Expr::var(c.clone())]));
         }
-        if let Some((symbol, previous)) = saved {
+        if let Some((symbol, previous, early)) = saved {
             self.class_bindings.pop();
             match previous {
                 Some(local) => self.frame.env.insert(symbol, local),
                 None => self.frame.env.remove(&symbol),
             };
+            if !early {
+                self.early.remove(&symbol);
+            }
         }
         self.privates.pop();
         Expr::var(c)

@@ -516,12 +516,14 @@ call_setter(Setter, O, _K, V, _Mode) ->
     V.
 
 %% What the prototype chain says about a write of a new own key K: none, a
-%% setter, read_only, or slow when a proxy or an array length is in the way.
+%% setter, read_only, or slow when a proxy, a typed array, or an array length
+%% is in the way.
 inherited_setter(null, _K) ->
     none;
 inherited_setter(P, K) ->
     case record_of(P) of
         {proxy, _, _, _, _, _} -> slow;
+        {typed_array, _, _, _, _, _} -> slow;
         {array, _, _, _, _, _} when K =:= <<"length">> -> slow;
         {array, Proto, _, _, Attrs, {_, Elements}} when is_integer(K) -> setter_from(maps:find(K, Elements), K, Attrs, Proto);
         {arguments, _, _, _, _, Map} when is_map_key(K, Map) -> slow;

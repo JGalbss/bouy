@@ -152,6 +152,11 @@ impl<'a> Lowerer<'a, '_> {
             .copied()
             .filter(|symbol| self.analysis.per_iteration.contains(symbol))
             .collect();
+        // CreatePerIterationEnvironment runs once before the first test too, so a closure
+        // of the initializer keeps the first copy (ECMA-262 §14.7.4.3).
+        for symbol in &copies {
+            code.push(self.copy_cell(*symbol));
+        }
         let initial: Vec<Expr> = vars.iter().map(|v| self.carried(*v)).collect();
         let fun = self.fresh("Loop");
         let params = self.rebind_params(&vars);

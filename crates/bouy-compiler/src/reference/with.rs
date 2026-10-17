@@ -121,11 +121,7 @@ impl<'a> Lowerer<'a, '_> {
             value.clone()
         });
         let object = self.fresh("O");
-        let set = Expr::call(
-            "bouy_ref",
-            "sloppy_set",
-            vec![Expr::var(object.clone()), Expr::js_string(name), value],
-        );
+        let set = self.with_set(Expr::var(object.clone()), name, value);
         self.pre.push(Expr::case(
             reference,
             vec![
@@ -165,15 +161,32 @@ impl<'a> Lowerer<'a, '_> {
         self.through_withs(
             objects,
             name,
-            |_, object| {
-                vec![Expr::call(
-                    "bouy_ref",
-                    "get",
-                    vec![object, Expr::js_string(name)],
-                )]
-            },
+            |me, object| vec![me.with_get(object, name)],
             fallback,
         )
+    }
+
+    /// `GetBindingValue` of the object environment of `object`, which checks again that the
+    /// object has `name`.
+    pub fn with_get(&self, object: Expr, name: &str) -> Expr {
+        Expr::call(
+            "bouy_ref",
+            "with_get",
+            vec![object, Expr::js_string(name), self.strict_flag()],
+        )
+    }
+
+    /// `SetMutableBinding` of the object environment of `object`.
+    pub fn with_set(&self, object: Expr, name: &str, value: Expr) -> Expr {
+        Expr::call(
+            "bouy_ref",
+            "with_set",
+            vec![object, Expr::js_string(name), value, self.strict_flag()],
+        )
+    }
+
+    fn strict_flag(&self) -> Expr {
+        Expr::atom(if self.frame.sloppy { "false" } else { "true" })
     }
 
     /// Resolves `ident` through the `with` objects before the value of a write runs: the
@@ -192,14 +205,7 @@ impl<'a> Lowerer<'a, '_> {
     pub fn with_read_ref(&mut self, ident: &'a IdentifierReference<'a>, reference: &Expr) -> Expr {
         let fallback = self.branch(|me| me.identifier_plain(ident));
         let object = self.fresh("O");
-        let get = Expr::call(
-            "bouy_ref",
-            "get",
-            vec![
-                Expr::var(object.clone()),
-                Expr::js_string(ident.name.as_str()),
-            ],
-        );
+        let get = self.with_get(Expr::var(object.clone()), ident.name.as_str());
         self.bind(Expr::case(
             reference.clone(),
             vec![
@@ -219,14 +225,10 @@ impl<'a> Lowerer<'a, '_> {
         let value = self.bind(value);
         let fallback = self.branch(|me| me.assign_name_value(ident, value.clone()));
         let object = self.fresh("O");
-        let set = Expr::call(
-            "bouy_ref",
-            "sloppy_set",
-            vec![
-                Expr::var(object.clone()),
-                Expr::js_string(ident.name.as_str()),
-                value.clone(),
-            ],
+        let set = self.with_set(
+            Expr::var(object.clone()),
+            ident.name.as_str(),
+            value.clone(),
         );
         self.bind(Expr::case(
             reference.clone(),
@@ -254,11 +256,7 @@ impl<'a> Lowerer<'a, '_> {
             objects,
             name,
             |me, object| {
-                let function = Expr::call(
-                    "bouy_ref",
-                    "get",
-                    vec![object.clone(), Expr::js_string(name)],
-                );
+                let function = me.with_get(object.clone(), name);
                 let this = match &object {
                     Expr::Var(var) if me.is_var_object(var) => Expr::undefined(),
                     _ => object,

@@ -159,10 +159,7 @@ realm(Module, Stdout, Stderr) ->
     erlang:put('$bouy_exit', true),
     erlang:put('$bouy_stderr', Stderr),
     erlang:put('$bouy_rejections', ignore),
-    ok = bouy_ref:init_realm(),
-    CreateRealm = bouy_ref_realm:builtin(<<"$262.createRealm">>, fun(_This, _Args) -> bouy_ref_realm:create() end),
-    bouy_heap:define(bouy_ref_realm:global_object(), <<"$262CreateRealm">>,
-                     #{value => CreateRealm, writable => true, enumerable => false, configurable => true}),
+    host_functions(),
     define_host(main_agent()),
     try Module:'__init__'() of
         _ -> exit({'$bouy_exit', 0})
@@ -173,6 +170,30 @@ realm(Module, Stdout, Stderr) ->
             io:put_chars(Stderr, io_lib:format("Uncaught ~p: ~0tP ~0tP~n", [Class, Reason, 12, Stack, 12])),
             exit({'$bouy_exit', 1})
     end.
+
+%% The host functions of $262 that only the engine can give, as hidden
+%% globals that the host code of the runner (HOST in test262-dev.rs) wraps:
+%% $262CreateRealm, which the prelude takes off the global object, and
+%% __bouyEvalScript, which each realm has.
+host_functions() ->
+    ok = bouy_ref:init_realm(),
+    G = bouy_ref_realm:global_object(),
+    define_hidden(G, <<"$262CreateRealm">>, bouy_ref_realm:builtin(<<"$262.createRealm">>, fun(_This, _Args) -> create_realm() end)),
+    define_hidden(G, <<"__bouyEvalScript">>, eval_script()).
+
+%% A realm of $262.createRealm: its global object, with an evalScript that
+%% runs in that realm.
+create_realm() ->
+    {'$o', {N, _}} = G = bouy_ref_realm:create(),
+    define_hidden(G, <<"__bouyEvalScript">>, bouy_ref_realm:localize(N, eval_script())),
+    G.
+
+eval_script() ->
+    bouy_ref_realm:builtin(<<"evalScript">>, fun(_This, Args) -> bouy_ref_eval:script(arg(1, Args)) end).
+
+define_hidden(G, Name, Value) ->
+    _ = bouy_heap:define(G, Name, #{value => Value, writable => true, enumerable => false, configurable => true}),
+    ok.
 
 %%% $262.agent (test262 INTERPRETING.md): an agent is a realm process of its own, linked
 %%% to the realm of its test, that runs its script as global code through eval. The test

@@ -14,7 +14,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, warm_up/0]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, warm_up/0]).
 
 -import(bouy_ref, [type_error/1]).
 
@@ -140,6 +140,21 @@ create_function(Kind, Args, NewTarget) ->
 
 kind_prototype(normal) -> 'Function.prototype';
 kind_prototype(Kind) -> bouy_ref_function:kind_prototype_id(Kind).
+
+%% ScriptEvaluation for a host's evalScript, such as test262's
+%% $262.evalScript: the source text as a classic script of its own in this
+%% realm. Its top-level let, const, and class join the global declarative
+%% record (bouy_ref_realm:declare_script/4).
+-spec script(term()) -> term().
+script(Source) ->
+    Text = bouy_ref:to_string(Source),
+    Flags = ["--script"],
+    Key = erlang:md5(term_to_binary({Text, Flags})),
+    Module = case cached(Key) of
+        {ok, M} -> M;
+        none -> compile(Text, Flags, Key)
+    end,
+    Module:'$body'().
 
 %% Flags are the options of `bouy compile-eval`. A source text that is only
 %% comments, or one regular expression literal, needs no module: programs

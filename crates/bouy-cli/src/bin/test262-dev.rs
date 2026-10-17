@@ -28,14 +28,15 @@ use clap::Parser;
 
 /// The host functions that test262 expects: `print` for the async tests, and the part of
 /// `$262` that the engine can give: the global object, `detachArrayBuffer` through
-/// `ArrayBuffer.prototype.transfer`, which detaches its receiver, and `agent`, which the VM
-/// half of the runner defines on the global `$262` before the test starts.
+/// `ArrayBuffer.prototype.transfer`, which detaches its receiver, `evalScript`, and `agent`,
+/// which the VM half of the runner defines on the global `$262` before the test starts.
 /// The VM gives the first realm `$262CreateRealm`, which makes a realm in the same process
 /// and returns its global object (`bouy_ref_realm:create/0`); the prelude takes it off the
-/// global object.
+/// global object. Each realm has the hidden global `__bouyEvalScript`, which runs a script
+/// in that realm (`bouy_ref_eval:script/1`).
 const HOST: &str = "function print(message) { console.log(String(message)); }\n\
 var $262 = (function host(global, createRealm, agent) {\n\
-  return { global: global, gc: function () {}, evalScript: function (source) { return global.eval(source); },\n\
+  return { global: global, gc: function () {}, evalScript: function (source) { return global.__bouyEvalScript(source); },\n\
     createRealm: function () { return host(createRealm(), createRealm); },\n\
     detachArrayBuffer: function (buffer) { if (!buffer.detached) buffer.transfer(); }, agent: agent };\n\
 })(globalThis, globalThis.$262CreateRealm, globalThis.$262.agent);\n\
