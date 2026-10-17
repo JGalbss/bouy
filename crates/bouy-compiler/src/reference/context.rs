@@ -205,6 +205,8 @@ pub struct Lowerer<'a, 'c> {
     /// The private names of the class bodies around the code, innermost last: each
     /// name and the Erlang variable that holds it.
     pub privates: Vec<Vec<(String, String)>>,
+    /// The class bindings of the class bodies around the code, which are constant there.
+    pub class_bindings: Vec<SymbolId>,
 }
 
 impl Lowerer<'_, '_> {

@@ -5,7 +5,7 @@ use oxc::ast::ast::{Argument, CallExpression, Expression, NewExpression};
 
 use super::context::{Lowerer, Top};
 use super::expr::strip;
-use super::member::MemberKey;
+use super::member::{MemberKey, super_parts};
 use crate::erlang::Expr;
 
 impl<'a> Lowerer<'a, '_> {
@@ -48,15 +48,10 @@ impl<'a> Lowerer<'a, '_> {
         }
         if let Some(member) = callee.as_member_expression() {
             if let Expression::Super(_) = member.object() {
-                let key = match self.member_key(member) {
-                    MemberKey::Static(key) | MemberKey::Private(key) => key,
-                    MemberKey::Dynamic(value) => {
-                        self.bind(Expr::call("bouy_ref", "to_property_key", vec![value]))
-                    }
-                };
-                let method = self.super_get(key);
+                let (object, key) = self.member_parts(member);
+                let method = self.get(object.clone(), key);
                 let args = self.args(&call.arguments);
-                let this = self.this_expr();
+                let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
                 return self.bind(Expr::call("bouy_ref", "call", vec![method, this, args]));
             }
             let (object, key) = self.member_parts(member);

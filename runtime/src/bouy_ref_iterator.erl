@@ -11,14 +11,14 @@
 -export([get_iterator/1, close/1, close_state/1, close_quietly/1]).
 -export([async_next/1, async_step/1, async_close/3, async_close_quietly/2]).
 -export([require_coercible/1, finish/1, pattern_cell/1, next_value/1, rest_value/1, abort/1, finish_cell/1]).
+-export([object_rest/2]).
 -export([list_iterator/2, list_iterator_next/1, result/2]).
 
--import(bouy_ref_realm, [arg/2, builtin/2, record/4]).
+-import(bouy_ref_realm, [record/4]).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
-    [{'Iterator.prototype', record(object, ?OBJECT_PROTO, [{?SYM(iterator), builtin(<<"[Symbol.iterator]">>, fun(This, _) -> This end)}], none)},
-     {'ListIterator.prototype', record(object, ?ITERATOR_PROTO, ?METHODS(<<"ListIterator.prototype">>, [<<"next">>]), none)}].
+    [{'ListIterator.prototype', record(object, ?ITERATOR_PROTO, ?METHODS(<<"ListIterator.prototype">>, [<<"next">>]), none)}].
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [].
@@ -223,6 +223,17 @@ take(State, N, Acc) ->
 require_coercible(V) when V =:= undefined; V =:= null ->
     bouy_ref:type_error(bouy_ref_string:concat([<<"Cannot destructure '">>, bouy_ref:to_string(V), <<"' as it is ">>, bouy_ref:to_string(V), <<".">>]));
 require_coercible(_) -> ok.
+
+%% The rest of an object pattern: the enumerable own properties of the
+%% source that the pattern did not name, the indexes of a string too.
+-spec object_rest(term(), [bouy_heap:key()]) -> term().
+object_rest(S, Excluded) when ?IS_STRING(S) ->
+    Rest = bouy_heap:new_object(?OBJECT_PROTO),
+    [bouy_ref_class:define_field(Rest, I, bouy_ref_string:unit_string(S, I))
+     || I <- lists:seq(0, bouy_ref_string:length_of(S) - 1), not lists:member(I, Excluded)],
+    Rest;
+object_rest(Source, Excluded) ->
+    bouy_ref:object_rest(Source, Excluded).
 
 %% The end of an array pattern whose iterator may not be done: IteratorClose.
 -spec finish(term()) -> ok.

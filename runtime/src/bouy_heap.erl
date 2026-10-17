@@ -238,7 +238,7 @@ get({'$o', Id} = O, K) ->
     case erlang:get(Id) of
         {array, _, _, _, _, {_, Elements}} = R when is_integer(K) ->
             case Elements of
-                #{K := V} -> V;
+                #{K := V} -> resolve(V, O);
                 _ -> inherited(element(2, R), K, O)
             end;
         {array, _, _, _, _, {Length, _}} when K =:= <<"length">> ->
@@ -273,7 +273,7 @@ fn_default_get(K, F) ->
 
 from_record({array, _, _, _, _, {_, Elements}} = R, K, O) when is_integer(K) ->
     case Elements of
-        #{K := V} -> V;
+        #{K := V} -> resolve(V, O);
         _ -> inherited(element(2, R), K, O)
     end;
 from_record({array, _, _, _, _, {Length, _}}, <<"length">>, _O) ->

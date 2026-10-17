@@ -134,9 +134,18 @@ impl<'a> Lowerer<'a, '_> {
         match statement {
             Statement::ExpressionStatement(statement) => self.effect(&statement.expression),
             Statement::VariableDeclaration(declaration) => self.variables(declaration),
-            Statement::ExportDeclaration(export) => {
-                if let Declaration::VariableDeclaration(declaration) = &export.declaration {
-                    self.variables(declaration);
+            Statement::ExportDeclaration(export) => match &export.declaration {
+                Declaration::VariableDeclaration(declaration) => self.variables(declaration),
+                Declaration::ClassDeclaration(class) if !class.declare => {
+                    self.class_declaration(class);
+                }
+                _ => {}
+            },
+            Statement::ExportDefaultDeclaration(export) => {
+                if let oxc::ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) =
+                    &export.declaration
+                {
+                    self.class_declaration(class);
                 }
             }
             Statement::ClassDeclaration(class) if !class.declare => {

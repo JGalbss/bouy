@@ -21,10 +21,20 @@ pub enum MemberKey {
     Private(Expr),
 }
 
-/// The object of a `super.k` member expression, which `get` and `set` look up on the
-/// prototype of the home object.
-pub fn super_object() -> Expr {
-    Expr::atom("$super")
+/// The object of a `super.k` member expression: the prototype of the home object, read
+/// when the reference is made, and `this`. `get` and `set` look the key up there.
+pub fn super_object(base: Expr, this: Expr) -> Expr {
+    Expr::Tuple(vec![Expr::atom("$super"), base, this])
+}
+
+/// The base and `this` of a `super.k` object.
+pub fn super_parts(object: &Expr) -> Option<(Expr, Expr)> {
+    match object {
+        Expr::Tuple(parts) if parts.len() == 3 && parts[0] == Expr::atom("$super") => {
+            Some((parts[1].clone(), parts[2].clone()))
+        }
+        _ => None,
+    }
 }
 
 impl<'a> Lowerer<'a, '_> {
@@ -32,6 +42,17 @@ impl<'a> Lowerer<'a, '_> {
     pub fn property_key(&mut self, key: &'a PropertyKey<'a>, computed: bool) -> Expr {
         if let PropertyKey::PrivateIdentifier(private) = key {
             return self.private_key(private.name.as_str());
+        }
+        // A number key is the string of the number, which the runtime prints.
+        if !computed
+            && let PropertyKey::NumericLiteral(literal) = key
+            && !matches!(number(literal.value), Expr::Integer(index) if index >= 0)
+        {
+            return self.bind(Expr::call(
+                "bouy_ref",
+                "to_property_key",
+                vec![number(literal.value)],
+            ));
         }
         if !computed && let Some(name) = key.static_name() {
             return static_key(&name);
@@ -80,7 +101,11 @@ impl<'a> Lowerer<'a, '_> {
 
     pub fn static_member(&mut self, member: &'a StaticMemberExpression<'a>) -> Expr {
         if let Expression::Super(_) = member.object {
-            return self.super_get(static_key(member.property.name.as_str()));
+            let object = self.super_reference();
+            return self.get(
+                object,
+                MemberKey::Static(static_key(member.property.name.as_str())),
+            );
         }
         let object = self.expr(&member.object);
         if member.optional {
@@ -94,12 +119,11 @@ impl<'a> Lowerer<'a, '_> {
 
     pub fn computed_member(&mut self, member: &'a ComputedMemberExpression<'a>) -> Expr {
         if let Expression::Super(_) = member.object {
+            let this = self.this_expr();
+            let this = self.bind(this);
             let key = self.computed_key(&member.expression);
-            let key = self.fix_key(key);
-            let MemberKey::Static(key) = key else {
-                return Expr::undefined();
-            };
-            return self.super_get(key);
+            let object = self.super_base(this);
+            return self.get(object, key);
         }
         let object = self.expr(&member.object);
         if member.optional {
@@ -124,8 +148,10 @@ impl<'a> Lowerer<'a, '_> {
         member: &'a oxc::ast::ast::MemberExpression<'a>,
     ) -> (Expr, MemberKey) {
         if let Expression::Super(_) = member.object() {
+            let this = self.this_expr();
+            let this = self.bind(this);
             let key = self.member_key(member);
-            return (super_object(), self.fix_key(key));
+            return (self.super_base(this), key);
         }
         let object = self.expr(member.object());
         let object = self.bind(object);
@@ -174,11 +200,16 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn get(&mut self, object: Expr, key: MemberKey) -> Expr {
-        if object == super_object() {
-            let MemberKey::Static(key) = self.fix_key(key) else {
-                return Expr::undefined();
+        if let Some((base, this)) = super_parts(&object) {
+            let key = match key {
+                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Dynamic(value) => Expr::call("bouy_ref", "to_property_key", vec![value]),
             };
-            return self.super_get(key);
+            return self.bind(Expr::call(
+                "bouy_ref_class",
+                "super_get",
+                vec![base, key, this],
+            ));
         }
         let value = match key {
             MemberKey::Static(key) => Expr::call("bouy_ref", "get", vec![object, key]),
@@ -191,10 +222,18 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn set(&mut self, object: Expr, key: MemberKey, value: Expr) {
-        if object == super_object() {
-            if let MemberKey::Static(key) = self.fix_key(key) {
-                self.super_set(key, value);
-            }
+        if let Some((base, this)) = super_parts(&object) {
+            let key = match key {
+                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Dynamic(value) => {
+                    self.bind(Expr::call("bouy_ref", "to_property_key", vec![value]))
+                }
+            };
+            self.pre.push(Expr::call(
+                "bouy_ref_class",
+                "super_set",
+                vec![base, key, value, this],
+            ));
             return;
         }
         let call = match key {

@@ -13,7 +13,7 @@ use oxc::syntax::operator::{
 
 use super::context::{Kind, Lowerer, boolean_case};
 use super::literal::{js_string_literal, number};
-use super::member::{MemberKey, super_object};
+use super::member::{MemberKey, super_parts};
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -392,7 +392,7 @@ impl<'a> Lowerer<'a, '_> {
             UnaryOperator::Delete => match unary.argument.as_member_expression() {
                 Some(member) => {
                     let (object, key) = self.member_parts(member);
-                    if object == super_object() {
+                    if super_parts(&object).is_some() {
                         return self.bind(Expr::call(
                             "bouy_heap",
                             "throw_error",

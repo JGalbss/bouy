@@ -292,22 +292,7 @@ impl<'a> Lowerer<'a, '_> {
                 if value == Expr::undefined() {
                     return this;
                 }
-                let v = self.fresh("R");
-                Expr::case(
-                    value,
-                    vec![
-                        Clause::guarded(
-                            Expr::var(v.clone()),
-                            vec![Expr::call(
-                                "bouy_heap",
-                                "is_object",
-                                vec![Expr::var(v.clone())],
-                            )],
-                            vec![Expr::var(v)],
-                        ),
-                        Clause::new(Expr::var("_"), vec![this]),
-                    ],
-                )
+                Expr::call("bouy_ref_class", "base_return", vec![this, value])
             }
         }
     }

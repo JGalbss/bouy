@@ -15,11 +15,11 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4]).
+-export([intrinsics/0, globals/0, method/4, dynamic/2]).
 -export([function/4, static_record/5, start/2, start_async/2, resume/2]).
 -export([yield_star/4, yield_star_async/5, async_iterator/1, from_sync/1, async_close/4]).
 
--import(bouy_ref_realm, [arg/2, builtin/2, record/4]).
+-import(bouy_ref_realm, [arg/2, builtin/2, record/4, ctor_record/5]).
 
 -define(GENERATOR_PROTO, {'$o', 'Generator.prototype'}).
 -define(ASYNC_GENERATOR_PROTO, {'$o', 'AsyncGenerator.prototype'}).
@@ -29,21 +29,51 @@
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
     Tag = fun(Name) -> {?SYM(toStringTag), Name} end,
-    [{'Generator.prototype', record(object, ?ITERATOR_PROTO,
-        ?METHODS(<<"Generator.prototype">>, [<<"next">>, <<"return">>, <<"throw">>])
-        ++ [{<<"constructor">>, {'$o', 'GeneratorFunction.prototype'}}, Tag(<<"Generator">>)], none)},
-     {'GeneratorFunction.prototype', record(object, ?FUNCTION_PROTO,
-        [{<<"prototype">>, ?GENERATOR_PROTO}, Tag(<<"GeneratorFunction">>)], none)},
+    %% The links between a function prototype, its constructor, and the prototype
+    %% of its instances are not writable.
+    Fixed = [<<"constructor">>, <<"prototype">>, ?SYM(toStringTag)],
+    Methods = [<<"next">>, <<"return">>, <<"throw">>],
+    [{'Generator.prototype', fixed(record(object, ?ITERATOR_PROTO,
+        ?METHODS(<<"Generator.prototype">>, Methods)
+        ++ [{<<"constructor">>, {'$o', 'GeneratorFunction.prototype'}}, Tag(<<"Generator">>)], none), Fixed)},
+     {'GeneratorFunction.prototype', fixed(record(object, ?FUNCTION_PROTO,
+        [{<<"constructor">>, constructor(<<"GeneratorFunction">>)}, {<<"prototype">>, ?GENERATOR_PROTO},
+         Tag(<<"GeneratorFunction">>)], none), Fixed)},
      {'AsyncIterator.prototype', record(object, ?OBJECT_PROTO,
-        [{?SYM(asyncIterator), builtin(<<"[Symbol.asyncIterator]">>, fun(This, _) -> This end)}], none)},
-     {'AsyncGenerator.prototype', record(object, {'$o', 'AsyncIterator.prototype'},
-        ?METHODS(<<"AsyncGenerator.prototype">>, [<<"next">>, <<"return">>, <<"throw">>])
-        ++ [{<<"constructor">>, {'$o', 'AsyncGeneratorFunction.prototype'}}, Tag(<<"AsyncGenerator">>)], none)},
-     {'AsyncGeneratorFunction.prototype', record(object, ?FUNCTION_PROTO,
-        [{<<"prototype">>, ?ASYNC_GENERATOR_PROTO}, Tag(<<"AsyncGeneratorFunction">>)], none)},
-     {'AsyncFunction.prototype', record(object, ?FUNCTION_PROTO, [Tag(<<"AsyncFunction">>)], none)},
+        [{?SYM(asyncIterator), builtin(<<"AsyncIterator.prototype.[Symbol.asyncIterator]">>, fun(This, _) -> This end)}], none)},
+     {'AsyncGenerator.prototype', fixed(record(object, {'$o', 'AsyncIterator.prototype'},
+        ?METHODS(<<"AsyncGenerator.prototype">>, Methods)
+        ++ [{<<"constructor">>, {'$o', 'AsyncGeneratorFunction.prototype'}}, Tag(<<"AsyncGenerator">>)], none), Fixed)},
+     {'AsyncGeneratorFunction.prototype', fixed(record(object, ?FUNCTION_PROTO,
+        [{<<"constructor">>, constructor(<<"AsyncGeneratorFunction">>)}, {<<"prototype">>, ?ASYNC_GENERATOR_PROTO},
+         Tag(<<"AsyncGeneratorFunction">>)], none), Fixed)},
+     {'AsyncFunction.prototype', fixed(record(object, ?FUNCTION_PROTO,
+        [{<<"constructor">>, constructor(<<"AsyncFunction">>)}, Tag(<<"AsyncFunction">>)], none), Fixed)},
      {'AsyncFromSyncIterator.prototype', record(object, {'$o', 'AsyncIterator.prototype'},
-        ?METHODS(<<"AsyncFromSyncIterator.prototype">>, [<<"next">>, <<"return">>, <<"throw">>]), none)}].
+        ?METHODS(<<"AsyncFromSyncIterator.prototype">>, Methods), none)}]
+    ++ [{{builtin, <<"AsyncIterator.prototype.[Symbol.asyncIterator]">>}, function_record(<<"[Symbol.asyncIterator]">>, 0)}]
+    ++ [{{builtin, <<Owner/binary, ".", Name/binary>>}, function_record(Name, 1)}
+        || Owner <- [<<"Generator.prototype">>, <<"AsyncGenerator.prototype">>, <<"AsyncFromSyncIterator.prototype">>],
+           Name <- Methods]
+    ++ [{{builtin, Name}, ctor_record(Name, 1, {'$o', Proto}, [], fun ?MODULE:dynamic/2)}
+        || {Name, Proto} <- [{<<"GeneratorFunction">>, 'GeneratorFunction.prototype'},
+                             {<<"AsyncGeneratorFunction">>, 'AsyncGeneratorFunction.prototype'},
+                             {<<"AsyncFunction">>, 'AsyncFunction.prototype'}]].
+
+%% The constructors of the function kinds compile source text at run time,
+%% which the engine does not do (as the Function constructor).
+constructor(Name) -> {'$f', {builtin, Name}, fun ?MODULE:dynamic/2}.
+
+-spec dynamic(term(), list()) -> no_return().
+dynamic(_This, _Args) -> bouy_ref:type_error(<<"A function constructor is not supported: the engine compiles code ahead of time">>).
+
+%% A record whose Keys are configurable but not writable.
+fixed({Class, Proto, Props, Keys, Attrs, Slots}, Fixed) ->
+    {Class, Proto, Props, Keys, maps:merge(Attrs, maps:from_list([{K, 4} || K <- Fixed, is_map_key(K, Props)])), Slots}.
+
+function_record(Name, Length) ->
+    {function, ?FUNCTION_PROTO, #{<<"name">> => Name, <<"length">> => Length}, [<<"name">>, <<"length">>],
+     #{<<"name">> => 4, <<"length">> => 4}, #{}}.
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [].

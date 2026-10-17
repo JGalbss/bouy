@@ -11,7 +11,8 @@
 
 -include("bouy_ref.hrl").
 
--export([create/3, set_construct/2, method/4, function_name/2, define_field/3, set_literal_proto/3]).
+-export([create/3, set_construct/2, method/4, function_name/2, define_field/3, define_method/4, set_literal_proto/3]).
+-export([base_return/2]).
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
 -export([super_get/3, super_set/4]).
 -export([private_name/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
@@ -79,6 +80,30 @@ function_name({'$sym', _, D}, Prefix) -> bouy_ref_string:concat([Prefix, <<"[">>
 function_name({'#', _, Name}, Prefix) -> bouy_ref_string:concat([Prefix, <<"#">>, Name]);
 function_name(K, Prefix) -> bouy_ref_string:concat(Prefix, bouy_ref:to_string(K)).
 
+%% A method or an accessor of a class on Home: DefinePropertyOrThrow, which
+%% fails on a property that is not configurable, such as the prototype of the
+%% class. Slot is method, get, or set; an accessor keeps the other half.
+-spec define_method(term(), term(), term(), method | get | set) -> term().
+define_method(Home, K, F, Slot) ->
+    Existing = bouy_heap:get_own(Home, K),
+    case Existing of
+        {data, _, Bits} when Bits band 4 =:= 0 -> cannot_redefine(K);
+        {accessor, _, _, Bits} when Bits band 4 =:= 0 -> cannot_redefine(K);
+        _ -> ok
+    end,
+    Descriptor = case {Slot, Existing} of
+        {method, _} -> #{value => F, writable => true};
+        {get, {accessor, _, S, _}} -> #{get => F, set => S};
+        {get, _} -> #{get => F, set => undefined};
+        {set, {accessor, G, _, _}} -> #{get => G, set => F};
+        {set, _} -> #{get => undefined, set => F}
+    end,
+    bouy_heap:define(Home, K, Descriptor#{enumerable => false, configurable => true}).
+
+-spec cannot_redefine(term()) -> no_return().
+cannot_redefine(K) ->
+    bouy_ref:type_error(bouy_ref_string:concat([<<"Cannot redefine property: ">>, function_name(K, <<>>)])).
+
 %% A public class field: CreateDataPropertyOrThrow.
 -spec define_field(term(), term(), term()) -> term().
 define_field(O, K, V) ->
@@ -136,6 +161,11 @@ bind_this(Cell, This) ->
         _ -> bouy_heap:throw_error('ReferenceError', <<"Super constructor may only be called once">>)
     end.
 
+%% The result of a base constructor that returns V: V when it is an object.
+-spec base_return(term(), term()) -> term().
+base_return(_This, V) when ?IS_OBJECT(V) -> V;
+base_return(This, _V) -> This.
+
 %% The result of a derived constructor that returns V.
 -spec derived_return({'$c', pos_integer()}, term()) -> term().
 derived_return(_Cell, V) when ?IS_OBJECT(V) -> V;
@@ -154,13 +184,12 @@ new_target_construct(Body, NewTarget, Args) ->
 
 %%% super.k
 
-%% super.k in a method whose home object is Home, with this as receiver.
+%% super.k: Base is the prototype of the home object, read when the reference
+%% was made, and this is the receiver.
 -spec super_get(term(), term(), term()) -> term().
-super_get(Home, K, This) ->
-    case bouy_heap:prototype_of(Home) of
-        null -> undefined;
-        Proto -> lookup(Proto, K, This)
-    end.
+super_get(null, K, _This) ->
+    bouy_ref:type_error(<<"Cannot read properties of null (reading '", (key_text(bouy_ref:to_property_key(K)))/binary, "')">>);
+super_get(Base, K, This) -> lookup(Base, bouy_ref:to_property_key(K), This).
 
 lookup(null, _K, _Receiver) ->
     undefined;
@@ -172,10 +201,12 @@ lookup(O, K, Receiver) ->
         none -> lookup(bouy_heap:prototype_of(O), K, Receiver)
     end.
 
-%% super.k = V: [[Set]] on the prototype of Home with this as receiver.
+%% super.k = V: [[Set]] on Base with this as receiver.
 -spec super_set(term(), term(), term(), term()) -> term().
-super_set(Home, K, V, This) ->
-    case find_setter(bouy_heap:prototype_of(Home), K) of
+super_set(null, K, _V, _This) ->
+    bouy_ref:type_error(<<"Cannot set properties of null (setting '", (key_text(K))/binary, "')">>);
+super_set(Base, K, V, This) ->
+    case find_setter(Base, K) of
         {setter, undefined} -> bouy_ref:type_error(<<"Cannot set property ", (key_text(K))/binary, " which has only a getter">>);
         {setter, S} -> bouy_ref:call(S, This, [V]);
         read_only -> bouy_ref:type_error(<<"Cannot assign to read only property '", (key_text(K))/binary, "'">>);

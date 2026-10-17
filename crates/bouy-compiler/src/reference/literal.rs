@@ -3,7 +3,7 @@
 
 use oxc::ast::ast::{
     ArrayExpression, ArrayExpressionElement, Expression, ObjectExpression, ObjectPropertyKind,
-    PropertyKind, Super, TemplateLiteral,
+    PropertyKey, PropertyKind, Super, TemplateLiteral,
 };
 use oxc::ast_visit::Visit;
 use oxc::syntax::operator::UnaryOperator;
@@ -171,6 +171,11 @@ pub fn literal_keys(object: &ObjectExpression<'_>) -> Option<Vec<String>> {
         }
         // A method that uses `super` needs the object as its home before it exists.
         if property.method && uses_super(&property.value) {
+            return None;
+        }
+        if let PropertyKey::NumericLiteral(literal) = &property.key
+            && literal.value.fract() != 0.0
+        {
             return None;
         }
         let name = property.key.static_name()?.into_owned();

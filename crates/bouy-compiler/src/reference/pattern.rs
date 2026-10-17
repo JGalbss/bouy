@@ -7,6 +7,8 @@ use oxc::ast::ast::{
 };
 use oxc::span::GetSpan;
 
+use std::collections::HashMap;
+
 use oxc::semantic::SymbolId;
 
 use oxc::ast_visit::Visit;
@@ -45,7 +47,7 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 if let Some(rest) = &object.rest {
                     let value = self.bind(Expr::call(
-                        "bouy_ref",
+                        "bouy_ref_iterator",
                         "object_rest",
                         vec![source, Expr::List(keys)],
                     ));
@@ -159,24 +161,7 @@ impl<'a> Lowerer<'a, '_> {
             Expr::var(cell.clone()),
             Expr::call("bouy_ref_iterator", "pattern_cell", vec![source]),
         ));
-        // The handler closes the iterator, unless it is done, and throws again.
-        let handler = self.fresh("PatternHandler");
-        let error = self.fresh("E");
-        let outer = self.handler_chain();
-        let rethrow = self.wrap_chain(vec![throw_value(Expr::var(error.clone()))], &outer);
-        self.pre.push(Expr::matches(
-            Expr::var(handler.clone()),
-            Expr::Fun {
-                name: None,
-                clauses: vec![Clause::new(
-                    Expr::var(error),
-                    vec![
-                        Expr::call("bouy_ref_iterator", "abort", vec![Expr::var(cell.clone())]),
-                        rethrow,
-                    ],
-                )],
-            },
-        ));
+        let handler = self.pattern_handler(&cell, suspends);
         let level = self.frame.region + 1;
         // A generator that returns at a `yield` in the pattern closes the iterator too.
         let close = suspends.then(|| {
@@ -196,24 +181,7 @@ impl<'a> Lowerer<'a, '_> {
         let saved = std::mem::take(&mut self.pre);
         self.frame.region += 1;
         self.frame.handlers.push(handler.clone());
-        for element in elements {
-            let item = self.bind(Expr::call(
-                "bouy_ref_iterator",
-                "next_value",
-                vec![Expr::var(cell.clone())],
-            ));
-            if let Some(element) = element {
-                self.bind_element(element, item);
-            }
-        }
-        if let Some(rest) = rest {
-            let value = self.bind(Expr::call(
-                "bouy_ref_iterator",
-                "rest_value",
-                vec![Expr::var(cell.clone())],
-            ));
-            self.bind_rest(rest, value);
-        }
+        self.pattern_elements(&cell, elements, rest);
         self.frame.handlers.pop();
         self.frame.region -= 1;
         let mut body = std::mem::replace(&mut self.pre, saved);
@@ -237,6 +205,108 @@ impl<'a> Lowerer<'a, '_> {
                 },
             ));
         }
+        let (inside, outside) = self.carry_out(saved_env);
+        body.push(inside);
+        let region = if suspends {
+            // `seal` makes the code after the pattern the join fun of the region.
+            Expr::call(
+                "$region",
+                "enter",
+                vec![
+                    Expr::var(handler),
+                    Expr::Integer(i64::try_from(level).unwrap_or(0)),
+                    Expr::Block(body),
+                ],
+            )
+        } else {
+            self.wrap_level(body, &handler, level)
+        };
+        self.pre.push(Expr::matches(outside, region));
+        self.pre.push(Expr::call(
+            "bouy_ref_iterator",
+            "finish_cell",
+            vec![Expr::var(cell)],
+        ));
+    }
+
+    /// The handler of an array pattern: closes the iterator, unless it is done, and
+    /// throws again. Inline, the throw goes to the Erlang `try`s around the pattern; a
+    /// region that suspends runs its handler outside them, under the chain of handlers.
+    fn pattern_handler(&mut self, cell: &str, suspends: bool) -> String {
+        let handler = self.fresh("PatternHandler");
+        let error = self.fresh("E");
+        let rethrow = if suspends {
+            let outer = self.handler_chain();
+            self.wrap_chain(vec![throw_value(Expr::var(error.clone()))], &outer)
+        } else {
+            throw_value(Expr::var(error.clone()))
+        };
+        self.pre.push(Expr::matches(
+            Expr::var(handler.clone()),
+            Expr::Fun {
+                name: None,
+                clauses: vec![Clause::new(
+                    Expr::var(error),
+                    vec![
+                        Expr::call(
+                            "bouy_ref_iterator",
+                            "abort",
+                            vec![Expr::var(cell.to_owned())],
+                        ),
+                        rethrow,
+                    ],
+                )],
+            },
+        ));
+        handler
+    }
+
+    /// The elements of a guarded array pattern, each after its step of the iterator in
+    /// `cell`.
+    fn pattern_elements(
+        &mut self,
+        cell: &str,
+        elements: Vec<Option<Element<'a>>>,
+        rest: Option<Rest<'a>>,
+    ) {
+        let step = |function: &'static str| {
+            let cell = cell.to_owned();
+            move |me: &mut Self| {
+                me.bind(Expr::call(
+                    "bouy_ref_iterator",
+                    function,
+                    vec![Expr::var(cell)],
+                ))
+            }
+        };
+        for element in elements {
+            let next = step("next_value");
+            match element {
+                Some(Element::Target(target)) => self.assign_element_with(target, next),
+                Some(Element::Binding(pattern)) => {
+                    let item = next(self);
+                    self.declare_pattern(pattern, item);
+                }
+                None => {
+                    next(self);
+                }
+            }
+        }
+        if let Some(rest) = rest {
+            let drain = step("rest_value");
+            match rest {
+                Rest::Target(target) => self.assign_target_with(target, drain),
+                Rest::Binding(pattern) => {
+                    let value = drain(self);
+                    self.declare_pattern(pattern, value);
+                }
+            }
+        }
+    }
+
+    /// The variables that the code since `saved_env` bound: the tuple of their values
+    /// inside a `try`, and the pattern that binds them again after it.
+    fn carry_out(&mut self, saved_env: HashMap<SymbolId, Local>) -> (Expr, Expr) {
         let changed: Vec<(SymbolId, Local)> = self
             .frame
             .env
@@ -254,7 +324,6 @@ impl<'a> Lowerer<'a, '_> {
                 .iter()
                 .map(|(_, local)| Expr::var(local_name(local))),
         );
-        body.push(Expr::Tuple(inside));
         self.frame.env = saved_env;
         let mut outside = vec![Expr::atom("ok")];
         for (symbol, local) in &changed {
@@ -266,26 +335,7 @@ impl<'a> Lowerer<'a, '_> {
             };
             self.frame.env.insert(*symbol, local);
         }
-        let region = if suspends {
-            // `seal` makes the code after the pattern the join fun of the region.
-            Expr::call(
-                "$region",
-                "enter",
-                vec![
-                    Expr::var(handler),
-                    Expr::Integer(i64::try_from(level).unwrap_or(0)),
-                    Expr::Block(body),
-                ],
-            )
-        } else {
-            self.wrap_level(body, &handler, level)
-        };
-        self.pre.push(Expr::matches(Expr::Tuple(outside), region));
-        self.pre.push(Expr::call(
-            "bouy_ref_iterator",
-            "finish_cell",
-            vec![Expr::var(cell)],
-        ));
+        (Expr::Tuple(inside), Expr::Tuple(outside))
     }
 
     fn bind_element(&mut self, element: Element<'a>, value: Expr) {
@@ -359,14 +409,16 @@ impl<'a> Lowerer<'a, '_> {
                         AssignmentTargetProperty::AssignmentTargetPropertyProperty(property) => {
                             let key = self.property_key(&property.name, property.computed);
                             keys.push(key.clone());
-                            let item = self.get(source.clone(), MemberKey::Static(key));
-                            self.assign_maybe_default(&property.binding, item);
+                            let source = source.clone();
+                            self.assign_element_with(&property.binding, |me| {
+                                me.get(source, MemberKey::Static(key))
+                            });
                         }
                     }
                 }
                 if let Some(rest) = &object.rest {
                     let value = self.bind(Expr::call(
-                        "bouy_ref",
+                        "bouy_ref_iterator",
                         "object_rest",
                         vec![source, Expr::List(keys)],
                     ));
@@ -379,6 +431,61 @@ impl<'a> Lowerer<'a, '_> {
                     self.unsupported(other.span(), "this assignment target");
                 }
             },
+        }
+    }
+
+    /// An element of an assignment pattern: a member target is evaluated before the value
+    /// that it gets, as `DestructuringAssignmentTarget` is.
+    fn assign_element_with(
+        &mut self,
+        target: &'a AssignmentTargetMaybeDefault<'a>,
+        value: impl FnOnce(&mut Self) -> Expr,
+    ) {
+        let (binding, init) = match target {
+            AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(with_default) => {
+                (&with_default.binding, Some(&with_default.init))
+            }
+            other => {
+                let Some(binding) = other.as_assignment_target() else {
+                    self.unsupported(other.span(), "this assignment target");
+                    return;
+                };
+                (binding, None)
+            }
+        };
+        let member = binding
+            .as_simple_assignment_target()
+            .and_then(SimpleAssignmentTarget::as_member_expression);
+        let Some(member) = member else {
+            let item = value(self);
+            self.assign_maybe_default(target, item);
+            return;
+        };
+        let (object, key) = self.member_parts(member);
+        let item = value(self);
+        let item = match init {
+            Some(init) => self.with_default(item, init, None),
+            None => item,
+        };
+        self.set(object, key, item);
+    }
+
+    /// A rest target: a member target is evaluated before the iterator is drained.
+    fn assign_target_with(
+        &mut self,
+        target: &'a AssignmentTarget<'a>,
+        value: impl FnOnce(&mut Self) -> Expr,
+    ) {
+        let member = target
+            .as_simple_assignment_target()
+            .and_then(SimpleAssignmentTarget::as_member_expression);
+        if let Some(member) = member {
+            let (object, key) = self.member_parts(member);
+            let item = value(self);
+            self.set(object, key, item);
+        } else {
+            let item = value(self);
+            self.assign_target(target, item);
         }
     }
 
@@ -435,7 +542,7 @@ enum Element<'a> {
     Target(&'a AssignmentTargetMaybeDefault<'a>),
 }
 
-impl<'a> Element<'a> {
+impl Element<'_> {
     fn visit(&self, visitor: &mut Suspends) {
         match self {
             Element::Binding(pattern) => visitor.visit_binding_pattern(pattern),
@@ -462,7 +569,7 @@ enum Rest<'a> {
     Target(&'a AssignmentTarget<'a>),
 }
 
-impl<'a> Rest<'a> {
+impl Rest<'_> {
     fn visit(&self, visitor: &mut Suspends) {
         match self {
             Rest::Binding(pattern) => visitor.visit_binding_pattern(pattern),

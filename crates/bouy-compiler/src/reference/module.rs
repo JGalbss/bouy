@@ -130,9 +130,9 @@ impl<'a> Lowerer<'a, '_> {
                         }
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                        if let Some(id) = &class.id {
-                            self.module_class(id.name.as_str(), class);
-                        }
+                        let name = class.id.as_ref().map_or("default", |id| id.name.as_str());
+                        self.module_class(name, class);
+                        body.push(statement);
                     }
                     _ => {
                         self.unsupported(export.span, "this `export default`");
@@ -151,6 +151,9 @@ impl<'a> Lowerer<'a, '_> {
                             && !class.declare
                         {
                             self.module_class(id.name.as_str(), class);
+                            // The class is made where the top-level code declares it, so its
+                            // static elements run in order.
+                            body.push(statement);
                         }
                     }
                     Some(Declaration::VariableDeclaration(variables)) if !variables.declare => {

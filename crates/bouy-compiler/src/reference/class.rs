@@ -15,8 +15,9 @@ use oxc::ast::ast::{
 use oxc::ast_visit::Visit;
 
 use super::analyze::VarDeclarations;
-use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret};
+use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, Top};
 use super::function::{Callee, FnBody, length_of};
+use super::member::super_object;
 use crate::erlang::{Clause, Expr, Function};
 
 /// The elements of a class that run after its methods are defined.
@@ -54,8 +55,21 @@ impl<'a> Lowerer<'a, '_> {
         self.frame = Frame::default();
     }
 
-    /// A class declaration in a function or a block: its value, bound to its name.
+    /// A class declaration in a function or a block: its value, bound to its name. At
+    /// module level, the class of the realm, made here if no code used it before.
     pub fn class_declaration(&mut self, class: &'a Class<'a>) {
+        if class.id.is_none() && self.classes.iter().any(|name| name == "default") {
+            // `export default class {}`: its class is made once per realm too.
+            self.pre
+                .push(Expr::local_call("$class", vec![Expr::binary("default")]));
+            return;
+        }
+        let symbol = class.id.as_ref().and_then(|id| id.symbol_id.get());
+        if let Some(Top::Class(name)) = symbol.and_then(|symbol| self.tops.get(&symbol).cloned()) {
+            self.pre
+                .push(Expr::local_call("$class", vec![Expr::binary(name)]));
+            return;
+        }
         let name = class
             .id
             .as_ref()
@@ -124,6 +138,7 @@ impl<'a> Lowerer<'a, '_> {
         let saved = binding.map(|symbol| (symbol, self.frame.env.get(&symbol).cloned()));
         if let Some(symbol) = binding {
             self.frame.env.insert(symbol, Local::Var(c.clone()));
+            self.class_bindings.push(symbol);
         }
         let Elements {
             instance,
@@ -162,6 +177,7 @@ impl<'a> Lowerer<'a, '_> {
                 .push(Expr::Apply(Box::new(fun), vec![Expr::var(c.clone())]));
         }
         if let Some((symbol, previous)) = saved {
+            self.class_bindings.pop();
             match previous {
                 Some(local) => self.frame.env.insert(symbol, local),
                 None => self.frame.env.remove(&symbol),
@@ -309,15 +325,10 @@ impl<'a> Lowerer<'a, '_> {
         if private {
             return Some(Expr::Tuple(vec![key, Expr::atom(slot), value]));
         }
-        let function = match method.kind {
-            MethodDefinitionKind::Get => "define_getter",
-            MethodDefinitionKind::Set => "define_setter",
-            _ => "define_method",
-        };
         self.pre.push(Expr::call(
-            "bouy_ref",
-            function,
-            vec![Expr::var(home.to_owned()), key, value],
+            "bouy_ref_class",
+            "define_method",
+            vec![Expr::var(home.to_owned()), key, value, Expr::atom(slot)],
         ));
         None
     }
@@ -589,31 +600,25 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.class.as_ref().map(|class| class.home.clone())
     }
 
-    pub fn super_get(&mut self, key: Expr) -> Expr {
+    /// The object of `super.k`, with `this` read first: the base is the prototype of
+    /// the home object.
+    pub fn super_reference(&mut self) -> Expr {
+        let this = self.this_expr();
+        let this = self.bind(this);
+        self.super_base(this)
+    }
+
+    /// `GetSuperBase`, after `this` and the key: the prototype of the home object.
+    pub fn super_base(&mut self, this: Expr) -> Expr {
         let Some(home) = self.home() else {
             return self.unsupported(oxc::span::Span::default(), "`super` outside a method");
         };
-        let this = self.this_expr();
-        let this = self.bind(this);
-        self.bind(Expr::call(
-            "bouy_ref_class",
-            "super_get",
-            vec![Expr::var(home), key, this],
-        ))
-    }
-
-    pub fn super_set(&mut self, key: Expr, value: Expr) {
-        let Some(home) = self.home() else {
-            self.unsupported(oxc::span::Span::default(), "`super` outside a method");
-            return;
-        };
-        let this = self.this_expr();
-        let this = self.bind(this);
-        self.pre.push(Expr::call(
-            "bouy_ref_class",
-            "super_set",
-            vec![Expr::var(home), key, value, this],
+        let base = self.bind(Expr::call(
+            "bouy_heap",
+            "prototype_of",
+            vec![Expr::var(home)],
         ));
+        super_object(base, this)
     }
 
     /// `NamedEvaluation`: an anonymous function or class gets its name from `key`.

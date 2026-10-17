@@ -52,6 +52,24 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Stores `value` in the variable `symbol` and returns the stored value.
     pub fn assign_symbol(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
+        if self.class_bindings.contains(&symbol)
+            || self
+                .semantic
+                .scoping()
+                .symbol_flags(symbol)
+                .is_const_variable()
+        {
+            // A `const`, and the name of a class inside the class, are constants.
+            self.pre.push(value);
+            return self.bind(Expr::call(
+                "bouy_heap",
+                "throw_error",
+                vec![
+                    Expr::atom("TypeError"),
+                    Expr::js_string("Assignment to constant variable."),
+                ],
+            ));
+        }
         if let Some(local) = self.frame.env.get(&symbol).cloned() {
             return match local {
                 Local::Var(_) => {
@@ -72,6 +90,15 @@ impl<'a> Lowerer<'a, '_> {
                     "put",
                     vec![key, Expr::tagged("v", value.clone())],
                 ));
+                value
+            }
+            // A module-level class name holds the value that replaces the class in this
+            // realm.
+            Some(Top::Class(name)) => {
+                let value = self.bind(value);
+                let key = self.class_key(&name);
+                self.pre
+                    .push(Expr::call("erlang", "put", vec![key, value.clone()]));
                 value
             }
             _ => self.unsupported(span, "an assignment to this name"),
