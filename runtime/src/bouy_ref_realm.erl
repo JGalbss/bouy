@@ -214,13 +214,28 @@ ctor_record(Name, Length, Proto, Statics, Construct) ->
     record(function, ?FUNCTION_PROTO, Entries, #{construct => Construct, kind => builtin}).
 
 %% GetPrototypeFromConstructor: the prototype property of NewTarget, or the
-%% intrinsic Default when it is not an object.
+%% intrinsic Default of the realm of NewTarget when it is not an object.
 -spec proto_for(term(), atom()) -> term().
 proto_for(NewTarget, Default) ->
     case bouy_ref:get(NewTarget, <<"prototype">>) of
         P when ?IS_OBJECT(P) -> P;
-        _ -> {'$o', Default}
+        _ ->
+            0 = function_realm(NewTarget),
+            {'$o', Default}
     end.
+
+%% GetFunctionRealm: a proxy and a bound function take the realm of their
+%% target, and a revoked proxy has none. A process holds one realm, 0.
+-spec function_realm(term()) -> 0.
+function_realm({'$f', Id, _} = F) when is_integer(Id) ->
+    case {bouy_heap:class_of(F), bouy_heap:slots(F)} of
+        {proxy, {revoked, _}} -> bouy_ref:type_error(<<"Cannot get the realm of a revoked proxy">>);
+        {proxy, {Target, _}} -> function_realm(Target);
+        {_, #{kind := bound, target := Target}} -> function_realm(Target);
+        _ -> 0
+    end;
+function_realm(_) ->
+    0.
 
 %% The [[Construct]] of a builtin that new does not support, such as new String().
 -spec not_constructible(term(), list()) -> no_return().

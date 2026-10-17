@@ -313,11 +313,7 @@ is_constructor({'$f', _, _} = F) ->
 is_constructor(_) ->
     false.
 
-prototype_for(NewTarget) ->
-    case get(NewTarget, <<"prototype">>) of
-        Proto when ?is_obj(Proto) -> Proto;
-        _ -> ?OBJECT_PROTO
-    end.
+prototype_for(NewTarget) -> bouy_ref_realm:proto_for(NewTarget, 'Object.prototype').
 
 %%% Properties
 %%
