@@ -14,7 +14,24 @@ loop body
 dispose item 1
 loop body
 dispose item 2
+adopted 7
+disposed true false
+ReferenceError
+[object DisposableStack]
+adopt 7
+deferred
+dispose used
+disposed true
+dispose second
+dispose first
+SuppressedError dispose first dispose second
+true false
 async body
 dispose sync in await using
 async dispose
 async done
+disposing true
+async deferred
+dispose sync in async stack
+resolved undefined
+rejected TypeError
