@@ -5,7 +5,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, call_constructor/3, ordinary_has_instance/2, throw_type_error/0]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3, ordinary_has_instance/2, throw_type_error/0, prototype_call/2]).
 
 -import(bouy_ref_realm, [arg/2, rest/2, builtin/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
@@ -19,13 +19,18 @@ intrinsics() ->
     Entries = Methods ++ [{<<"name">>, <<>>}, {<<"length">>, 0}, {<<"constructor">>, constructor()},
                           {?SYM(hasInstance), HasInstance},
                           {<<"caller">>, {'$accessor', Thrower, Thrower}}, {<<"arguments">>, {'$accessor', Thrower, Thrower}}],
-    {Class, Proto, Props, Keys, Attrs, Slots} = record(object, ?OBJECT_PROTO, Entries, none),
+    {Class, Proto, Props, Keys, Attrs, Slots} = record(function, ?OBJECT_PROTO, Entries, #{}),
     Fixed = #{<<"name">> => 4, <<"length">> => 4, ?SYM(hasInstance) => 0, <<"caller">> => 4, <<"arguments">> => 4},
     ThrowerRecord = {function, ?FUNCTION_PROTO, #{<<"length">> => 0, <<"name">> => <<>>}, [<<"name">>, <<"length">>],
                      #{<<"length">> => 0, <<"name">> => 0, '$noext' => true}, #{}},
     [{'Function.prototype', {Class, Proto, Props, Keys, maps:merge(Attrs, Fixed), Slots}},
      {{builtin, <<"ThrowTypeError">>}, ThrowerRecord},
      {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Args) end)}].
+
+%% The [[Call]] of Function.prototype: it accepts any arguments and returns
+%% undefined.
+-spec prototype_call(term(), list()) -> undefined.
+prototype_call(_This, _Args) -> undefined.
 
 %% %ThrowTypeError%: one function in every realm.
 -spec throw_type_error() -> term().

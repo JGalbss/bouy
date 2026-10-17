@@ -1018,6 +1018,7 @@ record_of({'$f', _, _} = F) ->
 
 fn_record({'$f', Id, _} = F) ->
     case erlang:get(Id) of
+        undefined when is_atom(Id) -> intrinsic_record(Id, F);
         undefined when is_tuple(Id) -> static_function_record(F);
         undefined -> {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}};
         R -> R
