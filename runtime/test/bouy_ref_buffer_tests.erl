@@ -38,3 +38,23 @@ storage_test() ->
             ?assertEqual(<<0, 1, 2, 3, 4, 0>>, Bytes),
             ?assertEqual(16, Length)
     end.
+
+%% Uint8Array.fromBase64 and fromHex decode with the chunk rules of the
+%% proposal, through the method of the family.
+base64_test() ->
+    Pid = self(),
+    spawn(fun() ->
+                  bouy_ref:init_realm(),
+                  A = bouy_ref_typed_array:method(<<"Uint8Array">>, <<"fromBase64">>, undefined, [<<"SGk=">>]),
+                  B = bouy_ref_typed_array:method(<<"Uint8Array">>, <<"fromHex">>, undefined, [<<"ff00">>]),
+                  Text = bouy_ref_typed_array:method(<<"Uint8Array.prototype">>, <<"toBase64">>, A, []),
+                  Strict = try bouy_ref_typed_array:method(<<"Uint8Array">>, <<"fromBase64">>, undefined, [<<"SGl=">>, strict_options()])
+                           catch error:{'$throw', _} -> rejected
+                           end,
+                  Pid ! {result, [bouy_ref:get(A, 0), bouy_ref:get(A, 1), bouy_ref:get(B, 0), Text, Strict]}
+          end),
+    receive
+        {result, Result} -> ?assertEqual([$H, $i, 255, <<"SGk=">>, rejected], Result)
+    end.
+
+strict_options() -> bouy_heap:object({'$o', 'Object.prototype'}, [{<<"lastChunkHandling">>, <<"strict">>}]).

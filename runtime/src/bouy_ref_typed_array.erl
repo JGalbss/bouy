@@ -38,8 +38,14 @@ kind_intrinsics(Kind) ->
     Name = bouy_ref_buffer:kind_name(Kind),
     Size = bouy_ref_buffer:element_size(Kind),
     Proto = {'$o', proto_id(Kind)},
-    Record = ctor_record(Name, 3, Proto, [{<<"BYTES_PER_ELEMENT">>, Size, 0}], fun(NT, Args) -> construct(Kind, NT, Args) end),
-    [{proto_id(Kind), record(object, ?TA_PROTO, [{<<"BYTES_PER_ELEMENT">>, Size, 0}, {<<"constructor">>, constructor(Kind)}], none)},
+    {Statics, Methods} = case Kind of
+        uint8 ->
+            {?METHODS(<<"Uint8Array">>, [{<<"fromBase64">>, 1}, {<<"fromHex">>, 1}]),
+             ?METHODS(<<"Uint8Array.prototype">>, [{<<"toBase64">>, 0}, {<<"toHex">>, 0}, {<<"setFromBase64">>, 1}, {<<"setFromHex">>, 1}])};
+        _ -> {[], []}
+    end,
+    Record = ctor_record(Name, 3, Proto, [{<<"BYTES_PER_ELEMENT">>, Size, 0} | Statics], fun(NT, Args) -> construct(Kind, NT, Args) end),
+    [{proto_id(Kind), record(object, ?TA_PROTO, [{<<"BYTES_PER_ELEMENT">>, Size, 0}, {<<"constructor">>, constructor(Kind)} | Methods], none)},
      {{builtin, Name}, setelement(2, Record, abstract())}].
 
 proto_id(Kind) -> binary_to_atom(<<(bouy_ref_buffer:kind_name(Kind))/binary, ".prototype">>).
@@ -351,9 +357,217 @@ create_from_constructor(C, Args, Name) ->
     end,
     New.
 
+%%% Uint8Array and base64
+
+-spec base64(binary(), binary(), term()) -> term().
+base64(<<"fromBase64">>, _This, Args) ->
+    S = string_arg(arg(1, Args)),
+    Options = options(arg(2, Args)),
+    Alphabet = alphabet(Options),
+    Handling = last_chunk(Options),
+    {_Read, Bytes, Error} = from_base64(bouy_ref_string:units(S), Alphabet, Handling, ?MAX_LENGTH),
+    raise(Error),
+    bytes_array(Bytes);
+base64(<<"fromHex">>, _This, Args) ->
+    S = string_arg(arg(1, Args)),
+    {_Read, Bytes, Error} = from_hex(bouy_ref_string:units(S), ?MAX_LENGTH),
+    raise(Error),
+    bytes_array(Bytes);
+base64(<<"toBase64">>, This, Args) ->
+    uint8(This),
+    Options = options(arg(1, Args)),
+    Alphabet = alphabet(Options),
+    OmitPadding = bouy_ref:truthy(bouy_ref:get(Options, <<"omitPadding">>)),
+    Encoded = base64:encode(array_bytes(This), #{mode => case Alphabet of base64 -> standard; base64url -> urlsafe end, padding => not OmitPadding}),
+    Encoded;
+base64(<<"toHex">>, This, _Args) ->
+    uint8(This),
+    list_to_binary([io_lib:format("~2.16.0b", [B]) || <<B>> <= array_bytes(This)]);
+base64(<<"setFromBase64">>, This, Args) ->
+    uint8(This),
+    S = string_arg(arg(1, Args)),
+    Options = options(arg(2, Args)),
+    Alphabet = alphabet(Options),
+    Handling = last_chunk(Options),
+    Length = in_bounds_length(This),
+    {Read, Bytes, Error} = from_base64(bouy_ref_string:units(S), Alphabet, Handling, Length),
+    write_bytes(This, Bytes),
+    raise(Error),
+    read_written(Read, length(Bytes));
+base64(<<"setFromHex">>, This, Args) ->
+    uint8(This),
+    S = string_arg(arg(1, Args)),
+    Length = in_bounds_length(This),
+    {Read, Bytes, Error} = from_hex(bouy_ref_string:units(S), Length),
+    write_bytes(This, Bytes),
+    raise(Error),
+    read_written(Read, length(Bytes)).
+
+string_arg(S) when ?IS_STRING(S) -> S;
+string_arg(_) -> type_error(<<"The argument must be a string">>).
+
+%% GetOptionsObject.
+options(undefined) -> bouy_heap:new_object(null);
+options(O) when ?IS_OBJECT(O) -> O;
+options(_) -> type_error(<<"The options argument must be an object">>).
+
+alphabet(Options) ->
+    case bouy_ref:get(Options, <<"alphabet">>) of
+        undefined -> base64;
+        <<"base64">> -> base64;
+        <<"base64url">> -> base64url;
+        _ -> type_error(<<"The alphabet option must be \"base64\" or \"base64url\"">>)
+    end.
+
+last_chunk(Options) ->
+    case bouy_ref:get(Options, <<"lastChunkHandling">>) of
+        undefined -> loose;
+        <<"loose">> -> loose;
+        <<"strict">> -> strict;
+        <<"stop-before-partial">> -> stop;
+        _ -> type_error(<<"The lastChunkHandling option is not valid">>)
+    end.
+
+raise(none) -> ok;
+raise(syntax) -> bouy_heap:throw_error('SyntaxError', <<"The string is not valid base64 or hex">>).
+
+%% ValidateUint8Array.
+uint8(O) ->
+    is_typed_array(O) andalso element(1, slots(O)) =:= uint8 orelse type_error(<<"this is not a Uint8Array">>).
+
+in_bounds_length(O) ->
+    case length_of(slots(O)) of
+        out_of_bounds -> type_error(<<"Cannot perform this operation on a detached ArrayBuffer">>);
+        L -> L
+    end.
+
+array_bytes(O) ->
+    {_, Buffer, Offset, _} = slots(O),
+    bouy_ref_buffer:read(Buffer, Offset, in_bounds_length(O)).
+
+write_bytes(_O, []) -> ok;
+write_bytes(O, Bytes) ->
+    {_, Buffer, Offset, _} = slots(O),
+    bouy_ref_buffer:write(Buffer, Offset, list_to_binary(Bytes)).
+
+bytes_array(Bytes) ->
+    A = create(uint8, length(Bytes)),
+    write_bytes(A, Bytes),
+    A.
+
+read_written(Read, Written) ->
+    bouy_heap:object(?OBJECT_PROTO, [{<<"read">>, Read}, {<<"written">>, Written}]).
+
+%% FromBase64 over the code units of the string: {Read, Bytes, Error}.
+from_base64(_Units, _Alphabet, _Handling, 0) -> {0, [], none};
+from_base64(Units, Alphabet, Handling, Max) ->
+    base64_loop(Units, 0, length(Units), Alphabet, Handling, Max, 0, [], []).
+
+base64_loop(Units, Index0, Length, Alphabet, Handling, Max, Read, Bytes, Chunk) ->
+    {Index, Rest} = skip_space(Units, Index0),
+    ChunkLength = length(Chunk),
+    case Rest of
+        [] when ChunkLength > 0, Handling =:= stop -> {Read, Bytes, none};
+        [] when ChunkLength =:= 1 -> {Read, Bytes, syntax};
+        [] when ChunkLength > 0, Handling =:= loose -> decoded(Length, Bytes, decode_chunk(lists:reverse(Chunk), false));
+        [] when ChunkLength > 0 -> {Read, Bytes, syntax};
+        [] -> {Length, Bytes, none};
+        [$= | _] when ChunkLength < 2 -> {Read, Bytes, syntax};
+        [$= | After] ->
+            {Index1, Rest1} = skip_space(After, Index + 1),
+            Padded = case ChunkLength of
+                2 ->
+                    case Rest1 of
+                        [] when Handling =:= stop -> stop;
+                        [] -> syntax;
+                        [$= | After2] -> skip_space(After2, Index1 + 1);
+                        _ -> {Index1, Rest1}
+                    end;
+                _ -> {Index1, Rest1}
+            end,
+            case Padded of
+                stop -> {Read, Bytes, none};
+                syntax -> {Read, Bytes, syntax};
+                {_, []} -> decoded(Length, Bytes, decode_chunk(lists:reverse(Chunk), Handling =:= strict));
+                {_, _} -> {Read, Bytes, syntax}
+            end;
+        [C0 | After] ->
+            case base64_char(C0, Alphabet) of
+                error -> {Read, Bytes, syntax};
+                C ->
+                    Remaining = Max - length(Bytes),
+                    case (Remaining =:= 1 andalso ChunkLength =:= 2) orelse (Remaining =:= 2 andalso ChunkLength =:= 3) of
+                        true -> {Read, Bytes, none};
+                        false ->
+                            Chunk1 = [C | Chunk],
+                            case length(Chunk1) of
+                                4 ->
+                                    {ok, New} = decode_chunk(lists:reverse(Chunk1), false),
+                                    Bytes1 = Bytes ++ New,
+                                    case length(Bytes1) >= Max of
+                                        true -> {Index + 1, Bytes1, none};
+                                        false -> base64_loop(After, Index + 1, Length, Alphabet, Handling, Max, Index + 1, Bytes1, [])
+                                    end;
+                                _ -> base64_loop(After, Index + 1, Length, Alphabet, Handling, Max, Read, Bytes, Chunk1)
+                            end
+                    end
+            end
+    end.
+
+decoded(Length, Bytes, {ok, New}) -> {Length, Bytes ++ New, none};
+decoded(_Length, Bytes, error) -> {0, Bytes, syntax}.
+
+skip_space([C | Rest], Index) when C =:= 9; C =:= 10; C =:= 12; C =:= 13; C =:= 32 -> skip_space(Rest, Index + 1);
+skip_space(Units, Index) -> {Index, Units}.
+
+base64_char($+, base64url) -> error;
+base64_char($/, base64url) -> error;
+base64_char($-, base64url) -> 62;
+base64_char($_, base64url) -> 63;
+base64_char(C, _) when C >= $A, C =< $Z -> C - $A;
+base64_char(C, _) when C >= $a, C =< $z -> C - $a + 26;
+base64_char(C, _) when C >= $0, C =< $9 -> C - $0 + 52;
+base64_char($+, _) -> 62;
+base64_char($/, _) -> 63;
+base64_char(_, _) -> error.
+
+%% DecodeBase64Chunk of 2 to 4 sextets: {ok, Bytes}, or error when the
+%% padding bits are not zero and the handling is strict.
+decode_chunk(Sextets, Strict) ->
+    Count = length(Sextets),
+    Padded = Sextets ++ lists:duplicate(4 - Count, 0),
+    [A, B, C, D] = Padded,
+    <<B0, B1, B2>> = <<A:6, B:6, C:6, D:6>>,
+    case Count of
+        2 when Strict, B1 =/= 0 -> error;
+        2 -> {ok, [B0]};
+        3 when Strict, B2 =/= 0 -> error;
+        3 -> {ok, [B0, B1]};
+        4 -> {ok, [B0, B1, B2]}
+    end.
+
+%% FromHex: {Read, Bytes, Error}.
+from_hex(Units, _Max) when length(Units) rem 2 =/= 0 -> {0, [], syntax};
+from_hex(Units, Max) -> hex_loop(Units, 0, Max, []).
+
+hex_loop(_Units, Read, Max, Acc) when length(Acc) >= Max -> {Read, lists:reverse(Acc), none};
+hex_loop([], Read, _Max, Acc) -> {Read, lists:reverse(Acc), none};
+hex_loop([A, B | Rest], Read, Max, Acc) ->
+    case {hex_digit(A), hex_digit(B)} of
+        {error, _} -> {Read, lists:reverse(Acc), syntax};
+        {_, error} -> {Read, lists:reverse(Acc), syntax};
+        {X, Y} -> hex_loop(Rest, Read + 2, Max, [X * 16 + Y | Acc])
+    end.
+
+hex_digit(C) when C >= $0, C =< $9 -> C - $0;
+hex_digit(C) when C >= $a, C =< $f -> C - $a + 10;
+hex_digit(C) when C >= $A, C =< $F -> C - $A + 10;
+hex_digit(_) -> error.
+
 %%% Statics
 
 -spec method(binary(), binary(), term(), list()) -> term().
+method(Owner, Name, This, Args) when Owner =:= <<"Uint8Array">>; Owner =:= <<"Uint8Array.prototype">> -> base64(Name, This, Args);
 method(<<"TypedArray">>, <<"of">>, C, Items) ->
     bouy_ref_array:is_constructor(C) orelse type_error(<<"TypedArray.of: this is not a constructor">>),
     New = create_from_constructor(C, [length(Items)], <<"of">>),

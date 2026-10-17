@@ -27,7 +27,7 @@ intrinsics() ->
     [{'Array.prototype', record(array, ?OBJECT_PROTO, Methods ++ [{<<"constructor">>, constructor()}, {?SYM(iterator), Values}, {?SYM(unscopables), {'$o', 'Array.prototype[Symbol.unscopables]'}, 4}], {0, #{}})},
      {'Array.prototype[Symbol.unscopables]', Unscopables},
      {'ArrayIterator.prototype', record(object, ?ITERATOR_PROTO, ?METHODS(<<"ArrayIterator.prototype">>, [{<<"next">>, 0}]) ++ [{?SYM(toStringTag), <<"Array Iterator">>, 4}], none)},
-     {{builtin, <<"Array">>}, ctor_record(<<"Array">>, 1, {'$o', 'Array.prototype'}, ?METHODS(<<"Array">>, [{<<"isArray">>, 1}, {<<"from">>, 1}, {<<"of">>, 0}]) ++ [{?SYM(species), species_getter(), 4}], fun construct/2)}].
+     {{builtin, <<"Array">>}, ctor_record(<<"Array">>, 1, {'$o', 'Array.prototype'}, ?METHODS(<<"Array">>, [{<<"isArray">>, 1}, {<<"from">>, 1}, {<<"fromAsync">>, 1}, {<<"of">>, 0}]) ++ [{?SYM(species), species_getter(), 4}], fun construct/2)}].
 
 %% get Array[Symbol.species]: this.
 species_getter() ->
@@ -837,8 +837,8 @@ iterated_length(O) ->
 
 %%% Array statics
 
-static(<<"isArray">>, _This, Args) -> is_array(arg(1, Args));
-static(<<"of">>, C, Items) ->
+static_sync(<<"isArray">>, _This, Args) -> is_array(arg(1, Args));
+static_sync(<<"of">>, C, Items) ->
     Len = length(Items),
     A = case is_constructor(C) of
         true -> bouy_ref:construct(C, [Len]);
@@ -847,7 +847,7 @@ static(<<"of">>, C, Items) ->
     [create_property(A, K, V) || {K, V} <- lists:enumerate(0, Items)],
     set_length(A, Len),
     A;
-static(<<"from">>, C, Args) ->
+static_sync(<<"from">>, C, Args) ->
     Items = arg(1, Args),
     Mapper = case arg(2, Args) of
         undefined -> none;
@@ -859,6 +859,152 @@ static(<<"from">>, C, Args) ->
         undefined -> from_array_like(C, bouy_ref:to_object(Items), Mapper);
         Method -> from_iterable(C, Items, Method, Mapper)
     end.
+
+%% Array.fromAsync: an async function over an async iterator, a sync
+%% iterator whose values it awaits, or an array-like, with each step in a
+%% later microtask. Each continuation catches its own errors, because an
+%% await reaction has no promise to reject.
+static(<<"fromAsync">>, C, Args) ->
+    bouy_jobs:async_call(fun(Resolve, Reject) -> from_async(C, Args, Resolve, Reject) end);
+static(Name, C, Args) -> static_sync(Name, C, Args).
+
+from_async(C, Args, Resolve, Reject) ->
+    Items = arg(1, Args),
+    Mapper = case arg(2, Args) of
+        undefined -> none;
+        F ->
+            bouy_heap:is_callable(F) orelse type_error(bouy_ref_string:concat(bouy_ref:describe(F), <<" is not a function">>)),
+            {F, arg(3, Args)}
+    end,
+    (Items =:= undefined orelse Items =:= null) andalso type_error(<<"Array.fromAsync requires an array-like or iterable object">>),
+    Ctx0 = #{constructor => C, mapper => Mapper, resolve => Resolve, reject => Reject},
+    case method_of(Items, ?SYM(asyncIterator)) of
+        undefined ->
+            case method_of(Items, ?SYM(iterator)) of
+                undefined ->
+                    O = bouy_ref:to_object(Items),
+                    Len = length_of(O),
+                    A = case is_constructor(C) of
+                        true -> bouy_ref:construct(C, [Len]);
+                        false -> array_create(Len)
+                    end,
+                    like_step(Ctx0#{a => A, source => O, length => Len}, 0);
+                Method -> start_iteration(Ctx0, Items, Method, sync)
+            end;
+        Method -> start_iteration(Ctx0, Items, Method, async)
+    end.
+
+%% GetMethod: undefined for undefined or null, else a callable.
+method_of(V, K) ->
+    case bouy_ref:get(V, K) of
+        M when M =:= undefined; M =:= null -> undefined;
+        M -> callable(M)
+    end.
+
+start_iteration(Ctx, Items, Method, Kind) ->
+    Iterator = bouy_ref:call(Method, Items, []),
+    ?IS_OBJECT(Iterator) orelse type_error(<<"Result of the Symbol.iterator method is not an object">>),
+    Next = bouy_ref:get(Iterator, <<"next">>),
+    A = case is_constructor(maps:get(constructor, Ctx)) of
+        true -> bouy_ref:construct(maps:get(constructor, Ctx), []);
+        false -> array_create(0)
+    end,
+    iterator_step(Ctx#{a => A, iterator => Iterator, next => Next, kind => Kind}, 0).
+
+%% Runs Step, and rejects the promise of fromAsync when it throws, after
+%% closing the iterator when Close is true.
+attempt(#{reject := Reject} = Ctx, Close, Step) ->
+    try Step()
+    catch
+        error:Reason:Stack ->
+            Error = bouy_ref:caught(Reason, Stack),
+            case Close of
+                true -> close_async(Ctx, fun() -> Reject(Error) end);
+                false -> Reject(Error)
+            end
+    end.
+
+%% AsyncIteratorClose with a throw completion: the return method runs, its
+%% result is awaited for an async iterator, and the first error wins.
+close_async(#{iterator := Iterator, kind := Kind}, Then) ->
+    try bouy_ref:get(Iterator, <<"return">>) of
+        R when R =:= undefined; R =:= null -> Then();
+        Return ->
+            try bouy_ref:call(Return, Iterator, []) of
+                Result when Kind =:= async -> bouy_jobs:await(Result, fun(_) -> Then() end, fun(_) -> Then() end);
+                _ -> Then()
+            catch
+                error:_ -> Then()
+            end
+    catch
+        error:_ -> Then()
+    end.
+
+iterator_step(#{iterator := Iterator, next := Next, kind := Kind, reject := Reject} = Ctx, K) ->
+    attempt(Ctx, false, fun() ->
+        K >= ?MAX_LENGTH andalso type_error(<<"Invalid array length: the result exceeds 2^53 - 1">>),
+        Result = bouy_ref:call(Next, Iterator, []),
+        case Kind of
+            async -> bouy_jobs:await(Result, fun(R) -> attempt(Ctx, false, fun() -> iterator_result(Ctx, K, R) end) end, Reject);
+            sync -> iterator_result(Ctx, K, Result)
+        end
+    end).
+
+iterator_result(#{kind := Kind, reject := Reject} = Ctx, K, Result) ->
+    ?IS_OBJECT(Result) orelse type_error(bouy_ref_string:concat([<<"Iterator result ">>, bouy_ref:describe(Result), <<" is not an object">>])),
+    case bouy_ref:truthy(bouy_ref:get(Result, <<"done">>)) of
+        true -> finish(Ctx, K);
+        false ->
+            Value = bouy_ref:get(Result, <<"value">>),
+            case Kind of
+                async -> map_value(Ctx, K, Value);
+                sync ->
+                    %% The async-from-sync iterator awaits each value, and closes the
+                    %% sync iterator when the value rejects.
+                    bouy_jobs:await(Value, fun(V) -> map_value(Ctx, K, V) end,
+                                    fun(E) -> close_async(Ctx, fun() -> Reject(E) end) end)
+            end
+    end.
+
+map_value(#{mapper := none} = Ctx, K, V) -> define_next(Ctx, K, V);
+map_value(#{mapper := {F, This}} = Ctx, K, V) ->
+    attempt(Ctx, true, fun() ->
+        Mapped = bouy_ref:call(F, This, [V, K]),
+        bouy_jobs:await(Mapped, fun(M) -> define_next(Ctx, K, M) end,
+                        fun(E) -> close_async(Ctx, fun() -> (maps:get(reject, Ctx))(E) end) end)
+    end).
+
+define_next(#{a := A} = Ctx, K, V) ->
+    attempt(Ctx, true, fun() ->
+        create_property(A, K, V),
+        iterator_step(Ctx, K + 1)
+    end).
+
+finish(#{a := A, resolve := Resolve} = Ctx, K) ->
+    attempt(Ctx, false, fun() ->
+        set_length(A, K),
+        Resolve(A)
+    end).
+
+%% The array-like form: each value, then each mapped value, is awaited.
+like_step(#{length := Len} = Ctx, K) when K >= Len -> finish(Ctx, Len);
+like_step(#{source := O, reject := Reject} = Ctx, K) ->
+    attempt(Ctx, false, fun() ->
+        bouy_jobs:await(get(O, K), fun(V) -> like_map(Ctx, K, V) end, Reject)
+    end).
+
+like_map(#{mapper := Mapper, a := A, reject := Reject} = Ctx, K, V) ->
+    attempt(Ctx, false, fun() ->
+        case Mapper of
+            none ->
+                create_property(A, K, V),
+                like_step(Ctx, K + 1);
+            {F, This} ->
+                bouy_jobs:await(bouy_ref:call(F, This, [V, K]),
+                                fun(M) -> attempt(Ctx, false, fun() -> create_property(A, K, M), like_step(Ctx, K + 1) end) end,
+                                Reject)
+        end
+    end).
 
 iterator_method(V) when V =:= undefined; V =:= null -> undefined;
 iterator_method(V) ->
