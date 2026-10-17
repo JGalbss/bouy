@@ -204,8 +204,11 @@ callable(F) ->
 
 %%% The global object and the global functions
 
+%% The global object is not here: install/0 builds it from the globals of
+%% every family. A second record here would race with that one when two
+%% realms install at once.
 -spec intrinsics() -> [{term(), tuple()}].
-intrinsics() -> [{'globalThis', record(object, ?OBJECT_PROTO, [], none)}].
+intrinsics() -> [].
 
 -spec globals() -> [{binary(), term()}].
 globals() ->
