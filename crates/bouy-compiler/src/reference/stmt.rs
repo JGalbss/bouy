@@ -171,9 +171,9 @@ impl<'a> Lowerer<'a, '_> {
             },
             Statement::ClassDeclaration(class)
                 if class.id.as_ref().is_some_and(|id| {
-                    id.symbol_id
-                        .get()
-                        .is_some_and(|symbol| matches!(self.tops.get(&symbol), Some(Top::Class(_))))
+                    id.symbol_id.get().is_some_and(|symbol| {
+                        matches!(self.tops.get(&symbol), Some(Top::Class(_) | Top::Var(_)))
+                    })
                 }) =>
             {
                 if let Some(id) = &class.id {

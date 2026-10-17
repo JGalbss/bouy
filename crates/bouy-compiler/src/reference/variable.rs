@@ -37,8 +37,10 @@ impl<'a> Lowerer<'a, '_> {
         }
         match self.tops.get(&symbol).cloned() {
             Some(Top::Function { name, length }) => self.static_function(&name, length),
+            // A class reads as uninitialized until its declaration runs.
             Some(Top::Class(name)) => {
-                self.bind(Expr::local_call("$class", vec![Expr::binary(name)]))
+                let read = self.declared_class(&name);
+                self.bind(read)
             }
             Some(Top::Var(name)) => self.bind(Expr::local_call(&format!("$get_{name}"), vec![])),
             Some(Top::Literal(value)) => value,

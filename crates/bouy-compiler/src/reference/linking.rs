@@ -420,7 +420,7 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The class `name` once its declaration ran in this realm.
-    fn declared_class(&mut self, name: &str) -> Expr {
+    pub fn declared_class(&mut self, name: &str) -> Expr {
         let found = self.fresh("C");
         Expr::case(
             Expr::call("erlang", "get", vec![self.class_key(name)]),

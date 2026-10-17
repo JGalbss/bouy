@@ -56,7 +56,7 @@ impl<'a> Lowerer<'a, '_> {
                         if let Some(id) = &class.id
                             && let Some(symbol) = id.symbol_id.get()
                         {
-                            self.tops.insert(symbol, Top::Class(id.name.to_string()));
+                            self.declare_class_binding(symbol, id.name.as_str());
                         }
                     }
                     _ => {}
@@ -77,7 +77,7 @@ impl<'a> Lowerer<'a, '_> {
                         && let Some(symbol) = id.symbol_id.get()
                         && !class.declare
                     {
-                        self.tops.insert(symbol, Top::Class(id.name.to_string()));
+                        self.declare_class_binding(symbol, id.name.as_str());
                     }
                 }
                 Some(Declaration::VariableDeclaration(variables)) if !variables.declare => {
@@ -136,6 +136,23 @@ impl<'a> Lowerer<'a, '_> {
             }
         };
         self.tops.insert(symbol, top);
+    }
+
+    /// A top-level class: created by `'$class'/1`, or, when the code assigns to its name,
+    /// a module variable that its declaration sets.
+    fn declare_class_binding(&mut self, symbol: oxc::semantic::SymbolId, name: &str) {
+        let assigned = self
+            .semantic
+            .scoping()
+            .get_resolved_references(symbol)
+            .any(oxc::semantic::Reference::is_write);
+        if assigned {
+            self.tops.insert(symbol, Top::Var(name.to_owned()));
+            let lazy = Expr::local_call("$class", vec![Expr::binary(name.to_owned())]);
+            self.var_getter(name, Vec::new(), lazy, Absent::Uninitialized);
+        } else {
+            self.tops.insert(symbol, Top::Class(name.to_owned()));
+        }
     }
 
     /// The import bindings of a declaration, as linking resolved them.
@@ -271,6 +288,23 @@ impl<'a> Lowerer<'a, '_> {
             "$class",
             vec![Expr::binary(name.to_owned())],
         ));
+        // A class whose name the code assigns is a module variable.
+        let variable = class
+            .id
+            .as_ref()
+            .and_then(|id| id.symbol_id.get())
+            .is_some_and(|symbol| matches!(self.tops.get(&symbol), Some(Top::Var(_))));
+        if variable {
+            let created = self.bind(Expr::local_call(
+                "$class",
+                vec![Expr::binary(name.to_owned())],
+            ));
+            self.pre.push(Expr::call(
+                "erlang",
+                "put",
+                vec![self.var_key(name), Expr::tagged("v", created)],
+            ));
+        }
     }
 
     /// Where the top-level code leaves the superclass of the class `name`.
