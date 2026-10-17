@@ -8,7 +8,11 @@ const objects: TemplateStringsArray[] = [];
 for (let i = 0; i < 2; i++) {
   objects.push(((strings: TemplateStringsArray) => strings)`same site`);
 }
-console.log(objects[0] === objects[1], Object.isFrozen(objects[0]), Object.isFrozen(objects[0].raw));
+console.log(
+  objects[0] === objects[1],
+  Object.isFrozen(objects[0]),
+  Object.isFrozen(objects[0].raw),
+);
 const greeter = {
   prefix: "Hi",
   greet(strings: TemplateStringsArray, name: string): string {

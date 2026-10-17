@@ -9,9 +9,16 @@ counter++;
 counter += 10n;
 console.log(counter, counter > 10, counter == 11, counter === 11n, 1n < 1.5, 2n > "1");
 console.log(BigInt("0x1f"), BigInt(" 42 "), BigInt(true), BigInt(Number.MAX_SAFE_INTEGER) + 2n);
-console.log(BigInt.asIntN(8, 255n), BigInt.asUintN(8, -1n), (255n).toString(16), `${10n}`);
+console.log(BigInt.asIntN(8, 255n), BigInt.asUintN(8, -1n), 255n.toString(16), `${10n}`);
 console.log([3n, 1n, 2n].sort().join(), new Set([1n, 1n, 2n]).size, new Map([[1n, "one"]]).get(1n));
-for (const attempt of [() => 1n + 1, () => +1n, () => BigInt(1.5), () => BigInt("1.5"), () => 1n / 0n, () => 1n >>> 0n]) {
+for (const attempt of [
+  () => 1n + 1,
+  () => +1n,
+  () => BigInt(1.5),
+  () => BigInt("1.5"),
+  () => 1n / 0n,
+  () => 1n >>> 0n,
+]) {
   try {
     attempt();
   } catch (error) {

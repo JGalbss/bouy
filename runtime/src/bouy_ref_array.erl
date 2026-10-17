@@ -829,7 +829,11 @@ iterator_next(It) ->
             end
     end.
 
-iterated_length(O) -> length_of(O).
+iterated_length(O) ->
+    case ?IS_OBJECT(O) andalso bouy_heap:class_of(O) of
+        typed_array -> bouy_ref_typed_array:iterated_length(O);
+        _ -> length_of(O)
+    end.
 
 %%% Array statics
 

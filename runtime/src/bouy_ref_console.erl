@@ -133,6 +133,8 @@ object(O, Level, Indent, Stack) ->
         generator -> <<"Object [Generator] {}">>;
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
         date -> bouy_ref_date:inspect(O);
+        typed_array -> typed_array(O, Level, Indent, Stack);
+        array_buffer -> array_buffer(O, Indent);
         number -> wrapper(<<"Number">>, O, Level, Indent, Stack);
         string -> wrapper(<<"String">>, O, Level, Indent, Stack);
         boolean -> wrapper(<<"Boolean">>, O, Level, Indent, Stack);
@@ -158,6 +160,36 @@ point($\t, _) -> <<"\\t">>;
 point(C, _) when C >= 16#D800, C =< 16#DFFF -> io_lib:format("\\u~4.16.0b", [C]);
 point(C, _) when C < 16#20 -> io_lib:format("\\x~2.16.0B", [C]);
 point(C, _) -> <<C/utf8>>.
+
+%% A typed array, as Node prints it: Uint8Array(2) [ 1, 2 ].
+typed_array(O, Level, Indent, Stack) ->
+    Name = bouy_ref:to_string(bouy_ref:get(O, ?SYM(toStringTag))),
+    Length = bouy_ref:get(O, <<"length">>),
+    Base = <<Name/binary, "(", (integer_to_binary(Length))/binary, ")">>,
+    case Length of
+        0 -> <<Base/binary, " []">>;
+        _ when Level > ?DEPTH -> <<"[", Name/binary, "]">>;
+        _ ->
+            Values = [bouy_heap:get(O, I) || I <- lists:seq(0, min(Length, ?MAX_ITEMS) - 1)],
+            Output = [value(V, Level + 1, Indent + 2, Stack) || V <- Values] ++ bouy_console:more_items(Length),
+            bouy_console:reduce(bouy_console:group(Output, Values, Indent), length(Output), Base, {<<"[">>, <<"]">>}, Indent)
+    end.
+
+%% An ArrayBuffer, with its bytes in hex, as Node prints it.
+array_buffer(O, Indent) ->
+    case bouy_ref_buffer:is_detached(O) of
+        true -> <<"ArrayBuffer { (detached), byteLength: 0 }">>;
+        false ->
+            Length = bouy_ref_buffer:byte_length(O),
+            Bytes = bouy_ref_buffer:read(O, 0, min(Length, 50)),
+            Hex = lists:join(" ", [io_lib:format("~2.16.0b", [B]) || <<B>> <= Bytes]),
+            More = case Length > 50 of
+                true -> io_lib:format(" ... ~w more byte~s", [Length - 50, case Length - 50 of 1 -> ""; _ -> "s" end]);
+                false -> ""
+            end,
+            Entries = [iolist_to_binary(["[Uint8Contents]: <", Hex, More, ">"]), <<"byteLength: ", (integer_to_binary(Length))/binary>>],
+            bouy_console:reduce(Entries, 2, <<"ArrayBuffer">>, {<<"{">>, <<"}">>}, Indent)
+    end.
 
 %% A primitive wrapper object, as Node prints it: [Number: 5].
 wrapper(Name, O, Level, Indent, Stack) ->

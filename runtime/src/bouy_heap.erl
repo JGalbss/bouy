@@ -252,6 +252,15 @@ get({'$o', Id} = O, K) ->
             end;
         {array, _, _, _, _, {Length, _}} when K =:= <<"length">> ->
             Length;
+        {typed_array, Proto, Props, _, _, _} ->
+            case bouy_ref_typed_array:numeric_key(K) of
+                {index, N} -> bouy_ref_typed_array:element_get(O, N);
+                none ->
+                    case Props of
+                        #{K := V} -> resolve(V, O);
+                        _ -> inherited(Proto, K, O)
+                    end
+            end;
         {_, Proto, Props, _, _, _} ->
             case Props of
                 #{K := V} -> resolve(V, O);
@@ -298,6 +307,11 @@ inherited(null, _K, _Receiver) ->
 inherited({'$o', Id} = O, K, Receiver) ->
     case erlang:get(Id) of
         undefined -> inherited_from(intrinsic_record(Id, O), K, Receiver);
+        {typed_array, _, _, _, _, _} = R ->
+            case bouy_ref_typed_array:numeric_key(K) of
+                {index, N} -> bouy_ref_typed_array:element_get(O, N);
+                none -> inherited_from(R, K, Receiver)
+            end;
         R -> inherited_from(R, K, Receiver)
     end;
 inherited({'$f', _, _} = F, K, Receiver) ->
@@ -343,6 +357,13 @@ set({'$o', Id} = O, K, V) ->
             writable(K, length_attrs(Attrs)) orelse read_only(K),
             erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, NewLength)}),
             V;
+        {typed_array, _, _, _, _, _} = R when not is_tuple(K) ->
+            case bouy_ref_typed_array:numeric_key(K) of
+                {index, N} ->
+                    bouy_ref_typed_array:element_set(O, N, V),
+                    V;
+                none -> set_ordinary(Id, R, K, V, O)
+            end;
         {Class, P, Props, Keys, Attrs, Slots} = R ->
             case Props of
                 #{K := {'$accessor', _, Setter}} ->
@@ -368,6 +389,16 @@ set({'$f', Id, _} = F, K, V) ->
         _ -> add(Id, R, K, V, F)
     end.
 
+set_ordinary(Id, {Class, P, Props, Keys, Attrs, Slots} = R, K, V, O) ->
+    case Props of
+        #{K := {'$accessor', _, Setter}} -> call_setter(Setter, O, K, V);
+        #{K := _} when map_size(Attrs) =:= 0 ->
+            erlang:put(Id, {Class, P, Props#{K := V}, Keys, Attrs, Slots}),
+            V;
+        #{K := _} -> write_checked(Id, R, K, V);
+        _ -> add(Id, R, K, V, O)
+    end.
+
 write_checked(Id, {array, P, Props, Keys, Attrs, {Length, Elements}}, K, V) when is_integer(K) ->
     writable(K, Attrs) orelse read_only(K),
     K < Length orelse writable(<<"length">>, length_attrs(Attrs)) orelse read_only(<<"length">>),
@@ -391,6 +422,8 @@ add(Id, {Class, P, Props, Keys, Attrs, Slots} = R, K, V, O) ->
             call_setter(Setter, O, K, V);
         read_only ->
             read_only(K);
+        ignore ->
+            V;
         none when Class =:= array, is_integer(K) ->
             extensible(Attrs) orelse not_extensible(K),
             write_checked(Id, R, K, V);
@@ -421,6 +454,17 @@ inherited_setter(null, _K) ->
 inherited_setter({'$o', Id} = O, K) ->
     case erlang:get(Id) of
         undefined -> setter_in(intrinsic_record(Id, O), K);
+        {typed_array, _, _, _, _, _} = R ->
+            %% A typed array on the chain answers for its numeric keys: a valid
+            %% index makes the write define on the receiver, another is ignored.
+            case bouy_ref_typed_array:numeric_key(K) of
+                {index, N} ->
+                    case bouy_ref_typed_array:element_has(O, N) of
+                        true -> none;
+                        false -> ignore
+                    end;
+                none -> setter_in(R, K)
+            end;
         R -> setter_in(R, K)
     end;
 inherited_setter({'$f', _, _} = F, K) ->
@@ -482,20 +526,32 @@ length_attrs(Attrs) ->
 %% The `in` operator.
 -spec has(value(), key()) -> boolean().
 has(O, K) ->
-    case has_own(O, K) of
-        true -> true;
-        false ->
-            case prototype_of(O) of
-                null -> false;
-                Proto -> has(Proto, K)
+    case is_typed_array(O) andalso bouy_ref_typed_array:numeric_key(K) of
+        {index, N} -> bouy_ref_typed_array:element_has(O, N);
+        _ ->
+            case has_own(O, K) of
+                true -> true;
+                false ->
+                    case prototype_of(O) of
+                        null -> false;
+                        Proto -> has(Proto, K)
+                    end
             end
     end.
+
+is_typed_array({'$o', _} = O) -> class_of(O) =:= typed_array;
+is_typed_array(_) -> false.
 
 -spec has_own(value(), key()) -> boolean().
 has_own(O, K) ->
     case record_of(O) of
         {array, _, _, _, _, {_, Elements}} when is_integer(K) -> is_map_key(K, Elements);
         {array, _, _, _, _, _} when K =:= <<"length">> -> true;
+        {typed_array, _, Props, _, _, _} ->
+            case bouy_ref_typed_array:numeric_key(K) of
+                {index, N} -> bouy_ref_typed_array:element_has(O, N);
+                none -> is_map_key(K, Props)
+            end;
         {_, _, Props, _, _, _} -> is_map_key(K, Props)
     end.
 
@@ -504,6 +560,15 @@ has_own(O, K) ->
 delete(O, K) ->
     Id = id_for_write(O),
     case erlang:get(Id) of
+        {typed_array, P, Props, Keys, Attrs, Slots} when not is_tuple(K) ->
+            case bouy_ref_typed_array:numeric_key(K) of
+                {index, N} ->
+                    bouy_ref_typed_array:element_delete(O, N) orelse cannot_delete(K);
+                none when is_map_key(K, Props) ->
+                    configurable(K, Attrs) orelse cannot_delete(K),
+                    erlang:put(Id, {typed_array, P, maps:remove(K, Props), lists:delete(K, Keys), maps:remove(K, Attrs), Slots});
+                none -> ok
+            end;
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K) ->
             configurable(K, Attrs) orelse cannot_delete(K),
             erlang:put(Id, {array, P, Props, Keys, Attrs, {Length, maps:remove(K, Elements)}});
@@ -531,6 +596,7 @@ own_keys(O) ->
     {_, _, Props, Keys, _, _} = R = record_of(O),
     {Indexes, Length} = case R of
         {array, _, _, _, _, {_, Elements}} -> {lists:sort(maps:keys(Elements)), [<<"length">>]};
+        {typed_array, _, _, _, _, _} -> {bouy_ref_typed_array:index_keys(O), []};
         _ -> {[], []}
     end,
     Ordered = lists:reverse(Keys),
@@ -553,6 +619,15 @@ enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 %% configurable, get, set. A missing attribute is false for a new property.
 -spec define(value(), key(), map()) -> value().
 define(O, K, Descriptor) ->
+    case is_typed_array(O) andalso bouy_ref_typed_array:numeric_key(K) of
+        {index, N} ->
+            bouy_ref_typed_array:element_define(O, N, Descriptor) orelse
+                throw_error('TypeError', text([<<"Cannot redefine property: ">>, key_text(K)])),
+            O;
+        _ -> ordinary_define(O, K, Descriptor)
+    end.
+
+ordinary_define(O, K, Descriptor) ->
     Id = id_for_write(O),
     {Class, P, Props, Keys, Attrs, Slots} = record_of(O),
     %% The own properties of the key: the elements of an array for an index.
@@ -602,7 +677,18 @@ bit(Name, Bit, Descriptor, Existing) ->
 %% The own property K: {data, Value, Bits}, {accessor, Get, Set, Bits}, or none.
 -spec get_own(value(), key()) -> {data, value(), 0..7} | {accessor, value(), value(), 0..7} | none.
 get_own(O, K) ->
-    {_, _, Props, _, Attrs, _} = R = record_of(O),
+    R = record_of(O),
+    case element(1, R) =:= typed_array andalso bouy_ref_typed_array:numeric_key(K) of
+        {index, N} ->
+            case bouy_ref_typed_array:element_has(O, N) of
+                true -> {data, bouy_ref_typed_array:element_get(O, N), ?ALL};
+                false -> none
+            end;
+        _ -> ordinary_get_own(R, K)
+    end.
+
+ordinary_get_own(R, K) ->
+    {_, _, Props, _, Attrs, _} = R,
     Found = case R of
         {array, _, _, _, _, {_, Elements}} when is_integer(K) -> maps:find(K, Elements);
         {array, _, _, _, _, {Length, _}} when K =:= <<"length">> -> {ok, Length};

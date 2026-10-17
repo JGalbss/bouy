@@ -1,0 +1,16 @@
+Uint8Array(4) [ 1, 2, 44, 255 ] 4 44 255 undefined [ '0', '1', '2', '3' ] true false
+Float64Array(3) [ 1.5, NaN, 0 ] undefined [ 1.5, NaN, 0 ] 1.100000023841858 1.3369140625
+1.5 -2 254 Uint8Array(8) [
+   63, 192, 0, 0,
+  254, 255, 0, 0
+] ArrayBuffer {
+  [Uint8Contents]: <3f c0 00 00 fe ff 00 00>,
+  byteLength: 8
+}
+65534 4 true BigInt64Array(2) [ 1n, -2n ] 18446744073709551614n
+Int16Array(3) [ -1, 2, 3 ] Uint8ClampedArray(4) [ 255, 0, 2, 2 ] Float64Array(4) [ -Infinity, -0, 0, NaN ]
+8 true 8 8
+true 0 8 0 undefined
+Int8Array(5) [ 10, 2, 8, 4, 6 ] Int8Array(3) [ 5, 4, 3 ] Int8Array(2) [ 1, 4 ] Int8Array(3) [ 4, 2, 3 ] Int8Array(5) [ 1, 2, 3, 4, 5 ] Int8Array(5) [ 9, 1, 4, 2, 3 ]
+2 false 5-1-4-2-3 15 5 [object Int8Array]
+RangeError
