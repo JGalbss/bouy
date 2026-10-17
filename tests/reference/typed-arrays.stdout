@@ -5,7 +5,7 @@ Float64Array(3) [ 1.5, NaN, 0 ] undefined [ 1.5, NaN, 0 ] 1.100000023841858 1.33
   254, 255, 0, 0
 ] ArrayBuffer {
   [Uint8Contents]: <3f c0 00 00 fe ff 00 00>,
-  byteLength: 8
+  [byteLength]: 8
 }
 65534 4 true BigInt64Array(2) [ 1n, -2n ] 18446744073709551614n
 Int16Array(3) [ -1, 2, 3 ] Uint8ClampedArray(4) [ 255, 0, 2, 2 ] Float64Array(4) [ -Infinity, -0, 0, NaN ]

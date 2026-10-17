@@ -186,9 +186,9 @@ typed_array(O, Level, Indent, Stack) ->
 data_view(O, Level, Indent, Stack) ->
     {Buffer, Offset, _} = bouy_heap:slots(O),
     Length = try bouy_ref:get(O, <<"byteLength">>) catch error:{'$throw', _} -> 0 end,
-    Entries = [<<"byteLength: ", (value(Length, Level + 1, Indent + 2, Stack))/binary>>,
-               <<"byteOffset: ", (value(Offset, Level + 1, Indent + 2, Stack))/binary>>,
-               <<"buffer: ", (array_buffer(Buffer, Indent + 2))/binary>>],
+    Entries = [<<"[byteLength]: ", (value(Length, Level + 1, Indent + 2, Stack))/binary>>,
+               <<"[byteOffset]: ", (value(Offset, Level + 1, Indent + 2, Stack))/binary>>,
+               <<"[buffer]: ", (array_buffer(Buffer, Indent + 2))/binary>>],
     bouy_console:reduce(Entries, 3, <<"DataView">>, {<<"{">>, <<"}">>}, Indent).
 
 %% A Map or Set iterator with the entries it has yet to give.
@@ -206,7 +206,7 @@ collection_iterator(O, Level, Indent, Stack) ->
 %% An ArrayBuffer, with its bytes in hex, as Node prints it.
 array_buffer(O, Indent) ->
     case bouy_ref_buffer:is_detached(O) of
-        true -> <<"ArrayBuffer { (detached), byteLength: 0 }">>;
+        true -> <<"ArrayBuffer { (detached), [byteLength]: 0 }">>;
         false ->
             Length = bouy_ref_buffer:byte_length(O),
             Bytes = bouy_ref_buffer:read(O, 0, min(Length, 50)),
@@ -215,7 +215,7 @@ array_buffer(O, Indent) ->
                 true -> io_lib:format(" ... ~w more byte~s", [Length - 50, case Length - 50 of 1 -> ""; _ -> "s" end]);
                 false -> ""
             end,
-            Entries = [iolist_to_binary(["[Uint8Contents]: <", Hex, More, ">"]), <<"byteLength: ", (integer_to_binary(Length))/binary>>],
+            Entries = [iolist_to_binary(["[Uint8Contents]: <", Hex, More, ">"]), <<"[byteLength]: ", (integer_to_binary(Length))/binary>>],
             bouy_console:reduce(Entries, 2, <<"ArrayBuffer">>, {<<"{">>, <<"}">>}, Indent)
     end.
 
