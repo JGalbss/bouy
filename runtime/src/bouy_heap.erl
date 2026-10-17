@@ -52,7 +52,7 @@
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
 -export([clone_out/1, clone_in/1]).
--export([private_find/2, private_put/3]).
+-export([private_find/2, private_put/3, set_failed/2]).
 
 -export_type([value/0, key/0, property/0]).
 
@@ -842,8 +842,8 @@ define_own_property(O, K, Desc) ->
             end;
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:define_own_property(Handler, K, Desc);
-        {array, _, _, _, _, _} = R when K =:= <<"length">> ->
-            array_set_length(O, R, Desc);
+        {array, _, _, _, _, _} when K =:= <<"length">> ->
+            array_set_length(O, Desc);
         {array, _, _, _, Attrs, {Length, _}} = R when is_integer(K), K >= Length ->
             case length_bits(Attrs) band ?WRITABLE of
                 0 -> false;
@@ -952,21 +952,21 @@ bits_into(K, Bits, _Default, Attrs) -> Attrs#{K => Bits}.
 length_bits(#{'$frozen' := true}) -> 0;
 length_bits(Attrs) -> maps:get(<<"length">>, Attrs, ?WRITABLE).
 
-%% ArraySetLength (§10.4.2.4).
-array_set_length(O, {array, _, _, _, Attrs, {OldLength, _}}, Desc) ->
+%% ArraySetLength (§10.4.2.4). The coercion of the value runs user code, so
+%% the current length property is read after it.
+array_set_length(O, #{value := Value} = Desc) ->
+    NewLength = bouy_ref_number:to_uint32(bouy_ref:to_number(Value)),
+    NewLength == bouy_ref:to_number(Value) orelse throw_error('RangeError', <<"Invalid array length">>),
+    Desc1 = Desc#{value := NewLength},
+    {array, _, _, _, Attrs, {OldLength, _}} = record_of(O),
     Current = {data, OldLength, length_bits(Attrs)},
-    case Desc of
-        #{value := Value} ->
-            NewLength = bouy_ref_number:to_uint32(bouy_ref:to_number(Value)),
-            NewLength == bouy_ref:to_number(Value) orelse throw_error('RangeError', <<"Invalid array length">>),
-            Desc1 = Desc#{value := NewLength},
-            case NewLength >= OldLength of
-                true -> validate_and_apply(O, <<"length">>, true, Desc1, Current);
-                false -> shrink(O, NewLength, Desc1, Current)
-            end;
-        _ ->
-            validate_and_apply(O, <<"length">>, true, Desc, Current)
-    end.
+    case NewLength >= OldLength of
+        true -> validate_and_apply(O, <<"length">>, true, Desc1, Current);
+        false -> shrink(O, NewLength, Desc1, Current)
+    end;
+array_set_length(O, Desc) ->
+    {array, _, _, _, Attrs, {OldLength, _}} = record_of(O),
+    validate_and_apply(O, <<"length">>, true, Desc, {data, OldLength, length_bits(Attrs)}).
 
 %% Deletes the elements from the end down to NewLength, and stops at one that
 %% is not configurable.
@@ -1131,12 +1131,18 @@ prevent_extensions(O) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:prevent_extensions(Handler);
+        %% A typed array whose length can change stays extensible (§10.4.5.3).
+        {typed_array, _, _, _, _, _} ->
+            bouy_ref_typed_array:is_fixed_length(O) andalso ordinary_prevent_extensions(O);
         _ ->
-            Id = id_for_write(O),
-            {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
-            erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
-            true
+            ordinary_prevent_extensions(O)
     end.
+
+ordinary_prevent_extensions(O) ->
+    Id = id_for_write(O),
+    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
+    true.
 
 %% Object.freeze of an ordinary object: one flag makes every property
 %% read-only and non-configurable, and the object non-extensible.

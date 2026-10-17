@@ -257,16 +257,7 @@ create_property({'$o', Id} = A, K, V) when is_integer(Id), is_integer(K), K =< 4
 create_property(A, K, V) -> create_slow(A, K, V).
 
 create_slow(A, K, V) ->
-    Key = key(K),
-    case bouy_heap:get_own(A, Key) of
-        {data, _, Bits} when Bits band 4 =:= 0 -> cannot_define(Key);
-        {accessor, _, _, Bits} when Bits band 4 =:= 0 -> cannot_define(Key);
-        _ -> ok
-    end,
-    bouy_heap:define(A, Key, #{value => V, writable => true, enumerable => true, configurable => true}).
-
--spec cannot_define(term()) -> no_return().
-cannot_define(K) -> type_error(bouy_ref_string:concat([<<"Cannot redefine property: ">>, bouy_ref:to_string(bouy_heap:key_to_value(K))])).
+    bouy_heap:define(A, key(K), #{value => V, writable => true, enumerable => true, configurable => true}).
 
 %% Calls F with each index from From up to To, or down to To: a loop, so a
 %% length near 2^53 costs nothing until F runs.

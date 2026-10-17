@@ -373,20 +373,28 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The mapped `arguments` object of a sloppy function with simple parameters: each
-    /// index below the argument count shares the cell of its parameter.
+    /// index below the argument count shares the cell of its parameter. Of duplicate
+    /// parameter names, only the last maps (ECMA-262 10.4.4.7).
     fn mapped_arguments(&mut self, params: &'a FormalParameters<'a>, args: &str) -> Expr {
         let cells = params
             .items
             .iter()
-            .map(|param| match &param.pattern {
-                BindingPattern::BindingIdentifier(id) => match id
-                    .symbol_id
-                    .get()
-                    .and_then(|symbol| self.frame.env.get(&symbol))
+            .enumerate()
+            .map(|(index, param)| match &param.pattern {
+                BindingPattern::BindingIdentifier(id)
+                    if !params.items[index + 1..].iter().any(|later| {
+                        matches!(&later.pattern, BindingPattern::BindingIdentifier(other) if other.name == id.name)
+                    }) =>
                 {
-                    Some(Local::Cell(cell)) => Expr::var(cell.clone()),
-                    _ => Expr::undefined(),
-                },
+                    match id
+                        .symbol_id
+                        .get()
+                        .and_then(|symbol| self.frame.env.get(&symbol))
+                    {
+                        Some(Local::Cell(cell)) => Expr::var(cell.clone()),
+                        _ => Expr::undefined(),
+                    }
+                }
                 _ => Expr::undefined(),
             })
             .collect();

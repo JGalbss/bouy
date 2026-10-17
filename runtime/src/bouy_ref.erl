@@ -118,16 +118,19 @@ read_error(What, K) ->
 text(Parts) -> bouy_ref_string:concat(Parts).
 
 -spec get_computed(term(), term()) -> term().
-get_computed(O, K) -> get(O, to_property_key(K)).
+get_computed(O, K) -> get(O, member_key(O, K)).
 
 -spec set(term(), bouy_heap:key(), term()) -> term().
 set({'$o', _} = O, K, V) -> bouy_heap:set(O, K, V);
 set({'$f', _, _} = F, K, V) -> bouy_heap:set(F, K, V);
 set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
 set(null, K, _V) -> cannot_set(<<"null">>, K);
-set(P, K, _V) -> type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])).
+set(P, K, V) ->
+    primitive_set(P, K, V) orelse type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])),
+    V.
 
 -spec set_computed(term(), term(), term()) -> term().
+set_computed(O, K, _V) when O =:= undefined; O =:= null -> cannot_set(atom_to_binary(O), key_preview(K));
 set_computed(O, K, V) -> set(O, to_property_key(K), V).
 
 -spec cannot_set(binary(), bouy_heap:key()) -> no_return().
@@ -140,17 +143,27 @@ sloppy_set({'$o', _} = O, K, V) -> bouy_heap:sloppy_set(O, K, V);
 sloppy_set({'$f', _, _} = F, K, V) -> bouy_heap:sloppy_set(F, K, V);
 sloppy_set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
 sloppy_set(null, K, _V) -> cannot_set(<<"null">>, K);
-sloppy_set({'$actor', _}, _K, V) -> V;
 sloppy_set(P, K, V) ->
-    _ = bouy_heap:set(primitive_proto(P), K, V, P),
+    _ = primitive_set(P, K, V),
     V.
+
+%% PutValue on a primitive base: [[Set]] of ToObject(base) with the
+%% primitive as the receiver, so only a setter up the chain takes the
+%% write. The own indexes and length of a string are read-only.
+primitive_set({'$actor', _}, _K, _V) -> false;
+primitive_set(S, <<"length">>, _V) when ?IS_STRING(S) -> false;
+primitive_set(S, I, V) when ?IS_STRING(S), is_integer(I) ->
+    I >= bouy_ref_string:length_of(S) andalso bouy_heap:set(primitive_proto(S), I, V, S);
+primitive_set(P, K, V) -> bouy_heap:set(primitive_proto(P), K, V, P).
 
 primitive_proto(S) when ?IS_STRING(S) -> bouy_heap:intrinsic('String.prototype');
 primitive_proto(B) when is_boolean(B) -> bouy_heap:intrinsic('Boolean.prototype');
 primitive_proto({'$sym', _, _}) -> bouy_heap:intrinsic('Symbol.prototype');
+primitive_proto({'$bigint', _}) -> bouy_heap:intrinsic('BigInt.prototype');
 primitive_proto(_) -> bouy_heap:intrinsic('Number.prototype').
 
 -spec sloppy_set_computed(term(), term(), term()) -> term().
+sloppy_set_computed(O, K, _V) when O =:= undefined; O =:= null -> cannot_set(atom_to_binary(O), key_preview(K));
 sloppy_set_computed(O, K, V) -> sloppy_set(O, to_property_key(K), V).
 
 %% `delete o[k]` in sloppy code: false for a property that cannot go.
@@ -159,6 +172,7 @@ sloppy_delete(O, K) when ?IS_OBJECT(O) -> bouy_heap:delete_property(O, K);
 sloppy_delete(O, K) -> delete(O, K).
 
 -spec sloppy_delete_computed(term(), term()) -> boolean().
+sloppy_delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
 sloppy_delete_computed(O, K) -> sloppy_delete(O, to_property_key(K)).
 
 %% The this of a sloppy function: the global object for undefined and null.
@@ -173,6 +187,7 @@ delete(null, K) -> delete(undefined, K);
 delete(_P, _K) -> true.
 
 -spec delete_computed(term(), term()) -> boolean().
+delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
 delete_computed(O, K) -> delete(O, to_property_key(K)).
 
 %% `k in o`.
@@ -180,8 +195,8 @@ delete_computed(O, K) -> delete(O, to_property_key(K)).
 in(K, O) when ?IS_OBJECT(O) -> bouy_heap:has(O, to_property_key(K));
 in(K, O) -> type_error(text([<<"Cannot use 'in' operator to search for '">>, to_string(K), <<"' in ">>, describe(O)])).
 
-%% The key of o[k] in an update or a compound assignment: the base must not
-%% be undefined or null before the key converts.
+%% The key of o[k]: the base must not be undefined or null before the key
+%% converts (GetValue and PutValue run ToObject before ToPropertyKey).
 -spec member_key(term(), term()) -> bouy_heap:key().
 member_key(undefined, K) -> read_error(<<"undefined">>, key_preview(K));
 member_key(null, K) -> read_error(<<"null">>, key_preview(K));
@@ -510,35 +525,31 @@ spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
 %% {...source} into Target: CopyDataProperties.
 -spec object_spread(term(), term()) -> term().
 object_spread(Target, Source) when ?IS_OBJECT(Source) ->
-    [define_field(Target, K, get(Source, K)) || K <- own_enumerable_keys(Source)],
-    Target;
+    copy_data_properties(Target, Source, []);
 object_spread(Target, S) when ?IS_STRING(S) ->
     [define_field(Target, I, bouy_ref_string:unit_string(S, I)) || I <- lists:seq(0, bouy_ref_string:length_of(S) - 1)],
     Target;
 object_spread(Target, _Primitive) ->
     Target.
 
-own_enumerable_keys(O) ->
-    Enumerable = bouy_heap:enumerable_keys(O),
-    Symbols = [K || {'$sym', _, _} = K <- bouy_heap:own_keys(O), is_enumerable(O, K)],
-    Enumerable ++ Symbols.
-
-is_enumerable(O, K) ->
-    case bouy_heap:get_own(O, K) of
-        {data, _, Bits} -> Bits band 2 =/= 0;
-        {accessor, _, _, Bits} -> Bits band 2 =/= 0;
-        none -> false
-    end.
-
 %% const { a, ...rest } = source: the enumerable own properties not named.
 -spec object_rest(term(), [bouy_heap:key()]) -> term().
-object_rest(Source, Excluded) ->
-    Rest = bouy_heap:new_object(?OBJECT_PROTO),
-    case ?IS_OBJECT(Source) of
-        true -> [define_field(Rest, K, get(Source, K)) || K <- own_enumerable_keys(Source), not lists:member(K, Excluded)];
-        false -> ok
-    end,
-    Rest.
+object_rest(Source, Excluded) when ?IS_OBJECT(Source) ->
+    copy_data_properties(bouy_heap:new_object(?OBJECT_PROTO), Source, Excluded);
+object_rest(_Primitive, _Excluded) ->
+    bouy_heap:new_object(?OBJECT_PROTO).
+
+%% CopyDataProperties of an object: the keys in [[OwnPropertyKeys]] order,
+%% each excluded key skipped before [[GetOwnProperty]], and Get only when
+%% the property is still there and enumerable.
+copy_data_properties(Target, Source, Excluded) ->
+    lists:foreach(fun(K) ->
+                          case not lists:member(K, Excluded) andalso bouy_heap:is_enumerable(bouy_heap:get_own(Source, K)) of
+                              true -> define_field(Target, K, get(Source, K));
+                              false -> ok
+                          end
+                  end, bouy_heap:own_keys(Source)),
+    Target.
 
 -spec template(list()) -> bouy_ref_string:js_string().
 template(Parts) -> text([to_string(P) || P <- Parts]).
