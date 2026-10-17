@@ -1,18 +1,18 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "d0df4dfdd5da9e32b9e9faab2ddf901f2025bd80",
+  "updated": "6985b8082060d0228cc19a43fe80cf8c7fdeef7a",
   "total": 4419,
   "outcomes": {
-    "pass": 1503,
+    "pass": 1515,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 2318,
+    "fail": 2305,
     "timeout": 4,
     "harness_error": 0,
-    "crash": 11
+    "crash": 12
   },
   "groups": {
     "directory": {
@@ -22,11 +22,11 @@
         "fail": 180
       },
       "parallel": {
-        "pass": 1444,
+        "pass": 1456,
         "skip": 545,
-        "fail": 2077,
+        "fail": 2064,
         "timeout": 3,
-        "crash": 10
+        "crash": 11
       },
       "sequential": {
         "pass": 33,
@@ -41,17 +41,19 @@
         "skip": 343
       },
       "public": {
-        "pass": 1503,
+        "pass": 1515,
         "skip": 240,
-        "fail": 2318,
+        "fail": 2305,
         "timeout": 4,
-        "crash": 11
+        "crash": 12
       }
     },
     "module": {
       "assert": {
+        "pass": 7,
         "skip": 1,
-        "fail": 13
+        "fail": 5,
+        "crash": 1
       },
       "async_hooks": {
         "pass": 15,
@@ -145,9 +147,9 @@
         "fail": 136
       },
       "os": {
-        "pass": 1,
+        "pass": 2,
         "skip": 2,
-        "fail": 5
+        "fail": 4
       },
       "other": {
         "pass": 166,
@@ -249,9 +251,9 @@
         "crash": 1
       },
       "v8": {
-        "pass": 4,
+        "pass": 8,
         "skip": 5,
-        "fail": 13
+        "fail": 9
       },
       "vm": {
         "skip": 9,

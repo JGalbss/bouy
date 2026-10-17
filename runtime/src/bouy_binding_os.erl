@@ -130,14 +130,27 @@ family(A) when tuple_size(A) =:= 4 -> <<"IPv4">>;
 family(_) -> <<"IPv6">>.
 
 user_info() ->
-    Uid = list_to_integer(string:trim(os:cmd("id -u"))),
-    Gid = list_to_integer(string:trim(os:cmd("id -g"))),
-    User = string:trim(os:cmd("id -un")),
+    [UidText, GidText, User] = lines("id -u; id -g; id -un"),
+    Uid = list_to_integer(UidText),
+    Gid = list_to_integer(GidText),
     Home = case os:getenv("HOME") of false -> "/"; H -> H end,
     Shell = case os:getenv("SHELL") of false -> null; S -> bouy_node:string(S) end,
     bouy_node:object([{<<"uid">>, Uid}, {<<"gid">>, Gid}, {<<"username">>, bouy_node:string(User)},
                       {<<"homedir">>, bouy_node:string(Home)}, {<<"shell">>, Shell}]).
 
 os_information() ->
-    Field = fun(Flag) -> bouy_node:string(string:trim(os:cmd("uname " ++ Flag))) end,
-    bouy_heap:new_array([Field("-s"), Field("-v"), Field("-r"), Field("-m")]).
+    bouy_heap:new_array([bouy_node:string(Field) || Field <- lines("uname -s; uname -v; uname -r; uname -m")]).
+
+%% The lines that one shell prints: a shell costs a process spawn, and
+%% lib/os.js reads the OS information when it loads, so each command runs
+%% once per VM.
+lines(Command) ->
+    Key = {?MODULE, Command},
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            Lines = string:split(string:trim(os:cmd(Command)), "\n", all),
+            persistent_term:put(Key, Lines),
+            Lines;
+        Lines ->
+            Lines
+    end.
