@@ -144,8 +144,17 @@ array_create(Len) ->
 
 %% ArraySpeciesCreate.
 species_create(O, Len) ->
+    case species(O, Len) of
+        {fresh, A} -> A;
+        {object, A} -> A
+    end.
+
+%% ArraySpeciesCreate, and whether the result is a new array of %Array%:
+%% {fresh, A}, which no user code can reach until the method returns, so
+%% the method may write its elements at once, or {object, A}.
+species(O, Len) ->
     case is_array(O) of
-        false -> array_create(Len);
+        false -> {fresh, array_create(Len)};
         true ->
             C = case bouy_ref:get(O, <<"constructor">>) of
                 C0 when ?IS_OBJECT(C0) ->
@@ -155,13 +164,31 @@ species_create(O, Len) ->
                     end;
                 C0 -> C0
             end,
+            Array = constructor(),
             case C of
-                undefined -> array_create(Len);
+                undefined -> {fresh, array_create(Len)};
+                Array -> {fresh, array_create(Len)};
                 _ ->
                     is_constructor(C) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
-                    bouy_ref:construct(C, [Len])
+                    {object, bouy_ref:construct(C, [Len])}
             end
     end.
+
+%% Writes the elements of a fresh array at once.
+commit(A, Length, Pairs) ->
+    bouy_heap:set_slots(A, {Length, maps:from_list(Pairs)}),
+    A.
+
+%% Folds F over the indexes below Len that the object has, with their values.
+fold_present(O, Len, F, Acc) -> fold_present(O, 0, Len, F, Acc).
+
+fold_present(_O, K, Len, _F, Acc) when K >= Len -> Acc;
+fold_present(O, K, Len, F, Acc) ->
+    Acc1 = case el(O, K) of
+        {ok, V} -> F(K, V, Acc);
+        none -> Acc
+    end,
+    fold_present(O, K + 1, Len, F, Acc1).
 
 %% The property key of an index: an array index, or the string of a larger
 %% integer.
@@ -172,6 +199,29 @@ get(O, K) -> bouy_ref:get(O, key(K)).
 
 has(O, K) -> bouy_heap:has(O, key(K)).
 
+%% HasProperty then Get in one step: {ok, Value}, or none for a missing
+%% index. An own data element of an array takes one read of its record.
+el({'$o', Id} = O, K) when is_integer(Id) ->
+    case erlang:get(Id) of
+        {array, _, _, _, _, {_, #{K := V}}} when not (is_tuple(V) andalso tuple_size(V) =:= 3 andalso element(1, V) =:= '$accessor') -> {ok, V};
+        _ -> el_slow(O, K)
+    end;
+el(O, K) -> el_slow(O, K).
+
+el_slow(O, K) ->
+    case has(O, K) of
+        true -> {ok, get(O, K)};
+        false -> none
+    end.
+
+%% Get alone, with the same fast path.
+value_at({'$o', Id} = O, K) when is_integer(Id) ->
+    case erlang:get(Id) of
+        {array, _, _, _, _, {_, #{K := V}}} when not (is_tuple(V) andalso tuple_size(V) =:= 3 andalso element(1, V) =:= '$accessor') -> V;
+        _ -> get(O, K)
+    end;
+value_at(O, K) -> get(O, K).
+
 set(O, K, V) -> bouy_ref:set(O, key(K), V).
 
 set_length(O, Len) -> bouy_ref:set(O, <<"length">>, Len).
@@ -180,7 +230,18 @@ delete(O, K) -> bouy_heap:delete(O, key(K)).
 
 %% CreateDataPropertyOrThrow.
 -spec create_property(term(), non_neg_integer(), term()) -> term().
-create_property(A, K, V) ->
+create_property({'$o', Id} = A, K, V) when is_integer(Id), is_integer(K), K =< 4294967294 ->
+    %% An array with no attributes has no fixed element and is extensible, so
+    %% CreateDataPropertyOrThrow is a plain write of the element.
+    case erlang:get(Id) of
+        {array, P, Props, Keys, Attrs, {Length, Elements}} when map_size(Attrs) =:= 0 ->
+            erlang:put(Id, {array, P, Props, Keys, Attrs, {max(Length, K + 1), Elements#{K => V}}}),
+            A;
+        _ -> create_slow(A, K, V)
+    end;
+create_property(A, K, V) -> create_slow(A, K, V).
+
+create_slow(A, K, V) ->
     Key = key(K),
     case bouy_heap:get_own(A, Key) of
         {data, _, Bits} when Bits band 4 =:= 0 -> cannot_define(Key);
@@ -209,7 +270,7 @@ fold_up(From, To, _F, Acc) when From > To -> Acc;
 fold_up(From, To, F, Acc) -> fold_up(From + 1, To, F, F(From, Acc)).
 
 %% The values at the indexes From up to To, holes read through.
-values(O, From, To) -> lists:reverse(fold_up(From, To, fun(K, Acc) -> [get(O, K) | Acc] end, [])).
+values(O, From, To) -> lists:reverse(fold_up(From, To, fun(K, Acc) -> [value_at(O, K) | Acc] end, [])).
 
 %% ToIntegerOrInfinity of an argument.
 integer(V) -> bouy_ref_number:to_integer_or_infinity(bouy_ref:to_number(V)).
@@ -243,10 +304,15 @@ proto(<<"at">>, O, Args) ->
         false -> undefined
     end;
 proto(<<"concat">>, O, Args) ->
-    A = species_create(O, 0),
-    N = lists:foldl(fun(E, N0) -> concat_item(A, E, N0) end, 0, [O | Args]),
-    set_length(A, N),
-    A;
+    case species(O, 0) of
+        {fresh, A} ->
+            {N, Pairs} = lists:foldl(fun concat_pairs/2, {0, []}, [O | Args]),
+            commit(A, N, Pairs);
+        {object, A} ->
+            N = lists:foldl(fun(E, N0) -> concat_item(A, E, N0) end, 0, [O | Args]),
+            set_length(A, N),
+            A
+    end;
 proto(<<"copyWithin">>, O, Args) ->
     Len = length_of(O),
     To = relative(arg(1, Args), Len),
@@ -279,16 +345,30 @@ proto(<<"map">>, O, Args) ->
     Len = length_of(O),
     F = callable(arg(1, Args)),
     This = arg(2, Args),
-    A = species_create(O, Len),
-    each(O, Len, fun(K, V) -> create_property(A, K, bouy_ref:call(F, This, [V, K, O])) end),
-    A;
+    case species(O, Len) of
+        {fresh, A} ->
+            commit(A, Len, fold_present(O, Len, fun(K, V, Acc) -> [{K, bouy_ref:call(F, This, [V, K, O])} | Acc] end, []));
+        {object, A} ->
+            each(O, Len, fun(K, V) -> create_property(A, K, bouy_ref:call(F, This, [V, K, O])) end),
+            A
+    end;
 proto(<<"filter">>, O, Args) ->
     Len = length_of(O),
     F = callable(arg(1, Args)),
     This = arg(2, Args),
-    A = species_create(O, 0),
-    filter(O, F, This, A, 0, Len, 0),
-    A;
+    case species(O, 0) of
+        {fresh, A} ->
+            Kept = fold_present(O, Len, fun(K, V, Acc) ->
+                                               case bouy_ref:truthy(bouy_ref:call(F, This, [V, K, O])) of
+                                                   true -> [V | Acc];
+                                                   false -> Acc
+                                               end
+                                       end, []),
+            commit(A, length(Kept), lists:enumerate(0, lists:reverse(Kept)));
+        {object, A} ->
+            filter(O, F, This, A, 0, Len, 0),
+            A
+    end;
 proto(<<"fill">>, O, Args) ->
     Len = length_of(O),
     V = arg(1, Args),
@@ -441,16 +521,26 @@ proto(<<"slice">>, O, Args) ->
     K = relative(arg(1, Args), Len),
     Final = relative_end(arg(2, Args), Len),
     Count = max(Final - K, 0),
-    A = species_create(O, Count),
-    N = fold_up(K, Final - 1, fun(I, N0) ->
-                                      case has(O, I) of
-                                          true -> create_property(A, N0, get(O, I));
-                                          false -> ok
-                                      end,
-                                      N0 + 1
-                              end, 0),
-    set_length(A, N),
-    A;
+    case species(O, Count) of
+        {fresh, A} ->
+            {N, Pairs} = fold_up(K, Final - 1, fun(I, {N0, Acc}) ->
+                                                       case el(O, I) of
+                                                           {ok, V} -> {N0 + 1, [{N0, V} | Acc]};
+                                                           none -> {N0 + 1, Acc}
+                                                       end
+                                               end, {0, []}),
+            commit(A, N, Pairs);
+        {object, A} ->
+            N = fold_up(K, Final - 1, fun(I, N0) ->
+                                              case el(O, I) of
+                                                  {ok, V} -> create_property(A, N0, V);
+                                                  none -> ok
+                                              end,
+                                              N0 + 1
+                                      end, 0),
+            set_length(A, N),
+            A
+    end;
 proto(<<"splice">>, O, Args) ->
     Len = length_of(O),
     Start = case Args of
@@ -545,36 +635,43 @@ each(O, Len, F) -> each(O, 0, Len, F).
 
 each(_O, K, Len, _F) when K >= Len -> ok;
 each(O, K, Len, F) ->
-    case has(O, K) of
-        true -> F(K, get(O, K));
-        false -> ok
+    case el(O, K) of
+        {ok, V} -> F(K, V);
+        none -> ok
     end,
     each(O, K + 1, Len, F).
 
 filter(_O, _F, _This, _A, K, Len, _To) when K >= Len -> ok;
 filter(O, F, This, A, K, Len, To) ->
-    case has(O, K) of
-        true ->
-            V = get(O, K),
+    case el(O, K) of
+        {ok, V} ->
             case bouy_ref:truthy(bouy_ref:call(F, This, [V, K, O])) of
                 true ->
                     create_property(A, To, V),
                     filter(O, F, This, A, K + 1, Len, To + 1);
                 false -> filter(O, F, This, A, K + 1, Len, To)
             end;
-        false -> filter(O, F, This, A, K + 1, Len, To)
+        none -> filter(O, F, This, A, K + 1, Len, To)
     end.
 
 every(_O, _F, _This, K, Len) when K >= Len -> true;
 every(O, F, This, K, Len) ->
-    case has(O, K) andalso not bouy_ref:truthy(bouy_ref:call(F, This, [get(O, K), K, O])) of
+    Stop = case el(O, K) of
+        {ok, V} -> not bouy_ref:truthy(bouy_ref:call(F, This, [V, K, O]));
+        none -> false
+    end,
+    case Stop of
         true -> false;
         false -> every(O, F, This, K + 1, Len)
     end.
 
 some(_O, _F, _This, K, Len) when K >= Len -> false;
 some(O, F, This, K, Len) ->
-    case has(O, K) andalso bouy_ref:truthy(bouy_ref:call(F, This, [get(O, K), K, O])) of
+    Found = case el(O, K) of
+        {ok, V} -> bouy_ref:truthy(bouy_ref:call(F, This, [V, K, O]));
+        none -> false
+    end,
+    case Found of
         true -> true;
         false -> some(O, F, This, K + 1, Len)
     end.
@@ -591,7 +688,7 @@ find(O, Args, Direction, What) ->
 find_in(_O, _F, _This, value, K, End, _Step) when K =:= End -> undefined;
 find_in(_O, _F, _This, index, K, End, _Step) when K =:= End -> -1;
 find_in(O, F, This, What, K, End, Step) ->
-    V = get(O, K),
+    V = value_at(O, K),
     case bouy_ref:truthy(bouy_ref:call(F, This, [V, K, O])) of
         true when What =:= value -> V;
         true -> K;
@@ -600,7 +697,7 @@ find_in(O, F, This, What, K, End, Step) ->
 
 includes(_O, _Search, K, Len) when K >= Len -> false;
 includes(O, Search, K, Len) ->
-    case same_value_zero(get(O, K), Search) of
+    case same_value_zero(value_at(O, K), Search) of
         true -> true;
         false -> includes(O, Search, K + 1, Len)
     end.
@@ -610,14 +707,17 @@ same_value_zero(A, B) -> A =:= B.
 
 index_of(_O, _Search, K, Len) when K >= Len -> -1;
 index_of(O, Search, K, Len) ->
-    case has(O, K) andalso bouy_ref:strict_eq(get(O, K), Search) of
+    case matches(el(O, K), Search) of
         true -> K;
         false -> index_of(O, Search, K + 1, Len)
     end.
 
+matches({ok, V}, Search) -> bouy_ref:strict_eq(V, Search);
+matches(none, _Search) -> false.
+
 last_index_of(_O, _Search, K) when K < 0 -> -1;
 last_index_of(O, Search, K) ->
-    case has(O, K) andalso bouy_ref:strict_eq(get(O, K), Search) of
+    case matches(el(O, K), Search) of
         true -> K;
         false -> last_index_of(O, Search, K - 1)
     end.
@@ -632,18 +732,18 @@ reduce(O, F, Args, From, To, Step) ->
 
 reduce_steps(_O, _F, K, To, Step, Acc) when (Step > 0 andalso K > To); (Step < 0 andalso K < To) -> Acc;
 reduce_steps(O, F, K, To, Step, Acc) ->
-    Acc1 = case has(O, K) of
-        true -> bouy_ref:call(F, undefined, [Acc, get(O, K), K, O]);
-        false -> Acc
+    Acc1 = case el(O, K) of
+        {ok, V} -> bouy_ref:call(F, undefined, [Acc, V, K, O]);
+        none -> Acc
     end,
     reduce_steps(O, F, K + Step, To, Step, Acc1).
 
 first_present(_O, K, To, Step) when (Step > 0 andalso K > To); (Step < 0 andalso K < To) ->
     type_error(<<"Reduce of empty array with no initial value">>);
 first_present(O, K, To, Step) ->
-    case has(O, K) of
-        true -> {get(O, K), K + Step};
-        false -> first_present(O, K + Step, To, Step)
+    case el(O, K) of
+        {ok, V} -> {V, K + Step};
+        none -> first_present(O, K + Step, To, Step)
     end.
 
 reverse(O, Lower, Upper) when Lower < Upper ->
@@ -694,9 +794,9 @@ concat_item(A, E, N) ->
             Len = length_of(E),
             N + Len > ?MAX_LENGTH andalso too_long(),
             up(0, Len - 1, fun(K) ->
-                                   case has(E, K) of
-                                       true -> create_property(A, N + K, get(E, K));
-                                       false -> ok
+                                   case el(E, K) of
+                                       {ok, V} -> create_property(A, N + K, V);
+                                       none -> ok
                                    end
                            end),
             N + Len;
@@ -704,6 +804,18 @@ concat_item(A, E, N) ->
             N >= ?MAX_LENGTH andalso too_long(),
             create_property(A, N, E),
             N + 1
+    end.
+
+%% concat into a fresh array: {NextIndex, Pairs}.
+concat_pairs(E, {N, Acc}) ->
+    case is_spreadable(E) of
+        true ->
+            Len = length_of(E),
+            N + Len > ?MAX_LENGTH andalso too_long(),
+            {N + Len, fold_present(E, Len, fun(K, V, Pairs) -> [{N + K, V} | Pairs] end, Acc)};
+        false ->
+            N >= ?MAX_LENGTH andalso too_long(),
+            {N + 1, [{N, E} | Acc]}
     end.
 
 is_spreadable(E) when ?IS_OBJECT(E) ->
