@@ -10,9 +10,11 @@
     "tools/oxlint/guardrails/anti-slop/",
     ".bouy/",
     ".claude/",
+    "runtime/vendor/",
+    "runtime/node/",
     "docs/COMPAT.md",
     "tests/fuzz/",
-    "tests/node/suite/",
+    "tests/node/test/",
     "tests/node/surface.json"
   ]
 }

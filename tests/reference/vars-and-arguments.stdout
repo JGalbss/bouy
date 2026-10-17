@@ -1,0 +1,7 @@
+[ 6, 3, 3, 'object', '[object Arguments]' ] [ 0, 0, 0, 'object', '[object Arguments]' ]
+[ 'undefined', 'set' ] [ 'undefined', undefined ]
+2
+[ 'a', 'a-b' ]
+5 true true
+Point 2 [ 'sum' ]
+[ 2, 1 ]

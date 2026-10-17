@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use bouy_compiler::{Diagnostic, compile_in};
+use bouy_compiler::{Diagnostic, Semantics, compile_in, compile_with};
 
 fn tests_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
@@ -110,4 +110,22 @@ fn reports_each_diagnostic() {
         }
         insta::assert_snapshot!(render(&diagnostics));
     });
+}
+
+/// The reference lowering names each syntax that it cannot lower yet, so a test262 failure
+/// list says what to build.
+#[test]
+fn reference_lowering_names_unsupported_syntax() {
+    let path = fixtures().join("reference/unsupported.ts");
+    let Err(diagnostics) = compile_with(&path, Semantics::Reference) else {
+        panic!("the fixture uses syntax that the reference lowering lacks, but it compiles");
+    };
+    let messages: Vec<&str> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.message.as_str())
+        .collect();
+    assert_eq!(
+        messages,
+        ["`accessor` fields is not supported by the reference-semantics prototype"]
+    );
 }

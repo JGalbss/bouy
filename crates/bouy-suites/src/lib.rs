@@ -69,6 +69,7 @@ pub fn default_jobs() -> usize {
 /// that starts node fails. The VM halts past `TEST_MEMORY`; only the VM reads that variable,
 /// so the freeze script leaves it out.
 pub fn bouy_env<'a>(command: &'a mut Command, temporary: &Path) -> &'a mut Command {
+    warm(command.get_program());
     let mut path = repository().join("tests/shim").into_os_string();
     path.push(":");
     path.push(env::var_os("PATH").unwrap_or_default());
@@ -85,6 +86,21 @@ pub fn bouy_env<'a>(command: &'a mut Command, temporary: &Path) -> &'a mut Comma
         .env("CI", "1")
         .env("TMPDIR", temporary)
         .env("BOUY_MAX_MEMORY", TEST_MEMORY)
+}
+
+/// Builds the runtime cache of the `bouy` at `program` once per process, before the first
+/// run: the first `bouy run` on a machine compiles the runtime, Node's lib included, which
+/// takes longer than the deadline of one run. A binary without `bouy runtime`, such as one
+/// built from an older commit, builds it on its first run instead.
+fn warm(program: &std::ffi::OsStr) {
+    static WARMED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    WARMED.get_or_init(|| {
+        let _ = Command::new(program)
+            .arg("runtime")
+            .env("BOUY_MAX_MEMORY", TEST_MEMORY)
+            .stdin(Stdio::null())
+            .output();
+    });
 }
 
 /// What a run printed, and whether it ran past its deadline.

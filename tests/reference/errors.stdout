@@ -1,0 +1,4 @@
+ok 3; checked; invalid age: age is required; checked; range: age must be positive; checked
+from try finally ran
+true ValidationError ValidationError: bad [ 'field', 'name' ]
+true

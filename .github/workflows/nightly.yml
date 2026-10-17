@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  # Runs every file of tests/node/suite and compares the run with tests/node/expectations.txt.
+  # Runs every file of tests/node/test and compares the run with tests/node/expectations.txt.
   # The job summary holds the report, and the artifact holds the regenerated expectation
   # file and results.json.
   node:

@@ -1,6 +1,6 @@
 //! Node's own tests (section 5.7 of docs/design/testing.md): the files of `parallel`,
 //! `es-module`, and `sequential` that `scripts/vendor-node-tests.sh` copied into
-//! `tests/node/suite` at the tag of `.node-version`. Each file runs in its own `bouy` OS
+//! `tests/node/test` at the tag of `.node-version`. Each file runs in its own `bouy` OS
 //! process, because these files use `process.exit`, signals, stdio, and child processes. A
 //! file passes when it exits with 0 within the deadline. `config.json` skips the files that
 //! can never apply to Bouy (section 3.5), by path or by a flag of the `// Flags:` line.
@@ -26,6 +26,11 @@ const SUITE: &str = "node";
 /// The command that rewrites the expectation file and the summary.
 pub const UPDATE: &str =
     "cargo build --release -p bouy-cli && cargo run --release -p bouy-suites -- node --update";
+
+/// The directory of `tests/node` that holds Node's `test/`. Each file runs from
+/// `tests/node` as `test/<id>`, as Node's runner runs it from the root of the repository,
+/// because some tests read the name of their directory or `process.cwd()`.
+const SUITE_DIRECTORY: &str = "test";
 
 /// The directories of test files. `sequential` runs one file at a time.
 const DIRECTORIES: [&str; 3] = ["parallel", "es-module", "sequential"];
@@ -127,7 +132,7 @@ const STDERR_LINES: usize = 20;
 
 #[derive(Debug)]
 pub struct Options {
-    /// `tests/node`: `config.json`, `suite/`, `expectations.txt`, and `summary.json`.
+    /// `tests/node`: `config.json`, `test/`, `expectations.txt`, and `summary.json`.
     pub directory: PathBuf,
     /// `target/suites/node`: the regenerated files, `results.json`, and `comment.md`.
     pub output: PathBuf,
@@ -243,6 +248,9 @@ struct Test {
     id: String,
     /// The flags of the `// Flags:` line, as `flag_name` writes them.
     flags: Vec<String>,
+    /// The words of the `// Flags:` line as they are, which the run passes to `bouy` as
+    /// node options, as Node's `tools/test.py` passes them to node.
+    options: Vec<String>,
     /// The variables of the `// Env:` line.
     env: Vec<(String, String)>,
     /// The reason code of the skip of `config.json` that applies.
@@ -280,11 +288,12 @@ fn load_tests(suite: &Path, config: &Config) -> Result<Vec<Test>, String> {
 }
 
 fn test_of(id: String, source: &str, config: &Config) -> Result<Test, String> {
-    let flags: Vec<String> = header(source, "Flags")
+    let options: Vec<String> = header(source, "Flags")
         .unwrap_or_default()
         .split_whitespace()
-        .filter_map(flag_name)
+        .map(str::to_owned)
         .collect();
+    let flags: Vec<String> = options.iter().filter_map(|word| flag_name(word)).collect();
     let env = header(source, "Env")
         .unwrap_or_default()
         .split_whitespace()
@@ -312,6 +321,7 @@ fn test_of(id: String, source: &str, config: &Config) -> Result<Test, String> {
     Ok(Test {
         id,
         flags,
+        options,
         env,
         skip,
         common,
@@ -368,7 +378,6 @@ fn module_of(id: &str) -> String {
 /// What the executions share.
 struct Context<'a> {
     options: &'a Options,
-    suite: PathBuf,
     scratch: PathBuf,
     deadline: Duration,
     /// The entry files of `test/common` that `bouy check` rejects.
@@ -384,16 +393,24 @@ struct Execution {
     time_ms: u128,
 }
 
+/// The flags of `bouy check` for the entry files of `test/common` and of `bouy run` for the
+/// surface probe: the JavaScript engine with reference semantics, which runs Node's own
+/// `lib/` for the built-in modules (docs/design/node-builtins.md). A test file runs as
+/// `bouy <its // Flags:> test/<id>`, the node form of the CLI, which uses that engine.
+pub const ENGINE: [&str; 2] = ["--semantics", "reference"];
+
 /// Runs Node's tests and compares the run with the expectation files.
 pub fn run(options: &Options) -> Result<Report, String> {
-    if options.update && (options.filter.is_some() || options.selection != Selection::All) {
-        return Err("--update runs every id, so it takes no --filter and no --select".to_owned());
+    // An update with --filter rewrites the lines of the ids that ran and keeps the others,
+    // so a change to one module can record its files without a run of the whole suite.
+    if options.update && options.selection != Selection::All {
+        return Err("--update takes no --select".to_owned());
     }
     let config = load_config(&options.directory)?;
     let mut durations_ms = BTreeMap::new();
 
     let started = Instant::now();
-    let tests = load_tests(&options.directory.join("suite"), &config)?;
+    let tests = load_tests(&options.directory.join(SUITE_DIRECTORY), &config)?;
     durations_ms.insert("load".to_owned(), started.elapsed().as_millis());
 
     let expected = expectations::read(&options.directory.join("expectations.txt"))?;
@@ -491,12 +508,10 @@ fn execute_selected<'a>(
         .enumerate()
         .filter(|(_, test)| is_selected(test, options, expected.get(&test.id)))
         .partition(|(_, test)| test.id.starts_with(SEQUENTIAL));
-    let suite = options.directory.join("suite");
     let scratch = options.output.join("scratch");
     let context = Context {
         options,
-        rejected_common: rejected_common(options, &suite, &scratch)?,
-        suite,
+        rejected_common: rejected_common(options, &scratch)?,
         scratch,
         deadline: Duration::from_millis(config.timeout_ms),
     };
@@ -521,11 +536,7 @@ fn is_selected(test: &Test, options: &Options, expected: Option<&Entry>) -> bool
 
 /// The entry files of `test/common` that `bouy check` rejects. Each one is a blocker of the
 /// rejected files that load it, as a harness file of test262 is.
-fn rejected_common(
-    options: &Options,
-    suite: &Path,
-    scratch: &Path,
-) -> Result<Vec<&'static str>, String> {
+fn rejected_common(options: &Options, scratch: &Path) -> Result<Vec<&'static str>, String> {
     let mut rejected = Vec::new();
     for (index, file) in COMMON.into_iter().enumerate() {
         let temporary = scratch.join(format!("common-{index}"));
@@ -533,9 +544,10 @@ fn rejected_common(
             .map_err(|error| format!("{}: {error}", temporary.display()))?;
         let mut command = Command::new(&options.bouy);
         bouy_env(&mut command, &temporary)
-            .current_dir(suite)
+            .current_dir(&options.directory)
             .arg("check")
-            .arg(file);
+            .args(ENGINE)
+            .arg(Path::new(SUITE_DIRECTORY).join(file));
         if !crate::run(&mut command, Duration::from_secs(60))
             .output
             .status
@@ -547,7 +559,7 @@ fn rejected_common(
     Ok(rejected)
 }
 
-/// Runs one file with `bouy run` from the suite directory, or skips it.
+/// Runs one file with `bouy run` from `tests/node`, or skips it.
 fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, String> {
     if let Some(reason) = &test.skip {
         return Ok(Execution {
@@ -565,15 +577,15 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
     // test/common/tmpdir.js makes its directory under NODE_TEST_DIR, so a run never writes
     // into the vendored tree.
     bouy_env(&mut command, &temporary)
-        .current_dir(&context.suite)
+        .current_dir(&context.options.directory)
         .env("BOUY_RESULT_FILE", &result_file)
         .env("NODE_TEST_KNOWN_GLOBALS", "0")
         .env("NODE_SKIP_FLAG_CHECK", "1")
         .env("TEST_SERIAL_ID", serial.to_string())
         .env("NODE_TEST_DIR", &temporary)
         .envs(test.env.iter().map(|(name, value)| (name, value)))
-        .arg("run")
-        .arg(&test.id);
+        .args(&test.options)
+        .arg(Path::new(SUITE_DIRECTORY).join(&test.id));
     let started = Instant::now();
     let finished = crate::run(&mut command, context.deadline);
     let time_ms = started.elapsed().as_millis();

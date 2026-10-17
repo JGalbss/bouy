@@ -1,0 +1,37 @@
+body
+dispose second
+dispose first
+returned
+dispose b
+dispose a
+SuppressedError dispose a
+SuppressedError dispose b body
+dispose step 0
+dispose step 1
+dispose step 2
+count 20
+loop body
+dispose item 1
+loop body
+dispose item 2
+adopted 7
+disposed true false
+ReferenceError
+[object DisposableStack]
+adopt 7
+deferred
+dispose used
+disposed true
+dispose second
+dispose first
+SuppressedError dispose first dispose second
+true false
+async body
+dispose sync in await using
+async dispose
+async done
+disposing true
+async deferred
+dispose sync in async stack
+resolved undefined
+rejected TypeError

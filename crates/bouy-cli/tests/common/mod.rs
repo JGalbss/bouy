@@ -118,7 +118,8 @@ pub fn assert_recorded(corpus: &str, minimum: usize) {
 }
 
 /// Runs each program of `tests/<corpus>` that has a recorded stdout and matches
-/// `BOUY_TEST_FILTER` with `bouy run`, after `configure` adds to the command, and fails with
+/// `BOUY_TEST_FILTER` with `bouy run`, after `configure` adds environment variables or `run`
+/// options to the command, and fails with
 /// the lines that differ.
 pub fn assert_matches(corpus: &str, configure: impl Fn(&mut Command) + Sync) {
     let filter = env::var("BOUY_TEST_FILTER").unwrap_or_default();
@@ -130,8 +131,9 @@ pub fn assert_matches(corpus: &str, configure: impl Fn(&mut Command) + Sync) {
     let deadline = deadline();
     let check = |program: &Path| {
         let mut command = bouy();
-        command.arg("run").arg(program);
+        command.arg("run");
         configure(&mut command);
+        command.arg(program);
         compare(program, &mut command, deadline)
     };
     let mut failures: Vec<String> = map_parallel(&programs, |program| check(program))

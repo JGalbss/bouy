@@ -11,6 +11,10 @@ pub enum Expr {
     Float(f64),
     /// A UTF-8 binary literal.
     Binary(String),
+    /// A JavaScript string of the reference engine, as UTF-16 code units. It prints as a
+    /// one-byte binary when every unit is at most 0xFF, else as `{'$u16', Binary}` with two
+    /// bytes per unit (contract, "Reference semantics").
+    JsString(Vec<u16>),
     Tuple(Vec<Expr>),
     List(Vec<Expr>),
     /// `[A, B | Tail]`
@@ -87,6 +91,11 @@ impl Expr {
         Self::Binary(text.into())
     }
 
+    /// A JavaScript string of the reference engine.
+    pub fn js_string(text: &str) -> Self {
+        Self::JsString(text.encode_utf16().collect())
+    }
+
     pub fn undefined() -> Self {
         Self::atom("undefined")
     }
@@ -156,6 +165,7 @@ impl Expr {
             | Self::Integer(_)
             | Self::Float(_)
             | Self::Binary(_)
+            | Self::JsString(_)
             | Self::FunRef { .. } => true,
             Self::Tuple(items) | Self::List(items) => items.iter().all(Self::is_trivial),
             _ => false,
@@ -215,6 +225,11 @@ const WRAP_LIMIT: usize = 80;
 struct Printer {
     out: String,
     indent: usize,
+    /// Set inside `inline`: subexpressions print in place, and printing stops once the text
+    /// cannot be one short line. A nested `inline` per level would print the deepest
+    /// subtree once for each level above it, which is exponential in the depth of the
+    /// continuations that `await` makes.
+    one_line: bool,
 }
 
 impl Printer {
@@ -255,10 +270,8 @@ impl Printer {
     /// Prints a clause body after `->`: inline when it is one short expression.
     fn clause_body(&mut self, body: &[Expr]) {
         if let [only] = body
-            && let Some(text) = inline(only)
+            && self.print_inline(only)
         {
-            self.out.push(' ');
-            self.out.push_str(&text);
             return;
         }
         self.indent += 1;
@@ -293,6 +306,9 @@ impl Printer {
     }
 
     fn expr(&mut self, expr: &Expr) {
+        if self.one_line && self.overflows() {
+            return;
+        }
         match expr {
             Expr::Var(name) => self.out.push_str(&shorten(name, NAME_LIMIT)),
             Expr::Atom(name) => self.out.push_str(&atom(name)),
@@ -301,6 +317,7 @@ impl Printer {
             }
             Expr::Float(value) => self.out.push_str(&float(*value)),
             Expr::Binary(text) => self.out.push_str(&binary(text)),
+            Expr::JsString(units) => self.out.push_str(&js_string(units)),
             Expr::Tuple(items) => self.elements("{", items, "}"),
             Expr::List(items) => self.elements("[", items, "]"),
             Expr::Cons(heads, tail) => {
@@ -396,14 +413,18 @@ impl Printer {
     /// Prints `items` between `open` and `close`: on one line when it is short, else one
     /// item per line. A multi-line last item, such as a fun, may stay on the line.
     fn elements(&mut self, open: &str, items: &[Expr], close: &str) {
-        let width = items
-            .iter()
-            .enumerate()
-            .try_fold(0, |width, (index, item)| match inline(item) {
-                Some(text) => Some(width + text.len() + 2),
-                None if index + 1 == items.len() => Some(width),
-                None => None,
-            });
+        let width = if self.one_line {
+            Some(0)
+        } else {
+            items
+                .iter()
+                .enumerate()
+                .try_fold(0, |width, (index, item)| match inline(item) {
+                    Some(text) => Some(width + text.len() + 2),
+                    None if index + 1 == items.len() => Some(width),
+                    None => None,
+                })
+        };
         self.out.push_str(open);
         if items.len() < 2 || width.is_some_and(|width| width <= WRAP_LIMIT) {
             self.comma_separated(items);
@@ -453,10 +474,8 @@ impl Printer {
             }
             self.clause_head(clause);
             if let [only] = clause.body.as_slice()
-                && let Some(text) = inline(only)
+                && self.print_inline(only)
             {
-                self.out.push(' ');
-                self.out.push_str(&text);
                 self.out.push_str(" end");
                 return;
             }
@@ -510,13 +529,36 @@ impl Printer {
         self.newline();
         self.out.push_str("end");
     }
+
+    /// Prints a space and `expr` when `expr` has a short one-line form, and says whether it
+    /// did. Inside `inline` it always prints, and `inline` checks the whole line.
+    fn print_inline(&mut self, expr: &Expr) -> bool {
+        if self.one_line {
+            self.out.push(' ');
+            self.expr(expr);
+            return true;
+        }
+        let Some(text) = inline(expr) else {
+            return false;
+        };
+        self.out.push(' ');
+        self.out.push_str(&text);
+        true
+    }
+
+    fn overflows(&self) -> bool {
+        self.out.len() > INLINE_LIMIT || self.out.contains('\n')
+    }
 }
 
 /// The one-line form of `expr`, when it has one and it is short.
 fn inline(expr: &Expr) -> Option<String> {
-    let mut printer = Printer::default();
+    let mut printer = Printer {
+        one_line: true,
+        ..Printer::default()
+    };
     printer.expr(expr);
-    (!printer.out.contains('\n') && printer.out.len() <= INLINE_LIMIT).then_some(printer.out)
+    (!printer.overflows()).then_some(printer.out)
 }
 
 const RESERVED: &[&str] = &[
@@ -525,8 +567,10 @@ const RESERVED: &[&str] = &[
     "orelse", "receive", "rem", "try", "when", "xor",
 ];
 
-/// The longest atom and variable name Erlang accepts, in characters.
-const NAME_LIMIT: usize = 255;
+/// The longest atom and variable name that Bouy writes, in characters. Erlang accepts 255,
+/// but its compiler names a fun after its function, as `-Name/0-fun-0-`, in an atom of
+/// its own, so a name leaves room for that suffix.
+const NAME_LIMIT: usize = 230;
 
 /// `name`, or when it has more than `limit` characters, a prefix of it and a hash of the
 /// whole name, so that two long names stay apart.
@@ -565,6 +609,26 @@ fn binary(text: &str) -> String {
     if text.is_empty() {
         return "<<>>".to_owned();
     }
+    // erl_scan rejects U+FFFE and U+FFFF in a string, even as an escape, so each one is an
+    // integer segment of its own.
+    if text.contains(['\u{FFFE}', '\u{FFFF}']) {
+        let mut segments = Vec::new();
+        let mut part = String::new();
+        for c in text.chars() {
+            if matches!(c, '\u{FFFE}' | '\u{FFFF}') {
+                if !part.is_empty() {
+                    segments.push(segment(&std::mem::take(&mut part)));
+                }
+                segments.push(format!("{}/utf8", u32::from(c)));
+            } else {
+                part.push(c);
+            }
+        }
+        if !part.is_empty() {
+            segments.push(segment(&part));
+        }
+        return format!("<<{}>>", segments.join(", "));
+    }
     let mut out = String::with_capacity(text.len() + 6);
     out.push_str("<<\"");
     for c in text.chars() {
@@ -578,6 +642,37 @@ fn binary(text: &str) -> String {
     out
 }
 
+/// A string segment of a binary: `"text"/utf8`.
+fn segment(text: &str) -> String {
+    let mut out = String::from("\"");
+    for c in text.chars() {
+        escape_char(&mut out, c, '"');
+    }
+    out.push_str("\"/utf8");
+    out
+}
+
+fn js_string(units: &[u16]) -> String {
+    if units.iter().any(|unit| *unit > 0xFF) {
+        let units: Vec<String> = units.iter().map(|unit| format!("{unit}:16")).collect();
+        return format!("{{'$u16', <<{}>>}}", units.join(","));
+    }
+    if units.is_empty() {
+        return "<<>>".to_owned();
+    }
+    let mut out = String::from("<<\"");
+    for unit in units {
+        match char::from_u32(u32::from(*unit)) {
+            Some(c) if c.is_ascii() => escape_char(&mut out, c, '"'),
+            _ => {
+                let _ = write!(out, "\\x{{{unit:X}}}");
+            }
+        }
+    }
+    out.push_str("\">>");
+    out
+}
+
 fn escape_char(out: &mut String, c: char, quote: char) {
     match c {
         '\\' => out.push_str("\\\\"),
@@ -588,7 +683,11 @@ fn escape_char(out: &mut String, c: char, quote: char) {
             out.push('\\');
             out.push(c);
         }
-        c if c.is_control() || (c.is_whitespace() && c != ' ') => {
+        // erl_scan rejects U+FFFE and U+FFFF in source text, so they are escapes too.
+        c if c.is_control()
+            || (c.is_whitespace() && c != ' ')
+            || matches!(c, '\u{FFFE}' | '\u{FFFF}') =>
+        {
             let _ = write!(out, "\\x{{{:X}}}", u32::from(c));
         }
         c => out.push(c),
@@ -625,7 +724,7 @@ mod tests {
     fn shortens_names_erlang_cannot_hold() {
         let long = "f".repeat(300);
         let other = format!("{}g", "f".repeat(299));
-        assert_eq!(atom(&long).chars().count(), 255);
+        assert_eq!(atom(&long).chars().count(), NAME_LIMIT);
         assert_ne!(atom(&long), atom(&other));
         assert_eq!(shorten("short", 10), "short");
     }
@@ -637,6 +736,49 @@ mod tests {
         assert_eq!(float(1e-7), "1.0e-7");
         assert_eq!(float(2.5e-8), "2.5e-8");
         assert_eq!(float(-0.0), "-0.0");
+    }
+
+    #[test]
+    fn prints_js_strings_as_one_or_two_bytes_per_unit() {
+        let units = |text: &str| text.encode_utf16().collect::<Vec<u16>>();
+        assert_eq!(js_string(&units("a\"b")), "<<\"a\\\"b\">>");
+        assert_eq!(js_string(&units("café")), "<<\"caf\\x{E9}\">>");
+        assert_eq!(js_string(&units("€")), "{'$u16', <<8364:16>>}");
+        assert_eq!(js_string(&[0xD800, 0x61]), "{'$u16', <<55296:16,97:16>>}");
+        assert_eq!(js_string(&[]), "<<>>");
+    }
+
+    #[test]
+    fn prints_deeply_nested_funs_once() {
+        let fun = |body: Expr| Expr::Fun {
+            name: None,
+            clauses: vec![Clause {
+                patterns: vec![Expr::Var("V".to_owned())],
+                guards: Vec::new(),
+                body: vec![body],
+            }],
+        };
+        let short = fun(Expr::Atom("ok".to_owned()));
+        assert_eq!(inline(&short).as_deref(), Some("fun(V) -> ok end"));
+        // 200 levels, as 200 awaits in a row nest their continuations: before the fix, this
+        // printed the innermost fun 2^200 times.
+        let deep = (0..200).fold(Expr::Atom("ok".to_owned()), |body, _| fun(body));
+        let mut printer = Printer::default();
+        printer.expr(&deep);
+        assert_eq!(printer.out.matches("fun(V) ->").count(), 200);
+        assert!(
+            printer
+                .out
+                .contains("fun(V) -> fun(V) -> fun(V) -> fun(V) -> ok end end end end")
+        );
+    }
+
+    #[test]
+    fn escapes_the_noncharacters_that_erl_scan_rejects() {
+        assert_eq!(
+            binary("a\u{FFFF}b"),
+            "<<\"a\"/utf8, 65535/utf8, \"b\"/utf8>>"
+        );
     }
 
     #[test]

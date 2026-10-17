@@ -23,6 +23,10 @@
 # `exports.cjs.stdout`, because two programs of a directory share a stem. One case or
 # package directory, such as tests/packages/zod@4, freezes only its programs.
 #
+# The programs of tests/reference run under `bouy run --semantics reference`. Their actor
+# programs import "bouy", which the script points at the Node shim in tests/reference/shim.
+# A program that names Temporal runs with the polyfill of runtime/vendor/temporal-polyfill.
+#
 # Usage: scripts/freeze-expectations.sh tests/conformance
 
 set -eu
@@ -42,7 +46,8 @@ fi
 
 work=$(mktemp -d)
 server=
-trap '[ -z "$server" ] || kill "$server" 2>/dev/null; rm -rf "$work"' EXIT
+shim=
+trap '[ -z "$server" ] || kill "$server" 2>/dev/null; [ -z "$shim" ] || rm -rf "$shim"; rm -rf "$work"' EXIT
 server_env=
 
 case "${1%/}" in
@@ -64,7 +69,18 @@ case "${1%/}" in
     server_env="OPENAI_BASE_URL=http://127.0.0.1:$port/v1 OPENAI_API_KEY=sk-fake-key"
     server_env="$server_env ANTHROPIC_BASE_URL=http://127.0.0.1:$port ANTHROPIC_API_KEY=sk-fake-key"
     ;;
+*reference)
+    # The actor programs import "bouy"; Node reads the shim of tests/reference/shim.
+    shim="${1%/}/node_modules"
+    mkdir -p "$shim"
+    ln -sfn ../shim/bouy "$shim/bouy"
+    ;;
 esac
+
+# Node 25.9 has no Temporal. A program that names it runs with the polyfill that Bouy
+# compiles into its runtime, so Node checks how Bouy runs that code. The polyfill installs
+# nothing when Node has Temporal.
+temporal="$root/runtime/vendor/temporal-polyfill/global.js"
 
 # Runs node twice on the arguments after <name> and records the agreed output as
 # <name>.stdout and <name>.status.
@@ -113,7 +129,11 @@ case "${1%/}" in
     for program in "$1"/*.ts; do
         [ -f "$program" ] || continue
         case "$program" in *-fixture.ts) continue ;; esac
-        freeze "${program%.ts}" "$program"
+        preload=
+        if grep -q Temporal "$program"; then
+            preload="--import=$temporal"
+        fi
+        freeze "${program%.ts}" ${preload:+"$preload"} "$program"
     done
     ;;
 esac

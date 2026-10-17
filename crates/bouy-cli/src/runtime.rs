@@ -1,5 +1,7 @@
 //! The embedded Erlang runtime: written to a cache directory keyed by a content hash and
-//! compiled there with `erlc` on first use (section 1 of the contract).
+//! compiled there with `erlc` on first use (section 1 of the contract). Each compiled module
+//! also goes into `objects/`, keyed by the hash of its source, so a runtime that changes a
+//! few modules compiles only those.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -169,7 +171,7 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
             .unwrap_or("runtime"),
         process::id()
     ));
-    let built = compile(&staging);
+    let built = compile(&staging, &cache.join("objects"));
     if built.is_err() {
         let _ = fs::remove_dir_all(&staging);
         return built;
@@ -186,8 +188,11 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Writes the runtime sources to `staging/src` and compiles them into `staging/ebin`.
-fn compile(staging: &Path) -> Result<(), String> {
+/// Writes the runtime sources to `staging/src` and compiles them into `staging/ebin`. A
+/// module whose `.beam` is in `objects` under the hash of its source, the headers, and the
+/// OTP release is copied from there; the others compile in parallel `erlc` processes and
+/// join `objects`.
+fn compile(staging: &Path, objects: &Path) -> Result<(), String> {
     let source = staging.join("src");
     let ebin = staging.join("ebin");
     let failed = |error: std::io::Error| {
@@ -204,32 +209,95 @@ fn compile(staging: &Path) -> Result<(), String> {
             fs::write(ebin.join(application), text).map_err(failed)?;
         }
     }
-    let modules: Vec<&Path> = SOURCES
+    let headers = fnv(SOURCES
         .iter()
-        .map(|(name, _)| Path::new(*name))
-        .filter(|name| name.extension().is_some_and(|extension| extension == "erl"))
+        .filter(|(name, _)| has_extension(name, "hrl"))
+        .flat_map(|(name, text)| name.bytes().chain(text.bytes()))
+        .chain(installed_otp().as_encoded_bytes().iter().copied()));
+    let modules: Vec<(&Path, PathBuf)> = SOURCES
+        .iter()
+        .filter(|(name, _)| has_extension(name, "erl"))
+        .map(|(name, text)| {
+            let key = fnv(headers.to_le_bytes().into_iter().chain(text.bytes()));
+            let module = Path::new(*name);
+            let stem = module.file_stem().unwrap_or_default().to_string_lossy();
+            (module, objects.join(format!("{stem}-{key:016x}.beam")))
+        })
         .collect();
-    let output = Command::new(erlc())
-        .arg("-o")
-        .arg(&ebin)
-        .arg("-I")
-        .arg(&source)
-        .args(modules.iter().map(|module| source.join(module)))
-        .output()
-        .map_err(|error| format!("cannot run erlc: {error}; install Erlang/OTP or set BOUY_ERL"))?;
+    let missing: Vec<&Path> = modules
+        .iter()
+        .filter(|(module, object)| {
+            fs::copy(object, ebin.join(module.with_extension("beam"))).is_err()
+        })
+        .map(|(module, _)| *module)
+        .collect();
+    let workers = std::thread::available_parallelism().map_or(4, usize::from);
+    let chunks: Vec<&[&Path]> = missing
+        .chunks(missing.len().div_ceil(workers).max(1))
+        .collect();
+    let outputs = std::thread::scope(|scope| {
+        let running: Vec<_> = chunks
+            .iter()
+            .map(|chunk| {
+                scope.spawn(|| {
+                    Command::new(erlc())
+                        .arg("-o")
+                        .arg(&ebin)
+                        .arg("-I")
+                        .arg(&source)
+                        .args(chunk.iter().map(|module| source.join(module)))
+                        .output()
+                })
+            })
+            .collect();
+        running
+            .into_iter()
+            .map(|worker| worker.join().expect("an erlc worker does not panic"))
+            .collect::<Vec<_>>()
+    });
+    let mut report = String::new();
+    for output in outputs {
+        let output = output.map_err(|error| {
+            format!("cannot run erlc: {error}; install Erlang/OTP or set BOUY_ERL")
+        })?;
+        if !output.status.success() {
+            report.push_str(&String::from_utf8_lossy(&output.stdout));
+            report.push_str(&String::from_utf8_lossy(&output.stderr));
+        }
+    }
     // A signal can end erlc with a success status before it writes every file.
     let complete = modules
         .iter()
-        .all(|module| ebin.join(module.with_extension("beam")).is_file());
-    if !output.status.success() || !complete {
-        return Err(format!(
-            "erlc could not compile the runtime:\n{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        ));
+        .all(|(module, _)| ebin.join(module.with_extension("beam")).is_file());
+    if !report.is_empty() || !complete {
+        return Err(format!("erlc could not compile the runtime:\n{report}"));
+    }
+    if fs::create_dir_all(objects).is_ok() {
+        for (module, object) in &modules {
+            if missing.contains(module) {
+                let staged = object.with_extension(format!("beam.{}", process::id()));
+                if fs::copy(ebin.join(module.with_extension("beam")), &staged).is_ok() {
+                    let _ = fs::rename(&staged, object);
+                }
+            }
+        }
     }
     record_release(staging);
     Ok(())
+}
+
+fn has_extension(name: &str, extension: &str) -> bool {
+    Path::new(name)
+        .extension()
+        .is_some_and(|found| found == extension)
+}
+
+/// FNV-1a over `bytes`.
+fn fnv(bytes: impl Iterator<Item = u8>) -> u64 {
+    const PRIME: u64 = 0x0100_0000_01b3;
+    bytes.fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(PRIME)
+    })
 }
 
 /// Writes the root directory and the erts version of the OTP release that `erl` starts to
@@ -262,14 +330,10 @@ fn record_release(staging: &Path) {
 /// FNV-1a over the names and contents of the runtime sources and the installed OTP, so
 /// that the `.beam` files always match the OTP release that runs them.
 fn hash(otp: &OsString) -> u64 {
-    const PRIME: u64 = 0x0100_0000_01b3;
-    SOURCES
+    fnv(SOURCES
         .iter()
         .flat_map(|(name, text)| name.bytes().chain([0]).chain(text.bytes()).chain([0]))
-        .chain(otp.as_encoded_bytes().iter().copied())
-        .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(PRIME)
-        })
+        .chain(otp.as_encoded_bytes().iter().copied()))
 }
 
 /// The real path of the `erl` that runs the program. Installations such as Homebrew,

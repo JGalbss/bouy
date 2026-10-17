@@ -97,7 +97,27 @@ pub fn project_root(entry: &Path) -> PathBuf {
 /// The Erlang module name of the source file `path` in the project at `root`.
 #[must_use]
 pub fn module_name(root: &Path, path: &Path) -> String {
-    let relative = path.strip_prefix(root).unwrap_or(path).with_extension("");
+    file_name(root, &path.with_extension(""))
+}
+
+/// The Erlang module name of a file of the reference engine, with its extension, because
+/// a package often ships `index.js` and `index.mjs` side by side.
+#[must_use]
+pub fn unit_name(root: &Path, path: &Path) -> String {
+    file_name(root, path)
+}
+
+fn file_name(root: &Path, path: &Path) -> String {
+    // A package outside the project, such as one in the pnpm store, is named from its
+    // first `node_modules` directory, so the name does not depend on the machine.
+    let outside = path.strip_prefix(root).is_err();
+    let relative = match path
+        .components()
+        .position(|component| component.as_os_str() == "node_modules")
+    {
+        Some(index) if outside => path.components().skip(index).collect::<PathBuf>(),
+        _ => path.strip_prefix(root).unwrap_or(path).to_path_buf(),
+    };
     let parts: Vec<String> = relative
         .components()
         .filter_map(|component| match component {

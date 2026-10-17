@@ -7,6 +7,8 @@
 
 -export(['$member'/1, log/1, error/1, warn/1, info/1, debug/1]).
 -export([format/1, inspect/1, inspect/2, function_name/1]).
+%% The layout helpers that the reference-semantics console reuses (spike).
+-export([reduce/5, group/3, string/1, key/1, number_text/1, more_items/1]).
 
 -define(FUNCTIONS, [<<"log">>, <<"error">>, <<"warn">>, <<"info">>, <<"debug">>]).
 -define(BREAK_LENGTH, 80).

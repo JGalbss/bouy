@@ -43,9 +43,24 @@ importers:
       ai:
         specifier: 7.0.142
         version: 7.0.142(zod@4.6.7)
+      defu:
+        specifier: 6.1.7
+        version: 6.1.7
       effect:
         specifier: 4.0.5
         version: 4.0.5
+      eventemitter3:
+        specifier: 5.0.4
+        version: 5.0.4
+      extend-shallow:
+        specifier: 2.0.1
+        version: 2.0.1
+      fast-json-stable-stringify:
+        specifier: 2.1.0
+        version: 2.1.0
+      is-plain-obj:
+        specifier: 4.1.0
+        version: 4.1.0
       openai:
         specifier: 7.36.0
         version: 7.36.0(undici@8.12.2)(ws@8.22.0)(zod@4.6.7)
@@ -1852,6 +1867,9 @@ packages:
 
   decode-named-character-reference@1.3.0:
     resolution: {integrity: sha512-GtpQYB283KrPp6nRw50q3U9/VfOutZOe103qlN7BPP6Ad27xYnOIWv4lPzo8HCAL+mMZofJ9KEy30fq6MfaK6Q==}
+
+  defu@6.1.7:
+    resolution: {integrity: sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ==}
 
   depd@2.0.0:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
@@ -4223,6 +4241,8 @@ snapshots:
   decode-named-character-reference@1.3.0:
     dependencies:
       character-entities: 2.0.2
+
+  defu@6.1.7: {}
 
   depd@2.0.0: {}
 

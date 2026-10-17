@@ -2972,33 +2972,40 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "47731fd",
+      "updated": "06131cd",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 0,
-        "rejected": 3836,
+        "pass": 1561,
+        "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 0,
-        "timeout": 0,
+        "fail": 2258,
+        "timeout": 6,
         "harness_error": 0,
-        "crash": 0
+        "crash": 11
       },
       "groups": {
         "directory": {
           "es-module": {
-            "rejected": 206,
-            "skip": 16
+            "pass": 26,
+            "skip": 16,
+            "fail": 180
           },
           "parallel": {
-            "rejected": 3534,
-            "skip": 545
+            "pass": 1502,
+            "skip": 545,
+            "fail": 2018,
+            "timeout": 4,
+            "crash": 10
           },
           "sequential": {
-            "rejected": 96,
-            "skip": 22
+            "pass": 33,
+            "skip": 22,
+            "fail": 60,
+            "timeout": 2,
+            "crash": 1
           }
         },
         "kind": {
@@ -3006,186 +3013,234 @@
             "skip": 343
           },
           "public": {
-            "rejected": 3836,
-            "skip": 240
+            "pass": 1561,
+            "skip": 240,
+            "fail": 2258,
+            "timeout": 6,
+            "crash": 11
           }
         },
         "module": {
           "assert": {
-            "rejected": 13,
-            "skip": 1
+            "pass": 7,
+            "skip": 1,
+            "fail": 5,
+            "crash": 1
           },
           "async_hooks": {
-            "rejected": 45,
-            "skip": 11
+            "pass": 15,
+            "skip": 11,
+            "fail": 30
           },
           "buffer": {
-            "rejected": 63,
-            "skip": 6
+            "pass": 55,
+            "skip": 6,
+            "fail": 8
           },
           "child_process": {
-            "rejected": 107,
-            "skip": 7
+            "pass": 13,
+            "skip": 7,
+            "fail": 92,
+            "timeout": 2
           },
           "cluster": {
-            "rejected": 86,
-            "skip": 2
+            "pass": 11,
+            "skip": 2,
+            "fail": 75
           },
           "console": {
-            "rejected": 21,
-            "skip": 1
+            "pass": 13,
+            "skip": 1,
+            "fail": 4,
+            "crash": 4
           },
           "constants": {
             "skip": 1
           },
           "crypto": {
-            "rejected": 152,
+            "pass": 152,
             "skip": 9
           },
           "dgram": {
-            "rejected": 68,
-            "skip": 11
+            "pass": 1,
+            "skip": 11,
+            "fail": 67
           },
           "diagnostics_channel": {
-            "rejected": 53,
-            "skip": 3
+            "pass": 40,
+            "skip": 3,
+            "fail": 13
           },
           "dns": {
-            "rejected": 19,
-            "skip": 10
+            "skip": 10,
+            "fail": 19
           },
           "domain": {
-            "rejected": 48,
-            "skip": 2
+            "pass": 3,
+            "skip": 2,
+            "fail": 45
           },
           "events": {
-            "rejected": 34,
-            "skip": 6
+            "pass": 31,
+            "skip": 6,
+            "fail": 3
           },
           "fs": {
-            "rejected": 323,
-            "skip": 20
+            "pass": 24,
+            "skip": 20,
+            "fail": 298,
+            "timeout": 1
           },
           "http": {
-            "rejected": 379,
-            "skip": 15
+            "pass": 36,
+            "skip": 15,
+            "fail": 343
           },
           "http2": {
-            "rejected": 242,
+            "pass": 242,
             "skip": 32
           },
           "https": {
-            "rejected": 63,
+            "pass": 63,
             "skip": 2
           },
           "inspector": {
             "skip": 114
           },
           "module": {
-            "rejected": 263,
-            "skip": 17
+            "pass": 38,
+            "skip": 17,
+            "fail": 224,
+            "crash": 1
           },
           "net": {
-            "rejected": 152,
-            "skip": 10
+            "pass": 16,
+            "skip": 10,
+            "fail": 136
           },
           "os": {
-            "rejected": 6,
-            "skip": 2
+            "pass": 2,
+            "skip": 2,
+            "fail": 4
           },
           "other": {
-            "rejected": 438,
-            "skip": 178
+            "pass": 168,
+            "skip": 178,
+            "fail": 268,
+            "crash": 2
           },
           "path": {
-            "rejected": 17
+            "pass": 17
           },
           "perf_hooks": {
-            "rejected": 24,
-            "skip": 3
+            "pass": 13,
+            "skip": 3,
+            "fail": 9,
+            "timeout": 1,
+            "crash": 1
           },
           "process": {
-            "rejected": 123,
-            "skip": 8
+            "pass": 63,
+            "skip": 8,
+            "fail": 59,
+            "timeout": 1
           },
           "punycode": {
-            "rejected": 1
+            "pass": 1
           },
           "querystring": {
-            "rejected": 4
+            "pass": 3,
+            "fail": 1
           },
           "quic": {
-            "rejected": 6,
+            "pass": 6,
             "skip": 3
           },
           "readline": {
-            "rejected": 15,
-            "skip": 7
+            "pass": 12,
+            "skip": 7,
+            "fail": 3
           },
           "repl": {
-            "rejected": 92,
-            "skip": 14
+            "pass": 2,
+            "skip": 14,
+            "fail": 90
           },
           "sea": {
-            "rejected": 1
+            "fail": 1
           },
           "sqlite": {
-            "rejected": 16,
-            "skip": 2
+            "pass": 15,
+            "skip": 2,
+            "fail": 1
           },
           "stream": {
-            "rejected": 255,
-            "skip": 8
+            "pass": 188,
+            "skip": 8,
+            "fail": 66,
+            "crash": 1
           },
           "string_decoder": {
-            "rejected": 3
+            "pass": 3
           },
           "sys": {
-            "rejected": 1
+            "pass": 1
           },
           "test": {
-            "rejected": 60,
-            "skip": 5
+            "pass": 3,
+            "skip": 5,
+            "fail": 57
           },
           "timers": {
-            "rejected": 48,
-            "skip": 12
+            "pass": 38,
+            "skip": 12,
+            "fail": 10
           },
           "tls": {
-            "rejected": 205,
-            "skip": 15
+            "pass": 198,
+            "skip": 15,
+            "fail": 7
           },
           "trace_events": {
-            "rejected": 26,
-            "skip": 3
+            "pass": 5,
+            "skip": 3,
+            "fail": 21
           },
           "tty": {
-            "rejected": 2,
-            "skip": 1
+            "pass": 1,
+            "skip": 1,
+            "fail": 1
           },
           "url": {
-            "rejected": 39,
-            "skip": 3
+            "pass": 35,
+            "skip": 3,
+            "fail": 4
           },
           "util": {
-            "rejected": 20,
-            "skip": 10
+            "pass": 7,
+            "skip": 10,
+            "fail": 12,
+            "crash": 1
           },
           "v8": {
-            "rejected": 17,
-            "skip": 5
+            "pass": 8,
+            "skip": 5,
+            "fail": 9
           },
           "vm": {
-            "rejected": 90,
-            "skip": 9
+            "skip": 9,
+            "fail": 90
           },
           "worker_threads": {
-            "rejected": 136,
-            "skip": 12
+            "pass": 10,
+            "skip": 12,
+            "fail": 125,
+            "timeout": 1
           },
           "zlib": {
-            "rejected": 60,
-            "skip": 3
+            "pass": 2,
+            "skip": 3,
+            "fail": 58
           }
         },
         "skip reason": {
@@ -3206,68 +3261,22 @@
           }
         }
       },
-      "blockers": [
-        {
-          "blocker": "BOUY201",
-          "files": 297,
-          "only": 5
-        },
-        {
-          "blocker": "BOUY206",
-          "files": 3441,
-          "only": 4
-        },
-        {
-          "blocker": "common/index.js",
-          "files": 3533,
-          "only": 0
-        },
-        {
-          "blocker": "BOUY207",
-          "files": 1369,
-          "only": 0
-        },
-        {
-          "blocker": "BOUY202",
-          "files": 785,
-          "only": 0
-        },
-        {
-          "blocker": "BOUY205",
-          "files": 784,
-          "only": 0
-        },
-        {
-          "blocker": "common/index.mjs",
-          "files": 292,
-          "only": 0
-        },
-        {
-          "blocker": "BOUY200",
-          "files": 98,
-          "only": 0
-        },
-        {
-          "blocker": "BOUY203",
-          "files": 6,
-          "only": 0
-        }
-      ]
+      "blockers": []
     },
     {
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "d38648d",
+      "updated": "5e1d3e5",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 0,
-        "rejected": 4460,
+        "pass": 3449,
+        "rejected": 0,
         "late": 0,
         "skip": 0,
         "never": 0,
-        "fail": 0,
+        "fail": 1011,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3275,437 +3284,434 @@
       "groups": {
         "docs": {
           "deprecated": {
-            "rejected": 129
+            "pass": 100,
+            "fail": 29
           },
           "documented": {
-            "rejected": 4331
+            "pass": 3349,
+            "fail": 982
           }
         },
         "module": {
           "AbortController": {
-            "rejected": 3
+            "pass": 3
           },
           "AbortSignal": {
-            "rejected": 11
+            "pass": 11
           },
           "Blob": {
-            "rejected": 8
+            "pass": 8
           },
           "BroadcastChannel": {
-            "rejected": 10
+            "pass": 10
           },
           "Buffer": {
-            "rejected": 72
+            "pass": 72
           },
           "ByteLengthQueuingStrategy": {
-            "rejected": 3
+            "pass": 3
           },
           "CloseEvent": {
-            "rejected": 19
+            "pass": 19
           },
           "CompressionStream": {
-            "rejected": 3
+            "pass": 3
           },
           "CountQueuingStrategy": {
-            "rejected": 3
+            "pass": 3
           },
           "Crypto": {
-            "rejected": 4
+            "fail": 4
           },
           "CryptoKey": {
-            "rejected": 5
+            "fail": 5
           },
           "CustomEvent": {
-            "rejected": 20
+            "pass": 20
           },
           "DOMException": {
-            "rejected": 1
+            "pass": 1
           },
           "DecompressionStream": {
-            "rejected": 3
+            "pass": 3
           },
           "ErrorEvent": {
-            "rejected": 19
+            "pass": 19
           },
           "Event": {
-            "rejected": 19
+            "pass": 19
           },
           "EventTarget": {
-            "rejected": 4
+            "pass": 4
           },
           "File": {
-            "rejected": 10
+            "pass": 10
           },
           "FormData": {
-            "rejected": 1
+            "pass": 1
           },
           "Headers": {
-            "rejected": 1
+            "pass": 1
           },
           "MessageChannel": {
-            "rejected": 1
+            "pass": 1
           },
           "MessageEvent": {
-            "rejected": 19
+            "pass": 19
           },
           "MessagePort": {
-            "rejected": 21
+            "pass": 17,
+            "fail": 4
           },
           "Navigator": {
-            "rejected": 1
+            "pass": 1
           },
           "Performance": {
-            "rejected": 3
+            "pass": 3
           },
           "PerformanceEntry": {
-            "rejected": 5
+            "pass": 5
           },
           "PerformanceMark": {
-            "rejected": 6
+            "pass": 6
           },
           "PerformanceMeasure": {
-            "rejected": 6
+            "pass": 6
           },
           "PerformanceObserver": {
-            "rejected": 5
+            "pass": 5
           },
           "PerformanceObserverEntryList": {
-            "rejected": 4
+            "pass": 4
           },
           "PerformanceResourceTiming": {
-            "rejected": 17
+            "pass": 17
           },
           "ReadableByteStreamController": {
-            "rejected": 6
+            "pass": 6
           },
           "ReadableStream": {
-            "rejected": 9
+            "pass": 9
           },
           "ReadableStreamBYOBReader": {
-            "rejected": 5
+            "pass": 5
           },
           "ReadableStreamBYOBRequest": {
-            "rejected": 4
+            "pass": 4
           },
           "ReadableStreamDefaultController": {
-            "rejected": 5
+            "pass": 5
           },
           "ReadableStreamDefaultReader": {
-            "rejected": 5
+            "pass": 5
           },
           "Request": {
-            "rejected": 1
+            "pass": 1
           },
           "Response": {
-            "rejected": 1
+            "pass": 1
           },
           "Storage": {
-            "rejected": 1
+            "fail": 1
           },
           "SubtleCrypto": {
-            "rejected": 19
+            "fail": 19
           },
           "TextDecoder": {
-            "rejected": 5
+            "pass": 5
           },
           "TextDecoderStream": {
-            "rejected": 6
+            "pass": 6
           },
           "TextEncoder": {
-            "rejected": 4
+            "pass": 4
           },
           "TextEncoderStream": {
-            "rejected": 4
+            "pass": 4
           },
           "TransformStream": {
-            "rejected": 3
+            "pass": 3
           },
           "TransformStreamDefaultController": {
-            "rejected": 5
+            "pass": 5
           },
           "URL": {
-            "rejected": 19
+            "pass": 19
           },
           "URLPattern": {
-            "rejected": 3
+            "pass": 1,
+            "fail": 2
           },
           "URLSearchParams": {
-            "rejected": 14
+            "pass": 14
           },
           "WebSocket": {
-            "rejected": 4
+            "pass": 4
           },
           "WritableStream": {
-            "rejected": 5
+            "pass": 5
           },
           "WritableStreamDefaultController": {
-            "rejected": 3
+            "pass": 3
           },
           "WritableStreamDefaultWriter": {
-            "rejected": 8
+            "pass": 8
           },
           "__dirname": {
-            "rejected": 1
+            "pass": 1
           },
           "__filename": {
-            "rejected": 1
+            "pass": 1
           },
           "atob": {
-            "rejected": 1
+            "pass": 1
           },
           "btoa": {
-            "rejected": 1
+            "pass": 1
           },
           "clearImmediate": {
-            "rejected": 1
+            "pass": 1
           },
           "clearInterval": {
-            "rejected": 1
+            "fail": 1
           },
           "clearTimeout": {
-            "rejected": 1
+            "fail": 1
           },
           "console": {
-            "rejected": 23
+            "pass": 1,
+            "fail": 22
           },
           "crypto": {
-            "rejected": 4
+            "fail": 4
           },
           "exports": {
-            "rejected": 1
+            "pass": 1
           },
           "fetch": {
-            "rejected": 1
+            "pass": 1
           },
           "global": {
-            "rejected": 1
+            "pass": 1
           },
           "localStorage": {
-            "rejected": 1
+            "fail": 1
           },
           "module": {
-            "rejected": 3
+            "pass": 2,
+            "fail": 1
           },
           "navigator": {
-            "rejected": 2
+            "pass": 2
           },
           "node:assert": {
-            "rejected": 24
+            "pass": 24
           },
           "node:assert/strict": {
-            "rejected": 24
+            "pass": 24
           },
           "node:async_hooks": {
-            "rejected": 20
+            "pass": 20
           },
           "node:buffer": {
-            "rejected": 106
+            "pass": 105,
+            "fail": 1
           },
           "node:child_process": {
-            "rejected": 28
+            "pass": 28
           },
           "node:cluster": {
-            "rejected": 48
+            "pass": 48
           },
           "node:console": {
-            "rejected": 26
+            "pass": 22,
+            "fail": 4
           },
           "node:crypto": {
-            "rejected": 401
+            "fail": 401
           },
           "node:dgram": {
-            "rejected": 43
+            "pass": 43
           },
           "node:diagnostics_channel": {
-            "rejected": 13
+            "pass": 13
           },
           "node:dns": {
-            "rejected": 25
+            "fail": 25
           },
           "node:dns/promises": {
-            "rejected": 25
+            "fail": 25
           },
           "node:domain": {
-            "rejected": 27
+            "pass": 27
           },
           "node:events": {
-            "rejected": 49
+            "pass": 49
           },
           "node:fs": {
-            "rejected": 241
+            "pass": 241
           },
           "node:fs/promises": {
-            "rejected": 34
+            "pass": 34
           },
           "node:http": {
-            "rejected": 318
+            "pass": 318
           },
           "node:http2": {
-            "rejected": 112
+            "fail": 112
           },
           "node:https": {
-            "rejected": 78
+            "fail": 78
           },
           "node:inspector": {
-            "rejected": 40
+            "fail": 40
           },
           "node:inspector/promises": {
-            "rejected": 40
+            "fail": 40
           },
           "node:module": {
-            "rejected": 20
+            "pass": 3,
+            "fail": 17
           },
           "node:net": {
-            "rejected": 119
+            "pass": 119
           },
           "node:os": {
-            "rejected": 24
+            "pass": 24
           },
           "node:path": {
-            "rejected": 18
+            "pass": 18
           },
           "node:path/posix": {
-            "rejected": 18
+            "pass": 18
           },
           "node:path/win32": {
-            "rejected": 18
+            "pass": 18
           },
           "node:perf_hooks": {
-            "rejected": 69
+            "pass": 69
           },
           "node:process": {
-            "rejected": 86
+            "pass": 86
           },
           "node:punycode": {
-            "rejected": 9
+            "pass": 9
           },
           "node:querystring": {
-            "rejected": 7
+            "pass": 7
           },
           "node:readline": {
-            "rejected": 48
+            "pass": 48
           },
           "node:readline/promises": {
-            "rejected": 27
+            "pass": 27
           },
           "node:repl": {
-            "rejected": 28
+            "fail": 28
           },
           "node:sea": {
-            "rejected": 6
+            "pass": 6
           },
           "node:sqlite": {
-            "rejected": 32
+            "fail": 32
           },
           "node:stream": {
-            "rejected": 250
+            "pass": 250
           },
           "node:stream/consumers": {
-            "rejected": 7
+            "pass": 7
           },
           "node:stream/promises": {
-            "rejected": 3
+            "pass": 3
           },
           "node:stream/web": {
-            "rejected": 81
+            "pass": 81
           },
           "node:string_decoder": {
-            "rejected": 4
+            "pass": 4
           },
           "node:sys": {
-            "rejected": 25
+            "pass": 25
           },
           "node:test": {
-            "rejected": 28
+            "pass": 28
           },
           "node:test/reporters": {
-            "rejected": 2
+            "pass": 2
           },
           "node:timers": {
-            "rejected": 7
+            "pass": 7
           },
           "node:timers/promises": {
-            "rejected": 6
+            "pass": 6
           },
           "node:tls": {
-            "rejected": 126
+            "fail": 126
           },
           "node:trace_events": {
-            "rejected": 3
+            "fail": 3
           },
           "node:tty": {
-            "rejected": 143
+            "pass": 143
           },
           "node:url": {
-            "rejected": 46
+            "pass": 44,
+            "fail": 2
           },
           "node:util": {
-            "rejected": 97
+            "pass": 97
           },
           "node:util/types": {
-            "rejected": 44
+            "pass": 44
           },
           "node:v8": {
-            "rejected": 72
+            "pass": 70,
+            "fail": 2
           },
           "node:vm": {
-            "rejected": 16
+            "pass": 15,
+            "fail": 1
           },
           "node:wasi": {
-            "rejected": 6
+            "pass": 6
           },
           "node:worker_threads": {
-            "rejected": 84
+            "pass": 80,
+            "fail": 4
           },
           "node:zlib": {
-            "rejected": 553
+            "pass": 553
           },
           "performance": {
-            "rejected": 18
+            "pass": 18
           },
           "process": {
-            "rejected": 87
+            "pass": 87
           },
           "queueMicrotask": {
-            "rejected": 1
+            "fail": 1
           },
           "require": {
-            "rejected": 6
+            "pass": 6
           },
           "sessionStorage": {
-            "rejected": 1
+            "fail": 1
           },
           "setImmediate": {
-            "rejected": 1
+            "pass": 1
           },
           "setInterval": {
-            "rejected": 1
+            "fail": 1
           },
           "setTimeout": {
-            "rejected": 1
+            "fail": 1
           },
           "structuredClone": {
-            "rejected": 1
+            "fail": 1
           }
         }
       },
-      "blockers": [
-        {
-          "blocker": "BOUY201",
-          "files": 3854,
-          "only": 3854
-        },
-        {
-          "blocker": "BOUY206",
-          "files": 606,
-          "only": 12
-        },
-        {
-          "blocker": "BOUY207",
-          "files": 594,
-          "only": 0
-        }
-      ],
+      "blockers": [],
       "never": {}
     },
     {

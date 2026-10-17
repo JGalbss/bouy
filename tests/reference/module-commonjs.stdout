@@ -1,0 +1,19 @@
+hello bouy object helped 1
+true true true false
+[
+  'default',
+  'dir',
+  'file',
+  'greet',
+  'helper',
+  'kind',
+  'loaded',
+  'module.exports',
+  'self'
+]
+true true
+the whole export 1
+named default other [ '__esModule', 'default', 'module.exports', 'other' ]
+[ 'from esm', 'function', '__esModule,default,value' ] 3:fixture true true true
+fixture [ 1, 2, 3 ]
+babel re-export [ '__esModule', 'default', 'helper', 'module.exports', 'other', 'own' ] helped

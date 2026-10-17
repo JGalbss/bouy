@@ -1,0 +1,15 @@
+named arrow 1 assigned fallback
+method 1 property [tag]
+get value [ 'length', 'name' ]
+{"value":"named","writable":false,"enumerable":false,"configurable":true} {"value":0,"writable":false,"enumerable":false,"configurable":true}
+3 true true
+called
+bound Point 1 10 20 true false
+string:1/2 object:a/b
+TypeError TypeError
+TypeError TypeError
+true false false
+true false
+no error TypeError
+function max() { [native code] } true
+720

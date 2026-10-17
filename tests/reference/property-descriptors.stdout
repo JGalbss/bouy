@@ -1,0 +1,23 @@
+{"value":1,"writable":false,"enumerable":false,"configurable":false}
+TypeError
+no error
+TypeError
+TypeError
+TypeError
+8 [ 'v' ] true
+{"value":10,"writable":false,"enumerable":true,"configurable":true}
+[ 'a' ] [ 'a', 'b' ] {"a":{"value":1,"writable":false,"enumerable":true,"configurable":false},"b":{"value":2,"writable":false,"enumerable":false,"configurable":false}}
+o true [ 'own' ]
+2 true false TypeError
+false TypeError
+true true false
+TypeError 3 [ '0', '1', '2', 'length' ]
+TypeError 2
+RangeError
+hi [ 'own' ] true
+7 function
+{"odd":[1,3,5],"even":[2,4]} null
+1=one,b=2,a=1
+true false true
+TypeError
+TypeError

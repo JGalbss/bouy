@@ -1,0 +1,11 @@
+wrapper false string 5
+cycle true a.done=false
+missing MODULE_NOT_FOUND
+resolve MODULE_NOT_FOUND
+json shared 2
+early before return
+this true
+loads 1 1
+loads again 2
+toString function named(a) { return a; } (b) => b
+resolve true

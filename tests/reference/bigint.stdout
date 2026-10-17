@@ -1,0 +1,14 @@
+bigint 123456789012345678901234567890n -123456789012345678901234567890n 15241578753238836750495351562536198787501905199875019052100n
+3n -3n 1n -1n 1267650600228229401496703205376n
+1180591620717411303424n -5n 1n 13n 4n -6n
+11n true true true true true
+31n 42n 1n 9007199254740993n
+-1n 255n ff 10
+1,2,3 2 one
+TypeError: Cannot mix BigInt and other types, use explicit conversions
+TypeError: Cannot convert a BigInt value to a number
+RangeError: The number 1.5 cannot be converted to a BigInt because it is not an integer
+SyntaxError: Cannot convert 1.5 to a BigInt
+RangeError: Division by zero
+TypeError: BigInts have no unsigned right shift, use >> instead
+true object {"a":1}

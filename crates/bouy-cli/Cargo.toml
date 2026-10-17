@@ -15,6 +15,10 @@ path = "src/main.rs"
 bouy-compiler.workspace = true
 clap.workspace = true
 
+# build.rs compiles the vendored Temporal polyfill into a runtime module.
+[build-dependencies]
+bouy-compiler.workspace = true
+
 [dev-dependencies]
 bouy-suites = { path = "../bouy-suites" }
 

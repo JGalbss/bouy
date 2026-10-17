@@ -1,0 +1,6 @@
+ann Oslo a [ 'b', 'c' ] default [ 'age' ]
+2 1
+{ city: 'Oslo', zip: '9999', extra: true }
+[ 0, 'a', 'b', 'c', 1, 2 ]
+3 19
+[ 'p=1', 'q=2' ]

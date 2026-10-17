@@ -11,15 +11,16 @@ use bouy_suites::expectations::{Entry, parse};
 use bouy_suites::node::{self, Options};
 use bouy_suites::outcome::Outcome;
 
-/// Rejects `common/index.mjs` on `check`. On `run`, a file named `*rejected*` is rejected,
+/// The file is the last argument. Rejects `common/index.mjs` on `check`. On `run`, a file named `*rejected*` is rejected,
 /// `*fail*` exits with 1, and `*env*` passes only with the variables of the runner and of
 /// its `// Env:` line.
 const FAKE_BOUY: &str = r#"#!/bin/sh
+for file; do :; done
 if [ "$1" = check ]; then
-    case "$2" in *.mjs) exit 2 ;; esac
+    case "$file" in *.mjs) exit 2 ;; esac
     exit 0
 fi
-case "$2" in
+case "$file" in
 *rejected*) echo '{"status":2,"diagnostics":["BOUY206"]}' >"$BOUY_RESULT_FILE"; exit 2 ;;
 *fail*) echo '{"status":1}' >"$BOUY_RESULT_FILE"; exit 1 ;;
 *env*)
@@ -48,34 +49,34 @@ impl FakeSuite {
                    "skip": [{"flag": "--expose-internals", "reason": "node-internals"},
                             {"path": "parallel/test-inspector", "reason": "node-inspector"}]}"#,
             ),
-            ("tests/suite/common/index.js", "'use strict';\n"),
-            ("tests/suite/common/index.mjs", "import './index.js';\n"),
-            ("tests/suite/parallel/helper.js", "// no test\n"),
+            ("tests/test/common/index.js", "'use strict';\n"),
+            ("tests/test/common/index.mjs", "import './index.js';\n"),
+            ("tests/test/parallel/helper.js", "// no test\n"),
             (
-                "tests/suite/parallel/test-pass.js",
+                "tests/test/parallel/test-pass.js",
                 "'use strict';\nrequire('../common');\n",
             ),
             (
-                "tests/suite/parallel/test-rejected.js",
+                "tests/test/parallel/test-rejected.js",
                 "'use strict';\nrequire('../common');\n",
             ),
             (
-                "tests/suite/parallel/test-fs-env.js",
+                "tests/test/parallel/test-fs-env.js",
                 "'use strict';\n// Env: FAKE_ENV=yes\nrequire('../common');\n",
             ),
             (
-                "tests/suite/parallel/test-internals.js",
+                "tests/test/parallel/test-internals.js",
                 "// Flags: --expose_internals\n'use strict';\n",
             ),
             (
-                "tests/suite/parallel/test-inspector-port.js",
+                "tests/test/parallel/test-inspector-port.js",
                 "'use strict';\n",
             ),
             (
-                "tests/suite/es-module/test-esm-rejected.mjs",
+                "tests/test/es-module/test-esm-rejected.mjs",
                 "import '../common/index.mjs';\n",
             ),
-            ("tests/suite/sequential/test-fail.js", "process.exit(1);\n"),
+            ("tests/test/sequential/test-fail.js", "process.exit(1);\n"),
             ("fake-bouy", FAKE_BOUY),
         ];
         for (path, text) in files {
@@ -182,9 +183,21 @@ fn an_update_writes_a_file_that_the_next_run_matches() {
     assert!(suite.read("summary.json").contains("\"internals\""));
     let report = node::run(&suite.options(false)).expect("the second run");
     assert_eq!(report.comparison, Comparison::default());
+    let before = suite.read("expectations.txt");
     let mut filtered = suite.options(true);
     filtered.filter = Some("parallel/".to_owned());
-    assert!(node::run(&filtered).is_err(), "an update runs every id");
+    node::run(&filtered).expect("an update with a filter rewrites the lines of its ids");
+    assert_eq!(
+        suite.read("expectations.txt"),
+        before,
+        "it keeps the other lines"
+    );
+    let mut selected = suite.options(true);
+    selected.selection = Selection::PullRequest;
+    assert!(
+        node::run(&selected).is_err(),
+        "an update takes no selection"
+    );
 }
 
 #[test]
@@ -202,7 +215,7 @@ fn a_pull_request_runs_the_passes_the_skips_and_the_sample() {
 }
 
 /// `bouy-suites node --update` writes `expectations.txt` and `summary.json` together from the
-/// files of `tests/node/suite`, so a hand edit of one of them shows here with no run.
+/// files of `tests/node/test`, so a hand edit of one of them shows here with no run.
 #[test]
 fn the_committed_node_files_agree() {
     let directory = bouy_suites::repository().join("tests/node");
@@ -225,7 +238,7 @@ fn the_committed_node_files_agree() {
     assert_eq!(summary["version"], config["tag"]);
     let mut files = 0;
     for name in ["parallel", "es-module", "sequential"] {
-        for entry in fs::read_dir(directory.join("suite").join(name)).expect("vendored") {
+        for entry in fs::read_dir(directory.join("test").join(name)).expect("vendored") {
             let file = entry.expect("an entry").file_name();
             let file = file.to_string_lossy();
             let is_test = file.starts_with("test-")

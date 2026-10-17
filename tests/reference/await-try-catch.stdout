@@ -1,0 +1,5 @@
+try > got 1 > after > end
+try > got 2 > caught too big: 2 > recovered > end
+rethrown inner
+true TypeError plain
+[ 'fulfilled', 'rejected' ]

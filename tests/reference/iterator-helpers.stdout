@@ -1,0 +1,20 @@
+naturals closed
+[ 0, 6, 12, 18 ]
+naturals closed
+[ 5, 6, 7 ]
+6
+naturals closed
+naturals closed
+true 7
+naturals closed
+[ 0, -0, 1, -1, 2, -2 ]
+each 0 0
+each 1 1
+naturals closed
+[ 'plain', 'plain' ]
+naturals closed
+{ value: undefined, done: true }
+[object Iterator Helper] 1
+abstract: TypeError
+[ 3, 2, 1 ] true
+negative limit: RangeError

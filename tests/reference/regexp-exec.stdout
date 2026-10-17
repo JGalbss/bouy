@@ -1,0 +1,32 @@
+["2024-05","2024","05",null] index=4 lastIndex=0 groups={"year":"2024","month":"05"}
+(?<year>\d{4})-(?<month>\d{2})(?:-(?<day>\d{2}))?  false 0 /(?<year>\d{4})-(?<month>\d{2})(?:-(?<day>\d{2}))?/
+one@0:3 two@4:7 three@9:14 0
+["foo"] index=0 lastIndex=3 ["foo"] index=3 lastIndex=6 null
+true 4 false 0
+["a"] index=0 lastIndex=0 ["abc","a","a",null,"bc",null,"bc"] index=0 lastIndex=0
+["abcde"] index=0 lastIndex=0 ["abc"] index=0 lastIndex=0
+["aaba","ba"] index=0 lastIndex=0 ["zaacbbbcac","z","ac","a",null,"c"] index=0 lastIndex=0
+["",null] index=0 lastIndex=0 ["b",""] index=0 lastIndex=0
+["","aaa"] index=1 lastIndex=0 ["aba","a"] index=3 lastIndex=0
+["baaabaac","ba",null,"abaac"] index=0 lastIndex=0
+aaaaa
+["10.53",".53"] index=6 lastIndex=0 ["20"] index=4 lastIndex=0
+["","1","053"] index=4 lastIndex=0 ["b","a"] index=2 lastIndex=0
+["y",null,"y"] index=1 lastIndex=0 groups={"a":"y"} ["bb","b"] index=1 lastIndex=0 groups={"n":"b"}
+["ABc"] index=0 lastIndex=0 ["aB"] index=3 lastIndex=0 ["b"] index=2 lastIndex=0
+["a\nc"] index=0 lastIndex=0 null ["foo"] index=5 lastIndex=0
+["1","1",null] index=1 lastIndex=0 groups={} indices=[[1,2],[1,2],null] ["ab","ab"] index=2 lastIndex=4 groups={"w":"ab"} indices=[[2,4],[2,4]]
+["{"] index=0 lastIndex=0 ["\b\nAB"] index=0 lastIndex=0
+[a-c]+ gi [ 'ABCabc' ] gi y
+true \/ \n (?:)
+[object RegExp] (?:)  undefined
+SyntaxError Invalid regular expression: /(/u: Unterminated group
+SyntaxError Invalid regular expression: /a**/u: Nothing to repeat
+SyntaxError Invalid regular expression: /[b-a]/u: Range out of order in character class
+SyntaxError Invalid regular expression: /(?<n>a)(?<n>b)/u: Duplicate capture group name
+SyntaxError Invalid regular expression: /\k<x>/u: Invalid named capture referenced
+SyntaxError Invalid regular expression: /x{2,1}/u: numbers out of order in {} quantifier
+SyntaxError Invalid flags supplied to RegExp constructor 'gg'
+12 34  12-34 34 ab   cd
+set 12
+true true /a(b)/gi 0 B
