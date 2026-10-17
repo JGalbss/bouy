@@ -120,11 +120,26 @@ impl<'a> Lowerer<'a, '_> {
                         .and_then(|symbol| self.tops.get(&symbol).cloned()),
                     _ => None,
                 };
-                let Some(Top::Class(class)) = class else {
-                    return self.unsupported(
-                        call.span,
-                        "`spawn` of a value that is not a module-level class",
-                    );
+                // An imported class: the actor's realm reads it through its module.
+                let target = match class {
+                    Some(Top::Class(class)) => {
+                        Expr::Tuple(vec![Expr::atom(self.module.clone()), Expr::binary(class)])
+                    }
+                    Some(Top::Import(super::link::Binding::Export { unit, key }))
+                        if self.linking.graph.units[unit].kind == super::graph::Kind::Esm =>
+                    {
+                        Expr::Tuple(vec![
+                            Expr::atom("export"),
+                            Expr::atom(self.linking.graph.units[unit].name.clone()),
+                            Expr::binary(key),
+                        ])
+                    }
+                    _ => {
+                        return self.unsupported(
+                            call.span,
+                            "`spawn` of a value that is not a module-level class",
+                        );
+                    }
                 };
                 let options = match call.arguments.get(1).and_then(Argument::as_expression) {
                     Some(options) => self.expr(options),
@@ -133,10 +148,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.bind(Expr::call(
                     "bouy_jobs",
                     "spawn_actor",
-                    vec![
-                        Expr::Tuple(vec![Expr::atom(self.module.clone()), Expr::binary(class)]),
-                        Expr::call("bouy_ref", "spawn_args", vec![options]),
-                    ],
+                    vec![target, Expr::call("bouy_ref", "spawn_args", vec![options])],
                 ))
             }
             "stop" => {

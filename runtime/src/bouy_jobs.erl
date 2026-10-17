@@ -551,7 +551,11 @@ event_step(_Other) ->
 %%% promise of the method settles, and the next call waits for it, so turns
 %%% never interleave even when a method awaits.
 
--spec spawn_actor({module(), binary()}, list()) -> {'$actor', pid()}.
+%% The class is {Module, Name}, a class of Module, or {export, Module, Key}, an
+%% export of Module that the actor's module imports.
+-spec spawn_actor({module(), binary() | {export, binary()}} | {export, module(), binary()}, list()) -> {'$actor', pid()}.
+spawn_actor({export, Module, Key}, Args) ->
+    spawn_actor({Module, {export, Key}}, Args);
 spawn_actor({Module, Class}, Args) ->
     Term = bouy_heap:clone_out(bouy_heap:new_array(Args)),
     Parent = self(),
@@ -574,7 +578,10 @@ actor_init(Parent, Tag, Module, Class, ArgsTerm) ->
     update_now(),
     try
         bouy_module:evaluate_dependencies(Module),
-        C = Module:'$class'(Class),
+        C = case Class of
+            {export, Key} -> Module:'$export'(Key);
+            _ -> Module:'$class'(Class)
+        end,
         This = bouy_heap:construct(C, bouy_heap:array_items(bouy_heap:clone_in(ArgsTerm)), C),
         erlang:put(?THIS, This),
         drain(),
