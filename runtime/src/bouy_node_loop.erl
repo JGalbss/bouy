@@ -188,6 +188,10 @@ event({'$bouy_node_deferred', Ref}) ->
             bouy_jobs:run_job(Fun)
     end,
     true;
+%% A callback that a process of a binding sends, such as the data of a pipe.
+event({'$bouy_node_call', Fun}) when is_function(Fun, 0) ->
+    bouy_jobs:run_job(Fun),
+    true;
 event(_) ->
     false.
 

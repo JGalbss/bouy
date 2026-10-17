@@ -42,6 +42,9 @@ The helpers in `bouy_node`:
 - `bouy_binding_fs:uv_error/3,4` throws Node's `uvException`, and `bouy_binding_uv:name/1` gives the name of an errno.
 - `bouy_node_encoding` converts strings and bytes, and reads and writes the bytes of a typed array.
 - `bouy_node_loop:defer(Fun)` runs a callback as a later macrotask, as libuv calls back from its thread pool, and `ref_handle/0` and `unref_handle/0` keep the loop alive for an open handle.
+- A process of a binding runs a callback in the realm with `bouy_node_stream:call(Realm, Fun)`, the message `{'$bouy_node_call', Fun}`, which the loop runs as a job. A JavaScript value that only such a callback names must stay a root of the heap, in the process dictionary under a key that is no integer, until the callback has run.
+- `bouy_node_stream` gives a stream handle the StreamBase methods of `src/stream_base.cc` (`readStart`, `writeBuffer`, `shutdown`, `close`, and the others) over a channel process; `attach/2` binds a handle and `deliver/2` hands it data or `eof`. The pipes of `process_wrap` use it.
+- `bouy_node_url` is the WHATWG URL parser of ada, and `bouy_binding_spawn_sync` and `bouy_binding_process_wrap` start child processes through `/bin/sh`, which wires their stdio.
 
 A binding function that only throws must call a function, such as `bouy_node:throw_code/3`, through a named fun (`fun ?MODULE:name/2`), or dialyzer reports the created fun.
 

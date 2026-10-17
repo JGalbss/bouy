@@ -705,7 +705,7 @@ has_own(O, K) -> get_own(O, K) =/= none.
 delete(O, K) ->
     case delete_property(O, K) of
         true -> true;
-        false -> cannot_delete(K)
+        false -> cannot_delete(O, K)
     end.
 
 %% [[Delete]]: false for a non-configurable property.
@@ -746,9 +746,35 @@ remove_own(O, K) ->
     end,
     ok.
 
--spec cannot_delete(key()) -> no_return().
-cannot_delete(K) ->
-    throw_error('TypeError', text([<<"Cannot delete property '">>, key_text(K), <<"'">>])).
+%% V8's message names the receiver: #<Class> for an object, [object Array]
+%% for an array.
+-spec cannot_delete(value(), key()) -> no_return().
+cannot_delete(O, K) ->
+    Receiver = case O of
+        {'$o', _} ->
+            case class_of(O) of
+                array -> [<<" of [object Array]">>];
+                _ -> [<<" of #<">>, receiver_name(O, 0), <<">">>]
+            end;
+        _ -> []
+    end,
+    throw_error('TypeError', text([<<"Cannot delete property '">>, key_text(K), <<"'">> | Receiver])).
+
+%% The name of the constructor of the receiver, found without calling code.
+receiver_name(_O, 100) -> <<"Object">>;
+receiver_name(O, Depth) ->
+    case get_own(O, <<"constructor">>) of
+        {data, C, _} when element(1, C) =:= '$f' ->
+            case get_own(C, <<"name">>) of
+                {data, Name, _} when is_binary(Name), Name =/= <<>> -> Name;
+                _ -> <<"Object">>
+            end;
+        _ ->
+            case prototype_of(O) of
+                null -> <<"Object">>;
+                P -> receiver_name(P, Depth + 1)
+            end
+    end.
 
 %% [[OwnPropertyKeys]] (OrdinaryOwnPropertyKeys): indexes ascending, then
 %% strings in insertion order, then symbols in insertion order. An array's

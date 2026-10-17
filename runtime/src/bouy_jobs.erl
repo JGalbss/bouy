@@ -484,6 +484,10 @@ event_step({'$bouy_node_timer', _} = Message) ->
 event_step({'$bouy_node_deferred', _} = Message) ->
     _ = bouy_node_loop:event(Message),
     ok;
+event_step({'$bouy_node_call', _} = Message) ->
+    update_now(),
+    _ = bouy_node_loop:event(Message),
+    ok;
 event_step({'$bouy_timer', _Id}) ->
     run_due_timers();
 event_step({'$bouy_atomics_wake', _} = Event) ->

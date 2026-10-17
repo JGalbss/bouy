@@ -6,7 +6,7 @@
 %% stdin comes from one.
 -module(bouy_binding_spawn_sync).
 
--export([binding/0, signal_name/1]).
+-export([binding/0, signal_name/1, executable/3, split_pair/1, temp_base/0, quote/1]).
 
 -spec binding() -> term().
 binding() ->
@@ -163,9 +163,9 @@ collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, Acc, Size, Error) ->
             case MaxBuffer =/= infinity andalso NewSize > MaxBuffer andalso Error =:= none of
                 true ->
                     kill(OsPid, KillSignal),
-                    collect(Port, OsPid, infinity, MaxBuffer, KillSignal, [Acc | Data], NewSize, -55);
+                    collect(Port, OsPid, infinity, MaxBuffer, KillSignal, [Acc, Data], NewSize, -55);
                 false ->
-                    collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, [Acc | Data], NewSize, Error)
+                    collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, [Acc, Data], NewSize, Error)
             end;
         {Port, {exit_status, Status}} ->
             {Status, iolist_to_binary(Acc), Error}
