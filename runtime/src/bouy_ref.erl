@@ -1,8 +1,8 @@
-%% The operations that compiled reference-semantics code calls (spike).
+%% The operations that compiled reference-semantics code calls.
 %%
-%% Values are the primitives of the value core (numbers, binaries, booleans,
-%% null, undefined) and the heap values of bouy_heap: objects, functions,
-%% and symbols, plus {'$actor', Pid} for an actor ref. Property reads on a
+%% Values are undefined, null, booleans, numbers (bouy_ref_number), strings
+%% (bouy_ref_string), the heap values of bouy_heap (objects, functions, and
+%% symbols), and {'$actor', Pid} for an actor ref. Property reads on a
 %% primitive go to the intrinsic prototype of its type, as in JavaScript.
 -module(bouy_ref).
 
@@ -18,10 +18,7 @@
 -export([to_string/1, to_number/1, to_primitive/2, increment/1, decrement/1]).
 -export([describe/1, typeof_global/1, spawn_args/1, stop_actor/1, heap_stats/0, vm_memory/0]).
 
--define(OBJECT_PROTO, {'$o', 'Object.prototype'}).
--define(FUNCTION_PROTO, {'$o', 'Function.prototype'}).
--define(IS_NUMBER(V), (is_number(V) orelse V =:= 'NaN' orelse V =:= 'Infinity' orelse V =:= '-Infinity')).
--define(IS_OBJECT(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
+-include("bouy_ref.hrl").
 
 %%% Realm
 
@@ -35,7 +32,7 @@ global(Name) -> bouy_ref_realm:global(Name).
 
 %%% Errors
 
--spec type_error(binary()) -> no_return().
+-spec type_error(bouy_ref_string:js_string()) -> no_return().
 type_error(Message) -> bouy_heap:throw_error('TypeError', Message).
 
 %% The JavaScript value of an Erlang exception: a thrown value, or a
@@ -49,8 +46,8 @@ caught(Reason, Stack) ->
         [{M, F, A, Info} | _] -> io_lib:format(" at ~s:~s/~w line ~w", [M, F, arity(A), proplists:get_value(line, Info, 0)]);
         _ -> ""
     end,
-    Message = unicode:characters_to_binary(io_lib:format("~0tP~s", [Reason, 8, Where])),
-    bouy_heap:error_object('TypeError', Message, <<"TypeError: ", Message/binary>>).
+    Message = bouy_ref_string:from_utf8(unicode:characters_to_binary(io_lib:format("~0tP~s", [Reason, 8, Where]))),
+    bouy_heap:error_object('TypeError', Message, text([<<"TypeError: ">>, Message])).
 
 arity(A) when is_list(A) -> length(A);
 arity(A) -> A.
@@ -66,7 +63,7 @@ report_uncaught(Value) ->
 
 uncaught_text({'$o', _} = O) ->
     case bouy_heap:class_of(O) of
-        error -> to_string(O);
+        error -> bouy_ref_string:to_utf8(to_string(O));
         _ -> bouy_ref_console:inspect(O)
     end;
 uncaught_text(V) ->
@@ -77,23 +74,22 @@ uncaught_text(V) ->
 -spec get(term(), bouy_heap:key()) -> term().
 get({'$o', _} = O, K) -> bouy_heap:get(O, K);
 get({'$f', _, _} = F, K) -> bouy_heap:get(F, K);
-get(S, K) when is_binary(S) -> string_get(S, K);
+get(S, K) when ?IS_STRING(S) -> bouy_ref_string:get(S, K);
 get(undefined, K) -> read_error(<<"undefined">>, K);
 get(null, K) -> read_error(<<"null">>, K);
 get(B, K) when is_boolean(B) -> bouy_heap:get({'$o', 'Boolean.prototype'}, K);
 get(N, K) when ?IS_NUMBER(N) -> bouy_heap:get({'$o', 'Number.prototype'}, K);
 get({'$sym', _, Description}, <<"description">>) -> Description;
 get({'$sym', _, _}, K) -> bouy_heap:get({'$o', 'Symbol.prototype'}, K);
-get({'$actor', Pid}, K) when is_binary(K) -> {'$f', {actor, Pid, K}, fun(_This, Args) -> bouy_jobs:actor_call(Pid, K, Args) end};
+get({'$actor', Pid}, K) when ?IS_STRING(K) -> {'$f', {actor, Pid, K}, fun(_This, Args) -> bouy_jobs:actor_call(Pid, K, Args) end};
 get({'$actor', _}, _K) -> undefined.
 
 -spec read_error(binary(), bouy_heap:key()) -> no_return().
 read_error(What, K) ->
-    type_error(<<"Cannot read properties of ", What/binary, " (reading '", (key_text(K))/binary, "')">>).
+    type_error(text([<<"Cannot read properties of ">>, What, <<" (reading '">>, key_text(K), <<"')">>])).
 
-string_get(S, <<"length">>) -> bouy_string:get(S, <<"length">>);
-string_get(S, I) when is_integer(I) -> bouy_string:get(S, I);
-string_get(_S, K) -> bouy_heap:get({'$o', 'String.prototype'}, K).
+%% A message from strings of the engine.
+text(Parts) -> bouy_ref_string:concat(Parts).
 
 -spec get_computed(term(), term()) -> term().
 get_computed(O, K) -> get(O, to_property_key(K)).
@@ -101,16 +97,16 @@ get_computed(O, K) -> get(O, to_property_key(K)).
 -spec set(term(), bouy_heap:key(), term()) -> term().
 set({'$o', _} = O, K, V) -> bouy_heap:set(O, K, V);
 set({'$f', _, _} = F, K, V) -> bouy_heap:set(F, K, V);
-set(undefined, K, _V) -> type_error(<<"Cannot set properties of undefined (setting '", (key_text(K))/binary, "')">>);
-set(null, K, _V) -> type_error(<<"Cannot set properties of null (setting '", (key_text(K))/binary, "')">>);
-set(P, K, _V) -> type_error(<<"Cannot create property '", (key_text(K))/binary, "' on ", (typeof(P))/binary, " '", (to_string(P))/binary, "'">>).
+set(undefined, K, _V) -> type_error(text([<<"Cannot set properties of undefined (setting '">>, key_text(K), <<"')">>]));
+set(null, K, _V) -> type_error(text([<<"Cannot set properties of null (setting '">>, key_text(K), <<"')">>]));
+set(P, K, _V) -> type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])).
 
 -spec set_computed(term(), term(), term()) -> term().
 set_computed(O, K, V) -> set(O, to_property_key(K), V).
 
 -spec delete(term(), bouy_heap:key()) -> boolean().
 delete(O, K) when ?IS_OBJECT(O) -> bouy_heap:delete(O, K);
-delete(undefined, K) -> type_error(<<"Cannot convert undefined or null to object (deleting '", (key_text(K))/binary, "')">>);
+delete(undefined, K) -> type_error(text([<<"Cannot convert undefined or null to object (deleting '">>, key_text(K), <<"')">>]));
 delete(null, K) -> delete(undefined, K);
 delete(_P, _K) -> true.
 
@@ -120,23 +116,24 @@ delete_computed(O, K) -> delete(O, to_property_key(K)).
 %% `k in o`.
 -spec in(term(), term()) -> boolean().
 in(K, O) when ?IS_OBJECT(O) -> bouy_heap:has(O, to_property_key(K));
-in(K, O) -> type_error(<<"Cannot use 'in' operator to search for '", (to_string(K))/binary, "' in ", (describe(O))/binary>>).
+in(K, O) -> type_error(text([<<"Cannot use 'in' operator to search for '">>, to_string(K), <<"' in ">>, describe(O)])).
 
 -spec to_property_key(term()) -> bouy_heap:key().
 to_property_key(K) when ?IS_OBJECT(K) -> bouy_heap:to_key(to_primitive(K, string));
 to_property_key(K) -> bouy_heap:to_key(K).
 
-key_text(K) when is_binary(K) -> K;
+key_text(K) when ?IS_STRING(K) -> K;
 key_text(K) when is_integer(K) -> integer_to_binary(K);
-key_text({'$sym', _, D}) -> <<"Symbol(", (to_string(D))/binary, ")">>;
-key_text({'#', _, Name}) -> <<"#", Name/binary>>;
+key_text({'$sym', _, undefined}) -> <<"Symbol()">>;
+key_text({'$sym', _, D}) -> text([<<"Symbol(">>, to_string(D), <<")">>]);
+key_text({'#', _, Name}) -> text([<<"#">>, Name]);
 key_text(K) -> to_string(K).
 
 %%% Calls
 
 -spec call(term(), term(), list()) -> term().
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
-call(V, _This, _Args) -> type_error(<<(describe(V))/binary, " is not a function">>).
+call(V, _This, _Args) -> type_error(text([describe(V), <<" is not a function">>])).
 
 %% r.k(args): the method of the receiver, called with the receiver as this.
 -spec call_method(term(), bouy_heap:key(), list()) -> term().
@@ -145,7 +142,7 @@ call_method({'$actor', Pid}, K, Args) -> bouy_jobs:actor_call(Pid, K, Args);
 call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 
 invoke({'$f', _, Fun}, This, _K, Args) -> Fun(This, Args);
-invoke(_V, This, K, _Args) -> type_error(<<(receiver_text(This))/binary, ".", (key_text(K))/binary, " is not a function">>).
+invoke(_V, This, K, _Args) -> type_error(text([receiver_text(This), <<".">>, key_text(K), <<" is not a function">>])).
 
 receiver_text(V) when ?IS_OBJECT(V) -> <<"object">>;
 receiver_text(V) -> describe(V).
@@ -215,7 +212,7 @@ class_create(Name, Parent, Length) ->
                 _ -> type_error(<<"Class extends value does not have valid prototype property">>)
             end;
         _ ->
-            type_error(<<"Class extends value ", (describe(Parent))/binary, " is not a constructor or null">>)
+            type_error(text([<<"Class extends value ">>, describe(Parent), <<" is not a constructor or null">>]))
     end,
     Proto = bouy_heap:new_object(ProtoParent),
     C = bouy_heap:function(fun ?MODULE:class_call/2, Name, Length, #{kind => class, parent => Parent}),
@@ -286,13 +283,11 @@ spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
 object_spread(Target, Source) when ?IS_OBJECT(Source) ->
     [define_field(Target, K, get(Source, K)) || K <- own_enumerable_keys(Source)],
     Target;
-object_spread(Target, S) when is_binary(S) ->
-    [define_field(Target, I, C) || {I, C} <- lists:enumerate(0, chars(S))],
+object_spread(Target, S) when ?IS_STRING(S) ->
+    [define_field(Target, I, bouy_ref_string:unit_string(S, I)) || I <- lists:seq(0, bouy_ref_string:length_of(S) - 1)],
     Target;
 object_spread(Target, _Primitive) ->
     Target.
-
-chars(S) -> [<<C/utf8>> || <<C/utf8>> <= S].
 
 own_enumerable_keys(O) ->
     Enumerable = bouy_heap:enumerable_keys(O),
@@ -316,114 +311,158 @@ object_rest(Source, Excluded) ->
     end,
     Rest.
 
--spec template(list()) -> binary().
-template(Parts) -> iolist_to_binary([to_string(P) || P <- Parts]).
+-spec template(list()) -> bouy_ref_string:js_string().
+template(Parts) -> text([to_string(P) || P <- Parts]).
 
 %%% Operators
 
 -spec add(term(), term()) -> term().
-add(A, B) when is_integer(A), is_integer(B) -> A + B;
+add(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:canonical(A + B);
 add(A, B) when is_binary(A), is_binary(B) -> <<A/binary, B/binary>>;
-add(A, B) when ?IS_OBJECT(A); ?IS_OBJECT(B) ->
+add(A, B) ->
     PA = to_primitive(A, default),
     PB = to_primitive(B, default),
-    case is_binary(PA) orelse is_binary(PB) of
-        true -> <<(to_string(PA))/binary, (to_string(PB))/binary>>;
-        false -> bouy_rt:add(to_number(PA), to_number(PB))
-    end;
-add({'$sym', _, _}, _) -> type_error(<<"Cannot convert a Symbol value to a string">>);
-add(_, {'$sym', _, _}) -> type_error(<<"Cannot convert a Symbol value to a string">>);
-add(A, B) -> bouy_rt:add(A, B).
+    case ?IS_STRING(PA) orelse ?IS_STRING(PB) of
+        true -> bouy_ref_string:concat(to_string(PA), to_string(PB));
+        false -> bouy_ref_number:add(to_number(PA), to_number(PB))
+    end.
 
-num(V) when ?IS_OBJECT(V) -> to_number(V);
-num({'$sym', _, _}) -> type_error(<<"Cannot convert a Symbol value to a number">>);
-num(V) -> V.
+%% ToNumeric for the operators, which take no BigInt yet.
+num(N) when ?IS_NUMBER(N) -> N;
+num(V) -> to_number(V).
 
 -spec sub(term(), term()) -> term().
-sub(A, B) when is_integer(A), is_integer(B) -> A - B;
-sub(A, B) -> bouy_rt:sub(num(A), num(B)).
+sub(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:canonical(A - B);
+sub(A, B) ->
+    NA = num(A),
+    bouy_ref_number:sub(NA, num(B)).
 
 -spec mul(term(), term()) -> term().
-mul(A, B) when is_integer(A), is_integer(B) -> A * B;
-mul(A, B) -> bouy_rt:mul(num(A), num(B)).
+mul(A, B) ->
+    NA = num(A),
+    bouy_ref_number:mul(NA, num(B)).
 
 -spec divide(term(), term()) -> term().
-divide(A, B) -> bouy_rt:divide(num(A), num(B)).
+divide(A, B) ->
+    NA = num(A),
+    bouy_ref_number:divide(NA, num(B)).
 
 -spec remainder(term(), term()) -> term().
 remainder(A, B) when is_integer(A), is_integer(B), B > 0, A >= 0 -> A rem B;
-remainder(A, B) -> bouy_rt:remainder(num(A), num(B)).
+remainder(A, B) ->
+    NA = num(A),
+    bouy_ref_number:remainder(NA, num(B)).
 
 -spec power(term(), term()) -> term().
-power(A, B) -> bouy_rt:power(num(A), num(B)).
+power(A, B) ->
+    NA = num(A),
+    bouy_ref_number:power(NA, num(B)).
 
 -spec negate(term()) -> term().
-negate(A) -> bouy_rt:negate(num(A)).
+negate(A) -> bouy_ref_number:negate(num(A)).
 
 -spec plus(term()) -> term().
 plus(A) -> to_number(A).
 
 -spec increment(term()) -> term().
-increment(A) when is_integer(A) -> A + 1;
-increment(A) -> bouy_rt:add(to_number(A), 1).
+increment(A) when is_integer(A) -> bouy_ref_number:canonical(A + 1);
+increment(A) -> bouy_ref_number:add(num(A), 1).
 
 -spec decrement(term()) -> term().
-decrement(A) when is_integer(A) -> A - 1;
-decrement(A) -> bouy_rt:sub(to_number(A), 1).
+decrement(A) when is_integer(A) -> bouy_ref_number:canonical(A - 1);
+decrement(A) -> bouy_ref_number:sub(num(A), 1).
 
 -spec bit_and(term(), term()) -> integer().
-bit_and(A, B) -> bouy_rt:bit_and(num(A), num(B)).
+bit_and(A, B) ->
+    NA = num(A),
+    bouy_ref_number:bit_and(NA, num(B)).
 -spec bit_or(term(), term()) -> integer().
-bit_or(A, B) -> bouy_rt:bit_or(num(A), num(B)).
+bit_or(A, B) ->
+    NA = num(A),
+    bouy_ref_number:bit_or(NA, num(B)).
 -spec bit_xor(term(), term()) -> integer().
-bit_xor(A, B) -> bouy_rt:bit_xor(num(A), num(B)).
+bit_xor(A, B) ->
+    NA = num(A),
+    bouy_ref_number:bit_xor(NA, num(B)).
 -spec bit_not(term()) -> integer().
-bit_not(A) -> bouy_rt:bit_not(num(A)).
+bit_not(A) -> bouy_ref_number:bit_not(num(A)).
 -spec shift_left(term(), term()) -> integer().
-shift_left(A, B) -> bouy_rt:shift_left(num(A), num(B)).
+shift_left(A, B) ->
+    NA = num(A),
+    bouy_ref_number:shift_left(NA, num(B)).
 -spec shift_right(term(), term()) -> integer().
-shift_right(A, B) -> bouy_rt:shift_right(num(A), num(B)).
+shift_right(A, B) ->
+    NA = num(A),
+    bouy_ref_number:shift_right(NA, num(B)).
 -spec shift_right_unsigned(term(), term()) -> integer().
-shift_right_unsigned(A, B) -> bouy_rt:shift_right_unsigned(num(A), num(B)).
+shift_right_unsigned(A, B) ->
+    NA = num(A),
+    bouy_ref_number:shift_right_unsigned(NA, num(B)).
 
 %% Objects compare by identity: the terms are equal only for the same id.
 -spec strict_eq(term(), term()) -> boolean().
-strict_eq(A, B) when is_integer(A), is_integer(B) -> A =:= B;
-strict_eq(A, B) when is_binary(A), is_binary(B) -> A =:= B;
 strict_eq(A, B) when is_number(A), is_number(B) -> A == B;
-strict_eq('NaN', _) -> false;
-strict_eq(A, B) -> A =:= B.
+strict_eq(A, B) -> A =/= 'NaN' andalso A =:= B.
 
+%% IsLooselyEqual.
 -spec loose_eq(term(), term()) -> boolean().
 loose_eq(A, B) when ?IS_OBJECT(A), ?IS_OBJECT(B) -> A =:= B;
-loose_eq(A, B) when ?IS_OBJECT(A) -> B =/= null andalso B =/= undefined andalso loose_eq(to_primitive(A, default), B);
-loose_eq(A, B) when ?IS_OBJECT(B) -> A =/= null andalso A =/= undefined andalso loose_eq(A, to_primitive(B, default));
-loose_eq({'$sym', _, _} = A, B) -> A =:= B;
-loose_eq(A, {'$sym', _, _} = B) -> A =:= B;
-loose_eq(A, B) -> bouy_rt:loose_eq(A, B).
+loose_eq(A, B) when A =:= undefined; A =:= null -> B =:= undefined orelse B =:= null;
+loose_eq(_, B) when B =:= undefined; B =:= null -> false;
+loose_eq(A, B) when ?IS_NUMBER(A), ?IS_NUMBER(B) -> strict_eq(A, B);
+loose_eq(A, B) when ?IS_STRING(A), ?IS_STRING(B) -> A =:= B;
+loose_eq(A, B) when ?IS_NUMBER(A), ?IS_STRING(B) -> strict_eq(A, to_number(B));
+loose_eq(A, B) when ?IS_STRING(A), ?IS_NUMBER(B) -> strict_eq(to_number(A), B);
+loose_eq(A, B) when is_boolean(A) -> loose_eq(to_number(A), B);
+loose_eq(A, B) when is_boolean(B) -> loose_eq(A, to_number(B));
+loose_eq(A, B) when ?IS_OBJECT(A) -> loose_eq(to_primitive(A, default), B);
+loose_eq(A, B) when ?IS_OBJECT(B) -> loose_eq(A, to_primitive(B, default));
+loose_eq(A, B) -> A =:= B.
 
+%% The relational operators, from IsLessThan: undefined when a NaN is involved.
 -spec lt(term(), term()) -> boolean().
 lt(A, B) when is_number(A), is_number(B) -> A < B;
-lt(A, B) -> bouy_rt:lt(prim(A), prim(B)).
+lt(A, B) ->
+    {PA, PB} = primitives(A, B),
+    less(PA, PB) =:= true.
 -spec le(term(), term()) -> boolean().
 le(A, B) when is_number(A), is_number(B) -> A =< B;
-le(A, B) -> bouy_rt:le(prim(A), prim(B)).
+le(A, B) ->
+    {PA, PB} = primitives(A, B),
+    less(PB, PA) =:= false.
 -spec gt(term(), term()) -> boolean().
 gt(A, B) when is_number(A), is_number(B) -> A > B;
-gt(A, B) -> bouy_rt:gt(prim(A), prim(B)).
+gt(A, B) ->
+    {PA, PB} = primitives(A, B),
+    less(PB, PA) =:= true.
 -spec ge(term(), term()) -> boolean().
 ge(A, B) when is_number(A), is_number(B) -> A >= B;
-ge(A, B) -> bouy_rt:ge(prim(A), prim(B)).
+ge(A, B) ->
+    {PA, PB} = primitives(A, B),
+    less(PA, PB) =:= false.
 
-prim(V) when ?IS_OBJECT(V) -> to_primitive(V, number);
-prim(V) -> V.
+primitives(A, B) ->
+    PA = to_primitive(A, number),
+    {PA, to_primitive(B, number)}.
+
+less(A, B) when ?IS_STRING(A), ?IS_STRING(B) -> bouy_ref_string:compare(A, B) =:= lt;
+less(A, B) ->
+    NA = num(A),
+    case bouy_ref_number:compare(NA, num(B)) of
+        undefined -> undefined;
+        Order -> Order =:= lt
+    end.
 
 -spec typeof(term()) -> binary().
 typeof({'$f', _, _}) -> <<"function">>;
 typeof({'$o', _}) -> <<"object">>;
 typeof({'$sym', _, _}) -> <<"symbol">>;
 typeof({'$actor', _}) -> <<"object">>;
-typeof(V) -> bouy_rt:type_of(V).
+typeof(undefined) -> <<"undefined">>;
+typeof(null) -> <<"object">>;
+typeof(B) when is_boolean(B) -> <<"boolean">>;
+typeof(N) when ?IS_NUMBER(N) -> <<"number">>;
+typeof(S) when ?IS_STRING(S) -> <<"string">>.
 
 %% `typeof name` for a name that no scope declares: "undefined" for a missing global.
 -spec typeof_global(binary()) -> binary().
@@ -444,7 +483,7 @@ instance_of(V, {'$f', _, _} = C) ->
             in_chain(bouy_heap:prototype_of(V), Proto)
     end;
 instance_of(_V, C) ->
-    type_error(<<"Right-hand side of 'instanceof' is not callable (", (describe(C))/binary, ")">>).
+    type_error(text([<<"Right-hand side of 'instanceof' is not callable (">>, describe(C), <<")">>])).
 
 in_chain(null, _Proto) -> false;
 in_chain(Proto, Proto) -> true;
@@ -463,18 +502,27 @@ truthy(_) -> true.
 
 %%% Conversions
 
--spec to_string(term()) -> binary().
-to_string(B) when is_binary(B) -> B;
+-spec to_string(term()) -> bouy_ref_string:js_string().
+to_string(S) when ?IS_STRING(S) -> S;
+to_string(N) when ?IS_NUMBER(N) -> bouy_ref_number:to_string(N);
+to_string(true) -> <<"true">>;
+to_string(false) -> <<"false">>;
+to_string(undefined) -> <<"undefined">>;
+to_string(null) -> <<"null">>;
 to_string(V) when ?IS_OBJECT(V) -> to_string(to_primitive(V, string));
 to_string({'$sym', _, _}) -> type_error(<<"Cannot convert a Symbol value to a string">>);
-to_string({'$actor', _}) -> <<"[object ActorRef]">>;
-to_string(V) -> bouy_rt:to_string(V).
+to_string({'$actor', _}) -> <<"[object ActorRef]">>.
 
 -spec to_number(term()) -> term().
-to_number(N) when is_number(N) -> N;
+to_number(N) when ?IS_NUMBER(N) -> N;
+to_number(S) when ?IS_STRING(S) -> bouy_ref_number:from_string(S);
+to_number(true) -> 1;
+to_number(false) -> 0;
+to_number(null) -> 0;
+to_number(undefined) -> 'NaN';
 to_number(V) when ?IS_OBJECT(V) -> to_number(to_primitive(V, number));
 to_number({'$sym', _, _}) -> type_error(<<"Cannot convert a Symbol value to a number">>);
-to_number(V) -> bouy_rt:to_number(V).
+to_number(_) -> 'NaN'.
 
 %% ToPrimitive: Symbol.toPrimitive, else valueOf and toString in the order
 %% of the hint.
@@ -509,20 +557,20 @@ ordinary_primitive(V, [Name | Rest]) ->
 primitive_or_fail(R) when ?IS_OBJECT(R) -> type_error(<<"Cannot convert object to primitive value">>);
 primitive_or_fail(R) -> R.
 
--spec describe(term()) -> binary().
+-spec describe(term()) -> bouy_ref_string:js_string().
 describe(undefined) -> <<"undefined">>;
 describe(null) -> <<"null">>;
-describe(V) when is_binary(V) -> <<"\"", V/binary, "\"">>;
+describe(V) when ?IS_STRING(V) -> text([<<"\"">>, V, <<"\"">>]);
 describe({'$f', _, _} = F) ->
     case get(F, <<"name">>) of
         <<>> -> <<"function">>;
-        Name when is_binary(Name) -> Name;
+        Name when ?IS_STRING(Name) -> Name;
         _ -> <<"function">>
     end;
 describe({'$o', _}) -> <<"#<Object>">>;
 describe({'$sym', _, _} = S) -> key_text(S);
 describe({'$actor', _}) -> <<"ActorRef">>;
-describe(V) -> bouy_rt:to_string(V).
+describe(V) -> to_string(V).
 
 %%% Actors
 

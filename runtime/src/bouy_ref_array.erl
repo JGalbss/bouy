@@ -84,7 +84,7 @@ array_proto(<<"join">>, A, Args) ->
         undefined -> <<",">>;
         S -> bouy_ref:to_string(S)
     end,
-    iolist_to_binary(lists:join(Sep, [join_text(V) || V <- items(A)]));
+    bouy_ref_string:concat(lists:join(Sep, [join_text(V) || V <- items(A)]));
 array_proto(<<"toString">>, A, _) -> array_proto(<<"join">>, A, []);
 array_proto(<<"indexOf">>, A, Args) -> index_of(items(A), arg(1, Args), 0, fun bouy_ref:strict_eq/2);
 array_proto(<<"lastIndexOf">>, A, Args) ->
@@ -121,7 +121,7 @@ array_proto(<<"sort">>, A, Args) ->
     L = items(A),
     {Defined, Undefined} = lists:partition(fun(V) -> V =/= undefined end, L),
     Sorted = case arg(1, Args) of
-        undefined -> [V || {_, V} <- lists:keysort(1, [{bouy_ref:to_string(V), V} || V <- Defined])];
+        undefined -> [V || {_, V} <- lists:sort(fun({X, _}, {Y, _}) -> bouy_ref_string:compare(X, Y) =/= gt end, [{bouy_ref:to_string(V), V} || V <- Defined])];
         F -> bouy_sort:sort(Defined, fun(CallArgs) -> bouy_ref:call(F, undefined, CallArgs) end)
     end,
     bouy_heap:array_set_items(A, Sorted ++ Undefined),
@@ -251,7 +251,7 @@ array_static(<<"from">>, Args) ->
                 _ ->
                     bouy_ref_iterator:to_list(S)
             end;
-        S when is_binary(S) -> bouy_ref_iterator:to_list(S);
+        S when ?IS_STRING(S) -> bouy_ref_iterator:to_list(S);
         _ -> []
     end,
     case arg(2, Args) of

@@ -74,7 +74,9 @@ collection_size(O) ->
     {Index, _} = bouy_heap:slots(O),
     map_size(Index).
 
-key(K) -> bouy_rt:collection_key(K).
+%% SameValueZero keys: -0 is 0, and canonical numbers compare as terms.
+key(F) when is_float(F), F == 0 -> 0;
+key(K) -> K.
 
 map_entries(M) ->
     {Index, _} = bouy_heap:slots(M),

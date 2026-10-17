@@ -8,7 +8,7 @@ use oxc::ast::ast::{
 use oxc::span::GetSpan;
 
 use super::context::Lowerer;
-use super::member::MemberKey;
+use super::member::{MemberKey, static_key};
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -110,7 +110,7 @@ impl<'a> Lowerer<'a, '_> {
                 for property in &object.properties {
                     match property {
                         AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(property) => {
-                            let key = Expr::binary(property.binding.name.to_string());
+                            let key = static_key(property.binding.name.as_str());
                             keys.push(key.clone());
                             let item = self.get(source.clone(), MemberKey::Static(key));
                             let item = match &property.init {

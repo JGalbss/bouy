@@ -342,7 +342,7 @@ impl<'a> Lowerer<'a, '_> {
             Expr::Tuple(vec![
                 Expr::atom("fn"),
                 Expr::atom(self.module.clone()),
-                Expr::binary(name.to_owned()),
+                Expr::js_string(name),
             ]),
             Expr::FunRef {
                 module: Some(self.module.clone()),

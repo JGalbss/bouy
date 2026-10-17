@@ -47,9 +47,9 @@ error_construct(Name, NewTarget, Args) ->
     Header = case Message of
         undefined -> Name;
         <<>> -> Name;
-        _ -> <<Name/binary, ": ", Message/binary>>
+        _ -> bouy_ref_string:concat([Name, <<": ">>, Message])
     end,
-    E = bouy_heap:error_object(Proto, <<>>, <<Header/binary, "\n    at <anonymous>">>),
+    E = bouy_heap:error_object(Proto, <<>>, bouy_ref_string:concat(Header, <<"\n    at <anonymous>">>)),
     case Message of
         undefined -> bouy_heap:delete(E, <<"message">>);
         _ -> bouy_heap:set(E, <<"message">>, Message)
@@ -78,5 +78,5 @@ error_to_string(E) ->
     case {Name, Message} of
         {<<>>, _} -> Message;
         {_, <<>>} -> Name;
-        _ -> <<Name/binary, ": ", Message/binary>>
+        _ -> bouy_ref_string:concat([Name, <<": ">>, Message])
     end.

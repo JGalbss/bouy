@@ -45,12 +45,12 @@ object_proto(<<"propertyIsEnumerable">>, This, Args) ->
         {accessor, _, _, Bits} -> Bits band 2 =/= 0;
         none -> false
     end;
-object_proto(<<"toString">>, This, _Args) -> <<"[object ", (tag(This))/binary, "]">>;
+object_proto(<<"toString">>, This, _Args) -> bouy_ref_string:concat([<<"[object ">>, tag(This), <<"]">>]);
 object_proto(<<"toLocaleString">>, This, _Args) -> bouy_ref:call_method(This, <<"toString">>, []);
 object_proto(<<"valueOf">>, This, _Args) -> This.
 
 has_own(O, K) when ?IS_OBJECT(O) -> bouy_heap:has_own(O, K);
-has_own(S, K) when is_binary(S) -> K =:= <<"length">> orelse (is_integer(K) andalso K < bouy_string:char_count(S));
+has_own(S, K) when ?IS_STRING(S) -> K =:= <<"length">> orelse (is_integer(K) andalso K < bouy_ref_string:length_of(S));
 has_own(_, _) -> false.
 
 chain_has(null, _) -> false;
@@ -61,7 +61,7 @@ tag(undefined) -> <<"Undefined">>;
 tag(null) -> <<"Null">>;
 tag(V) when ?IS_OBJECT(V) ->
     case bouy_ref:get(V, ?SYM(toStringTag)) of
-        T when is_binary(T) -> T;
+        T when ?IS_STRING(T) -> T;
         _ ->
             case bouy_heap:class_of(V) of
                 array -> <<"Array">>;
@@ -71,7 +71,7 @@ tag(V) when ?IS_OBJECT(V) ->
                 _ -> <<"Object">>
             end
     end;
-tag(V) when is_binary(V) -> <<"String">>;
+tag(V) when ?IS_STRING(V) -> <<"String">>;
 tag(V) when is_boolean(V) -> <<"Boolean">>;
 tag({'$sym', _, _}) -> <<"Symbol">>;
 tag(_) -> <<"Number">>.
@@ -111,7 +111,7 @@ object_static(<<"create">>, Args) ->
             end,
             O;
         P ->
-            type_error(<<"Object prototype may only be an Object or null: ", (bouy_ref:describe(P))/binary>>)
+            type_error(bouy_ref_string:concat(<<"Object prototype may only be an Object or null: ">>, bouy_ref:describe(P)))
     end;
 object_static(<<"defineProperties">>, [O, Props]) ->
     [object_static(<<"defineProperty">>, [O, bouy_heap:key_to_value(K), bouy_ref:get(Props, K)]) || K <- enumerable(Props)],
@@ -119,7 +119,7 @@ object_static(<<"defineProperties">>, [O, Props]) ->
 object_static(<<"getPrototypeOf">>, Args) ->
     case arg(1, Args) of
         O when ?IS_OBJECT(O) -> bouy_heap:prototype_of(O);
-        S when is_binary(S) -> {'$o', 'String.prototype'};
+        S when ?IS_STRING(S) -> {'$o', 'String.prototype'};
         B when is_boolean(B) -> {'$o', 'Boolean.prototype'};
         {'$sym', _, _} -> {'$o', 'Symbol.prototype'};
         undefined -> type_error(<<"Cannot convert undefined or null to object">>);
@@ -141,7 +141,7 @@ object_static(<<"defineProperty">>, Args) ->
     Flags = maps:map(fun(K, V) when K =:= writable; K =:= enumerable; K =:= configurable -> bouy_ref:truthy(V); (_, V) -> V end, Descriptor),
     bouy_heap:define(O, bouy_ref:to_property_key(arg(2, Args)), Flags);
 object_static(<<"getOwnPropertyNames">>, Args) ->
-    bouy_heap:new_array([bouy_heap:key_to_value(K) || K <- bouy_heap:own_keys(arg(1, Args)), not is_tuple(K)]);
+    bouy_heap:new_array([bouy_heap:key_to_value(K) || K <- bouy_heap:own_keys(arg(1, Args)), is_integer(K) orelse ?IS_STRING(K)]);
 object_static(<<"getOwnPropertySymbols">>, Args) ->
     bouy_heap:new_array([K || {'$sym', _, _} = K <- bouy_heap:own_keys(arg(1, Args))]);
 object_static(<<"getOwnPropertyDescriptor">>, Args) ->
@@ -161,11 +161,11 @@ object_static(<<"fromEntries">>, Args) ->
 object_static(<<"hasOwn">>, Args) -> has_own(arg(1, Args), bouy_ref:to_property_key(arg(2, Args)));
 object_static(<<"is">>, Args) -> same_value(arg(1, Args), arg(2, Args)).
 
-same_value(A, B) when is_float(A), is_float(B) -> <<A/float>> =:= <<B/float>>;
-same_value(A, B) -> bouy_ref:strict_eq(A, B) orelse (A =:= 'NaN' andalso B =:= 'NaN').
+%% SameValue: numbers and strings have one form each, so it is term equality.
+same_value(A, B) -> A =:= B.
 
 enumerable(O) when ?IS_OBJECT(O) -> bouy_heap:enumerable_keys(O);
-enumerable(S) when is_binary(S) -> lists:seq(0, bouy_string:char_count(S) - 1);
+enumerable(S) when ?IS_STRING(S) -> lists:seq(0, bouy_ref_string:length_of(S) - 1);
 enumerable(undefined) -> type_error(<<"Cannot convert undefined or null to object">>);
 enumerable(null) -> type_error(<<"Cannot convert undefined or null to object">>);
 enumerable(_) -> [].

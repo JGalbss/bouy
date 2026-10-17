@@ -45,8 +45,8 @@ impl<'a> Lowerer<'a, '_> {
             .map_or_else(String::new, |class| class.name.clone());
         Expr::Tuple(vec![
             Expr::atom("#"),
-            Expr::binary(class),
-            Expr::binary(name.to_owned()),
+            Expr::js_string(&class),
+            Expr::js_string(name),
         ])
     }
 
@@ -197,7 +197,7 @@ impl<'a> Lowerer<'a, '_> {
 pub fn static_key(name: &str) -> Expr {
     match index_of(name) {
         Some(index) => Expr::Integer(index),
-        None => Expr::binary(name.to_owned()),
+        None => Expr::js_string(name),
     }
 }
 

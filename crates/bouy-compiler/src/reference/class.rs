@@ -49,7 +49,7 @@ impl<'a> Lowerer<'a, '_> {
                 "bouy_ref",
                 "class_create",
                 vec![
-                    Expr::binary(name.to_owned()),
+                    Expr::js_string(name),
                     parent.clone().map_or_else(|| Expr::atom("none"), Expr::var),
                     Expr::Integer(i64::try_from(length).unwrap_or(0)),
                 ],
@@ -268,7 +268,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.pre.push(Expr::call(
                     "bouy_ref",
                     "define_field",
-                    vec![this, Expr::binary(id.name.to_string()), value],
+                    vec![this, Expr::js_string(id.name.as_str()), value],
                 ));
             }
         }

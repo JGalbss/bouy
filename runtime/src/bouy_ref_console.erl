@@ -34,15 +34,15 @@ write(Name, Args) ->
     undefined.
 
 -spec format(list()) -> binary().
-format([Template | Args]) when is_binary(Template), Args =/= [] ->
-    {Text, Rest} = substitute(Template, Args, []),
+format([Template | Args]) when ?IS_STRING(Template), Args =/= [] ->
+    {Text, Rest} = substitute(bouy_ref_string:to_utf8(Template), Args, []),
     join([Text | [display(A) || A <- Rest]]);
 format(Args) ->
     join([display(A) || A <- Args]).
 
 join(Parts) -> iolist_to_binary(lists:join($\s, Parts)).
 
-display(S) when is_binary(S) -> S;
+display(S) when ?IS_STRING(S) -> bouy_ref_string:to_utf8(S);
 display(V) -> inspect(V).
 
 substitute(<<"%", C, Rest/binary>>, [Arg | Args] = All, Acc) ->
@@ -54,21 +54,21 @@ substitute(<<"%", C, Rest/binary>>, [Arg | Args] = All, Acc) ->
 substitute(<<C, Rest/binary>>, Args, Acc) ->
     substitute(Rest, Args, [C | Acc]);
 substitute(<<>>, Args, Acc) ->
-    {unicode:characters_to_binary(lists:reverse(Acc)), Args}.
+    {iolist_to_binary(lists:reverse(Acc)), Args}.
 
-specifier($s, V) when is_binary(V) -> {ok, V};
+specifier($s, V) when ?IS_STRING(V) -> {ok, bouy_ref_string:to_utf8(V)};
 specifier($s, V) when ?IS_OBJECT(V) -> {ok, inspect(V)};
 specifier($s, V) -> {ok, text(V)};
 specifier($d, V) -> {ok, text(bouy_ref:to_number(V))};
-specifier($i, V) -> {ok, text(bouy_number:'parseInt'([V]))};
-specifier($f, V) -> {ok, text(bouy_number:'parseFloat'([V]))};
-specifier($j, V) -> {ok, bouy_ref_json:stringify(V, undefined, undefined)};
+specifier($i, V) -> {ok, text(bouy_ref_number:method(<<"globalThis">>, <<"parseInt">>, undefined, [V]))};
+specifier($f, V) -> {ok, text(bouy_ref_number:method(<<"globalThis">>, <<"parseFloat">>, undefined, [V]))};
+specifier($j, V) -> {ok, text(bouy_ref_json:stringify(V, undefined, undefined))};
 specifier(C, V) when C =:= $o; C =:= $O -> {ok, inspect(V)};
 specifier($%, _) -> percent;
 specifier(_, _) -> none.
 
 text(V) when is_number(V) -> bouy_console:number_text(V);
-text(V) -> bouy_ref:to_string(V).
+text(V) -> bouy_ref_string:to_utf8(bouy_ref:to_string(V)).
 
 -spec inspect(term()) -> binary().
 inspect(V) ->
@@ -80,7 +80,7 @@ inspect(V) ->
 
 %% Level counts the containers around the value, Indent is the column of
 %% its lines, and Stack holds the objects being printed, for [Circular].
-value(S, _, _, _) when is_binary(S) -> bouy_console:string(S);
+value(S, _, _, _) when ?IS_STRING(S) -> bouy_console:string(bouy_ref_string:to_utf8(S));
 value(N, _, _, _) when is_number(N) -> bouy_console:number_text(N);
 value(A, _, _, _) when is_atom(A) -> atom_to_binary(A);
 value({'$sym', _, _} = S, _, _, _) -> bouy_ref:describe(S);
@@ -161,7 +161,7 @@ constructor_name(O) ->
     case bouy_heap:get_own(O, <<"constructor">>) of
         {data, {'$f', _, _} = C, _} ->
             case bouy_ref:get(C, <<"name">>) of
-                Name when is_binary(Name), Name =/= <<>> -> Name;
+                Name when ?IS_STRING(Name), Name =/= <<>> -> bouy_ref_string:to_utf8(Name);
                 _ -> constructor_name(bouy_heap:prototype_of(O))
             end;
         _ ->
@@ -188,7 +188,7 @@ entry(O, K, Level, Indent, Stack) ->
     <<(key(K))/binary, ": ", Shown/binary>>.
 
 key(K) when is_integer(K) -> <<"'", (integer_to_binary(K))/binary, "'">>;
-key(K) when is_binary(K) -> bouy_console:key(K);
+key(K) when ?IS_STRING(K) -> bouy_console:key(bouy_ref_string:to_utf8(K));
 key({'$sym', _, _} = S) -> bouy_ref:describe(S).
 
 array(A, Level, Indent, Stack) ->
@@ -249,19 +249,19 @@ promise(P, Level, Indent, Stack) ->
 %% prints the first line.
 error_text(E) ->
     case bouy_ref:get(E, <<"stack">>) of
-        Stack when is_binary(Stack) -> hd(binary:split(Stack, <<"\n">>));
-        _ -> bouy_ref_error:error_to_string(E)
+        Stack when ?IS_STRING(Stack) -> hd(binary:split(bouy_ref_string:to_utf8(Stack), <<"\n">>));
+        _ -> bouy_ref_string:to_utf8(bouy_ref_error:error_to_string(E))
     end.
 
 function_label(F) ->
     Name = case bouy_ref:get(F, <<"name">>) of
-        N when is_binary(N) -> N;
+        N when ?IS_STRING(N) -> bouy_ref_string:to_utf8(N);
         _ -> <<>>
     end,
     case bouy_heap:slots(F) of
         #{kind := class, parent := Parent} ->
             Extends = case Parent of
-                {'$f', _, _} -> <<" extends ", (bouy_ref:get(Parent, <<"name">>))/binary>>;
+                {'$f', _, _} -> <<" extends ", (text(bouy_ref:get(Parent, <<"name">>)))/binary>>;
                 _ -> <<>>
             end,
             <<"[class ", Name/binary, Extends/binary, "]">>;

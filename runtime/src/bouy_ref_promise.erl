@@ -30,7 +30,7 @@ method(<<"Promise">>, Name, _This, Args) -> promise_static(Name, Args).
 promise_construct(_NewTarget, Args) ->
     Executor = arg(1, Args),
     bouy_heap:is_callable(Executor) orelse
-        type_error(<<"Promise resolver ", (bouy_ref:describe(Executor))/binary, " is not a function">>),
+        type_error(bouy_ref_string:concat([<<"Promise resolver ">>, bouy_ref:describe(Executor), <<" is not a function">>])),
     P = bouy_jobs:new_promise(),
     {Resolve, Reject} = bouy_jobs:resolving_functions(P),
     try bouy_ref:call(Executor, undefined, [js(Resolve), js(Reject)]) of

@@ -20,7 +20,7 @@ The CLI embeds the runtime sources, `runtime/src/*.erl`, `*.hrl`, and `bouy.app.
 
 `bouy check app.ts` runs steps 1 and 2 and prints diagnostics. `bouy build app.ts` runs steps 1 to 3 and prints the paths of the Erlang files. Both exit with status 2 when there is a diagnostic.
 
-`run`, `check`, and `build` take `--semantics value|reference` before the entry. `value`, the default, is this contract. `reference` selects a prototype that this contract does not describe: objects live in a heap in each process and have identity, and promises run on a job queue in each process (`crates/bouy-compiler/src/reference/`, `runtime/src/bouy_heap.erl`, `bouy_jobs.erl`, and `bouy_ref*.erl`). The prototype compiles one module, and it imports only `spawn` and `stop`, and the probes `heapStats` and `vmMemory`, from "bouy".
+`run`, `check`, and `build` take `--semantics value|reference` before the entry. `value`, the default, is sections 2 to 16 of this contract. `reference` is the JavaScript engine of [ADR 0003](../adr/0003-run-typescript-on-beam.md), which section 17 describes: objects live in a heap in each process and have identity, and promises run on a job queue in each process. It compiles one module, and it imports only `spawn` and `stop`, and the probes `heapStats` and `vmMemory`, from "bouy".
 
 ## 2. Names
 
@@ -410,3 +410,101 @@ Generated code calls only the functions in this section, the library functions o
 `bouy_effect`, called for generator functions (section 13): `generator(fun(() -> Value))` returns the Effect of a body, and `bind(Effect)` runs the Effect of a `yield*` and returns its value.
 
 `bouy_main`: `start/0` boots a program (section 1), and `import(Module)` runs the top-level code of `Module` once. The top-level code runs without trapping exits, so the workers that it links leave no messages behind.
+
+## 17. Reference semantics
+
+`--semantics reference` selects the JavaScript engine of [ADR 0003](../adr/0003-run-typescript-on-beam.md). Each actor is one realm: one BEAM process with a heap of objects in its process dictionary, a promise job queue, and the intrinsics of section 17.6. Sections 2 to 16 describe `--semantics value`. This section describes `--semantics reference`, and it replaces them when Phase 3 of the ADR ends.
+
+### 17.1 Values
+
+Every JavaScript value has exactly one Erlang term. So `=:=` decides SameValue, and any value can be a key of an Erlang map.
+
+| JavaScript       | Erlang term                                                                                                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `undefined`      | `undefined`                                                                                                                                                                                      |
+| `null`           | `null`                                                                                                                                                                                           |
+| boolean          | `true`, `false`                                                                                                                                                                                  |
+| number           | an integer `I` with `abs(I) =< 2^53`, for every integral value in that range; a float for any other finite value, and `-0.0` for -0; the atoms `'NaN'`, `'Infinity'`, and `'-Infinity'`          |
+| string           | a binary when every UTF-16 code unit is at most `16#FF`, one byte for each unit; else `{'$u16', Binary}`, two bytes for each unit, big-endian                                                    |
+| BigInt (planned) | `{'$bigint', Integer}`                                                                                                                                                                           |
+| symbol           | `{'$sym', Tag, Description}`: `Tag` is a unique integer for `Symbol()`, `registered` for `Symbol.for(Key)`, whose description is the key, or the atom of a well-known symbol, such as `iterator` |
+| object           | `{'$o', Id}`: `Id` is a positive integer, or the atom of an intrinsic, such as `'Object.prototype'`                                                                                              |
+| function         | `{'$f', Id, Fun}`, with `Fun` of arity 2, `fun(This, Args)`. `Id` is an integer, `{builtin, Name}` for a builtin, or `{fn, Module, Name}` for a module-level function declaration                |
+| actor ref        | `{'$actor', Pid}`                                                                                                                                                                                |
+
+A heap cell, `{'$c', Id}`, holds a variable that a closure writes. It is never a JavaScript value.
+
+**Numbers.** JavaScript numbers are doubles. JSC keeps a double that is an exact int32 as an int32, and only other values as doubles (`JSValue::JSValue(double)` in WebKit's `Source/JavaScriptCore/runtime/JSCJSValueInlines.h`). V8 keeps small integers as Smis. Bouy follows the same rule with a wider range. A BEAM small integer is an immediate term of 60 bits, and a float is a boxed term on the process heap, so integers are the fast path. Every integer with `abs(I) =< 2^53` is exactly a double, so the integer form never changes a result. BEAM floats cannot hold NaN or an infinity, so those values are atoms.
+
+`bouy_ref_number:canonical/1` turns any Erlang number into this form, and every operation returns it:
+
+- An integer result outside the range becomes the nearest double. BEAM converts a big integer to a correctly rounded double, so `2^53 + 1` is `2^53`. A result past the largest double is an infinity.
+- A float result that is integral and in the range becomes an integer. So `0.5 + 0.5` is `1`.
+- A product, quotient, or remainder that is zero has the sign that IEEE 754 gives it, such as `0 * -5` and `-5 % 5`, which are `-0.0`.
+- A float operation that overflows raises `badarith` in Erlang, and the result is the infinity of its sign.
+- The bitwise operators convert with ToInt32 or ToUint32 and return integers.
+
+`===` on two numbers is `==` in Erlang, so `0 === -0` holds, and `'NaN'` is never equal to itself. SameValueZero, the key equality of `Map`, `Set`, and `includes`, maps `-0.0` to `0` and then compares terms. `bouy_ref_number:to_string/1` prints the shortest digits that read back to the same double, as `Number.prototype.toString` does.
+
+**Strings.** A JavaScript string is a sequence of UTF-16 code units, and a code unit can be a lone surrogate. JSC stores a string in an 8-bit (Latin-1) or a 16-bit buffer (`is8Bit()` in WebKit's `Source/WTF/wtf/text/StringImpl.h`), and Bun uses these strings. V8 has one-byte and two-byte strings. Bouy uses the same two forms, and a string with every unit at most `16#FF` always takes the one-byte form:
+
+- `length` is `byte_size/1`, or half of it, and an index is a binary match, so both take constant time.
+- A lone surrogate is a unit like any other.
+- ASCII text has the same bytes in Latin-1 and in UTF-8. So the binary literals of the runtime, such as `<<"length">>`, are strings of the engine as they are.
+- Two strings are equal exactly when their terms are equal.
+
+Concatenation appends binaries; BEAM appends in place when the left binary is the newest one, so the engine has no ropes. Slicing returns a sub-binary, and the slice of a two-byte string becomes one-byte when it can. The module `bouy_ref_string` holds these operations.
+
+Text crosses the boundary of the engine in two functions. `bouy_ref_string:from_utf8/1` reads UTF-8 and replaces each byte that does not decode with U+FFFD. `bouy_ref_string:to_utf8/1` writes UTF-8 and replaces each lone surrogate with U+FFFD, as Node does when it writes to a stream. Console output, JSON text, the dates and number text of the value core, and the host use these functions. `JSON.stringify` writes a lone surrogate as a `\uXXXX` escape, so its output holds no lone surrogate. The compiler writes each string literal in the engine form (`Expr::JsString`). It reads a lone surrogate from the escape that oxc uses for it.
+
+**BigInt.** An Erlang integer is a number in this form, so a BigInt needs a tag of its own. `{'$bigint', I}` holds the value as an Erlang integer of any size, and `bouy_ref_bigint` will hold its operations.
+
+### 17.2 Objects
+
+The heap entry of an object is the record `{Class, Proto, Props, Keys, Attrs, Slots}` under its integer id in the process dictionary:
+
+- `Class` is the kind of the object: `object`, `array`, `function`, `error`, `map`, `set`, `promise`, `generator`, `list_iterator`, or `date`.
+- `Proto` is `null` or an object or function value.
+- `Props` maps each key to a value, or to `{'$accessor', Get, Set}`.
+- `Keys` holds the string and symbol keys, newest first.
+- `Attrs` maps a key to its attribute bits (writable 1, enumerable 2, configurable 4) when they are not all set, and holds `'$frozen'` or `'$noext'` for a frozen or a non-extensible object.
+- `Slots` holds the internal slots of the class.
+
+An intrinsic is a static record in `persistent_term` that every realm reads. A realm copies the record into its heap when it first writes to the intrinsic. The collector, `bouy_heap:gc/1`, marks and sweeps between jobs, when the stack is empty.
+
+V8 and JSC share one hidden class (a Map in V8, a Structure in JSC) among objects with the same keys, and inline caches remember where a key is. Bouy keeps a map for each object. Shapes and inline caches are Phase 5 of ADR 0003.
+
+### 17.3 Arrays
+
+An array has the class `array` and the slots `{Length, Elements}`. `Elements` maps each index to its value, and a missing index is a hole. `length` is in the slots, not in `Props`. `push` reads and writes the record once for any number of items. V8 and JSC keep packed arrays of small integers, doubles, or values in a contiguous store, and holey or sparse arrays in other stores. A contiguous store for dense arrays is future work.
+
+### 17.4 Functions
+
+A function value carries its Erlang fun, so a call needs no heap read. A function gets a heap record only when it needs one: an arrow function or a method has none until a program writes a property to it. A function expression or a nested function declaration gets a record with its `name`, `length`, and `prototype`, and its slots hold `kind => normal`. A class holds `kind => class`, its parent, and the fun of its `[[Construct]]`. A builtin is the same term in every realm, so its identity holds across realms.
+
+### 17.5 Property keys
+
+A property key is one of these terms:
+
+- an array index, `0 =< K =< 2^32 - 2`, as an integer;
+- any other string, as a string of section 17.1;
+- a symbol;
+- a private name, `{'#', ClassName, Name}`, which is never an own key that reflection returns.
+
+ToPropertyKey turns a canonical numeric string such as `"7"` into the integer, and a number into its string, so `o[7]` and `o["7"]` are one key. `bouy_heap:own_keys/1` returns the keys in the order of OrdinaryOwnPropertyKeys: array indexes in ascending order, then string keys in the order of their creation, then symbols in the order of their creation.
+
+### 17.6 Modules
+
+The compiler lowers in `crates/bouy-compiler/src/reference/`, one file for each area: `context` (the lowering state), `module`, `function`, `class`, `suspend` (`await` and `yield`), `stmt`, `loops`, `exception` (`try`), `expr`, `variable`, `member`, `call`, `literal`, `pattern`, and `analyze`.
+
+The runtime has these modules:
+
+| Module              | Role                                                                                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bouy_ref`          | The operations that compiled code calls: properties, calls, classes, operators, equality, and conversions                                                                                                     |
+| `bouy_heap`         | The heap: records, properties, descriptors, prototypes, own keys, cells, the collector, and the structured clone                                                                                              |
+| `bouy_jobs`         | The job queue, promises, timers, and actors                                                                                                                                                                   |
+| `bouy_ref_realm`    | Installs the intrinsics of every family, and holds the global object and the global functions                                                                                                                 |
+| `bouy_ref_<family>` | One family of built-ins each: `object`, `function`, `boolean`, `symbol`, `error`, `number`, `math`, `bigint`, `string`, `regexp`, `array`, `iterator`, `collection`, `promise`, `json`, `date`, and `console` |
+
+A family exports `intrinsics/0`, its static records as `[{Id, Record}]`, and `globals/0`, its global bindings as `[{Name, Value}]`. Its builtin methods call its `method(Owner, Name, This, Args)`, and a constructor called without `new` calls its `call_constructor(Name, This, Args)`. `bouy_ref_realm:families/0` lists the families. `runtime/src/bouy_ref.hrl` holds the macros that the modules share, such as `?IS_STRING/1` and `?IS_NUMBER/1`.

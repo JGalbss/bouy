@@ -35,6 +35,8 @@
 %% an integer is a root, and so is each term that the caller passes.
 -module(bouy_heap).
 
+-include("bouy_ref.hrl").
+
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
 -export([function/1, function/4, call/3, construct/3]).
@@ -63,9 +65,7 @@
 -define(ALL, 7).
 -define(MAX_INDEX, 4294967294).
 -define(EMPTY, {object, null, #{}, [], #{}, none}).
--define(OBJECT_PROTO, {'$o', 'Object.prototype'}).
 -define(ARRAY_PROTO, {'$o', 'Array.prototype'}).
--define(FUNCTION_PROTO, {'$o', 'Function.prototype'}).
 -define(is_obj(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
 
 %%% Allocation
@@ -204,7 +204,7 @@ function(Fun, Name, Length, Slots) ->
 
 -spec call(value(), value(), list()) -> value().
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
-call(V, _This, _Args) -> throw_error('TypeError', <<(describe(V))/binary, " is not a function">>).
+call(V, _This, _Args) -> throw_error('TypeError', text([describe(V), <<" is not a function">>])).
 
 %% [[Construct]] for a function whose slots hold construct => fun((NewTarget, Args) -> Object).
 -spec construct(value(), list(), value()) -> value().
@@ -219,10 +219,10 @@ construct({'$f', Id, Fun} = F, Args, NewTarget) ->
                 _ -> This
             end;
         _ ->
-            throw_error('TypeError', <<(describe(F))/binary, " is not a constructor">>)
+            throw_error('TypeError', text([describe(F), <<" is not a constructor">>]))
     end;
 construct(V, _Args, _NewTarget) ->
-    throw_error('TypeError', <<(describe(V))/binary, " is not a constructor">>).
+    throw_error('TypeError', text([describe(V), <<" is not a constructor">>])).
 
 prototype_for(NewTarget) ->
     case get(NewTarget, <<"prototype">>) of
@@ -352,7 +352,7 @@ writable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?WRITABLE =/= 0.
 
 -spec read_only(key()) -> no_return().
 read_only(K) ->
-    throw_error('TypeError', <<"Cannot assign to read only property '", (key_text(K))/binary, "' of object">>).
+    throw_error('TypeError', text([<<"Cannot assign to read only property '">>, key_text(K), <<"' of object">>])).
 
 add(Id, {Class, P, Props, Keys, Attrs, Slots} = R, K, V, O) ->
     case inherited_setter(P, K) of
@@ -364,7 +364,7 @@ add(Id, {Class, P, Props, Keys, Attrs, Slots} = R, K, V, O) ->
             write_checked(Id, R, K, V);
         none ->
             extensible(Attrs) orelse
-                throw_error('TypeError', <<"Cannot add property ", (key_text(K))/binary, ", object is not extensible">>),
+                throw_error('TypeError', text([<<"Cannot add property ">>, key_text(K), <<", object is not extensible">>])),
             erlang:put(Id, {Class, P, Props#{K => V}, add_key(K, Props, Keys), Attrs, Slots}),
             V
     end.
@@ -374,7 +374,7 @@ extensible(#{'$noext' := true}) -> false;
 extensible(_) -> true.
 
 call_setter(undefined, _O, K, _V) ->
-    throw_error('TypeError', <<"Cannot set property ", (key_text(K))/binary, " which has only a getter">>);
+    throw_error('TypeError', text([<<"Cannot set property ">>, key_text(K), <<" which has only a getter">>]));
 call_setter(Setter, O, _K, V) ->
     _ = call(Setter, O, [V]),
     V.
@@ -415,7 +415,7 @@ resize({Length, Elements}, NewLength) when is_integer(NewLength), NewLength >= L
 resize({_, Elements}, NewLength) when is_integer(NewLength), NewLength >= 0 ->
     {NewLength, maps:filter(fun(I, _) -> I < NewLength end, Elements)};
 resize(_, NewLength) ->
-    throw_error('RangeError', <<"Invalid array length: ", (text(NewLength))/binary>>).
+    throw_error('RangeError', text([<<"Invalid array length: ">>, bouy_ref:to_string(NewLength)])).
 
 %% The `in` operator.
 -spec has(value(), key()) -> boolean().
@@ -458,7 +458,7 @@ configurable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?CONFIGURABLE =/= 0.
 
 -spec cannot_delete(key()) -> no_return().
 cannot_delete(K) ->
-    throw_error('TypeError', <<"Cannot delete property '", (key_text(K))/binary, "'">>).
+    throw_error('TypeError', text([<<"Cannot delete property '">>, key_text(K), <<"'">>])).
 
 %% OrdinaryOwnPropertyKeys: indexes ascending, then strings in insertion
 %% order, then symbols in insertion order. Private names are not keys.
@@ -471,14 +471,14 @@ own_keys(O) ->
     end,
     Ordered = lists:reverse(Keys),
     Indexes ++ lists:sort([K || K <- maps:keys(Props), is_integer(K)])
-        ++ [K || K <- Ordered, is_binary(K)]
+        ++ [K || K <- Ordered, ?IS_STRING(K)]
         ++ [K || {'$sym', _, _} = K <- Ordered].
 
 %% The enumerable own string keys, for Object.keys, for-in, spread, and JSON.
 -spec enumerable_keys(value()) -> [key()].
 enumerable_keys(O) ->
     {_, _, _, _, Attrs, _} = record_of(O),
-    [K || K <- own_keys(O), not is_tuple(K), enumerable(K, Attrs)].
+    [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs)].
 
 enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 
@@ -677,10 +677,10 @@ well_known(Name) -> {'$sym', Name, <<"Symbol.", (atom_to_binary(Name))/binary>>}
 -spec to_key(term()) -> key().
 to_key(K) when is_integer(K), K >= 0, K =< ?MAX_INDEX -> K;
 to_key(<<C, _/binary>> = K) when C >= $0, C =< $9 -> index_or_string(K);
-to_key(K) when is_binary(K) -> K;
+to_key(K) when ?IS_STRING(K) -> K;
 to_key({'$sym', _, _} = K) -> K;
 to_key(F) when is_float(F), F >= 0, F =< ?MAX_INDEX, F == trunc(F) -> trunc(F);
-to_key(K) -> text(K).
+to_key(K) -> bouy_ref:to_string(K).
 
 index_or_string(<<"0">>) -> 0;
 index_or_string(<<"0", _/binary>> = K) -> K;
@@ -699,18 +699,17 @@ key_to_value(K) when is_integer(K) -> integer_to_binary(K);
 key_to_value(K) -> K.
 
 key_text(K) when is_integer(K) -> integer_to_binary(K);
-key_text(K) when is_binary(K) -> K;
-key_text({'$sym', _, Description}) -> <<"Symbol(", (text(Description))/binary, ")">>;
-key_text({'#', _, Name}) -> <<"#", Name/binary>>.
+key_text(K) when ?IS_STRING(K) -> K;
+key_text({'$sym', _, undefined}) -> <<"Symbol()">>;
+key_text({'$sym', _, Description}) -> text([<<"Symbol(">>, Description, <<")">>]);
+key_text({'#', _, Name}) -> text([<<"#">>, Name]).
 
-text(V) when is_binary(V) -> V;
-text(undefined) -> <<>>;
-text(V) -> bouy_rt:to_string(V).
+%% A message from strings of the engine.
+text(Parts) -> bouy_ref_string:concat(Parts).
 
 describe({'$f', _, _}) -> <<"function">>;
 describe({'$o', _}) -> <<"object">>;
-describe(V) when is_binary(V) -> <<"\"", V/binary, "\"">>;
-describe(V) -> text(V).
+describe(V) -> bouy_ref:describe(V).
 
 %%% Errors
 
@@ -727,7 +726,7 @@ error_object(Proto, Message, Stack) ->
 
 -spec throw_error(atom(), binary()) -> no_return().
 throw_error(Name, Message) ->
-    Stack = <<(atom_to_binary(Name))/binary, ": ", Message/binary, "\n    at <bouy>">>,
+    Stack = text([atom_to_binary(Name), <<": ">>, Message, <<"\n    at <bouy>">>]),
     erlang:error({'$throw', error_object(Name, Message, Stack)}).
 
 %%% Garbage collection
@@ -862,7 +861,7 @@ out({'$o', Id} = O, Seen) ->
 out({'$f', _, _}, _Seen) ->
     throw_error('DataCloneError', <<"function could not be cloned.">>);
 out({'$sym', _, _} = S, _Seen) ->
-    throw_error('DataCloneError', <<(key_text(S))/binary, " could not be cloned.">>);
+    throw_error('DataCloneError', text([key_text(S), <<" could not be cloned.">>]));
 out(V, Seen) ->
     {V, Seen}.
 
@@ -880,14 +879,17 @@ out_record({set, _, _, _, _, {Index, _}}, _O, N, Seen) ->
 out_record({date, _, _, _, _, Ms}, _O, N, Seen) ->
     {{'$date', N, Ms}, Seen};
 out_record({error, _, _, _, _, _}, O, N, Seen) ->
-    Name = text(get(O, <<"name">>)),
-    {{'$error', N, Name, text(get(O, <<"message">>)), text(get(O, <<"stack">>))}, Seen};
+    Name = value_text(get(O, <<"name">>)),
+    {{'$error', N, Name, value_text(get(O, <<"message">>)), value_text(get(O, <<"stack">>))}, Seen};
 out_record({object, _, _, _, _, _}, O, N, Seen) ->
     Pairs = [{K, get(O, K)} || K <- enumerable_keys(O)],
     {Items, Seen1} = out_pairs(Pairs, Seen),
     {{'$object', N, Items}, Seen1};
 out_record({Class, _, _, _, _, _}, _O, _N, _Seen) ->
     throw_error('DataCloneError', <<"#<", (atom_to_binary(Class))/binary, "> could not be cloned.">>).
+
+value_text(undefined) -> <<>>;
+value_text(V) -> bouy_ref:to_string(V).
 
 out_pairs(Pairs, Seen) ->
     lists:mapfoldl(fun({K, V}, S) -> {V1, S1} = out(V, S), {{K, V1}, S1} end, Seen, Pairs).

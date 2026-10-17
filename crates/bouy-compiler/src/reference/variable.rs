@@ -19,7 +19,7 @@ impl<'a> Lowerer<'a, '_> {
                 name => self.bind(Expr::call(
                     "bouy_ref",
                     "global",
-                    vec![Expr::binary(name.to_owned())],
+                    vec![Expr::js_string(name)],
                 )),
             },
         }

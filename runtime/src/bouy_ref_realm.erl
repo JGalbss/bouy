@@ -61,7 +61,7 @@ install() ->
 global(Name) ->
     case persistent_term:get({?MODULE, globals}) of
         #{Name := V} -> V;
-        _ -> bouy_heap:throw_error('ReferenceError', <<Name/binary, " is not defined">>)
+        _ -> bouy_heap:throw_error('ReferenceError', bouy_ref_string:concat(Name, <<" is not defined">>))
     end.
 
 %%% Builders for the intrinsics of a family
@@ -113,7 +113,7 @@ rest(_, []) -> [].
 %% A callback argument: a TypeError unless it is callable.
 -spec callable(term()) -> term().
 callable(F) ->
-    bouy_heap:is_callable(F) orelse bouy_ref:type_error(<<(bouy_ref:describe(F))/binary, " is not a function">>),
+    bouy_heap:is_callable(F) orelse bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(F), <<" is not a function">>)),
     F.
 
 %%% The global object and the global functions

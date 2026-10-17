@@ -24,4 +24,4 @@ math_functions() ->
      <<"log10">>, <<"log1p">>, <<"log2">>, <<"max">>, <<"min">>, <<"pow">>, <<"random">>, <<"round">>, <<"sign">>, <<"sin">>,
      <<"sinh">>, <<"sqrt">>, <<"tan">>, <<"tanh">>, <<"trunc">>].
 
-math(Name, Args) -> bouy_math:(binary_to_existing_atom(Name))(Args).
+math(Name, Args) -> bouy_ref_number:canonical(bouy_math:(binary_to_existing_atom(Name))(Args)).

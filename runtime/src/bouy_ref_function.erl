@@ -36,12 +36,12 @@ function_proto(<<"bind">>, F, Args) ->
     BoundThis = arg(1, Args),
     Bound = rest(2, Args),
     Name = case bouy_ref:get(F, <<"name">>) of
-        N when is_binary(N) -> N;
+        N when ?IS_STRING(N) -> N;
         _ -> <<>>
     end,
-    bouy_heap:function(fun(_This, More) -> bouy_ref:call(F, BoundThis, Bound ++ More) end, <<"bound ", Name/binary>>, 0, #{}) ;
+    bouy_heap:function(fun(_This, More) -> bouy_ref:call(F, BoundThis, Bound ++ More) end, bouy_ref_string:concat(<<"bound ">>, Name), 0, #{}) ;
 function_proto(<<"toString">>, F, _Args) ->
     case bouy_heap:slots(F) of
-        #{kind := class} -> <<"class ", (bouy_ref:get(F, <<"name">>))/binary, " { }">>;
-        _ -> <<"function ", (bouy_ref:get(F, <<"name">>))/binary, "() { [native code] }">>
+        #{kind := class} -> bouy_ref_string:concat([<<"class ">>, bouy_ref:to_string(bouy_ref:get(F, <<"name">>)), <<" { }">>]);
+        _ -> bouy_ref_string:concat([<<"function ">>, bouy_ref:to_string(bouy_ref:get(F, <<"name">>)), <<"() { [native code] }">>])
     end.

@@ -59,9 +59,9 @@ iterate({'$o', _} = O) ->
         list_iterator -> {list_iterator, O};
         _ -> protocol(O)
     end;
-iterate(S) when is_binary(S) -> {list, chars(S)};
+iterate(S) when ?IS_STRING(S) -> {list, [bouy_ref_string:from_code_points([C]) || C <- bouy_ref_string:code_points(S)]};
 iterate({'$f', _, _} = F) -> protocol(F);
-iterate(V) -> bouy_ref:type_error(<<(bouy_ref:describe(V))/binary, " is not iterable">>).
+iterate(V) -> bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(V), <<" is not iterable">>)).
 
 protocol(O) ->
     case bouy_ref:get(O, bouy_heap:well_known(iterator)) of
@@ -70,10 +70,8 @@ protocol(O) ->
             ?IS_OBJECT(Iterator) orelse bouy_ref:type_error(<<"Result of the Symbol.iterator method is not an object">>),
             {protocol, Iterator, bouy_ref:get(Iterator, <<"next">>)};
         _ ->
-            bouy_ref:type_error(<<(bouy_ref:describe(O))/binary, " is not iterable">>)
+            bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(O), <<" is not iterable">>))
     end.
-
-chars(S) -> [<<C/utf8>> || <<C/utf8>> <= S].
 
 %% The next value: {value, V, State1}, or done.
 -spec step(term()) -> {value, term(), term()} | done.
@@ -96,7 +94,7 @@ step({list_iterator, O} = State) ->
     end;
 step({protocol, Iterator, Next} = State) ->
     Result = bouy_ref:call(Next, Iterator, []),
-    ?IS_OBJECT(Result) orelse bouy_ref:type_error(<<"Iterator result ", (bouy_ref:describe(Result))/binary, " is not an object">>),
+    ?IS_OBJECT(Result) orelse bouy_ref:type_error(bouy_ref_string:concat([<<"Iterator result ">>, bouy_ref:describe(Result), <<" is not an object">>])),
     case bouy_ref:truthy(bouy_ref:get(Result, <<"done">>)) of
         true -> done;
         false -> {value, bouy_ref:get(Result, <<"value">>), State}
@@ -138,13 +136,13 @@ rest_list(State) -> bouy_heap:new_array(drain(State, [])).
 %% each once, own keys first.
 -spec for_in_keys(term()) -> [binary()].
 for_in_keys(V) when ?IS_OBJECT(V) -> [bouy_heap:key_to_value(K) || K <- chain_keys(V, [], [])];
-for_in_keys(S) when is_binary(S) -> [integer_to_binary(I) || I <- lists:seq(0, length(chars(S)) - 1)];
+for_in_keys(S) when ?IS_STRING(S) -> [integer_to_binary(I) || I <- lists:seq(0, bouy_ref_string:length_of(S) - 1)];
 for_in_keys(_) -> [].
 
 chain_keys(null, _Seen, Acc) ->
     lists:reverse(Acc);
 chain_keys(O, Seen, Acc) ->
-    Own = [K || K <- bouy_heap:own_keys(O), not is_tuple(K)],
+    Own = [K || K <- bouy_heap:own_keys(O), is_integer(K) orelse ?IS_STRING(K)],
     Enumerable = bouy_heap:enumerable_keys(O),
     New = [K || K <- Enumerable, not lists:member(K, Seen)],
     chain_keys(bouy_heap:prototype_of(O), Own ++ Seen, lists:reverse(New) ++ Acc).

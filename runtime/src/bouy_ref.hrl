@@ -11,3 +11,8 @@
 %% The builtin methods Names of the object Owner, implemented by method/4 of
 %% this module.
 -define(METHODS(Owner, Names), bouy_ref_realm:methods(?MODULE, Owner, Names)).
+%% A number: an integer, a float, or one of the atoms of the non-finite
+%% values (bouy_ref_number).
+-define(IS_NUMBER(V), (is_number(V) orelse V =:= 'NaN' orelse V =:= 'Infinity' orelse V =:= '-Infinity')).
+%% A string: a one-byte binary or a two-byte {'$u16', Binary} (bouy_ref_string).
+-define(IS_STRING(V), (is_binary(V) orelse (is_tuple(V) andalso tuple_size(V) =:= 2 andalso element(1, V) =:= '$u16'))).

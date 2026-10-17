@@ -11,6 +11,10 @@ pub enum Expr {
     Float(f64),
     /// A UTF-8 binary literal.
     Binary(String),
+    /// A JavaScript string of the reference engine, as UTF-16 code units. It prints as a
+    /// one-byte binary when every unit is at most 0xFF, else as `{'$u16', Binary}` with two
+    /// bytes per unit (contract, "Reference semantics").
+    JsString(Vec<u16>),
     Tuple(Vec<Expr>),
     List(Vec<Expr>),
     /// `[A, B | Tail]`
@@ -87,6 +91,11 @@ impl Expr {
         Self::Binary(text.into())
     }
 
+    /// A JavaScript string of the reference engine.
+    pub fn js_string(text: &str) -> Self {
+        Self::JsString(text.encode_utf16().collect())
+    }
+
     pub fn undefined() -> Self {
         Self::atom("undefined")
     }
@@ -156,6 +165,7 @@ impl Expr {
             | Self::Integer(_)
             | Self::Float(_)
             | Self::Binary(_)
+            | Self::JsString(_)
             | Self::FunRef { .. } => true,
             Self::Tuple(items) | Self::List(items) => items.iter().all(Self::is_trivial),
             _ => false,
@@ -301,6 +311,7 @@ impl Printer {
             }
             Expr::Float(value) => self.out.push_str(&float(*value)),
             Expr::Binary(text) => self.out.push_str(&binary(text)),
+            Expr::JsString(units) => self.out.push_str(&js_string(units)),
             Expr::Tuple(items) => self.elements("{", items, "}"),
             Expr::List(items) => self.elements("[", items, "]"),
             Expr::Cons(heads, tail) => {
@@ -578,6 +589,27 @@ fn binary(text: &str) -> String {
     out
 }
 
+fn js_string(units: &[u16]) -> String {
+    if units.iter().any(|unit| *unit > 0xFF) {
+        let units: Vec<String> = units.iter().map(|unit| format!("{unit}:16")).collect();
+        return format!("{{'$u16', <<{}>>}}", units.join(","));
+    }
+    if units.is_empty() {
+        return "<<>>".to_owned();
+    }
+    let mut out = String::from("<<\"");
+    for unit in units {
+        match char::from_u32(u32::from(*unit)) {
+            Some(c) if c.is_ascii() => escape_char(&mut out, c, '"'),
+            _ => {
+                let _ = write!(out, "\\x{{{unit:X}}}");
+            }
+        }
+    }
+    out.push_str("\">>");
+    out
+}
+
 fn escape_char(out: &mut String, c: char, quote: char) {
     match c {
         '\\' => out.push_str("\\\\"),
@@ -637,6 +669,16 @@ mod tests {
         assert_eq!(float(1e-7), "1.0e-7");
         assert_eq!(float(2.5e-8), "2.5e-8");
         assert_eq!(float(-0.0), "-0.0");
+    }
+
+    #[test]
+    fn prints_js_strings_as_one_or_two_bytes_per_unit() {
+        let units = |text: &str| text.encode_utf16().collect::<Vec<u16>>();
+        assert_eq!(js_string(&units("a\"b")), "<<\"a\\\"b\">>");
+        assert_eq!(js_string(&units("café")), "<<\"caf\\x{E9}\">>");
+        assert_eq!(js_string(&units("€")), "{'$u16', <<8364:16>>}");
+        assert_eq!(js_string(&[0xD800, 0x61]), "{'$u16', <<55296:16,97:16>>}");
+        assert_eq!(js_string(&[]), "<<>>");
     }
 
     #[test]

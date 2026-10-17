@@ -35,4 +35,5 @@ unwrap_date({'$o', _} = O) ->
         date -> {'$date', bouy_heap:slots(O)};
         _ -> bouy_ref:to_primitive(O, default)
     end;
+unwrap_date(S) when ?IS_STRING(S) -> bouy_ref_string:to_utf8(S);
 unwrap_date(V) -> V.

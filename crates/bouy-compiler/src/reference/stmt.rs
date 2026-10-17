@@ -118,7 +118,7 @@ impl<'a> Lowerer<'a, '_> {
                 "named_fn",
                 vec![
                     fun,
-                    Expr::binary(name),
+                    Expr::js_string(&name),
                     Expr::Integer(i64::try_from(length).unwrap_or(0)),
                 ],
             ));

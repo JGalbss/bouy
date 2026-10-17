@@ -12,7 +12,7 @@ use oxc::syntax::operator::{
 };
 
 use super::context::{Kind, Lowerer, boolean_case};
-use super::literal::number;
+use super::literal::{js_string_literal, number};
 use super::member::MemberKey;
 use crate::erlang::{Clause, Expr};
 
@@ -22,7 +22,9 @@ impl<'a> Lowerer<'a, '_> {
             Expression::BooleanLiteral(literal) => Expr::atom(literal.value.to_string()),
             Expression::NullLiteral(_) => Expr::atom("null"),
             Expression::NumericLiteral(literal) => number(literal.value),
-            Expression::StringLiteral(literal) => Expr::binary(literal.value.as_str()),
+            Expression::StringLiteral(literal) => {
+                js_string_literal(literal.value.as_str(), literal.lone_surrogates)
+            }
             Expression::TemplateLiteral(template) => self.template(template),
             Expression::Identifier(ident) => self.identifier(ident),
             Expression::ThisExpression(_) => self.this_expr(),
@@ -345,7 +347,7 @@ impl<'a> Lowerer<'a, '_> {
                     && self.symbol_of(ident.reference_id.get()).is_none()
                     && !matches!(ident.name.as_str(), "undefined" | "NaN" | "Infinity")
                 {
-                    let name = Expr::binary(ident.name.to_string());
+                    let name = Expr::js_string(ident.name.as_str());
                     return self.bind(Expr::call("bouy_ref", "typeof_global", vec![name]));
                 }
                 let value = self.expr(&unary.argument);
@@ -374,10 +376,10 @@ impl<'a> Lowerer<'a, '_> {
     }
 }
 
-/// `===`: inline for atoms and binaries, whose equality is term equality.
+/// `===`: inline for atoms and strings, whose equality is term equality.
 pub fn strict_eq(left: Expr, right: Expr) -> Expr {
     let simple =
-        |e: &Expr| matches!(e, Expr::Atom(name) if name != "NaN") || matches!(e, Expr::Binary(_));
+        |e: &Expr| matches!(e, Expr::Atom(name) if name != "NaN") || matches!(e, Expr::JsString(_));
     if simple(&left) || simple(&right) {
         return Expr::op("=:=", left, right);
     }

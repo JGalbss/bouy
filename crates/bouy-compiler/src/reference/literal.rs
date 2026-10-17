@@ -20,7 +20,7 @@ impl<'a> Lowerer<'a, '_> {
             if let Some(cooked) = &quasi.value.cooked
                 && !cooked.is_empty()
             {
-                parts.push(Expr::binary(cooked.as_str()));
+                parts.push(js_string_literal(cooked.as_str(), quasi.lone_surrogates));
             }
             if let Some(expression) = template.expressions.get(index) {
                 parts.push(self.expr(expression));
@@ -80,14 +80,10 @@ impl<'a> Lowerer<'a, '_> {
                     } else {
                         self.expr(&property.value)
                     };
-                    entries.push((Expr::binary(key.clone()), value));
+                    entries.push((Expr::js_string(key), value));
                 }
             }
-            let order = keys
-                .iter()
-                .rev()
-                .map(|key| Expr::binary(key.clone()))
-                .collect();
+            let order = keys.iter().rev().map(|key| Expr::js_string(key)).collect();
             return self.bind(Expr::call(
                 "bouy_heap",
                 "literal",
@@ -170,11 +166,34 @@ pub fn number(value: f64) -> Expr {
     Expr::Float(value)
 }
 
+/// The JavaScript string of a literal. With lone surrogates, oxc writes each one as U+FFFD
+/// and the four hex digits of the code unit, and U+FFFD itself as U+FFFD `fffd`.
+pub fn js_string_literal(value: &str, lone_surrogates: bool) -> Expr {
+    if !lone_surrogates {
+        return Expr::js_string(value);
+    }
+    let mut units = Vec::new();
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{FFFD}' {
+            let hex: String = chars.by_ref().take(4).collect();
+            units.push(u16::from_str_radix(&hex, 16).unwrap_or(0xFFFD));
+            continue;
+        }
+        let mut buffer = [0; 2];
+        units.extend_from_slice(c.encode_utf16(&mut buffer));
+    }
+    Expr::JsString(units)
+}
+
 /// The value of a module-level `const` initializer that can be inlined.
 pub fn literal(expression: &Expression<'_>) -> Option<Expr> {
     match expression {
         Expression::NumericLiteral(literal) => Some(number(literal.value)),
-        Expression::StringLiteral(literal) => Some(Expr::binary(literal.value.as_str())),
+        Expression::StringLiteral(literal) => Some(js_string_literal(
+            literal.value.as_str(),
+            literal.lone_surrogates,
+        )),
         Expression::BooleanLiteral(literal) => Some(Expr::atom(literal.value.to_string())),
         Expression::NullLiteral(_) => Some(Expr::atom("null")),
         Expression::UnaryExpression(unary) if unary.operator == UnaryOperator::UnaryNegation => {
