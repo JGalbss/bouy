@@ -9,7 +9,7 @@ use oxc::ast_visit::Visit;
 use oxc::semantic::{ScopeId, SymbolId};
 use oxc::span::Span;
 
-use super::analyze::{UsesArguments, UsesThis, VarDeclarations, is_simple};
+use super::analyze::{BlockFunctions, UsesArguments, UsesThis, VarDeclarations, is_simple};
 use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret};
 use super::expr::strip;
 use crate::erlang::{Clause, Expr};
@@ -182,6 +182,24 @@ impl<'a> Lowerer<'a, '_> {
             code.push(self.mapped_arguments(params, args));
         }
         let saved = std::mem::take(&mut self.pre);
+        if self.frame.sloppy
+            && let FnBody::Block(block) = body
+        {
+            let mut blocks = BlockFunctions::default();
+            for statement in &block.statements {
+                blocks.visit_statement(statement);
+            }
+            for symbol in blocks.found {
+                if !self.frame.env.contains_key(&symbol) {
+                    let cell = self.fresh("Fn");
+                    self.pre.push(Expr::matches(
+                        Expr::var(cell.clone()),
+                        Expr::call("bouy_heap", "cell", vec![Expr::undefined()]),
+                    ));
+                    self.frame.env.insert(symbol, Local::Cell(cell));
+                }
+            }
+        }
         for symbol in vars.0 {
             if !self.frame.env.contains_key(&symbol) {
                 // `var arguments` keeps the arguments object (ECMA-262 §10.2.11).

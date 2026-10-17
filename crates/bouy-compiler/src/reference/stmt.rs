@@ -111,6 +111,12 @@ impl<'a> Lowerer<'a, '_> {
         }
         let mut cells = Vec::new();
         for (symbol, _) in &functions {
+            // A sloppy block function shares the cell that its function made for it at the
+            // start (Annex B.3.3), and the rest of a block hoists again into the same cell.
+            if let Some(Local::Cell(cell)) = self.frame.env.get(symbol) {
+                cells.push(cell.clone());
+                continue;
+            }
             let cell = self.fresh("Fn");
             self.pre.push(Expr::matches(
                 Expr::var(cell.clone()),

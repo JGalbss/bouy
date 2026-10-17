@@ -354,6 +354,34 @@ impl<'a> Visit<'a> for UsesThis {
     fn visit_class(&mut self, _it: &Class<'a>) {}
 }
 
+/// The function declarations inside the blocks of a function body, outside nested
+/// functions: in sloppy code each one is also a `var` of the function (ECMA-262 Annex
+/// B.3.3), which holds undefined until its block runs.
+#[derive(Default)]
+pub struct BlockFunctions {
+    depth: usize,
+    pub found: Vec<SymbolId>,
+}
+
+impl<'a> Visit<'a> for BlockFunctions {
+    fn visit_statement(&mut self, it: &Statement<'a>) {
+        if let Statement::FunctionDeclaration(function) = it {
+            if self.depth > 0
+                && let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get())
+            {
+                self.found.push(symbol);
+            }
+            return;
+        }
+        self.depth += 1;
+        walk::walk_statement(self, it);
+        self.depth -= 1;
+    }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+    fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
 /// Whether a function reads its `arguments` object: in its own code or in an arrow
 /// function inside it, which shares it.
 #[derive(Default)]
