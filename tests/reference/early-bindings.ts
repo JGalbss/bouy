@@ -78,3 +78,20 @@ console.log(readModuleLater());
 function readModuleLater(): string {
   return moduleLater;
 }
+
+function cases(n: number): string {
+  switch (n) {
+    case 1:
+      const word = "one";
+      return word;
+    case 2:
+      try {
+        return word;
+      } catch (error) {
+        return (error as Error).constructor.name;
+      }
+    default:
+      return "other";
+  }
+}
+console.log("switch cases share a scope:", cases(1), cases(2), cases(3));

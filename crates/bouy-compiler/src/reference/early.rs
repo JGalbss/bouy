@@ -4,7 +4,7 @@
 //! `'$uninitialized'` until the declaration runs, and a read before then throws a
 //! `ReferenceError`: the temporal dead zone.
 
-use oxc::ast::ast::{ForStatementLeft, FormalParameters, Statement};
+use oxc::ast::ast::{ForStatementLeft, FormalParameters, Statement, SwitchCase, SwitchStatement};
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
@@ -49,6 +49,43 @@ impl<'a> Lowerer<'a, '_> {
                 && self.read_early(symbol, end, &hoisted)
             {
                 code.push(self.early_cell(symbol));
+            }
+        }
+        code
+    }
+
+    /// The lexical declarations of a `switch`, whose cases share one scope: a cell for
+    /// each that code reads outside its case or before its declaration.
+    pub fn early_case_bindings(&mut self, statement: &'a SwitchStatement<'a>) -> Vec<Expr> {
+        let mut code = Vec::new();
+        for case in &statement.cases {
+            let Some(span) = case_span(case) else {
+                continue;
+            };
+            for item in &case.consequent {
+                let Statement::VariableDeclaration(declaration) = item else {
+                    continue;
+                };
+                if !declaration.kind.is_lexical() {
+                    continue;
+                }
+                for declarator in &declaration.declarations {
+                    for id in declarator.id.get_binding_identifiers() {
+                        let Some(symbol) = id.symbol_id.get() else {
+                            continue;
+                        };
+                        let nodes = self.semantic.nodes();
+                        let early = self.semantic.scoping().get_resolved_references(symbol).any(
+                            |reference| {
+                                let at = nodes.get_node(reference.node_id()).span();
+                                !contains(span, at) || at.start < declarator.span.end
+                            },
+                        );
+                        if early && !self.frame.env.contains_key(&symbol) {
+                            code.push(self.early_cell(symbol));
+                        }
+                    }
+                }
             }
         }
         code
@@ -166,4 +203,11 @@ impl<'a> Lowerer<'a, '_> {
             vec![cell_get(cell), Expr::js_string(&name)],
         ))
     }
+}
+
+/// The span of the statements of a case.
+fn case_span(case: &SwitchCase<'_>) -> Option<Span> {
+    let first = case.consequent.first()?;
+    let last = case.consequent.last()?;
+    Some(Span::new(first.span().start, last.span().end))
 }

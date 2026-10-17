@@ -341,6 +341,8 @@ impl<'a> Lowerer<'a, '_> {
         let labels = std::mem::take(&mut self.frame.labels);
         let discriminant = self.expr(&statement.discriminant);
         let discriminant = self.bind(discriminant);
+        let early = self.early_case_bindings(statement);
+        self.pre.extend(early);
         let mut code = std::mem::take(&mut self.pre);
         let vars = self.assigned_in(statement.span, |visitor| {
             for case in &statement.cases {

@@ -8,3 +8,4 @@ loop binding 1
 loop head: ReferenceError outside
 module binding before its declaration: ReferenceError
 module later
+switch cases share a scope: one ReferenceError other
