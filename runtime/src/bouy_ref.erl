@@ -489,35 +489,31 @@ spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
 %% {...source} into Target: CopyDataProperties.
 -spec object_spread(term(), term()) -> term().
 object_spread(Target, Source) when ?IS_OBJECT(Source) ->
-    [define_field(Target, K, get(Source, K)) || K <- own_enumerable_keys(Source)],
-    Target;
+    copy_data_properties(Target, Source, []);
 object_spread(Target, S) when ?IS_STRING(S) ->
     [define_field(Target, I, bouy_ref_string:unit_string(S, I)) || I <- lists:seq(0, bouy_ref_string:length_of(S) - 1)],
     Target;
 object_spread(Target, _Primitive) ->
     Target.
 
-own_enumerable_keys(O) ->
-    Enumerable = bouy_heap:enumerable_keys(O),
-    Symbols = [K || {'$sym', _, _} = K <- bouy_heap:own_keys(O), is_enumerable(O, K)],
-    Enumerable ++ Symbols.
-
-is_enumerable(O, K) ->
-    case bouy_heap:get_own(O, K) of
-        {data, _, Bits} -> Bits band 2 =/= 0;
-        {accessor, _, _, Bits} -> Bits band 2 =/= 0;
-        none -> false
-    end.
-
 %% const { a, ...rest } = source: the enumerable own properties not named.
 -spec object_rest(term(), [bouy_heap:key()]) -> term().
-object_rest(Source, Excluded) ->
-    Rest = bouy_heap:new_object(?OBJECT_PROTO),
-    case ?IS_OBJECT(Source) of
-        true -> [define_field(Rest, K, get(Source, K)) || K <- own_enumerable_keys(Source), not lists:member(K, Excluded)];
-        false -> ok
-    end,
-    Rest.
+object_rest(Source, Excluded) when ?IS_OBJECT(Source) ->
+    copy_data_properties(bouy_heap:new_object(?OBJECT_PROTO), Source, Excluded);
+object_rest(_Primitive, _Excluded) ->
+    bouy_heap:new_object(?OBJECT_PROTO).
+
+%% CopyDataProperties of an object: the keys in [[OwnPropertyKeys]] order,
+%% each excluded key skipped before [[GetOwnProperty]], and Get only when
+%% the property is still there and enumerable.
+copy_data_properties(Target, Source, Excluded) ->
+    lists:foreach(fun(K) ->
+                          case not lists:member(K, Excluded) andalso bouy_heap:is_enumerable(bouy_heap:get_own(Source, K)) of
+                              true -> define_field(Target, K, get(Source, K));
+                              false -> ok
+                          end
+                  end, bouy_heap:own_keys(Source)),
+    Target.
 
 -spec template(list()) -> bouy_ref_string:js_string().
 template(Parts) -> text([to_string(P) || P <- Parts]).
