@@ -1,0 +1,4 @@
+{ a: 1 } function
+WeakMap { <items unknown> } WeakSet { <items unknown> } WeakRef {}
+[Function: named] [Function: bound named] [Function (anonymous)] [GeneratorFunction: gen] [AsyncFunction: later]
+[Object: null prototype] {} Object [Reflect] {} { value: 1, Symbol(Symbol.toStringTag): 'Custom' }
