@@ -2,8 +2,8 @@
 //! (`[a, b] = [b, a]`).
 
 use oxc::ast::ast::{
-    AssignmentTarget, AssignmentTargetMaybeDefault, AssignmentTargetProperty, BindingPattern,
-    Expression, SimpleAssignmentTarget,
+    AssignmentTarget, AssignmentTargetMaybeDefault, AssignmentTargetProperty, BindingIdentifier,
+    BindingPattern, Expression, SimpleAssignmentTarget,
 };
 use oxc::span::GetSpan;
 
@@ -42,16 +42,19 @@ impl<'a> Lowerer<'a, '_> {
                 for property in &object.properties {
                     let key = self.property_key(&property.key, property.computed);
                     keys.push(key.clone());
-                    let item = self.get(source.clone(), MemberKey::Static(key));
-                    self.declare_pattern(&property.value, item);
+                    let source = source.clone();
+                    self.declare_element(&property.value, |me| {
+                        me.get(source, MemberKey::Static(key))
+                    });
                 }
                 if let Some(rest) = &object.rest {
-                    let value = self.bind(Expr::call(
-                        "bouy_ref_iterator",
-                        "object_rest",
-                        vec![source, Expr::List(keys)],
-                    ));
-                    self.declare_pattern(&rest.argument, value);
+                    self.declare_element(&rest.argument, |me| {
+                        me.bind(Expr::call(
+                            "bouy_ref_iterator",
+                            "object_rest",
+                            vec![source, Expr::List(keys)],
+                        ))
+                    });
                 }
             }
             BindingPattern::ArrayPattern(array) => {
@@ -69,7 +72,50 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
-    /// `value`, or the default when it is undefined.
+    /// A pattern that `value` gives its value. A `var` name inside `with`, alone or with a
+    /// default, resolves through the objects before `value` runs and writes to the object
+    /// that has it (`ResolveBinding` comes first in ECMA-262 14.3.3.3 and 8.6.3).
+    fn declare_element(
+        &mut self,
+        pattern: &'a BindingPattern<'a>,
+        value: impl FnOnce(&mut Self) -> Expr,
+    ) {
+        let through_withs = single_name(pattern).and_then(|(id, default)| {
+            let symbol = id.symbol_id.get()?;
+            let objects = self.with_objects_for(Some(symbol), id.name.as_str());
+            (!objects.is_empty()).then_some((id.name.as_str(), default, symbol, objects))
+        });
+        let Some((name, default, symbol, objects)) = through_withs else {
+            let item = value(self);
+            self.declare_pattern(pattern, item);
+            return;
+        };
+        let reference = self.with_resolve(&objects, name);
+        let item = value(self);
+        let item = match default {
+            Some(default) => self.with_default(item, default, Some(name)),
+            None => item,
+        };
+        let item = self.bind(item);
+        let fallback = self.branch(|me| {
+            me.declare_symbol(symbol, item.clone());
+            item.clone()
+        });
+        let object = self.fresh("O");
+        let set = Expr::call(
+            "bouy_ref",
+            "sloppy_set",
+            vec![Expr::var(object.clone()), Expr::js_string(name), item],
+        );
+        self.pre.push(Expr::case(
+            reference,
+            vec![
+                Clause::new(Expr::tagged("with", Expr::var(object)), vec![set]),
+                Clause::new(Expr::atom("none"), fallback),
+            ],
+        ));
+    }
+
     /// `value`, or the default when it is undefined. A default that is an anonymous
     /// function or class takes the `name` of its target.
     fn with_default(
@@ -114,7 +160,9 @@ impl<'a> Lowerer<'a, '_> {
         rest: Option<Rest<'a>>,
     ) {
         let source = self.bind(value);
-        let simple = elements.iter().flatten().all(Element::is_simple)
+        // Inside `with`, each name resolves before its step of the iterator.
+        let simple = self.frame.withs.is_empty()
+            && elements.iter().flatten().all(Element::is_simple)
             && rest.as_ref().is_none_or(Rest::is_simple);
         if simple {
             let (items, state) = self.take(source, elements.len());
@@ -283,10 +331,7 @@ impl<'a> Lowerer<'a, '_> {
             let next = step("next_value");
             match element {
                 Some(Element::Target(target)) => self.assign_element_with(target, next),
-                Some(Element::Binding(pattern)) => {
-                    let item = next(self);
-                    self.declare_pattern(pattern, item);
-                }
+                Some(Element::Binding(pattern)) => self.declare_element(pattern, next),
                 None => {
                     next(self);
                 }
@@ -296,10 +341,7 @@ impl<'a> Lowerer<'a, '_> {
             let drain = step("rest_value");
             match rest {
                 Rest::Target(target) => self.assign_target_with(target, drain),
-                Rest::Binding(pattern) => {
-                    let value = drain(self);
-                    self.declare_pattern(pattern, value);
-                }
+                Rest::Binding(pattern) => self.declare_element(pattern, drain),
             }
         }
     }
@@ -584,6 +626,20 @@ impl Rest<'_> {
                 matches!(target, AssignmentTarget::AssignmentTargetIdentifier(_))
             }
         }
+    }
+}
+
+/// The name and the default of a `SingleNameBinding`.
+fn single_name<'p, 'a>(
+    pattern: &'p BindingPattern<'a>,
+) -> Option<(&'p BindingIdentifier<'a>, Option<&'p Expression<'a>>)> {
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => Some((id, None)),
+        BindingPattern::AssignmentPattern(assignment) => match &assignment.left {
+            BindingPattern::BindingIdentifier(id) => Some((id, Some(&assignment.right))),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
