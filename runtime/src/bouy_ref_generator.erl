@@ -21,8 +21,8 @@
 
 -import(bouy_ref_realm, [arg/2, builtin/2, record/4, ctor_record/5]).
 
--define(GENERATOR_PROTO, {'$o', 'Generator.prototype'}).
--define(ASYNC_GENERATOR_PROTO, {'$o', 'AsyncGenerator.prototype'}).
+-define(GENERATOR_PROTO, bouy_heap:intrinsic('Generator.prototype')).
+-define(ASYNC_GENERATOR_PROTO, bouy_heap:intrinsic('AsyncGenerator.prototype')).
 
 %%% Intrinsics
 
@@ -70,7 +70,7 @@ constructor(Name) ->
 
 kind_constructor(Name, Kind, Proto) ->
     {Class, _, Props, Keys, Attrs, Slots} =
-        ctor_record(Name, 1, {'$o', Proto}, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Kind, Args) end),
+        ctor_record(Name, 1, {'$o', Proto}, [], fun(NewTarget, Args) -> bouy_ref_eval:create_function(Kind, Args, NewTarget) end),
     {Class, bouy_ref_realm:constructor(bouy_ref_function, <<"Function">>), Props, Keys, Attrs, Slots}.
 
 %% A record whose Keys are configurable but not writable.
@@ -110,10 +110,10 @@ resumption(<<"throw">>, Args) -> {throw, arg(1, Args)}.
 -spec function(term(), term(), non_neg_integer(), atom()) -> term().
 function(Maker, Name, Length, Kind) when Kind =:= generator; Kind =:= async_generator ->
     {'$f', Id, _} = bouy_heap:function(fun bouy_ref:class_call/2, Name, Length, #{kind => Kind}),
-    F = {'$f', Id, Maker(Id)},
+    F = {'$f', Id, in_realm(Maker(Id))},
     {Parent, FunctionProto} = case Kind of
-        generator -> {?GENERATOR_PROTO, {'$o', 'GeneratorFunction.prototype'}};
-        async_generator -> {?ASYNC_GENERATOR_PROTO, {'$o', 'AsyncGeneratorFunction.prototype'}}
+        generator -> {?GENERATOR_PROTO, bouy_heap:intrinsic('GeneratorFunction.prototype')};
+        async_generator -> {?ASYNC_GENERATOR_PROTO, bouy_heap:intrinsic('AsyncGeneratorFunction.prototype')}
     end,
     bouy_heap:define(F, <<"prototype">>, #{value => bouy_heap:new_object(Parent), writable => true, enumerable => false, configurable => false}),
     bouy_heap:set_prototype_of(F, FunctionProto),
@@ -124,14 +124,22 @@ function(Fun, Name, Length, sloppy) ->
     bouy_ref:named_fn(Fun, Name, Length, sloppy);
 function(Fun3, Name, Length, normal_nt) ->
     F = bouy_ref:named_fn(fun(This, Args) -> Fun3(This, Args, undefined) end, Name, Length),
-    bouy_heap:set_slots(F, #{kind => normal, construct => fun(NewTarget, Args) -> bouy_ref_class:new_target_construct(Fun3, NewTarget, Args) end}),
+    Construct = in_realm(fun(NewTarget, Args) -> bouy_ref_class:new_target_construct(Fun3, NewTarget, Args) end),
+    bouy_heap:set_slots(F, (bouy_heap:slots(F))#{kind => normal, construct => Construct}),
     F;
 function(Fun, Name, Length, async) ->
     F = bouy_heap:function(Fun, Name, Length, #{kind => async}),
-    bouy_heap:set_prototype_of(F, {'$o', 'AsyncFunction.prototype'}),
+    bouy_heap:set_prototype_of(F, bouy_heap:intrinsic('AsyncFunction.prototype')),
     F;
 function(Fun, Name, Length, Kind) ->
     bouy_heap:function(Fun, Name, Length, #{kind => Kind}).
+
+%% Fun as a function of the current realm, as bouy_heap:function/4 makes it.
+in_realm(Fun) ->
+    case bouy_heap:realm() of
+        0 -> Fun;
+        N -> bouy_ref_realm:realm_fun(N, Fun)
+    end.
 
 %% The record of the static value of a module-level function of Form, which
 %% each realm makes on first use (bouy_heap).
@@ -149,14 +157,14 @@ static_record(Form, Module, Name, Length, F) ->
             {function, ?FUNCTION_PROTO, Props#{<<"prototype">> => Proto}, [<<"prototype">> | Keys],
              Attrs#{<<"prototype">> => 1}, #{kind => normal, construct => Construct}};
         async ->
-            {function, {'$o', 'AsyncFunction.prototype'}, Props, Keys, Attrs, #{kind => async}};
+            {function, bouy_heap:intrinsic('AsyncFunction.prototype'), Props, Keys, Attrs, #{kind => async}};
         generator ->
             Proto = bouy_heap:new_object(?GENERATOR_PROTO),
-            {function, {'$o', 'GeneratorFunction.prototype'}, Props#{<<"prototype">> => Proto}, [<<"prototype">> | Keys],
+            {function, bouy_heap:intrinsic('GeneratorFunction.prototype'), Props#{<<"prototype">> => Proto}, [<<"prototype">> | Keys],
              Attrs#{<<"prototype">> => 1}, #{kind => generator}};
         async_generator ->
             Proto = bouy_heap:new_object(?ASYNC_GENERATOR_PROTO),
-            {function, {'$o', 'AsyncGeneratorFunction.prototype'}, Props#{<<"prototype">> => Proto}, [<<"prototype">> | Keys],
+            {function, bouy_heap:intrinsic('AsyncGeneratorFunction.prototype'), Props#{<<"prototype">> => Proto}, [<<"prototype">> | Keys],
              Attrs#{<<"prototype">> => 1}, #{kind => async_generator}}
     end.
 
@@ -530,7 +538,7 @@ get_method_of(V, K) -> get_method(V, K).
 %% CreateAsyncFromSyncIterator.
 -spec from_sync({term(), term()}) -> {term(), term()}.
 from_sync({SyncIterator, SyncNext}) ->
-    O = bouy_heap:new_exotic(async_from_sync, {'$o', 'AsyncFromSyncIterator.prototype'}, {SyncIterator, SyncNext}),
+    O = bouy_heap:new_exotic(async_from_sync, bouy_heap:intrinsic('AsyncFromSyncIterator.prototype'), {SyncIterator, SyncNext}),
     {O, bouy_heap:get(O, <<"next">>)}.
 
 from_sync_method(Name, O, Args) ->

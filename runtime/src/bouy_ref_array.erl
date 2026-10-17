@@ -158,13 +158,14 @@ species(O, Len) ->
         true ->
             C = case bouy_ref:get(O, <<"constructor">>) of
                 C0 when ?IS_OBJECT(C0) ->
-                    case bouy_ref:get(C0, ?SYM(species)) of
+                    case foreign_array(C0) orelse bouy_ref:get(C0, ?SYM(species)) of
+                        true -> undefined;
                         null -> undefined;
                         S -> S
                     end;
                 C0 -> C0
             end,
-            Array = constructor(),
+            Array = bouy_ref_realm:current(constructor()),
             case C of
                 undefined -> {fresh, array_create(Len)};
                 Array -> {fresh, array_create(Len)};
@@ -172,6 +173,20 @@ species(O, Len) ->
                     is_constructor(C) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
                     {object, bouy_ref:construct(C, [Len])}
             end
+    end.
+
+%% Whether C is %Array% of a realm other than the current one, which
+%% ArraySpeciesCreate replaces with the current realm's.
+foreign_array(C) ->
+    case C =:= constructor() of
+        true ->
+            bouy_heap:realm() =/= 0;
+        false ->
+            bouy_heap:is_constructor(C) andalso
+                begin
+                    Realm = bouy_ref_realm:function_realm(C),
+                    Realm =/= bouy_heap:realm() andalso Realm =/= 0 andalso C =:= bouy_ref_realm:localize(Realm, constructor())
+                end
     end.
 
 %% Writes the elements of a fresh array at once.

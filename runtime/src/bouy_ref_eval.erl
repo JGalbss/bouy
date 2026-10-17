@@ -14,11 +14,11 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/2, warm_up/0]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, warm_up/0]).
 
 -import(bouy_ref, [type_error/1]).
 
--define(GLOBAL, {'$o', 'globalThis'}).
+-define(GLOBAL, bouy_ref_realm:global_object()).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() -> [].
@@ -49,7 +49,18 @@ indirect(Value) -> Value.
 %% constructor, `field` in a class field initializer, and `privates`, the
 %% private names that the call sees as [{Name, Key}].
 -spec direct(term(), list(), strict | sloppy, term(), [{binary(), term()}], [binary()], map()) -> term().
-direct({'$f', {builtin, <<"eval">>}, _}, Args, Mode, This, Scope, Lexical, Context) ->
+direct(F, Args, Mode, This, Scope, Lexical, Context) ->
+    case is_eval(F, bouy_heap:realm()) of
+        true -> direct_eval(Args, Mode, This, Scope, Lexical, Context);
+        false -> bouy_ref:call(F, undefined, Args)
+    end.
+
+%% Whether F is %eval% of the realm N.
+is_eval({'$f', {builtin, <<"eval">>}, _}, 0) -> true;
+is_eval({'$f', {N, {builtin, <<"eval">>}}, _}, N) -> true;
+is_eval(_F, _N) -> false.
+
+direct_eval(Args, Mode, This, Scope, Lexical, Context) ->
     case bouy_ref_realm:arg(1, Args) of
         Source when ?IS_STRING(Source) ->
             Privates = maps:get(privates, Context, []),
@@ -60,9 +71,7 @@ direct({'$f', {builtin, <<"eval">>}, _}, Args, Mode, This, Scope, Lexical, Conte
             run(Source, Flags, This, Scope, Context#{privates => Keys});
         Value ->
             Value
-    end;
-direct(F, Args, _Mode, _This, _Scope, _Lexical, _Context) ->
-    bouy_ref:call(F, undefined, Args).
+    end.
 
 mode_flag(strict) -> ["--strict"];
 mode_flag(sloppy) -> [].
@@ -101,14 +110,15 @@ declare_var(Vars, Name, Value) ->
 names(_Flag, []) -> [];
 names(Flag, Names) -> [Flag ++ lists:join(",", [binary_to_list(bouy_ref_string:to_utf8(N)) || N <- Names])].
 
-%% CreateDynamicFunction: new Function(p1, ..., body).
+%% CreateDynamicFunction: Function(p1, ..., body).
 -spec create_function(list()) -> term().
-create_function(Args) -> create_function(normal, Args).
+create_function(Args) -> create_function(normal, Args, undefined).
 
 %% CreateDynamicFunction of a kind: normal, generator, async, or
-%% async_generator.
--spec create_function(normal | generator | async | async_generator, list()) -> term().
-create_function(Kind, Args) ->
+%% async_generator. The function gets its prototype from NewTarget, or from
+%% the current realm for a call.
+-spec create_function(normal | generator | async | async_generator, list(), term()) -> term().
+create_function(Kind, Args, NewTarget) ->
     {Params, Body} = case Args of
         [] -> {[], <<>>};
         _ -> {lists:droplast(Args), lists:last(Args)}
@@ -122,7 +132,14 @@ create_function(Kind, Args) ->
         async_generator -> <<"(async function* anonymous(">>
     end,
     Source = bouy_ref_string:concat([Prefix, P, <<"\n) {\n">>, B, <<"\n})">>]),
-    run(Source, ["--function"], ?GLOBAL, [], #{}).
+    F = run(Source, ["--function"], ?GLOBAL, [], #{}),
+    case NewTarget of
+        undefined -> F;
+        _ -> bouy_heap:set_prototype_of(F, bouy_ref_realm:proto_for(NewTarget, kind_prototype(Kind)))
+    end.
+
+kind_prototype(normal) -> 'Function.prototype';
+kind_prototype(Kind) -> bouy_ref_function:kind_prototype_id(Kind).
 
 %% Flags are the options of `bouy compile-eval`. A source text that is only
 %% comments, or one regular expression literal, needs no module: programs

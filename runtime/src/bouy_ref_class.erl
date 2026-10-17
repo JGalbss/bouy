@@ -48,7 +48,12 @@ create(Name, Parent, Length, Source) ->
 %% The [[Construct]] of the class C: fun((NewTarget, Args) -> This).
 -spec set_construct(term(), fun((term(), list()) -> term())) -> ok.
 set_construct(C, Construct) ->
-    bouy_heap:set_slots(C, (bouy_heap:slots(C))#{construct => Construct}).
+    Slots = bouy_heap:slots(C),
+    Construct1 = case Slots of
+        #{realm := N} -> bouy_ref_realm:realm_fun(N, Construct);
+        _ -> Construct
+    end,
+    bouy_heap:set_slots(C, Slots#{construct => Construct1}).
 
 is_constructor({'$f', _, _} = F) ->
     case bouy_heap:slots(F) of

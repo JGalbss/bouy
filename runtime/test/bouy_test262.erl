@@ -153,6 +153,10 @@ realm(Module, Stdout, Stderr) ->
     erlang:put('$bouy_exit', true),
     erlang:put('$bouy_stderr', Stderr),
     erlang:put('$bouy_rejections', ignore),
+    ok = bouy_ref_realm:install(),
+    CreateRealm = bouy_ref_realm:builtin(<<"$262.createRealm">>, fun(_This, _Args) -> bouy_ref_realm:create() end),
+    bouy_heap:define(bouy_ref_realm:global_object(), <<"$262CreateRealm">>,
+                     #{value => CreateRealm, writable => true, enumerable => false, configurable => true}),
     try Module:'__init__'() of
         _ -> exit({'$bouy_exit', 0})
     catch
