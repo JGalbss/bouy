@@ -7,6 +7,8 @@
 
 -include("bouy_ref.hrl").
 
+-define(TITLE, '$bouy_process_title').
+
 -export([exec_argv/0, create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
 
 -define(VERSION, <<"v25.9.0">>).
@@ -47,9 +49,11 @@ exit_info() -> erlang:get(?EXIT_INFO).
 %% patchProcessObject of the process_methods binding.
 -spec patch(term()) -> undefined.
 patch(Process) ->
-    Title = bouy_node:fn(<<"get title">>, 0, fun(_, _) -> <<"node">> end),
-    bouy_heap:define(Process, <<"title">>, #{get => Title, set => bouy_node:fn(<<"set title">>, 1, fun(_, _) -> undefined end),
-                                             enumerable => true, configurable => true}),
+    %% The title starts as --title gives it, or node; the VM cannot rename its OS process.
+    erlang:put(?TITLE, title(exec_argv())),
+    Title = bouy_node:fn(<<"get title">>, 0, fun(_, _) -> erlang:get(?TITLE) end),
+    SetTitle = bouy_node:fn(<<"set title">>, 1, fun(_, A) -> erlang:put(?TITLE, bouy_ref:to_string(bouy_node:arg(1, A))), undefined end),
+    bouy_heap:define(Process, <<"title">>, #{get => Title, set => SetTitle, enumerable => true, configurable => true}),
     [_ | Argv0] = persistent_term:get({bouy, argv}, [<<"bouy">>]),
     %% The code of -e and -p is no script of process.argv.
     Argv = case {init:get_argument(bouy_eval), Argv0} of
@@ -66,6 +70,11 @@ patch(Process) ->
     bouy_heap:define(Process, <<"debugPort">>, #{get => Port, set => bouy_node:fn(<<"set debugPort">>, 1, fun(_, _) -> undefined end),
                                                  enumerable => true, configurable => true}),
     undefined.
+
+title([<<"--title=", Title/binary>> | _]) -> bouy_ref_string:from_utf8(Title);
+title([<<"--title">>, Title | _]) -> bouy_ref_string:from_utf8(Title);
+title([_ | Rest]) -> title(Rest);
+title([]) -> <<"node">>.
 
 %% The node options of the command line: the JSON array that the CLI passes
 %% with -bouy_exec_argv.
@@ -147,9 +156,17 @@ raw_debug(_This, Args) ->
 %% names of the variables, as the interceptors of node_env_var.cc do.
 env() ->
     Handler = bouy_node:object([
-        {<<"get">>, bouy_node:fn(<<"get">>, 3, fun(_, Args) -> env_get(bouy_ref_realm:arg(2, Args)) end)},
+        %% A name that no variable has reads the target, so Object.prototype shows through.
+        {<<"get">>, bouy_node:fn(<<"get">>, 3, fun(_, [Target, Key | _]) ->
+            case env_get(Key) of
+                undefined -> bouy_heap:get(Target, Key);
+                Value -> Value
+            end
+        end)},
         {<<"set">>, bouy_node:fn(<<"set">>, 4, fun(_, Args) -> env_set(bouy_ref_realm:arg(2, Args), bouy_ref_realm:arg(3, Args)) end)},
-        {<<"has">>, bouy_node:fn(<<"has">>, 2, fun(_, Args) -> env_get(bouy_ref_realm:arg(2, Args)) =/= undefined end)},
+        {<<"has">>, bouy_node:fn(<<"has">>, 2, fun(_, [Target, Key | _]) ->
+            env_get(Key) =/= undefined orelse bouy_heap:has(Target, Key)
+        end)},
         {<<"deleteProperty">>, bouy_node:fn(<<"deleteProperty">>, 2, fun(_, Args) -> env_delete(bouy_ref_realm:arg(2, Args)) end)},
         {<<"ownKeys">>, bouy_node:fn(<<"ownKeys">>, 1, fun(_, _) -> bouy_heap:new_array(env_keys()) end)},
         {<<"getOwnPropertyDescriptor">>, bouy_node:fn(<<"getOwnPropertyDescriptor">>, 2, fun(_, Args) -> env_descriptor(bouy_ref_realm:arg(2, Args)) end)},
@@ -175,10 +192,29 @@ env_get(Key) ->
 %% a symbol, as V8 does in EnvSetter. A name that the OS refuses, such as one
 %% with `=`, sets nothing, as uv_os_setenv fails and Node ignores it.
 env_set(Key, Value) ->
+    warn_non_string(Value),
     Name = unicode:characters_to_list(bouy_ref_string:to_utf8(bouy_ref:to_string(Key))),
     Text = bouy_ref_string:to_utf8(bouy_ref:to_string(Value)),
     try os:putenv(Name, unicode:characters_to_list(Text)) catch error:badarg -> true end,
     true.
+
+%% DEP0104, once, with --pending-deprecation: a value that is no string,
+%% number, or boolean, as EnvSetter warns.
+warn_non_string(Value) when ?IS_STRING(Value); ?IS_NUMBER(Value); is_boolean(Value) ->
+    ok;
+warn_non_string(_Value) ->
+    case erlang:get('$bouy_env_warned') =:= undefined andalso lists:member(<<"--pending-deprecation">>, exec_argv()) of
+        true ->
+            erlang:put('$bouy_env_warned', true),
+            Process = bouy_node:global_get(<<"process">>),
+            bouy_heap:call(bouy_heap:get(Process, <<"emitWarning">>), Process,
+                           [<<"Assigning any value other than a string, number, or boolean to a process.env property is deprecated. "
+                              "Please make sure to convert the value to a string before setting process.env with it.">>,
+                            <<"DeprecationWarning">>, <<"DEP0104">>]),
+            ok;
+        false ->
+            ok
+    end.
 
 env_delete(Key) ->
     case env_name(Key) of

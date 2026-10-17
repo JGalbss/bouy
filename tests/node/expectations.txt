@@ -1130,7 +1130,7 @@ parallel/test-events-on-async-iterator.js skip
 parallel/test-events-once.js pass
 parallel/test-events-static-geteventlisteners.js skip
 parallel/test-events-uncaught-exception-stack.js pass
-parallel/test-eventsource-disabled.js fail
+parallel/test-eventsource-disabled.js pass
 parallel/test-eventsource.js pass
 parallel/test-eventtarget-brandcheck.js skip
 parallel/test-eventtarget-custom-inspect-does-not-throw.js pass
@@ -2745,11 +2745,11 @@ parallel/test-process-dlopen-error-message-crash.js skip
 parallel/test-process-dlopen-undefined-exports.js pass
 parallel/test-process-domain-segfault.js pass
 parallel/test-process-emit.js fail
-parallel/test-process-emitwarning.js fail
+parallel/test-process-emitwarning.js pass
 parallel/test-process-env-allowed-flags-are-documented.js pass
 parallel/test-process-env-allowed-flags.js pass
 parallel/test-process-env-delete.js pass
-parallel/test-process-env-deprecation.js fail
+parallel/test-process-env-deprecation.js pass
 parallel/test-process-env-ignore-getter-setter.js pass
 parallel/test-process-env-sideeffects.js pass
 parallel/test-process-env-symbols.js pass
@@ -2813,7 +2813,7 @@ parallel/test-process-setgroups.js fail
 parallel/test-process-setsourcemapsenabled.js pass
 parallel/test-process-threadCpuUsage-main-thread.js pass
 parallel/test-process-threadCpuUsage-worker-threads.js pass
-parallel/test-process-title-cli.js fail
+parallel/test-process-title-cli.js pass
 parallel/test-process-uid-gid.js pass
 parallel/test-process-umask-mask.js pass
 parallel/test-process-umask.js pass
@@ -4006,7 +4006,7 @@ parallel/test-webcrypto-supports.mjs pass
 parallel/test-webcrypto-util.js skip
 parallel/test-webcrypto-webidl.js skip
 parallel/test-webcrypto-wrap-unwrap.js pass
-parallel/test-websocket-disabled.js fail
+parallel/test-websocket-disabled.js pass
 parallel/test-websocket.js pass
 parallel/test-webstorage-without-sqlite.js pass
 parallel/test-webstorage.js pass

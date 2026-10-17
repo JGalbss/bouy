@@ -114,7 +114,25 @@ function initializeDeprecations() {
   }
 }
 
+// https://websockets.spec.whatwg.org/
+function setupWebsocket() {
+  if (getOptionValue('--no-experimental-websocket')) {
+    delete globalThis.WebSocket;
+    delete globalThis.CloseEvent;
+  }
+}
+
+// https://html.spec.whatwg.org/multipage/server-sent-events.html
+function setupEventsource() {
+  if (!getOptionValue('--experimental-eventsource')) {
+    delete globalThis.EventSource;
+  }
+}
+
+// Web Storage needs SQLite, which Bouy lacks, as a node built without it does.
 patchProcessObject();
+setupWebsocket();
+setupEventsource();
 initializeReport();
 initializeDeprecations();
 setupNavigator();

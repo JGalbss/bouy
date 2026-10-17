@@ -9,7 +9,7 @@
 binding() ->
     F = fun bouy_node:fn/3,
     bouy_node:object([
-        {<<"getCLIOptionsValues">>, F(<<"getCLIOptionsValues">>, 0, fun(_, _) -> bouy_node:from_json(values()) end)},
+        {<<"getCLIOptionsValues">>, F(<<"getCLIOptionsValues">>, 0, fun(_, _) -> cli_values() end)},
         {<<"getCLIOptionsInfo">>, F(<<"getCLIOptionsInfo">>, 0, fun(_, _) -> info() end)},
         {<<"getOptionsAsFlags">>, F(<<"getOptionsAsFlags">>, 0, fun(_, _) -> bouy_heap:new_array([]) end)},
         {<<"getEmbedderOptions">>, F(<<"getEmbedderOptions">>, 0, fun(_, _) ->
@@ -29,6 +29,67 @@ info() ->
     Options = new_map(bouy_heap:array_items(bouy_heap:get(Info, <<"options">>))),
     Aliases = new_map(bouy_heap:array_items(bouy_heap:get(Info, <<"aliases">>))),
     bouy_node:object([{<<"options">>, Options}, {<<"aliases">>, Aliases}]).
+
+%% The option values with the node options of the command line applied, as
+%% Node's options parser applies them: an alias expands, a boolean takes
+%% --name or --no-name, and another option takes --name=value or
+%% --name value, a list option once for each.
+cli_values() ->
+    #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
+    Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
+    Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
+    Values = apply_args(expand(bouy_node_process:exec_argv(), Expansions), Types, json:decode(values())),
+    bouy_node:from_json(iolist_to_binary(json:encode(Values))).
+
+expand(Args, Expansions) ->
+    lists:append([maps:get(normalize(A), Expansions, [A]) || A <- Args]).
+
+%% --expose_gc names --expose-gc: underscores of the name are dashes.
+normalize(<<"--", _/binary>> = Arg) ->
+    {Name, Value} = split(Arg),
+    Dashed = << <<(case C of $_ -> $-; _ -> C end)>> || <<C>> <= Name >>,
+    case Value of none -> Dashed; _ -> <<Dashed/binary, "=", Value/binary>> end;
+normalize(Arg) ->
+    Arg.
+
+split(Arg) ->
+    case binary:split(Arg, <<"=">>) of
+        [Name, Value] -> {Name, Value};
+        [Name] -> {Name, none}
+    end.
+
+apply_args([], _Types, Values) ->
+    Values;
+apply_args([Arg0 | Rest], Types, Values) ->
+    Arg = normalize(Arg0),
+    {Name, Inline} = split(Arg),
+    case {Types, Name} of
+        {#{Name := 2}, <<"--", Positive/binary>>} -> apply_args(Rest, Types, boolean(Positive, Inline =/= <<"false">>, Values));
+        {_, <<"--no-", Positive/binary>>} ->
+            case maps:get(<<"--", Positive/binary>>, Types, none) of
+                2 -> apply_args(Rest, Types, boolean(Positive, false, Values));
+                _ -> apply_args(Rest, Types, Values)
+            end;
+        {#{Name := Type}, _} when Type >= 3, Type =< 7 ->
+            {Value, Remaining} = case {Inline, Rest} of
+                {none, [Next | More]} -> {Next, More};
+                {none, []} -> {<<>>, []};
+                _ -> {Inline, Rest}
+            end,
+            apply_args(Remaining, Types, Values#{Name => typed(Type, Value, maps:get(Name, Values, []))});
+        _ ->
+            apply_args(Rest, Types, Values)
+    end.
+
+%% A boolean option has a --no- twin that holds its negation.
+boolean(Name, Value, Values) ->
+    Values#{<<"--", Name/binary>> => Value, <<"--no-", Name/binary>> => not Value}.
+
+typed(Type, Value, _Old) when Type =:= 3; Type =:= 4 ->
+    try binary_to_integer(Value) catch _:_ -> 0 end;
+typed(7, Value, Old) when is_list(Old) -> Old ++ [Value];
+typed(7, Value, _Old) -> [Value];
+typed(_Type, Value, _Old) -> Value.
 
 new_map(Entries) ->
     Map = bouy_ref_realm:global(<<"Map">>),

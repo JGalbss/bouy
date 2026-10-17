@@ -248,6 +248,9 @@ struct Test {
     id: String,
     /// The flags of the `// Flags:` line, as `flag_name` writes them.
     flags: Vec<String>,
+    /// The words of the `// Flags:` line as they are, which the run passes to `bouy` as
+    /// node options, as Node's `tools/test.py` passes them to node.
+    options: Vec<String>,
     /// The variables of the `// Env:` line.
     env: Vec<(String, String)>,
     /// The reason code of the skip of `config.json` that applies.
@@ -285,11 +288,12 @@ fn load_tests(suite: &Path, config: &Config) -> Result<Vec<Test>, String> {
 }
 
 fn test_of(id: String, source: &str, config: &Config) -> Result<Test, String> {
-    let flags: Vec<String> = header(source, "Flags")
+    let options: Vec<String> = header(source, "Flags")
         .unwrap_or_default()
         .split_whitespace()
-        .filter_map(flag_name)
+        .map(str::to_owned)
         .collect();
+    let flags: Vec<String> = options.iter().filter_map(|word| flag_name(word)).collect();
     let env = header(source, "Env")
         .unwrap_or_default()
         .split_whitespace()
@@ -317,6 +321,7 @@ fn test_of(id: String, source: &str, config: &Config) -> Result<Test, String> {
     Ok(Test {
         id,
         flags,
+        options,
         env,
         skip,
         common,
@@ -388,9 +393,10 @@ struct Execution {
     time_ms: u128,
 }
 
-/// The flags of `bouy run` and `bouy check` for Node's tests and the surface probe: the
-/// JavaScript engine with reference semantics, which runs Node's own `lib/` for the
-/// built-in modules (docs/design/node-builtins.md).
+/// The flags of `bouy check` for the entry files of `test/common` and of `bouy run` for the
+/// surface probe: the JavaScript engine with reference semantics, which runs Node's own
+/// `lib/` for the built-in modules (docs/design/node-builtins.md). A test file runs as
+/// `bouy <its // Flags:> test/<id>`, the node form of the CLI, which uses that engine.
 pub const ENGINE: [&str; 2] = ["--semantics", "reference"];
 
 /// Runs Node's tests and compares the run with the expectation files.
@@ -578,8 +584,7 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
         .env("TEST_SERIAL_ID", serial.to_string())
         .env("NODE_TEST_DIR", &temporary)
         .envs(test.env.iter().map(|(name, value)| (name, value)))
-        .arg("run")
-        .args(ENGINE)
+        .args(&test.options)
         .arg(Path::new(SUITE_DIRECTORY).join(&test.id));
     let started = Instant::now();
     let finished = crate::run(&mut command, context.deadline);

@@ -905,10 +905,19 @@ require(M, Specifier) ->
             throw_coded('Error', Code, Message);
         {_Path, Target} when is_atom(Target), Target =/= none ->
             require_module(Target);
-        _ ->
-            throw_coded('Error', <<"MODULE_NOT_FOUND">>,
-                        bouy_ref_string:concat([<<"Cannot find module '">>, Specifier, <<"'\nRequire stack:\n- ">>, info(M, path)]))
+        _ when ?IS_STRING(Specifier) ->
+            %% --expose-internals lets require load the internal ids of Node's lib.
+            case lists:member(<<"--expose-internals">>, bouy_node_process:exec_argv())
+                 andalso lists:member(Specifier, bouy_node:ids()) of
+                true -> builtin_exports(Specifier);
+                false -> not_found(M, Specifier)
+            end
     end.
+
+-spec not_found(module(), term()) -> no_return().
+not_found(M, Specifier) ->
+    throw_coded('Error', <<"MODULE_NOT_FOUND">>,
+                bouy_ref_string:concat([<<"Cannot find module '">>, Specifier, <<"'\nRequire stack:\n- ">>, info(M, path)])).
 
 require_module(Target) ->
     case kind(Target) of
