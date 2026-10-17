@@ -1,0 +1,7 @@
+[Map Entries] { [ 1, 2 ] } [Set Iterator] { 1, 2 } Object [Array Iterator] {} Object [String Iterator] {}
+DataView {
+  byteLength: 2,
+  byteOffset: 0,
+  buffer: ArrayBuffer { [Uint8Contents]: <00 00>, byteLength: 2 }
+} [ 1970-01-01T00:00:00.000Z ] { d: Invalid Date } [Symbol: Symbol(s)] [ 1n, [BigInt: 2n] ]
+Map(1) { { a: 1 } => Set(1) { 'x' } } WeakMap { <items unknown> } [ undefined, null, -0, 0.1 ] { s: "it's" }

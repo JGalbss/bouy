@@ -14,7 +14,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, call_constructor/3, collection_size/1]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3, collection_size/1, remaining/1]).
 
 -import(bouy_ref_realm, [arg/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
@@ -515,6 +515,41 @@ iterator(Class, C, Kind) ->
         set_iterator -> {'$o', 'SetIterator.prototype'}
     end,
     bouy_heap:new_exotic(Class, Proto, {C, -1, Kind}).
+
+%% The entries that a Map or Set iterator has yet to give, without moving
+%% it, for the console: {Label, Items}, each item a value or a [K, V] list.
+-spec remaining(term()) -> {binary(), list()}.
+remaining(It) ->
+    Class = bouy_heap:class_of(It),
+    Kind = case bouy_heap:slots(It) of
+        done -> values;
+        {_, _, K} -> K
+    end,
+    Items = case bouy_heap:slots(It) of
+        done -> [];
+        {C, Seq, _} -> collect_after(C, Seq, Class, Kind, [])
+    end,
+    Label = case {Class, Kind} of
+        {map_iterator, entries} -> <<"Map Entries">>;
+        {map_iterator, _} -> <<"Map Iterator">>;
+        {set_iterator, entries} -> <<"Set Entries">>;
+        {set_iterator, _} -> <<"Set Iterator">>
+    end,
+    {Label, Items}.
+
+collect_after(C, Seq, Class, Kind, Acc) ->
+    case next_after(C, Seq) of
+        none -> lists:reverse(Acc);
+        {Seq1, K} ->
+            Item = case {Class, Kind} of
+                {_, keys} -> K;
+                {set_iterator, values} -> K;
+                {set_iterator, entries} -> [K, K];
+                {map_iterator, values} -> element(2, lookup(C, K));
+                {map_iterator, entries} -> [K, element(2, lookup(C, K))]
+            end,
+            collect_after(C, Seq1, Class, Kind, [Item | Acc])
+    end.
 
 iterator_next(It, Class) ->
     ?IS_OBJECT(It) andalso bouy_heap:class_of(It) =:= Class orelse

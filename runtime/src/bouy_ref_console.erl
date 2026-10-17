@@ -134,6 +134,13 @@ object(O, Level, Indent, Stack) ->
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
         date -> bouy_ref_date:inspect(O);
         typed_array -> typed_array(O, Level, Indent, Stack);
+        data_view -> data_view(O, Level, Indent, Stack);
+        map_iterator -> collection_iterator(O, Level, Indent, Stack);
+        set_iterator -> collection_iterator(O, Level, Indent, Stack);
+        array_iterator -> <<"Object [Array Iterator] {}">>;
+        string_iterator -> <<"Object [String Iterator] {}">>;
+        weakmap -> <<"WeakMap { <items unknown> }">>;
+        weakset -> <<"WeakSet { <items unknown> }">>;
         array_buffer -> array_buffer(O, Indent);
         number -> wrapper(<<"Number">>, O, Level, Indent, Stack);
         string -> wrapper(<<"String">>, O, Level, Indent, Stack);
@@ -173,6 +180,27 @@ typed_array(O, Level, Indent, Stack) ->
             Values = [bouy_heap:get(O, I) || I <- lists:seq(0, min(Length, ?MAX_ITEMS) - 1)],
             Output = [value(V, Level + 1, Indent + 2, Stack) || V <- Values] ++ bouy_console:more_items(Length),
             bouy_console:reduce(bouy_console:group(Output, Values, Indent), length(Output), Base, {<<"[">>, <<"]">>}, Indent)
+    end.
+
+%% A DataView with its byteLength, byteOffset, and buffer.
+data_view(O, Level, Indent, Stack) ->
+    {Buffer, Offset, _} = bouy_heap:slots(O),
+    Length = try bouy_ref:get(O, <<"byteLength">>) catch error:{'$throw', _} -> 0 end,
+    Entries = [<<"byteLength: ", (value(Length, Level + 1, Indent + 2, Stack))/binary>>,
+               <<"byteOffset: ", (value(Offset, Level + 1, Indent + 2, Stack))/binary>>,
+               <<"buffer: ", (array_buffer(Buffer, Indent + 2))/binary>>],
+    bouy_console:reduce(Entries, 3, <<"DataView">>, {<<"{">>, <<"}">>}, Indent).
+
+%% A Map or Set iterator with the entries it has yet to give.
+collection_iterator(O, Level, Indent, Stack) ->
+    {Label, Items} = bouy_ref_collection:remaining(O),
+    Shown = [case Item of
+                 [K, V] -> <<"[ ", (value(K, Level + 2, Indent + 4, Stack))/binary, ", ", (value(V, Level + 2, Indent + 4, Stack))/binary, " ]">>;
+                 V -> value(V, Level + 1, Indent + 2, Stack)
+             end || Item <- Items],
+    case Shown of
+        [] -> <<"[", Label/binary, "] {  }">>;
+        _ -> bouy_console:reduce(Shown, length(Shown), <<"[", Label/binary, "]">>, {<<"{">>, <<"}">>}, Indent)
     end.
 
 %% An ArrayBuffer, with its bytes in hex, as Node prints it.
