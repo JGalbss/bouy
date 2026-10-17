@@ -3,7 +3,7 @@
 
 use oxc::ast::ast::{
     DoWhileStatement, ForInStatement, ForOfStatement, ForStatement, ForStatementInit,
-    ForStatementLeft, Statement, WhileStatement,
+    ForStatementLeft, Statement, VariableDeclarationKind, WhileStatement,
 };
 use oxc::ast_visit::Visit;
 use oxc::semantic::SymbolId;
@@ -101,9 +101,34 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn for_statement(&mut self, statement: &'a ForStatement<'a>, k: &Cont<'a>) -> Vec<Expr> {
+        // `for (using x = ...; ...)` disposes its resources when the loop ends.
+        if let Some(ForStatementInit::VariableDeclaration(declaration)) = &statement.init
+            && matches!(
+                declaration.kind,
+                VariableDeclarationKind::Using | VariableDeclarationKind::AwaitUsing
+            )
+        {
+            return self.using_region(
+                declaration.kind == VariableDeclarationKind::AwaitUsing,
+                |me, stack| {
+                    me.using_stacks.push(stack.to_owned());
+                    me.variables(declaration);
+                    me.using_stacks.pop();
+                    std::mem::take(&mut me.pre)
+                },
+                |me, after| me.for_loop(statement, after, false),
+                k,
+            );
+        }
+        self.for_loop(statement, k, true)
+    }
+
+    /// A `for` loop; `init` says whether to run its initializer here.
+    fn for_loop(&mut self, statement: &'a ForStatement<'a>, k: &Cont<'a>, init: bool) -> Vec<Expr> {
         let labels = std::mem::take(&mut self.frame.labels);
         let saved_env = self.frame.env.clone();
         match &statement.init {
+            _ if !init => {}
             Some(ForStatementInit::VariableDeclaration(declaration)) => self.variables(declaration),
             Some(other) => {
                 if let Some(expression) = other.as_expression() {
@@ -256,9 +281,32 @@ impl<'a> Lowerer<'a, '_> {
         });
         let close = (each != Each::In).then(|| self.enter_close(depth));
         let inner_env = self.frame.env.clone();
-        self.bind_each_item(left, Expr::var(item.clone()));
-        let mut value_code = std::mem::take(&mut self.pre);
-        value_code.extend(self.arm(body, &again));
+        let mut value_code = if let Some(hint) = using_hint(left) {
+            // Each iteration disposes the value of its `using` binding when it ends.
+            self.using_region(
+                hint == "async",
+                |me, stack| {
+                    let value = me.bind(Expr::call(
+                        "bouy_ref_dispose",
+                        "add",
+                        vec![
+                            Expr::var(stack.to_owned()),
+                            Expr::var(item.clone()),
+                            Expr::atom(hint),
+                        ],
+                    ));
+                    me.bind_each_item(left, value);
+                    std::mem::take(&mut me.pre)
+                },
+                |me, after| me.arm(body, after),
+                &again,
+            )
+        } else {
+            self.bind_each_item(left, Expr::var(item.clone()));
+            let mut code = std::mem::take(&mut self.pre);
+            code.extend(self.arm(body, &again));
+            code
+        };
         self.frame.env = inner_env;
         if let Some((_, handler)) = &close {
             self.frame.handlers.pop();
@@ -467,6 +515,18 @@ struct CloseFuns {
     close: String,
     handler: String,
     completion: String,
+}
+
+/// The hint of a `using` or `await using` loop head.
+fn using_hint(left: &ForStatementLeft<'_>) -> Option<&'static str> {
+    match left {
+        ForStatementLeft::VariableDeclaration(declaration) => match declaration.kind {
+            VariableDeclarationKind::Using => Some("sync"),
+            VariableDeclarationKind::AwaitUsing => Some("async"),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// The kind of an `each` loop.

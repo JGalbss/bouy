@@ -33,7 +33,16 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
             continue;
         }
         let references: Vec<_> = scoping.get_resolved_references(symbol).collect();
-        if !references.iter().any(|reference| reference.is_write()) {
+        // A `var` exists before its initializer runs, so a closure that reads it, such
+        // as a hoisted function or a method of its own initializer, needs a cell.
+        let initialized_var = scoping
+            .symbol_flags(symbol)
+            .is_function_scoped_declaration()
+            && matches!(
+                nodes.kind(scoping.symbol_declaration(symbol)),
+                AstKind::VariableDeclarator(declarator) if declarator.init.is_some()
+            );
+        if !initialized_var && !references.iter().any(|reference| reference.is_write()) {
             continue;
         }
         let home = function_scope(scoping, scoping.symbol_scope_id(symbol));
@@ -171,6 +180,13 @@ pub struct Suspends(pub bool);
 impl<'a> Visit<'a> for Suspends {
     fn visit_await_expression(&mut self, _it: &AwaitExpression<'a>) {
         self.0 = true;
+    }
+    /// An `await using` declaration awaits when its block ends.
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        if it.kind == VariableDeclarationKind::AwaitUsing {
+            self.0 = true;
+        }
+        walk::walk_variable_declaration(self, it);
     }
     fn visit_yield_expression(&mut self, _it: &YieldExpression<'a>) {
         self.0 = true;

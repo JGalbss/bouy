@@ -209,6 +209,8 @@ pub struct Lowerer<'a, 'c> {
     pub class_bindings: Vec<SymbolId>,
     /// The bindings that code reads before their declaration runs (`early`).
     pub early: std::collections::HashSet<SymbolId>,
+    /// The resource cell of the `using` declaration being lowered.
+    pub using_stacks: Vec<String>,
 }
 
 impl Lowerer<'_, '_> {

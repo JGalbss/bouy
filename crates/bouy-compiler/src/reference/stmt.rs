@@ -2,7 +2,9 @@
 //! tail call: of the join fun of the rest of the block, of a loop fun, or of the function
 //! end. So `return v` is just the value, and loops do not grow the stack.
 
-use oxc::ast::ast::{Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement};
+use oxc::ast::ast::{
+    Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement, VariableDeclarationKind,
+};
 use oxc::ast_visit::Visit;
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
@@ -24,7 +26,15 @@ impl<'a> Lowerer<'a, '_> {
                 code.extend(self.jump(k));
                 break;
             };
-            if let Statement::BlockStatement(inner) = statement {
+            if is_using(statement) {
+                code.extend(self.using_block(&list[index..], k));
+                break;
+            }
+            // A block with `using` declarations disposes at its own end, so it stays a
+            // statement; another block joins the list.
+            if let Statement::BlockStatement(inner) = statement
+                && !inner.body.iter().any(is_using)
+            {
                 let mut spliced: Vec<&'a Statement<'a>> = inner.body.iter().collect();
                 code.extend(self.hoist(&spliced));
                 spliced.extend_from_slice(&list[index + 1..]);
@@ -174,6 +184,19 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 (Some(init), _) => self.expr(init),
                 (None, _) => Expr::undefined(),
+            };
+            let hint = match declaration.kind {
+                VariableDeclarationKind::Using => Some("sync"),
+                VariableDeclarationKind::AwaitUsing => Some("async"),
+                _ => None,
+            };
+            let value = match (hint, self.using_stacks.last().cloned()) {
+                (Some(hint), Some(stack)) => self.bind(Expr::call(
+                    "bouy_ref_dispose",
+                    "add",
+                    vec![Expr::var(stack), value, Expr::atom(hint)],
+                )),
+                _ => value,
             };
             self.declare_pattern(&declarator.id, value);
         }
@@ -533,6 +556,15 @@ pub fn jump_tuple(index: usize, is_continue: bool, values: Expr) -> Expr {
         Expr::atom(is_continue.to_string()),
         values,
     ])
+}
+
+/// A `using` or `await using` declaration.
+pub fn is_using(statement: &Statement<'_>) -> bool {
+    matches!(
+        statement,
+        Statement::VariableDeclaration(declaration)
+            if matches!(declaration.kind, VariableDeclarationKind::Using | VariableDeclarationKind::AwaitUsing)
+    )
 }
 
 /// Statements that run straight through, with no jump or join.

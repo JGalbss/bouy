@@ -3,7 +3,7 @@
 
 use oxc::ast::ast::{
     ArrowFunctionExpression, BlockStatement, CatchClause, Class, Function, ReturnStatement,
-    TryStatement,
+    Statement, TryStatement, VariableDeclarationKind,
 };
 use oxc::ast_visit::Visit;
 use oxc::semantic::ScopeFlags;
@@ -344,6 +344,166 @@ impl<'a> Lowerer<'a, '_> {
         )
     }
 
+    /// A block from a `using` or `await using` declaration to its end: a region whose
+    /// `Dispose` fun disposes the resources of the declaration, newest first, and then
+    /// completes the block. A later declaration starts a block of its own inside.
+    pub fn using_block(&mut self, list: &[&'a Statement<'a>], k: &Cont<'a>) -> Vec<Expr> {
+        let Some((first, rest)) = list.split_first() else {
+            return vec![];
+        };
+        let awaits = matches!(first, Statement::VariableDeclaration(declaration) if declaration.kind == VariableDeclarationKind::AwaitUsing);
+        self.using_region(
+            awaits,
+            |me, stack| {
+                me.using_stacks.push(stack.to_owned());
+                let code = me.simple(first);
+                me.using_stacks.pop();
+                code
+            },
+            |me, after| me.stmts(rest.to_vec(), after),
+            k,
+        )
+    }
+
+    /// The region of `using` resources: `declare` adds them to the cell `stack`, `body`
+    /// runs with its continuation, and the `Dispose` fun disposes them on every exit and
+    /// then completes with `k`.
+    pub fn using_region(
+        &mut self,
+        awaits: bool,
+        declare: impl FnOnce(&mut Self, &str) -> Vec<Expr>,
+        body: impl FnOnce(&mut Self, &Cont<'a>) -> Vec<Expr>,
+        k: &Cont<'a>,
+    ) -> Vec<Expr> {
+        let saved_env = self.frame.env.clone();
+        let depth = self.frame.region;
+        let stack = self.fresh("Disposables");
+        let fun = self.fresh("Dispose");
+        let mut code = vec![Expr::matches(
+            Expr::var(stack.clone()),
+            Expr::call("bouy_ref_dispose", "new", vec![]),
+        )];
+        let order = self.next_order();
+        self.frame.finally.push(FinallyFrame {
+            fun: fun.clone(),
+            order,
+            base: self.frame.targets.len(),
+            region: depth,
+            jumps: Vec::new(),
+            stays: None,
+        });
+        // A normal exit carries the variables that `k` passes on, which the body may
+        // have changed: `Normal(Vars...)` calls `Dispose({normal, Vars})`.
+        let k_vars = cont_vars(k);
+        let normal = self.fresh("Normal");
+        let after = Cont::Call {
+            fun: normal.clone(),
+            args: vec![],
+            vars: k_vars.clone(),
+            region: depth,
+        };
+        let (throw_dispose, definition) = self.throw_finally(&fun);
+        self.frame.region += 1;
+        self.frame.handlers.push(throw_dispose.clone());
+        let mut inner = declare(self, &stack);
+        inner.extend(body(self, &after));
+        self.frame.handlers.pop();
+        self.frame.region -= 1;
+        let inner = self.seal(inner);
+        let inner = self.wrap_level(inner, &throw_dispose, depth + 1);
+        let frame = self.frame.finally.pop();
+        self.frame.env.clone_from(&saved_env);
+        let dispose = self.dispose_fun(&fun, &stack, awaits, frame.as_ref(), k);
+        self.frame.env.clone_from(&saved_env);
+        let params = self.rebind_params(&k_vars);
+        let normal_fun = Expr::matches(
+            Expr::var(normal),
+            Expr::Fun {
+                name: None,
+                clauses: vec![Clause {
+                    patterns: params.clone(),
+                    guards: vec![],
+                    body: vec![Expr::Apply(
+                        Box::new(Expr::var(fun)),
+                        vec![Expr::Tuple(vec![Expr::atom("normal"), Expr::List(params)])],
+                    )],
+                }],
+            },
+        );
+        self.frame.env = saved_env;
+        code.push(dispose);
+        code.push(normal_fun);
+        code.push(definition);
+        code.push(inner);
+        code
+    }
+
+    /// `Dispose = fun(Completion) -> ... end`: disposes the resources, then completes.
+    fn dispose_fun(
+        &mut self,
+        fun: &str,
+        stack: &str,
+        awaits: bool,
+        frame: Option<&FinallyFrame>,
+        k: &Cont<'a>,
+    ) -> Expr {
+        let completion = self.fresh("Completion");
+        let next = self.fresh("Completion");
+        let other = self.fresh("Completion");
+        let env = self.frame.env.clone();
+        let params = self.rebind_params(&cont_vars(k));
+        let normal = self.jump(k);
+        self.frame.env = env;
+        let rest = match frame {
+            Some(frame) => self.completion_dispatch(&other, frame, k),
+            None => vec![],
+        };
+        let dispatch = vec![Expr::case(
+            Expr::var(next.clone()),
+            vec![
+                Clause::new(
+                    Expr::Tuple(vec![Expr::atom("normal"), Expr::List(params)]),
+                    normal,
+                ),
+                Clause::new(Expr::var(other), rest),
+            ],
+        )];
+        let body = if awaits {
+            let outer = self.handler_chain();
+            let then = self.wrap_chain(dispatch, &outer);
+            vec![Expr::call(
+                "bouy_ref_dispose",
+                "dispose_async",
+                vec![
+                    Expr::var(stack.to_owned()),
+                    Expr::var(completion.clone()),
+                    Expr::Fun {
+                        name: None,
+                        clauses: vec![Clause::new(Expr::var(next), vec![then])],
+                    },
+                ],
+            )]
+        } else {
+            let mut body = vec![Expr::matches(
+                Expr::var(next),
+                Expr::call(
+                    "bouy_ref_dispose",
+                    "dispose",
+                    vec![Expr::var(stack.to_owned()), Expr::var(completion.clone())],
+                ),
+            )];
+            body.extend(dispatch);
+            body
+        };
+        Expr::matches(
+            Expr::var(fun.to_owned()),
+            Expr::Fun {
+                name: None,
+                clauses: vec![Clause::new(Expr::var(completion), body)],
+            },
+        )
+    }
+
     /// Completes a statement the way `completion` says, after its `finally` code ran:
     /// normally with `k`, by a throw, a return, or a jump that left it. A jump carries
     /// the variables that its target passes on.
@@ -385,4 +545,12 @@ impl<'a> Visit<'a> for ReturnsValue {
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}
     fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// The variables that a continuation passes on.
+fn cont_vars(k: &Cont<'_>) -> Vec<oxc::semantic::SymbolId> {
+    match k {
+        Cont::Call { vars, .. } | Cont::Next { vars, .. } | Cont::Test { vars, .. } => vars.clone(),
+        Cont::Return | Cont::Value(_) => Vec::new(),
+    }
 }

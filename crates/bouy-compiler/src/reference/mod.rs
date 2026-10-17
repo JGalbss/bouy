@@ -73,6 +73,7 @@ pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
             privates: Vec::new(),
             class_bindings: Vec::new(),
             early: std::collections::HashSet::new(),
+            using_stacks: Vec::new(),
         };
         lowerer.declare(program);
         let functions = lowerer.module_functions(program);
