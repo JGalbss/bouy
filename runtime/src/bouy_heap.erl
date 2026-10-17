@@ -50,7 +50,7 @@
 -export([install_intrinsic/2, intrinsic/1, throw_error/2, error_object/3]).
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
 -export([clone_out/1, clone_in/1]).
--export([private_find/2, private_put/3]).
+-export([private_find/2, private_put/3, set_failed/2]).
 
 -export_type([value/0, key/0, property/0]).
 
