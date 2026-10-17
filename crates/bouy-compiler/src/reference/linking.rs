@@ -11,6 +11,7 @@
 //! - `'$resolve'/2`: what a string specifier of the module names, for `import()`,
 //!   `require`, and `import.meta.resolve`.
 //! - `'$graph'/0`, in the entry module: the path and the Erlang module of every module.
+//! - `'__init__'/0`: runs the program from the module.
 
 use oxc::ast::ast::{ImportExpression, Program, Statement};
 
@@ -232,10 +233,16 @@ impl<'c> Linking<'c> {
 
     /// The interface functions that every format shares.
     pub fn interface(&self) -> Vec<Function> {
-        let mut functions = vec![self.module_info(), self.namespace(), self.resolver()];
+        // Every module can start a program, since the test262 runner runs a test that
+        // another test imports; the entry also lists the modules of the program.
+        let mut functions = vec![
+            self.module_info(),
+            self.namespace(),
+            self.resolver(),
+            init_function(&self.unit().name),
+        ];
         if self.entry {
             functions.push(self.modules());
-            functions.push(init_function(&self.unit().name));
         }
         functions
     }

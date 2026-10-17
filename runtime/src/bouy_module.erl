@@ -41,7 +41,11 @@
 -spec run(module()) -> term().
 run(Entry) ->
     erlang:put(?ENTRY, Entry),
-    erlang:put(?GRAPH, maps:from_list(Entry:'$graph'())),
+    Graph = case erlang:function_exported(Entry, '$graph', 0) of
+        true -> Entry:'$graph'();
+        false -> []
+    end,
+    erlang:put(?GRAPH, maps:from_list(Graph)),
     link_graph(Entry),
     P = evaluate(Entry),
     case bouy_heap:slots(P) of
