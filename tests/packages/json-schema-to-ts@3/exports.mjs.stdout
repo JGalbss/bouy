@@ -1,0 +1,6 @@
+__esModule: boolean
+asConst: function
+default: object
+module.exports: object
+wrapCompilerAsTypeGuard: function
+wrapValidatorAsTypeGuard: function

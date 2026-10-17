@@ -3,10 +3,11 @@
 //! A program that measures time prints a fixed line when the bound holds, and the measured
 //! times when it does not.
 
+mod common;
+
 use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Command;
-use std::sync::OnceLock;
 
 struct Outcome<'a> {
     stdout: &'a str,
@@ -17,19 +18,24 @@ struct Outcome<'a> {
 /// `bouy run tests/programs/<program>`, from the repository root, so that diagnostics print
 /// the path relative to it.
 fn bouy(program: &str) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_bouy"));
+    let mut command = common::bouy();
     command
-        .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .current_dir(common::repository())
         .arg("run")
         .arg(Path::new("tests/programs").join(program));
     command
 }
 
 fn check(command: &mut Command, expected: &Outcome) {
-    let output = command.output().expect("bouy runs");
+    let deadline = common::deadline();
+    let common::Run { output, timed_out } = common::run(command, deadline);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let report = format!("{command:?}\n--- stdout:\n{stdout}--- stderr:\n{stderr}");
+    assert!(
+        !timed_out,
+        "ran past the deadline of {deadline:?}: {report}"
+    );
     assert_eq!(stdout, expected.stdout, "stdout of {report}");
     assert_eq!(stderr, expected.stderr, "stderr of {report}");
     assert_eq!(
@@ -39,26 +45,9 @@ fn check(command: &mut Command, expected: &Outcome) {
     );
 }
 
-/// Whether the VM tests can run. A machine without Erlang fails the test unless
-/// `BOUY_SKIP_VM_TESTS` is set.
-fn vm_installed() -> bool {
-    static INSTALLED: OnceLock<bool> = OnceLock::new();
-    let installed = *INSTALLED.get_or_init(|| {
-        Command::new("erl")
-            .args(["-noshell", "-eval", "halt()."])
-            .output()
-            .is_ok()
-    });
-    assert!(
-        installed || std::env::var_os("BOUY_SKIP_VM_TESTS").is_some(),
-        "erl is not installed; set BOUY_SKIP_VM_TESTS=1 to skip the VM tests"
-    );
-    installed
-}
-
 /// Like `check`, for a program that runs on the VM.
 fn check_on_vm(command: &mut Command, expected: &Outcome) {
-    if vm_installed() {
+    if common::vm_available() {
         check(command, expected);
     }
 }
@@ -364,6 +353,19 @@ fn an_uncaught_actor_failure_exits_with_status_1() {
 }
 
 #[test]
+fn a_program_past_the_memory_limit_stops_with_status_1() {
+    check_on_vm(
+        bouy("memory-limit.ts").env("BOUY_MAX_MEMORY", "128M"),
+        &Outcome {
+            stdout: "",
+            stderr: "bouy: the program used more than 128 MiB of memory and was stopped; \
+                     set BOUY_MAX_MEMORY to change the limit\n",
+            status: 1,
+        },
+    );
+}
+
+#[test]
 fn program_arguments_reach_process_argv() {
     check_on_vm(
         bouy("arguments.ts").args(["one", "--two", "three four"]),
@@ -437,7 +439,7 @@ fn modules_re_export_and_export_defaults() {
 fn sigterm_ends_the_program() {
     use std::io::{BufRead, BufReader, Read};
     use std::os::unix::process::ExitStatusExt;
-    if !vm_installed() {
+    if !common::vm_available() {
         return;
     }
     let mut child = bouy("sleeper.ts")
@@ -466,7 +468,7 @@ fn sigterm_ends_the_program() {
 fn a_closed_stdout_ends_the_program() {
     use std::io::{BufRead, BufReader};
     use std::time::{Duration, Instant};
-    if !vm_installed() {
+    if !common::vm_available() {
         return;
     }
     let mut child = bouy("closed-stdout.ts")
@@ -554,7 +556,7 @@ fn a_build_that_cannot_be_written_names_the_path() {
         .join(".bouy/build/src");
     std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o555))
         .expect("the permissions change");
-    let output = Command::new(env!("CARGO_BIN_EXE_bouy"))
+    let output = common::bouy()
         .arg("run")
         .arg(project.join("app.ts"))
         .output()

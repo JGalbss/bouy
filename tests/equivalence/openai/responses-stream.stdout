@@ -1,0 +1,21 @@
+0 response.created
+1 response.in_progress
+2 response.output_item.added
+3 response.content_part.added
+4 response.output_text.delta
+5 response.output_text.delta
+6 response.output_text.delta
+7 response.output_text.delta
+8 response.output_text.delta
+9 response.output_text.delta
+10 response.output_text.done
+11 response.content_part.done
+12 response.output_item.done
+13 response.completed
+completed resp_fake_1
+["Hello! ","You ","said: ","Stream ","a ","greeting."]
+delta "Hello! "
+delta "You "
+delta "said: "
+delta "Again."
+resp_fake_1 Hello! You said: Again.

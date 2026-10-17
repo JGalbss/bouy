@@ -1,0 +1,5 @@
+module.exports: function
+command: function
+commandSync: function
+node: function
+sync: function

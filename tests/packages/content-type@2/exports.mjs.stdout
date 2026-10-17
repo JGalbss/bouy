@@ -1,0 +1,5 @@
+__esModule: boolean
+default: object
+format: function
+module.exports: object
+parse: function

@@ -1,0 +1,14 @@
+module.exports: object
+Cache: function
+Client: function
+LS_MESSAGE_VIEW_EXCLUDE: string
+PromptCache: function
+RunTree: function
+__version__: string
+configureGlobalPromptCache: function
+getDefaultProjectName: function
+isTracingEnabled: function
+overrideFetchImplementation: function
+promptCacheSingleton: object
+uuid7: function
+uuid7FromTime: function

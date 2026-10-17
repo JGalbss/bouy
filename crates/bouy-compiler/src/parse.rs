@@ -9,7 +9,17 @@ use oxc::parser::Parser;
 use oxc::semantic::{Semantic, SemanticBuilder};
 use oxc::span::SourceType;
 
+use crate::Goal;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
+
+/// The source type that `path` parses with under `goal`.
+pub fn source_type(path: &Path, goal: Goal) -> SourceType {
+    match goal {
+        Goal::Extension => SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts()),
+        Goal::Script => SourceType::script(),
+        Goal::Module => SourceType::mjs(),
+    }
+}
 
 /// Parses `source`, runs semantic analysis, and hands both to `use_program`.
 ///
@@ -17,33 +27,45 @@ use crate::diagnostic::{Code, Diagnostic, Reporter};
 pub fn with_program<R>(
     path: &Path,
     source: &str,
+    source_type: SourceType,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
     let parsed = Parser::new(&allocator, source, source_type).parse();
     if parsed.fatal_error || parsed.diagnostics.has_errors() {
-        return Err(syntax_errors(path, source, &parsed.diagnostics));
+        return Err(syntax_errors(
+            path,
+            source,
+            source_type,
+            &parsed.diagnostics,
+        ));
     }
     let built = SemanticBuilder::new()
         .with_build_nodes(true)
         .with_check_syntax_error(true)
         .build(&parsed.program);
     if built.diagnostics.has_errors() {
-        return Err(syntax_errors(path, source, &built.diagnostics));
+        return Err(syntax_errors(path, source, source_type, &built.diagnostics));
     }
     Ok(use_program(&parsed.program, &built.semantic))
 }
 
-fn syntax_errors(path: &Path, source: &str, diagnostics: &Diagnostics) -> Vec<Diagnostic> {
+fn syntax_errors(
+    path: &Path,
+    source: &str,
+    source_type: SourceType,
+    diagnostics: &Diagnostics,
+) -> Vec<Diagnostic> {
     let reporter = Reporter::new(path, source);
     diagnostics
         .errors()
         .map(|error| {
             let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
             // oxc rejects `yield` outside a generator as a reserved word. In Bouy that is a
-            // `yield*` in a function nested in an Effect body (section 13).
-            if error.message.contains("reserved")
+            // `yield*` in a function nested in an Effect body (section 13). In JavaScript it
+            // stays a syntax error, as test262 expects.
+            if source_type.is_typescript()
+                && error.message.contains("reserved")
                 && source.get(offset..).is_some_and(|rest| rest.starts_with("yield"))
             {
                 return reporter.at(

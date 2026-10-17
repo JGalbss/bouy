@@ -1,0 +1,5 @@
+default import: object
+default import .default: the default export
+helper: a named export
+namespace keys: __esModule, default, helper, module.exports
+namespace.default is module.exports: true

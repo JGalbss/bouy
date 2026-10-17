@@ -1,0 +1,5 @@
+module.exports: function
+_enoent: object
+_parse: function
+spawn: function
+sync: function

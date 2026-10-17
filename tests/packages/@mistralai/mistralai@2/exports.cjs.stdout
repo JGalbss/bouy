@@ -1,0 +1,10 @@
+module.exports: object
+HTTPClient: function
+Mistral: function
+SDK_METADATA: object
+ServerEu: string
+ServerGlobal: string
+ServerList: object
+ServerUs: string
+files: object
+serverURLFromOptions: function

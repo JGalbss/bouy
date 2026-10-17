@@ -1,0 +1,5 @@
+module.exports: object
+ChatAnthropic: function
+ChatAnthropicMessages: function
+convertPromptToAnthropic: function
+tools: object

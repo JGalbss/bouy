@@ -156,7 +156,7 @@ never_settles() ->
     case bouy_actor:current_id() of
         undefined ->
             io:put_chars(standard_error, "Warning: Detected unsettled top-level await\n"),
-            erlang:halt(13);
+            bouy_main:finish(13, #{});
         _Actor ->
             receive
             after infinity -> ok

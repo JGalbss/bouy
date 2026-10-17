@@ -1,0 +1,5 @@
+#!/bin/sh
+# The node shim of docs/design/testing.md section 8. bouy_env puts this directory first on
+# PATH, so a test that starts node fails. Node runs only in the oracle tools.
+echo "a test tried to run node" >&2
+exit 1

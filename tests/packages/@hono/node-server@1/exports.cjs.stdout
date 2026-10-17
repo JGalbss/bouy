@@ -1,0 +1,5 @@
+module.exports: object
+RequestError: function
+createAdaptorServer: function
+getRequestListener: function
+serve: function

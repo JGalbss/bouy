@@ -1,7 +1,9 @@
 //! `bouy-bench`: runs each suite in `bench/programs/` as a Bouy program and as an
 //! equivalent plain Node program, records every run in `bench/results/`, and prints a
-//! Markdown table of the medians and ranges.
+//! Markdown table of the medians and ranges. `bouy-bench compare` checks nightly runs
+//! against the limits of `bench/thresholds.json`.
 
+mod compare;
 mod environment;
 mod measure;
 mod results;
@@ -12,16 +14,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 
 use crate::results::{Outcome, Program, Results, Run, Suite};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "bouy-bench",
-    about = "Run each Bouy benchmark next to an equivalent plain Node program"
+    about = "Run each Bouy benchmark next to an equivalent plain Node program",
+    args_conflicts_with_subcommands = true
 )]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
     /// The suites to run, by directory name in `<bench>/programs/`. All suites by default.
     suites: Vec<String>,
     /// The measured runs of each program, after one warm-up run.
@@ -44,14 +49,43 @@ struct Cli {
     host: Option<String>,
 }
 
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Compare the Bouy medians of nightly runs with the limits. Fails when a metric is
+    /// past its limit in the previous and the current run.
+    Compare(Compare),
+}
+
+#[derive(Debug, Args)]
+struct Compare {
+    /// The results files of one host in time order: the baseline, the previous run when
+    /// it exists, and the current run.
+    #[arg(num_args = 2..=3, required = true)]
+    files: Vec<PathBuf>,
+    /// The limits file.
+    #[arg(long, default_value = concat!(env!("CARGO_MANIFEST_DIR"), "/../../bench/thresholds.json"))]
+    limits: PathBuf,
+}
+
 fn main() -> ExitCode {
     if let Some(code) = measure::child() {
         return code;
     }
-    match bench(&Cli::parse()) {
+    let cli = Cli::parse();
+    let (outcome, failure) = match &cli.command {
+        Some(Command::Compare(compare)) => (
+            compare_runs(compare),
+            "a metric is past its limit in two runs in a row",
+        ),
+        None => (
+            bench(&cli),
+            "some runs failed; the results file holds their errors",
+        ),
+    };
+    match outcome {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => {
-            eprintln!("bouy-bench: some runs failed; the results file holds their errors");
+            eprintln!("bouy-bench: {failure}");
             ExitCode::FAILURE
         }
         Err(error) => {
@@ -59,6 +93,21 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Prints the comparison. Returns whether no metric is past its limit twice.
+fn compare_runs(cli: &Compare) -> Result<bool, String> {
+    let limits = compare::load_limits(&cli.limits)?;
+    let results = cli
+        .files
+        .iter()
+        .map(|file| compare::load_results(file))
+        .collect::<Result<Vec<_>, String>>()?;
+    let rows = compare::rows(&limits, &results)?;
+    println!("{}", compare::report(&results, &rows));
+    Ok(rows
+        .iter()
+        .all(|row| row.verdict != compare::Verdict::PastTwice))
 }
 
 /// Runs the suites, writes the results file, and prints the table. Returns whether

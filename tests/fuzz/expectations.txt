@@ -1,0 +1,39 @@
+# Written by `bouy-fuzz campaign`: one line for each case in tests/fuzz/<generator>/.
+# crates/bouy-cli/tests/fuzz.rs fails when a case gives another outcome, and writes the
+# lines of its run to target/suites/fuzz/expectations.txt. docs/design/testing.md 5.10.
+json/0.ts fail
+json/1.ts fail
+json/107.ts fail
+json/16.ts fail
+json/163.ts fail
+json/24.ts fail
+json/74.ts fail
+number/100.ts fail
+number/108.ts fail
+number/119.ts crash
+number/155.ts crash
+number/35.ts fail
+number/47.ts fail
+number/67.ts fail
+number/76.ts fail
+number/86.ts fail
+string/0.ts fail
+string/1.ts fail
+string/101.ts fail
+string/103.ts fail
+string/107.ts fail
+string/14.ts fail
+string/140.ts fail
+string/142.ts fail
+string/159.ts fail
+string/16.ts fail
+string/34.ts fail
+string/37.ts fail
+string/44.ts fail
+string/56.ts fail
+string/6.ts fail
+string/65.ts fail
+string/67.ts fail
+string/73.ts fail
+string/95.ts fail
+string/98.ts fail

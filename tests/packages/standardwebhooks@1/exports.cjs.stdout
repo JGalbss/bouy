@@ -1,0 +1,3 @@
+module.exports: object
+Webhook: function
+WebhookVerificationError: function

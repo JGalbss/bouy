@@ -1,0 +1,4 @@
+module.exports: object
+asConst: function
+wrapCompilerAsTypeGuard: function
+wrapValidatorAsTypeGuard: function

@@ -1,0 +1,4 @@
+true
+false
+[["additionalProperties","should NOT have additional properties"],["required","should have required property 'name'"],["minimum","should be >= 0"]]
+data should NOT have additional properties, data should have required property 'name', data.age should be >= 0

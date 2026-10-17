@@ -1,0 +1,4 @@
+{
+  "private": true,
+  "description": "Ends the package scope of the vendored Node tests. nodejs/node has no package.json above test/, so these files take Node's default module type, not the `type` of tests/package.json."
+}

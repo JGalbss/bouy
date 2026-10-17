@@ -1,0 +1,16 @@
+{
+  "call-latency": { "mean_us": 2.0, "peak_rss_mib": 1.15, "wall_ms": 3.0 },
+  "cast-throughput": { "casts_per_s": 0.5, "peak_rss_mib": 1.15, "wall_ms": 3.0 },
+  "compute": { "fib_ms": 1.5, "peak_rss_mib": 1.15, "wall_ms": 3.0 },
+  "crash-recovery": { "cycle_us": 2.5, "peak_rss_mib": 1.15, "recovery_us": 2.0, "wall_ms": 3.0 },
+  "fairness": { "peak_rss_mib": 1.15, "pings": 0.5, "wall_ms": 1.5 },
+  "fan-out": { "calls_per_s": 0.5, "peak_rss_mib": 1.25, "wall_ms": 3.0 },
+  "payload": { "messages_per_s": 0.5, "peak_rss_mib": 1.15, "wall_ms": 3.0 },
+  "spawn": {
+    "peak_rss_mib": 1.15,
+    "per_actor_us": 1.75,
+    "rss_per_actor_bytes": 1.15,
+    "wall_ms": 3.0
+  },
+  "startup": { "peak_rss_mib": 1.15, "wall_ms": 3.0 }
+}

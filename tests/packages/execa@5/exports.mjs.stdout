@@ -1,0 +1,6 @@
+command: function
+commandSync: function
+default: function
+module.exports: function
+node: function
+sync: function

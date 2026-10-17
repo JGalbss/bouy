@@ -39,27 +39,11 @@ The scenario exercises these paths:
 
 ## Run it with Node
 
-The program needs Node 25 and the fake OpenAI server of `runtime/test/bouy_fake_openai.erl`. It uses enums, namespaces, and parameter properties, which Node's type stripping rejects, so run Node with `--experimental-transform-types`. Node prints an `ExperimentalWarning` to stderr. The warning is not part of the output.
+The program needs the Node release of `.node-version` at the repository root and the fake OpenAI server of `runtime/test/bouy_fake_openai.erl`. It uses enums, namespaces, and parameter properties, which Node's type stripping rejects, so run Node with `--experimental-transform-types`. Node prints an `ExperimentalWarning` to stderr. The warning is not part of the output.
 
 The program imports `ai@7.0.142`, `@ai-sdk/openai@4.0.95`, and `effect@4.0.5`. Node finds them in `tests/node_modules`, because it looks for `node_modules` in each parent directory. Run `pnpm install` at the repository root first. Do not install packages in this directory.
 
-Record the output from this directory:
-
-```sh
-cd tests/migration/before
-sh -eu <<'SH'
-work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
-erlc -o "$work" ../../../runtime/test/bouy_fake_openai.erl
-# The server halts when this shell ends.
-erl -noshell -pa "$work" -eval 'bouy_fake_openai:main()' -extra "$$" >"$work/port" &
-until grep -q '^[0-9][0-9]*$' "$work/port" 2>/dev/null; do sleep 0.1; done
-OPENAI_BASE_URL="http://127.0.0.1:$(head -n 1 "$work/port")/v1" OPENAI_API_KEY=sk-fake-key \
-  node --experimental-transform-types src/main.ts >expected.stdout
-SH
-```
-
-To compare a run with the recorded output, replace `>expected.stdout` with `| diff expected.stdout -`. The program exits with status 0.
+`scripts/freeze-expectations.sh tests/migration`, run from the repository root, records the output. It starts the fake server, runs `node --experimental-transform-types before/src/main.ts` twice, and writes `expected.stdout` when the two runs agree. The program exits with status 0. To compare a run with the recorded output, run the script and then `git diff tests/migration/before`.
 
 ## Why the output is deterministic
 

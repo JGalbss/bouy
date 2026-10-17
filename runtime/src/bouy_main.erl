@@ -7,8 +7,10 @@
 %%       -eval 'bouy_main:start()' -extra <build dir> <entry module> <entry path> <module,...> [args...]
 %% start/0 compiles each changed module of <build dir>/src into <build dir>/ebin,
 %% starts the bouy application, runs the top-level code of the entry module, and halts.
+%% When BOUY_RESULT_FILE names a path, the VM writes the facts of the run there before
+%% it halts (section 1 of the contract).
 
--export([start/0, import/1]).
+-export([start/0, import/1, finish/2]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -33,6 +35,7 @@ boot() ->
     %% mangle the characters outside latin1.
     ok = io:setopts(standard_io, [{encoding, unicode}]),
     ok = io:setopts(standard_error, [{encoding, unicode}]),
+    ok = bouy_guard:start(),
     persistent_term:put({bouy, stdout}, group_leader()),
     case init:get_plain_arguments() of
         [Build, Entry, EntryPath, Modules | Args] ->
@@ -66,9 +69,12 @@ run(Entry) ->
     ok = start_runtime(),
     _ = process_flag(trap_exit, false),
     try import(Entry) of
-        ok -> erlang:halt(0)
+        ok -> finish(0, #{})
     catch
-        Class:Reason:Stack -> stop(1, uncaught(Class, Reason, Stack))
+        Class:Reason:Stack ->
+            {Report, Facts} = uncaught(Class, Reason, Stack),
+            io:put_chars(standard_error, Report),
+            finish(1, Facts)
     end.
 
 %% Section 8: bouy_app:start/2 directly. The application controller would also load
@@ -83,16 +89,44 @@ start_runtime() ->
             stop(1, io_lib:format("bouy: cannot start the runtime: ~p~n", [Reason]))
     end.
 
+%% The uncaught-error line, and the facts of the result file: `uncaught` for a
+%% JavaScript value, and `erlang` for an Erlang reason that is not one.
 uncaught(error, Reason, Stack) ->
     try bouy_rt:caught(Reason, Stack) of
-        Value -> describe(Value)
+        Value -> {describe(Value), #{uncaught => value_facts(Value)}}
     catch
-        _:_ -> io_lib:format("Uncaught ~p~n", [Reason])
+        _:_ -> {io_lib:format("Uncaught ~p~n", [Reason]), #{erlang => format(Reason)}}
     end;
 uncaught(throw, {'$fail', Value}, _Stack) ->
-    describe(Value);
+    {describe(Value), #{uncaught => value_facts(Value)}};
 uncaught(Class, Reason, _Stack) ->
-    io_lib:format("Uncaught ~p: ~p~n", [Class, Reason]).
+    {io_lib:format("Uncaught ~p: ~p~n", [Class, Reason]), #{erlang => format({Class, Reason})}}.
+
+%% The fields of a thrown value that tell one error from another. An error that the
+%% runtime made from an Erlang reason keeps that reason in `erlang`.
+value_facts(Value) when is_map(Value) ->
+    maps:filter(
+        fun(Key, Field) -> lists:member(Key, [<<"name">>, <<"message">>, <<"code">>, <<"erlang">>]) andalso is_binary(Field) end,
+        Value
+    );
+value_facts(Value) ->
+    try #{<<"message">> => bouy_rt:to_string(Value)}
+    catch
+        _:_ -> #{}
+    end.
+
+format(Term) ->
+    unicode:characters_to_binary(io_lib:format("~0tp", [Term])).
+
+%% Halts the VM with Status. When BOUY_RESULT_FILE names a path, it first writes Facts
+%% and the status there as one JSON object.
+-spec finish(non_neg_integer(), map()) -> no_return().
+finish(Status, Facts) ->
+    case os:getenv("BOUY_RESULT_FILE", "") of
+        "" -> ok;
+        Path -> _ = file:write_file(Path, json:encode(Facts#{status => Status}))
+    end,
+    erlang:halt(Status).
 
 describe(#{'$error' := _, <<"name">> := Name, <<"message">> := Message}) when is_binary(Name), is_binary(Message) ->
     io_lib:format("Uncaught ~ts: ~ts~n", [Name, Message]);
@@ -175,7 +209,9 @@ format_error(File, {Location, Module, Descriptor}) ->
 line({Line, _Column}) -> Line;
 line(Line) -> Line.
 
+%% A failure of the VM before or around the program: the facts record the report as
+%% the Erlang reason.
 -spec stop(non_neg_integer(), unicode:chardata()) -> no_return().
 stop(Status, Report) ->
     io:put_chars(standard_error, Report),
-    erlang:halt(Status).
+    finish(Status, #{erlang => unicode:characters_to_binary(Report)}).

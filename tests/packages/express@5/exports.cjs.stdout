@@ -1,0 +1,11 @@
+module.exports: function
+Route: function
+Router: function
+application: object
+json: function
+raw: function
+request: object
+response: object
+static: function
+text: function
+urlencoded: function

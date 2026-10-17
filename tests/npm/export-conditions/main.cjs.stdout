@@ -1,0 +1,2 @@
+require picks node, require
+an unexported path throws ERR_PACKAGE_PATH_NOT_EXPORTED

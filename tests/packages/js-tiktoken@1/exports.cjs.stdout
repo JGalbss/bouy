@@ -1,0 +1,5 @@
+module.exports: object
+Tiktoken: function
+encodingForModel: function
+getEncoding: function
+getEncodingNameForModel: function

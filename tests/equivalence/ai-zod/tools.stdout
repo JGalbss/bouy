@@ -1,0 +1,16 @@
+openai.chat Results: weather -> {"city":"Lima","temperature":12,"unit":"C"}, advise -> stay in
+  step 0 tool-calls [{"city":"Lima","unit":"C"}]
+  results [{"city":"Lima","temperature":12,"unit":"C"}]
+  step 1 tool-calls [{"temperature":12}]
+  results ["stay in"]
+  step 2 stop []
+  results []
+openai.responses Results: weather -> {"city":"Lima","temperature":12,"unit":"C"}, advise -> stay in
+  step 0 tool-calls [{"city":"Lima","unit":"C"}]
+  results [{"city":"Lima","temperature":12,"unit":"C"}]
+  step 1 tool-calls [{"temperature":12}]
+  results ["stay in"]
+  step 2 stop []
+  results []
+["tool-call","tool-error"]
+Results: advise -> {"error":"AI_InvalidToolInputError: Invalid input for tool advise: AI_TypeValidationError: Type validation failed: Value: {\"temperature\":\"warm\"}.\nError message: [\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"temperature\"\n    ],\n    \"message\": \"Invalid input: expected number, received string\"\n  }\n]"}

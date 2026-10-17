@@ -1,0 +1,3 @@
+module.exports: object
+McpServer: function
+ResourceTemplate: function

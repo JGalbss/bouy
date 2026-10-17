@@ -1,0 +1,25 @@
+[package]
+name = "bouy-suites"
+description = "Runs the upstream test suites, compares their outcomes with the expectation files, and holds the rule checks of the test layout."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "bouy-suites"
+path = "src/main.rs"
+
+[dependencies]
+bouy-compiler.workspace = true
+clap = { workspace = true, features = ["env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+sha2 = "0.11"
+
+[lints]
+workspace = true

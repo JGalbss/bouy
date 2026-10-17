@@ -1,0 +1,12 @@
+module.exports: object
+$: function
+ExecaError: function
+ExecaSyncError: function
+execa: function
+execaNode: function
+execaSync: function
+getCancelSignal: function
+getEachMessage: function
+getOneMessage: function
+parseCommandString: function
+sendMessage: function

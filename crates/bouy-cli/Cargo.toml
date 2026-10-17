@@ -15,5 +15,8 @@ path = "src/main.rs"
 bouy-compiler.workspace = true
 clap.workspace = true
 
+[dev-dependencies]
+bouy-suites = { path = "../bouy-suites" }
+
 [lints]
 workspace = true

@@ -1,0 +1,50 @@
+# Posts the pull request comment of docs/design/testing.md section 6. The suites job of CI
+# writes the comment as an artifact and holds no write token, so a pull request from a fork
+# never gets one. This workflow runs the code of the default branch and treats the artifact
+# as data: it checks the pull request number against the commit of the run and posts the
+# text. Boa splits its test262 comment the same way.
+name: Suites comment
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read
+  pull-requests: write
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: suites-comment
+          path: ${{ runner.temp }}/comment
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DIR: ${{ runner.temp }}/comment
+        run: |
+          number=$(head -c 20 "$DIR/number")
+          case "$number" in
+            '' | *[!0-9]*) echo "the artifact names no pull request number"; exit 1 ;;
+          esac
+          head=$(gh api "repos/$REPO/pulls/$number" --jq .head.sha)
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "pull request $number is at $head, not $HEAD_SHA; a later run comments"
+            exit 0
+          fi
+          id=$(gh api --paginate "repos/$REPO/issues/$number/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- bouy-suites -->"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$DIR/body.md" > /dev/null
+          else
+            gh api "repos/$REPO/issues/$number/comments" -F "body=@$DIR/body.md" > /dev/null
+          fi

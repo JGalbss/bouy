@@ -1,0 +1,9 @@
+tests/*/expectations.txt linguist-generated=true
+tests/*/summary.json linguist-generated=true
+docs/COMPAT.md linguist-generated=true
+docs/compat.json linguist-generated=true
+tests/equivalence/*/expectations.txt linguist-generated=true
+tests/packages/ranking.json linguist-generated=true
+# Node's own tests stay byte-identical; tests/node/suite.sha256 holds the upstream hashes.
+tests/node/suite/** -text linguist-vendored
+tests/node/suite.sha256 linguist-generated=true

@@ -182,43 +182,48 @@ pub struct Checkpoint {
 
 /// Lowers `module` to Erlang source.
 pub fn lower_module(module: &graph::Module, graph: &Graph) -> Result<String, Vec<Diagnostic>> {
-    with_program(&module.path, &module.source, |program, semantic| {
-        let mut reporter = Reporter::new(&module.path, &module.source);
-        let context = ModuleContext::build(program, semantic, module, graph, &mut reporter);
-        let roots = Roots {
-            scoping: semantic.scoping(),
-            opaque: &context.opaque,
-            ref_fields: &context.ref_fields,
-        };
-        capture::check(program, semantic, &context, &roots, &mut reporter);
-        let mut lowerer = Lowerer {
-            semantic,
-            module: &context,
-            roots,
-            reporter,
-            scope: Scope::default(),
-            seq: Vec::new(),
-            frame: Frame::Init,
-            targets: Vec::new(),
-            class: None,
-            rests: Vec::new(),
-            checkpoints: Vec::new(),
-            hoisted: HashSet::new(),
-            pending: HashSet::new(),
-            closures: Vec::new(),
-            constructs: false,
-            generator: false,
-        };
-        let functions = lowerer.module_functions(program);
-        if lowerer.reporter.diagnostics.is_empty() {
-            Ok(erlang::print_module(&erlang::Module {
-                name: context.name.clone(),
-                functions,
-            }))
-        } else {
-            Err(lowerer.reporter.diagnostics)
-        }
-    })?
+    with_program(
+        &module.path,
+        &module.source,
+        module.source_type,
+        |program, semantic| {
+            let mut reporter = Reporter::new(&module.path, &module.source);
+            let context = ModuleContext::build(program, semantic, module, graph, &mut reporter);
+            let roots = Roots {
+                scoping: semantic.scoping(),
+                opaque: &context.opaque,
+                ref_fields: &context.ref_fields,
+            };
+            capture::check(program, semantic, &context, &roots, &mut reporter);
+            let mut lowerer = Lowerer {
+                semantic,
+                module: &context,
+                roots,
+                reporter,
+                scope: Scope::default(),
+                seq: Vec::new(),
+                frame: Frame::Init,
+                targets: Vec::new(),
+                class: None,
+                rests: Vec::new(),
+                checkpoints: Vec::new(),
+                hoisted: HashSet::new(),
+                pending: HashSet::new(),
+                closures: Vec::new(),
+                constructs: false,
+                generator: false,
+            };
+            let functions = lowerer.module_functions(program);
+            if lowerer.reporter.diagnostics.is_empty() {
+                Ok(erlang::print_module(&erlang::Module {
+                    name: context.name.clone(),
+                    functions,
+                }))
+            } else {
+                Err(lowerer.reporter.diagnostics)
+            }
+        },
+    )?
 }
 
 impl ModuleContext {
@@ -488,7 +493,7 @@ impl ModuleContext {
             } else {
                 reporter.report(
                     item.span(),
-                    Code::BadImport,
+                    Code::MissingExport,
                     format!("\"{specifier}\" does not export `{name}`"),
                 );
                 // The name reads as `undefined`, so its uses report nothing more.

@@ -1,0 +1,4 @@
+module.exports: object
+VERSION: string
+createOpenAI: function
+openai: function

@@ -1,0 +1,3 @@
+the package root
+a subpath of the package itself
+an unexported path of the package throws ERR_PACKAGE_PATH_NOT_EXPORTED

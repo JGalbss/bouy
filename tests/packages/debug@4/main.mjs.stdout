@@ -1,0 +1,5 @@
+app:server true
+app:noisy false
+other false
+1 true
+true false

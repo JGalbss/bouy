@@ -1,0 +1,5 @@
+chatcmpl-fake-2 gpt-4o-mini-2026-01-01 stop
+Hello! System: You are terse. You said: Say hello.
+{"completion_tokens":9,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":20,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":29}
+[{"function":{"arguments":"{\"id\":7}","name":"lookup"},"id":"call_1_1","type":"function"}]
+true 500 500 The server had an error while processing your request.

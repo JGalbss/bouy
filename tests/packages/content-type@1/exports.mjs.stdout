@@ -1,0 +1,4 @@
+default: object
+format: function
+module.exports: object
+parse: function

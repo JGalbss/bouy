@@ -1,0 +1,5 @@
+module.exports: object
+format: function
+isTokenValid: function
+isTypeValid: function
+parse: function

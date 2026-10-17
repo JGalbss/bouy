@@ -1,0 +1,6 @@
+default: function
+json: function
+module.exports: function
+raw: function
+text: function
+urlencoded: function

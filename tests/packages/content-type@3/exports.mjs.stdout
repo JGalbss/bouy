@@ -1,0 +1,4 @@
+format: function
+isTokenValid: function
+isTypeValid: function
+parse: function

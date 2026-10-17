@@ -9,6 +9,9 @@
     "pnpm-lock.yaml",
     "tools/oxlint/guardrails/anti-slop/",
     ".bouy/",
-    ".claude/"
+    ".claude/",
+    "docs/COMPAT.md",
+    "tests/fuzz/",
+    "tests/node/suite/"
   ]
 }

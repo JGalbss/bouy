@@ -1,0 +1,9 @@
+PerMessageDeflate: function
+Receiver: function
+Sender: function
+WebSocket: function
+WebSocketServer: function
+createWebSocketStream: function
+default: function
+extension: object
+subprotocol: object

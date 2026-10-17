@@ -1,0 +1,6 @@
+AI_APICallError status 400 false true
+AI_APICallError status 429 true true
+AI_APICallError status 500 true true
+AI_TypeValidationError {"a":1} true
+false
+Error: boom text unknown error

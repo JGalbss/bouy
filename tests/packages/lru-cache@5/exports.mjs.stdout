@@ -1,0 +1,2 @@
+default: function
+module.exports: function

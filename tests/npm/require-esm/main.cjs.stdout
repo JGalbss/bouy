@@ -1,0 +1,6 @@
+keys: __esModule, default, value
+value: 42
+default: default
+__esModule: true
+same object twice: true
+top-level await throws ERR_REQUIRE_ASYNC_MODULE

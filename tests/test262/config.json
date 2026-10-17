@@ -1,0 +1,8 @@
+{
+  "commit": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+  "timeout_ms": 10000,
+  "skip": [
+    { "flag": "CanBlockIsFalse", "reason": "can-block" },
+    { "feature": "IsHTMLDDA", "reason": "needs-dom" }
+  ]
+}

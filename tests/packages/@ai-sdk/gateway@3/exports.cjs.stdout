@@ -1,0 +1,13 @@
+module.exports: object
+GatewayAuthenticationError: function
+GatewayError: function
+GatewayFailedDependencyError: function
+GatewayForbiddenError: function
+GatewayInternalServerError: function
+GatewayInvalidRequestError: function
+GatewayModelNotFoundError: function
+GatewayRateLimitError: function
+GatewayResponseError: function
+createGateway: function
+createGatewayProvider: function
+gateway: function

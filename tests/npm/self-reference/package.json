@@ -1,0 +1,8 @@
+{
+  "name": "@bouytest/self",
+  "private": true,
+  "exports": {
+    ".": "./index.mjs",
+    "./helper": "./helper.mjs"
+  }
+}

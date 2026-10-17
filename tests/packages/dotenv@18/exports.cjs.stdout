@@ -1,0 +1,5 @@
+module.exports: object
+config: function
+configDotenv: function
+parse: function
+populate: function

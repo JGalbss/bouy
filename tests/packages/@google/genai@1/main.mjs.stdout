@@ -1,0 +1,3 @@
+function function
+{"role":"user","parts":[{"text":"Hello"},{"text":"world"}]}
+OBJECT STRING ARRAY

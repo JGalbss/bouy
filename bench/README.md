@@ -27,6 +27,16 @@ pnpm format
 
 Build the CLI from the same tree as the programs. The results file records `git describe --dirty` of the tree, not of the binary.
 
+## Limits
+
+`thresholds.json` holds the limits of the nightly job, which [docs/design/testing.md](../docs/design/testing.md) section 5.11 describes. For each suite and Bouy metric, a limit is the largest allowed ratio of a new median to the baseline median. A limit above 1 is the ceiling of a metric where less is better, such as `wall_ms`. A limit below 1 is the floor of a metric where more is better, such as `casts_per_s`. The limits leave room for a loaded machine. The `wall_ms` ceilings are wide, because `wall_ms` includes the start of the VM, which grows the most with the load. The limits are not results, so no document may quote them.
+
+```sh
+target/release/bouy-bench compare <baseline.json> [<previous.json>] <current.json>
+```
+
+The command prints a Markdown table with each median and its ratio to the baseline median. It exits with 1 when a metric is past its limit in the previous run and in the current run. A metric past its limit in the current run only is a warning. The files must come from one host.
+
 ## Method
 
 1. The harness runs each program once to warm up. This compiles the Bouy module, fills the runtime cache in `~/.cache/bouy`, and fills the file cache.

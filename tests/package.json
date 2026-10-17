@@ -5,7 +5,11 @@
   "type": "module",
   "devDependencies": {
     "@ai-sdk/openai": "4.0.95",
+    "@anthropic-ai/sdk": "0.135.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "ai": "7.0.142",
-    "effect": "4.0.5"
+    "effect": "4.0.5",
+    "openai": "7.36.0",
+    "zod": "4.6.7"
   }
 }

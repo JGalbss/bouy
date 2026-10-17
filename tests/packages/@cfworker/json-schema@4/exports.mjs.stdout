@@ -1,0 +1,14 @@
+OutputFormat: object
+Validator: function
+deepCompareStrict: function
+dereference: function
+encodePointer: function
+escapePointer: function
+format: object
+ignoredKeyword: object
+initialBaseURI: object
+schemaArrayKeyword: object
+schemaKeyword: object
+schemaMapKeyword: object
+ucs2length: function
+validate: function

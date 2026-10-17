@@ -1,0 +1,4 @@
+Assistant You are a helpful assistant. get_weather
+transfer_to_Forecaster
+{"city":{"type":"string"}}
+It is sunny in Lima.

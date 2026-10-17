@@ -1280,7 +1280,7 @@ impl<'a> Lowerer<'a, '_> {
                         self.unsupported(call.span, "a module namespace cannot be called")
                     }
                     None => {
-                        self.report(call.span, Code::BadImport, format!("the imported module has no export `{name}`"));
+                        self.report(call.span, Code::MissingExport, format!("the imported module has no export `{name}`"));
                         Expr::undefined()
                     }
                 }

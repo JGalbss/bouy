@@ -170,8 +170,28 @@ fn compile(entry: &Path) -> Result<Project, ExitCode> {
         for diagnostic in &diagnostics {
             eprintln!("{}", relative(diagnostic));
         }
+        write_result(&diagnostics);
         ExitCode::from(DIAGNOSTICS)
     })
+}
+
+/// Writes the facts of a run that stopped at its diagnostics to `BOUY_RESULT_FILE`, as
+/// the VM writes the facts of a run (section 1 of the contract).
+fn write_result(diagnostics: &[Diagnostic]) {
+    let Some(path) = env::var_os("BOUY_RESULT_FILE").filter(|path| !path.is_empty()) else {
+        return;
+    };
+    let codes: Vec<String> = diagnostics
+        .iter()
+        .map(|diagnostic| format!("\"{}\"", diagnostic.code.as_str()))
+        .collect();
+    let facts = format!(
+        "{{\"status\":{DIAGNOSTICS},\"diagnostics\":[{}]}}",
+        codes.join(",")
+    );
+    if let Err(error) = fs::write(&path, facts) {
+        eprintln!("bouy: cannot write {}: {error}", Path::new(&path).display());
+    }
 }
 
 /// Writes each module to `<project>/.bouy/build/src/` and returns the build directory.

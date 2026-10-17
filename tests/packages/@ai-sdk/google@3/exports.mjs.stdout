@@ -1,0 +1,4 @@
+GoogleTranscriptionModel: function
+VERSION: string
+createGoogleGenerativeAI: function
+google: function

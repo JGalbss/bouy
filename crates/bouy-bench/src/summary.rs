@@ -4,11 +4,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::results::{Outcome, Results, Run, Suite};
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Spread {
     pub median: f64,
     pub min: f64,
@@ -185,7 +185,7 @@ fn cell(spread: &Spread) -> String {
 
 /// Three significant digits or more, with thousands separators: `1,013,171`, `412`,
 /// `10.3`, `3.03`, `0.166`. A whole number has no decimals.
-fn number(value: f64) -> String {
+pub fn number(value: f64) -> String {
     let decimals = match value.abs() {
         magnitude if magnitude >= 100.0 || value.fract().abs() < f64::EPSILON => 0,
         magnitude if magnitude >= 10.0 => 1,

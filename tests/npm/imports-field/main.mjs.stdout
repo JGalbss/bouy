@@ -1,0 +1,5 @@
+mode test
+twice 21 is 42
+a package that #dependency maps to
+#conditional resolves through import
+#missing throws ERR_PACKAGE_IMPORT_NOT_DEFINED

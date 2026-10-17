@@ -1,0 +1,2 @@
+{"$ref":"#/definitions/User","definitions":{"User":{"type":"object","properties":{"name":{"type":"string","description":"The full name"},"age":{"type":"integer"},"role":{"type":"string","enum":["admin","user"]}},"required":["name","role"],"additionalProperties":false}},"$schema":"http://json-schema.org/draft-07/schema#"}
+{"type":"object","properties":{"name":{"type":"string","description":"The full name"},"age":{"type":"integer"},"role":{"type":"string","enum":["admin","user"]}},"required":["name","role"],"additionalProperties":false}

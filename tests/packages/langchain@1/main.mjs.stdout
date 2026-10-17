@@ -1,0 +1,4 @@
+human "Weather in Lima?" []
+ai "Weather in Lima?" [{"name":"get_weather","args":{"city":"Lima"},"id":"call_1","type":"tool_call"}]
+tool "It is sunny in Lima." []
+ai "Weather in Lima?-Weather in Lima?-It is sunny in Lima." []
