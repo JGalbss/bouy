@@ -57,11 +57,27 @@ iterate({'$o', _} = O) ->
         array -> {array, O, 0};
         generator -> {generator, O};
         list_iterator -> {list_iterator, O};
+        Class when Class =:= array_iterator; Class =:= map_iterator; Class =:= set_iterator; Class =:= string_iterator ->
+            native(Class, O);
         _ -> protocol(O)
     end;
 iterate(S) when ?IS_STRING(S) -> {list, [bouy_ref_string:from_code_points([C]) || C <- bouy_ref_string:code_points(S)]};
 iterate({'$f', _, _} = F) -> protocol(F);
 iterate(V) -> bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(V), <<" is not iterable">>)).
+
+%% A builtin iterator whose next method is the intrinsic one steps without
+%% the result objects of the protocol: {native, Module, Iterator}.
+native(Class, O) ->
+    {Module, Next} = case Class of
+        array_iterator -> {bouy_ref_array, <<"ArrayIterator.prototype.next">>};
+        map_iterator -> {bouy_ref_collection, <<"MapIterator.prototype.next">>};
+        set_iterator -> {bouy_ref_collection, <<"SetIterator.prototype.next">>};
+        string_iterator -> {bouy_ref_string, <<"StringIterator.prototype.next">>}
+    end,
+    case bouy_heap:get(O, <<"next">>) of
+        {'$f', {builtin, Next}, _} -> {native, Module, O};
+        _ -> protocol(O)
+    end.
 
 protocol(O) ->
     case bouy_ref:get(O, bouy_heap:well_known(iterator)) of
@@ -86,6 +102,11 @@ step({generator, G} = State) ->
     case generator_resume(G, {next, undefined}) of
         {yield, V} -> {value, V, State};
         {done, _} -> done
+    end;
+step({native, Module, O} = State) ->
+    case Module:step(O) of
+        {value, V} -> {value, V, State};
+        done -> done
     end;
 step({list_iterator, O} = State) ->
     case list_iterator_next(O) of

@@ -11,7 +11,7 @@
 -include("bouy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3]).
--export([length_of/1, to_length/1, is_array/1, is_constructor/1, array_create/1, create_property/3, iterator/2]).
+-export([length_of/1, to_length/1, is_array/1, is_constructor/1, array_create/1, create_property/3, iterator/2, step/1]).
 
 -import(bouy_ref_realm, [arg/2, rest/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
@@ -924,22 +924,29 @@ iterator(O, Kind) -> bouy_heap:new_exotic(array_iterator, {'$o', 'ArrayIterator.
 iterator_next(It) ->
     ?IS_OBJECT(It) andalso bouy_heap:class_of(It) =:= array_iterator orelse
         type_error(<<"next method called on incompatible receiver">>),
+    case step(It) of
+        {value, V} -> bouy_ref_iterator:result(V, false);
+        done -> bouy_ref_iterator:result(undefined, true)
+    end.
+
+%% The next value of an array iterator: {value, V}, or done.
+-spec step(term()) -> {value, term()} | done.
+step(It) ->
     case bouy_heap:slots(It) of
-        done -> bouy_ref_iterator:result(undefined, true);
+        done -> done;
         {O, Index, Kind} ->
             Len = iterated_length(O),
             case Index < Len of
                 false ->
                     bouy_heap:set_slots(It, done),
-                    bouy_ref_iterator:result(undefined, true);
+                    done;
                 true ->
                     bouy_heap:set_slots(It, {O, Index + 1, Kind}),
-                    Value = case Kind of
-                        keys -> Index;
-                        values -> get(O, Index);
-                        entries -> bouy_heap:new_array([Index, get(O, Index)])
-                    end,
-                    bouy_ref_iterator:result(Value, false)
+                    {value, case Kind of
+                                keys -> Index;
+                                values -> get(O, Index);
+                                entries -> bouy_heap:new_array([Index, get(O, Index)])
+                            end}
             end
     end.
 
@@ -1149,29 +1156,70 @@ mapped(none, V, _K) -> V;
 mapped({F, This}, V, K) -> bouy_ref:call(F, This, [V, K]).
 
 from_iterable(C, Items, Method, Mapper) ->
-    A = case is_constructor(C) of
-        true -> bouy_ref:construct(C, []);
-        false -> array_create(0)
+    Fresh = fresh_constructor(C),
+    A = case Fresh of
+        false -> bouy_ref:construct(C, []);
+        true -> array_create(0)
     end,
     Iterator = bouy_ref:call(Method, Items, []),
     ?IS_OBJECT(Iterator) orelse type_error(<<"Result of the Symbol.iterator method is not an object">>),
     Next = bouy_ref:get(Iterator, <<"next">>),
-    Len = from_steps(A, Iterator, Next, Mapper, 0),
-    set_length(A, Len),
-    A.
+    Step = stepper(Iterator, Next),
+    case Fresh of
+        true ->
+            %% No user code can reach a new array of %Array% yet, so the
+            %% elements go in at once.
+            {Len, Pairs} = from_pairs(Step, Iterator, Mapper, 0, []),
+            commit(A, Len, Pairs);
+        false ->
+            Len = from_steps(A, Step, Iterator, Mapper, 0),
+            set_length(A, Len),
+            A
+    end.
 
-from_steps(A, Iterator, Next, Mapper, K) ->
+%% The step of an iterator: the native step of a builtin iterator whose next
+%% method is the intrinsic one, else IteratorStepValue.
+stepper(Iterator, Next) ->
+    Native = case {bouy_heap:class_of(Iterator), Next} of
+        {array_iterator, {'$f', {builtin, <<"ArrayIterator.prototype.next">>}, _}} -> ?MODULE;
+        {map_iterator, {'$f', {builtin, <<"MapIterator.prototype.next">>}, _}} -> bouy_ref_collection;
+        {set_iterator, {'$f', {builtin, <<"SetIterator.prototype.next">>}, _}} -> bouy_ref_collection;
+        {string_iterator, {'$f', {builtin, <<"StringIterator.prototype.next">>}, _}} -> bouy_ref_string;
+        _ -> none
+    end,
+    case Native of
+        none -> fun() -> step_value(Iterator, Next) end;
+        Module -> fun() -> Module:step(Iterator) end
+    end.
+
+step_value(Iterator, Next) ->
     Result = bouy_ref:call(Next, Iterator, []),
     ?IS_OBJECT(Result) orelse type_error(bouy_ref_string:concat([<<"Iterator result ">>, bouy_ref:describe(Result), <<" is not an object">>])),
     case bouy_ref:truthy(bouy_ref:get(Result, <<"done">>)) of
-        true -> K;
-        false ->
-            V = bouy_ref:get(Result, <<"value">>),
+        true -> done;
+        false -> {value, bouy_ref:get(Result, <<"value">>)}
+    end.
+
+from_steps(A, Step, Iterator, Mapper, K) ->
+    case Step() of
+        done -> K;
+        {value, V} ->
             closing(Iterator, fun() ->
                                       K >= ?MAX_LENGTH andalso too_long(),
                                       create_property(A, K, mapped(Mapper, V, K))
                               end),
-            from_steps(A, Iterator, Next, Mapper, K + 1)
+            from_steps(A, Step, Iterator, Mapper, K + 1)
+    end.
+
+from_pairs(Step, Iterator, Mapper, K, Acc) ->
+    case Step() of
+        done -> {K, Acc};
+        {value, V} ->
+            Mapped = closing(Iterator, fun() ->
+                                               K >= ?MAX_LENGTH andalso too_long(),
+                                               mapped(Mapper, V, K)
+                                       end),
+            from_pairs(Step, Iterator, Mapper, K + 1, [{K, Mapped} | Acc])
     end.
 
 %% Runs Step; when it throws, IteratorClose calls the return method of the

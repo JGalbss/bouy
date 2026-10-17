@@ -14,7 +14,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, call_constructor/3, collection_size/1, remaining/1]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3, collection_size/1, remaining/1, step/1]).
 
 -import(bouy_ref_realm, [arg/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
@@ -89,8 +89,52 @@ construct(Class, NewTarget, Args) ->
             end,
             Adder = bouy_ref:get(C, AdderName),
             bouy_heap:is_callable(Adder) orelse type_error(<<"'", AdderName/binary, "' is not a function">>),
-            add_all(Class, C, Adder, Iterable),
+            Intrinsic = case {Class, Adder} of
+                {map, {'$f', {builtin, <<"Map.prototype.set">>}, _}} -> true;
+                {set, {'$f', {builtin, <<"Set.prototype.add">>}, _}} -> true;
+                _ -> false
+            end,
+            case Intrinsic of
+                %% The intrinsic adder runs no user code and nothing can reach the
+                %% new collection yet, so its entries go in at once.
+                true -> fill(Class, C, Iterable);
+                false -> add_all(Class, C, Adder, Iterable)
+            end,
             C
+    end.
+
+%% Fills a new Map or Set from an iterable in one write: a repeated key
+%% keeps its first position and, in a Map, its last value.
+fill(Class, C, Iterable) ->
+    Entries = collect(Class, bouy_ref_iterator:iterate(Iterable), []),
+    {Index, Order, Next} = lists:foldl(fun({K, V}, {Index0, Order0, Next0}) ->
+                                               case Index0 of
+                                                   #{K := {Seq, _}} -> {Index0#{K := {Seq, V}}, Order0, Next0};
+                                                   #{K := _} -> {Index0, Order0, Next0};
+                                                   _ ->
+                                                       Entry = case Class of
+                                                           map -> {Next0, V};
+                                                           set -> Next0
+                                                       end,
+                                                       {Index0#{K => Entry}, [{Next0, K} | Order0], Next0 + 1}
+                                               end
+                                       end, {#{}, [], 0}, Entries),
+    bouy_heap:set_slots(C, {Index, {Next, gb_trees:from_orddict(lists:reverse(Order))}}).
+
+collect(Class, State, Acc) ->
+    case bouy_ref_iterator:step(State) of
+        done -> lists:reverse(Acc);
+        {value, V, State1} ->
+            Entry = closing(State1, fun() ->
+                                            case Class of
+                                                set -> {key(V), V};
+                                                map ->
+                                                    ?IS_OBJECT(V) orelse type_error(bouy_ref_string:concat([<<"Iterator value ">>, bouy_ref:describe(V), <<" is not an entry object">>])),
+                                                    K = bouy_ref:get(V, 0),
+                                                    {key(K), bouy_ref:get(V, 1)}
+                                            end
+                                    end),
+            collect(Class, State1, [Entry | Acc])
     end.
 
 empty() -> {#{}, {0, gb_trees:empty()}}.
@@ -523,11 +567,13 @@ remaining(It) ->
     Class = bouy_heap:class_of(It),
     Kind = case bouy_heap:slots(It) of
         done -> values;
-        {_, _, K} -> K
+        {_, _, K} -> K;
+        {_, _, K, _} -> K
     end,
     Items = case bouy_heap:slots(It) of
         done -> [];
-        {C, Seq, _} -> collect_after(C, Seq, Class, Kind, [])
+        {C, Seq, _} -> collect_after(C, Seq, Class, Kind, []);
+        {C, Seq, _, _} -> collect_after(C, Seq, Class, Kind, [])
     end,
     Label = case {Class, Kind} of
         {map_iterator, entries} -> <<"Map Entries">>;
@@ -554,24 +600,57 @@ collect_after(C, Seq, Class, Kind, Acc) ->
 iterator_next(It, Class) ->
     ?IS_OBJECT(It) andalso bouy_heap:class_of(It) =:= Class orelse
         type_error(<<"next method called on incompatible receiver">>),
+    case step(It) of
+        {value, V} -> bouy_ref_iterator:result(V, false);
+        done -> bouy_ref_iterator:result(undefined, true)
+    end.
+
+%% The next value of a Map or Set iterator: {value, V}, or done.
+-spec step(term()) -> {value, term()} | done.
+%%
+%% The iterator buffers the next entries of the order tree, and checks that
+%% each is still live before it gives it: a deleted entry is gone from the
+%% index, and a key set again after a delete has a new position, which a
+%% later refill finds.
+step(It) ->
     case bouy_heap:slots(It) of
-        done -> bouy_ref_iterator:result(undefined, true);
-        {C, Seq, Kind} ->
-            case next_after(C, Seq) of
-                none ->
-                    bouy_heap:set_slots(It, done),
-                    bouy_ref_iterator:result(undefined, true);
-                {Seq1, K} ->
-                    bouy_heap:set_slots(It, {C, Seq1, Kind}),
-                    Value = case {Class, Kind} of
+        done -> done;
+        {C, Seq, Kind} -> step(It, C, Seq, Kind, []);
+        {C, Seq, Kind, Buffer} -> step(It, C, Seq, Kind, Buffer)
+    end.
+
+step(It, C, Seq, Kind, [{Seq1, K} | Rest]) ->
+    {Index, _} = slots(C),
+    case maps:find(K, Index) of
+        {ok, Entry} when Entry =:= Seq1; element(1, Entry) =:= Seq1 ->
+            bouy_heap:set_slots(It, {C, Seq1, Kind, Rest}),
+            {value, case {bouy_heap:class_of(It), Kind} of
                         {_, keys} -> K;
                         {set_iterator, values} -> K;
                         {set_iterator, entries} -> bouy_heap:new_array([K, K]);
-                        {map_iterator, values} -> element(2, lookup(C, K));
-                        {map_iterator, entries} -> bouy_heap:new_array([K, element(2, lookup(C, K))])
-                    end,
-                    bouy_ref_iterator:result(Value, false)
-            end
+                        {map_iterator, values} -> element(2, Entry);
+                        {map_iterator, entries} -> bouy_heap:new_array([K, element(2, Entry)])
+                    end};
+        _ -> step(It, C, Seq, Kind, Rest)
+    end;
+step(It, C, Seq, Kind, []) ->
+    case entries_after(C, Seq, 64) of
+        [] ->
+            bouy_heap:set_slots(It, done),
+            done;
+        Buffer -> step(It, C, Seq, Kind, Buffer)
+    end.
+
+%% Up to Count entries {Seq, Key} after the position Seq, in order.
+entries_after(C, Seq, Count) ->
+    {_, {_, Tree}} = slots(C),
+    take(gb_trees:iterator_from(Seq + 1, Tree), Count).
+
+take(_Iter, 0) -> [];
+take(Iter, Count) ->
+    case gb_trees:next(Iter) of
+        {Seq, K, Iter1} -> [{Seq, K} | take(Iter1, Count - 1)];
+        none -> []
     end.
 
 %%% Map.groupBy

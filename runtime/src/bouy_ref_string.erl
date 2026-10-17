@@ -17,7 +17,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, call_constructor/3, wrap/2]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3, wrap/2, step/1]).
 -export([from_utf8/1, to_utf8/1, from_units/1, units/1, code_points/1, from_code_points/1]).
 -export([length_of/1, unit_at/2, unit_string/2, slice/3, concat/1, concat/2, compare/2, get/2]).
 -export([index_of/3, is_whitespace/1]).
@@ -101,22 +101,9 @@ method(<<"String.prototype">>, Name, This, Args) -> proto(Name, this_string(This
 method(<<"StringIterator.prototype">>, <<"next">>, This, _Args) ->
     ?IS_OBJECT(This) andalso bouy_heap:class_of(This) =:= string_iterator orelse
         bouy_ref:type_error(<<"next method called on incompatible receiver">>),
-    case bouy_heap:slots(This) of
-        {S, I} ->
-            case I < length_of(S) of
-                true ->
-                    End = case code_unit_count(S, I) of
-                        2 -> I + 2;
-                        1 -> I + 1
-                    end,
-                    bouy_heap:set_slots(This, {S, End}),
-                    bouy_ref_iterator:result(slice(S, I, End), false);
-                false ->
-                    bouy_heap:set_slots(This, done),
-                    bouy_ref_iterator:result(undefined, true)
-            end;
-        done ->
-            bouy_ref_iterator:result(undefined, true)
+    case step(This) of
+        {value, V} -> bouy_ref_iterator:result(V, false);
+        done -> bouy_ref_iterator:result(undefined, true)
     end;
 method(<<"globalThis">>, Name, _This, Args) -> uri(Name, bouy_ref:to_string(arg(1, Args)));
 method(<<"String">>, <<"fromCharCode">>, _This, Args) ->
@@ -162,6 +149,23 @@ code_point(N) ->
         I when is_integer(I), I >= 0, I =< 16#10FFFF -> I;
         Z when Z == 0 -> 0;
         _ -> bouy_heap:throw_error('RangeError', concat(<<"Invalid code point ">>, bouy_ref:to_string(N)))
+    end.
+
+%% The next code point of a string iterator: {value, String}, or done.
+-spec step(term()) -> {value, js_string()} | done.
+step(It) ->
+    case bouy_heap:slots(It) of
+        {S, I} ->
+            case I < length_of(S) of
+                true ->
+                    End = I + code_unit_count(S, I),
+                    bouy_heap:set_slots(It, {S, End}),
+                    {value, slice(S, I, End)};
+                false ->
+                    bouy_heap:set_slots(It, done),
+                    done
+            end;
+        done -> done
     end.
 
 %% The code units of the code point at index I: 2 for a surrogate pair.
