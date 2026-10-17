@@ -1,14 +1,24 @@
-%% console for a reference-semantics realm (spike): Node's util.format and
+%% The console family: Node's util.format and
 %% util.inspect (depth 2) over heap values. The layout comes from
 %% bouy_console, so lines break where Node breaks them.
 -module(bouy_ref_console).
 
--export([write/2, format/1, inspect/1]).
+-include("bouy_ref.hrl").
 
--define(IS_OBJECT(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
+-export([intrinsics/0, globals/0, method/4, write/2, format/1, inspect/1]).
 -define(DEPTH, 2).
 -define(MAX_ITEMS, 100).
 -define(CIRCULAR, '$bouy_inspect_circular').
+
+-spec intrinsics() -> [{term(), tuple()}].
+intrinsics() ->
+    [{'console', bouy_ref_realm:record(object, ?OBJECT_PROTO, ?METHODS(<<"console">>, [<<"log">>, <<"error">>, <<"warn">>, <<"info">>, <<"debug">>]), none)}].
+
+-spec globals() -> [{binary(), term()}].
+globals() -> [{<<"console">>, {'$o', 'console'}}].
+
+-spec method(binary(), binary(), term(), list()) -> undefined.
+method(<<"console">>, Name, _This, Args) -> write(Name, Args).
 
 -spec write(binary(), list()) -> undefined.
 write(Name, Args) ->
@@ -240,7 +250,7 @@ promise(P, Level, Indent, Stack) ->
 error_text(E) ->
     case bouy_ref:get(E, <<"stack">>) of
         Stack when is_binary(Stack) -> hd(binary:split(Stack, <<"\n">>));
-        _ -> bouy_ref_builtins:error_to_string(E)
+        _ -> bouy_ref_error:error_to_string(E)
     end.
 
 function_label(F) ->

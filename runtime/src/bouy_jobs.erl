@@ -205,7 +205,7 @@ handler(_) -> undefined.
 %% itself, anything else a new promise resolved with V.
 -spec promise_resolve(term()) -> term().
 promise_resolve(V) ->
-    case is_promise(V) andalso bouy_heap:get(V, <<"constructor">>) =:= bouy_ref:intrinsic_constructor(<<"Promise">>) of
+    case is_promise(V) andalso bouy_heap:get(V, <<"constructor">>) =:= bouy_ref_promise:constructor() of
         true ->
             V;
         false ->

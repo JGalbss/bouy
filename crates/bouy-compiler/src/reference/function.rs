@@ -52,7 +52,7 @@ impl<'a> Lowerer<'a, '_> {
                 self.frame.ret = Ret::Generator;
                 let inner = self.body(body);
                 code.push(Expr::call(
-                    "bouy_ref",
+                    "bouy_ref_iterator",
                     "make_generator",
                     vec![Expr::Fun {
                         name: None,

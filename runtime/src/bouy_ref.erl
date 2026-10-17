@@ -6,7 +6,7 @@
 %% primitive go to the intrinsic prototype of its type, as in JavaScript.
 -module(bouy_ref).
 
--export([init_realm/0, global/1, intrinsic_constructor/1, caught/2, report_uncaught/1, type_error/1]).
+-export([init_realm/0, global/1, caught/2, report_uncaught/1, type_error/1]).
 -export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
 -export([call/3, call_method/3, call_method_computed/3, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([fn/1, named_fn/3, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
@@ -16,8 +16,6 @@
 -export([bit_and/2, bit_or/2, bit_xor/2, bit_not/1, shift_left/2, shift_right/2, shift_right_unsigned/2]).
 -export([strict_eq/2, loose_eq/2, lt/2, le/2, gt/2, ge/2, typeof/1, instance_of/2, truthy/1]).
 -export([to_string/1, to_number/1, to_primitive/2, increment/1, decrement/1]).
--export([iterate/1, step/1, to_list/1, take/2, rest_list/1, for_in_keys/1]).
--export([make_generator/1, generator_resume/2]).
 -export([describe/1, typeof_global/1, spawn_args/1, stop_actor/1, heap_stats/0, vm_memory/0]).
 
 -define(OBJECT_PROTO, {'$o', 'Object.prototype'}).
@@ -30,13 +28,10 @@
 %% Installs the static intrinsics once per VM. Each realm starts empty: its
 %% intrinsics read through to the static records until the realm writes one.
 -spec init_realm() -> ok.
-init_realm() -> bouy_ref_builtins:install().
+init_realm() -> bouy_ref_realm:install().
 
 -spec global(binary()) -> term().
-global(Name) -> bouy_ref_builtins:global(Name).
-
--spec intrinsic_constructor(binary()) -> term().
-intrinsic_constructor(Name) -> bouy_ref_builtins:constructor(Name).
+global(Name) -> bouy_ref_realm:global(Name).
 
 %%% Errors
 
@@ -284,7 +279,7 @@ array_spread(Parts) ->
     bouy_heap:new_array(lists:append([spread_part(P) || P <- Parts])).
 
 spread_part({item, V}) -> [V];
-spread_part({spread, V}) -> to_list(V).
+spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
 
 %% {...source} into Target: CopyDataProperties.
 -spec object_spread(term(), term()) -> term().
@@ -296,6 +291,8 @@ object_spread(Target, S) when is_binary(S) ->
     Target;
 object_spread(Target, _Primitive) ->
     Target.
+
+chars(S) -> [<<C/utf8>> || <<C/utf8>> <= S].
 
 own_enumerable_keys(O) ->
     Enumerable = bouy_heap:enumerable_keys(O),
@@ -535,7 +532,7 @@ spawn_args(undefined) -> [];
 spawn_args(Options) ->
     case get(Options, <<"args">>) of
         undefined -> [];
-        Args -> to_list(Args)
+        Args -> bouy_ref_iterator:to_list(Args)
     end.
 
 -spec stop_actor(list()) -> undefined.
@@ -557,149 +554,5 @@ vm_memory() ->
     bouy_heap:object(?OBJECT_PROTO, [{<<"total">>, erlang:memory(total)}, {<<"processes">>, erlang:memory(processes)},
                                      {<<"processCount">>, erlang:system_info(process_count)}]).
 
-%%% Iteration
 
-%% The state of a for...of, a spread, or an array pattern. Arrays read their
-%% live length at each step, as the array iterator does.
--spec iterate(term()) -> term().
-iterate({'$o', _} = O) ->
-    case bouy_heap:class_of(O) of
-        array -> {array, O, 0};
-        generator -> {generator, O};
-        list_iterator -> {list_iterator, O};
-        _ -> protocol(O)
-    end;
-iterate(S) when is_binary(S) -> {list, chars(S)};
-iterate({'$f', _, _} = F) -> protocol(F);
-iterate(V) -> type_error(<<(describe(V))/binary, " is not iterable">>).
 
-protocol(O) ->
-    case get(O, bouy_heap:well_known(iterator)) of
-        {'$f', _, _} = Method ->
-            Iterator = call(Method, O, []),
-            ?IS_OBJECT(Iterator) orelse type_error(<<"Result of the Symbol.iterator method is not an object">>),
-            {protocol, Iterator, get(Iterator, <<"next">>)};
-        _ ->
-            type_error(<<(describe(O))/binary, " is not iterable">>)
-    end.
-
-chars(S) -> [<<C/utf8>> || <<C/utf8>> <= S].
-
-%% The next value: {value, V, State1}, or done.
--spec step(term()) -> {value, term(), term()} | done.
-step({array, O, I}) ->
-    case I < bouy_heap:array_length(O) of
-        true -> {value, bouy_heap:get(O, I), {array, O, I + 1}};
-        false -> done
-    end;
-step({list, [V | Rest]}) -> {value, V, {list, Rest}};
-step({list, []}) -> done;
-step({generator, G} = State) ->
-    case generator_resume(G, {next, undefined}) of
-        {yield, V} -> {value, V, State};
-        {done, _} -> done
-    end;
-step({list_iterator, O} = State) ->
-    case bouy_ref_builtins:list_iterator_next(O) of
-        {value, V} -> {value, V, State};
-        done -> done
-    end;
-step({protocol, Iterator, Next} = State) ->
-    Result = call(Next, Iterator, []),
-    ?IS_OBJECT(Result) orelse type_error(<<"Iterator result ", (describe(Result))/binary, " is not an object">>),
-    case truthy(get(Result, <<"done">>)) of
-        true -> done;
-        false -> {value, get(Result, <<"value">>), State}
-    end.
-
--spec to_list(term()) -> list().
-to_list({'$o', _} = O) ->
-    case bouy_heap:class_of(O) of
-        array -> bouy_heap:array_items(O);
-        _ -> drain(iterate(O), [])
-    end;
-to_list(V) ->
-    drain(iterate(V), []).
-
-drain(State, Acc) ->
-    case step(State) of
-        {value, V, State1} -> drain(State1, [V | Acc]);
-        done -> lists:reverse(Acc)
-    end.
-
-%% The first N values of an array pattern, undefined past the end, and the
-%% state for a rest element.
--spec take(term(), non_neg_integer()) -> {list(), term()}.
-take(V, N) -> take(iterate(V), N, []).
-
-take(State, 0, Acc) -> {lists:reverse(Acc), State};
-take(done, N, Acc) -> take(done, N - 1, [undefined | Acc]);
-take(State, N, Acc) ->
-    case step(State) of
-        {value, V, State1} -> take(State1, N - 1, [V | Acc]);
-        done -> take(done, N - 1, [undefined | Acc])
-    end.
-
--spec rest_list(term()) -> term().
-rest_list(done) -> bouy_heap:new_array([]);
-rest_list(State) -> bouy_heap:new_array(drain(State, [])).
-
-%% for...in: the enumerable string keys of the object and its prototypes,
-%% each once, own keys first.
--spec for_in_keys(term()) -> [binary()].
-for_in_keys(V) when ?IS_OBJECT(V) -> [bouy_heap:key_to_value(K) || K <- chain_keys(V, [], [])];
-for_in_keys(S) when is_binary(S) -> [integer_to_binary(I) || I <- lists:seq(0, length(chars(S)) - 1)];
-for_in_keys(_) -> [].
-
-chain_keys(null, _Seen, Acc) ->
-    lists:reverse(Acc);
-chain_keys(O, Seen, Acc) ->
-    Own = [K || K <- bouy_heap:own_keys(O), not is_tuple(K)],
-    Enumerable = bouy_heap:enumerable_keys(O),
-    New = [K || K <- Enumerable, not lists:member(K, Seen)],
-    chain_keys(bouy_heap:prototype_of(O), Own ++ Seen, lists:reverse(New) ++ Acc).
-
-%%% Generators
-%%
-%% A generator body returns {yield, Value, Continuation} or {done, Value}.
-%% A continuation takes {next, V}, {throw, E}, or {return, V}.
-
--spec make_generator(fun(() -> term())) -> term().
-make_generator(Start) ->
-    bouy_heap:new_exotic(generator, {'$o', 'Generator.prototype'}, {suspended_start, Start}).
-
--spec generator_resume(term(), {next | throw | return, term()}) -> {yield, term()} | {done, term()}.
-generator_resume(G, Resumption) ->
-    case bouy_heap:slots(G) of
-        {suspended_start, Start} ->
-            case Resumption of
-                {next, _} -> run_generator(G, Start);
-                {return, V} -> bouy_heap:set_slots(G, completed), {done, V};
-                {throw, E} -> bouy_heap:set_slots(G, completed), erlang:error({'$throw', E})
-            end;
-        {suspended_yield, Continuation} ->
-            run_generator(G, fun() -> Continuation(Resumption) end);
-        executing ->
-            type_error(<<"Generator is already running">>);
-        completed ->
-            case Resumption of
-                {next, _} -> {done, undefined};
-                {return, V} -> {done, V};
-                {throw, E} -> erlang:error({'$throw', E})
-            end
-    end.
-
-run_generator(G, Body) ->
-    bouy_heap:set_slots(G, executing),
-    try Body() of
-        {yield, V, Continuation} ->
-            bouy_heap:set_slots(G, {suspended_yield, Continuation}),
-            {yield, V};
-        {done, V} ->
-            bouy_heap:set_slots(G, completed),
-            {done, V}
-    catch
-        Class:Reason:Stack ->
-            bouy_heap:set_slots(G, completed),
-            erlang:raise(Class, Reason, Stack)
-    end.

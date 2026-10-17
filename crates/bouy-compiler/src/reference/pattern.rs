@@ -51,7 +51,8 @@ impl<'a> Lowerer<'a, '_> {
                     }
                 }
                 if let Some(rest) = &array.rest {
-                    let value = self.bind(Expr::call("bouy_ref", "rest_list", vec![state]));
+                    let value =
+                        self.bind(Expr::call("bouy_ref_iterator", "rest_list", vec![state]));
                     self.declare_pattern(&rest.argument, value);
                 }
             }
@@ -78,7 +79,7 @@ impl<'a> Lowerer<'a, '_> {
         self.pre.push(Expr::matches(
             Expr::Tuple(vec![Expr::List(items.clone()), state.clone()]),
             Expr::call(
-                "bouy_ref",
+                "bouy_ref_iterator",
                 "take",
                 vec![source, Expr::Integer(i64::try_from(count).unwrap_or(0))],
             ),
@@ -98,7 +99,8 @@ impl<'a> Lowerer<'a, '_> {
                     }
                 }
                 if let Some(rest) = &array.rest {
-                    let value = self.bind(Expr::call("bouy_ref", "rest_list", vec![state]));
+                    let value =
+                        self.bind(Expr::call("bouy_ref_iterator", "rest_list", vec![state]));
                     self.assign_target(&rest.target, value);
                 }
             }

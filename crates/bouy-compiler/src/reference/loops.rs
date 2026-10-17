@@ -169,7 +169,7 @@ impl<'a> Lowerer<'a, '_> {
             return vec![Expr::undefined()];
         }
         let right = self.expr(&statement.right);
-        let state = Expr::call("bouy_ref", "iterate", vec![right]);
+        let state = Expr::call("bouy_ref_iterator", "iterate", vec![right]);
         self.each(&statement.left, &statement.body, statement.span, state, k)
     }
 
@@ -181,7 +181,7 @@ impl<'a> Lowerer<'a, '_> {
         let right = self.expr(&statement.right);
         let state = Expr::Tuple(vec![
             Expr::atom("list"),
-            Expr::call("bouy_ref", "for_in_keys", vec![right]),
+            Expr::call("bouy_ref_iterator", "for_in_keys", vec![right]),
         ]);
         self.each(&statement.left, &statement.body, statement.span, state, k)
     }
@@ -240,7 +240,7 @@ impl<'a> Lowerer<'a, '_> {
         let done = self.jump(k);
         self.frame.targets.pop();
         let step = Expr::case(
-            Expr::call("bouy_ref", "step", vec![Expr::var(current)]),
+            Expr::call("bouy_ref_iterator", "step", vec![Expr::var(current)]),
             vec![
                 Clause::new(
                     Expr::Tuple(vec![

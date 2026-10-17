@@ -1,11 +1,24 @@
-%% JSON over the heap of a reference-semantics realm (spike): object keys
+%% The JSON family: JSON over the heap of a reference-semantics realm: object keys
 %% keep insertion order, toJSON and a replacer function apply, and parse
 %% builds heap objects through the decoders of OTP's json module.
 -module(bouy_ref_json).
 
--export([stringify/3, parse/1]).
+-include("bouy_ref.hrl").
 
--define(IS_OBJECT(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
+-export([intrinsics/0, globals/0, method/4, stringify/3, parse/1]).
+
+-spec intrinsics() -> [{term(), tuple()}].
+intrinsics() ->
+    [{'JSON', bouy_ref_realm:record(object, ?OBJECT_PROTO, ?METHODS(<<"JSON">>, [<<"stringify">>, <<"parse">>]) ++ [{?SYM(toStringTag), <<"JSON">>}], none)}].
+
+-spec globals() -> [{binary(), term()}].
+globals() -> [{<<"JSON">>, {'$o', 'JSON'}}].
+
+-spec method(binary(), binary(), term(), list()) -> term().
+method(<<"JSON">>, <<"stringify">>, _This, Args) ->
+    [Value, Replacer, Space] = [bouy_ref_realm:arg(N, Args) || N <- [1, 2, 3]],
+    stringify(Value, Replacer, Space);
+method(<<"JSON">>, <<"parse">>, _This, Args) -> parse(bouy_ref:to_string(bouy_ref_realm:arg(1, Args))).
 
 -spec stringify(term(), term(), term()) -> binary() | undefined.
 stringify(Value, Replacer, Space) ->

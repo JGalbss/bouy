@@ -28,7 +28,7 @@ impl<'a> Lowerer<'a, '_> {
             .map(|argument| match argument {
                 Argument::SpreadElement(spread) => {
                     let value = self.expr(&spread.argument);
-                    self.bind(Expr::call("bouy_ref", "to_list", vec![value]))
+                    self.bind(Expr::call("bouy_ref_iterator", "to_list", vec![value]))
                 }
                 other => match other.as_expression() {
                     Some(expression) => Expr::List(vec![self.expr(expression)]),
