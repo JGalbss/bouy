@@ -24,7 +24,7 @@
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, wrap/2]).
 -export([canonical/1, add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1]).
 -export([to_int32/1, to_uint32/1, bit_and/2, bit_or/2, bit_xor/2, bit_not/1]).
--export([shift_left/2, shift_right/2, shift_right_unsigned/2, compare/2, same_value_zero/2]).
+-export([shift_left/2, shift_right/2, shift_right_unsigned/2, compare/2, same_value_zero/2, is_integral/1]).
 -export([to_string/1, to_radix_string/2, from_string/1, to_integer_or_infinity/1]).
 -export([to_fixed/2, to_exponential/2, to_precision/2, decompose/1, parse_decimal/1]).
 
@@ -143,6 +143,8 @@ proto(<<"toPrecision">>, N, Args) ->
 -spec range_error(binary()) -> no_return().
 range_error(Message) -> bouy_heap:throw_error('RangeError', Message).
 
+%% An integral Number: a finite number with no fraction, -0 included.
+-spec is_integral(term()) -> boolean().
 is_integral(I) when is_integer(I) -> true;
 is_integral(F) when is_float(F) -> F == trunc(F);
 is_integral(_) -> false.

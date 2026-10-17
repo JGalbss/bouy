@@ -25,16 +25,16 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | Directory      | Tests | Baseline pass |  Pass | Fail | Compile | Timeout | Skip | Baseline rate | Pass rate |
 | -------------- | ----: | ------------: | ----: | ---: | ------: | ------: | ---: | ------------: | --------: |
 | test/language  | 23726 |         11354 | 23428 |  289 |       2 |       7 |    0 |         51.1% |     98.7% |
-| test/built-ins | 23823 |          6193 | 22861 |  959 |       0 |       1 |    2 |         26.2% |     95.9% |
-| **Total**      | 47549 |         17547 | 46289 | 1248 |       2 |       8 |    2 |         38.3% |     97.3% |
+| test/built-ins | 23823 |          6193 | 23047 |  773 |       0 |       1 |    2 |         26.2% |     96.7% |
+| **Total**      | 47549 |         17547 | 46475 | 1062 |       2 |       8 |    2 |         38.3% |     97.7% |
 
 The same run without the proposal tests. A proposal test has a feature from the "Proposed language features" part of test262's `features.txt`. At the pinned commit, Temporal, `explicit-resource-management`, `joint-iteration`, `iterator-chunking`, and `iterator-includes` are in the standard part, so these counts keep them. The proposal tests are 532 in `test/language` and 285 in `test/built-ins`.
 
 | Directory      | Tests |  Pass | Fail | Compile | Timeout | Skip | Pass rate |
 | -------------- | ----: | ----: | ---: | ------: | ------: | ---: | --------: |
 | test/language  | 23194 | 22918 |  269 |       0 |       7 |    0 |     98.8% |
-| test/built-ins | 23538 | 22845 |  690 |       0 |       1 |    2 |     97.0% |
-| **Total**      | 46732 | 45763 |  959 |       0 |       8 |    2 |     97.9% |
+| test/built-ins | 23538 | 23031 |  504 |       0 |       1 |    2 |     97.8% |
+| **Total**      | 46732 | 45949 |  773 |       0 |       8 |    2 |     98.3% |
 
 Temporal passes 4597 of its 4605 tests. Its 8 failures also fail on Node 25.9 with the same polyfill (cause 1 below).
 
@@ -52,6 +52,7 @@ Temporal passes 4597 of its 4605 tests. Its 8 failures also fail on Node 25.9 wi
 - 2026-10-17, commit `d93d434`, round 1 measurement: 23424 and 18010, with 8 jobs at a load average between 15 and 37. `test/built-ins` took 17 minutes. The engine code is the same as at `4c8687c`. The 2 fewer passes are 2 more timeouts: `test/language/comments/S7.4_A5.js` and `General_Category_-_Punctuation.js` of `RegExp/property-escapes`. Near test 23000 the VM halted with `no more index entries in fun_staged_index (max=524288)`: each test loads a module, and the fun table filled. The runner started a new VM, and the 8 Temporal tests that were running count as "the VM crashed".
 - 2026-10-17, branch `engine-r1-temporal`: Temporal runs through temporal-polyfill 1.0.6, which `crates/bouy-cli/build.rs` compiles into the runtime (contract section 17.3). The full `test/built-ins` run at the first commit of the branch passed 22606, with 8 jobs at a load average between 15 and 50 in 23 minutes. The fun table filled near test 23000 again, and 8 tests of `Temporal/ZonedDateTime/from` count as "the VM crashed". `Function/prototype/toString/built-in-function-object.js` failed, because it reads the source text of every Temporal function. The final commit prints those functions as native code, and its reruns of `Temporal`, `Date`, and `Function/prototype/toString` pass every test of round 1 and 4605 more: `Temporal` 4597 of 4605 and `Date` 591 of 594, with the 8 tests of `Date.prototype.toTemporalInstant`. The rows and totals above use these reruns.
 - 2026-10-17, branch `engine-r1-promise-spec`, the Promise family rewritten against ECMA-262 §27.2: `test/built-ins/Promise` 398 to 644 of 732, and the two `subclass-builtins` directories 68 to 70 of 72. The async directories of `test/language` (`async-*`, `await`, `for-await-of`), `AsyncFromSyncIteratorPrototype`, and `AsyncGeneratorPrototype` went from 2483 to 2485 of 2493 with the same failures otherwise: the 2 `yield-thenable-create-resolving-functions` tests of `async-generator` now pass. The rows above changed by these test-by-test deltas, without a full run. `Promise.try` follows ecma262 PR 3883, which the pinned test262 tests: a promise of the receiver that the callback returns comes back unwrapped.
+- 2026-10-17, branch `engine-r1-iterator-zip-chunks-includes` at `6088539`: `Iterator.zip`, `Iterator.zipKeyed`, and `Iterator.prototype.chunks`, `windows`, and `includes`. `test/built-ins/Iterator` passes 637 of 654 tests, up from 451. All 186 tests of `zip`, `zipKeyed`, `chunks`, `windows`, and `includes` pass. The 17 failures left are the 16 tests of the `Iterator.prototype.join` proposal and `proto-from-ctor-realm.js`, which needs `$262.createRealm`.
 
 ## Causes left
 
@@ -60,7 +61,7 @@ The failures of the round 1 run without the proposal tests (5812, timeouts inclu
 1. Temporal was not implemented (4595 tests). It runs now through the vendored polyfill, and 8 tests fail. Each of them fails on Node 25.9 with the same polyfill too. 6 tests replace `Array.prototype[Symbol.iterator]` or `Number.isFinite`, which the polyfill calls, and 2 tests of `Duration.prototype.total` need exact arithmetic where the polyfill computes in floating point. A fix belongs in the polyfill.
 2. Fixed on `engine-r1-promise-spec`: the Promise family follows ECMA-262 §27.2. Of `test/built-ins/Promise`, only the 87 `allKeyed` and `allSettledKeyed` proposal tests and `proto-from-ctor-realm.js`, which needs `$262.createRealm` (cause 6), fail.
 3. `DisposableStack` and `AsyncDisposableStack` do not exist (197 tests).
-4. `Iterator.zip` and `Iterator.zipKeyed` (77 tests), `Iterator.prototype.chunks` and `windows` (69), and `Iterator.prototype.includes` (40) do not exist.
+4. Fixed in round 1: `Iterator.zip` and `Iterator.zipKeyed` (77 tests), `Iterator.prototype.chunks` and `windows` (69), and `Iterator.prototype.includes` (40) did not exist.
 5. Direct eval (179 language tests whose source calls `eval`). `compile-eval` parses the eval code alone, so `super`, `new.target`, private names, and the `arguments` rule of class fields fail (about 70). The completion value of a loop, `if`, `switch`, `try`, or labeled statement is lost (about 63). A sloppy `var` in eval code becomes a global instead of a binding of the caller's function (about 35). Each new source text starts a `bouy compile-eval` process, so the 7 tests that call eval once per character time out.
 6. `$262.createRealm` and `$262.evalScript`, which the runner does not provide (189 tests in 20 directories, such as `Proxy`, `TypedArrayConstructors`, `Symbol`, and `Array`). Intrinsics are shared through `persistent_term`, so a second realm in one process needs a redesign that touches every built-in module.
 7. `Atomics.wait`, `waitAsync`, and `notify` (116 tests): the runner gives no `$262.agent`, and no buffer keeps a waiter list yet.
@@ -128,7 +129,7 @@ The proposal tests that fail (301) are mostly `Promise.allKeyed` and `allSettled
 | test/built-ins/GeneratorFunction              |    23 |             0 |   21 |    2 |       0 |       0 |    0 |          0.0% |     91.3% |
 | test/built-ins/GeneratorPrototype             |    61 |            31 |   61 |    0 |       0 |       0 |    0 |         50.8% |    100.0% |
 | test/built-ins/Infinity                       |     6 |             2 |    6 |    0 |       0 |       0 |    0 |         50.0% |    100.0% |
-| test/built-ins/Iterator                       |   654 |            14 |  451 |  203 |       0 |       0 |    0 |          2.1% |     69.0% |
+| test/built-ins/Iterator                       |   654 |            14 |  637 |   17 |       0 |       0 |    0 |          2.1% |     97.4% |
 | test/built-ins/JSON                           |   166 |            93 |  162 |    4 |       0 |       0 |    0 |         56.0% |     97.6% |
 | test/built-ins/Map                            |   204 |           114 |  203 |    1 |       0 |       0 |    0 |         56.1% |     99.5% |
 | test/built-ins/MapIteratorPrototype           |    11 |             8 |   11 |    0 |       0 |       0 |    0 |         72.7% |    100.0% |

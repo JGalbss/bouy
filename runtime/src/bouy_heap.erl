@@ -40,7 +40,7 @@
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
 -export([function/1, function/4, call/3, construct/3, is_constructor/1]).
--export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1]).
+-export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
 -export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
@@ -785,6 +785,8 @@ enumerable_keys(O) ->
 
 enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 
+%% Whether a property from get_own/2 is enumerable; none is not.
+-spec is_enumerable(property()) -> boolean().
 is_enumerable({data, _, Bits}) -> Bits band ?ENUMERABLE =/= 0;
 is_enumerable({accessor, _, _, Bits}) -> Bits band ?ENUMERABLE =/= 0;
 is_enumerable(none) -> false.
