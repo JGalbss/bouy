@@ -8,6 +8,9 @@
 //! relative path without an extension may name a `.ts` file, as the TypeScript compiler
 //! allows. A program that runs on Node never reaches the fallback.
 
+/// The file extension of a native addon, which Node loads with `process.dlopen`.
+const ADDON_EXTENSION: &str = "node";
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
@@ -186,7 +189,7 @@ impl Resolver {
         match path.extension().and_then(|extension| extension.to_str()) {
             Some("mjs" | "mts") => Format::Esm,
             Some("json") => Format::Json,
-            Some("node") => Format::Addon,
+            Some(ADDON_EXTENSION) => Format::Addon,
             Some("js" | "ts" | "jsx" | "tsx") | None => match self.scope_type(path).as_deref() {
                 Some("module") => Format::Esm,
                 Some("commonjs") => Format::CommonJs,
