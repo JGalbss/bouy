@@ -74,6 +74,17 @@ impl<'c> Linking<'c> {
         }
     }
 
+    /// The Erlang function that a call of an imported binding may call directly: a
+    /// top-level function declaration of an ES module that no code assigns.
+    pub fn direct_function(&self, binding: &Binding) -> Option<(String, String)> {
+        let Binding::Export { unit, key } = binding else {
+            return None;
+        };
+        let target = &self.graph.units[*unit];
+        (target.kind == Kind::Esm && target.record.functions.contains(key))
+            .then(|| (target.name.clone(), key.clone()))
+    }
+
     /// `'$module'/0`
     fn module_info(&self) -> Function {
         let error = match &self.link.error {

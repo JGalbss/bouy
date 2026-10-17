@@ -85,6 +85,16 @@ impl<'a> Lowerer<'a, '_> {
                     return self.bind(Expr::local_call(&name, vec![Expr::undefined(), args]));
                 }
                 Some(Top::Bouy(name)) => return self.bouy_call(&name, call),
+                Some(Top::Import(binding)) if !call.optional => {
+                    if let Some((module, function)) = self.linking.direct_function(&binding) {
+                        let args = self.args(&call.arguments);
+                        return self.bind(Expr::call(
+                            &module,
+                            &function,
+                            vec![Expr::undefined(), args],
+                        ));
+                    }
+                }
                 _ => {}
             }
         }

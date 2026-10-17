@@ -138,6 +138,9 @@ pub struct Record {
     pub cjs_reexports: Vec<String>,
     /// Whether the top-level code awaits.
     pub has_await: bool,
+    /// The local names of the top-level function declarations that the code never
+    /// assigns: an importer may call such a function as its Erlang function.
+    pub functions: Vec<String>,
 }
 
 /// Reads the entry module and every module it reaches. A module other than the entry
@@ -550,6 +553,47 @@ impl<'a> Facts<'_, 'a> {
             suspends.visit_statement(statement);
         }
         self.record.has_await = suspends.0;
+        self.record.functions = self.functions(program);
+    }
+
+    /// The top-level function declarations that no code assigns.
+    fn functions(&self, program: &Program<'a>) -> Vec<String> {
+        use oxc::ast::ast::ExportDefaultDeclarationKind as Default;
+        let scoping = self.semantic.scoping();
+        let fixed = |function: &oxc::ast::ast::Function<'_>| {
+            function.body.is_some()
+                && function.id.as_ref().is_none_or(|id| {
+                    id.symbol_id.get().is_some_and(|symbol| {
+                        !scoping
+                            .get_resolved_references(symbol)
+                            .any(oxc::semantic::Reference::is_write)
+                    })
+                })
+        };
+        program
+            .body
+            .iter()
+            .filter_map(|statement| {
+                let function = match statement {
+                    Statement::FunctionDeclaration(function) => function,
+                    Statement::ExportDeclaration(export) => match &export.declaration {
+                        Declaration::FunctionDeclaration(function) => function,
+                        _ => return None,
+                    },
+                    Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+                        Default::FunctionDeclaration(function) => function,
+                        _ => return None,
+                    },
+                    _ => return None,
+                };
+                fixed(function).then(|| {
+                    function
+                        .id
+                        .as_ref()
+                        .map_or_else(|| "*default*".to_owned(), |id| id.name.to_string())
+                })
+            })
+            .collect()
     }
 
     /// The export entries of an export statement.
@@ -789,6 +833,12 @@ impl<'a> Visit<'a> for Requests {
                     && let Some(specifier) = first.and_then(string_of)
                 {
                     self.found.push((specifier, Mode::Require, true));
+                }
+                if property == "resolve"
+                    && matches!(object, Expression::ImportMeta(_))
+                    && let Some(specifier) = first.and_then(string_of)
+                {
+                    self.found.push((specifier, Mode::Import, true));
                 }
                 // Object.defineProperty(exports, 'name', ...)
                 if property == "defineProperty"
