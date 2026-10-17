@@ -1,0 +1,7 @@
+[ '2', 'name', 'b' ] hi obj 42 true false
+[ '2', 'name', 'b', 'greet', 'kind' ]
+[ [ 'x', 1 ], [ 'y', [ 2 ] ] ] true
+TypeError
+1 true
+{ base: true, a: 1, b: 2 } { k: 'v' }
+false 2

@@ -20,6 +20,8 @@ The CLI embeds the runtime sources, `runtime/src/*.erl`, `*.hrl`, and `bouy.app.
 
 `bouy check app.ts` runs steps 1 and 2 and prints diagnostics. `bouy build app.ts` runs steps 1 to 3 and prints the paths of the Erlang files. Both exit with status 2 when there is a diagnostic.
 
+`run`, `check`, and `build` take `--semantics value|reference` before the entry. `value`, the default, is this contract. `reference` selects a prototype that this contract does not describe: objects live in a heap in each process and have identity, and promises run on a job queue in each process (`crates/bouy-compiler/src/reference/`, `runtime/src/bouy_heap.erl`, `bouy_jobs.erl`, and `bouy_ref*.erl`). The prototype compiles one module, and it imports only `spawn` and `stop`, and the probes `heapStats` and `vmMemory`, from "bouy".
+
 ## 2. Names
 
 | TypeScript                              | Erlang                                                                                                                                                                                                                                                                                     |
@@ -366,6 +368,7 @@ The fake server, `runtime/test/bouy_fake_openai.erl`, serves the tests. `erl -no
 - The tests that need `erl` or `erlc` fail when it is missing, unless `BOUY_SKIP_VM_TESTS` is set.
 - `tests/equivalence/ai/*.ts`: AI programs that run with `node` and the real npm packages, and with `bouy run`, against the fake OpenAI server of section 14. `scripts/freeze-expectations.sh tests/equivalence/ai` starts the server and records the Node output as for the conformance corpus. `crates/bouy-cli/tests/ai.rs` starts the server, runs each program with `bouy run`, and compares. It also runs `tests/programs/ai-agents.ts`, whose tools call actors, which only Bouy can run. `runtime/test/bouy_ai_tests.erl` tests `bouy_ai` with a scripted model and `bouy_ai_openai` against the server.
 - `tests/equivalence/effect/*.ts`: Effect programs that run with `node` and the real `effect` package, and with `bouy run`. `scripts/freeze-expectations.sh tests/equivalence/effect` records the Node output as for the conformance corpus, and `crates/bouy-cli/tests/equivalence.rs` compares `bouy run` with it. A program that measures time prints a fixed line when the bound holds. `tests/programs/effect-actor.ts` checks the actor method that returns an Effect (section 8), which only Bouy can run.
+- `tests/reference/*.ts`: programs for `--semantics reference`, recorded with Node as for the conformance corpus. `scripts/freeze-expectations.sh tests/reference` points the import of "bouy" at the Node shim in `tests/reference/shim`, which runs one call of an actor at a time and copies messages with `structuredClone`. `crates/bouy-cli/tests/reference.rs` compares `bouy run --semantics reference` with the recorded output. `bench/reference/` holds the benchmarks of the prototype.
 - `bench/programs/<suite>/`: a Bouy program, `bouy.ts`, and the equivalent plain Node program, `node.ts`. `crates/bouy-bench` runs each pair once to warm up and then N times, and writes `bench/results/<date>-<host>.json`. `bench/README.md` describes the suites and the method.
 
 ## 16. Runtime helper index

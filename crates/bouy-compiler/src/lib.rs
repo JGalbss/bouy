@@ -10,6 +10,7 @@ mod graph;
 mod library;
 mod lower;
 mod parse;
+mod reference;
 
 use std::path::{Path, PathBuf};
 
@@ -38,22 +39,53 @@ pub struct Module {
     pub erlang: String,
 }
 
+/// How the compiled program treats objects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Semantics {
+    /// Objects are immutable Erlang terms and mutation rebinds (the contract).
+    #[default]
+    Value,
+    /// Objects live in a per-realm heap and have identity (a prototype: one module,
+    /// imports only from "bouy").
+    Reference,
+}
+
 /// Compiles the program whose entry module is `entry`, in the project that contains it.
 pub fn compile(entry: &Path) -> Result<Project, Vec<Diagnostic>> {
+    compile_with(entry, Semantics::Value)
+}
+
+/// Compiles the program with the given object semantics.
+pub fn compile_with(entry: &Path, semantics: Semantics) -> Result<Project, Vec<Diagnostic>> {
     let entry = canonical(entry)?;
     let root = project_root(&entry);
-    compile_in(&entry, &root)
+    compile_in_with(&entry, &root, semantics)
 }
 
 /// Compiles the program whose entry module is `entry`, naming modules relative to `root`.
 pub fn compile_in(entry: &Path, root: &Path) -> Result<Project, Vec<Diagnostic>> {
+    compile_in_with(entry, root, Semantics::Value)
+}
+
+fn compile_in_with(
+    entry: &Path,
+    root: &Path,
+    semantics: Semantics,
+) -> Result<Project, Vec<Diagnostic>> {
     let entry = canonical(entry)?;
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let graph = graph::load(&entry, &root)?;
+    let graph = match semantics {
+        Semantics::Value => graph::load(&entry, &root)?,
+        Semantics::Reference => graph::single(&entry, &root)?,
+    };
     let mut modules = Vec::with_capacity(graph.modules.len());
     let mut diagnostics = Vec::new();
     for module in &graph.modules {
-        match lower::lower_module(module, &graph) {
+        let lowered = match semantics {
+            Semantics::Value => lower::lower_module(module, &graph),
+            Semantics::Reference => reference::lower_module(module),
+        };
+        match lowered {
             Ok(erlang) => modules.push(Module {
                 name: module.name.clone(),
                 path: module.path.clone(),

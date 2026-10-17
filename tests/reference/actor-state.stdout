@@ -1,0 +1,2 @@
+2 2 3
+[ 'seed', 'a', 'c', 'not in actor' ] [ 'seed', 'a', 'c' ] [ 'other', 'b' ] [ 'seed', 'local only' ]

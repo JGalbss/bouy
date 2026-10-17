@@ -1,0 +1,12 @@
+1 sync
+2 async body
+1b sync end
+3 then a
+4 microtask
+4b after await
+3b caught boom
+5 then b
+5b finally
+6 adopted thenable
+8 timeout
+9 after timer await

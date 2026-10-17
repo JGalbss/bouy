@@ -1,0 +1,8 @@
+left start
+right start
+sync end
+right got 1
+right end
+left got 2
+left end
+[ 'L', 'R' ]

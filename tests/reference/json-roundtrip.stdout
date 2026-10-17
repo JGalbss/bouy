@@ -1,0 +1,11 @@
+{"name":"widget","sizes":[1,2.5,-3],"meta":{"ok":true,"none":null,"nested":{"deep":["x"]}},"when":"custom"}
+4 3 x
+{
+  "a": [
+    1,
+    {
+      "b": 2
+    }
+  ]
+}
+[{},{}] "q\"uote\n"

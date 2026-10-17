@@ -118,6 +118,28 @@ pub fn module_name(root: &Path, path: &Path) -> String {
     crate::erlang::shorten(&format!("bouy@{}", parts.join("@")), 200)
 }
 
+/// The graph of the entry module alone, for the reference-semantics prototype, which
+/// compiles one module and checks its imports itself.
+pub fn single(entry: &Path, root: &Path) -> Result<Graph, Vec<Diagnostic>> {
+    let source = fs::read_to_string(entry).map_err(|error| {
+        vec![Reporter::new(entry, "").at(
+            0,
+            Code::BadImport,
+            format!("cannot read {}: {error}", entry.display()),
+        )]
+    })?;
+    Ok(Graph {
+        root: root.to_path_buf(),
+        modules: vec![Module {
+            path: entry.to_path_buf(),
+            name: module_name(root, entry),
+            source,
+            imports: HashMap::new(),
+            exports: HashMap::new(),
+        }],
+    })
+}
+
 /// Reads the entry module and every module it imports, transitively.
 pub fn load(entry: &Path, root: &Path) -> Result<Graph, Vec<Diagnostic>> {
     let mut modules: Vec<Module> = Vec::new();

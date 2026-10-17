@@ -59,7 +59,8 @@ pub fn assert_recorded(corpus: &str, minimum: usize) {
 }
 
 /// Runs each program of `tests/<corpus>` that has a recorded stdout with `bouy run`, after
-/// `configure` adds to the command, and fails with the lines that differ.
+/// `configure` adds environment variables or `run` options to the command, and fails with
+/// the lines that differ.
 pub fn assert_matches(corpus: &str, configure: impl Fn(&mut Command) + Sync) {
     let programs: Vec<PathBuf> = files(corpus, "ts")
         .into_iter()
@@ -67,8 +68,9 @@ pub fn assert_matches(corpus: &str, configure: impl Fn(&mut Command) + Sync) {
         .collect();
     let check = |program: &Path| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_bouy"));
-        command.arg("run").arg(program);
+        command.arg("run");
         configure(&mut command);
+        command.arg(program);
         compare(program, &mut command)
     };
     // The first run builds the runtime cache, so it runs alone.

@@ -9,8 +9,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use bouy_compiler::{Diagnostic, Project};
-use clap::{Parser, Subcommand};
+use bouy_compiler::{Diagnostic, Project, Semantics};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -27,6 +27,8 @@ struct Cli {
 enum Commands {
     /// Compile a program and run it. Every argument after the entry goes to the program.
     Run {
+        #[arg(long, value_enum, default_value_t = SemanticsArg::Value)]
+        semantics: SemanticsArg,
         /// The entry module.
         entry: PathBuf,
         /// Arguments for the program, available as `process.argv.slice(2)`.
@@ -35,14 +37,34 @@ enum Commands {
     },
     /// Check a program and print its diagnostics.
     Check {
+        #[arg(long, value_enum, default_value_t = SemanticsArg::Value)]
+        semantics: SemanticsArg,
         /// The entry module.
         entry: PathBuf,
     },
     /// Compile a program to Erlang and print the paths of the Erlang files.
     Build {
+        #[arg(long, value_enum, default_value_t = SemanticsArg::Value)]
+        semantics: SemanticsArg,
         /// The entry module.
         entry: PathBuf,
     },
+}
+
+/// How the program treats objects: `value` (the contract) or `reference` (a prototype).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum SemanticsArg {
+    Value,
+    Reference,
+}
+
+impl From<SemanticsArg> for Semantics {
+    fn from(arg: SemanticsArg) -> Self {
+        match arg {
+            SemanticsArg::Value => Self::Value,
+            SemanticsArg::Reference => Self::Reference,
+        }
+    }
 }
 
 /// The exit status for compile diagnostics (section 1).
@@ -56,20 +78,24 @@ fn main() -> ExitCode {
         && command == "run"
         && !entry.to_string_lossy().starts_with('-')
     {
-        return run(Path::new(entry), program_arguments);
+        return run(Path::new(entry), program_arguments, Semantics::Value);
     }
     match Cli::parse().command {
-        Commands::Run { entry, args } => run(&entry, &args),
-        Commands::Check { entry } => match compile(&entry) {
+        Commands::Run {
+            semantics,
+            entry,
+            args,
+        } => run(&entry, &args, semantics.into()),
+        Commands::Check { semantics, entry } => match compile(&entry, semantics.into()) {
             Ok(_) => ExitCode::SUCCESS,
             Err(code) => code,
         },
-        Commands::Build { entry } => build(&entry),
+        Commands::Build { semantics, entry } => build(&entry, semantics.into()),
     }
 }
 
-fn run(entry: &Path, args: &[OsString]) -> ExitCode {
-    let project = match compile(entry) {
+fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
+    let project = match compile(entry, semantics) {
         Ok(project) => project,
         Err(code) => return code,
     };
@@ -133,8 +159,8 @@ fn start(mut vm: Command) -> ExitCode {
     }
 }
 
-fn build(entry: &Path) -> ExitCode {
-    let project = match compile(entry) {
+fn build(entry: &Path, semantics: Semantics) -> ExitCode {
+    let project = match compile(entry, semantics) {
         Ok(project) => project,
         Err(code) => return code,
     };
@@ -150,12 +176,12 @@ fn build(entry: &Path) -> ExitCode {
 }
 
 /// Compiles the program, printing diagnostics to stderr.
-fn compile(entry: &Path) -> Result<Project, ExitCode> {
+fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
     if !entry.is_file() {
         eprintln!("bouy: cannot find the file {}", entry.display());
         return Err(ExitCode::from(DIAGNOSTICS));
     }
-    bouy_compiler::compile(entry).map_err(|diagnostics| {
+    bouy_compiler::compile_with(entry, semantics).map_err(|diagnostics| {
         for diagnostic in &diagnostics {
             eprintln!("{}", relative(diagnostic));
         }

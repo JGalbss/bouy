@@ -9,6 +9,9 @@
 # programs at it with OPENAI_BASE_URL and OPENAI_API_KEY, as crates/bouy-cli/tests/ai.rs
 # does for Bouy.
 #
+# The programs of tests/reference run under `bouy run --semantics reference`. Their actor
+# programs import "bouy", which the script points at the Node shim in tests/reference/shim.
+#
 # Usage: scripts/freeze-expectations.sh tests/conformance
 
 set -eu
@@ -38,6 +41,12 @@ case "${1%/}" in
     OPENAI_BASE_URL="http://127.0.0.1:$(head -n 1 "$work/port")/v1"
     OPENAI_API_KEY=sk-fake-key
     export OPENAI_BASE_URL OPENAI_API_KEY
+    ;;
+*reference)
+    # The actor programs import "bouy"; Node reads the shim of tests/reference/shim.
+    mkdir -p "$1/node_modules"
+    ln -sfn ../shim/bouy "$1/node_modules/bouy"
+    trap 'rm -rf "${1%/}/node_modules"' EXIT
     ;;
 esac
 

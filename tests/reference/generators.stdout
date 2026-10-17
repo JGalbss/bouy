@@ -1,0 +1,4 @@
+[ 0, 1, 2, 3, 4 ]
+0 3 7 { value: 'done at 12', done: true }
+{ value: undefined, done: true }
+0,1,1,2,3,5,8,13,21,34
