@@ -76,6 +76,8 @@ impl<'a> Lowerer<'a, '_> {
             Expression::StaticMemberExpression(member) => self.static_member(member),
             Expression::ComputedMemberExpression(member) => self.computed_member(member),
             Expression::PrivateFieldExpression(member) => self.private_member(member),
+            Expression::ImportExpression(import) => self.dynamic_import(import),
+            Expression::ImportMeta(_) => self.import_meta(),
             other => {
                 let what = match other {
                     Expression::BigIntLiteral(_) => "a BigInt literal",

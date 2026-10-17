@@ -1,0 +1,13 @@
+tla dep start,dep end true
+before import
+import is a promise true
+lazy evaluates
+lazy default object true
+[Module: null prototype] {
+  default: { kind: 'default object' },
+  name: 'lazy'
+}
+en hello
+fr bonjour
+missing ERR_MODULE_NOT_FOUND
+order microtask,import

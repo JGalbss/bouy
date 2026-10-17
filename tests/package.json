@@ -1,11 +1,16 @@
 {
   "name": "@bouy/tests",
   "private": true,
-  "description": "Oracle dependencies only. Node runs the test programs with these packages to record the expected output; Bouy never loads them.",
+  "description": "Packages of the tests. Node runs the test programs with them to record the expected output, and the reference engine loads them from node_modules.",
   "type": "module",
   "devDependencies": {
     "@ai-sdk/openai": "4.0.95",
     "ai": "7.0.142",
-    "effect": "4.0.5"
+    "defu": "6.1.7",
+    "effect": "4.0.5",
+    "eventemitter3": "5.0.4",
+    "extend-shallow": "2.0.1",
+    "fast-json-stable-stringify": "2.1.0",
+    "is-plain-obj": "4.1.0"
   }
 }

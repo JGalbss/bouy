@@ -1,5 +1,5 @@
-//! The module level: module-level names, the functions of the module, `'__init__'/0`,
-//! the class dispatch `'$class'/1`, and the per-realm module variables.
+//! The module level: module-level names, the functions of the module, `'$body'/0`, the
+//! class dispatch `'$class'/1`, and the per-realm module variables.
 
 use oxc::ast::ast::{
     BindingPattern, Declaration, ExportDefaultDeclarationKind, ImportDeclarationSpecifier, Program,
@@ -11,7 +11,6 @@ use super::analyze;
 use super::context::{Cont, Frame, Lowerer, Top};
 use super::function::{Callee, FnBody, kind_of, length_of};
 use super::literal::literal;
-use crate::diagnostic::Code;
 use crate::erlang::{Clause, Expr, Function};
 
 /// The declarations of a statement at module level, export or not.
@@ -31,11 +30,7 @@ impl<'a> Lowerer<'a, '_> {
                     continue;
                 }
                 if import.source.value.as_str() != "bouy" {
-                    self.reporter.report(
-                        import.span,
-                        Code::BadImport,
-                        "the reference-semantics prototype compiles one module and imports only from \"bouy\"",
-                    );
+                    self.declare_imports(import);
                     continue;
                 }
                 for specifier in import.specifiers.iter().flatten() {
@@ -54,13 +49,7 @@ impl<'a> Lowerer<'a, '_> {
                         if let Some(id) = &function.id
                             && let Some(symbol) = id.symbol_id.get()
                         {
-                            self.tops.insert(
-                                symbol,
-                                Top::Function {
-                                    name: id.name.to_string(),
-                                    length: length_of(&function.params),
-                                },
-                            );
+                            self.declare_function(symbol, id.name.as_str(), function);
                         }
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
@@ -80,13 +69,7 @@ impl<'a> Lowerer<'a, '_> {
                         && let Some(symbol) = id.symbol_id.get()
                         && function.body.is_some()
                     {
-                        self.tops.insert(
-                            symbol,
-                            Top::Function {
-                                name: id.name.to_string(),
-                                length: length_of(&function.params),
-                            },
-                        );
+                        self.declare_function(symbol, id.name.as_str(), function);
                     }
                 }
                 Some(Declaration::ClassDeclaration(class)) => {
@@ -99,9 +82,12 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 Some(Declaration::VariableDeclaration(variables)) if !variables.declare => {
                     for declarator in &variables.declarations {
+                        // An exported `const` is a variable, so that an import of it
+                        // before its declaration throws.
                         let literal = match (&declarator.id, &declarator.init) {
-                            (BindingPattern::BindingIdentifier(_), Some(init))
-                                if variables.kind == VariableDeclarationKind::Const =>
+                            (BindingPattern::BindingIdentifier(id), Some(init))
+                                if variables.kind == VariableDeclarationKind::Const
+                                    && !self.is_exported(id.name.as_str()) =>
                             {
                                 literal(init)
                             }
@@ -128,26 +114,75 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
+    /// A module-level function declaration: the Erlang function `'name'/2`, or, when the
+    /// code assigns to its name, a module variable that holds the function until then.
+    fn declare_function(
+        &mut self,
+        symbol: oxc::semantic::SymbolId,
+        name: &str,
+        function: &'a oxc::ast::ast::Function<'a>,
+    ) {
+        let assigned = self
+            .semantic
+            .scoping()
+            .get_resolved_references(symbol)
+            .any(oxc::semantic::Reference::is_write);
+        let top = if assigned {
+            Top::Var(name.to_owned())
+        } else {
+            Top::Function {
+                name: name.to_owned(),
+                length: length_of(&function.params),
+            }
+        };
+        self.tops.insert(symbol, top);
+    }
+
+    /// The import bindings of a declaration, as linking resolved them.
+    /// An import that did not link reads as undefined: the module throws its link
+    /// error before its code runs.
+    fn declare_imports(&mut self, import: &oxc::ast::ast::ImportDeclaration<'a>) {
+        for specifier in import.specifiers.iter().flatten() {
+            let local = specifier.local();
+            let Some(symbol) = local.symbol_id.get() else {
+                continue;
+            };
+            let top = match self.linking.link.imports.get(local.name.as_str()) {
+                Some(binding) => Top::Import(binding.clone()),
+                None => Top::Literal(Expr::undefined()),
+            };
+            self.tops.insert(symbol, top);
+        }
+    }
+
     /// Every Erlang function of the module.
     pub fn module_functions(&mut self, program: &'a Program<'a>) -> Vec<Function> {
         let mut functions = Vec::new();
         let mut body: Vec<&'a Statement<'a>> = Vec::new();
         for statement in &program.body {
             match statement {
-                Statement::ImportDeclaration(_) => {}
+                Statement::ImportDeclaration(_)
+                | Statement::ExportFromDeclaration(_)
+                | Statement::ExportAllDeclaration(_) => {}
                 Statement::ExportDefaultDeclaration(export) => match &export.declaration {
                     ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
-                        if let Some(id) = &function.id {
-                            functions.push(self.module_function(id.name.as_str(), function));
-                        }
+                        let name = function
+                            .id
+                            .as_ref()
+                            .map_or("*default*", |id| id.name.as_str());
+                        functions.push(self.module_function(name, function));
                     }
                     ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                        if let Some(id) = &class.id {
-                            self.module_class(id.name.as_str(), class);
-                        }
+                        let name = class.id.as_ref().map_or("default", |id| id.name.as_str());
+                        self.module_class(name, class);
+                        body.push(statement);
                     }
-                    _ => {
-                        self.unsupported(export.span, "this `export default`");
+                    ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => {}
+                    other => {
+                        if let Some(expression) = other.as_expression() {
+                            self.default_getter(expression);
+                        }
+                        body.push(statement);
                     }
                 },
                 _ => match declaration(statement) {
@@ -163,6 +198,7 @@ impl<'a> Lowerer<'a, '_> {
                             && !class.declare
                         {
                             self.module_class(id.name.as_str(), class);
+                            body.push(statement);
                         }
                     }
                     Some(Declaration::VariableDeclaration(variables)) if !variables.declare => {
@@ -175,15 +211,17 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         self.nested_var_getters(program);
-        functions.push(self.init(&body));
+        functions.push(self.body_function(&body));
         functions.push(self.class_dispatch());
+        functions.push(self.export_function(program));
+        functions.extend(self.linking.interface());
         functions.append(&mut self.extra);
         functions
     }
 
-    /// `'__init__'/0`: runs the top-level code as the first job of the main realm, then
-    /// the realm until no work is left.
-    pub fn init(&mut self, body: &[&'a Statement<'a>]) -> Function {
+    /// `'$body'/0`: the top-level code. A module whose top-level code awaits returns the
+    /// promise of its completion.
+    pub fn body_function(&mut self, body: &[&'a Statement<'a>]) -> Function {
         let mut suspends = analyze::Suspends::default();
         for statement in body {
             suspends.visit_statement(statement);
@@ -195,22 +233,60 @@ impl<'a> Lowerer<'a, '_> {
         } else {
             self.stmts(statements, &Cont::Value(Expr::undefined()))
         };
-        let main = Expr::Fun {
-            name: None,
+        Function {
+            name: "$body".to_owned(),
             clauses: vec![Clause {
                 patterns: vec![],
                 guards: vec![],
                 body: code,
             }],
-        };
-        Function {
-            name: "__init__".to_owned(),
-            clauses: vec![Clause {
-                patterns: vec![],
-                guards: vec![],
-                body: vec![Expr::call("bouy_jobs", "run_main", vec![main]), Expr::ok()],
-            }],
         }
+    }
+
+    /// Whether the module exports the local binding `name`.
+    pub fn is_exported(&self, name: &str) -> bool {
+        self.linking
+            .link
+            .exported_locals
+            .iter()
+            .any(|local| local == name)
+    }
+
+    /// The code of a top-level class declaration: it creates the class in this realm, so
+    /// that its static members run in order and an import of it is initialized.
+    pub fn declare_class(&mut self, name: &str) {
+        self.pre.push(Expr::local_call(
+            "$class",
+            vec![Expr::binary(name.to_owned())],
+        ));
+    }
+
+    /// `export default <expression>`: the variable `*default*`.
+    pub fn export_default(&mut self, expression: &'a oxc::ast::ast::Expression<'a>) {
+        let value = self.expr(expression);
+        let value = self.bind(value);
+        let key = self.var_key("*default*");
+        self.pre.push(Expr::call(
+            "erlang",
+            "put",
+            vec![key, Expr::tagged("v", value)],
+        ));
+    }
+
+    /// `'$get_*default*'/0`, which an actor realm initializes on first read.
+    fn default_getter(&mut self, expression: &'a oxc::ast::ast::Expression<'a>) {
+        let mut suspends = analyze::Suspends::default();
+        suspends.visit_expression(expression);
+        self.frame = Frame::default();
+        self.pre.clear();
+        let value = if suspends.0 {
+            Expr::undefined()
+        } else {
+            self.expr(expression)
+        };
+        let init = std::mem::take(&mut self.pre);
+        self.var_getter("*default*", init, value, Absent::Uninitialized);
+        self.frame = Frame::default();
     }
 
     /// `'$class'/1`: the class of this realm, created on first use.
@@ -296,7 +372,12 @@ impl<'a> Lowerer<'a, '_> {
                     None => Expr::undefined(),
                 };
                 let init = std::mem::take(&mut self.pre);
-                self.var_getter(id.name.as_str(), init, value);
+                let absent = if variables.kind == VariableDeclarationKind::Var {
+                    Absent::Undefined
+                } else {
+                    Absent::Uninitialized
+                };
+                self.var_getter(id.name.as_str(), init, value, absent);
             }
         }
         self.frame = Frame::default();
@@ -308,7 +389,7 @@ impl<'a> Lowerer<'a, '_> {
         for symbol in top_level_vars(program) {
             let name = self.semantic.scoping().symbol_name(symbol).to_owned();
             if matches!(self.tops.get(&symbol), Some(Top::Var(_))) && !self.has_getter(&name) {
-                self.var_getter(&name, Vec::new(), Expr::undefined());
+                self.var_getter(&name, Vec::new(), Expr::undefined(), Absent::Undefined);
             }
         }
     }
@@ -318,9 +399,11 @@ impl<'a> Lowerer<'a, '_> {
         self.extra.iter().any(|function| function.name == getter)
     }
 
-    /// `'$get_x'/0`: the value of the module variable in this realm, from `init` and
-    /// `value` on the first read in a realm whose top-level code did not set it.
-    fn var_getter(&mut self, name: &str, mut init: Vec<Expr>, value: Expr) {
+    /// `'$get_x'/0`: the value of the module variable in this realm. Before its
+    /// declaration runs, a `let` or `const` throws a `ReferenceError` and a `var` (when
+    /// `hoisted`) reads as undefined. An actor realm, whose top-level code does not run,
+    /// sets the variable from `init` and `value` on its first read.
+    fn var_getter(&mut self, name: &str, mut init: Vec<Expr>, value: Expr, absent: Absent) {
         let key = self.var_key(name);
         init.push(Expr::matches(Expr::var("V"), value));
         init.push(Expr::call(
@@ -329,6 +412,23 @@ impl<'a> Lowerer<'a, '_> {
             vec![key.clone(), Expr::tagged("v", Expr::var("V"))],
         ));
         init.push(Expr::var("V"));
+        let lazy = Expr::Fun {
+            name: None,
+            clauses: vec![Clause {
+                patterns: vec![],
+                guards: vec![],
+                body: init,
+            }],
+        };
+        let absent = match absent {
+            Absent::Undefined => Expr::call("bouy_module", "hoisted", vec![lazy]),
+            Absent::Uninitialized => Expr::call(
+                "bouy_module",
+                "uninitialized",
+                vec![Expr::js_string(name), lazy],
+            ),
+            Absent::Value(value) => value,
+        };
         self.extra.push(Function {
             name: format!("$get_{name}"),
             clauses: vec![Clause {
@@ -341,19 +441,29 @@ impl<'a> Lowerer<'a, '_> {
                             Expr::tagged("v", Expr::var("Found")),
                             vec![Expr::var("Found")],
                         ),
-                        Clause::new(Expr::undefined(), init),
+                        Clause::new(Expr::undefined(), vec![absent]),
                     ],
                 )],
             }],
         });
     }
 
-    /// A module-level function declaration: `'name'(This, Args)`.
+    /// A module-level function declaration: `'name'(This, Args)`. A function whose name
+    /// the code assigns also gets `'$get_name'/0`, which reads the function until then.
     pub fn module_function(
         &mut self,
         name: &str,
         function: &'a oxc::ast::ast::Function<'a>,
     ) -> Function {
+        let assigned = function
+            .id
+            .as_ref()
+            .and_then(|id| id.symbol_id.get())
+            .is_some_and(|symbol| matches!(self.tops.get(&symbol), Some(Top::Var(_))));
+        if assigned {
+            let value = self.static_function(name, length_of(&function.params));
+            self.var_getter(name, Vec::new(), value.clone(), Absent::Value(value));
+        }
         self.frame = Frame::default();
         let Some(body) = &function.body else {
             return Function {
@@ -384,7 +494,7 @@ impl<'a> Lowerer<'a, '_> {
             Expr::Tuple(vec![
                 Expr::atom("fn"),
                 Expr::atom(self.module.clone()),
-                Expr::js_string(name),
+                Expr::js_string(if name == "*default*" { "default" } else { name }),
                 Expr::Integer(i64::try_from(length).unwrap_or(0)),
             ]),
             Expr::FunRef {
@@ -394,6 +504,16 @@ impl<'a> Lowerer<'a, '_> {
             },
         ])
     }
+}
+
+/// What a module variable reads before its declaration runs.
+enum Absent {
+    /// A `let`, `const`, or `*default*`: a `ReferenceError`.
+    Uninitialized,
+    /// A `var`.
+    Undefined,
+    /// A function declaration whose name the code assigns: the function.
+    Value(Expr),
 }
 
 /// The `var` names of the top-level code, outside functions.

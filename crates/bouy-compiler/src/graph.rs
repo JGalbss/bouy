@@ -94,7 +94,27 @@ pub fn project_root(entry: &Path) -> PathBuf {
 /// The Erlang module name of the source file `path` in the project at `root`.
 #[must_use]
 pub fn module_name(root: &Path, path: &Path) -> String {
-    let relative = path.strip_prefix(root).unwrap_or(path).with_extension("");
+    file_name(root, &path.with_extension(""))
+}
+
+/// The Erlang module name of a file of the reference engine, with its extension, because
+/// a package often ships `index.js` and `index.mjs` side by side.
+#[must_use]
+pub fn unit_name(root: &Path, path: &Path) -> String {
+    file_name(root, path)
+}
+
+fn file_name(root: &Path, path: &Path) -> String {
+    // A package outside the project, such as one in the pnpm store, is named from its
+    // first `node_modules` directory, so the name does not depend on the machine.
+    let outside = path.strip_prefix(root).is_err();
+    let relative = match path
+        .components()
+        .position(|component| component.as_os_str() == "node_modules")
+    {
+        Some(index) if outside => path.components().skip(index).collect::<PathBuf>(),
+        _ => path.strip_prefix(root).unwrap_or(path).to_path_buf(),
+    };
     let parts: Vec<String> = relative
         .components()
         .filter_map(|component| match component {
@@ -116,28 +136,6 @@ pub fn module_name(root: &Path, path: &Path) -> String {
         .collect();
     // A module name is also a file name, which most file systems cap at 255 bytes.
     crate::erlang::shorten(&format!("bouy@{}", parts.join("@")), 200)
-}
-
-/// The graph of the entry module alone, for the reference-semantics prototype, which
-/// compiles one module and checks its imports itself.
-pub fn single(entry: &Path, root: &Path) -> Result<Graph, Vec<Diagnostic>> {
-    let source = fs::read_to_string(entry).map_err(|error| {
-        vec![Reporter::new(entry, "").at(
-            0,
-            Code::BadImport,
-            format!("cannot read {}: {error}", entry.display()),
-        )]
-    })?;
-    Ok(Graph {
-        root: root.to_path_buf(),
-        modules: vec![Module {
-            path: entry.to_path_buf(),
-            name: module_name(root, entry),
-            source,
-            imports: HashMap::new(),
-            exports: HashMap::new(),
-        }],
-    })
 }
 
 /// Reads the entry module and every module it imports, transitively.

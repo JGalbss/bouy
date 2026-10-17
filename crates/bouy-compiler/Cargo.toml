@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 oxc = { version = "0.154", features = ["semantic", "ast_visit"] }
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [dev-dependencies]
 insta = { version = "1", features = ["glob"] }

@@ -43,6 +43,10 @@ impl<'a> Lowerer<'a, '_> {
             Some(Top::Var(name)) => self.bind(Expr::local_call(&format!("$get_{name}"), vec![])),
             Some(Top::Literal(value)) => value,
             Some(Top::Bouy(_)) => self.unsupported(span, "a function of \"bouy\" used as a value"),
+            Some(Top::Import(binding)) => {
+                let read = self.linking.read(&binding);
+                self.bind(read)
+            }
             None => self.unsupported(
                 span,
                 "a reference to a local variable before its declaration",
@@ -73,6 +77,14 @@ impl<'a> Lowerer<'a, '_> {
                     vec![key, Expr::tagged("v", value.clone())],
                 ));
                 value
+            }
+            Some(Top::Import(_)) => {
+                let _ = self.bind(value);
+                self.bind(Expr::call(
+                    "bouy_ref",
+                    "type_error",
+                    vec![Expr::js_string("Assignment to constant variable.")],
+                ))
             }
             _ => self.unsupported(span, "an assignment to this name"),
         }

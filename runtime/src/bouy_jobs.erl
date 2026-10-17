@@ -568,6 +568,7 @@ actor_init(Parent, Tag, Module, Class, ArgsTerm) ->
     bouy_ref:init_realm(),
     update_now(),
     try
+        bouy_module:evaluate_dependencies(Module),
         C = Module:'$class'(Class),
         This = bouy_heap:construct(C, bouy_heap:array_items(bouy_heap:clone_in(ArgsTerm)), C),
         erlang:put(?THIS, This),

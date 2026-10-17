@@ -299,6 +299,8 @@ inherited_from({_, Proto, Props, _, _, _}, K, Receiver) ->
         _ -> inherited(Proto, K, Receiver)
     end.
 
+%% A live binding of a module namespace (bouy_module) reads its module.
+resolve({'$live', Read}, _Receiver) -> Read();
 resolve({'$accessor', undefined, _}, _Receiver) -> undefined;
 resolve({'$accessor', Getter, _}, Receiver) -> call(Getter, Receiver, []);
 resolve(V, _Receiver) -> V.
@@ -313,6 +315,8 @@ set({'$o', Id} = O, K, V) ->
         {array, P, Props, Keys, Attrs, Slots} when K =:= <<"length">>, map_size(Attrs) =:= 0 ->
             erlang:put(Id, {array, P, Props, Keys, Attrs, resize(Slots, V)}),
             V;
+        {namespace, _, _, _, _, _} ->
+            read_only(K);
         {Class, P, Props, Keys, Attrs, Slots} = R ->
             case Props of
                 #{K := {'$accessor', _, Setter}} ->
@@ -486,6 +490,12 @@ enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 %% configurable, get, set. A missing attribute is false for a new property.
 -spec define(value(), key(), map()) -> value().
 define(O, K, Descriptor) ->
+    case record_of(O) of
+        {namespace, _, _, _, _, _} -> bouy_module:define_namespace(O, K, Descriptor);
+        _ -> define_ordinary(O, K, Descriptor)
+    end.
+
+define_ordinary(O, K, Descriptor) ->
     Id = id_for_write(O),
     {Class, P, Props, Keys, Attrs, Slots} = record_of(O),
     Existing = maps:get(K, Attrs, case is_map_key(K, Props) of true -> ?ALL; false -> 0 end),
@@ -532,6 +542,7 @@ get_own(O, K) ->
     end,
     case Found of
         {ok, {'$accessor', G, S}} -> {accessor, G, S, Bits};
+        {ok, {'$live', Read}} -> {data, Read(), Bits};
         {ok, V} -> {data, V, Bits};
         error -> none
     end.
@@ -541,12 +552,16 @@ prototype_of(O) -> element(2, record_of(O)).
 
 -spec set_prototype_of(value(), value()) -> value().
 set_prototype_of(O, Proto) ->
+    class_of(O) =:= namespace andalso Proto =/= null andalso
+        throw_error('TypeError', <<"Cannot set the prototype of a module namespace object">>),
     Id = id_for_write(O),
     erlang:put(Id, setelement(2, record_of(O), Proto)),
     O.
 
 -spec freeze(value()) -> value().
 freeze(O) ->
+    class_of(O) =:= namespace andalso own_keys(O) =/= [] andalso
+        throw_error('TypeError', <<"Cannot freeze a module namespace object">>),
     Id = id_for_write(O),
     {Class, P, Props, Keys, Attrs, Slots} = record_of(O),
     erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$frozen' => true}, Slots}),

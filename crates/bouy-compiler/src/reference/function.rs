@@ -8,7 +8,7 @@ use oxc::ast::ast::{
 use oxc::ast_visit::Visit;
 
 use super::analyze::{UsesArguments, VarDeclarations};
-use super::context::{ClassFrame, Cont, Frame, Kind, Lowerer, Ret};
+use super::context::{ClassFrame, Cont, Frame, Kind, Local, Lowerer, Ret, cell_set};
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -229,13 +229,35 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn function_expression(&mut self, function: &'a Function<'a>) -> Expr {
+        // The name of a function expression is a binding inside it: a cell that holds the
+        // function once it exists.
+        let own = function
+            .id
+            .as_ref()
+            .and_then(|id| id.symbol_id.get())
+            .filter(|symbol| {
+                self.semantic
+                    .scoping()
+                    .get_resolved_references(*symbol)
+                    .next()
+                    .is_some()
+            });
+        let cell = own.map(|symbol| {
+            let cell = self.fresh("Self");
+            self.pre.push(Expr::matches(
+                Expr::var(cell.clone()),
+                Expr::call("bouy_heap", "cell", vec![Expr::undefined()]),
+            ));
+            self.frame.env.insert(symbol, Local::Cell(cell.clone()));
+            cell
+        });
         let fun = self.function_fun(function, None);
         let name = function
             .id
             .as_ref()
             .map_or_else(String::new, |id| id.name.to_string());
         let length = length_of(&function.params);
-        self.bind(Expr::call(
+        let value = self.bind(Expr::call(
             "bouy_ref",
             "named_fn",
             vec![
@@ -243,7 +265,11 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::js_string(&name),
                 Expr::Integer(i64::try_from(length).unwrap_or(0)),
             ],
-        ))
+        ));
+        if let Some(cell) = cell {
+            self.pre.push(cell_set(&cell, value.clone()));
+        }
+        value
     }
 
     /// The Erlang fun of a non-arrow function: `fun(This, Args) -> ... end`.

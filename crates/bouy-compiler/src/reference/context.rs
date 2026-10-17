@@ -9,6 +9,8 @@ use oxc::semantic::{Semantic, SymbolId};
 use oxc::span::Span;
 
 use super::analyze::Analysis;
+use super::link::Binding;
+use super::linking::Linking;
 use super::suspend::is_marker;
 use crate::diagnostic::{Code, Reporter};
 use crate::erlang::{Clause, Expr, Function};
@@ -26,6 +28,8 @@ pub enum Top {
     Literal(Expr),
     /// A function imported from "bouy".
     Bouy(String),
+    /// An import binding of another module.
+    Import(Binding),
 }
 
 #[derive(Debug, Clone)]
@@ -170,6 +174,8 @@ pub struct Lowerer<'a, 'c> {
     pub pre: Vec<Expr>,
     /// The classes of the module, for `'$class'/1`.
     pub classes: Vec<String>,
+    /// What the module's imports and exports refer to.
+    pub linking: Linking<'c>,
 }
 
 impl Lowerer<'_, '_> {
