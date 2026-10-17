@@ -12,13 +12,13 @@
 %% Between jobs the stack is empty, so the realm collects its heap there.
 -module(bouy_jobs).
 
--export([new_promise/0, capability/0, promise_resolve/1, then/3, perform_then/4, is_promise/1]).
--export([resolve_promise/2, reject_promise/2, resolving_functions/1, fulfilled/1, rejected/1]).
+-export([new_promise/0, new_promise/1, capability/0, promise_resolve/1, perform_then/4, is_promise/1]).
+-export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
 -export([await/3, async_call/1, enqueue/1, drain/0]).
 -export([set_timer/4, clear_timer/1]).
 -export([run_main/1, run_job/1, event_step/1, loop/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
--export([all/2, all_settled/1, race/1, any/1]).
+-export([all/1]).
 
 -define(QUEUE, '$bouy_microtasks').
 -define(TIMERS, '$bouy_timers').
@@ -71,7 +71,11 @@ drain() ->
 %% is a JavaScript function or an Erlang fun of one argument.
 
 -spec new_promise() -> term().
-new_promise() -> bouy_heap:new_exotic(promise, ?PROMISE_PROTO, {pending, [], [], false}).
+new_promise() -> new_promise(?PROMISE_PROTO).
+
+%% A pending promise whose prototype is Proto, as for a subclass.
+-spec new_promise(term()) -> term().
+new_promise(Proto) -> bouy_heap:new_exotic(promise, Proto, {pending, [], [], false}).
 
 -spec is_promise(term()) -> boolean().
 is_promise({'$o', _} = V) -> bouy_heap:class_of(V) =:= promise;
@@ -131,7 +135,11 @@ resolve_thenable_job(P, Thenable, Then) ->
         error:Reason:Stack -> Reject(bouy_ref:caught(Reason, Stack))
     end.
 
-js_function(Fun) -> bouy_heap:function(fun(_This, Args) -> Fun(arg(Args)) end).
+%% A promise resolve or reject function, or another builtin of one
+%% parameter that the promise machinery hands to user code: length 1 and an
+%% empty name, as CreateBuiltinFunction gives.
+-spec js_function(fun((term()) -> term())) -> term().
+js_function(Fun) -> bouy_heap:function(fun(_This, Args) -> Fun(arg(Args)) end, <<>>, 1, #{}).
 
 arg([V | _]) -> V;
 arg([]) -> undefined.
@@ -170,15 +178,11 @@ reaction_job({Kind, {_, Resolve, Reject}, Handler}, Argument) ->
         {error, Error} -> invoke(Reject, Error)
     end.
 
+%% Calls a handler or a resolving function: an Erlang fun of one argument or
+%% a JavaScript function.
+-spec invoke(term(), term()) -> term().
 invoke(F, Argument) when is_function(F, 1) -> F(Argument);
 invoke(F, Argument) -> bouy_heap:call(F, undefined, [Argument]).
-
-%% Promise.prototype.then on a promise of the intrinsic constructor.
--spec then(term(), term(), term()) -> term().
-then(P, OnFulfilled, OnRejected) ->
-    {P2, Resolve, Reject} = capability(),
-    perform_then(P, OnFulfilled, OnRejected, {P2, Resolve, Reject}),
-    P2.
 
 -spec perform_then(term(), term(), term(), undefined | tuple()) -> ok.
 perform_then(P, OnFulfilled, OnRejected, Capability) ->
@@ -241,97 +245,23 @@ async_call(Body) ->
     end,
     P.
 
-%%% Promise combinators, with the element functions of the spec, so the
-%%% order of their reactions matches V8.
-
--spec all(list(), boolean()) -> term().
-all(Items, _) ->
-    combine(Items, fun(Values) -> bouy_heap:new_array(Values) end,
-            fun(Index, Settle) -> {fun(V) -> Settle(Index, V) end, reject} end).
-
--spec all_settled(list()) -> term().
-all_settled(Items) ->
-    Proto = {'$o', 'Object.prototype'},
-    combine(Items, fun(Values) -> bouy_heap:new_array(Values) end,
-            fun(Index, Settle) ->
-                    {fun(V) -> Settle(Index, bouy_heap:object(Proto, [{<<"status">>, <<"fulfilled">>}, {<<"value">>, V}])) end,
-                     fun(E) -> Settle(Index, bouy_heap:object(Proto, [{<<"status">>, <<"rejected">>}, {<<"reason">>, E}])) end}
-            end).
-
-%% The shape of Promise.all and allSettled: each item resolves through
-%% Promise.resolve and its then, and the result settles when every element
-%% has a value.
-combine(Items, Finish, Handlers) ->
+%% A promise that fulfills when every promise of the list has, or rejects
+%% with the first rejection. Module evaluation waits for its async
+%% dependencies with it, and no user code observes its steps, so it skips
+%% the lookups of Promise.all (bouy_ref_promise).
+-spec all([term()]) -> term().
+all(Promises) ->
     {P, Resolve, Reject} = capability(),
-    Count = length(Items),
-    Values = bouy_heap:cell(maps:from_list([{I, undefined} || I <- lists:seq(0, Count - 1)])),
-    Left = bouy_heap:cell(Count + 1),
-    Done = fun() ->
+    Left = bouy_heap:cell(length(Promises) + 1),
+    Done = fun(_) ->
                    case bouy_heap:cell_set(Left, bouy_heap:cell_get(Left) - 1) of
-                       0 -> Resolve(Finish([V || {_, V} <- lists:sort(maps:to_list(bouy_heap:cell_get(Values)))]));
-                       _ -> ok
+                       0 -> Resolve(undefined);
+                       _ -> undefined
                    end
            end,
-    lists:foreach(
-      fun({Index, Item}) ->
-              Called = bouy_heap:cell(false),
-              Settle = fun(I, V) ->
-                               case bouy_heap:cell_get(Called) of
-                                   true -> undefined;
-                                   false ->
-                                       bouy_heap:cell_set(Called, true),
-                                       bouy_heap:cell_set(Values, (bouy_heap:cell_get(Values))#{I => V}),
-                                       Done(),
-                                       undefined
-                               end
-                       end,
-              {OnFulfilled, OnRejected} = Handlers(Index, Settle),
-              Next = resolve_with_constructor(Item),
-              invoke_then(Next, OnFulfilled, case OnRejected of reject -> Reject; F -> F end)
-      end, lists:enumerate(0, Items)),
-    Done(),
+    [perform_then(promise_resolve(Item), Done, Reject, undefined) || Item <- Promises],
+    _ = Done(undefined),
     P.
-
--spec race(list()) -> term().
-race(Items) ->
-    {P, Resolve, Reject} = capability(),
-    [invoke_then(resolve_with_constructor(Item), Resolve, Reject) || Item <- Items],
-    P.
-
--spec any(list()) -> term().
-any(Items) ->
-    {P, Resolve, Reject} = capability(),
-    Count = length(Items),
-    Errors = bouy_heap:cell(#{}),
-    Left = bouy_heap:cell(Count + 1),
-    Done = fun() ->
-                   case bouy_heap:cell_set(Left, bouy_heap:cell_get(Left) - 1) of
-                       0 ->
-                           List = [V || {_, V} <- lists:sort(maps:to_list(bouy_heap:cell_get(Errors)))],
-                           E = bouy_heap:error_object({'$o', 'AggregateError.prototype'}, <<"All promises were rejected">>, <<>>),
-                           bouy_heap:define(E, <<"errors">>, #{value => bouy_heap:new_array(List), writable => true, enumerable => false, configurable => true}),
-                           Reject(E);
-                       _ ->
-                           ok
-                   end
-           end,
-    lists:foreach(fun({Index, Item}) ->
-                          OnRejected = fun(E) -> bouy_heap:cell_set(Errors, (bouy_heap:cell_get(Errors))#{Index => E}), Done(), undefined end,
-                          invoke_then(resolve_with_constructor(Item), Resolve, OnRejected)
-                  end, lists:enumerate(0, Items)),
-    Done(),
-    P.
-
-%% Call(C.resolve, C, [item]) with C the intrinsic Promise.
-resolve_with_constructor(Item) -> promise_resolve(Item).
-
-%% Invoke(next, "then", [onFulfilled, onRejected]) through the property, as the spec does.
-invoke_then(Next, OnFulfilled, OnRejected) ->
-    Then = bouy_heap:get(Next, <<"then">>),
-    bouy_heap:call(Then, Next, [as_js(OnFulfilled), as_js(OnRejected)]).
-
-as_js(F) when is_function(F, 1) -> js_function(F);
-as_js(F) -> F.
 
 %%% Unhandled rejections: a promise rejected without a handler at the end of
 %%% a job ends the program, as in Node.

@@ -21,7 +21,13 @@ log(X) -> erlang:put(log, [X | erlang:get(log)]), undefined.
 
 fn(F) -> bouy_heap:function(fun(_This, Args) -> F(case Args of [V | _] -> V; [] -> undefined end) end).
 
-then(P, F) -> bouy_jobs:then(P, fn(F), undefined).
+then(P, F) -> then(P, fn(F), undefined).
+
+%% Promise.prototype.then on a promise of the intrinsic constructor.
+then(P, OnFulfilled, OnRejected) ->
+    {P2, _, _} = Capability = bouy_jobs:capability(),
+    bouy_jobs:perform_then(P, OnFulfilled, OnRejected, Capability),
+    P2.
 
 resolved() -> bouy_jobs:promise_resolve(undefined).
 
@@ -148,8 +154,8 @@ rejection_test() ->
     ?assertEqual([{caught, boom}, {caught, again}],
                  run(fun() ->
                              P = bouy_jobs:rejected(boom),
-                             Q = bouy_jobs:then(P, undefined, fn(fun(E) -> log({caught, E}), erlang:error({'$throw', again}) end)),
-                             bouy_jobs:then(Q, undefined, fn(fun(E) -> log({caught, E}) end))
+                             Q = then(P, undefined, fn(fun(E) -> log({caught, E}), erlang:error({'$throw', again}) end)),
+                             then(Q, undefined, fn(fun(E) -> log({caught, E}) end))
                      end)).
 
 %% The heap of a realm is collected between jobs.

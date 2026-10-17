@@ -611,7 +611,7 @@ load_dynamic(Target, Resolve, Reject) ->
                 Resolve(builtin_namespace(B));
             {defer, M} ->
                 link_graph(M),
-                Evaluation = bouy_jobs:all([evaluate(D) || D <- gather_async(M, [])], false),
+                Evaluation = bouy_jobs:all([evaluate(D) || D <- gather_async(M, [])]),
                 bouy_jobs:perform_then(Evaluation, fun(_) -> Resolve(deferred_namespace(M)) end, Reject, undefined);
             M ->
                 link_graph(M),
