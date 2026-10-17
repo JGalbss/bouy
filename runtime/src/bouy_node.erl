@@ -246,7 +246,8 @@ fn(Name, Length, Fun) -> bouy_heap:function(Fun, Name, Length, #{}).
 %% gives: Fun takes (This, Args) for a call and for new.
 -spec constructor(binary(), non_neg_integer(), fun((term(), list()) -> term())) -> term().
 constructor(Name, Length, Fun) ->
-    F = fn(Name, Length, Fun),
+    %% kind normal: new makes the object from the prototype property and calls Fun.
+    F = bouy_heap:function(Fun, Name, Length, #{kind => normal}),
     Proto = object([]),
     bouy_heap:define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
     bouy_heap:define(F, <<"prototype">>, #{value => Proto, writable => true, enumerable => false, configurable => false}),
