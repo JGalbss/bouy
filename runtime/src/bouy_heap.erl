@@ -424,6 +424,13 @@ resize(_, NewLength) ->
 %% The `in` operator.
 -spec has(value(), key()) -> boolean().
 has(O, K) ->
+    case record_of(O) of
+        %% [[HasProperty]] of a namespace does not read the binding.
+        {namespace, _, Props, _, _, _} -> is_map_key(K, Props);
+        _ -> has_ordinary(O, K)
+    end.
+
+has_ordinary(O, K) ->
     case has_own(O, K) of
         true -> true;
         false ->
@@ -437,6 +444,8 @@ has(O, K) ->
 has_own(O, K) ->
     case record_of(O) of
         {array, _, _, _, _, {_, Elements}} when is_integer(K) -> is_map_key(K, Elements);
+        %% [[GetOwnProperty]] of a namespace reads the binding, which may be uninitialized.
+        {namespace, _, _, _, _, _} -> get_own(O, K) =/= none;
         {array, _, _, _, _, _} when K =:= <<"length">> -> true;
         {_, _, Props, _, _, _} -> is_map_key(K, Props)
     end.
@@ -481,8 +490,11 @@ own_keys(O) ->
 %% The enumerable own string keys, for Object.keys, for-in, spread, and JSON.
 -spec enumerable_keys(value()) -> [key()].
 enumerable_keys(O) ->
-    {_, _, _, _, Attrs, _} = record_of(O),
-    [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs)].
+    {Class, _, _, _, Attrs, _} = record_of(O),
+    Keys = [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs)],
+    %% Each key of a namespace reads its binding, as [[GetOwnProperty]] does.
+    Class =:= namespace andalso lists:foreach(fun(K) -> get_own(O, K) end, Keys),
+    Keys.
 
 enumerable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE =/= 0.
 

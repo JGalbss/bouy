@@ -16,6 +16,15 @@ impl<'a> Lowerer<'a, '_> {
         self.frame = Frame::default();
         self.pre.clear();
         let parent = match &class.heritage {
+            // A superclass expression that awaits ran in the top-level code.
+            Some(_) if super::module::heritage_suspends(class) => {
+                let var = self.fresh("Parent");
+                self.pre.push(Expr::matches(
+                    Expr::var(var.clone()),
+                    Expr::call("erlang", "get", vec![self.heritage_key(name)]),
+                ));
+                Some(var)
+            }
             Some(heritage) => {
                 let value = self.expr(&heritage.expression);
                 let var = self.fresh("Parent");

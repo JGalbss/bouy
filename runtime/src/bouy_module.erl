@@ -374,10 +374,12 @@ namespace(M) ->
             NS
     end.
 
-make_namespace(Entries) ->
+make_namespace(Named) ->
     Tag = ?SYM(toStringTag),
+    %% An export named "0" is the property key 0, as ToPropertyKey makes it.
+    Entries = [{bouy_heap:to_key(Name), Read} || {Name, Read} <- Named],
     Props = maps:from_list([{Name, {'$live', Read}} || {Name, Read} <- Entries] ++ [{Tag, <<"Module">>}]),
-    Keys = lists:reverse([Name || {Name, _} <- Entries] ++ [Tag]),
+    Keys = lists:reverse([Name || {Name, _} <- Entries, not is_integer(Name)] ++ [Tag]),
     Attrs = maps:from_list([{Name, ?WRITABLE bor ?ENUMERABLE} || {Name, _} <- Entries] ++ [{Tag, 0}, {'$noext', true}]),
     Id = bouy_heap:new_exotic(namespace, null, none),
     {'$o', Raw} = Id,

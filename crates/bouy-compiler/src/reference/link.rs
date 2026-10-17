@@ -84,8 +84,8 @@ pub fn link(graph: &Graph) -> Vec<Linked> {
 }
 
 /// The spec's rewrite of the export entries of `ParseModule`: `import { a } from 'm';
-/// export { a }` is an indirect export of `a` from `m`. A re-exported namespace import
-/// stays local.
+/// export { a }` is an indirect export of `a` from `m`, and `import * as ns from 'm';
+/// export { ns }` an indirect export of the namespace of `m`.
 fn rewrite(unit: &Unit) -> (Vec<(String, String)>, Vec<Indirect>) {
     let mut locals = Vec::new();
     let mut indirect = unit.record.indirect.clone();
@@ -96,12 +96,10 @@ fn rewrite(unit: &Unit) -> (Vec<(String, String)>, Vec<Indirect>) {
             .iter()
             .find(|(name, _, _)| name == local)
         {
-            Some((_, specifier, Imported::Name(imported))) => indirect.push((
-                export.clone(),
-                specifier.clone(),
-                Imported::Name(imported.clone()),
-            )),
-            _ => locals.push((export.clone(), local.clone())),
+            Some((_, specifier, imported)) => {
+                indirect.push((export.clone(), specifier.clone(), imported.clone()));
+            }
+            None => locals.push((export.clone(), local.clone())),
         }
     }
     (locals, indirect)

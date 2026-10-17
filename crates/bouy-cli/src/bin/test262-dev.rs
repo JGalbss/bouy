@@ -55,7 +55,7 @@ struct Options {
 }
 
 /// The fields of a test's frontmatter that the runner uses.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Frontmatter {
     includes: Vec<String>,
     flags: Vec<String>,
@@ -63,13 +63,13 @@ struct Frontmatter {
     negative: Option<Negative>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Negative {
     phase: String,
     error: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Outcome {
     Pass,
     Fail(String),
@@ -134,8 +134,18 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
             thread::available_parallelism().map_or(4, |cores| (usize::from(cores) / 2).clamp(1, 8))
         })
         .max(1);
+    // Every test is on disk before any compiles, since a test may import another.
+    let written = parallel(jobs, tests, |_, test| {
+        write_program(&options.test262, scratch, &test.path)
+    });
     let prepared = parallel(jobs, tests, |index, test| {
-        prepare(&options.test262, scratch, index, &test.path)
+        prepare(
+            scratch,
+            index,
+            &options.test262,
+            &test.path,
+            &written[index],
+        )
     });
     let compiled: Vec<(usize, &[PathBuf])> = prepared
         .iter()
@@ -271,24 +281,56 @@ fn parallel<T: Sync, R: Send>(
         .collect()
 }
 
-/// Reads a test, writes its program, and compiles it.
-fn prepare(test262: &Path, scratch: &Path, index: usize, path: &Path) -> Prepared {
+/// A test written to the scratch tree: its frontmatter and the lines before the test, or
+/// its outcome when it does not run.
+enum Written {
+    Decided(Outcome),
+    Program {
+        meta: Frontmatter,
+        prelude_lines: usize,
+    },
+}
+
+/// Reads a test and writes its program at its path in the scratch tree.
+fn write_program(test262: &Path, scratch: &Path, path: &Path) -> Written {
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
-        Err(error) => return Prepared::Decided(Outcome::Fail(format!("cannot read: {error}"))),
+        Err(error) => return Written::Decided(Outcome::Fail(format!("cannot read: {error}"))),
     };
     let meta = frontmatter(&source);
     if let Some(reason) = skip_reason(&meta) {
-        return Prepared::Decided(Outcome::Skip(reason));
+        return Written::Decided(Outcome::Skip(reason));
     }
     let (program, prelude_lines) = match program(test262, &meta, &source) {
         Ok(program) => program,
-        Err(error) => return Prepared::Decided(Outcome::Fail(error)),
+        Err(error) => return Written::Decided(Outcome::Fail(error)),
     };
     let file = scratch.join("src").join(relative(test262, path));
     if let Err(error) = fs::write(&file, program) {
-        return Prepared::Decided(Outcome::Fail(format!("cannot write the program: {error}")));
+        return Written::Decided(Outcome::Fail(format!("cannot write the program: {error}")));
     }
+    Written::Program {
+        meta,
+        prelude_lines,
+    }
+}
+
+/// Compiles a written test.
+fn prepare(
+    scratch: &Path,
+    index: usize,
+    test262: &Path,
+    path: &Path,
+    written: &Written,
+) -> Prepared {
+    let (meta, prelude_lines) = match written {
+        Written::Decided(outcome) => return Prepared::Decided(outcome.clone()),
+        Written::Program {
+            meta,
+            prelude_lines,
+        } => (meta.clone(), *prelude_lines),
+    };
+    let file = scratch.join("src").join(relative(test262, path));
     let compiled = if meta.has_flag("module") {
         bouy_compiler::compile_with(&file, Semantics::Reference)
     } else {

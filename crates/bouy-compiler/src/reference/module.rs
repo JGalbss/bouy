@@ -254,17 +254,62 @@ impl<'a> Lowerer<'a, '_> {
 
     /// The code of a top-level class declaration: it creates the class in this realm, so
     /// that its static members run in order and an import of it is initialized.
-    pub fn declare_class(&mut self, name: &str) {
+    ///
+    /// A superclass expression that awaits runs here, in the top-level code, and the
+    /// class reads its value from `{'$heritage', Module, Name}`.
+    pub fn declare_class(&mut self, name: &str, class: &'a oxc::ast::ast::Class<'a>) {
+        if let Some(heritage) = class.heritage.as_ref().filter(|_| heritage_suspends(class)) {
+            let value = self.expr(&heritage.expression);
+            let value = self.bind(value);
+            self.pre.push(Expr::call(
+                "erlang",
+                "put",
+                vec![self.heritage_key(name), value],
+            ));
+        }
         self.pre.push(Expr::local_call(
             "$class",
             vec![Expr::binary(name.to_owned())],
         ));
     }
 
+    /// Where the top-level code leaves the superclass of the class `name`.
+    pub fn heritage_key(&self, name: &str) -> Expr {
+        Expr::Tuple(vec![
+            Expr::atom("$heritage"),
+            Expr::atom(self.module.clone()),
+            Expr::binary(name.to_owned()),
+        ])
+    }
+
     /// `export default <expression>`: the variable `*default*`.
+    /// An anonymous function takes the name `default`, as `NamedEvaluation` gives it.
     pub fn export_default(&mut self, expression: &'a oxc::ast::ast::Expression<'a>) {
+        use oxc::ast::ast::Expression as E;
         let value = self.expr(expression);
         let value = self.bind(value);
+        let anonymous = match expression.without_parentheses() {
+            E::FunctionExpression(function) => function.id.is_none(),
+            E::ArrowFunctionExpression(_) => true,
+            E::ClassExpression(class) => class.id.is_none(),
+            _ => false,
+        };
+        if anonymous {
+            self.pre.push(Expr::call(
+                "bouy_heap",
+                "define",
+                vec![
+                    value.clone(),
+                    Expr::binary("name"),
+                    Expr::Map(vec![
+                        (Expr::atom("value"), Expr::binary("default")),
+                        (Expr::atom("writable"), Expr::atom("false")),
+                        (Expr::atom("enumerable"), Expr::atom("false")),
+                        (Expr::atom("configurable"), Expr::atom("true")),
+                    ]),
+                ],
+            ));
+        }
         let key = self.var_key("*default*");
         self.pre.push(Expr::call(
             "erlang",
@@ -504,6 +549,15 @@ impl<'a> Lowerer<'a, '_> {
             },
         ])
     }
+}
+
+/// Whether the superclass expression of a top-level class awaits.
+pub fn heritage_suspends(class: &oxc::ast::ast::Class<'_>) -> bool {
+    class.heritage.as_ref().is_some_and(|heritage| {
+        let mut suspends = analyze::Suspends::default();
+        suspends.visit_expression(&heritage.expression);
+        suspends.0
+    })
 }
 
 /// What a module variable reads before its declaration runs.

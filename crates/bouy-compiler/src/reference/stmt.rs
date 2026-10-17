@@ -153,7 +153,7 @@ impl<'a> Lowerer<'a, '_> {
                 Declaration::VariableDeclaration(declaration) => self.variables(declaration),
                 Declaration::ClassDeclaration(class) => {
                     if let Some(id) = &class.id {
-                        self.declare_class(id.name.as_str());
+                        self.declare_class(id.name.as_str(), class);
                     }
                 }
                 _ => {}
@@ -161,7 +161,7 @@ impl<'a> Lowerer<'a, '_> {
             Statement::ExportDefaultDeclaration(export) => match &export.declaration {
                 oxc::ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) => {
                     let name = class.id.as_ref().map_or("default", |id| id.name.as_str());
-                    self.declare_class(name);
+                    self.declare_class(name, class);
                 }
                 other => {
                     if let Some(expression) = other.as_expression() {
@@ -177,7 +177,7 @@ impl<'a> Lowerer<'a, '_> {
                 }) =>
             {
                 if let Some(id) = &class.id {
-                    self.declare_class(id.name.as_str());
+                    self.declare_class(id.name.as_str(), class);
                 }
             }
             Statement::ClassDeclaration(class) if !class.declare => {
