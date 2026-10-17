@@ -64,25 +64,42 @@ pub fn compile(entry: &Path) -> Result<Project, Vec<Diagnostic>> {
 pub fn compile_with(entry: &Path, semantics: Semantics) -> Result<Project, Vec<Diagnostic>> {
     let entry = canonical(entry)?;
     let root = project_root(&entry);
-    compile_in_with(&entry, &root, semantics)
+    compile_in_with(&entry, &root, semantics, Goal::Extension)
+}
+
+/// The goal symbol that the source files of a program parse with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Goal {
+    /// The goal of the file extension: TypeScript for `.ts`, a module for `.js` and `.mjs`.
+    Extension,
+    /// A JavaScript script, as test262 runs a file without the `module` flag.
+    Script,
+    /// A JavaScript module.
+    Module,
 }
 
 /// Compiles the program whose entry module is `entry`, naming modules relative to `root`.
 pub fn compile_in(entry: &Path, root: &Path) -> Result<Project, Vec<Diagnostic>> {
-    compile_in_with(entry, root, Semantics::Value)
+    compile_goal(entry, root, Goal::Extension)
+}
+
+/// Compiles as `compile_in` does, with every source file parsed with `goal`.
+pub fn compile_goal(entry: &Path, root: &Path, goal: Goal) -> Result<Project, Vec<Diagnostic>> {
+    compile_in_with(entry, root, Semantics::Value, goal)
 }
 
 fn compile_in_with(
     entry: &Path,
     root: &Path,
     semantics: Semantics,
+    goal: Goal,
 ) -> Result<Project, Vec<Diagnostic>> {
     let entry = canonical(entry)?;
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     if semantics == Semantics::Reference {
         return compile_reference(&entry, &root, false);
     }
-    let graph = graph::load(&entry, &root)?;
+    let graph = graph::load(&entry, &root, goal)?;
     let mut modules = Vec::with_capacity(graph.modules.len());
     let mut diagnostics = Vec::new();
     for module in &graph.modules {

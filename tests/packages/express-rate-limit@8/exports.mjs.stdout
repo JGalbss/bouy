@@ -1,0 +1,8 @@
+DAY: number
+HOUR: number
+MINUTE: number
+MemoryStore: function
+SECOND: number
+default: function
+ipKeyGenerator: function
+rateLimit: function

@@ -1,0 +1,2 @@
+# The files of tests/node/suite that Bouy edits, each with its reason: `<path> <reason>`.
+# Only files of common/ may change, and each change carries a `// Bouy:` comment.

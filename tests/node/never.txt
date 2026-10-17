@@ -1,0 +1,5 @@
+# The reviewed `never` list of section 5.7.1 of docs/design/testing.md: the entries of
+# tests/node/surface.json that Bouy will never have. Each line is `<entry> <reason>`, and a
+# reviewer must approve each line. `bouy-suites node-surface` gives each entry the outcome
+# `never`, and docs/COMPAT.md names each one with its reason. A line whose entry is not in
+# surface.json fails the run. No entry is on the list yet.

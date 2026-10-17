@@ -1,0 +1,4 @@
+resp_fake_2 completed Hello! System: You are terse. You said: Say hello.
+{"input_tokens":20,"input_tokens_details":{"cached_tokens":0},"output_tokens":9,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":29}
+{"arguments":"{\"id\":7}","call_id":"call_1_1","id":"fc_fake_1_1","name":"lookup","status":"completed","type":"function_call"}
+Results: lookup -> found 7

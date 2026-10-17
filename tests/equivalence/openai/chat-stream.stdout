@@ -1,0 +1,4 @@
+finish stop
+usage {"completion_tokens":6,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":16}
+["Hello! ","You ","said: ","Stream ","a ","greeting."]
+tool_calls [{"function":{"arguments":"{\"id\":7}","name":"lookup"},"id":"call_1_1","type":"function"}]

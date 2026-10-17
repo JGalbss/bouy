@@ -1,0 +1,284 @@
+{
+  "suite": "node",
+  "version": "v25.9.0",
+  "updated": "47731fd16355cfbf038e635219457a3c02462a10",
+  "total": 4419,
+  "outcomes": {
+    "pass": 0,
+    "rejected": 3836,
+    "late": 0,
+    "skip": 583,
+    "never": 0,
+    "fail": 0,
+    "timeout": 0,
+    "harness_error": 0,
+    "crash": 0
+  },
+  "groups": {
+    "directory": {
+      "es-module": {
+        "rejected": 206,
+        "skip": 16
+      },
+      "parallel": {
+        "rejected": 3534,
+        "skip": 545
+      },
+      "sequential": {
+        "rejected": 96,
+        "skip": 22
+      }
+    },
+    "kind": {
+      "internals": {
+        "skip": 343
+      },
+      "public": {
+        "rejected": 3836,
+        "skip": 240
+      }
+    },
+    "module": {
+      "assert": {
+        "rejected": 13,
+        "skip": 1
+      },
+      "async_hooks": {
+        "rejected": 45,
+        "skip": 11
+      },
+      "buffer": {
+        "rejected": 63,
+        "skip": 6
+      },
+      "child_process": {
+        "rejected": 107,
+        "skip": 7
+      },
+      "cluster": {
+        "rejected": 86,
+        "skip": 2
+      },
+      "console": {
+        "rejected": 21,
+        "skip": 1
+      },
+      "constants": {
+        "skip": 1
+      },
+      "crypto": {
+        "rejected": 152,
+        "skip": 9
+      },
+      "dgram": {
+        "rejected": 68,
+        "skip": 11
+      },
+      "diagnostics_channel": {
+        "rejected": 53,
+        "skip": 3
+      },
+      "dns": {
+        "rejected": 19,
+        "skip": 10
+      },
+      "domain": {
+        "rejected": 48,
+        "skip": 2
+      },
+      "events": {
+        "rejected": 34,
+        "skip": 6
+      },
+      "fs": {
+        "rejected": 323,
+        "skip": 20
+      },
+      "http": {
+        "rejected": 379,
+        "skip": 15
+      },
+      "http2": {
+        "rejected": 242,
+        "skip": 32
+      },
+      "https": {
+        "rejected": 63,
+        "skip": 2
+      },
+      "inspector": {
+        "skip": 114
+      },
+      "module": {
+        "rejected": 263,
+        "skip": 17
+      },
+      "net": {
+        "rejected": 152,
+        "skip": 10
+      },
+      "os": {
+        "rejected": 6,
+        "skip": 2
+      },
+      "other": {
+        "rejected": 438,
+        "skip": 178
+      },
+      "path": {
+        "rejected": 17
+      },
+      "perf_hooks": {
+        "rejected": 24,
+        "skip": 3
+      },
+      "process": {
+        "rejected": 123,
+        "skip": 8
+      },
+      "punycode": {
+        "rejected": 1
+      },
+      "querystring": {
+        "rejected": 4
+      },
+      "quic": {
+        "rejected": 6,
+        "skip": 3
+      },
+      "readline": {
+        "rejected": 15,
+        "skip": 7
+      },
+      "repl": {
+        "rejected": 92,
+        "skip": 14
+      },
+      "sea": {
+        "rejected": 1
+      },
+      "sqlite": {
+        "rejected": 16,
+        "skip": 2
+      },
+      "stream": {
+        "rejected": 255,
+        "skip": 8
+      },
+      "string_decoder": {
+        "rejected": 3
+      },
+      "sys": {
+        "rejected": 1
+      },
+      "test": {
+        "rejected": 60,
+        "skip": 5
+      },
+      "timers": {
+        "rejected": 48,
+        "skip": 12
+      },
+      "tls": {
+        "rejected": 205,
+        "skip": 15
+      },
+      "trace_events": {
+        "rejected": 26,
+        "skip": 3
+      },
+      "tty": {
+        "rejected": 2,
+        "skip": 1
+      },
+      "url": {
+        "rejected": 39,
+        "skip": 3
+      },
+      "util": {
+        "rejected": 20,
+        "skip": 10
+      },
+      "v8": {
+        "rejected": 17,
+        "skip": 5
+      },
+      "vm": {
+        "rejected": 90,
+        "skip": 9
+      },
+      "worker_threads": {
+        "rejected": 136,
+        "skip": 12
+      },
+      "zlib": {
+        "rejected": 60,
+        "skip": 3
+      }
+    },
+    "skip reason": {
+      "native-addon": {
+        "skip": 2
+      },
+      "node-inspector": {
+        "skip": 109
+      },
+      "node-internals": {
+        "skip": 342
+      },
+      "node-permission-model": {
+        "skip": 46
+      },
+      "v8-flag": {
+        "skip": 84
+      }
+    }
+  },
+  "blockers": [
+    {
+      "blocker": "BOUY201",
+      "files": 297,
+      "only": 5
+    },
+    {
+      "blocker": "BOUY206",
+      "files": 3441,
+      "only": 4
+    },
+    {
+      "blocker": "common/index.js",
+      "files": 3533,
+      "only": 0
+    },
+    {
+      "blocker": "BOUY207",
+      "files": 1369,
+      "only": 0
+    },
+    {
+      "blocker": "BOUY202",
+      "files": 785,
+      "only": 0
+    },
+    {
+      "blocker": "BOUY205",
+      "files": 784,
+      "only": 0
+    },
+    {
+      "blocker": "common/index.mjs",
+      "files": 292,
+      "only": 0
+    },
+    {
+      "blocker": "BOUY200",
+      "files": 98,
+      "only": 0
+    },
+    {
+      "blocker": "BOUY203",
+      "files": 6,
+      "only": 0
+    }
+  ]
+}

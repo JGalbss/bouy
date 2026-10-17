@@ -10,4 +10,6 @@ Failure bad
 running first
 running second
 [ 'first', 'second' ]
-[ 'a', 'b' ] concurrent
+finished b
+finished a
+[ 'a', 'b' ]

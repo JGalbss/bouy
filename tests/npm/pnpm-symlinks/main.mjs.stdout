@@ -1,0 +1,3 @@
+found next to the real path of the package
+the module runs from its real path: true
+the dependency of a dependency is not visible here: ERR_MODULE_NOT_FOUND

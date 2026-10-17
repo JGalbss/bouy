@@ -72,11 +72,12 @@ start_children(Group, [{Key, #{id := Id} = Spec} | Rest], Refs) ->
         ok ->
             start_children(Group, Rest, Refs#{Key => {'$ref', Id}});
         {error, Failure} ->
-            ok = bouy_sup:stop_group(Group),
+            %% The mark comes first: an actor that dies unmarked counts as out of memory.
             lists:foreach(
                 fun({'$ref', Started}) -> bouy_registry:mark_stopped(Started) end,
                 maps:values(Refs)
             ),
+            ok = bouy_sup:stop_group(Group),
             raise(Failure)
     end.
 
@@ -143,8 +144,8 @@ self(_Arguments) ->
 
 %% The spec of a new actor of Class, from the options of spawn() or child().
 spec({'$class', Module, Class} = Value, Options, Name) when is_atom(Module), is_binary(Class) ->
-    ok = actor_class(Value),
     #{
+        functions => actor_class(Value),
         id => bouy_registry:allocate(),
         module => Module,
         class => Class,
@@ -152,6 +153,8 @@ spec({'$class', Module, Class} = Value, Options, Name) when is_atom(Module), is_
         name => Name,
         mailbox => mailbox(option(<<"mailbox">>, Options)),
         restart => restart(option(<<"restart">>, Options)),
+        max_memory => max_memory(option(<<"maxMemory">>, Options)),
+        turn_timeout => turn_timeout(option(<<"turnTimeout">>, Options)),
         chain => bouy_actor:chain()
     };
 spec(_Class, _Options, _Name) ->
@@ -162,7 +165,7 @@ spec(_Class, _Options, _Name) ->
 actor_class({'$class', Module, Class}) ->
     case bouy_actor:class_functions(Module, Class) of
         error -> type_error(<<"spawn() needs an actor class">>);
-        _Functions -> ok
+        Functions -> Functions
     end.
 
 child_spec(Key, {'$child', Class, Options}) -> spec(Class, Options, Key);
@@ -214,6 +217,37 @@ restart(<<"transient">>) -> transient;
 restart(<<"temporary">>) -> temporary;
 restart(_Restart) ->
     type_error(<<"restart must be \"permanent\", \"transient\", or \"temporary\"">>).
+
+%% The longest turn of the actor in ms, or `infinity`.
+turn_timeout(undefined) -> infinity;
+turn_timeout(Ms) ->
+    case integer(Ms) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> type_error(<<"turnTimeout must be a positive integer number of milliseconds">>)
+    end.
+
+%% Bytes, or a string with a K, M, G, or T suffix, as BOUY_MAX_MEMORY takes. The limit
+%% must leave room for the smallest heap of a process.
+max_memory(undefined) ->
+    infinity;
+max_memory(Value) ->
+    {min_heap_size, Words} = erlang:system_info(min_heap_size),
+    Least = Words * erlang:system_info(wordsize),
+    case bytes(Value) of
+        {ok, Bytes} when Bytes >= Least -> Bytes;
+        {ok, _Bytes} -> bouy_error:throw(<<"RangeError">>, <<"maxMemory must be at least ", (integer_to_binary(Least))/binary, " bytes">>);
+        error -> type_error(<<"maxMemory must be a number of bytes or a string such as \"64M\"">>)
+    end.
+
+bytes(Text) when is_binary(Text) ->
+    bouy_guard:bytes(unicode:characters_to_list(Text));
+bytes(Number) when is_number(Number) ->
+    case integer(Number) of
+        N when is_integer(N), N > 0 -> {ok, N};
+        _ -> error
+    end;
+bytes(_Value) ->
+    error.
 
 strategy(undefined) -> one_for_one;
 strategy(<<"one-for-one">>) -> one_for_one;

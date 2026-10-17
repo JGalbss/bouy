@@ -26,6 +26,7 @@ pub struct Tools {
     pub bouy: String,
     pub otp: String,
     pub node: String,
+    pub bun: String,
 }
 
 /// Prints the full OTP release, such as `29.0.1`, and the ERTS version.
@@ -41,7 +42,7 @@ pub fn host(name: Option<String>) -> Host {
     }
 }
 
-pub fn tools(bouy: &Path, node: &Path, repository: &Path) -> Tools {
+pub fn tools(bouy: &Path, node: &Path, bun: &Path, repository: &Path) -> Tools {
     let erl = env::var_os("BOUY_ERL").unwrap_or_else(|| "erl".into());
     Tools {
         commit: output(
@@ -57,6 +58,7 @@ pub fn tools(bouy: &Path, node: &Path, repository: &Path) -> Tools {
         bouy: output(bouy, &["--version"]),
         otp: output(erl, &["-noshell", "-eval", OTP_VERSION]),
         node: output(node, &["--version"]),
+        bun: output(bun, &["--version"]),
     }
 }
 

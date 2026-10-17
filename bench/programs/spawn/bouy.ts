@@ -1,7 +1,10 @@
 import { spawn } from "bouy";
 
 // Spawn: start 100,000 actors that each hold a number, and keep their refs. The harness
-// derives the memory per actor from the peak RSS of this run and of `startup`.
+// derives the memory per actor from the peak RSS of this run and of `startup`. The
+// constructor only stores its argument, so the compiler marks it pure, and spawn() runs it
+// in the calling process without a wait for the new process (contract section 9). A
+// constructor with effects takes the slower path, which waits for the new process.
 
 const ACTORS = 100000;
 

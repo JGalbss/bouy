@@ -9,7 +9,17 @@ use oxc::parser::{ParseOptions, Parser};
 use oxc::semantic::{Semantic, SemanticBuilder};
 use oxc::span::SourceType;
 
+use crate::Goal;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
+
+/// The source type that `path` parses with under `goal`.
+pub fn source_type(path: &Path, goal: Goal) -> SourceType {
+    match goal {
+        Goal::Extension => SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts()),
+        Goal::Script => SourceType::script(),
+        Goal::Module => SourceType::mjs(),
+    }
+}
 
 /// Parses `source`, runs semantic analysis, and hands both to `use_program`.
 ///
@@ -17,10 +27,10 @@ use crate::diagnostic::{Code, Diagnostic, Reporter};
 pub fn with_program<R>(
     path: &Path,
     source: &str,
+    source_type: SourceType,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
-    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
-    parse_program(path, source, source_type, true, use_program)
+    parse_program(path, source, source_type, source_type.is_typescript(), use_program)
 }
 
 /// As `with_program`, for the JavaScript engine (`--semantics reference`): a `yield`
@@ -156,7 +166,8 @@ fn syntax_errors(
         .map(|error| {
             let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
             // oxc rejects `yield` outside a generator as a reserved word. In Bouy that is a
-            // `yield*` in a function nested in an Effect body (section 13).
+            // `yield*` in a function nested in an Effect body (section 13). In JavaScript it
+            // stays a syntax error, as test262 expects.
             if effect_hint
                 && error.message.contains("reserved")
                 && source.get(offset..).is_some_and(|rest| rest.starts_with("yield"))

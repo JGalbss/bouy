@@ -1,0 +1,8 @@
+module.exports: object
+Experimental_OpenAIRealtimeModel: function
+Experimental_OpenAIRealtimeModelLive: function
+Experimental_OpenAISpeechTranslationModel: function
+Experimental_OpenAITranslationModel: function
+VERSION: string
+createOpenAI: function
+openai: function

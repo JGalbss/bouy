@@ -1,0 +1,8 @@
+Experimental_GoogleRealtimeModel: function
+Experimental_GoogleSpeechTranslationModel: function
+Experimental_GoogleTranslationModel: function
+GoogleTranscriptionModel: function
+VERSION: string
+createGoogle: function
+createGoogleGenerativeAI: function
+google: function

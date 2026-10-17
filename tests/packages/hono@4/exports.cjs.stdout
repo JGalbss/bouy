@@ -1,0 +1,3 @@
+module.exports: object
+Context: function
+Hono: function

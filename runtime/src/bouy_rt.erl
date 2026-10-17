@@ -80,6 +80,9 @@ call_method(R, Name, Args) when ?IS_NUMBER(R) -> bouy_number:call(Name, R, Args)
 call_method({'$map', _} = R, Name, Args) -> bouy_map:call(Name, R, Args);
 call_method({'$set', _} = R, Name, Args) -> bouy_set:call(Name, R, Args);
 call_method({'$ref', _} = R, Name, Args) -> bouy_actor:call(R, Name, Args);
+%% The stand-in of a ref that bouy_task:map_call/3 passes: the call is not made
+%% here but returned, so the caller can send it with the others of its batch.
+call_method({'$defer', Id}, Name, Args) -> {'$deferred', Id, Name, Args};
 call_method({'$cast', _} = R, Name, Args) -> bouy_actor:cast(R, Name, Args);
 call_method({'$date', _} = R, Name, Args) -> bouy_date:call(Name, R, Args);
 call_method({'$iterator', _, _} = R, Name, Args) -> bouy_iterator:call(Name, R, Args);

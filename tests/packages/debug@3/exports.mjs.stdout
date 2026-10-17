@@ -1,0 +1,10 @@
+colors: object
+default: function
+formatArgs: function
+init: function
+inspectOpts: object
+load: function
+log: function
+module.exports: function
+save: function
+useColors: function

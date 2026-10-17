@@ -1,0 +1,5 @@
+Hello! System: You are terse. You said: Say hello.
+stop
+{"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":20},"inputTokens":20,"outputTokenDetails":{"reasoningTokens":0,"textTokens":9},"outputTokens":9,"raw":{"input_tokens":20,"input_tokens_details":{"cached_tokens":0},"output_tokens":9,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":29},"totalTokens":29}
+resp_fake_2 gpt-4o-mini-2026-01-01 2026-01-01T00:00:02.000Z
+[{"content":[{"providerOptions":{"openai":{"itemId":"msg_fake_2"}},"text":"Hello! System: You are terse. You said: Say hello.","type":"text"}],"role":"assistant"}]

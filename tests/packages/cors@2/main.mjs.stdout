@@ -1,0 +1,4 @@
+next
+[["access-control-allow-origin","*"]]
+ended 204
+[["access-control-allow-credentials","true"],["access-control-allow-methods","GET,HEAD,PUT,PATCH,POST,DELETE"],["access-control-allow-origin","http://a.example"],["content-length","0"],["vary","Origin, Access-Control-Request-Headers"]]

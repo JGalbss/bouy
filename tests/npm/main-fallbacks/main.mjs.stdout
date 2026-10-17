@@ -1,0 +1,3 @@
+no-main: index.js, with no main field
+extensionless-main: lib/entry.js, from main lib/entry
+json-main throws ERR_IMPORT_ATTRIBUTE_MISSING

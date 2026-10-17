@@ -79,7 +79,7 @@ The inputs disagree in places. These decisions settle them.
 | D6  | A closure that keeps state between calls stays rejected (BOUY256). Inside Effect code, the new code BOUY257 gives the `Ref` fix. `Ref` moves from the Effect study's P1 to P0.                                                                                                                             | Such a closure is an object with identity, and a copy would fork its state. A fix must compile, so `Ref` exists before BOUY257 ships.         |
 | D7  | Object identity stays a documented difference. BOUY245 rejects the comparisons whose Node result is always `false`.                                                                                                                                                                                        | Types are erased, so at `a === b` the compiler cannot tell an object from a number.                                                           |
 | D8  | A runtime path that Bouy cannot run throws a `TypeError` with the own field `code: "ERR_BOUY_UNSUPPORTED"`. The uncaught-error line prints `Uncaught TypeError [ERR_BOUY_UNSUPPORTED]: <message>`, the form that Node uses for its own errors with a code.                                                 | Tests and the test262 runner tell a late rejection from a wrong result without parsing text.                                                  |
-| D9  | The test262 runner is a Rust crate, `crates/bouy-test262`, on the model of `crates/bouy-bench`. It downloads a pinned test262 commit into the cache directory of the CLI.                                                                                                                                  | The repository stays small.                                                                                                                   |
+| D9  | The test262 runner is a Rust crate, `crates/bouy-test262`, on the model of `crates/bouy-bench`. It downloads a pinned test262 commit into the cache directory of the CLI. Replaced: the runner is `crates/bouy-suites` (testing.md section 5.5).                                                           | The repository stays small.                                                                                                                   |
 | D10 | Number results past 2^53 round to doubles, integer arithmetic yields `-0` where JavaScript does, and strings count UTF-16 code units (item 3.14).                                                                                                                                                          | Each is a silent divergence today. BigInt (item 3.13) gives exact integers to the code that asks for them.                                    |
 
 ## 5. Phases
@@ -359,6 +359,8 @@ Exit criteria:
 3. `tests/migration/runs/` keeps every run, so the trend of the iterations shows.
 
 ## 11. Phase 6: test262
+
+Status: replaced by [testing.md](testing.md) section 5.5, which `crates/bouy-suites` builds. test262 runs unmodified, and every file has a line in `tests/test262/expectations.txt`. The harness port, the wrapper function, the `bouy fix` step, `subset.txt`, and `baseline.json` below are dropped. The rest of this section is the earlier plan.
 
 Scope: a runner that reports, for each test262 feature, the tests that pass, that Bouy rejects with a diagnostic, that end in a late rejection, that fail silently, and that crash. Silent failures are the tracked number.
 

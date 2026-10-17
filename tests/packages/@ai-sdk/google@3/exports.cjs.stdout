@@ -1,0 +1,5 @@
+module.exports: object
+GoogleTranscriptionModel: function
+VERSION: string
+createGoogleGenerativeAI: function
+google: function

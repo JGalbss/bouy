@@ -12,6 +12,10 @@ pub enum Code {
     Syntax,
     /// An import of a module that is neither relative nor a library.
     BadImport,
+    /// An import of a name that the module does not export. The program is wrong, as in
+    /// the resolution-phase tests of test262, while `BadImport` can mean that Bouy cannot
+    /// load the module yet. Both print `BOUY201` until diagnostics.md splits the code.
+    MissingExport,
     /// A module-level `let`/`var`, or a module-level value that changes after initialization.
     ModuleState,
     /// `new` on an actor class.
@@ -29,7 +33,7 @@ impl Code {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Syntax => "BOUY200",
-            Self::BadImport => "BOUY201",
+            Self::BadImport | Self::MissingExport => "BOUY201",
             Self::ModuleState => "BOUY202",
             Self::NewActor => "BOUY203",
             Self::Capture => "BOUY205",

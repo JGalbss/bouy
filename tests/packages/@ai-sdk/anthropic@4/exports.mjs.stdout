@@ -1,0 +1,4 @@
+VERSION: string
+anthropic: function
+createAnthropic: function
+forwardAnthropicContainerIdFromLastStep: function

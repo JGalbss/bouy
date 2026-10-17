@@ -1,0 +1,13 @@
+Route: function
+Router: function
+application: object
+default: function
+json: function
+module.exports: function
+query: function
+raw: function
+request: object
+response: object
+static: function
+text: function
+urlencoded: function

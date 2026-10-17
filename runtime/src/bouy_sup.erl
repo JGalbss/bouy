@@ -33,8 +33,7 @@ new_group(Flags) ->
     Group.
 
 %% Stops a group and every actor in it, and returns when the group is gone.
-%% The actors have brutal_kill shutdowns and do not trap exits, so killing
-%% the group kills them too.
+%% The actors do not trap exits, so killing the group kills them too.
 -spec stop_group(pid()) -> ok.
 stop_group(Group) ->
     Monitor = monitor(process, Group),

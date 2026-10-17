@@ -1,3 +1,5 @@
 packages:
   - runtime
   - tests
+  - tests/packages/*
+  - tests/packages/@*/*

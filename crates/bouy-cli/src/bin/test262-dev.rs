@@ -521,9 +521,8 @@ fn vm_pass(
         "{{ok, M, B}} = compile:file(\"{source}\", [binary, report]), {{module, M}} = code:load_binary(M, \"{source}\", B), bouy_test262:main()."
     );
     let out = scratch.join("out");
-    let mut vm = runtime.vm();
+    let mut vm = runtime.vm(&["Bd"]);
     vm.args([
-        "+Bd",
         "-noshell",
         "-noinput",
         "-mode",

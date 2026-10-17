@@ -1,0 +1,1 @@
+exports.via = "require";

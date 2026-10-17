@@ -1,0 +1,5 @@
+Webhook: function
+WebhookVerificationError: function
+__esModule: boolean
+default: object
+module.exports: object

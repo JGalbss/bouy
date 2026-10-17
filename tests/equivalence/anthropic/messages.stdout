@@ -1,0 +1,5 @@
+msg_fake_2 claude-fake-20260101 end_turn
+[{"text":"Hello! System: You are terse. You said: Say hello.","type":"text"}]
+{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":20,"output_tokens":9}
+true 401 {"error":{"message":"invalid x-api-key","type":"authentication_error"},"type":"error"}
+true 500

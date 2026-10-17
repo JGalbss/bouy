@@ -10,13 +10,14 @@ use oxc::ast::ast::{
     VariableDeclarationKind,
 };
 use oxc::semantic::{Semantic, SymbolId};
-use oxc::span::{GetSpan, Span};
+use oxc::span::{GetSpan, SourceType, Span};
 
+use crate::Goal;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::library;
 use crate::lower::class::{ClassKind, classify, data_imports};
 use crate::lower::function::is_function_value;
-use crate::parse::with_program;
+use crate::parse::{source_type, with_program};
 
 /// One Bouy module of the graph.
 #[derive(Debug)]
@@ -25,6 +26,8 @@ pub struct Module {
     /// The Erlang module name (section 2).
     pub name: String,
     pub source: String,
+    /// The language and the goal symbol that the source parses with.
+    pub source_type: SourceType,
     /// The Erlang module name of each relative import specifier.
     pub imports: HashMap<String, String>,
     /// Each exported name and what it refers to, re-exports included.
@@ -138,8 +141,8 @@ fn file_name(root: &Path, path: &Path) -> String {
     crate::erlang::shorten(&format!("bouy@{}", parts.join("@")), 200)
 }
 
-/// Reads the entry module and every module it imports, transitively.
-pub fn load(entry: &Path, root: &Path) -> Result<Graph, Vec<Diagnostic>> {
+/// Reads the entry module and every module it imports, transitively, each with `goal`.
+pub fn load(entry: &Path, root: &Path, goal: Goal) -> Result<Graph, Vec<Diagnostic>> {
     let mut modules: Vec<Module> = Vec::new();
     let mut reexports: Vec<Vec<Reexport>> = Vec::new();
     let mut diagnostics = Vec::new();
@@ -171,7 +174,8 @@ pub fn load(entry: &Path, root: &Path) -> Result<Graph, Vec<Diagnostic>> {
                 continue;
             }
         };
-        match scan(&path, &source, root, &name) {
+        let source_type = source_type(&path, goal);
+        match scan(&path, &source, source_type, root, &name) {
             Ok(scanned) => {
                 queue.extend(scanned.dependencies);
                 reexports.push(scanned.reexports);
@@ -179,6 +183,7 @@ pub fn load(entry: &Path, root: &Path) -> Result<Graph, Vec<Diagnostic>> {
                     path,
                     name,
                     source,
+                    source_type,
                     imports: scanned.imports,
                     exports: scanned.exports,
                 });
@@ -206,8 +211,14 @@ struct Scanned {
     reexports: Vec<Reexport>,
 }
 
-fn scan(path: &Path, source: &str, root: &Path, name: &str) -> Result<Scanned, Vec<Diagnostic>> {
-    with_program(path, source, |program, semantic| {
+fn scan(
+    path: &Path,
+    source: &str,
+    source_type: SourceType,
+    root: &Path,
+    name: &str,
+) -> Result<Scanned, Vec<Diagnostic>> {
+    with_program(path, source, source_type, |program, semantic| {
         let mut reporter = Reporter::new(path, source);
         let mut scanned = Scanned {
             imports: HashMap::new(),
@@ -362,7 +373,7 @@ fn resolve_reexports(modules: &mut [Module], reexports: &[Vec<Reexport>]) -> Vec
             {
                 diagnostics.push(Reporter::new(&module.path, &module.source).at(
                     span.start as usize,
-                    Code::BadImport,
+                    Code::MissingExport,
                     format!("the module {from} does not export `{imported}`"),
                 ));
             }

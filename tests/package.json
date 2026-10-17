@@ -5,12 +5,16 @@
   "type": "module",
   "devDependencies": {
     "@ai-sdk/openai": "4.0.95",
+    "@anthropic-ai/sdk": "0.135.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "ai": "7.0.142",
     "defu": "6.1.7",
     "effect": "4.0.5",
     "eventemitter3": "5.0.4",
     "extend-shallow": "2.0.1",
     "fast-json-stable-stringify": "2.1.0",
-    "is-plain-obj": "4.1.0"
+    "is-plain-obj": "4.1.0",
+    "openai": "7.36.0",
+    "zod": "4.6.7"
   }
 }

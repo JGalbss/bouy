@@ -27,6 +27,7 @@
 
 -export([
     'Counter#new'/1,
+    'Counter#pure'/0,
     'Counter#dispatch'/3,
     'Counter#streams'/0,
     'Counter#inc'/2,
@@ -50,6 +51,11 @@
             Value -> Value
         end,
     #{<<"#count">> => Start, <<"#log">> => []}.
+
+%% The constructor only binds its argument, so the compiler marks it pure and
+%% spawn() runs it in the calling process (contract section 9).
+-spec 'Counter#pure'() -> true.
+'Counter#pure'() -> true.
 
 -spec 'Counter#dispatch'(binary(), map(), list()) -> {term(), map()}.
 'Counter#dispatch'(<<"inc">>, This, Args) -> 'Counter#inc'(This, Args);

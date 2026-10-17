@@ -1,0 +1,6 @@
+openai.chat ["Hello! ","You ","said: ","Stream ","a ","greeting."]
+Hello! You said: Stream a greeting.
+stop {"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":10},"inputTokens":10,"outputTokenDetails":{"reasoningTokens":0,"textTokens":6},"outputTokens":6,"raw":{"completion_tokens":6,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":16},"totalTokens":16}
+openai.responses ["Hello! ","You ","said: ","Stream ","a ","greeting."]
+Hello! You said: Stream a greeting.
+stop {"inputTokenDetails":{"cacheReadTokens":0,"noCacheTokens":10},"inputTokens":10,"outputTokenDetails":{"reasoningTokens":0,"textTokens":6},"outputTokens":6,"raw":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":16},"totalTokens":16}

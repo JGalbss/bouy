@@ -1,0 +1,14 @@
+module.exports: function
+CLOSED: number
+CLOSING: number
+CONNECTING: number
+OPEN: number
+PerMessageDeflate: function
+Receiver: function
+Sender: function
+Server: function
+WebSocket: function
+WebSocketServer: function
+createWebSocketStream: function
+extension: object
+subprotocol: object

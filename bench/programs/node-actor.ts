@@ -53,7 +53,9 @@ export class Actor {
         const method = state[job.method];
         if (method === undefined) throw new TypeError(`${job.method} is not a function`);
         const result = method.apply(state, job.args);
-        job.resolve?.(result instanceof Promise ? await result : result);
+        // A cast of an async method also holds the mailbox until it settles.
+        const value = result instanceof Promise ? await result : result;
+        job.resolve?.(value);
       } catch (error) {
         console.error(`node: ${state.constructor?.name} crashed: ${String(error)}`);
         this.#state = this.#make();

@@ -1,0 +1,5 @@
+module.exports: object
+PriorityQueue: function
+TimeoutError: function
+__esModule: boolean
+default: function

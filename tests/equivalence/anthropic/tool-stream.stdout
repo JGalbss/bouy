@@ -1,0 +1,11 @@
+input {"city":"Lima"} {"city":"Lima"}
+["message_start","content_block_start","content_block_delta","content_block_stop","message_delta","message_stop"]
+tool_use [{"id":"toolu_fake_1_1","input":{"city":"Lima"},"name":"weather","type":"tool_use"}]
+text "Results: "
+text "weather "
+text "-> "
+text "sunny, "
+text "21 "
+text "C"
+end_turn Results: weather -> sunny, 21 C
+{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":35,"output_tokens":6}

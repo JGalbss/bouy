@@ -16,6 +16,9 @@ This file is the objective and the definition of done. The owner sets it, and ev
 8. **Tests on the model of Bun.** test262 covers the language. Node's own test suite covers each built-in module. web-platform-tests cover the web APIs. The test suites of popular packages cover the ecosystem. A `bouy test` runner is compatible with `bun:test`. Differential fuzzing compares Bouy with Node. A dashboard publishes the pass rates. Node is the oracle, and the tests never run it.
 9. **Repository practice.** A Turborepo monorepo with `crates/` and packages, clean directories, the guardrails oxlint rules, Conventional Commits, and the public GitHub repository.
 10. **Examples** that draw on the best agent and actor examples online.
+11. **Faster than Bun, and better recovery than Bun.** Bun is the bar. Bouy must beat it on speed, measured on single-thread and concurrent suites, through type-directed compilation, native built-ins, a native tier for hot typed code that still yields to the BEAM scheduler, and all cores by default. Bouy must also recover better: a crash, a runaway loop, a memory leak, or a stuck call in one agent never stops the others, and a supervisor restarts that agent within milliseconds. `bench/` measures speed and recovery against Bun and Node.
+12. **Durable execution built in.** Long-running workflows survive crashes and restarts on Bouy's own runtime: durable timers, retries with backoff, signals, cancellation, and replay or snapshots, with no external workflow server. Code written against Temporal's TypeScript SDK runs on it without the Temporal server.
+13. **Flagship: a real production codebase.** The owner's company monorepo, a large multi-service TypeScript app that runs on Bun today and uses Temporal, builds and runs on Bouy on the owner's machine out of the box, faster than on Bun, with Bouy's durable runtime in place of Temporal. Its name and code stay out of this public repository.
 
 ## Definition of done
 
@@ -25,8 +28,10 @@ This file is the objective and the definition of done. The owner sets it, and ev
 - Real npm packages run unchanged, and the compatibility dashboard states the pass rate for each tier.
 - Every Node built-in module reaches 100% on both Node coverage numbers, apart from the named `never` entries.
 - The compiler implements actor-aware lowering.
-- The end-to-end tests pass, and the benchmarks against equivalent Node programs are reproducible.
+- The end-to-end tests pass, and the benchmarks against equivalent Node and Bun programs are reproducible.
+- `bench/results` shows Bouy faster than Bun on the speed suites, and the recovery suites show each fault contained to one agent and restarted, where Bun loses the process or stalls.
 - The documents state the limitations and the next milestones.
+- The owner's production monorepo runs on Bouy unchanged, faster than on Bun, with its Temporal workflows on Bouy's durable runtime.
 - Tests prove each invariant: fault isolation, state isolation, message ordering, supervision recovery, cancellation, bounded mailboxes, npm equivalence, and stability under load.
 
 ## Amendments
@@ -41,3 +46,6 @@ The owner added these on 2026-10-16, in order:
 - "we need to be able to use all npm packages otherwise what is the point"
 - "really good tests for these take inspiration from bun"
 - "we need complete coverage of node and like a verifiable way to have that with tests"
+- "shoudlnt this also be super fast", then "we shold i think be able to make it fast as hell"
+- "it needsto be more performant and better recovery then bun"
+- "like a sick goal would be, being able to build [the owner's production repo] on my computer and have it work on our runtime more performantly out of the box with swapping out temporal probs for just default runtime"

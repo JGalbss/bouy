@@ -1,0 +1,4 @@
+{"name":"Ada","age":36,"tags":[]}
+false [[["name"],"too_small"],[["age"],"too_small"],[["email"],"invalid_string"]]
+21.5
+true 0

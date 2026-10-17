@@ -1,0 +1,5 @@
+module.exports: object
+AbortError: function
+__esModule: boolean
+default: function
+makeRetriable: function

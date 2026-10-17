@@ -4,7 +4,7 @@ expression: lower(path)
 input_file: crates/bouy-compiler/tests/fixtures/refs.ts
 ---
 -module(bouy@refs).
--export(['__init__'/0, 'Store#new'/1, 'Store#add'/2, 'Store#dispatch'/3, 'Router#new'/1, 'Router#route'/2, 'Router#connect'/2, 'Router#dispatch'/3, fill/1, collect/1]).
+-export(['__init__'/0, 'Store#new'/1, 'Store#pure'/0, 'Store#add'/2, 'Store#dispatch'/3, 'Router#new'/1, 'Router#pure'/0, 'Router#route'/2, 'Router#connect'/2, 'Router#dispatch'/3, fill/1, broadcast/1, shout/1, collect/1]).
 -compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
 
 '__init__'() ->
@@ -15,6 +15,8 @@ input_file: crates/bouy-compiler/tests/fixtures/refs.ts
 'Store#new'(Args) ->
     This = #{'#items' => []},
     This.
+
+'Store#pure'() -> true.
 
 'Store#add'(This, Args) ->
     Item@1 = bouy_rt:arg(1, Args),
@@ -35,6 +37,8 @@ input_file: crates/bouy-compiler/tests/fixtures/refs.ts
     This = #{'#items' => undefined, '#backup' => undefined},
     This@1 = maps:put('#items', Store@1, This),
     This@1.
+
+'Router#pure'() -> true.
 
 'Router#route'(This, Args) ->
     Items@1 = bouy_rt:arg(1, Args),
@@ -72,6 +76,32 @@ fill(Args) ->
         fun(Args@1) ->
             Item@1 = bouy_rt:arg(1, Args@1),
             bouy_rt:call_method(Target@1, <<"add">>, [Item@1])
+        end,
+        1
+    ).
+
+broadcast(Args) ->
+    Stores@1 = bouy_rt:arg(1, Args),
+    Item@1 = bouy_rt:arg(2, Args),
+    bouy_task:map_call(
+        Stores@1,
+        fun(Args@1) ->
+            Store@1 = bouy_rt:arg(1, Args@1),
+            {T@1, Store@2} = bouy_rt:mutate(Store@1, <<"add">>, [Item@1]),
+            T@1
+        end,
+        1
+    ).
+
+shout(Args) ->
+    Stores@1 = bouy_rt:arg(1, Args),
+    Item@1 = bouy_rt:arg(2, Args),
+    bouy_task:map(
+        Stores@1,
+        fun(Args@1) ->
+            Store@1 = bouy_rt:arg(1, Args@1),
+            {T@1, Store@2} = bouy_rt:mutate(Store@1, <<"add">>, [bouy_rt:concat([Item@1, <<"!">>])]),
+            T@1
         end,
         1
     ).

@@ -1,0 +1,13 @@
+{
+  "name": "@bouytest/imports-case",
+  "private": true,
+  "imports": {
+    "#config": "./config.mjs",
+    "#lib/*": "./lib/*.mjs",
+    "#dependency": "@bouytest/imported",
+    "#conditional": {
+      "import": "./lib/conditional-import.mjs",
+      "require": "./lib/conditional-require.cjs"
+    }
+  }
+}

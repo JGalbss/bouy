@@ -1,0 +1,3 @@
+local data: 1,2,3
+a package: 7
+an import without the type attribute throws ERR_IMPORT_ATTRIBUTE_MISSING

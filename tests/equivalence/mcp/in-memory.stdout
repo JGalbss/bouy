@@ -1,0 +1,7 @@
+{"name":"bouy-test-server","version":"1.0.0"}
+[["add","Add two numbers",{"$schema":"http://json-schema.org/draft-07/schema#","properties":{"a":{"type":"number"},"b":{"type":"number"}},"required":["a","b"],"type":"object"}],["fail","Always fails",{"$schema":"http://json-schema.org/draft-07/schema#","properties":{"reason":{"type":"string"}},"required":["reason"],"type":"object"}]]
+{"content":[{"text":"5","type":"text"}],"structuredContent":{"sum":5}}
+{"content":[{"text":"failed: on purpose","type":"text"}],"isError":true}
+{"contents":[{"text":"Hello, Ada!","uri":"greeting://Ada"}]}
+{"messages":[{"content":{"text":"Review this: x = 1","type":"text"},"role":"user"}]}
+{"content":[{"text":"MCP error -32602: Tool missing not found","type":"text"}],"isError":true}

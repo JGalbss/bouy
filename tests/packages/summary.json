@@ -1,0 +1,943 @@
+{
+  "suite": "packages",
+  "version": "Node 25.9.0",
+  "updated": "47731fd16355cfbf038e635219457a3c02462a10",
+  "total": 298,
+  "outcomes": {
+    "pass": 1,
+    "rejected": 295,
+    "late": 0,
+    "skip": 0,
+    "never": 0,
+    "fail": 2,
+    "timeout": 0,
+    "harness_error": 0,
+    "crash": 0
+  },
+  "groups": {
+    "kind": {
+      "exports.cjs": {
+        "rejected": 99
+      },
+      "exports.mjs": {
+        "rejected": 99
+      },
+      "main-jitless.mjs": {
+        "rejected": 1
+      },
+      "main.mjs": {
+        "pass": 1,
+        "rejected": 96,
+        "fail": 2
+      }
+    },
+    "program": {
+      "@ai-sdk/anthropic@3/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/anthropic@3/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/anthropic@3/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/anthropic@4/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/anthropic@4/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/anthropic@4/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/gateway@3/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/gateway@3/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/gateway@3/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/gateway@4/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/gateway@4/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/gateway@4/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/google@3/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/google@3/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/google@3/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/google@4/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/google@4/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/google@4/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/openai@3/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/openai@3/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/openai@3/main.mjs": {
+        "fail": 1
+      },
+      "@ai-sdk/openai@4/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/openai@4/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/openai@4/main.mjs": {
+        "fail": 1
+      },
+      "@ai-sdk/provider-utils@4/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider-utils@4/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider-utils@4/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider-utils@5/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider-utils@5/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider-utils@5/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider@3/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider@3/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider@3/main.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider@4/exports.cjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider@4/exports.mjs": {
+        "rejected": 1
+      },
+      "@ai-sdk/provider@4/main.mjs": {
+        "rejected": 1
+      },
+      "@anthropic-ai/sdk@0.135/exports.cjs": {
+        "rejected": 1
+      },
+      "@anthropic-ai/sdk@0.135/exports.mjs": {
+        "rejected": 1
+      },
+      "@anthropic-ai/sdk@0.135/main.mjs": {
+        "rejected": 1
+      },
+      "@cfworker/json-schema@4/exports.cjs": {
+        "rejected": 1
+      },
+      "@cfworker/json-schema@4/exports.mjs": {
+        "rejected": 1
+      },
+      "@cfworker/json-schema@4/main.mjs": {
+        "rejected": 1
+      },
+      "@google/genai@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@google/genai@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@google/genai@1/main.mjs": {
+        "rejected": 1
+      },
+      "@google/genai@2/exports.cjs": {
+        "rejected": 1
+      },
+      "@google/genai@2/exports.mjs": {
+        "rejected": 1
+      },
+      "@google/genai@2/main.mjs": {
+        "rejected": 1
+      },
+      "@hono/node-server@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@hono/node-server@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@hono/node-server@1/main.mjs": {
+        "rejected": 1
+      },
+      "@hono/node-server@2/exports.cjs": {
+        "rejected": 1
+      },
+      "@hono/node-server@2/exports.mjs": {
+        "rejected": 1
+      },
+      "@hono/node-server@2/main.mjs": {
+        "rejected": 1
+      },
+      "@langchain/anthropic@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@langchain/anthropic@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@langchain/anthropic@1/main.mjs": {
+        "rejected": 1
+      },
+      "@langchain/core@0.3/exports.cjs": {
+        "rejected": 1
+      },
+      "@langchain/core@0.3/exports.mjs": {
+        "rejected": 1
+      },
+      "@langchain/core@0.3/main.mjs": {
+        "rejected": 1
+      },
+      "@langchain/core@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@langchain/core@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@langchain/core@1/main.mjs": {
+        "rejected": 1
+      },
+      "@langchain/langgraph@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@langchain/langgraph@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@langchain/langgraph@1/main.mjs": {
+        "rejected": 1
+      },
+      "@langchain/openai@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@langchain/openai@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@langchain/openai@1/main.mjs": {
+        "rejected": 1
+      },
+      "@mastra/core@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@mastra/core@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@mastra/core@1/main.mjs": {
+        "rejected": 1
+      },
+      "@mistralai/mistralai@2/exports.cjs": {
+        "rejected": 1
+      },
+      "@mistralai/mistralai@2/exports.mjs": {
+        "rejected": 1
+      },
+      "@mistralai/mistralai@2/main.mjs": {
+        "rejected": 1
+      },
+      "@modelcontextprotocol/sdk@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@modelcontextprotocol/sdk@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@modelcontextprotocol/sdk@1/main.mjs": {
+        "rejected": 1
+      },
+      "@openai/agents@0.11/exports.cjs": {
+        "rejected": 1
+      },
+      "@openai/agents@0.11/exports.mjs": {
+        "rejected": 1
+      },
+      "@openai/agents@0.11/main.mjs": {
+        "rejected": 1
+      },
+      "@openai/agents@0.20/exports.cjs": {
+        "rejected": 1
+      },
+      "@openai/agents@0.20/exports.mjs": {
+        "rejected": 1
+      },
+      "@openai/agents@0.20/main.mjs": {
+        "rejected": 1
+      },
+      "@opentelemetry/api@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@opentelemetry/api@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@opentelemetry/api@1/main.mjs": {
+        "rejected": 1
+      },
+      "@standard-schema/spec@1/exports.cjs": {
+        "rejected": 1
+      },
+      "@standard-schema/spec@1/exports.mjs": {
+        "rejected": 1
+      },
+      "@standard-schema/spec@1/main.mjs": {
+        "rejected": 1
+      },
+      "ai@6/exports.cjs": {
+        "rejected": 1
+      },
+      "ai@6/exports.mjs": {
+        "rejected": 1
+      },
+      "ai@6/main.mjs": {
+        "rejected": 1
+      },
+      "ai@7/exports.cjs": {
+        "rejected": 1
+      },
+      "ai@7/exports.mjs": {
+        "rejected": 1
+      },
+      "ai@7/main.mjs": {
+        "rejected": 1
+      },
+      "ajv-formats@2/exports.cjs": {
+        "rejected": 1
+      },
+      "ajv-formats@2/exports.mjs": {
+        "rejected": 1
+      },
+      "ajv-formats@2/main.mjs": {
+        "rejected": 1
+      },
+      "ajv-formats@3/exports.cjs": {
+        "rejected": 1
+      },
+      "ajv-formats@3/exports.mjs": {
+        "rejected": 1
+      },
+      "ajv-formats@3/main.mjs": {
+        "rejected": 1
+      },
+      "ajv@6/exports.cjs": {
+        "rejected": 1
+      },
+      "ajv@6/exports.mjs": {
+        "rejected": 1
+      },
+      "ajv@6/main.mjs": {
+        "rejected": 1
+      },
+      "ajv@8/exports.cjs": {
+        "rejected": 1
+      },
+      "ajv@8/exports.mjs": {
+        "rejected": 1
+      },
+      "ajv@8/main.mjs": {
+        "rejected": 1
+      },
+      "body-parser@1/exports.cjs": {
+        "rejected": 1
+      },
+      "body-parser@1/exports.mjs": {
+        "rejected": 1
+      },
+      "body-parser@1/main.mjs": {
+        "rejected": 1
+      },
+      "body-parser@2/exports.cjs": {
+        "rejected": 1
+      },
+      "body-parser@2/exports.mjs": {
+        "rejected": 1
+      },
+      "body-parser@2/main.mjs": {
+        "rejected": 1
+      },
+      "content-type@1/exports.cjs": {
+        "rejected": 1
+      },
+      "content-type@1/exports.mjs": {
+        "rejected": 1
+      },
+      "content-type@1/main.mjs": {
+        "rejected": 1
+      },
+      "content-type@2/exports.cjs": {
+        "rejected": 1
+      },
+      "content-type@2/exports.mjs": {
+        "rejected": 1
+      },
+      "content-type@2/main.mjs": {
+        "rejected": 1
+      },
+      "content-type@3/exports.cjs": {
+        "rejected": 1
+      },
+      "content-type@3/exports.mjs": {
+        "rejected": 1
+      },
+      "content-type@3/main.mjs": {
+        "rejected": 1
+      },
+      "cors@2/exports.cjs": {
+        "rejected": 1
+      },
+      "cors@2/exports.mjs": {
+        "rejected": 1
+      },
+      "cors@2/main.mjs": {
+        "rejected": 1
+      },
+      "cross-spawn@7/exports.cjs": {
+        "rejected": 1
+      },
+      "cross-spawn@7/exports.mjs": {
+        "rejected": 1
+      },
+      "cross-spawn@7/main.mjs": {
+        "rejected": 1
+      },
+      "debug@2/exports.cjs": {
+        "rejected": 1
+      },
+      "debug@2/exports.mjs": {
+        "rejected": 1
+      },
+      "debug@2/main.mjs": {
+        "rejected": 1
+      },
+      "debug@3/exports.cjs": {
+        "rejected": 1
+      },
+      "debug@3/exports.mjs": {
+        "rejected": 1
+      },
+      "debug@3/main.mjs": {
+        "rejected": 1
+      },
+      "debug@4/exports.cjs": {
+        "rejected": 1
+      },
+      "debug@4/exports.mjs": {
+        "rejected": 1
+      },
+      "debug@4/main.mjs": {
+        "rejected": 1
+      },
+      "dotenv@16/exports.cjs": {
+        "rejected": 1
+      },
+      "dotenv@16/exports.mjs": {
+        "rejected": 1
+      },
+      "dotenv@16/main.mjs": {
+        "rejected": 1
+      },
+      "dotenv@17/exports.cjs": {
+        "rejected": 1
+      },
+      "dotenv@17/exports.mjs": {
+        "rejected": 1
+      },
+      "dotenv@17/main.mjs": {
+        "rejected": 1
+      },
+      "dotenv@18/exports.cjs": {
+        "rejected": 1
+      },
+      "dotenv@18/exports.mjs": {
+        "rejected": 1
+      },
+      "dotenv@18/main.mjs": {
+        "rejected": 1
+      },
+      "effect@3/exports.cjs": {
+        "rejected": 1
+      },
+      "effect@3/exports.mjs": {
+        "rejected": 1
+      },
+      "effect@3/main.mjs": {
+        "rejected": 1
+      },
+      "effect@4/exports.cjs": {
+        "rejected": 1
+      },
+      "effect@4/exports.mjs": {
+        "rejected": 1
+      },
+      "effect@4/main.mjs": {
+        "pass": 1
+      },
+      "eventsource-parser@3/exports.cjs": {
+        "rejected": 1
+      },
+      "eventsource-parser@3/exports.mjs": {
+        "rejected": 1
+      },
+      "eventsource-parser@3/main.mjs": {
+        "rejected": 1
+      },
+      "eventsource-parser@4/exports.cjs": {
+        "rejected": 1
+      },
+      "eventsource-parser@4/exports.mjs": {
+        "rejected": 1
+      },
+      "eventsource-parser@4/main.mjs": {
+        "rejected": 1
+      },
+      "eventsource@3/exports.cjs": {
+        "rejected": 1
+      },
+      "eventsource@3/exports.mjs": {
+        "rejected": 1
+      },
+      "eventsource@3/main.mjs": {
+        "rejected": 1
+      },
+      "eventsource@5/exports.cjs": {
+        "rejected": 1
+      },
+      "eventsource@5/exports.mjs": {
+        "rejected": 1
+      },
+      "eventsource@5/main.mjs": {
+        "rejected": 1
+      },
+      "execa@10/exports.cjs": {
+        "rejected": 1
+      },
+      "execa@10/exports.mjs": {
+        "rejected": 1
+      },
+      "execa@10/main.mjs": {
+        "rejected": 1
+      },
+      "execa@5/exports.cjs": {
+        "rejected": 1
+      },
+      "execa@5/exports.mjs": {
+        "rejected": 1
+      },
+      "execa@5/main.mjs": {
+        "rejected": 1
+      },
+      "express-rate-limit@8/exports.cjs": {
+        "rejected": 1
+      },
+      "express-rate-limit@8/exports.mjs": {
+        "rejected": 1
+      },
+      "express-rate-limit@8/main.mjs": {
+        "rejected": 1
+      },
+      "express@4/exports.cjs": {
+        "rejected": 1
+      },
+      "express@4/exports.mjs": {
+        "rejected": 1
+      },
+      "express@4/main.mjs": {
+        "rejected": 1
+      },
+      "express@5/exports.cjs": {
+        "rejected": 1
+      },
+      "express@5/exports.mjs": {
+        "rejected": 1
+      },
+      "express@5/main.mjs": {
+        "rejected": 1
+      },
+      "google-auth-library@10/exports.cjs": {
+        "rejected": 1
+      },
+      "google-auth-library@10/exports.mjs": {
+        "rejected": 1
+      },
+      "google-auth-library@10/main.mjs": {
+        "rejected": 1
+      },
+      "google-auth-library@11/exports.cjs": {
+        "rejected": 1
+      },
+      "google-auth-library@11/exports.mjs": {
+        "rejected": 1
+      },
+      "google-auth-library@11/main.mjs": {
+        "rejected": 1
+      },
+      "google-auth-library@9/exports.cjs": {
+        "rejected": 1
+      },
+      "google-auth-library@9/exports.mjs": {
+        "rejected": 1
+      },
+      "google-auth-library@9/main.mjs": {
+        "rejected": 1
+      },
+      "hono@4/exports.cjs": {
+        "rejected": 1
+      },
+      "hono@4/exports.mjs": {
+        "rejected": 1
+      },
+      "hono@4/main.mjs": {
+        "rejected": 1
+      },
+      "jose@5/exports.cjs": {
+        "rejected": 1
+      },
+      "jose@5/exports.mjs": {
+        "rejected": 1
+      },
+      "jose@5/main.mjs": {
+        "rejected": 1
+      },
+      "jose@6/exports.cjs": {
+        "rejected": 1
+      },
+      "jose@6/exports.mjs": {
+        "rejected": 1
+      },
+      "jose@6/main.mjs": {
+        "rejected": 1
+      },
+      "js-tiktoken@1/exports.cjs": {
+        "rejected": 1
+      },
+      "js-tiktoken@1/exports.mjs": {
+        "rejected": 1
+      },
+      "js-tiktoken@1/main.mjs": {
+        "rejected": 1
+      },
+      "json-schema-to-ts@3/exports.cjs": {
+        "rejected": 1
+      },
+      "json-schema-to-ts@3/exports.mjs": {
+        "rejected": 1
+      },
+      "json-schema-to-ts@3/main.mjs": {
+        "rejected": 1
+      },
+      "langchain@0.3/exports.cjs": {
+        "rejected": 1
+      },
+      "langchain@0.3/exports.mjs": {
+        "rejected": 1
+      },
+      "langchain@0.3/main.mjs": {
+        "rejected": 1
+      },
+      "langchain@1/exports.cjs": {
+        "rejected": 1
+      },
+      "langchain@1/exports.mjs": {
+        "rejected": 1
+      },
+      "langchain@1/main.mjs": {
+        "rejected": 1
+      },
+      "langsmith@0.11/exports.cjs": {
+        "rejected": 1
+      },
+      "langsmith@0.11/exports.mjs": {
+        "rejected": 1
+      },
+      "langsmith@0.11/main.mjs": {
+        "rejected": 1
+      },
+      "langsmith@0.7/exports.cjs": {
+        "rejected": 1
+      },
+      "langsmith@0.7/exports.mjs": {
+        "rejected": 1
+      },
+      "langsmith@0.7/main.mjs": {
+        "rejected": 1
+      },
+      "lru-cache@10/exports.cjs": {
+        "rejected": 1
+      },
+      "lru-cache@10/exports.mjs": {
+        "rejected": 1
+      },
+      "lru-cache@10/main.mjs": {
+        "rejected": 1
+      },
+      "lru-cache@11/exports.cjs": {
+        "rejected": 1
+      },
+      "lru-cache@11/exports.mjs": {
+        "rejected": 1
+      },
+      "lru-cache@11/main.mjs": {
+        "rejected": 1
+      },
+      "lru-cache@5/exports.cjs": {
+        "rejected": 1
+      },
+      "lru-cache@5/exports.mjs": {
+        "rejected": 1
+      },
+      "lru-cache@5/main.mjs": {
+        "rejected": 1
+      },
+      "mustache@4/exports.cjs": {
+        "rejected": 1
+      },
+      "mustache@4/exports.mjs": {
+        "rejected": 1
+      },
+      "mustache@4/main.mjs": {
+        "rejected": 1
+      },
+      "openai@6/exports.cjs": {
+        "rejected": 1
+      },
+      "openai@6/exports.mjs": {
+        "rejected": 1
+      },
+      "openai@6/main.mjs": {
+        "rejected": 1
+      },
+      "openai@7/exports.cjs": {
+        "rejected": 1
+      },
+      "openai@7/exports.mjs": {
+        "rejected": 1
+      },
+      "openai@7/main.mjs": {
+        "rejected": 1
+      },
+      "p-queue@10/exports.cjs": {
+        "rejected": 1
+      },
+      "p-queue@10/exports.mjs": {
+        "rejected": 1
+      },
+      "p-queue@10/main.mjs": {
+        "rejected": 1
+      },
+      "p-queue@6/exports.cjs": {
+        "rejected": 1
+      },
+      "p-queue@6/exports.mjs": {
+        "rejected": 1
+      },
+      "p-queue@6/main.mjs": {
+        "rejected": 1
+      },
+      "p-queue@9/exports.cjs": {
+        "rejected": 1
+      },
+      "p-queue@9/exports.mjs": {
+        "rejected": 1
+      },
+      "p-queue@9/main.mjs": {
+        "rejected": 1
+      },
+      "p-retry@4/exports.cjs": {
+        "rejected": 1
+      },
+      "p-retry@4/exports.mjs": {
+        "rejected": 1
+      },
+      "p-retry@4/main.mjs": {
+        "rejected": 1
+      },
+      "p-retry@6/exports.cjs": {
+        "rejected": 1
+      },
+      "p-retry@6/exports.mjs": {
+        "rejected": 1
+      },
+      "p-retry@6/main.mjs": {
+        "rejected": 1
+      },
+      "p-retry@8/exports.cjs": {
+        "rejected": 1
+      },
+      "p-retry@8/exports.mjs": {
+        "rejected": 1
+      },
+      "p-retry@8/main.mjs": {
+        "rejected": 1
+      },
+      "pkce-challenge@5/exports.cjs": {
+        "rejected": 1
+      },
+      "pkce-challenge@5/exports.mjs": {
+        "rejected": 1
+      },
+      "pkce-challenge@5/main.mjs": {
+        "rejected": 1
+      },
+      "pkce-challenge@6/exports.cjs": {
+        "rejected": 1
+      },
+      "pkce-challenge@6/exports.mjs": {
+        "rejected": 1
+      },
+      "pkce-challenge@6/main.mjs": {
+        "rejected": 1
+      },
+      "protobufjs@7/exports.cjs": {
+        "rejected": 1
+      },
+      "protobufjs@7/exports.mjs": {
+        "rejected": 1
+      },
+      "protobufjs@7/main.mjs": {
+        "rejected": 1
+      },
+      "protobufjs@8/exports.cjs": {
+        "rejected": 1
+      },
+      "protobufjs@8/exports.mjs": {
+        "rejected": 1
+      },
+      "protobufjs@8/main.mjs": {
+        "rejected": 1
+      },
+      "raw-body@2/exports.cjs": {
+        "rejected": 1
+      },
+      "raw-body@2/exports.mjs": {
+        "rejected": 1
+      },
+      "raw-body@2/main.mjs": {
+        "rejected": 1
+      },
+      "raw-body@3/exports.cjs": {
+        "rejected": 1
+      },
+      "raw-body@3/exports.mjs": {
+        "rejected": 1
+      },
+      "raw-body@3/main.mjs": {
+        "rejected": 1
+      },
+      "raw-body@4/exports.cjs": {
+        "rejected": 1
+      },
+      "raw-body@4/exports.mjs": {
+        "rejected": 1
+      },
+      "raw-body@4/main.mjs": {
+        "rejected": 1
+      },
+      "standardwebhooks@1/exports.cjs": {
+        "rejected": 1
+      },
+      "standardwebhooks@1/exports.mjs": {
+        "rejected": 1
+      },
+      "standardwebhooks@1/main.mjs": {
+        "rejected": 1
+      },
+      "undici@6/exports.cjs": {
+        "rejected": 1
+      },
+      "undici@6/exports.mjs": {
+        "rejected": 1
+      },
+      "undici@6/main.mjs": {
+        "rejected": 1
+      },
+      "undici@7/exports.cjs": {
+        "rejected": 1
+      },
+      "undici@7/exports.mjs": {
+        "rejected": 1
+      },
+      "undici@7/main.mjs": {
+        "rejected": 1
+      },
+      "undici@8/exports.cjs": {
+        "rejected": 1
+      },
+      "undici@8/exports.mjs": {
+        "rejected": 1
+      },
+      "undici@8/main.mjs": {
+        "rejected": 1
+      },
+      "ws@8/exports.cjs": {
+        "rejected": 1
+      },
+      "ws@8/exports.mjs": {
+        "rejected": 1
+      },
+      "ws@8/main.mjs": {
+        "rejected": 1
+      },
+      "zod-to-json-schema@3/exports.cjs": {
+        "rejected": 1
+      },
+      "zod-to-json-schema@3/exports.mjs": {
+        "rejected": 1
+      },
+      "zod-to-json-schema@3/main.mjs": {
+        "rejected": 1
+      },
+      "zod@3/exports.cjs": {
+        "rejected": 1
+      },
+      "zod@3/exports.mjs": {
+        "rejected": 1
+      },
+      "zod@3/main.mjs": {
+        "rejected": 1
+      },
+      "zod@4/exports.cjs": {
+        "rejected": 1
+      },
+      "zod@4/exports.mjs": {
+        "rejected": 1
+      },
+      "zod@4/main-jitless.mjs": {
+        "rejected": 1
+      },
+      "zod@4/main.mjs": {
+        "rejected": 1
+      }
+    }
+  },
+  "blockers": [
+    {
+      "blocker": "BOUY201",
+      "files": 196,
+      "only": 196
+    },
+    {
+      "blocker": "BOUY206",
+      "files": 99,
+      "only": 99
+    }
+  ]
+}

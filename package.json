@@ -11,7 +11,8 @@
     "lint": "oxlint --type-aware && cargo clippy --workspace --all-targets -- -D warnings && turbo run lint",
     "format": "oxfmt --write . && cargo fmt --all",
     "format:check": "oxfmt --check . && cargo fmt --all --check",
-    "check": "pnpm format:check && pnpm lint && pnpm test"
+    "compat": "cargo run -q -p bouy-suites -- compat",
+    "check": "pnpm format:check && pnpm lint && pnpm test && pnpm compat --check"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.88.0",

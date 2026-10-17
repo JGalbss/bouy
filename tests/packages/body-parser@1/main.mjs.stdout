@@ -1,0 +1,3 @@
+200 {"body":{"a":[1,2]}}
+200 {"body":{"name":"Ada","role":"admin"}}
+200 {"error":"entity.parse.failed"}

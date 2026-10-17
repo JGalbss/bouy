@@ -1,5 +1,18 @@
-unbounded: [ 'a', 'b', 'c' ] in parallel
-forEach: [ '#0', '#1', '#2', '#3' ] in parallel
-record: { left: 'L', right: 'R' } in parallel
-two at a time: bounded
-Failure fast failure without waiting
+unbounded:
+  finished b
+  finished a
+[ 'a', 'b' ]
+forEach:
+  finished #1
+  finished #0
+[ '#0', '#1' ]
+record:
+  finished F
+  finished S
+{ fast: 'F', slow: 'S' }
+two at a time:
+  finished #0
+  finished #2
+  finished #1
+failure:
+Failure fast failure

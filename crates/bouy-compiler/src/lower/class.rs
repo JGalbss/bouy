@@ -343,7 +343,12 @@ impl<'a> Lowerer<'a, '_> {
             mutating,
             fluent,
         });
-        let mut functions = vec![self.actor_constructor(class, name)];
+        let constructor = self.actor_constructor(class, name);
+        let pure = is_pure(&constructor);
+        let mut functions = vec![constructor];
+        if pure {
+            functions.push(pure_marker(name));
+        }
         for (method, key) in methods.iter().zip(&names) {
             functions.push(self.method(name, key, &method.value));
         }
@@ -650,6 +655,77 @@ impl<'a> Lowerer<'a, '_> {
 }
 
 /// `'C#dispatch'(Method, This, Args)`: one clause for each public method.
+/// The calls that a pure constructor may make: each one returns a value and cannot throw.
+const PURE_CALLS: [(&str, &str, usize); 4] = [
+    ("bouy_rt", "arg", 2),
+    ("bouy_rt", "rest", 2),
+    ("maps", "put", 3),
+    ("maps", "get", 3),
+];
+
+/// The operators that a pure constructor may use: none of them throws.
+const PURE_OPERATORS: [&str; 6] = ["=:=", "=/=", "==", "/=", "andalso", "orelse"];
+
+/// Whether `'C#new'` has no effect and cannot throw: it binds its arguments and builds
+/// `This` from literals and arguments only. `spawn` runs such a constructor in the calling
+/// process and starts the actor without a wait (section 9).
+fn is_pure(constructor: &erlang::Function) -> bool {
+    constructor
+        .clauses
+        .iter()
+        .all(|clause| clause.guards.is_empty() && clause.body.iter().all(pure_expr))
+}
+
+fn pure_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Var(_) | Expr::Atom(_) | Expr::Integer(_) | Expr::Float(_) | Expr::Binary(_) => true,
+        Expr::Tuple(items) | Expr::List(items) | Expr::Block(items) => items.iter().all(pure_expr),
+        Expr::Cons(items, tail) => items.iter().all(pure_expr) && pure_expr(tail),
+        Expr::Map(entries) => entries
+            .iter()
+            .all(|(key, value)| pure_expr(key) && pure_expr(value)),
+        // A match binds a fresh variable, so it cannot fail.
+        Expr::Match(pattern, value) => matches!(**pattern, Expr::Var(_)) && pure_expr(value),
+        // A case whose last clause takes any value cannot fail.
+        Expr::Case(subject, clauses) => {
+            pure_expr(subject)
+                && clauses.last().is_some_and(|last| {
+                    last.guards.is_empty() && matches!(last.patterns.as_slice(), [Expr::Var(_)])
+                })
+                && clauses.iter().all(|clause| {
+                    clause.patterns.iter().all(pure_expr)
+                        && clause.guards.iter().all(pure_expr)
+                        && clause.body.iter().all(pure_expr)
+                })
+        }
+        Expr::Op(operator, left, right) => {
+            PURE_OPERATORS.contains(operator) && pure_expr(left) && pure_expr(right)
+        }
+        Expr::Not(operand) => pure_expr(operand),
+        Expr::Call {
+            module: Some(module),
+            function,
+            args,
+        } => {
+            PURE_CALLS.contains(&(module.as_str(), function.as_str(), args.len()))
+                && args.iter().all(pure_expr)
+        }
+        _ => false,
+    }
+}
+
+/// `'C#pure'() -> true`, the mark of a pure constructor.
+fn pure_marker(class: &str) -> erlang::Function {
+    erlang::Function {
+        name: format!("{class}#pure"),
+        clauses: vec![Clause {
+            patterns: Vec::new(),
+            guards: Vec::new(),
+            body: vec![Expr::atom("true")],
+        }],
+    }
+}
+
 fn dispatch(class: &str, methods: &[&String]) -> erlang::Function {
     let mut clauses: Vec<Clause> = methods
         .iter()

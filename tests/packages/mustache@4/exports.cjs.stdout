@@ -1,0 +1,12 @@
+module.exports: object
+Context: function
+Scanner: function
+Writer: function
+clearCache: function
+escape: function
+name: string
+parse: function
+render: function
+tags: object
+templateCache: object
+version: string

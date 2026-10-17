@@ -279,13 +279,12 @@ fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
         .iter()
         .map(|module| module.name.as_str())
         .collect();
-    let mut vm = runtime.vm();
-    // `+Bd`: Ctrl-C ends the VM, as it ends Node, instead of opening the BREAK menu. A
+    // `Bd`: Ctrl-C ends the VM, as it ends Node, instead of opening the BREAK menu. A
     // failure to boot leaves no erl_crash.dump in the working directory. `-mode minimal`
     // starts the kernel without distribution and the resolver, which bouy_ai_openai starts
     // on its first request, and `no_dot_erlang` skips the `.erlang` files of the user.
+    let mut vm = runtime.vm(&["Bd"]);
     vm.args([
-        "+Bd",
         "-noshell",
         "-noinput",
         "-mode",
@@ -363,8 +362,28 @@ fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
         for diagnostic in &diagnostics {
             eprintln!("{}", relative(diagnostic));
         }
+        write_result(&diagnostics);
         ExitCode::from(DIAGNOSTICS)
     })
+}
+
+/// Writes the facts of a run that stopped at its diagnostics to `BOUY_RESULT_FILE`, as
+/// the VM writes the facts of a run (section 1 of the contract).
+fn write_result(diagnostics: &[Diagnostic]) {
+    let Some(path) = env::var_os("BOUY_RESULT_FILE").filter(|path| !path.is_empty()) else {
+        return;
+    };
+    let codes: Vec<String> = diagnostics
+        .iter()
+        .map(|diagnostic| format!("\"{}\"", diagnostic.code.as_str()))
+        .collect();
+    let facts = format!(
+        "{{\"status\":{DIAGNOSTICS},\"diagnostics\":[{}]}}",
+        codes.join(",")
+    );
+    if let Err(error) = fs::write(&path, facts) {
+        eprintln!("bouy: cannot write {}: {error}", Path::new(&path).display());
+    }
 }
 
 /// Writes each module to `<project>/.bouy/build/src/` and returns the build directory.

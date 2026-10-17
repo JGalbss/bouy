@@ -1,0 +1,5 @@
+openai.chat {"city":"Lima","days":3,"sights":["Miraflores","Barranco"]}
+openai.responses {"city":"Lima","days":3,"sights":["Miraflores","Barranco"]}
+true {"city":"Lima","days":3,"sights":["Miraflores","Barranco"]}
+{"city":"Lima","days":3,"sights":["Miraflores","Barranco"]}
+AI_NoObjectGeneratedError

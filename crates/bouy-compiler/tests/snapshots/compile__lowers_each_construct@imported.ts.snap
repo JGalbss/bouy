@@ -4,7 +4,7 @@ expression: lower(path)
 input_file: crates/bouy-compiler/tests/fixtures/imported.ts
 ---
 -module(bouy@imported).
--export(['__init__'/0, helper/1, 'Shape#new'/1, 'Shape#area'/2, 'Shape#dispatch'/3]).
+-export(['__init__'/0, helper/1, 'Shape#new'/1, 'Shape#pure'/0, 'Shape#area'/2, 'Shape#dispatch'/3]).
 -compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
 
 '__init__'() ->
@@ -18,6 +18,8 @@ helper(Args) ->
 'Shape#new'(Args) ->
     This = #{},
     This.
+
+'Shape#pure'() -> true.
 
 'Shape#area'(This, Args) -> {0, This}.
 

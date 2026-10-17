@@ -19,5 +19,8 @@ clap.workspace = true
 [build-dependencies]
 bouy-compiler.workspace = true
 
+[dev-dependencies]
+bouy-suites = { path = "../bouy-suites" }
+
 [lints]
 workspace = true

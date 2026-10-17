@@ -1,0 +1,4 @@
+200 hono Hello Hono!
+200 hono {"id":"7"}
+201 hono {"a":1}
+404 hono 404 Not Found

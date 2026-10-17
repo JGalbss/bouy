@@ -1,0 +1,5 @@
+v3 openai.responses gpt-4o-mini
+v3 openai.chat gpt-4o-mini
+v3 openai.responses gpt-4o-mini
+v3 openai.embedding text-embedding-3-small
+applyPatch codeInterpreter customTool fileSearch imageGeneration localShell mcp shell toolSearch webSearch webSearchPreview
