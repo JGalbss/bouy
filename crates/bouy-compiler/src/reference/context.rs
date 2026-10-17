@@ -189,6 +189,9 @@ pub struct Lowerer<'a, 'c> {
     /// become properties of the global object before the code runs.
     pub script_globals: Vec<String>,
     pub script_functions: Vec<(String, usize, &'static str)>,
+    /// The code of an `eval`, and whether it is strict: the module runs in the realm that
+    /// compiled it, and its `'__eval__'/0` returns the completion value.
+    pub eval: Option<bool>,
 }
 
 impl Lowerer<'_, '_> {

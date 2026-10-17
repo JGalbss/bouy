@@ -45,7 +45,7 @@ mod variable;
 
 use std::collections::HashMap;
 
-use crate::diagnostic::{Diagnostic, Reporter};
+use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::erlang;
 use crate::graph;
 use crate::parse::with_program;
@@ -54,6 +54,46 @@ use context::{Frame, Lowerer};
 
 /// Lowers `module` with reference semantics.
 pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
+    lower(module, None)
+}
+
+/// Lowers the code of an `eval` (`compile_eval` of the crate).
+pub fn lower_eval(
+    module: &graph::Module,
+    strict: bool,
+    function: bool,
+) -> Result<String, Vec<Diagnostic>> {
+    if function {
+        let complete = with_program(&module.path, &module.source, |program, _| {
+            is_one_function(program, module.source.len())
+        })?;
+        if !complete {
+            let reporter = Reporter::new(&module.path, &module.source);
+            return Err(vec![reporter.at(
+                0,
+                Code::Syntax,
+                "the body of a Function closes the function early".to_owned(),
+            )]);
+        }
+    }
+    lower(module, Some(strict))
+}
+
+/// Whether the program is one parenthesized function expression that ends where the source
+/// does, before its closing parenthesis.
+fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool {
+    use oxc::ast::ast::{Expression, Statement};
+    let [Statement::ExpressionStatement(statement)] = program.body.as_slice() else {
+        return false;
+    };
+    let Expression::ParenthesizedExpression(inner) = &statement.expression else {
+        return false;
+    };
+    matches!(&inner.expression, Expression::FunctionExpression(function)
+        if function.span.end as usize + 1 == length)
+}
+
+fn lower(module: &graph::Module, eval: Option<bool>) -> Result<String, Vec<Diagnostic>> {
     with_program(&module.path, &module.source, |program, semantic| {
         let analysis = analyze::analyze(program, semantic);
         let mut lowerer = Lowerer {
@@ -69,6 +109,7 @@ pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
             classes: Vec::new(),
             script_globals: Vec::new(),
             script_functions: Vec::new(),
+            eval,
         };
         lowerer.declare(program);
         let functions = lowerer.module_functions(program);

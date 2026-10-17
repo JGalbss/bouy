@@ -9,11 +9,12 @@
 -import(bouy_ref_realm, [arg/2, rest/2, builtin/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
 
-%% The well-known symbols of ECMA-262 §6.1.5.1.
+%% The well-known symbols of ECMA-262 §6.1.5.1, and asyncDispose and dispose
+%% of explicit resource management.
 -spec well_known_names() -> [atom()].
 well_known_names() ->
-    [asyncIterator, hasInstance, isConcatSpreadable, iterator, match, matchAll, replace, search, species, split,
-     toPrimitive, toStringTag, unscopables].
+    [asyncDispose, asyncIterator, dispose, hasInstance, isConcatSpreadable, iterator, match, matchAll, replace, search,
+     species, split, toPrimitive, toStringTag, unscopables].
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->

@@ -13,6 +13,7 @@
 mod runtime;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -104,7 +105,7 @@ fn main() -> ExitCode {
         Ok(tests) => tests,
         Err(error) => return fail(&error),
     };
-    let scratch = std::env::temp_dir().join(format!("bouy-test262-{}", std::process::id()));
+    let scratch = env::temp_dir().join(format!("bouy-test262-{}", std::process::id()));
     let result = run_tests(&options, &scratch, &tests);
     let _ = fs::remove_dir_all(&scratch);
     match result {
@@ -440,6 +441,14 @@ fn vm_pass(
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::inherit());
+    // The `bouy` binary next to this one compiles the code of `eval` and `new Function`.
+    if let Some(compiler) = env::current_exe()
+        .ok()
+        .map(|exe| exe.with_file_name("bouy"))
+        .filter(|path| path.is_file())
+    {
+        vm.env("BOUY_COMPILER", compiler);
+    }
     let mut child = vm
         .spawn()
         .map_err(|error| format!("cannot start erl: {error}"))?;

@@ -25,7 +25,7 @@ intrinsics() ->
                      #{<<"length">> => 0, <<"name">> => 0, '$noext' => true}, #{}},
     [{'Function.prototype', {Class, Proto, Props, Keys, maps:merge(Attrs, Fixed), Slots}},
      {{builtin, <<"ThrowTypeError">>}, ThrowerRecord},
-     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun bouy_ref_realm:not_constructible/2)}].
+     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Args) end)}].
 
 %% %ThrowTypeError%: one function in every realm.
 -spec throw_type_error() -> term().
@@ -36,8 +36,8 @@ globals() -> [{<<"Function">>, constructor()}].
 
 constructor() -> bouy_ref_realm:constructor(?MODULE, <<"Function">>).
 
--spec call_constructor(binary(), term(), list()) -> no_return().
-call_constructor(_Name, _This, _Args) -> type_error(<<"Function() is not supported: Bouy compiles code ahead of time">>).
+-spec call_constructor(binary(), term(), list()) -> term().
+call_constructor(<<"Function">>, _This, Args) -> bouy_ref_eval:create_function(Args).
 
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"Function.prototype">>, Name, This, Args) -> function_proto(Name, This, Args).

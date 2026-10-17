@@ -76,6 +76,25 @@ impl<'a> Lowerer<'a, '_> {
             return self.bind(value);
         }
         if let Expression::Identifier(ident) = callee
+            && ident.name == "eval"
+            && !call.optional
+            && self.symbol_of(ident.reference_id.get()).is_none()
+        {
+            // A direct eval. The runtime checks that `eval` is still the intrinsic.
+            let eval = self.identifier_read(ident);
+            let args = self.args(&call.arguments);
+            let mode = Expr::atom(if self.frame.sloppy {
+                "sloppy"
+            } else {
+                "strict"
+            });
+            return self.bind(Expr::call(
+                "bouy_ref_eval",
+                "direct",
+                vec![eval, args, mode],
+            ));
+        }
+        if let Expression::Identifier(ident) = callee
             && let Some(symbol) = self.symbol_of(ident.reference_id.get())
             && !self.frame.env.contains_key(&symbol)
         {

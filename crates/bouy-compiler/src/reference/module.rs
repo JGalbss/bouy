@@ -105,7 +105,8 @@ impl<'a> Lowerer<'a, '_> {
             let name = self.semantic.scoping().symbol_name(symbol).to_owned();
             self.tops.entry(symbol).or_insert(Top::Var(name));
         }
-        if self.is_script() {
+        // The `var` names of strict eval code belong to the eval.
+        if self.is_script() && (self.eval.is_none() || self.is_sloppy(None)) {
             self.declare_script_globals(program);
         }
     }
@@ -201,10 +202,38 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         self.nested_var_getters(program);
-        functions.push(self.init(&body));
+        functions.push(match self.eval {
+            Some(_) => self.eval_function(&body),
+            None => self.init(&body),
+        });
         functions.push(self.class_dispatch());
         functions.append(&mut self.extra);
         functions
+    }
+
+    /// The call that makes a script's `var` names and functions properties of the global
+    /// object before its code runs.
+    fn declare_globals_call(&self) -> Expr {
+        let vars = self
+            .script_globals
+            .iter()
+            .map(|name| Expr::js_string(name))
+            .collect();
+        let functions = self
+            .script_functions
+            .iter()
+            .map(|(name, length, kind)| {
+                Expr::Tuple(vec![
+                    Expr::js_string(name),
+                    self.static_function(name, *length, kind),
+                ])
+            })
+            .collect();
+        Expr::call(
+            "bouy_ref_realm",
+            "declare_globals",
+            vec![Expr::List(vars), Expr::List(functions)],
+        )
     }
 
     /// `'__init__'/0`: runs the top-level code as the first job of the main realm, then
@@ -268,6 +297,62 @@ impl<'a> Lowerer<'a, '_> {
                 patterns: vec![],
                 guards: vec![],
                 body: vec![Expr::call("bouy_jobs", "run_main", vec![main]), Expr::ok()],
+            }],
+        }
+    }
+
+    /// `'__eval__'/0`: runs the code of an `eval` in the current realm and returns the value
+    /// of its last statement when that is an expression statement.
+    pub fn eval_function(&mut self, body: &[&'a Statement<'a>]) -> Function {
+        self.frame = Frame::default();
+        self.frame.sloppy = self.is_sloppy(None);
+        let this = self.fresh("This");
+        let mut code = vec![Expr::matches(
+            Expr::var(this.clone()),
+            Expr::Tuple(vec![Expr::atom("$o"), Expr::atom("globalThis")]),
+        )];
+        self.frame.this = Some(this);
+        if !self.script_globals.is_empty() || !self.script_functions.is_empty() {
+            code.push(self.declare_globals_call());
+        }
+        let (init, last) = match body.split_last() {
+            Some((Statement::ExpressionStatement(last), init)) => (init.to_vec(), Some(last)),
+            _ => (body.to_vec(), None),
+        };
+        match last {
+            None => code.extend(self.stmts(init, &Cont::Value(Expr::undefined()))),
+            Some(last) => {
+                let saved = std::mem::take(&mut self.pre);
+                let value = self.expr(&last.expression);
+                let mut tail = std::mem::replace(&mut self.pre, saved);
+                tail.push(value);
+                let join = self.fresh("K");
+                code.push(Expr::matches(
+                    Expr::var(join.clone()),
+                    Expr::Fun {
+                        name: None,
+                        clauses: vec![Clause {
+                            patterns: vec![],
+                            guards: vec![],
+                            body: tail,
+                        }],
+                    },
+                ));
+                let next = Cont::Call {
+                    fun: join,
+                    args: vec![],
+                    vars: vec![],
+                    region: 0,
+                };
+                code.extend(self.stmts(init, &next));
+            }
+        }
+        Function {
+            name: "__eval__".to_owned(),
+            clauses: vec![Clause {
+                patterns: vec![],
+                guards: vec![],
+                body: code,
             }],
         }
     }
