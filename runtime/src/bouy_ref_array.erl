@@ -31,7 +31,7 @@ intrinsics() ->
 
 %% get Array[Symbol.species]: this.
 species_getter() ->
-    {'$accessor', bouy_ref_realm:function(<<"get Array[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}.
+    {'$accessor', bouy_ref_realm:builtin(<<"get Array[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}.
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{<<"Array">>, constructor()}].

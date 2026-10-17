@@ -50,11 +50,11 @@ intrinsics() ->
      {{builtin, <<"WeakSet">>}, ctor_record(<<"WeakSet">>, 0, {'$o', 'WeakSet.prototype'}, [], fun(NT, Args) -> construct(weakset, NT, Args) end)}].
 
 size_getter(Name) ->
-    {'$accessor', bouy_ref_realm:function(<<"get ", Name/binary, ".prototype.size">>, <<"get size">>, 0,
+    {'$accessor', bouy_ref_realm:builtin(<<"get ", Name/binary, ".prototype.size">>, <<"get size">>, 0,
                                           fun(This, _) -> ?MODULE:method(<<Name/binary, ".prototype">>, <<"size">>, This, []) end), undefined}.
 
 species_getter(Name) ->
-    {'$accessor', bouy_ref_realm:function(<<"get ", Name/binary, "[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}.
+    {'$accessor', bouy_ref_realm:builtin(<<"get ", Name/binary, "[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}.
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{N, constructor(N)} || N <- ?NAMES].

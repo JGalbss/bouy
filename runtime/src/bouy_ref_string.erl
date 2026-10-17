@@ -40,7 +40,7 @@ intrinsics() ->
     [{'String.prototype', record(string, ?OBJECT_PROTO, Methods
          ++ [{<<"length">>, 0, 0}, {<<"constructor">>, constructor()},
              {<<"trimLeft">>, Alias(<<"trimStart">>)}, {<<"trimRight">>, Alias(<<"trimEnd">>)},
-             {?SYM(iterator), bouy_ref_realm:function(<<"String.prototype[Symbol.iterator]">>, <<"[Symbol.iterator]">>, 0, fun(This, _) -> ?MODULE:method(<<"String.prototype">>, <<"[Symbol.iterator]">>, This, []) end)}], <<>>)},
+             {?SYM(iterator), bouy_ref_realm:builtin(<<"String.prototype[Symbol.iterator]">>, <<"[Symbol.iterator]">>, 0, fun(This, _) -> ?MODULE:method(<<"String.prototype">>, <<"[Symbol.iterator]">>, This, []) end)}], <<>>)},
      {'StringIterator.prototype', record(object, ?ITERATOR_PROTO, ?METHODS(<<"StringIterator.prototype">>, [{<<"next">>, 0}]) ++ [{?SYM(toStringTag), <<"String Iterator">>, 4}], none)},
      {{builtin, <<"String">>}, ctor_record(<<"String">>, 1, {'$o', 'String.prototype'}, ?METHODS(<<"String">>, [{<<"fromCharCode">>, 1}, {<<"fromCodePoint">>, 1}, {<<"raw">>, 1}]), fun construct/2)}].
 

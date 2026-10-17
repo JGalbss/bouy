@@ -52,8 +52,8 @@ globals() ->
 constructor() -> bouy_ref_realm:constructor(?MODULE, <<"Number">>).
 
 %% Number.parseFloat and Number.parseInt are the global functions themselves.
-parse_float_function() -> bouy_ref_realm:function(<<"parseFloat">>, <<"parseFloat">>, 1, fun(_This, Args) -> ?MODULE:method(<<"globalThis">>, <<"parseFloat">>, undefined, Args) end).
-parse_int_function() -> bouy_ref_realm:function(<<"parseInt">>, <<"parseInt">>, 2, fun(_This, Args) -> ?MODULE:method(<<"globalThis">>, <<"parseInt">>, undefined, Args) end).
+parse_float_function() -> bouy_ref_realm:builtin(<<"parseFloat">>, <<"parseFloat">>, 1, fun(_This, Args) -> ?MODULE:method(<<"globalThis">>, <<"parseFloat">>, undefined, Args) end).
+parse_int_function() -> bouy_ref_realm:builtin(<<"parseInt">>, <<"parseInt">>, 2, fun(_This, Args) -> ?MODULE:method(<<"globalThis">>, <<"parseInt">>, undefined, Args) end).
 
 -spec call_constructor(binary(), term(), list()) -> term().
 call_constructor(<<"Number">>, _This, Args) -> number_of(Args).

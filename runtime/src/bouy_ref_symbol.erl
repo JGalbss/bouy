@@ -11,9 +11,9 @@
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
-    ToPrimitive = bouy_ref_realm:function(<<"Symbol.prototype[Symbol.toPrimitive]">>, <<"[Symbol.toPrimitive]">>, 1,
+    ToPrimitive = bouy_ref_realm:builtin(<<"Symbol.prototype[Symbol.toPrimitive]">>, <<"[Symbol.toPrimitive]">>, 1,
                                           fun(This, _) -> ?MODULE:method(<<"Symbol.prototype">>, <<"valueOf">>, This, []) end),
-    Description = bouy_ref_realm:function(<<"get Symbol.prototype.description">>, <<"get description">>, 0,
+    Description = bouy_ref_realm:builtin(<<"get Symbol.prototype.description">>, <<"get description">>, 0,
                                           fun(This, _) -> ?MODULE:method(<<"Symbol.prototype">>, <<"description">>, This, []) end),
     [{'Symbol.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Symbol.prototype">>, [{<<"toString">>, 0}, {<<"valueOf">>, 0}])
           ++ [{<<"constructor">>, constructor()}, {<<"description">>, {'$accessor', Description, undefined}, 4},

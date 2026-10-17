@@ -17,8 +17,8 @@
 -include("bouy_ref.hrl").
 
 -export([install/0, global/1, constructor/2]).
--export([arg/2, rest/2, builtin/2, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
--export([function/4, function_record/2, proto_for/2]).
+-export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
+-export([function_record/2, proto_for/2]).
 -export([intrinsics/0, globals/0, method/4]).
 
 families() ->
@@ -112,15 +112,15 @@ entry({_, _, _} = E) -> E.
 methods(Module, Owner, Names) -> [method_entry(Module, Owner, N) || N <- Names].
 
 method_entry(Module, Owner, {Name, Length}) ->
-    {Name, function(<<Owner/binary, ".", Name/binary>>, Name, Length, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)};
+    {Name, builtin(<<Owner/binary, ".", Name/binary>>, Name, Length, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)};
 method_entry(Module, Owner, Name) ->
     {Name, builtin(<<Owner/binary, ".", Name/binary>>, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)}.
 
 %% The builtin Id with the name and length properties of CreateBuiltinFunction.
 %% Families call it while the realm installs, so the record is in place before
 %% any realm reads it.
--spec function(binary(), term(), non_neg_integer(), fun((term(), list()) -> term())) -> term().
-function(Id, Name, Length, Fun) ->
+-spec builtin(binary(), term(), non_neg_integer(), fun((term(), list()) -> term())) -> term().
+builtin(Id, Name, Length, Fun) ->
     bouy_heap:install_intrinsic({builtin, Id}, function_record(Name, Length)),
     builtin(Id, Fun).
 

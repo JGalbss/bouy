@@ -47,11 +47,11 @@ view_types() ->
      <<"BigInt64">>, <<"BigUint64">>].
 
 getter(Owner, Name) ->
-    {Name, {'$accessor', bouy_ref_realm:function(<<"get ", Owner/binary, ".", Name/binary>>, <<"get ", Name/binary>>, 0,
+    {Name, {'$accessor', bouy_ref_realm:builtin(<<"get ", Owner/binary, ".", Name/binary>>, <<"get ", Name/binary>>, 0,
                                                 fun(This, _) -> ?MODULE:method(Owner, Name, This, []) end), undefined}, 4}.
 
 species(Name) ->
-    {?SYM(species), {'$accessor', bouy_ref_realm:function(<<"get ", Name/binary, "[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}, 4}.
+    {?SYM(species), {'$accessor', bouy_ref_realm:builtin(<<"get ", Name/binary, "[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}, 4}.
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{N, constructor(N)} || N <- [<<"ArrayBuffer">>, <<"SharedArrayBuffer">>, <<"DataView">>]].

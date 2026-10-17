@@ -24,7 +24,7 @@
 intrinsics() ->
     Methods = ?METHODS(<<"Date.prototype">>, prototype_methods()),
     {_, ToUTCString} = lists:keyfind(<<"toUTCString">>, 1, Methods),
-    ToPrimitive = bouy_ref_realm:function(<<"Date.prototype[Symbol.toPrimitive]">>, <<"[Symbol.toPrimitive]">>, 1,
+    ToPrimitive = bouy_ref_realm:builtin(<<"Date.prototype[Symbol.toPrimitive]">>, <<"[Symbol.toPrimitive]">>, 1,
                                           fun(This, Args) -> ?MODULE:method(<<"Date.prototype">>, <<"[Symbol.toPrimitive]">>, This, Args) end),
     [{'Date.prototype', record(object, ?OBJECT_PROTO, Methods ++ [{<<"toGMTString">>, ToUTCString}, {<<"constructor">>, constructor()},
                                                                {?SYM(toPrimitive), ToPrimitive, 4}], none)},

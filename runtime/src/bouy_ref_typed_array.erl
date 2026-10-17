@@ -27,9 +27,9 @@ intrinsics() ->
     {_, Values} = lists:keyfind(<<"values">>, 1, Methods),
     [{_, ToString}] = bouy_ref_realm:methods(bouy_ref_array, <<"Array.prototype">>, [{<<"toString">>, 0}]),
     Getters = [getter(G) || G <- [<<"buffer">>, <<"byteLength">>, <<"byteOffset">>, <<"length">>]],
-    Tag = {?SYM(toStringTag), {'$accessor', bouy_ref_realm:function(<<"get TypedArray.prototype[Symbol.toStringTag]">>, <<"get [Symbol.toStringTag]">>, 0,
+    Tag = {?SYM(toStringTag), {'$accessor', bouy_ref_realm:builtin(<<"get TypedArray.prototype[Symbol.toStringTag]">>, <<"get [Symbol.toStringTag]">>, 0,
                                                                    fun(This, _) -> ?MODULE:method(<<"TypedArray.prototype">>, <<"[Symbol.toStringTag]">>, This, []) end), undefined}, 4},
-    Species = {?SYM(species), {'$accessor', bouy_ref_realm:function(<<"get TypedArray[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}, 4},
+    Species = {?SYM(species), {'$accessor', bouy_ref_realm:builtin(<<"get TypedArray[Symbol.species]">>, <<"get [Symbol.species]">>, 0, fun(This, _) -> This end), undefined}, 4},
     [{'TypedArray.prototype', record(object, ?OBJECT_PROTO, Methods ++ Getters ++ [Tag, {<<"toString">>, ToString}, {?SYM(iterator), Values}, {<<"constructor">>, abstract()}], none)},
      {{builtin, <<"TypedArray">>}, ctor_record(<<"TypedArray">>, 0, ?TA_PROTO, ?METHODS(<<"TypedArray">>, [{<<"from">>, 1}, {<<"of">>, 0}]) ++ [Species], fun abstract_construct/2)}]
     ++ lists:append([kind_intrinsics(K) || K <- bouy_ref_buffer:kinds()]).
@@ -51,7 +51,7 @@ kind_intrinsics(Kind) ->
 proto_id(Kind) -> binary_to_atom(<<(bouy_ref_buffer:kind_name(Kind))/binary, ".prototype">>).
 
 getter(Name) ->
-    {Name, {'$accessor', bouy_ref_realm:function(<<"get TypedArray.prototype.", Name/binary>>, <<"get ", Name/binary>>, 0,
+    {Name, {'$accessor', bouy_ref_realm:builtin(<<"get TypedArray.prototype.", Name/binary>>, <<"get ", Name/binary>>, 0,
                                                 fun(This, _) -> ?MODULE:method(<<"TypedArray.prototype">>, Name, This, []) end), undefined}, 4}.
 
 prototype_methods() ->
