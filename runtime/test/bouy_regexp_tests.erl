@@ -107,6 +107,15 @@ early_errors_test_() ->
      ?_assertEqual({error, <<"Repeated flag in flag group">>}, match("(?i-i:a)", "", "")),
      ?_assertEqual({error, <<"Invalid flag group">>}, match("(?-:a)", "", ""))].
 
+prefilter_test_() ->
+    %% The scan jumps to each occurrence of a literal prefix; in a two-byte string an
+    %% occurrence at an odd byte offset is not a match.
+    [?_assertEqual({3, 5, []}, match("ab", "", [16#100, 16#6100, 16#62FF, $a, $b])),
+     ?_assertEqual({4, 6, [<<"c">>]}, match("x(c)", "", "axbcxc")),
+     ?_assertEqual({2, 4, []}, match("\\d\\d", "u", "😀12")),
+     ?_assertEqual(nomatch, match("zz", "", "azbz")),
+     ?_assertEqual({2, 3, []}, match("[^a]", "y", "aab", 2))].
+
 long_input_test() ->
     %% A quantified character backtracks in a loop, so a long run does not grow the stack.
     Long = lists:duplicate(200000, $a),

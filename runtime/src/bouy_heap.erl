@@ -886,6 +886,8 @@ out_record({set, _, _, _, _, {Index, _}}, _O, N, Seen) ->
     {{'$set', N, Items}, Seen1};
 out_record({date, _, _, _, _, Ms}, _O, N, Seen) ->
     {{'$date', N, Ms}, Seen};
+out_record({regexp, _, _, _, _, #{source := Source, flags := Flags}}, _O, N, Seen) ->
+    {{'$regexp', N, Source, Flags}, Seen};
 out_record({error, _, _, _, _, _}, O, N, Seen) ->
     Name = value_text(get(O, <<"name">>)),
     {{'$error', N, Name, value_text(get(O, <<"message">>)), value_text(get(O, <<"stack">>))}, Seen};
@@ -950,6 +952,9 @@ in({'$set', N, Members}, Made) ->
     {O, Made1};
 in({'$date', N, Ms}, Made) ->
     O = new_exotic(date, {'$o', 'Date.prototype'}, Ms),
+    {O, Made#{N => O}};
+in({'$regexp', N, Source, Flags}, Made) ->
+    O = bouy_ref_regexp:literal(Source, Flags),
     {O, Made#{N => O}};
 in({'$error', N, Name, Message, Stack}, Made) ->
     Proto = case lists:member(Name, [<<"Error">>, <<"TypeError">>, <<"RangeError">>, <<"SyntaxError">>, <<"ReferenceError">>]) of

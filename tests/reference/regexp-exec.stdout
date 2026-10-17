@@ -27,3 +27,6 @@ SyntaxError Invalid regular expression: /(?<n>a)(?<n>b)/u: Duplicate capture gro
 SyntaxError Invalid regular expression: /\k<x>/u: Invalid named capture referenced
 SyntaxError Invalid regular expression: /x{2,1}/u: numbers out of order in {} quantifier
 SyntaxError Invalid flags supplied to RegExp constructor 'gg'
+12 34  12-34 34 ab   cd
+set 12
+true true /a(b)/gi 0 B

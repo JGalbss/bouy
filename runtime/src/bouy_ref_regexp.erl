@@ -22,6 +22,12 @@
 -define(IS_DIGIT(C), (C >= $0 andalso C =< $9)).
 -define(ITERATOR, {'$o', 'RegExpStringIterator.prototype'}).
 -define(CACHE, '$bouy_regexp_cache').
+%% The legacy static properties of RegExp: {Input, LastMatch}, where LastMatch
+%% is {String, Start, End, Captures} or none.
+-define(LEGACY, '$bouy_regexp_legacy').
+-define(LEGACY_NAMES, [<<"$1">>, <<"$2">>, <<"$3">>, <<"$4">>, <<"$5">>, <<"$6">>, <<"$7">>, <<"$8">>, <<"$9">>,
+                       <<"input">>, <<"$_">>, <<"lastMatch">>, <<"$&">>, <<"lastParen">>, <<"$+">>,
+                       <<"leftContext">>, <<"$`">>, <<"rightContext">>, <<"$'">>]).
 -define(CACHE_SIZE, 256).
 -define(MAX_LENGTH, 9007199254740991).
 %% The attribute bits of a builtin property: writable 1, enumerable 2, configurable 4.
@@ -44,10 +50,11 @@ intrinsics() ->
     Getters = [{G, getter(<<"RegExp.prototype">>, G), ?CONFIGURABLE} || G <- ?GETTERS],
     Escape = method_entry(<<"RegExp">>, <<"escape">>),
     Species = {?SYM(species), getter(<<"RegExp">>, <<"[Symbol.species]">>), ?CONFIGURABLE},
+    Legacy = [{N, legacy_accessor(N), ?CONFIGURABLE} || N <- ?LEGACY_NAMES],
     Next = method_entry(<<"RegExpStringIterator.prototype">>, <<"next">>),
     Records = [{'RegExp.prototype', object_record(?OBJECT_PROTO, Methods ++ Symbols ++ Getters ++ [{<<"constructor">>, constructor(), ?METHOD}])},
                {'RegExpStringIterator.prototype', object_record(?ITERATOR_PROTO, [Next, {?SYM(toStringTag), <<"RegExp String Iterator">>, ?CONFIGURABLE}])},
-               {{builtin, <<"RegExp">>}, function_record(<<"RegExp">>, 2, [{<<"prototype">>, ?PROTO, 0}, Escape, Species],
+               {{builtin, <<"RegExp">>}, function_record(<<"RegExp">>, 2, [{<<"prototype">>, ?PROTO, 0}, Escape, Species | Legacy],
                                                          #{construct => fun construct/2, kind => builtin})}],
     Records ++ [{{builtin, Full}, function_record(Name, Length, [], #{})} || {Full, Name, Length} <- function_names()].
 
@@ -64,6 +71,8 @@ function_names() ->
     ++ [{<<"RegExp.prototype.get ", G/binary>>, <<"get ", G/binary>>, 0} || G <- ?GETTERS]
     ++ [{<<"RegExp.escape">>, <<"escape">>, 1}, {<<"RegExp.get [Symbol.species]">>, <<"get [Symbol.species]">>, 0},
         {<<"RegExpStringIterator.prototype.next">>, <<"next">>, 0}]
+    ++ [{<<"RegExp.get ", N/binary>>, <<"get ", N/binary>>, 0} || N <- ?LEGACY_NAMES]
+    ++ [{<<"RegExp.set ", N/binary>>, <<"set ", N/binary>>, 1} || N <- [<<"input">>, <<"$_">>]]
     ++ [{<<"String.prototype.", N/binary>>, N, L} || {N, L} <- ?STRING_METHODS].
 
 method_entry(Owner, Name) ->
@@ -75,6 +84,16 @@ symbol_entry(Symbol) ->
 
 symbol_name(Symbol) -> <<"[Symbol.", (atom_to_binary(Symbol))/binary, "]">>.
 symbol_full_name(Symbol) -> <<"RegExp.prototype", (symbol_name(Symbol))/binary>>.
+
+%% A legacy static accessor of RegExp: input and $_ also have a setter.
+legacy_accessor(Name) ->
+    {'$accessor', Getter, _} = getter(<<"RegExp">>, Name),
+    Setter = case Name of
+        N when N =:= <<"input">>; N =:= <<"$_">> ->
+            bouy_ref_realm:builtin(<<"RegExp.set ", Name/binary>>, fun(This, Args) -> ?MODULE:method(<<"RegExp">>, <<"set input">>, This, Args) end);
+        _ -> undefined
+    end,
+    {'$accessor', Getter, Setter}.
 
 getter(Owner, Name) ->
     Getter = bouy_ref_realm:builtin(<<Owner/binary, ".get ", Name/binary>>, fun(This, _) -> ?MODULE:method(Owner, Name, This, []) end),
@@ -101,6 +120,8 @@ construct(NewTarget, Args) -> regexp(NewTarget, arg(1, Args), arg(2, Args)).
 method(<<"RegExp.prototype">>, Name, This, Args) -> proto(Name, This, Args);
 method(<<"RegExp">>, <<"escape">>, _This, Args) -> escape(arg(1, Args));
 method(<<"RegExp">>, <<"[Symbol.species]">>, This, _Args) -> This;
+method(<<"RegExp">>, <<"set input">>, This, Args) -> legacy_set_input(This, arg(1, Args));
+method(<<"RegExp">>, Name, This, _Args) -> legacy_get(Name, This);
 method(<<"RegExpStringIterator.prototype">>, <<"next">>, This, _Args) -> iterator_next(This).
 
 %%% Creation
@@ -147,7 +168,12 @@ alloc(NewTarget) ->
                 _ -> ?PROTO
             end
     end,
-    O = bouy_heap:new_exotic(regexp, Proto, uninitialized),
+    %% [[LegacyFeaturesEnabled]]: RegExp itself, not a subclass, made the object.
+    Legacy = case NewTarget of
+        {'$f', {builtin, <<"RegExp">>}, _} -> true;
+        _ -> false
+    end,
+    O = bouy_heap:new_exotic(regexp, Proto, #{legacy => Legacy}),
     bouy_heap:define(O, <<"lastIndex">>, #{value => undefined, writable => true, enumerable => false, configurable => false}).
 
 %% RegExpInitialize.
@@ -160,15 +186,24 @@ initialize(O, Pattern, Flags) ->
         undefined -> <<>>;
         _ -> bouy_ref:to_string(Flags)
     end,
-    {Program, Names} = program(Source, FlagText),
-    bouy_heap:set_slots(O, #{source => Source, flags => FlagText, program => Program, names => Names}),
+    {_Program, Names} = program(Source, FlagText),
+    bouy_heap:set_slots(O, (bouy_heap:slots(O))#{source => Source, flags => FlagText, names => Names}),
     bouy_heap:set(O, <<"lastIndex">>, 0),
     O.
 
 %% A regular expression literal: a new object each evaluation, with the
-%% matcher compiled once per realm.
+%% matcher compiled once per realm. The source and flags are strings, so this
+%% is RegExpCreate without its steps that could run user code.
 -spec literal(bouy_ref_string:js_string(), binary()) -> term().
-literal(Source, Flags) -> initialize(alloc(constructor()), Source, Flags).
+literal(Source, Flags) ->
+    {_Program, Names} = program(Source, Flags),
+    O = bouy_heap:new_exotic(regexp, ?PROTO, #{legacy => true, source => Source, flags => Flags, names => Names}),
+    bouy_heap:define(O, <<"lastIndex">>, #{value => 0, writable => true, enumerable => false, configurable => false}).
+
+%% The matcher of an initialized RegExp. The object keeps its source and flags,
+%% not the matcher: the collector scans the slots of each live object, and many
+%% objects share one matcher.
+matcher(#{source := Source, flags := Flags}) -> element(1, program(Source, Flags)).
 
 %% The compiled matcher and the group names of a source and its flags.
 program(Source, Flags) ->
@@ -223,7 +258,7 @@ is_regexp(_) -> false.
 
 %% Whether V has a [[RegExpMatcher]] slot.
 is_regexp_object({'$o', _} = V) ->
-    bouy_heap:class_of(V) =:= regexp andalso bouy_heap:slots(V) =/= uninitialized;
+    bouy_heap:class_of(V) =:= regexp andalso is_map_key(source, bouy_heap:slots(V));
 is_regexp_object(_) -> false.
 
 this_regexp(V, Name) ->
@@ -258,6 +293,7 @@ proto(<<"toString">>, This, _Args) ->
     bouy_ref_string:concat([<<"/">>, Source, <<"/">>, Flags]);
 proto(<<"compile">>, This, Args) ->
     R = this_regexp(This, <<"compile">>),
+    maps:get(legacy, bouy_heap:slots(R)) orelse type_error(<<"RegExp.prototype.compile requires a RegExp that RegExp itself made">>),
     {Pattern, Flags} = case is_regexp_object(arg(1, Args)) of
         true ->
             arg(2, Args) =:= undefined orelse type_error(<<"Cannot supply flags when constructing one RegExp from another">>),
@@ -350,7 +386,8 @@ regexp_exec(R, S) ->
 builtin_exec(R, S) ->
     Length = bouy_ref_string:length_of(S),
     LastIndex0 = to_length(bouy_ref:get(R, <<"lastIndex">>)),
-    #{flags := Flags, program := Program, names := Names} = bouy_heap:slots(R),
+    #{flags := Flags, names := Names, legacy := Legacy} = Slots = bouy_heap:slots(R),
+    Program = matcher(Slots),
     Units = bouy_ref_string:units(Flags),
     Global = lists:member($g, Units),
     Sticky = lists:member($y, Units),
@@ -369,6 +406,7 @@ builtin_exec(R, S) ->
             null;
         {match, Index, End, Captures} ->
             Updates andalso bouy_heap:set(R, <<"lastIndex">>, End),
+            Legacy andalso erlang:put(?LEGACY, {S, {S, Index, End, Captures}}),
             match_array(S, Index, End, Captures, Names, lists:member($d, Units))
     end.
 
@@ -454,14 +492,70 @@ skip_empty(R, S, <<>>, Unicode) ->
     bouy_ref:set(R, <<"lastIndex">>, advance(S, to_length(bouy_ref:get(R, <<"lastIndex">>)), Unicode));
 skip_empty(_R, _S, _Matched, _Unicode) -> ok.
 
-symbol_match(R, S) ->
-    Flags = flags_of(R),
-    case lists:member($g, Flags) of
-        false -> regexp_exec(R, S);
+%% Whether the protocols can read R without running user code: a RegExp whose
+%% prototype is RegExp.prototype and whose only own property is a numeric
+%% lastIndex, in a realm that has not written to RegExp.prototype. A realm has no
+%% heap entry for an intrinsic until it writes to it (contract 17.2), so exec,
+%% flags, and the flag accessors are the builtins.
+pristine({'$o', _} = R) ->
+    erlang:get('RegExp.prototype') =:= undefined andalso is_regexp_object(R) andalso
+        bouy_heap:prototype_of(R) =:= ?PROTO andalso bouy_heap:own_keys(R) =:= [<<"lastIndex">>] andalso
+        case bouy_heap:get_own(R, <<"lastIndex">>) of
+            {data, V, _} -> ?IS_NUMBER(V);
+            _ -> false
+        end;
+pristine(_) -> false.
+
+%% The matcher of a pristine RegExp with the g flag, for the loops of
+%% Symbol.match and Symbol.replace: {ok, Program, Unicode, Sticky} or none.
+global_program(R) ->
+    case pristine(R) of
         true ->
-            Unicode = full_unicode(Flags),
+            #{flags := Flags} = Slots = bouy_heap:slots(R),
+            Units = bouy_ref_string:units(Flags),
+            case lists:member($g, Units) of
+                true -> {ok, matcher(Slots), full_unicode(Units), lists:member($y, Units)};
+                false -> none
+            end;
+        false -> none
+    end.
+
+%% Every match of the loop of Symbol.match and Symbol.replace with g, from
+%% lastIndex 0: after an empty match the next search starts one character on.
+all_matches(Program, S, Unicode, Sticky) ->
+    all_matches(Program, bouy_regexp_match:input(S), S, bouy_ref_string:length_of(S), Unicode, Sticky, 0, []).
+
+all_matches(Program, In, S, Length, Unicode, Sticky, LastIndex, Acc) when LastIndex =< Length ->
+    case bouy_regexp_match:search(Program, In, LastIndex, Sticky) of
+        nomatch -> lists:reverse(Acc);
+        {match, Index, End, _} = Match ->
+            Next = case End =< Index of
+                true -> advance(S, End, Unicode);
+                false -> End
+            end,
+            all_matches(Program, In, S, Length, Unicode, Sticky, Next, [Match | Acc])
+    end;
+all_matches(_Program, _In, _S, _Length, _Unicode, _Sticky, _LastIndex, Acc) ->
+    lists:reverse(Acc).
+
+symbol_match(R, S) ->
+    case global_program(R) of
+        {ok, Program, Unicode, Sticky} ->
+            Matches = all_matches(Program, S, Unicode, Sticky),
             bouy_ref:set(R, <<"lastIndex">>, 0),
-            match_all(R, S, Unicode, [])
+            case Matches of
+                [] -> null;
+                _ -> bouy_heap:new_array([bouy_ref_string:slice(S, Index, End) || {match, Index, End, _} <- Matches])
+            end;
+        none ->
+            Flags = flags_of(R),
+            case lists:member($g, Flags) of
+                false -> regexp_exec(R, S);
+                true ->
+                    Unicode = full_unicode(Flags),
+                    bouy_ref:set(R, <<"lastIndex">>, 0),
+                    match_all(R, S, Unicode, [])
+            end
     end.
 
 match_all(R, S, Unicode, Acc) ->
@@ -533,13 +627,26 @@ symbol_replace(R, S, ReplaceValue) ->
         true -> ReplaceValue;
         false -> bouy_ref:to_string(ReplaceValue)
     end,
-    Flags = flags_of(R),
-    Global = lists:member($g, Flags),
-    Global andalso bouy_ref:set(R, <<"lastIndex">>, 0),
-    Results = replace_results(R, S, Global, full_unicode(Flags), []),
-    {Parts, Next} = lists:foldl(fun(Result, {Acc, NextPosition}) ->
-                                        replace_one(Result, S, Length, Functional, Template, Acc, NextPosition)
-                                end, {[], 0}, Results),
+    {Parts, Next} = case global_program(R) of
+        {ok, Program, Unicode, Sticky} ->
+            Matches = all_matches(Program, S, Unicode, Sticky),
+            bouy_ref:set(R, <<"lastIndex">>, 0),
+            #{names := Names} = bouy_heap:slots(R),
+            lists:foldl(fun({match, Index, End, Caps}, {Acc, NextPosition}) ->
+                                Captures = [substring(S, C) || C <- tuple_to_list(Caps)],
+                                {Named, _} = groups(lists:enumerate(1, Captures), Names),
+                                Match = {bouy_ref_string:slice(S, Index, End), Index, Captures, Named},
+                                replace_match(Match, S, Functional, Template, Acc, NextPosition)
+                        end, {[], 0}, Matches);
+        none ->
+            Flags = flags_of(R),
+            Global = lists:member($g, Flags),
+            Global andalso bouy_ref:set(R, <<"lastIndex">>, 0),
+            Results = replace_results(R, S, Global, full_unicode(Flags), []),
+            lists:foldl(fun(Result, {Acc, NextPosition}) ->
+                                replace_match(match_record(Result, Length), S, Functional, Template, Acc, NextPosition)
+                        end, {[], 0}, Results)
+    end,
     case Next >= Length of
         true -> bouy_ref_string:concat(lists:reverse(Parts));
         false -> bouy_ref_string:concat(lists:reverse([bouy_ref_string:slice(S, Next, Length) | Parts]))
@@ -554,7 +661,9 @@ replace_results(R, S, Global, Unicode, Acc) ->
             replace_results(R, S, Global, Unicode, [Result | Acc])
     end.
 
-replace_one(Result, S, Length, Functional, Template, Acc, NextPosition) ->
+%% The matched text, position, captures, and groups of a result of RegExpExec,
+%% read in the order of RegExp.prototype[Symbol.replace].
+match_record(Result, Length) ->
     Count = max(to_length(bouy_ref:get(Result, <<"length">>)) - 1, 0),
     Matched = bouy_ref:to_string(bouy_ref:get(Result, 0)),
     Position = clamp(to_integer(bouy_ref:get(Result, <<"index">>)), Length),
@@ -562,7 +671,9 @@ replace_one(Result, S, Length, Functional, Template, Acc, NextPosition) ->
                     undefined -> undefined;
                     V -> bouy_ref:to_string(V)
                 end || N <- lists:seq(1, Count)],
-    Named = bouy_ref:get(Result, <<"groups">>),
+    {Matched, Position, Captures, bouy_ref:get(Result, <<"groups">>)}.
+
+replace_match({Matched, Position, Captures, Named}, S, Functional, Template, Acc, NextPosition) ->
     Replacement = case Functional of
         true ->
             Extra = case Named of
@@ -641,6 +752,12 @@ same_value(A, B) when is_number(A), is_number(B) -> A =:= B;
 same_value(A, B) -> A =:= B.
 
 symbol_split(R, S, Limit) ->
+    case pristine(R) andalso erlang:get({builtin, <<"RegExp">>}) =:= undefined of
+        true -> fast_split(R, S, Limit);
+        false -> generic_split(R, S, Limit)
+    end.
+
+generic_split(R, S, Limit) ->
     C = species_constructor(R),
     Flags = bouy_ref:to_string(bouy_ref:get(R, <<"flags">>)),
     Units = bouy_ref_string:units(Flags),
@@ -679,7 +796,7 @@ split_loop(Splitter, S, Size, Unicode, Lim, LastEnd, Search, Acc, Count) when Se
                         true -> lists:reverse(Acc1);
                         false ->
                             Captures = max(to_length(bouy_ref:get(Match, <<"length">>)) - 1, 0),
-                            case split_captures(Match, 1, Captures, Acc1, Count + 1, Lim) of
+                            case split_captures(fun(I) -> bouy_ref:get(Match, I) end, 1, Captures, Acc1, Count + 1, Lim) of
                                 {done, Final} -> lists:reverse(Final);
                                 {more, Acc2, Count2} -> split_loop(Splitter, S, Size, Unicode, Lim, End, End, Acc2, Count2)
                             end
@@ -689,13 +806,104 @@ split_loop(Splitter, S, Size, Unicode, Lim, LastEnd, Search, Acc, Count) when Se
 split_loop(_Splitter, S, Size, _Unicode, _Lim, LastEnd, _Search, Acc, _Count) ->
     lists:reverse([bouy_ref_string:slice(S, LastEnd, Size) | Acc]).
 
-split_captures(_Match, I, N, Acc, Count, _Lim) when I > N -> {more, Acc, Count};
-split_captures(Match, I, N, Acc, Count, Lim) ->
-    Acc1 = [bouy_ref:get(Match, I) | Acc],
+split_captures(_Capture, I, N, Acc, Count, _Lim) when I > N -> {more, Acc, Count};
+split_captures(Capture, I, N, Acc, Count, Lim) ->
+    Acc1 = [Capture(I) | Acc],
     case Count + 1 =:= Lim of
         true -> {done, Acc1};
-        false -> split_captures(Match, I + 1, N, Acc1, Count + 1, Lim)
+        false -> split_captures(Capture, I + 1, N, Acc1, Count + 1, Lim)
     end.
+
+%% Symbol.split when the splitter that the spec constructs runs no user code:
+%% the matcher of R searches ahead instead of trying each position sticky.
+%% A position fails sticky exactly when the search passes it.
+fast_split(R, S, Limit) ->
+    #{flags := Flags} = Slots = bouy_heap:slots(R),
+    Program = matcher(Slots),
+    Unicode = full_unicode(bouy_ref_string:units(Flags)),
+    Lim = case Limit of
+        undefined -> 16#FFFFFFFF;
+        _ -> bouy_ref_number:to_uint32(bouy_ref:to_number(Limit))
+    end,
+    In = bouy_regexp_match:input(S),
+    Size = bouy_ref_string:length_of(S),
+    case {Lim, Size} of
+        {0, _} -> bouy_heap:new_array([]);
+        {_, 0} ->
+            case bouy_regexp_match:search(Program, In, 0, true) of
+                nomatch -> bouy_heap:new_array([S]);
+                _ -> bouy_heap:new_array([])
+            end;
+        _ -> bouy_heap:new_array(fast_split_loop(Program, In, S, Size, Unicode, Lim, 0, 0, [], 0))
+    end.
+
+fast_split_loop(Program, In, S, Size, Unicode, Lim, LastEnd, Search, Acc, Count) when Search < Size ->
+    case bouy_regexp_match:search(Program, In, Search, false) of
+        {match, Index, End0, Caps} when Index < Size ->
+            End = min(End0, Size),
+            case End =:= LastEnd of
+                true -> fast_split_loop(Program, In, S, Size, Unicode, Lim, LastEnd, advance(S, Index, Unicode), Acc, Count);
+                false ->
+                    Acc1 = [bouy_ref_string:slice(S, LastEnd, Index) | Acc],
+                    case Count + 1 =:= Lim of
+                        true -> lists:reverse(Acc1);
+                        false ->
+                            Capture = fun(I) -> substring(S, element(I, Caps)) end,
+                            case split_captures(Capture, 1, tuple_size(Caps), Acc1, Count + 1, Lim) of
+                                {done, Final} -> lists:reverse(Final);
+                                {more, Acc2, Count2} -> fast_split_loop(Program, In, S, Size, Unicode, Lim, End, End, Acc2, Count2)
+                            end
+                    end
+            end;
+        _ -> lists:reverse([bouy_ref_string:slice(S, LastEnd, Size) | Acc])
+    end;
+fast_split_loop(_Program, _In, S, Size, _Unicode, _Lim, LastEnd, _Search, Acc, _Count) ->
+    lists:reverse([bouy_ref_string:slice(S, LastEnd, Size) | Acc]).
+
+%%% The legacy static properties
+
+%% GetLegacyRegExpStaticProperty. Before any match, each is the empty string.
+legacy_get(Name, This) ->
+    legacy_receiver(This),
+    {Input, Match} = case erlang:get(?LEGACY) of
+        undefined -> {<<>>, none};
+        State -> State
+    end,
+    legacy_value(Name, Input, Match).
+
+legacy_value(Name, Input, _Match) when Name =:= <<"input">>; Name =:= <<"$_">> -> Input;
+legacy_value(_Name, _Input, none) -> <<>>;
+legacy_value(Name, _Input, {S, Start, End, _Captures}) when Name =:= <<"lastMatch">>; Name =:= <<"$&">> ->
+    bouy_ref_string:slice(S, Start, End);
+legacy_value(Name, _Input, {S, _Start, _End, Captures}) when Name =:= <<"lastParen">>; Name =:= <<"$+">> ->
+    case tuple_size(Captures) of
+        0 -> <<>>;
+        N -> legacy_capture(S, element(N, Captures))
+    end;
+legacy_value(Name, _Input, {S, Start, _End, _Captures}) when Name =:= <<"leftContext">>; Name =:= <<"$`">> ->
+    bouy_ref_string:slice(S, 0, Start);
+legacy_value(Name, _Input, {S, _Start, End, _Captures}) when Name =:= <<"rightContext">>; Name =:= <<"$'">> ->
+    bouy_ref_string:slice(S, End, bouy_ref_string:length_of(S));
+legacy_value(<<"$", D>>, _Input, {S, _Start, _End, Captures}) when D - $0 =< tuple_size(Captures) ->
+    legacy_capture(S, element(D - $0, Captures));
+legacy_value(_Name, _Input, _Match) -> <<>>.
+
+legacy_capture(_S, undefined) -> <<>>;
+legacy_capture(S, Range) -> substring(S, Range).
+
+%% SetLegacyRegExpStaticProperty for input and $_.
+legacy_set_input(This, Value) ->
+    legacy_receiver(This),
+    Input = bouy_ref:to_string(Value),
+    Match = case erlang:get(?LEGACY) of
+        undefined -> none;
+        {_, M} -> M
+    end,
+    erlang:put(?LEGACY, {Input, Match}),
+    undefined.
+
+legacy_receiver(This) ->
+    This =:= constructor() orelse type_error(<<"RegExp legacy static properties require that 'this' be RegExp">>).
 
 %%% RegExp.escape
 

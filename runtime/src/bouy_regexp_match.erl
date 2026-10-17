@@ -23,14 +23,17 @@
 -record(c, {i :: boolean(), m :: boolean(), s :: boolean(), u :: boolean(), v :: boolean(),
             dir = forward :: forward | backward}).
 
--type program() :: #{matcher := fun(), groups := non_neg_integer(), unicode := boolean()}.
+-type program() :: #{matcher := fun(), groups := non_neg_integer(), unicode := boolean(), first := first()}.
+%% What every match starts with: a literal run of code units, a character that
+%% passes a test, or anything.
+-type first() :: {literal, binary() | none, binary()} | {test, fun((non_neg_integer()) -> boolean())} | any.
 
 %% The Matcher of a pattern tree, for the flags i, m, s, u, and v.
 -spec compile(term(), non_neg_integer(), map()) -> program().
 compile(Tree, Groups, #{i := I, m := M, s := S, u := U, v := V}) ->
     C = #c{i = I, m = M, s = S, u = U orelse V, v = V},
     {cps, Matcher} = to_cps(node(Tree, C)),
-    #{matcher => Matcher, groups => Groups, unicode => U orelse V}.
+    #{matcher => Matcher, groups => Groups, unicode => U orelse V, first => first(Tree, C)}.
 
 %% The input of a string of bouy_ref_string.
 -spec input(bouy_ref_string:js_string()) -> {binary(), 1 | 2, non_neg_integer()}.
@@ -40,24 +43,101 @@ input({'$u16', B}) -> {B, 2, byte_size(B) div 2}.
 %% The first match at or after LastIndex, or only at LastIndex when Sticky:
 %% {match, Index, End, Captures} or nomatch. Index is the LastIndex of the
 %% attempt that matched (22.2.7.2 RegExpBuiltinExec); with a Unicode flag the
-%% matcher starts at the character that holds it.
+%% matcher starts at the character that holds it. Without Sticky, the scan
+%% skips the positions where the first character of a match cannot be.
 -spec search(program(), {binary(), 1 | 2, non_neg_integer()}, non_neg_integer(), boolean()) ->
           {match, non_neg_integer(), non_neg_integer(), tuple()} | nomatch.
-search(#{matcher := F, groups := Groups, unicode := Unicode}, In, From, Sticky) ->
-    attempt(F, In, From, Sticky, Unicode, erlang:make_tuple(Groups, undefined)).
-
-attempt(F, {_, _, L} = In, I, Sticky, Unicode, Caps0) when I =< L ->
-    Start = case Unicode of
-        true -> character_start(In, I);
-        false -> I
+search(#{matcher := F, groups := Groups, unicode := Unicode, first := First}, In, From, Sticky) ->
+    Skip = case Sticky of
+        true -> any;
+        false -> First
     end,
-    case F(In, Start, Caps0, fun done/2) of
-        {End, Caps} -> {match, I, End, Caps};
-        false when Sticky -> nomatch;
-        false -> attempt(F, In, advance(In, I, Unicode), Sticky, Unicode, Caps0)
+    attempt(F, Skip, In, From, Sticky, Unicode, erlang:make_tuple(Groups, undefined)).
+
+attempt(F, First, {_, _, L} = In, I0, Sticky, Unicode, Caps0) when I0 =< L ->
+    case candidate(First, In, I0, Unicode) of
+        none -> nomatch;
+        I ->
+            Start = case Unicode of
+                true -> character_start(In, I);
+                false -> I
+            end,
+            case F(In, Start, Caps0, fun done/2) of
+                {End, Caps} -> {match, I, End, Caps};
+                false when Sticky -> nomatch;
+                false -> attempt(F, First, In, advance(In, I, Unicode), Sticky, Unicode, Caps0)
+            end
     end;
-attempt(_F, _In, _I, _Sticky, _Unicode, _Caps0) ->
+attempt(_F, _First, _In, _I, _Sticky, _Unicode, _Caps0) ->
     nomatch.
+
+%% The first position at or after I where a match may start, or none.
+candidate(any, _In, I, _Unicode) -> I;
+candidate({test, Test}, {B, W, L} = In, I, Unicode) when I < L ->
+    Char = case Unicode of
+        true -> element(1, char_at(In, character_start(In, I)));
+        false -> unit(B, W, I)
+    end,
+    case Test(Char) of
+        true -> I;
+        false -> candidate({test, Test}, In, advance(In, I, Unicode), Unicode)
+    end;
+candidate({test, _}, _In, _I, _Unicode) -> none;
+candidate({literal, none, _Wide}, {_, 1, _}, _I, _Unicode) -> none;
+candidate({literal, Narrow, _Wide}, {B, 1, L}, I, _Unicode) ->
+    case binary:match(B, Narrow, [{scope, {I, L - I}}]) of
+        nomatch -> none;
+        {Pos, _} -> Pos
+    end;
+candidate({literal, _Narrow, Wide} = First, {B, 2, L} = In, I, Unicode) ->
+    case binary:match(B, Wide, [{scope, {2 * I, 2 * (L - I)}}]) of
+        nomatch -> none;
+        {Pos, _} when Pos rem 2 =:= 0 -> Pos div 2;
+        {Pos, _} -> candidate(First, In, Pos div 2 + 1, Unicode)
+    end.
+
+%% What a match of the tree starts with: a literal run without i, else the
+%% test of a first character that the pattern requires.
+first(Tree, C) ->
+    case literal_prefix(Tree, C) of
+        Units when length(Units) >= 2 ->
+            Narrow = case lists:all(fun(X) -> X =< 16#FF end, Units) of
+                true -> list_to_binary(Units);
+                false -> none
+            end,
+            {literal, Narrow, << <<X:16>> || X <- Units >>};
+        _ -> first_test(Tree, C)
+    end.
+
+literal_prefix({seq, Nodes}, #c{i = false, u = U}) ->
+    Chars = lists:takewhile(fun({char, _}) -> true; (_) -> false end, Nodes),
+    Codes = [X || {char, X} <- Chars],
+    case U andalso lists:any(fun(X) -> X >= 16#D800 andalso X =< 16#DFFF end, Codes) of
+        true -> [];
+        false when U -> lists:flatmap(fun to_units/1, Codes);
+        false -> Codes
+    end;
+literal_prefix(_Tree, _C) -> [].
+
+first_test({seq, [Node | _]}, C) -> first_test(Node, C);
+first_test({group, _, Node}, C) -> first_test(Node, C);
+first_test({repeat, Min, _, _, Node, _, _}, C) when Min >= 1 -> first_test(Node, C);
+first_test({mods, Add, Remove, Node}, C) -> first_test(Node, modify(C, Add, Remove));
+first_test({alt, Nodes}, C) ->
+    Tests = [first_test(N, C) || N <- Nodes],
+    case lists:member(any, Tests) of
+        true -> any;
+        false ->
+            Funs = [T || {test, T} <- Tests],
+            {test, fun(X) -> lists:any(fun(T) -> T(X) end, Funs) end}
+    end;
+first_test(Node, C) when element(1, Node) =:= char; element(1, Node) =:= class; element(1, Node) =:= vclass;
+                         element(1, Node) =:= escape; Node =:= dot ->
+    case node(Node, C) of
+        {char, Test, _} -> {test, Test};
+        _ -> any
+    end;
+first_test(_Node, _C) -> any.
 
 done(I, Caps) -> {I, Caps}.
 

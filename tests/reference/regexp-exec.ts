@@ -76,3 +76,28 @@ try {
 } catch (e) {
   console.log((e as Error).name, (e as Error).message);
 }
+
+const legacy = RegExp as unknown as Record<string, string>;
+/(\d+)-(\d+)/.exec("ab 12-34 cd");
+console.log(
+  legacy.$1,
+  legacy.$2,
+  legacy.$3,
+  legacy.lastMatch,
+  legacy.lastParen,
+  legacy["$`"],
+  legacy["$'"],
+);
+legacy.input = "set";
+console.log(legacy.$_, legacy.$1);
+
+const original = /a(b)/gi;
+original.lastIndex = 2;
+const copy = structuredClone(original);
+console.log(
+  copy !== original,
+  copy instanceof RegExp,
+  String(copy),
+  copy.lastIndex,
+  copy.exec("xAB")?.[1],
+);

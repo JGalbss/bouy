@@ -8,10 +8,10 @@
 %% its members, so the matcher only tests membership.
 -module(bouy_regexp_charset).
 
--export([union/2, intersect/2, subtract/2, complement/2, from_list/1, member/2, test/1]).
+-export([union/2, intersect/2, subtract/2, complement/2, from_list/1, test/1]).
 -export([property/1, has_property/2, is_string_property/1, property_strings/1]).
--export([digit/0, space/0, word/1, line_terminators/0]).
--export([canonicalize/2, closure/2, fold/1, fold_string/1, canonical_characters/0]).
+-export([digit/0, space/0, word/1]).
+-export([closure/2, fold/1, fold_string/1, canonical_characters/0]).
 
 -type ranges() :: [{non_neg_integer(), non_neg_integer()}].
 -export_type([ranges/0]).
@@ -63,15 +63,14 @@ complement([{_, B} | Rest], _Next, Max) -> complement(Rest, B + 1, Max);
 complement([], Next, Max) when Next =< Max -> [{Next, Max}];
 complement([], _Next, _Max) -> [].
 
--spec member(ranges(), non_neg_integer()) -> boolean().
-member(Ranges, C) -> in(Ranges, C).
-
 in([{A, B} | _], C) when C >= A, C =< B -> true;
 in([{A, _} | _], C) when C < A -> false;
 in([_ | Rest], C) -> in(Rest, C);
 in([], _C) -> false.
 
-%% The membership test of a set, as a fun.
+%% The membership test of a set, as a fun. A large set searches a binary of
+%% 24-bit bounds: the collector of the heap scans the funs of compiled patterns
+%% term by term, and a binary is one term.
 -spec test(ranges()) -> fun((non_neg_integer()) -> boolean()).
 test([]) -> fun(_) -> false end;
 test([{A, A}]) -> fun(C) -> C =:= A end;
@@ -79,20 +78,21 @@ test([{A, B}]) -> fun(C) -> C >= A andalso C =< B end;
 test([{A, A}, {B, B}]) -> fun(C) -> C =:= A orelse C =:= B end;
 test(Ranges) when length(Ranges) =< 8 -> fun(C) -> in(Ranges, C) end;
 test(Ranges) ->
-    Table = list_to_tuple(Ranges),
-    Size = tuple_size(Table),
-    fun(C) -> search(Table, C, 1, Size) end.
+    Table = << <<A:24, B:24>> || {A, B} <- Ranges >>,
+    Last = length(Ranges) - 1,
+    fun(C) -> search(Table, C, 0, Last) end.
 
 search(_Table, _C, Lo, Hi) when Lo > Hi -> false;
 search(Table, C, Lo, Hi) ->
     Mid = (Lo + Hi) bsr 1,
-    case element(Mid, Table) of
-        {A, _} when C < A -> search(Table, C, Lo, Mid - 1);
-        {_, B} when C > B -> search(Table, C, Mid + 1, Hi);
-        _ -> true
+    <<_:Mid/binary-unit:48, A:24, B:24, _/binary>> = Table,
+    if
+        C < A -> search(Table, C, Lo, Mid - 1);
+        C > B -> search(Table, C, Mid + 1, Hi);
+        true -> true
     end.
 
-%%% The class escapes and the line terminators
+%%% The class escapes
 
 -spec digit() -> ranges().
 digit() -> [{$0, $9}].
@@ -108,9 +108,6 @@ space() ->
 -spec word(boolean()) -> ranges().
 word(false) -> [{$0, $9}, {$A, $Z}, {$_, $_}, {$a, $z}];
 word(true) -> [{$0, $9}, {$A, $Z}, {$_, $_}, {$a, $z}, {16#17F, 16#17F}, {16#212A, 16#212A}].
-
--spec line_terminators() -> ranges().
-line_terminators() -> [{10, 10}, {13, 13}, {16#2028, 16#2029}].
 
 %%% Unicode properties
 
@@ -154,12 +151,9 @@ sequences([N | Rest]) ->
     [Seq | sequences(Rest1)].
 
 %%% Case
-
-%% Canonicalize: simple case folding with a Unicode flag (scf), else the
-%% restricted toUppercase of a BMP pattern (upper).
--spec canonicalize(scf | upper, non_neg_integer()) -> non_neg_integer().
-canonicalize(scf, C) -> bouy_regexp_unicode:scf(C);
-canonicalize(upper, C) -> bouy_regexp_unicode:upper(C).
+%%
+%% Canonicalize is scf, simple case folding, with a Unicode flag, else upper,
+%% the toUppercase of one code unit that keeps non-ASCII out of ASCII.
 
 classes(scf) -> bouy_regexp_unicode:scf_classes();
 classes(upper) -> bouy_regexp_unicode:upper_classes().
