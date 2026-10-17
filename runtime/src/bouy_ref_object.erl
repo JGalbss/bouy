@@ -48,8 +48,8 @@ object_construct(NewTarget, _Args) -> bouy_ref:new_this(NewTarget).
 
 object_value(Args) ->
     case arg(1, Args) of
-        V when ?IS_OBJECT(V) -> V;
-        _ -> bouy_heap:new_object(?OBJECT_PROTO)
+        V when V =:= undefined; V =:= null -> bouy_heap:new_object(?OBJECT_PROTO);
+        V -> bouy_ref:to_object(V)
     end.
 
 %%% Object.prototype
@@ -128,6 +128,9 @@ builtin_tag(V) when ?IS_OBJECT(V) ->
                 error -> <<"Error">>;
                 date -> <<"Date">>;
                 arguments -> <<"Arguments">>;
+                number -> <<"Number">>;
+                string -> <<"String">>;
+                boolean -> <<"Boolean">>;
                 _ -> <<"Object">>
             end
     end;
@@ -424,9 +427,8 @@ from_property({accessor, G, S, Bits}) ->
 require_object(V) when V =:= undefined; V =:= null -> type_error(?CONVERT_ERROR);
 require_object(V) -> V.
 
-%% ToObject. A primitive stays itself: the functions below read its own
-%% properties as its wrapper object would have them.
-to_object(V) -> require_object(V).
+%% ToObject: a primitive becomes its wrapper object.
+to_object(V) -> bouy_ref:to_object(V).
 
 is_symbol({'$sym', _, _}) -> true;
 is_symbol(_) -> false.

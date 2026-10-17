@@ -18,6 +18,7 @@
 
 -export([install/0, global/1, set_global/3, declare_globals/3, delete_global/1, constructor/2]).
 -export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
+-export([function_record/2, proto_for/2]).
 -export([intrinsics/0, globals/0, method/4]).
 
 families() ->
@@ -32,6 +33,9 @@ families() ->
      bouy_ref_string,
      bouy_ref_regexp,
      bouy_ref_array,
+     bouy_ref_buffer,
+     bouy_ref_typed_array,
+     bouy_ref_atomics,
      bouy_ref_iterator,
      bouy_ref_iterator_prototype,
      bouy_ref_generator,
@@ -146,40 +150,56 @@ constructor(Module, Name) -> {'$f', {builtin, Name}, fun(This, Args) -> Module:c
 -spec builtin(binary(), fun((term(), list()) -> term())) -> term().
 builtin(Name, Fun) -> {'$f', {builtin, Name}, Fun}.
 
-%% A builtin with its own name and length properties: Id names it uniquely,
-%% such as <<"Symbol.prototype.description">>, and Name is the value of its
-%% name property, such as <<"get description">>.
--spec builtin(binary(), binary(), non_neg_integer(), fun((term(), list()) -> term())) -> term().
-builtin(Id, Name, Length, Fun) ->
-    {Class, Proto, Props, Keys, Attrs, Slots} = record(function, ?FUNCTION_PROTO, [{<<"length">>, Length}, {<<"name">>, Name}], #{}),
-    bouy_heap:install_intrinsic({builtin, Id}, {Class, Proto, Props, Keys, Attrs#{<<"length">> => 4, <<"name">> => 4}, Slots}),
-    builtin(Id, Fun).
-
-%% A record whose properties are all builtin data: not enumerable.
--spec record(atom(), term(), [{term(), term()}], term()) -> tuple().
+%% A record whose properties are builtin data: an entry {Key, Value} is
+%% writable, configurable, and not enumerable, and {Key, Value, Bits} has the
+%% attribute bits of bouy_heap (writable 1, enumerable 2, configurable 4).
+-spec record(atom(), term(), [{term(), term()} | {term(), term(), 0..7}], term()) -> tuple().
 record(Class, Proto, Entries, Slots) ->
-    Props = maps:from_list(Entries),
-    Keys = lists:reverse([K || {K, _} <- Entries, not is_integer(K)]),
-    Attrs = maps:from_list([{K, ?HIDDEN} || {K, _} <- Entries]),
+    Triples = [entry(E) || E <- Entries],
+    Props = maps:from_list([{K, V} || {K, V, _} <- Triples]),
+    Keys = lists:reverse([K || {K, _, _} <- Triples, not is_integer(K)]),
+    Attrs = maps:from_list([{K, Bits} || {K, _, Bits} <- Triples, Bits =/= 7]),
     {Class, Proto, Props, Keys, Attrs, Slots}.
 
-%% The builtin methods of Owner. A name with its length, {Name, Length}, also
-%% gets its own name and length properties.
+entry({K, V}) -> {K, V, ?HIDDEN};
+entry({_, _, _} = E) -> E.
+
+%% The builtin methods of Owner. A name is a binary, or {Name, Length} for a
+%% method that gets the name and length properties of a builtin function.
 -spec methods(module(), binary(), [binary() | {binary(), non_neg_integer()}]) -> [{binary(), term()}].
-methods(Module, Owner, Names) ->
-    [method_entry(Module, Owner, Name) || Name <- Names].
+methods(Module, Owner, Names) -> [method_entry(Module, Owner, N) || N <- Names].
 
 method_entry(Module, Owner, {Name, Length}) ->
     {Name, builtin(<<Owner/binary, ".", Name/binary>>, Name, Length, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)};
 method_entry(Module, Owner, Name) ->
     {Name, builtin(<<Owner/binary, ".", Name/binary>>, fun(This, Args) -> Module:method(Owner, Name, This, Args) end)}.
 
--spec ctor_record(binary(), non_neg_integer(), term(), [{term(), term()}], fun((term(), list()) -> term())) -> tuple().
+%% The builtin Id with the name and length properties of CreateBuiltinFunction.
+%% Families call it while the realm installs, so the record is in place before
+%% any realm reads it.
+-spec builtin(binary(), term(), non_neg_integer(), fun((term(), list()) -> term())) -> term().
+builtin(Id, Name, Length, Fun) ->
+    bouy_heap:install_intrinsic({builtin, Id}, function_record(Name, Length)),
+    builtin(Id, Fun).
+
+%% The record of a builtin function: length, then name, both configurable only.
+-spec function_record(term(), non_neg_integer()) -> tuple().
+function_record(Name, Length) ->
+    record(function, ?FUNCTION_PROTO, [{<<"length">>, Length, 4}, {<<"name">>, Name, 4}], #{}).
+
+-spec ctor_record(binary(), non_neg_integer(), term(), [tuple()], fun((term(), list()) -> term())) -> tuple().
 ctor_record(Name, Length, Proto, Statics, Construct) ->
-    Entries = [{<<"length">>, Length}, {<<"name">>, Name}, {<<"prototype">>, Proto} | Statics],
-    {Class, P, Props, Keys, Attrs, Slots} = record(function, ?FUNCTION_PROTO, Entries, #{construct => Construct, kind => builtin}),
-    %% name and length are configurable only; prototype is fixed.
-    {Class, P, Props, Keys, Attrs#{<<"length">> => 4, <<"name">> => 4, <<"prototype">> => 0}, Slots}.
+    Entries = [{<<"length">>, Length, 4}, {<<"name">>, Name, 4}, {<<"prototype">>, Proto, 0} | Statics],
+    record(function, ?FUNCTION_PROTO, Entries, #{construct => Construct, kind => builtin}).
+
+%% GetPrototypeFromConstructor: the prototype property of NewTarget, or the
+%% intrinsic Default when it is not an object.
+-spec proto_for(term(), atom()) -> term().
+proto_for(NewTarget, Default) ->
+    case bouy_ref:get(NewTarget, <<"prototype">>) of
+        P when ?IS_OBJECT(P) -> P;
+        _ -> {'$o', Default}
+    end.
 
 %% The [[Construct]] of a builtin that new does not support, such as new String().
 -spec not_constructible(term(), list()) -> no_return().

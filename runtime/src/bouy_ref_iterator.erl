@@ -59,15 +59,50 @@ iterate({'$o', _} = O) ->
                 _ -> protocol(O)
             end;
         list_iterator -> {list_iterator, O};
+        Class when Class =:= array_iterator; Class =:= map_iterator; Class =:= set_iterator; Class =:= string_iterator ->
+            native(Class, O);
         _ -> protocol(O)
     end;
 iterate(S) when ?IS_STRING(S) -> {list, [bouy_ref_string:from_code_points([C]) || C <- bouy_ref_string:code_points(S)]};
 iterate({'$f', _, _} = F) -> protocol(F);
 iterate(V) -> bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(V), <<" is not iterable">>)).
 
+%% A builtin iterator whose next method is the intrinsic one steps without
+%% the result objects of the protocol: {native, Module, Iterator}.
+native(_Class, O) ->
+    case native_state(O, bouy_heap:get(O, <<"next">>)) of
+        none -> protocol(O);
+        State -> State
+    end.
+
+native_state(Iterator, Next) ->
+    case {native_class(Iterator), Next} of
+        {array_iterator, {'$f', {builtin, <<"ArrayIterator.prototype.next">>}, _}} -> {native, bouy_ref_array, Iterator};
+        {map_iterator, {'$f', {builtin, <<"MapIterator.prototype.next">>}, _}} -> {native, bouy_ref_collection, Iterator};
+        {set_iterator, {'$f', {builtin, <<"SetIterator.prototype.next">>}, _}} -> {native, bouy_ref_collection, Iterator};
+        {string_iterator, {'$f', {builtin, <<"StringIterator.prototype.next">>}, _}} -> {native, bouy_ref_string, Iterator};
+        _ -> none
+    end.
+
+%% The class of a builtin iterator that has no return method, which
+%% IteratorClose would call: only such an iterator steps natively. A user
+%% object is not read, so no getter of its runs here.
+native_class({'$o', _} = Iterator) ->
+    Class = bouy_heap:class_of(Iterator),
+    Builtin = lists:member(Class, [array_iterator, map_iterator, set_iterator, string_iterator]),
+    case Builtin andalso bouy_heap:get(Iterator, <<"return">>) =:= undefined of
+        true -> Class;
+        false -> protocol
+    end;
+native_class(_) ->
+    protocol.
+
 protocol(O) ->
     {Iterator, Next} = get_iterator(O),
-    {protocol, Iterator, Next}.
+    case native_state(Iterator, Next) of
+        none -> {protocol, Iterator, Next};
+        State -> State
+    end.
 
 %% GetIterator(obj, sync): the iterator and its next method.
 -spec get_iterator(term()) -> {term(), term()}.
@@ -137,6 +172,11 @@ step({generator, G} = State) ->
                 false -> {value, bouy_ref:get(Result, <<"value">>), State}
             end;
         {done, _} -> done
+    end;
+step({native, Module, O} = State) ->
+    case Module:step(O) of
+        {value, V} -> {value, V, State};
+        done -> done
     end;
 step({list_iterator, O} = State) ->
     case list_iterator_next(O) of

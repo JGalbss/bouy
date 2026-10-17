@@ -187,10 +187,18 @@ element_value(V, _O) -> V.
 -spec array_push(value(), [value()]) -> non_neg_integer().
 array_push({'$o', Id} = O, Items) ->
     case erlang:get(Id) of
-        {array, P, Props, Keys, Attrs, {Length, Elements}} when map_size(Attrs) =:= 0 ->
-            {Length1, Elements1} = lists:foldl(fun(V, {L, E}) -> {L + 1, E#{L => V}} end, {Length, Elements}, Items),
-            erlang:put(Id, {array, P, Props, Keys, Attrs, {Length1, Elements1}}),
-            Length1;
+        {array, ?ARRAY_PROTO = P, Props, Keys, Attrs, {Length, Elements}}
+          when map_size(Attrs) =:= 0, Length + length(Items) =< ?MAX_INDEX + 1 ->
+            %% The intrinsic prototypes hold no index until a realm writes them, so
+            %% no setter on the chain can see the new elements.
+            case erlang:get('Array.prototype') =:= undefined andalso erlang:get('Object.prototype') =:= undefined of
+                true ->
+                    {Length1, Elements1} = lists:foldl(fun(V, {L, E}) -> {L + 1, E#{L => V}} end, {Length, Elements}, Items),
+                    erlang:put(Id, {array, P, Props, Keys, Attrs, {Length1, Elements1}}),
+                    Length1;
+                false ->
+                    generic_push(O, Items)
+            end;
         _ ->
             generic_push(O, Items)
     end;
@@ -199,9 +207,13 @@ array_push(O, Items) ->
 
 %% Push on any object: Set of each index, then of length.
 generic_push(O, Items) ->
-    Length = lists:foldl(fun(V, L) -> _ = set(O, L, V), L + 1 end, array_length(O), Items),
+    Length = lists:foldl(fun(V, L) -> _ = set(O, index_key(L), V), L + 1 end, array_length(O), Items),
     _ = set(O, <<"length">>, Length),
     Length.
+
+%% The key of index L: a string past the largest array index.
+index_key(L) when L =< ?MAX_INDEX -> L;
+index_key(L) -> integer_to_binary(L).
 
 %% Replaces every item, as sort, splice, and shift do.
 -spec array_set_items(value(), [value()]) -> ok.
@@ -362,6 +374,7 @@ get(O, K) -> get(O, K, O).
 get({'$o', Id} = O, K, Receiver) ->
     case erlang:get(Id) of
         undefined -> from_record(intrinsic_record(Id, O), K, Receiver);
+        {typed_array, _, _, _, _, _} = R -> typed_get(O, R, K, Receiver);
         R -> from_record(R, K, Receiver)
     end;
 get({'$f', Id, _} = F, K, Receiver) ->
@@ -394,6 +407,19 @@ from_record({_, Proto, Props, _, _, _}, K, Receiver) ->
 
 inherited(null, _K, _Receiver) -> undefined;
 inherited(Proto, K, Receiver) -> get(Proto, K, Receiver).
+
+%% [[Get]] of a typed array (ECMA-262 §10.4.5.4): a numeric key reads the
+%% element, or undefined, and never the prototype chain.
+typed_get(O, R, K, Receiver) ->
+    case typed_index(K) of
+        {index, N} -> bouy_ref_typed_array:element_get(O, N);
+        none -> from_record(R, K, Receiver)
+    end.
+
+%% The index of a numeric key of a typed array (CanonicalNumericIndexString).
+typed_index({'$sym', _, _}) -> none;
+typed_index({'#', _, _}) -> none;
+typed_index(K) -> bouy_ref_typed_array:numeric_key(K).
 
 %% A deferred namespace (bouy_module) evaluates its module when code first uses a
 %% string key other than "then". "then" and symbols act as on an ordinary object,
@@ -451,7 +477,7 @@ assign({'$o', Id} = O, K, V, Mode) ->
             V;
         {array, _, _, _, _, _} when is_integer(K); K =:= <<"length">> ->
             strict_set(O, K, V, Mode);
-        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace ->
+        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace; Class =:= typed_array ->
             strict_set(O, K, V, Mode);
         {Class, P, Props, Keys, Attrs, Slots} = R when Class =/= proxy, (Class =/= arguments orelse not is_map(Slots)) ->
             case Props of
@@ -589,6 +615,8 @@ set(O, K, V, Receiver) ->
         %% A namespace object has no writable binding.
         {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace ->
             false;
+        {typed_array, _, _, _, _, _} = R ->
+            typed_set(O, R, K, V, Receiver);
         {arguments, _, _, _, _, Map} = R when is_map_key(K, Map), O =:= Receiver ->
             _ = cell_set(maps:get(K, Map), V),
             ordinary_set(R, K, V, Receiver);
@@ -612,6 +640,23 @@ ordinary_set(R, K, V, Receiver) ->
         {accessor, _, Setter, _} ->
             _ = call(Setter, Receiver, [V]),
             true
+    end.
+
+%% [[Set]] of a typed array (§10.4.5.5): a numeric key writes the element of
+%% the array itself, and a write through another receiver defines on it only
+%% for a valid index.
+typed_set(O, R, K, V, Receiver) ->
+    case typed_index(K) of
+        {index, N} when O =:= Receiver ->
+            bouy_ref_typed_array:element_set(O, N, V),
+            true;
+        {index, N} ->
+            case bouy_ref_typed_array:element_has(O, N) of
+                true -> set_on_receiver(K, V, Receiver);
+                false -> true
+            end;
+        none ->
+            ordinary_set(R, K, V, Receiver)
     end.
 
 set_on_receiver(K, V, Receiver) when ?is_obj(Receiver) ->
@@ -645,6 +690,8 @@ add_key(K, Props, Keys) ->
 
 resize({Length, Elements}, NewLength) when is_integer(NewLength), NewLength >= Length ->
     {NewLength, Elements};
+resize({Length, Elements}, NewLength) when is_integer(NewLength), NewLength >= 0, Length - NewLength < map_size(Elements) ->
+    {NewLength, maps:without(lists:seq(NewLength, Length - 1), Elements)};
 resize({_, Elements}, NewLength) when is_integer(NewLength), NewLength >= 0 ->
     {NewLength, maps:filter(fun(I, _) -> I < NewLength end, Elements)};
 resize(_, NewLength) ->
@@ -661,16 +708,24 @@ has(O, K) ->
             is_map_key(K, Props);
         {deferred_namespace, _, Props, _, _, M} ->
             deferred_key(M, K) =/= absent andalso is_map_key(K, Props);
+        {typed_array, _, _, _, _, _} = R ->
+            case typed_index(K) of
+                {index, N} -> bouy_ref_typed_array:element_has(O, N);
+                none -> ordinary_has(R, K)
+            end;
         R ->
-            case own_of(R, K) of
-                none ->
-                    case element(2, R) of
-                        null -> false;
-                        Proto -> has(Proto, K)
-                    end;
-                _ ->
-                    true
-            end
+            ordinary_has(R, K)
+    end.
+
+ordinary_has(R, K) ->
+    case own_of(R, K) of
+        none ->
+            case element(2, R) of
+                null -> false;
+                Proto -> has(Proto, K)
+            end;
+        _ ->
+            true
     end.
 
 -spec has_own(value(), key()) -> boolean().
@@ -693,13 +748,21 @@ delete_property(O, K) ->
         {deferred_namespace, _, _, _, _, M} = R ->
             deferred_key(M, K),
             own_of(R, K) =:= none;
+        {typed_array, _, _, _, _, _} = R ->
+            case typed_index(K) of
+                {index, N} -> bouy_ref_typed_array:element_delete(O, N);
+                none -> ordinary_delete(O, R, K)
+            end;
         R ->
-            case own_of(R, K) of
-                none -> true;
-                {data, _, Bits} when Bits band ?CONFIGURABLE =:= 0 -> false;
-                {accessor, _, _, Bits} when Bits band ?CONFIGURABLE =:= 0 -> false;
-                _ -> remove_own(O, K), true
-            end
+            ordinary_delete(O, R, K)
+    end.
+
+ordinary_delete(O, R, K) ->
+    case own_of(R, K) of
+        none -> true;
+        {data, _, Bits} when Bits band ?CONFIGURABLE =:= 0 -> false;
+        {accessor, _, _, Bits} when Bits band ?CONFIGURABLE =:= 0 -> false;
+        _ -> remove_own(O, K), true
     end.
 
 remove_own(O, K) ->
@@ -726,6 +789,7 @@ own_keys(O) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} -> bouy_ref_proxy:own_keys(Handler);
         {deferred_namespace, _, _, _, _, M} = R -> ok = bouy_module:ensure_deferred(M), record_keys(R);
+        {typed_array, _, _, _, _, _} = R -> bouy_ref_typed_array:index_keys(O) ++ record_keys(R);
         R -> record_keys(R)
     end.
 
@@ -747,7 +811,7 @@ enumerable_keys(O) ->
         {proxy, _, _, _, _, _} ->
             [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), is_enumerable(get_own(O, K))];
         %% Each key of a namespace reads its binding, as [[GetOwnProperty]] does.
-        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace ->
+        {Class, _, _, _, _, _} when Class =:= namespace; Class =:= deferred_namespace; Class =:= typed_array ->
             [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), is_enumerable(get_own(O, K))];
         {Class, _, _, _, Attrs, _} = R ->
             [K || K <- record_keys(R), is_integer(K) orelse ?IS_STRING(K), enumerable(K, Attrs),
@@ -800,6 +864,11 @@ define_own_property(O, K, Desc) ->
         {deferred_namespace, _, _, _, _, M} ->
             deferred_key(M, K),
             bouy_module:define_namespace(O, K, Desc);
+        {typed_array, _, _, _, Attrs, _} = R ->
+            case typed_index(K) of
+                {index, N} -> bouy_ref_typed_array:element_define(O, N, Desc);
+                none -> validate_and_apply(O, K, extensible(Attrs), Desc, own_of(R, K))
+            end;
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:define_own_property(Handler, K, Desc);
         {array, _, _, _, _, _} = R when K =:= <<"length">> ->
@@ -999,6 +1068,15 @@ get_own(O, K) ->
             case deferred_key(M, K) of
                 absent -> none;
                 _ -> own_of(R, K)
+            end;
+        {typed_array, _, _, _, _, _} = R ->
+            case typed_index(K) of
+                {index, N} ->
+                    case bouy_ref_typed_array:element_has(O, N) of
+                        true -> {data, bouy_ref_typed_array:element_get(O, N), ?ALL};
+                        false -> none
+                    end;
+                none -> own_of(R, K)
             end;
         R -> own_of(R, K)
     end.
@@ -1521,6 +1599,21 @@ out_record({set, _, _, _, _, {Index, _}}, _O, N, Seen) ->
     {{'$set', N, Items}, Seen1};
 out_record({date, _, _, _, _, Ms}, _O, N, Seen) ->
     {{'$date', N, Ms}, Seen};
+out_record({Class, _, _, _, _, Primitive}, _O, N, Seen) when Class =:= number; Class =:= string; Class =:= boolean; Class =:= bigint ->
+    {{'$wrapper', N, Class, Primitive}, Seen};
+out_record({array_buffer, _, _, _, _, {detached, _, _}}, _O, _N, _Seen) ->
+    throw_error('DataCloneError', <<"An ArrayBuffer is detached and could not be cloned.">>);
+out_record({array_buffer, _, _, _, _, {_, Length, Max}}, O, N, Seen) ->
+    {{'$array_buffer', N, bouy_ref_buffer:read(O, 0, Length), Max}, Seen};
+out_record({shared_array_buffer, _, _, _, _, Slots}, _O, N, Seen) ->
+    %% A SharedArrayBuffer shares its atomics array with the receiving realm.
+    {{'$shared_array_buffer', N, Slots}, Seen};
+out_record({typed_array, _, _, _, _, {Kind, Buffer, Offset, Length}}, _O, N, Seen) ->
+    {BufferTerm, Seen1} = out(Buffer, Seen),
+    {{'$typed_array', N, Kind, BufferTerm, Offset, Length}, Seen1};
+out_record({data_view, _, _, _, _, {Buffer, Offset, Length}}, _O, N, Seen) ->
+    {BufferTerm, Seen1} = out(Buffer, Seen),
+    {{'$data_view', N, BufferTerm, Offset, Length}, Seen1};
 out_record({error, _, _, _, _, _}, O, N, Seen) ->
     Name = value_text(get(O, <<"name">>)),
     {{'$error', N, Name, value_text(get(O, <<"message">>)), value_text(get(O, <<"stack">>))}, Seen};
@@ -1583,6 +1676,34 @@ in({'$set', N, Members}, Made) ->
     {Values, Made1} = lists:mapfoldl(fun in/2, Made#{N => O}, Members),
     set_slots(O, {maps:from_list([{K, Seq} || {Seq, K} <- lists:enumerate(0, Values)]), length(Values)}),
     {O, Made1};
+in({'$wrapper', N, Class, Primitive}, Made) ->
+    Proto = case Class of
+        number -> {'$o', 'Number.prototype'};
+        string -> {'$o', 'String.prototype'};
+        boolean -> {'$o', 'Boolean.prototype'};
+        bigint -> {'$o', 'BigInt.prototype'}
+    end,
+    O = case Class of
+        string -> bouy_ref_string:wrap(Primitive, Proto);
+        _ -> new_exotic(Class, Proto, Primitive)
+    end,
+    {O, Made#{N => O}};
+in({'$array_buffer', N, Bytes, Max}, Made) ->
+    O = bouy_ref_buffer:allocate(byte_size(Bytes), Max),
+    bouy_ref_buffer:write(O, 0, Bytes),
+    {O, Made#{N => O}};
+in({'$shared_array_buffer', N, Slots}, Made) ->
+    O = new_exotic(shared_array_buffer, {'$o', 'SharedArrayBuffer.prototype'}, Slots),
+    {O, Made#{N => O}};
+in({'$typed_array', N, Kind, BufferTerm, Offset, Length}, Made) ->
+    {Buffer, Made1} = in(BufferTerm, Made),
+    Proto = {'$o', binary_to_atom(<<(bouy_ref_buffer:kind_name(Kind))/binary, ".prototype">>)},
+    O = new_exotic(typed_array, Proto, {Kind, Buffer, Offset, Length}),
+    {O, Made1#{N => O}};
+in({'$data_view', N, BufferTerm, Offset, Length}, Made) ->
+    {Buffer, Made1} = in(BufferTerm, Made),
+    O = new_exotic(data_view, {'$o', 'DataView.prototype'}, {Buffer, Offset, Length}),
+    {O, Made1#{N => O}};
 in({'$date', N, Ms}, Made) ->
     O = new_exotic(date, {'$o', 'Date.prototype'}, Ms),
     {O, Made#{N => O}};

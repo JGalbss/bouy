@@ -59,9 +59,14 @@ method(<<"Symbol">>, <<"keyFor">>, _This, Args) ->
         V -> type_error(bouy_ref_string:concat(bouy_ref:to_string(describe(V)), <<" is not a symbol">>))
     end.
 
-%% thisSymbolValue.
+%% thisSymbolValue: a symbol, or the [[SymbolData]] of a Symbol object.
 this_symbol({'$sym', _, _} = S) -> S;
-this_symbol(_) -> type_error(<<"Symbol.prototype method called on a value that is not a symbol">>).
+this_symbol({'$o', _} = O) ->
+    case bouy_heap:class_of(O) of
+        symbol -> bouy_heap:slots(O);
+        _ -> type_error(<<"Symbol.prototype method called on incompatible receiver">>)
+    end;
+this_symbol(_) -> type_error(<<"Symbol.prototype method called on incompatible receiver">>).
 
 %% SymbolDescriptiveString.
 descriptive({'$sym', _, undefined}) -> <<"Symbol()">>;

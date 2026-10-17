@@ -1,0 +1,25 @@
+{ b: [ '1@1', '2.5@2.50', 'xé\ud800' ], a: true } [ 'b', 'a' ]
+{
+--"a": [
+----1,
+----{
+------"c": 3
+----}
+--],
+--"b": 2
+}
+[3,"s",false,1] " \u0007\ud834"
+"key:" {}
+{"big":12345678901234567890} true 1e+21 0
+SyntaxError: Unexpected token ']', "[1,]" is not valid JSON
+SyntaxError: Unexpected end of JSON input
+SyntaxError: Expected ',' or ']' after array element in JSON at position 2 (line 1 column 3)
+SyntaxError: Expected ':' after property name in JSON at position 5 (line 1 column 6)
+SyntaxError: Unterminated string in JSON at position 4 (line 1 column 5)
+SyntaxError: Unexpected number in JSON at position 1 (line 1 column 2)
+SyntaxError: No number after minus sign in JSON at position 1 (line 1 column 2)
+SyntaxError: Unterminated fractional number in JSON at position 2 (line 1 column 3)
+SyntaxError: Exponent part is missing a number in JSON at position 2 (line 1 column 3)
+SyntaxError: Bad escaped character in JSON at position 2 (line 1 column 3)
+SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+TypeError

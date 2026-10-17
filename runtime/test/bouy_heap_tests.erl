@@ -142,11 +142,34 @@ array_holes_test() ->
                   ?assert(bouy_heap:has_own(A, 0)),
                   bouy_heap:delete(A, 1),
                   ?assertNot(bouy_heap:has_own(A, 1)),
-                  %% An array's length is an own key, after the indexes.
                   ?assertEqual([0, <<"length">>], bouy_heap:own_keys(A)),
+                  ?assertEqual([0], bouy_heap:enumerable_keys(A)),
                   ?assertEqual(2, bouy_heap:array_push(A, [])),
                   ?assertEqual(4, bouy_heap:array_push(A, [x, y])),
                   ?assertEqual([undefined, undefined, x, y], bouy_heap:array_items(A))
+          end).
+
+%% The length of an array is writable, not enumerable, and not
+%% configurable, and a write converts the value with ToUint32.
+array_length_rules_test() ->
+    realm(fun() ->
+                  A = bouy_heap:new_array([a, b, c]),
+                  ?assertEqual({data, 3, 1}, bouy_heap:get_own(A, <<"length">>)),
+                  bouy_heap:set(A, <<"length">>, <<"1">>),
+                  ?assertEqual([a], bouy_heap:array_items(A)),
+                  ?assertError({'$throw', _}, bouy_heap:set(A, <<"length">>, 1.5)),
+                  ?assertError({'$throw', _}, bouy_heap:delete(A, <<"length">>)),
+                  bouy_heap:define(A, <<"length">>, #{writable => false}),
+                  ?assertEqual({data, 1, 0}, bouy_heap:get_own(A, <<"length">>)),
+                  ?assertError({'$throw', _}, bouy_heap:set(A, 5, x)),
+                  %% A read-only length keeps its value, and the length is never
+                  %% configurable, enumerable, or an accessor.
+                  ?assertError({'$throw', _}, bouy_heap:define(A, <<"length">>, #{value => 3})),
+                  ?assertEqual(A, bouy_heap:define(A, <<"length">>, #{value => 1})),
+                  B = bouy_heap:new_array([]),
+                  ?assertError({'$throw', _}, bouy_heap:define(B, <<"length">>, #{configurable => true})),
+                  ?assertError({'$throw', _}, bouy_heap:define(B, <<"length">>, #{enumerable => true})),
+                  ?assertError({'$throw', _}, bouy_heap:define(B, <<"length">>, #{get => undefined}))
           end).
 
 gc_cycles_test() ->

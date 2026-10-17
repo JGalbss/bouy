@@ -68,6 +68,7 @@ specifier($%, _) -> percent;
 specifier(_, _) -> none.
 
 text(V) when is_number(V) -> bouy_console:number_text(V);
+text({'$bigint', I}) -> <<(integer_to_binary(I))/binary, "n">>;
 text(V) -> bouy_ref_string:to_utf8(bouy_ref:to_string(V)).
 
 -spec inspect(term()) -> binary().
@@ -80,10 +81,17 @@ inspect(V) ->
 
 %% Level counts the containers around the value, Indent is the column of
 %% its lines, and Stack holds the objects being printed, for [Circular].
+value({'$u16', _} = S, _, _, _) ->
+    Points = bouy_ref_string:code_points(S),
+    case lists:any(fun(C) -> C >= 16#D800 andalso C =< 16#DFFF end, Points) of
+        true -> lone_surrogates(Points);
+        false -> bouy_console:string(bouy_ref_string:to_utf8(S))
+    end;
 value(S, _, _, _) when ?IS_STRING(S) -> bouy_console:string(bouy_ref_string:to_utf8(S));
 value(N, _, _, _) when is_number(N) -> bouy_console:number_text(N);
 value(A, _, _, _) when is_atom(A) -> atom_to_binary(A);
 value({'$sym', _, _} = S, _, _, _) -> bouy_ref:describe(S);
+value({'$bigint', I}, _, _, _) -> <<(integer_to_binary(I))/binary, "n">>;
 value({'$actor', _}, _, _, _) -> <<"[ActorRef]">>;
 value(V, Level, Indent, Stack) when ?IS_OBJECT(V) ->
     case lists:member(V, Stack) of
@@ -128,7 +136,19 @@ object(O, Level, Indent, Stack) ->
         weakmap -> <<"WeakMap { <items unknown> }">>;
         weakset -> <<"WeakSet { <items unknown> }">>;
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
-        date -> bouy_date:call(<<"toISOString">>, {'$date', bouy_heap:slots(O)}, []);
+        date -> bouy_ref_date:inspect(O);
+        typed_array -> typed_array(O, Level, Indent, Stack);
+        data_view -> data_view(O, Level, Indent, Stack);
+        map_iterator -> collection_iterator(O, Level, Indent, Stack);
+        set_iterator -> collection_iterator(O, Level, Indent, Stack);
+        array_iterator -> <<"Object [Array Iterator] {}">>;
+        string_iterator -> <<"Object [String Iterator] {}">>;
+        array_buffer -> array_buffer(O, Indent);
+        number -> wrapper(<<"Number">>, O, Level, Indent, Stack);
+        string -> wrapper(<<"String">>, O, Level, Indent, Stack);
+        boolean -> wrapper(<<"Boolean">>, O, Level, Indent, Stack);
+        bigint -> wrapper(<<"BigInt">>, O, Level, Indent, Stack);
+        symbol -> wrapper(<<"Symbol">>, O, Level, Indent, Stack);
         _ -> plain(O, Level, Indent, Stack)
     end.
 
@@ -137,6 +157,79 @@ proxy(O, Level, Indent, Stack) ->
         {revoked, _} -> <<"<Revoked Proxy>">>;
         {Target, _} -> object(Target, Level, Indent, Stack)
     end.
+
+%% A string with a lone surrogate, which Node prints as an escape.
+lone_surrogates(Points) ->
+    Has = fun(C) -> lists:member(C, Points) end,
+    Quote = case {Has($'), Has($")} of
+        {false, _} -> $';
+        {true, false} -> $";
+        {true, true} -> $'
+    end,
+    iolist_to_binary([Quote, [point(C, Quote) || C <- Points], Quote]).
+
+point(C, C) -> [$\\, C];
+point($\\, _) -> <<"\\\\">>;
+point($\n, _) -> <<"\\n">>;
+point($\t, _) -> <<"\\t">>;
+point(C, _) when C >= 16#D800, C =< 16#DFFF -> io_lib:format("\\u~4.16.0b", [C]);
+point(C, _) when C < 16#20 -> io_lib:format("\\x~2.16.0B", [C]);
+point(C, _) -> <<C/utf8>>.
+
+%% A typed array, as Node prints it: Uint8Array(2) [ 1, 2 ].
+typed_array(O, Level, Indent, Stack) ->
+    Name = bouy_ref:to_string(bouy_ref:get(O, ?SYM(toStringTag))),
+    Length = bouy_ref:get(O, <<"length">>),
+    Base = <<Name/binary, "(", (integer_to_binary(Length))/binary, ")">>,
+    case Length of
+        0 -> <<Base/binary, " []">>;
+        _ when Level > ?DEPTH -> <<"[", Name/binary, "]">>;
+        _ ->
+            Values = [bouy_heap:get(O, I) || I <- lists:seq(0, min(Length, ?MAX_ITEMS) - 1)],
+            Output = [value(V, Level + 1, Indent + 2, Stack) || V <- Values] ++ bouy_console:more_items(Length),
+            bouy_console:reduce(bouy_console:group(Output, Values, Indent), length(Output), Base, {<<"[">>, <<"]">>}, Indent)
+    end.
+
+%% A DataView with its byteLength, byteOffset, and buffer.
+data_view(O, Level, Indent, Stack) ->
+    {Buffer, Offset, _} = bouy_heap:slots(O),
+    Length = try bouy_ref:get(O, <<"byteLength">>) catch error:{'$throw', _} -> 0 end,
+    Entries = [<<"[byteLength]: ", (value(Length, Level + 1, Indent + 2, Stack))/binary>>,
+               <<"[byteOffset]: ", (value(Offset, Level + 1, Indent + 2, Stack))/binary>>,
+               <<"[buffer]: ", (array_buffer(Buffer, Indent + 2))/binary>>],
+    bouy_console:reduce(Entries, 3, <<"DataView">>, {<<"{">>, <<"}">>}, Indent).
+
+%% A Map or Set iterator with the entries it has yet to give.
+collection_iterator(O, Level, Indent, Stack) ->
+    {Label, Items} = bouy_ref_collection:remaining(O),
+    Shown = [case Item of
+                 [K, V] -> <<"[ ", (value(K, Level + 2, Indent + 4, Stack))/binary, ", ", (value(V, Level + 2, Indent + 4, Stack))/binary, " ]">>;
+                 V -> value(V, Level + 1, Indent + 2, Stack)
+             end || Item <- Items],
+    case Shown of
+        [] -> <<"[", Label/binary, "] {  }">>;
+        _ -> bouy_console:reduce(Shown, length(Shown), <<"[", Label/binary, "]">>, {<<"{">>, <<"}">>}, Indent)
+    end.
+
+%% An ArrayBuffer, with its bytes in hex, as Node prints it.
+array_buffer(O, Indent) ->
+    case bouy_ref_buffer:is_detached(O) of
+        true -> <<"ArrayBuffer { (detached), [byteLength]: 0 }">>;
+        false ->
+            Length = bouy_ref_buffer:byte_length(O),
+            Bytes = bouy_ref_buffer:read(O, 0, min(Length, 50)),
+            Hex = lists:join(" ", [io_lib:format("~2.16.0b", [B]) || <<B>> <= Bytes]),
+            More = case Length > 50 of
+                true -> io_lib:format(" ... ~w more byte~s", [Length - 50, case Length - 50 of 1 -> ""; _ -> "s" end]);
+                false -> ""
+            end,
+            Entries = [iolist_to_binary(["[Uint8Contents]: <", Hex, More, ">"]), <<"[byteLength]: ", (integer_to_binary(Length))/binary>>],
+            bouy_console:reduce(Entries, 2, <<"ArrayBuffer">>, {<<"{">>, <<"}">>}, Indent)
+    end.
+
+%% A primitive wrapper object, as Node prints it: [Number: 5].
+wrapper(Name, O, Level, Indent, Stack) ->
+    <<"[", Name/binary, ": ", (value(bouy_heap:slots(O), Level, Indent, Stack))/binary, "]">>.
 
 plain(O, Level, Indent, Stack) ->
     Prefix = prefix(O),

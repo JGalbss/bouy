@@ -26,8 +26,11 @@ use std::thread;
 use bouy_compiler::{Code, Diagnostic, Semantics};
 use clap::Parser;
 
-/// The host functions that test262 expects: `print` for the async tests.
-const HOST: &str = "function print(message) { console.log(String(message)); }\n";
+/// The host functions that test262 expects: `print` for the async tests, and the part of
+/// `$262` that the engine can give: the global object, and `detachArrayBuffer` through
+/// `ArrayBuffer.prototype.transfer`, which detaches its receiver.
+const HOST: &str = "function print(message) { console.log(String(message)); }\n\
+var $262 = { global: globalThis, gc: function () {}, detachArrayBuffer: function (buffer) { if (!buffer.detached) buffer.transfer(); } };\n";
 
 /// The VM half of the runner, which the VM compiles when it starts.
 const VM_RUNNER: &str = include_str!("../../../../runtime/test/bouy_test262.erl");

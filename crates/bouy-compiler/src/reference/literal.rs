@@ -3,16 +3,20 @@
 
 use oxc::ast::ast::{
     ArrayExpression, ArrayExpressionElement, Expression, ObjectExpression, ObjectPropertyKind,
-    PropertyKey, PropertyKind, Super, TemplateLiteral,
+    PropertyKey, PropertyKind, Super, TaggedTemplateExpression, TemplateLiteral,
 };
 use oxc::ast_visit::Visit;
 use oxc::syntax::operator::UnaryOperator;
 
 use super::context::Lowerer;
+use super::expr::strip;
 use super::member::index_of;
 use crate::erlang::Expr;
 
 const OBJECT_PROTO: &str = "Object.prototype";
+
+/// The items of an array literal that one list of the generated code holds.
+const ARRAY_CHUNK: usize = 256;
 
 impl<'a> Lowerer<'a, '_> {
     pub fn template(&mut self, template: &'a TemplateLiteral<'a>) -> Expr {
@@ -30,27 +34,104 @@ impl<'a> Lowerer<'a, '_> {
         self.bind(Expr::call("bouy_ref", "template", vec![Expr::List(parts)]))
     }
 
+    /// A tagged template: the tag gets the template object of the site, which every
+    /// evaluation of the site shares, and the substitutions.
+    pub fn tagged_template(&mut self, tagged: &'a TaggedTemplateExpression<'a>) -> Expr {
+        let quasis = &tagged.quasi.quasis;
+        let cooked = quasis
+            .iter()
+            .map(|quasi| match &quasi.value.cooked {
+                Some(cooked) => js_string_literal(cooked.as_str(), quasi.lone_surrogates),
+                None => Expr::undefined(),
+            })
+            .collect();
+        let raw = quasis
+            .iter()
+            .map(|quasi| {
+                Expr::js_string(
+                    &quasi
+                        .value
+                        .raw
+                        .as_str()
+                        .replace("\r\n", "\n")
+                        .replace('\r', "\n"),
+                )
+            })
+            .collect();
+        let site = Expr::Tuple(vec![
+            Expr::atom(self.module.clone()),
+            Expr::Integer(i64::from(tagged.quasi.span.start)),
+        ]);
+        let callee = strip(&tagged.tag);
+        let member = callee
+            .as_member_expression()
+            .filter(|member| !matches!(member.object(), Expression::Super(_)));
+        let (function, this) = match member {
+            Some(member) => {
+                let (object, key) = self.member_parts(member);
+                (self.get(object.clone(), key), object)
+            }
+            None => (self.expr(callee), Expr::undefined()),
+        };
+        let function = self.bind(function);
+        let template = self.bind(Expr::call(
+            "bouy_ref",
+            "template_object",
+            vec![site, Expr::List(cooked), Expr::List(raw)],
+        ));
+        let mut args = vec![template];
+        for expression in &tagged.quasi.expressions {
+            let value = self.expr(expression);
+            args.push(self.bind(value));
+        }
+        self.bind(Expr::call(
+            "bouy_ref",
+            "call",
+            vec![function, this, Expr::List(args)],
+        ))
+    }
+
     pub fn array(&mut self, array: &'a ArrayExpression<'a>) -> Expr {
-        let spread = array.elements.iter().any(|element| {
-            matches!(
-                element,
-                ArrayExpressionElement::SpreadElement(_) | ArrayExpressionElement::Elision(_)
-            )
-        });
+        let spread = array
+            .elements
+            .iter()
+            .any(|element| matches!(element, ArrayExpressionElement::SpreadElement(_)));
+        let holes = array
+            .elements
+            .iter()
+            .any(|element| matches!(element, ArrayExpressionElement::Elision(_)));
         if !spread {
-            let items = array
-                .elements
-                .iter()
-                .map(|element| match element.as_expression() {
+            // A long literal builds its list in chunks, each bound to a variable, so the
+            // values of one chunk stay live at a time: BEAM has 1024 registers.
+            let mut chunks = Vec::new();
+            let mut items = Vec::new();
+            for element in &array.elements {
+                items.push(match element.as_expression() {
                     Some(expression) => self.expr(expression),
-                    None => Expr::undefined(),
-                })
-                .collect();
-            return self.bind(Expr::call(
-                "bouy_heap",
-                "new_array",
-                vec![Expr::List(items)],
-            ));
+                    None => Expr::atom("$hole"),
+                });
+                if items.len() == ARRAY_CHUNK {
+                    // A remote call, which the Erlang compiler does not move.
+                    let chunk = Expr::call(
+                        "bouy_ref",
+                        "chunk",
+                        vec![Expr::List(std::mem::take(&mut items))],
+                    );
+                    chunks.push(self.bind(chunk));
+                }
+            }
+            let list = if chunks.is_empty() {
+                Expr::List(items)
+            } else {
+                chunks.push(Expr::List(items));
+                Expr::call("lists", "append", vec![Expr::List(chunks)])
+            };
+            let (module, function) = if holes {
+                ("bouy_ref", "array_holes")
+            } else {
+                ("bouy_heap", "new_array")
+            };
+            return self.bind(Expr::call(module, function, vec![list]));
         }
         let parts = array
             .elements
@@ -62,7 +143,7 @@ impl<'a> Lowerer<'a, '_> {
                 ArrayExpressionElement::Elision(_) => Expr::atom("hole"),
                 other => match other.as_expression() {
                     Some(expression) => Expr::tagged("item", self.expr(expression)),
-                    None => Expr::tagged("item", Expr::undefined()),
+                    None => Expr::atom("hole"),
                 },
             })
             .collect();
@@ -212,6 +293,15 @@ pub fn literal_keys(object: &ObjectExpression<'_>) -> Option<Vec<String>> {
         keys.push(name);
     }
     Some(keys)
+}
+
+/// A `BigInt` literal from its base-10 digits: `{'$bigint', Integer}`.
+pub fn bigint(digits: &str) -> Expr {
+    let value = match digits.parse::<i64>() {
+        Ok(value) => Expr::Integer(value),
+        Err(_) => Expr::call("erlang", "binary_to_integer", vec![Expr::binary(digits)]),
+    };
+    Expr::Tuple(vec![Expr::atom("$bigint"), value])
 }
 
 /// A JavaScript number: an Erlang integer when it is one exactly.

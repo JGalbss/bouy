@@ -10,18 +10,18 @@
 -export_type([exit_status/0]).
 
 -type exit_status() :: 0..255.
--export([get/2, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1]).
+-export([get/2, get_from/3, get_computed/2, set/3, set_computed/3, delete/2, delete_computed/2, in/2, to_property_key/1, member_key/2]).
 -export([sloppy_set/3, sloppy_set_computed/3, sloppy_delete/2, sloppy_delete_computed/2, sloppy_this/1]).
--export([mapped_arguments/3, function_name/2, literal_proto/2, named_fn/5, to_numeric/1, tdz_get/2, tdz_error/1]).
+-export([mapped_arguments/3, function_name/2, literal_proto/2, named_fn/5, tdz_get/2, tdz_error/1]).
 -export([with_object/1, with_has/2, const_error/0]).
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, fn/1, fn/3, fn/4, named_fn/3, named_fn/4, new_target/1, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
--export([array/1, array_spread/1, object_spread/2, object_rest/2, template/1]).
+-export([array/1, array_holes/1, array_spread/1, chunk/1, object_spread/2, object_rest/2, template/1, template_object/3]).
 -export([add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1, plus/1]).
 -export([bit_and/2, bit_or/2, bit_xor/2, bit_not/1, shift_left/2, shift_right/2, shift_right_unsigned/2]).
 -export([strict_eq/2, loose_eq/2, lt/2, le/2, gt/2, ge/2, typeof/1, instance_of/2, truthy/1]).
--export([to_string/1, to_number/1, to_primitive/2, increment/1, decrement/1]).
+-export([to_string/1, to_number/1, to_numeric/1, to_object/1, to_primitive/2, increment/1, decrement/1]).
 -export([describe/1, typeof_global/1, spawn_args/1, stop_actor/1, heap_stats/0, vm_memory/0]).
 
 -include("bouy_ref.hrl").
@@ -102,10 +102,11 @@ get({'$f', _, _} = F, K) -> bouy_heap:get(F, K);
 get(S, K) when ?IS_STRING(S) -> bouy_ref_string:get(S, K);
 get(undefined, K) -> read_error(<<"undefined">>, K);
 get(null, K) -> read_error(<<"null">>, K);
-get(B, K) when is_boolean(B) -> bouy_heap:get({'$o', 'Boolean.prototype'}, K);
-get(N, K) when ?IS_NUMBER(N) -> bouy_heap:get({'$o', 'Number.prototype'}, K);
+get(B, K) when is_boolean(B) -> lookup({'$o', 'Boolean.prototype'}, K, B);
+get(N, K) when ?IS_NUMBER(N) -> lookup({'$o', 'Number.prototype'}, K, N);
+get({'$bigint', _} = B, K) -> lookup({'$o', 'BigInt.prototype'}, K, B);
 get({'$sym', _, Description}, <<"description">>) -> Description;
-get({'$sym', _, _}, K) -> bouy_heap:get({'$o', 'Symbol.prototype'}, K);
+get({'$sym', _, _} = S, K) -> lookup({'$o', 'Symbol.prototype'}, K, S);
 get({'$actor', Pid}, K) when ?IS_STRING(K) -> {'$f', {actor, Pid, K}, fun(_This, Args) -> bouy_jobs:actor_call(Pid, K, Args) end};
 get({'$actor', _}, _K) -> undefined.
 
@@ -163,7 +164,7 @@ sloppy_delete_computed(O, K) -> sloppy_delete(O, to_property_key(K)).
 %% The this of a sloppy function: the global object for undefined and null.
 -spec sloppy_this(term()) -> term().
 sloppy_this(This) when This =:= undefined; This =:= null -> {'$o', 'globalThis'};
-sloppy_this(This) -> This.
+sloppy_this(This) -> to_object(This).
 
 -spec delete(term(), bouy_heap:key()) -> boolean().
 delete(O, K) when ?IS_OBJECT(O) -> bouy_heap:delete(O, K);
@@ -179,8 +180,19 @@ delete_computed(O, K) -> delete(O, to_property_key(K)).
 in(K, O) when ?IS_OBJECT(O) -> bouy_heap:has(O, to_property_key(K));
 in(K, O) -> type_error(text([<<"Cannot use 'in' operator to search for '">>, to_string(K), <<"' in ">>, describe(O)])).
 
+%% The key of o[k] in an update or a compound assignment: the base must not
+%% be undefined or null before the key converts.
+-spec member_key(term(), term()) -> bouy_heap:key().
+member_key(undefined, K) -> read_error(<<"undefined">>, key_preview(K));
+member_key(null, K) -> read_error(<<"null">>, key_preview(K));
+member_key(_O, K) -> to_property_key(K).
+
+key_preview(K) when ?IS_OBJECT(K) -> <<"[object]">>;
+key_preview(K) -> to_property_key(K).
+
 -spec to_property_key(term()) -> bouy_heap:key().
-to_property_key(K) when ?IS_OBJECT(K) -> bouy_heap:to_key(to_primitive(K, string));
+to_property_key(K) when ?IS_OBJECT(K) -> to_property_key(to_primitive(K, string));
+to_property_key({'$bigint', _} = K) -> bouy_heap:to_key(to_string(K));
 to_property_key(K) -> bouy_heap:to_key(K).
 
 key_text(K) when ?IS_STRING(K) -> K;
@@ -234,6 +246,11 @@ super_construct(Parent, Args, NewTarget) -> bouy_heap:construct(Parent, Args, Ne
 %% super.k inside a method whose home object is Home, with this as receiver.
 -spec super_get(term(), bouy_heap:key(), term()) -> term().
 super_get(Home, K, This) -> lookup(bouy_heap:prototype_of(Home), K, This).
+
+%% [[Get]] of K on the object O with Receiver as this for a getter, as a
+%% property read on a primitive does on its prototype.
+-spec get_from(term(), bouy_heap:key(), term()) -> term().
+get_from(O, K, Receiver) -> lookup(O, K, Receiver).
 
 lookup(null, _K, _Receiver) ->
     undefined;
@@ -372,9 +389,6 @@ tdz_error(Name) ->
     bouy_heap:throw_error('ReferenceError', text([<<"Cannot access '">>, Name, <<"' before initialization">>])).
 
 %% ToNumeric: a number, until BigInt arrives.
--spec to_numeric(term()) -> term().
-to_numeric(V) -> to_number(V).
-
 %% A function of a kind: normal, which new can construct, generator or
 %% async_generator, whose prototype object is the prototype of the
 %% generators it makes, or async, which has no prototype.
@@ -485,27 +499,27 @@ define_field(O, K, V) ->
 -spec array(list()) -> term().
 array(Items) -> bouy_heap:new_array(Items).
 
-%% [a, , b] and [a, ...b]: Parts are {item, V}, hole, and {spread, Iterable}.
-%% A hole leaves its index without an element.
--spec array_spread(list()) -> term().
-array_spread(Parts) ->
-    Items = lists:append([spread_part(P) || P <- Parts]),
-    case lists:member(hole, Items) of
-        false -> bouy_heap:new_array([V || {item, V} <- Items]);
-        true -> holey_array(Items)
-    end.
+%% A chunk of the items of a long array literal: the call keeps the Erlang
+%% compiler from moving the list to its use, where every item would be live.
+-spec chunk(list()) -> list().
+chunk(Items) -> Items.
 
-holey_array(Items) ->
-    A = bouy_heap:new_array([]),
-    Length = lists:foldl(fun(hole, I) -> I + 1;
-                            ({item, V}, I) -> _ = bouy_heap:set(A, I, V), I + 1
-                         end, 0, Items),
-    _ = bouy_heap:set(A, <<"length">>, Length),
+%% An array literal with elisions: each '$hole' is an index without a
+%% property, as in [1, , 3].
+-spec array_holes(list()) -> term().
+array_holes(Items) ->
+    A = bouy_heap:new_array(Items),
+    [bouy_heap:delete(A, I) || {I, '$hole'} <- lists:enumerate(0, Items)],
     A.
 
-spread_part({item, V}) -> [{item, V}];
-spread_part(hole) -> [hole];
-spread_part({spread, V}) -> [{item, X} || X <- bouy_ref_iterator:to_list(V)].
+%% [a, ...b]: Parts are {item, V}, {spread, Iterable}, and hole.
+-spec array_spread(list()) -> term().
+array_spread(Parts) ->
+    array_holes(lists:append([spread_part(P) || P <- Parts])).
+
+spread_part({item, V}) -> [V];
+spread_part(hole) -> ['$hole'];
+spread_part({spread, V}) -> bouy_ref_iterator:to_list(V).
 
 %% {...source} into Target: CopyDataProperties.
 -spec object_spread(term(), term()) -> term().
@@ -543,90 +557,124 @@ object_rest(Source, Excluded) ->
 -spec template(list()) -> bouy_ref_string:js_string().
 template(Parts) -> text([to_string(P) || P <- Parts]).
 
+%% GetTemplateObject: the frozen array of the cooked strings of a tagged
+%% template, with the frozen array of its raw strings as raw. Each site
+%% makes it once per realm, so every evaluation of the site gets the same
+%% object.
+-spec template_object(term(), list(), list()) -> term().
+template_object(Site, Cooked, Raw) ->
+    Key = {'$bouy_template', Site},
+    case erlang:get(Key) of
+        undefined ->
+            RawArray = bouy_heap:freeze(bouy_heap:new_array(Raw)),
+            Template = bouy_heap:new_array(Cooked),
+            bouy_heap:define(Template, <<"raw">>, #{value => RawArray, writable => false, enumerable => false, configurable => false}),
+            bouy_heap:freeze(Template),
+            erlang:put(Key, Template),
+            Template;
+        Template ->
+            Template
+    end.
+
 %%% Operators
 
 -spec add(term(), term()) -> term().
 add(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:canonical(A + B);
 add(A, B) when is_binary(A), is_binary(B) -> <<A/binary, B/binary>>;
+add(A, B) when is_number(A), is_number(B) -> bouy_ref_number:add(A, B);
 add(A, B) ->
     PA = to_primitive(A, default),
     PB = to_primitive(B, default),
     case ?IS_STRING(PA) orelse ?IS_STRING(PB) of
         true -> bouy_ref_string:concat(to_string(PA), to_string(PB));
-        false -> bouy_ref_number:add(to_number(PA), to_number(PB))
+        false -> numeric(add, to_numeric(PA), to_numeric(PB))
     end.
 
-%% ToNumeric for the operators, which take no BigInt yet.
-num(N) when ?IS_NUMBER(N) -> N;
-num(V) -> to_number(V).
+%% A numeric operator on the results of ToNumeric: both BigInts, both
+%% numbers, or a TypeError for a mix.
+numeric(Op, {'$bigint', X}, {'$bigint', Y}) -> bouy_ref_bigint:operate(Op, X, Y);
+numeric(_Op, {'$bigint', _}, _) -> mix_error();
+numeric(_Op, _, {'$bigint', _}) -> mix_error();
+numeric(Op, A, B) -> bouy_ref_number:Op(A, B).
+
+-spec mix_error() -> no_return().
+mix_error() -> type_error(<<"Cannot mix BigInt and other types, use explicit conversions">>).
+
+%% ToNumeric of both operands, the left first.
+binary_numeric(Op, A, B) ->
+    NA = to_numeric(A),
+    numeric(Op, NA, to_numeric(B)).
 
 -spec sub(term(), term()) -> term().
 sub(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:canonical(A - B);
-sub(A, B) ->
-    NA = num(A),
-    bouy_ref_number:sub(NA, num(B)).
+sub(A, B) when is_number(A), is_number(B) -> bouy_ref_number:sub(A, B);
+sub(A, B) -> binary_numeric(sub, A, B).
 
 -spec mul(term(), term()) -> term().
-mul(A, B) ->
-    NA = num(A),
-    bouy_ref_number:mul(NA, num(B)).
+mul(A, B) when is_number(A), is_number(B) -> bouy_ref_number:mul(A, B);
+mul(A, B) -> binary_numeric(mul, A, B).
 
 -spec divide(term(), term()) -> term().
-divide(A, B) ->
-    NA = num(A),
-    bouy_ref_number:divide(NA, num(B)).
+divide(A, B) when is_number(A), is_number(B) -> bouy_ref_number:divide(A, B);
+divide(A, B) -> binary_numeric(divide, A, B).
 
 -spec remainder(term(), term()) -> term().
 remainder(A, B) when is_integer(A), is_integer(B), B > 0, A >= 0 -> A rem B;
-remainder(A, B) ->
-    NA = num(A),
-    bouy_ref_number:remainder(NA, num(B)).
+remainder(A, B) -> binary_numeric(remainder, A, B).
 
 -spec power(term(), term()) -> term().
-power(A, B) ->
-    NA = num(A),
-    bouy_ref_number:power(NA, num(B)).
+power(A, B) -> binary_numeric(power, A, B).
 
 -spec negate(term()) -> term().
-negate(A) -> bouy_ref_number:negate(num(A)).
+negate(A) ->
+    case to_numeric(A) of
+        {'$bigint', X} -> bouy_ref_bigint:negate(X);
+        N -> bouy_ref_number:negate(N)
+    end.
 
 -spec plus(term()) -> term().
 plus(A) -> to_number(A).
 
 -spec increment(term()) -> term().
 increment(A) when is_integer(A) -> bouy_ref_number:canonical(A + 1);
-increment(A) -> bouy_ref_number:add(num(A), 1).
+increment(A) -> numeric(add, to_numeric(A), one(A)).
 
 -spec decrement(term()) -> term().
 decrement(A) when is_integer(A) -> bouy_ref_number:canonical(A - 1);
-decrement(A) -> bouy_ref_number:sub(num(A), 1).
+decrement(A) -> numeric(sub, to_numeric(A), one(A)).
 
--spec bit_and(term(), term()) -> integer().
-bit_and(A, B) ->
-    NA = num(A),
-    bouy_ref_number:bit_and(NA, num(B)).
--spec bit_or(term(), term()) -> integer().
-bit_or(A, B) ->
-    NA = num(A),
-    bouy_ref_number:bit_or(NA, num(B)).
--spec bit_xor(term(), term()) -> integer().
-bit_xor(A, B) ->
-    NA = num(A),
-    bouy_ref_number:bit_xor(NA, num(B)).
--spec bit_not(term()) -> integer().
-bit_not(A) -> bouy_ref_number:bit_not(num(A)).
--spec shift_left(term(), term()) -> integer().
-shift_left(A, B) ->
-    NA = num(A),
-    bouy_ref_number:shift_left(NA, num(B)).
--spec shift_right(term(), term()) -> integer().
-shift_right(A, B) ->
-    NA = num(A),
-    bouy_ref_number:shift_right(NA, num(B)).
--spec shift_right_unsigned(term(), term()) -> integer().
-shift_right_unsigned(A, B) ->
-    NA = num(A),
-    bouy_ref_number:shift_right_unsigned(NA, num(B)).
+%% The 1 of the type of a numeric value.
+one(N) when ?IS_NUMBER(N) -> 1;
+one(V) ->
+    case to_numeric(V) of
+        {'$bigint', _} -> {'$bigint', 1};
+        _ -> 1
+    end.
+
+-spec bit_and(term(), term()) -> term().
+bit_and(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:bit_and(A, B);
+bit_and(A, B) -> binary_numeric(bit_and, A, B).
+-spec bit_or(term(), term()) -> term().
+bit_or(A, B) when is_integer(A), is_integer(B), A >= 0, A < 16#80000000, B >= 0, B < 16#80000000 -> A bor B;
+bit_or(A, B) -> binary_numeric(bit_or, A, B).
+-spec bit_xor(term(), term()) -> term().
+bit_xor(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:bit_xor(A, B);
+bit_xor(A, B) -> binary_numeric(bit_xor, A, B).
+-spec bit_not(term()) -> term().
+bit_not(A) ->
+    case to_numeric(A) of
+        {'$bigint', X} -> bouy_ref_bigint:bit_not(X);
+        N -> bouy_ref_number:bit_not(N)
+    end.
+-spec shift_left(term(), term()) -> term().
+shift_left(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:shift_left(A, B);
+shift_left(A, B) -> binary_numeric(shift_left, A, B).
+-spec shift_right(term(), term()) -> term().
+shift_right(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:shift_right(A, B);
+shift_right(A, B) -> binary_numeric(shift_right, A, B).
+-spec shift_right_unsigned(term(), term()) -> term().
+shift_right_unsigned(A, B) when is_integer(A), is_integer(B) -> bouy_ref_number:shift_right_unsigned(A, B);
+shift_right_unsigned(A, B) -> binary_numeric(shift_right_unsigned, A, B).
 
 %% Objects compare by identity: the terms are equal only for the same id.
 -spec strict_eq(term(), term()) -> boolean().
@@ -642,6 +690,11 @@ loose_eq(A, B) when ?IS_NUMBER(A), ?IS_NUMBER(B) -> strict_eq(A, B);
 loose_eq(A, B) when ?IS_STRING(A), ?IS_STRING(B) -> A =:= B;
 loose_eq(A, B) when ?IS_NUMBER(A), ?IS_STRING(B) -> strict_eq(A, to_number(B));
 loose_eq(A, B) when ?IS_STRING(A), ?IS_NUMBER(B) -> strict_eq(to_number(A), B);
+loose_eq({'$bigint', X}, {'$bigint', Y}) -> X =:= Y;
+loose_eq({'$bigint', _} = A, B) when ?IS_STRING(B) -> bouy_ref_bigint:from_string(B) =:= A;
+loose_eq(A, {'$bigint', _} = B) when ?IS_STRING(A) -> bouy_ref_bigint:from_string(A) =:= B;
+loose_eq({'$bigint', X}, B) when ?IS_NUMBER(B) -> bouy_ref_bigint:equals_number(X, B);
+loose_eq(A, {'$bigint', Y}) when ?IS_NUMBER(A) -> bouy_ref_bigint:equals_number(Y, A);
 loose_eq(A, B) when is_boolean(A) -> loose_eq(to_number(A), B);
 loose_eq(A, B) when is_boolean(B) -> loose_eq(A, to_number(B));
 loose_eq(A, B) when ?IS_OBJECT(A) -> loose_eq(to_primitive(A, default), B);
@@ -675,12 +728,29 @@ primitives(A, B) ->
     {PA, to_primitive(B, number)}.
 
 less(A, B) when ?IS_STRING(A), ?IS_STRING(B) -> bouy_ref_string:compare(A, B) =:= lt;
+less({'$bigint', _} = A, B) when ?IS_STRING(B) -> less_order(A, bouy_ref_bigint:from_string(B));
+less(A, {'$bigint', _} = B) when ?IS_STRING(A) -> less_order(bouy_ref_bigint:from_string(A), B);
 less(A, B) ->
-    NA = num(A),
-    case bouy_ref_number:compare(NA, num(B)) of
+    NA = to_numeric(A),
+    less_order(NA, to_numeric(B)).
+
+less_order(undefined, _) -> undefined;
+less_order(_, undefined) -> undefined;
+less_order(A, B) ->
+    Order = case {A, B} of
+        {{'$bigint', X}, {'$bigint', Y}} -> bouy_ref_number:compare(X, Y);
+        {{'$bigint', X}, _} -> bouy_ref_bigint:compare_number(X, B);
+        {_, {'$bigint', Y}} -> invert(bouy_ref_bigint:compare_number(Y, A));
+        _ -> bouy_ref_number:compare(A, B)
+    end,
+    case Order of
         undefined -> undefined;
-        Order -> Order =:= lt
+        _ -> Order =:= lt
     end.
+
+invert(lt) -> gt;
+invert(gt) -> lt;
+invert(Order) -> Order.
 
 -spec typeof(term()) -> binary().
 typeof({'$f', _, _}) -> <<"function">>;
@@ -691,6 +761,7 @@ typeof(undefined) -> <<"undefined">>;
 typeof(null) -> <<"object">>;
 typeof(B) when is_boolean(B) -> <<"boolean">>;
 typeof(N) when ?IS_NUMBER(N) -> <<"number">>;
+typeof({'$bigint', _}) -> <<"bigint">>;
 typeof(S) when ?IS_STRING(S) -> <<"string">>.
 
 %% `typeof name` for a name that no scope declares: "undefined" for a missing global.
@@ -725,6 +796,7 @@ truthy(0) -> false;
 truthy(<<>>) -> false;
 truthy(F) when is_float(F) -> F /= 0;
 truthy('NaN') -> false;
+truthy({'$bigint', 0}) -> false;
 truthy(_) -> true.
 
 %%% Conversions
@@ -738,6 +810,7 @@ to_string(undefined) -> <<"undefined">>;
 to_string(null) -> <<"null">>;
 to_string(V) when ?IS_OBJECT(V) -> to_string(to_primitive(V, string));
 to_string({'$sym', _, _}) -> type_error(<<"Cannot convert a Symbol value to a string">>);
+to_string({'$bigint', I}) -> integer_to_binary(I);
 to_string({'$actor', _}) -> <<"[object ActorRef]">>.
 
 -spec to_number(term()) -> term().
@@ -749,7 +822,26 @@ to_number(null) -> 0;
 to_number(undefined) -> 'NaN';
 to_number(V) when ?IS_OBJECT(V) -> to_number(to_primitive(V, number));
 to_number({'$sym', _, _}) -> type_error(<<"Cannot convert a Symbol value to a number">>);
+to_number({'$bigint', _}) -> type_error(<<"Cannot convert a BigInt value to a number">>);
 to_number(_) -> 'NaN'.
+
+%% ToNumeric: a number, or a BigInt.
+-spec to_numeric(term()) -> term().
+to_numeric(N) when ?IS_NUMBER(N) -> N;
+to_numeric({'$bigint', _} = B) -> B;
+to_numeric(V) when ?IS_OBJECT(V) -> to_numeric(to_primitive(V, number));
+to_numeric(V) -> to_number(V).
+
+%% ToObject: an object as it is, else the wrapper object of a primitive.
+-spec to_object(term()) -> term().
+to_object(V) when ?IS_OBJECT(V) -> V;
+to_object(V) when V =:= undefined; V =:= null -> type_error(<<"Cannot convert undefined or null to object">>);
+to_object(N) when ?IS_NUMBER(N) -> bouy_ref_number:wrap(N, {'$o', 'Number.prototype'});
+to_object(S) when ?IS_STRING(S) -> bouy_ref_string:wrap(S, {'$o', 'String.prototype'});
+to_object(B) when is_boolean(B) -> bouy_ref_boolean:wrap(B, {'$o', 'Boolean.prototype'});
+to_object({'$bigint', _} = B) -> bouy_ref_bigint:wrap(B, {'$o', 'BigInt.prototype'});
+to_object({'$sym', _, _} = S) -> bouy_heap:new_exotic(symbol, {'$o', 'Symbol.prototype'}, S);
+to_object(V) -> V.
 
 %% ToPrimitive: Symbol.toPrimitive, else valueOf and toString in the order
 %% of the hint.
@@ -758,6 +850,8 @@ to_primitive(V, Hint) when ?IS_OBJECT(V) ->
     case get(V, bouy_heap:well_known(toPrimitive)) of
         {'$f', _, _} = Exotic ->
             primitive_or_fail(call(Exotic, V, [atom_to_binary(Hint)]));
+        Method when Method =/= undefined, Method =/= null ->
+            type_error(<<"Symbol.toPrimitive is not a function">>);
         _ ->
             Order = case Hint of
                 string -> [<<"toString">>, <<"valueOf">>];

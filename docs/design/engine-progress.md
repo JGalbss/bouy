@@ -135,6 +135,22 @@ The counts include proposals, such as Temporal and ShadowRealm, and the features
 | test/built-ins/parseInt                       |    55 |   47 |    8 |       0 |       0 |    0 |     85.5% |
 | test/built-ins/undefined                      |     8 |    8 |    0 |       0 |       0 |    0 |    100.0% |
 
+## Causes left in the primitive built-ins
+
+After the primitives work (commit `b80f085`), 1,374 tests of its directories still fail: the built-ins of the primitive values, typed arrays, ArrayBuffer, DataView, the URI functions, `test/language/literals`, and the operator directories of `test/language/expressions`. Most wait on other areas of the engine. Each count is of tests whose first error has the cause.
+
+| Cause                                                                                                                       | Tests | Area         |
+| --------------------------------------------------------------------------------------------------------------------------- | ----: | ------------ |
+| Regular expression literals, `RegExp`, and the `Symbol.match`, `replace`, `search`, and `split` protocols of String methods |   438 | RegExp       |
+| `new Function`, `eval`, and the subclasses that `resizableArrayBufferUtils.js` makes with `new Function`                    |   234 | objects      |
+| `Reflect` and `Proxy`                                                                                                       |   205 | objects      |
+| `this` at the top level of a script, which test262 reads as the global object                                               |    55 | objects      |
+| `$DONE` as a property of the global object, which `asyncTest` checks                                                        |    71 | objects      |
+| `Object.isExtensible`, `preventExtensions`, and `defineProperties`                                                          |    57 | objects      |
+| `$262.createRealm` and the other hooks of another realm                                                                     |    68 | test harness |
+| `ArrayBuffer.prototype.transferToImmutable`, a proposal that Node 25 does not ship                                          |    50 | none         |
+| A realm that grows past 256 MB in one long job, before the collector can run                                                |     3 | heap         |
+
 ## Largest causes at the baseline
 
 Each count is the number of tests whose first error has this cause. When a cause is fixed, a test can fail on its next error.

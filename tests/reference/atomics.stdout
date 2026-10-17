@@ -1,0 +1,5 @@
+0 5 3 3 3 9 Int32Array(4) [ 3, 4, 0, 0 ]
+0 44 0 6 2 Uint8Array(4) [ 44, 3, 0, 0 ] true not-equal 0
+0n -9223372036854775808n
+TypeError
+RangeError

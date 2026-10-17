@@ -13,7 +13,7 @@ use oxc::syntax::operator::{
 };
 
 use super::context::{Kind, Lowerer, Top, boolean_case};
-use super::literal::{js_string_literal, number};
+use super::literal::{bigint, js_string_literal, number};
 use super::member::{MemberKey, super_parts};
 use crate::erlang::{Clause, Expr};
 
@@ -27,6 +27,8 @@ impl<'a> Lowerer<'a, '_> {
                 js_string_literal(literal.value.as_str(), literal.lone_surrogates)
             }
             Expression::TemplateLiteral(template) => self.template(template),
+            Expression::TaggedTemplateExpression(tagged) => self.tagged_template(tagged),
+            Expression::BigIntLiteral(literal) => bigint(literal.value.as_str()),
             Expression::Identifier(ident) => self.identifier(ident),
             Expression::ThisExpression(_) => self.this_expr(),
             Expression::NewTarget(_) => self.new_target_expr(),
@@ -94,9 +96,7 @@ impl<'a> Lowerer<'a, '_> {
             Expression::ImportMeta(_) => self.import_meta(),
             other => {
                 let what = match other {
-                    Expression::BigIntLiteral(_) => "a BigInt literal",
                     Expression::RegExpLiteral(_) => "a regular expression literal",
-                    Expression::TaggedTemplateExpression(_) => "a tagged template",
                     Expression::ImportExpression(_) => "`import()`",
                     Expression::ImportMeta(_) => "`import.meta`",
                     Expression::Super(_) => "this use of `super`",
@@ -337,7 +337,7 @@ impl<'a> Lowerer<'a, '_> {
             self.set(object, key, value.clone());
             return value;
         }
-        let key = self.fix_key(key);
+        let key = self.member_key_of(&object, key);
         let current = self.get(object.clone(), key.clone());
         // A logical assignment that short-circuits writes nothing, so no setter runs.
         if let Some(logical) = logical_operator(operator) {
@@ -410,7 +410,7 @@ impl<'a> Lowerer<'a, '_> {
                     return if update.prefix { new } else { old };
                 };
                 let old = self.read_symbol(symbol, ident.span);
-                let old = self.bind(old);
+                let old = self.bind(Expr::call("bouy_ref", "to_numeric", vec![old]));
                 let new = self.bind(Expr::call("bouy_ref", function, vec![old.clone()]));
                 let new = self.assign_symbol(symbol, new, ident.span);
                 if update.prefix { new } else { old }
@@ -418,14 +418,29 @@ impl<'a> Lowerer<'a, '_> {
             other => match other.as_member_expression() {
                 Some(member) => {
                     let (object, key) = self.member_parts(member);
-                    let key = self.fix_key(key);
+                    let key = self.member_key_of(&object, key);
                     let old = self.get(object.clone(), key.clone());
+                    let old = self.bind(Expr::call("bouy_ref", "to_numeric", vec![old]));
                     let new = self.bind(Expr::call("bouy_ref", function, vec![old.clone()]));
                     self.set(object, key, new.clone());
                     if update.prefix { new } else { old }
                 }
                 None => self.unsupported(update.span, "this update"),
             },
+        }
+    }
+
+    /// The key of a member that an update or a compound assignment reads and writes:
+    /// converted once, after the check that the base is not undefined or null.
+    fn member_key_of(&mut self, object: &Expr, key: MemberKey) -> MemberKey {
+        match key {
+            MemberKey::Static(key) => MemberKey::Static(key),
+            MemberKey::Private(key) => MemberKey::Private(key),
+            MemberKey::Dynamic(value) => MemberKey::Static(self.bind(Expr::call(
+                "bouy_ref",
+                "member_key",
+                vec![object.clone(), value],
+            ))),
         }
     }
 
