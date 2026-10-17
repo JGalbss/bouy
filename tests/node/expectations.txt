@@ -3300,7 +3300,7 @@ parallel/test-stream-pipeline-uncaught.js rejected
 parallel/test-stream-pipeline-with-empty-string.js rejected
 parallel/test-stream-pipeline.js rejected
 parallel/test-stream-preprocess.js rejected
-parallel/test-stream-promises.js rejected
+parallel/test-stream-promises.js pass
 parallel/test-stream-push-order.js rejected
 parallel/test-stream-push-strings.js rejected
 parallel/test-stream-readable-aborted.js rejected
@@ -4395,7 +4395,7 @@ sequential/test-repl-timeout-throw.js rejected
 sequential/test-require-cache-without-stat.js rejected
 sequential/test-resolution-inspect-brk.js rejected
 sequential/test-runner-run-inspect.mjs rejected
-sequential/test-stream2-fs.js rejected
+sequential/test-stream2-fs.js pass
 sequential/test-stream2-stderr-sync.js rejected
 sequential/test-timers-block-eventloop.js skip
 sequential/test-timers-set-interval-excludes-callback-duration.js skip
