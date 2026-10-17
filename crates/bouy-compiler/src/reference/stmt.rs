@@ -2,7 +2,9 @@
 //! tail call: of the join fun of the rest of the block, of a loop fun, or of the function
 //! end. So `return v` is just the value, and loops do not grow the stack.
 
-use oxc::ast::ast::{Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement};
+use oxc::ast::ast::{
+    BindingPattern, Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement,
+};
 use oxc::ast_visit::Visit;
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
@@ -11,7 +13,7 @@ use super::analyze::{Assigned, completes_normally};
 use super::context::{
     Cont, Local, Lowerer, Target, TargetKind, boolean_case, cell_set, throw_value,
 };
-use super::function::length_of;
+use super::function::binding_name;
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -92,8 +94,31 @@ impl<'a> Lowerer<'a, '_> {
             })
             .collect();
         let saved = std::mem::take(&mut self.pre);
+        // A `let`, `const`, or class that a function written before it reads gets its cell
+        // now, holding '$tdz' until the declaration runs.
+        for symbol in list.iter().flat_map(|statement| block_bindings(statement)) {
+            // The rest of a block after a compound statement hoists again; keep the cell.
+            // A module-level binding lives in the process dictionary instead.
+            if self.analysis.early.contains(&symbol)
+                && !self.frame.env.contains_key(&symbol)
+                && !self.tops.contains_key(&symbol)
+            {
+                let cell = self.fresh("Tdz");
+                self.pre.push(Expr::matches(
+                    Expr::var(cell.clone()),
+                    Expr::call("bouy_heap", "cell", vec![Expr::atom("$tdz")]),
+                ));
+                self.frame.env.insert(symbol, Local::Cell(cell));
+            }
+        }
         let mut cells = Vec::new();
         for (symbol, _) in &functions {
+            // A sloppy block function shares the cell that its function made for it at the
+            // start (Annex B.3.3), and the rest of a block hoists again into the same cell.
+            if let Some(Local::Cell(cell)) = self.frame.env.get(symbol) {
+                cells.push(cell.clone());
+                continue;
+            }
             let cell = self.fresh("Fn");
             self.pre.push(Expr::matches(
                 Expr::var(cell.clone()),
@@ -103,21 +128,7 @@ impl<'a> Lowerer<'a, '_> {
             cells.push(cell);
         }
         for ((_, function), cell) in functions.iter().zip(cells) {
-            let fun = self.function_fun(function, None);
-            let name = function
-                .id
-                .as_ref()
-                .map_or_else(String::new, |id| id.name.to_string());
-            let length = length_of(&function.params);
-            let value = self.bind(Expr::call(
-                "bouy_ref",
-                "named_fn",
-                vec![
-                    fun,
-                    Expr::js_string(&name),
-                    Expr::Integer(i64::try_from(length).unwrap_or(0)),
-                ],
-            ));
+            let value = self.function_value(function, None, false);
             self.pre.push(cell_set(&cell, value));
         }
         std::mem::replace(&mut self.pre, saved)
@@ -172,8 +183,19 @@ impl<'a> Lowerer<'a, '_> {
             if declaration.kind.is_var() && declarator.init.is_none() {
                 continue;
             }
+            if declaration.kind.is_var()
+                && let (BindingPattern::BindingIdentifier(id), Some(init)) =
+                    (&declarator.id, &declarator.init)
+                && let Some(symbol) = id.symbol_id.get()
+            {
+                let objects = self.with_objects_for(Some(symbol));
+                if !objects.is_empty() {
+                    self.with_var_initializer(id.name.as_str(), symbol, &objects, init);
+                    continue;
+                }
+            }
             let value = match &declarator.init {
-                Some(init) => self.expr(init),
+                Some(init) => self.named_expr(init, binding_name(&declarator.id)),
                 None => Expr::undefined(),
             };
             self.declare_pattern(&declarator.id, value);
@@ -193,6 +215,7 @@ impl<'a> Lowerer<'a, '_> {
             Statement::SwitchStatement(statement) => self.switch_statement(statement, k),
             Statement::TryStatement(statement) => self.try_statement(statement, k),
             Statement::LabeledStatement(statement) => self.labeled_statement(statement, k),
+            Statement::WithStatement(statement) => self.with_statement(statement, k),
             Statement::BlockStatement(inner) => self.stmts(inner.body.iter().collect(), k),
             Statement::ReturnStatement(statement) => {
                 let value = match &statement.argument {
@@ -494,4 +517,23 @@ pub fn is_simple(statement: &Statement<'_>) -> bool {
             | Statement::ExportNamedDeclaration(_)
             | Statement::DebuggerStatement(_)
     )
+}
+
+/// The `let`, `const`, and class bindings that a statement declares in its block.
+fn block_bindings(statement: &Statement<'_>) -> Vec<SymbolId> {
+    match statement {
+        Statement::VariableDeclaration(declaration) if !declaration.kind.is_var() => declaration
+            .declarations
+            .iter()
+            .flat_map(|declarator| declarator.id.get_binding_identifiers())
+            .filter_map(|id| id.symbol_id.get())
+            .collect(),
+        Statement::ClassDeclaration(class) => class
+            .id
+            .as_ref()
+            .and_then(|id| id.symbol_id.get())
+            .into_iter()
+            .collect(),
+        _ => Vec::new(),
+    }
 }

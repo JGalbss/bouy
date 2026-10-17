@@ -1,0 +1,13 @@
+plain undefined Symbol(plain) Symbol()
+true shared undefined
+TypeError TypeError
+TypeError
+true Symbol.iterator
+{"writable":false,"enumerable":false,"configurable":false}
+42 forty-two [object Money]
+[ 'regular' ] 1 {"regular":2}
+value false true true false
+TypeError TypeError
+[object WeakMap] [object WeakSet]
+true [object WeakRef] TypeError
+true false TypeError

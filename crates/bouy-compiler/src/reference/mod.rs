@@ -42,10 +42,11 @@ mod pattern;
 mod stmt;
 mod suspend;
 mod variable;
+mod with;
 
 use std::collections::HashMap;
 
-use crate::diagnostic::{Diagnostic, Reporter};
+use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::erlang;
 use crate::graph;
 use crate::parse::with_program;
@@ -54,6 +55,98 @@ use context::{Frame, Lowerer};
 
 /// Lowers `module` with reference semantics.
 pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
+    lower(module, None, &[])
+}
+
+/// Lowers the code of an `eval` (`compile_eval` of the crate).
+pub fn lower_eval(
+    module: &graph::Module,
+    strict: bool,
+    function: bool,
+    lexical: &[String],
+    scope: &[String],
+) -> Result<String, Vec<Diagnostic>> {
+    if !lexical.is_empty() && !strict {
+        let conflict = with_program(&module.path, &module.source, |program, semantic| {
+            declared_var_names(program, semantic)
+                .into_iter()
+                .find(|name| lexical.contains(name))
+        })?;
+        if let Some(name) = conflict {
+            let reporter = Reporter::new(&module.path, &module.source);
+            return Err(vec![reporter.at(
+                0,
+                Code::Syntax,
+                format!("Identifier '{name}' has already been declared"),
+            )]);
+        }
+    }
+    if function {
+        let complete = with_program(&module.path, &module.source, |program, _| {
+            is_one_function(program, module.source.len())
+        })?;
+        if !complete {
+            let reporter = Reporter::new(&module.path, &module.source);
+            return Err(vec![reporter.at(
+                0,
+                Code::Syntax,
+                "the body of a Function closes the function early".to_owned(),
+            )]);
+        }
+    }
+    lower(module, Some(strict), scope)
+}
+
+/// The names that sloppy eval code declares in its variable environment: its top-level
+/// `var` names and function declarations (`EvalDeclarationInstantiation`).
+fn declared_var_names(
+    program: &oxc::ast::ast::Program<'_>,
+    semantic: &oxc::semantic::Semantic<'_>,
+) -> Vec<String> {
+    use oxc::ast_visit::Visit;
+    let scoping = semantic.scoping();
+    if scoping
+        .scope_flags(scoping.root_scope_id())
+        .is_strict_mode()
+    {
+        return Vec::new();
+    }
+    let mut vars = analyze::VarDeclarations::default();
+    vars.visit_program(program);
+    let mut names: Vec<String> = vars
+        .0
+        .iter()
+        .map(|symbol| scoping.symbol_name(*symbol).to_owned())
+        .collect();
+    for statement in &program.body {
+        if let oxc::ast::ast::Statement::FunctionDeclaration(function) = statement
+            && let Some(id) = &function.id
+        {
+            names.push(id.name.to_string());
+        }
+    }
+    names
+}
+
+/// Whether the program is one parenthesized function expression that ends where the source
+/// does, before its closing parenthesis.
+fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool {
+    use oxc::ast::ast::{Expression, Statement};
+    let [Statement::ExpressionStatement(statement)] = program.body.as_slice() else {
+        return false;
+    };
+    let Expression::ParenthesizedExpression(inner) = &statement.expression else {
+        return false;
+    };
+    matches!(&inner.expression, Expression::FunctionExpression(function)
+        if function.span.end as usize + 1 == length)
+}
+
+fn lower(
+    module: &graph::Module,
+    eval: Option<bool>,
+    scope: &[String],
+) -> Result<String, Vec<Diagnostic>> {
     with_program(&module.path, &module.source, |program, semantic| {
         let analysis = analyze::analyze(program, semantic);
         let mut lowerer = Lowerer {
@@ -67,9 +160,17 @@ pub fn lower_module(module: &graph::Module) -> Result<String, Vec<Diagnostic>> {
             frame: Frame::default(),
             pre: Vec::new(),
             classes: Vec::new(),
+            script_globals: Vec::new(),
+            script_functions: Vec::new(),
+            eval,
+            eval_bindings: scope
+                .iter()
+                .enumerate()
+                .map(|(index, name)| (name.clone(), format!("Scope_{index}")))
+                .collect(),
         };
         lowerer.declare(program);
-        let functions = lowerer.module_functions(program);
+        let functions = lowerer.module_functions(program, &module.source);
         if lowerer.reporter.diagnostics.is_empty() {
             Ok(erlang::print_module(&erlang::Module {
                 name: module.name.clone(),

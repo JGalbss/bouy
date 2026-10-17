@@ -5,13 +5,13 @@ use std::collections::HashSet;
 
 use oxc::ast::AstKind;
 use oxc::ast::ast::{
-    ArrowFunctionExpression, AwaitExpression, Class, ForOfStatement, ForStatement,
-    ForStatementInit, Function, IdentifierReference, Program, Statement, VariableDeclaration,
-    VariableDeclarationKind, YieldExpression,
+    ArrowFunctionExpression, AwaitExpression, BindingPattern, Class, ForOfStatement, ForStatement,
+    ForStatementInit, FormalParameters, Function, IdentifierReference, NewTarget, Program,
+    Statement, ThisExpression, VariableDeclaration, VariableDeclarationKind, YieldExpression,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{NodeId, ScopeFlags, ScopeId, Scoping, Semantic, SymbolId};
-use oxc::span::Span;
+use oxc::span::{GetSpan, Span};
 
 /// The variables that live in heap cells.
 pub struct Analysis {
@@ -22,6 +22,10 @@ pub struct Analysis {
     /// Cells declared in the head of a `for (let ...)` loop whose body creates closures:
     /// each iteration copies them, as the per-iteration bindings of JavaScript.
     pub per_iteration: HashSet<SymbolId>,
+    /// `let`, `const`, and class bindings that a function written before the declaration
+    /// reads, such as a hoisted function declaration. Their cells exist from the start of
+    /// the block and hold `'$tdz'` until the declaration runs.
+    pub early: HashSet<SymbolId>,
 }
 
 pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
@@ -33,7 +37,16 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
             continue;
         }
         let references: Vec<_> = scoping.get_resolved_references(symbol).collect();
-        if !references.iter().any(|reference| reference.is_write()) {
+        // A `var` exists, as undefined, from the start of its function, before its
+        // initializer runs, so a closure that reads it needs the cell even without a write.
+        let var = scoping
+            .symbol_flags(symbol)
+            .is_function_scoped_declaration()
+            && matches!(
+                nodes.kind(scoping.symbol_declaration(symbol)),
+                AstKind::VariableDeclarator(_)
+            );
+        if !var && !references.iter().any(|reference| reference.is_write()) {
             continue;
         }
         let home = function_scope(scoping, scoping.symbol_scope_id(symbol));
@@ -49,6 +62,19 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
             cells.insert(symbol);
         }
     }
+    let mut mapped = MappedParameters {
+        scoping,
+        javascript: !semantic.source_type().is_typescript(),
+        found: Vec::new(),
+    };
+    mapped.visit_program(program);
+    cells.extend(mapped.found);
+    let early = early_bindings(scoping, nodes);
+    cells.extend(early.iter().copied());
+    cells.extend(eval_visible(scoping));
+    let mut with_vars = WithVars::default();
+    with_vars.visit_program(program);
+    cells.extend(with_vars.found);
     let mut loops = LoopHeads {
         cells: &cells,
         found: HashSet::new(),
@@ -58,7 +84,100 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
     Analysis {
         cells,
         per_iteration,
+        early,
     }
+}
+
+/// The `var` names that a declaration inside a `with` statement initializes: the write may
+/// go to the object or to the variable, so the variable lives in a cell.
+#[derive(Default)]
+struct WithVars {
+    depth: usize,
+    found: Vec<SymbolId>,
+}
+
+impl<'a> Visit<'a> for WithVars {
+    fn visit_with_statement(&mut self, it: &oxc::ast::ast::WithStatement<'a>) {
+        self.depth += 1;
+        walk::walk_with_statement(self, it);
+        self.depth -= 1;
+    }
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        if self.depth > 0 && it.kind == VariableDeclarationKind::Var {
+            for declarator in &it.declarations {
+                self.found.extend(
+                    declarator
+                        .id
+                        .get_binding_identifiers()
+                        .iter()
+                        .filter_map(|id| id.symbol_id.get()),
+                );
+            }
+        }
+        walk::walk_variable_declaration(self, it);
+    }
+    fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        let depth = std::mem::replace(&mut self.depth, 0);
+        walk::walk_function(self, it, flags);
+        self.depth = depth;
+    }
+}
+
+/// The local bindings that a direct eval can see: every binding of the scopes around a call
+/// of the unresolved name `eval`, below the module scope. The eval code reads and writes
+/// them through their cells.
+fn eval_visible(scoping: &Scoping) -> Vec<SymbolId> {
+    let root = scoping.root_scope_id();
+    let mut found = Vec::new();
+    for reference in scoping
+        .root_unresolved_references()
+        .get("eval")
+        .into_iter()
+        .flatten()
+    {
+        let scope = scoping.get_reference(*reference).scope_id();
+        for ancestor in scoping.scope_ancestors(scope) {
+            if ancestor == root {
+                break;
+            }
+            found.extend(scoping.get_bindings(ancestor).values().copied());
+        }
+    }
+    found
+}
+
+/// The block-scoped bindings that a nested function can read before their declaration
+/// runs: a function written before the declaration, or a function declaration, which
+/// exists from the start of its block.
+fn early_bindings(scoping: &Scoping, nodes: &oxc::semantic::AstNodes<'_>) -> HashSet<SymbolId> {
+    scoping
+        .symbol_ids()
+        .filter(|symbol| scoping.symbol_flags(*symbol).is_block_scoped())
+        .filter(|symbol| {
+            let home = function_scope(scoping, scoping.symbol_scope_id(*symbol));
+            let declared = scoping.symbol_span(*symbol);
+            scoping.get_resolved_references(*symbol).any(|reference| {
+                function_scope(scoping, reference.scope_id()) != home
+                    && (nodes.get_node(reference.node_id()).span().start < declared.start
+                        || in_hoisted_function(nodes, reference.node_id(), home))
+            })
+        })
+        .collect()
+}
+
+/// Whether a node sits in a function declaration inside the function of scope `home`.
+fn in_hoisted_function(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, home: ScopeId) -> bool {
+    for ancestor in nodes.ancestors(node) {
+        if let AstKind::Function(function) = ancestor.kind() {
+            if function.scope_id.get() == Some(home) {
+                return false;
+            }
+            if function.is_declaration() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// The scope of the function that holds `scope`: a function, an arrow, a static block, or
@@ -83,6 +202,11 @@ fn guarded_write(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, declared: Sp
         match ancestor.kind() {
             AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => return false,
             AstKind::TryStatement(statement) => {
+                if !contains(statement.span, declared) {
+                    return true;
+                }
+            }
+            AstKind::WithStatement(statement) => {
                 if !contains(statement.span, declared) {
                     return true;
                 }
@@ -215,14 +339,105 @@ impl<'a> Visit<'a> for VarDeclarations {
     fn visit_class(&mut self, _it: &Class<'a>) {}
 }
 
+/// The parameters of each sloppy function whose `arguments` object maps them (ECMA-262
+/// §10.4.4.7): a write to one shows in the other, so they live in heap cells.
+struct MappedParameters<'s> {
+    scoping: &'s Scoping,
+    javascript: bool,
+    found: Vec<SymbolId>,
+}
+
+impl<'a> Visit<'a> for MappedParameters<'_> {
+    fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        let sloppy = self.javascript
+            && it
+                .scope_id
+                .get()
+                .is_some_and(|scope| !self.scoping.scope_flags(scope).is_strict_mode());
+        if sloppy && is_simple(&it.params) {
+            let mut uses = UsesArguments::default();
+            if let Some(body) = &it.body {
+                uses.visit_function_body(body);
+            }
+            if uses.0 {
+                for param in &it.params.items {
+                    if let BindingPattern::BindingIdentifier(id) = &param.pattern
+                        && let Some(symbol) = id.symbol_id.get()
+                    {
+                        self.found.push(symbol);
+                    }
+                }
+            }
+        }
+        walk::walk_function(self, it, flags);
+    }
+}
+
+/// Whether a parameter list is simple: names only, without defaults, patterns, or a rest.
+pub fn is_simple(params: &FormalParameters<'_>) -> bool {
+    params.rest.is_none()
+        && params.items.iter().all(|param| {
+            param.initializer.is_none()
+                && matches!(param.pattern, BindingPattern::BindingIdentifier(_))
+        })
+}
+
+/// Whether a function reads `this` or `new.target`, in its own code or in an arrow function
+/// inside it, which shares them.
+#[derive(Default)]
+pub struct UsesThis {
+    pub this: bool,
+    pub new_target: bool,
+}
+
+impl<'a> Visit<'a> for UsesThis {
+    fn visit_this_expression(&mut self, _it: &ThisExpression) {
+        self.this = true;
+    }
+    fn visit_new_target(&mut self, _it: &NewTarget) {
+        self.new_target = true;
+    }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// The function declarations inside the blocks of a function body, outside nested
+/// functions: in sloppy code each one is also a `var` of the function (ECMA-262 Annex
+/// B.3.3), which holds undefined until its block runs.
+#[derive(Default)]
+pub struct BlockFunctions {
+    depth: usize,
+    pub found: Vec<SymbolId>,
+}
+
+impl<'a> Visit<'a> for BlockFunctions {
+    fn visit_statement(&mut self, it: &Statement<'a>) {
+        if let Statement::FunctionDeclaration(function) = it {
+            if self.depth > 0
+                && let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get())
+            {
+                self.found.push(symbol);
+            }
+            return;
+        }
+        self.depth += 1;
+        walk::walk_statement(self, it);
+        self.depth -= 1;
+    }
+    fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
+    fn visit_arrow_function_expression(&mut self, _it: &ArrowFunctionExpression<'a>) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
 /// Whether a function reads its `arguments` object: in its own code or in an arrow
 /// function inside it, which shares it.
 #[derive(Default)]
 pub struct UsesArguments(pub bool);
 
 impl<'a> Visit<'a> for UsesArguments {
+    /// A direct eval may read `arguments` too.
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
-        if it.name == "arguments" {
+        if it.name == "arguments" || it.name == "eval" {
             self.0 = true;
         }
     }

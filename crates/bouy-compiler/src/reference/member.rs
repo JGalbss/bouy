@@ -182,12 +182,16 @@ impl<'a> Lowerer<'a, '_> {
         self.bind(value)
     }
 
+    /// `o[k] = v`. In sloppy code a failed write does nothing.
     pub fn set(&mut self, object: Expr, key: MemberKey, value: Expr) {
+        let (fixed, computed) = if self.frame.sloppy {
+            ("sloppy_set", "sloppy_set_computed")
+        } else {
+            ("set", "set_computed")
+        };
         let call = match key {
-            MemberKey::Static(key) => Expr::call("bouy_ref", "set", vec![object, key, value]),
-            MemberKey::Dynamic(key) => {
-                Expr::call("bouy_ref", "set_computed", vec![object, key, value])
-            }
+            MemberKey::Static(key) => Expr::call("bouy_ref", fixed, vec![object, key, value]),
+            MemberKey::Dynamic(key) => Expr::call("bouy_ref", computed, vec![object, key, value]),
         };
         self.pre.push(call);
     }

@@ -64,9 +64,10 @@ value(I, _, _) when is_integer(I) -> integer_to_binary(I);
 value(F, _, _) when is_float(F) -> bouy_ref_number:to_string(F);
 value(A, _, _) when A =:= 'NaN'; A =:= 'Infinity'; A =:= '-Infinity' -> <<"null">>;
 value({'$o', _} = O, State, Indent) ->
-    case bouy_heap:class_of(O) of
-        array -> array(O, enter(O, State), Indent);
-        _ -> object(O, enter(O, State), Indent)
+    %% IsArray: a proxy of an array serializes as an array too.
+    case bouy_ref_object:is_array(O) of
+        true -> array(O, enter(O, State), Indent);
+        false -> object(O, enter(O, State), Indent)
     end;
 value(_, _, _) -> undefined.
 

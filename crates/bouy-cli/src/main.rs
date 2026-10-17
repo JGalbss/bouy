@@ -49,6 +49,28 @@ enum Commands {
         /// The entry module.
         entry: PathBuf,
     },
+    /// Compile the code of an `eval` or of the `Function` constructor for a running VM:
+    /// print the Erlang module, or the first diagnostic as `<ErrorName>\t<message>` with
+    /// status 2. The runtime calls this through `BOUY_COMPILER`.
+    #[command(hide = true)]
+    CompileEval {
+        /// Compile the code as strict code.
+        #[arg(long)]
+        strict: bool,
+        /// The source is the function that the `Function` constructor builds.
+        #[arg(long)]
+        function: bool,
+        /// The bindings that sloppy direct eval code may not declare with `var`.
+        #[arg(long, value_delimiter = ',')]
+        lexical: Vec<String>,
+        /// The local bindings of the caller of a direct eval, separated by commas.
+        #[arg(long, value_delimiter = ',')]
+        scope: Vec<String>,
+        /// The Erlang module name.
+        module: String,
+        /// The file that holds the source text.
+        source: PathBuf,
+    },
 }
 
 /// How the program treats objects: `value` (the contract) or `reference` (a prototype).
@@ -91,6 +113,47 @@ fn main() -> ExitCode {
             Err(code) => code,
         },
         Commands::Build { semantics, entry } => build(&entry, semantics.into()),
+        Commands::CompileEval {
+            strict,
+            function,
+            lexical,
+            scope,
+            module,
+            source,
+        } => compile_eval(&source, &module, [strict, function], [&lexical, &scope]),
+    }
+}
+
+/// `bouy compile-eval`: the Erlang module of an `eval`, or its first diagnostic.
+/// `flags` are `--strict` and `--function`, and `names` the `--lexical` and `--scope` lists.
+fn compile_eval(source: &Path, module: &str, flags: [bool; 2], names: [&[String]; 2]) -> ExitCode {
+    let [strict, function] = flags;
+    let [lexical, scope] = names;
+    let text = match fs::read_to_string(source) {
+        Ok(text) => text,
+        Err(error) => return fail(&format!("cannot read {}: {error}", source.display())),
+    };
+    match bouy_compiler::compile_eval(&text, module, strict, function, lexical, scope) {
+        Ok(erlang) => {
+            print!("{erlang}");
+            ExitCode::SUCCESS
+        }
+        Err(diagnostics) => {
+            let name = if diagnostics
+                .iter()
+                .any(|d| d.code == bouy_compiler::Code::Syntax)
+            {
+                "SyntaxError"
+            } else {
+                "TypeError"
+            };
+            let message = diagnostics
+                .iter()
+                .find(|d| name == "TypeError" || d.code == bouy_compiler::Code::Syntax)
+                .map_or_else(String::new, |d| d.message.replace('\n', " "));
+            print!("{name}\t{message}");
+            ExitCode::from(DIAGNOSTICS)
+        }
     }
 }
 
@@ -141,6 +204,10 @@ fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
     .arg(modules.join(","))
     .args(args.iter().map(|arg| arg.to_string_lossy().into_owned()))
     .env("ERL_CRASH_DUMP_SECONDS", "0");
+    // The runtime compiles the code of `eval` and `new Function` with this binary.
+    if let Ok(compiler) = env::current_exe() {
+        vm.env("BOUY_COMPILER", compiler);
+    }
     start(vm)
 }
 

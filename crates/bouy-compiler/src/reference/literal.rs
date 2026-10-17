@@ -30,10 +30,12 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn array(&mut self, array: &'a ArrayExpression<'a>) -> Expr {
-        let spread = array
-            .elements
-            .iter()
-            .any(|element| matches!(element, ArrayExpressionElement::SpreadElement(_)));
+        let spread = array.elements.iter().any(|element| {
+            matches!(
+                element,
+                ArrayExpressionElement::SpreadElement(_) | ArrayExpressionElement::Elision(_)
+            )
+        });
         if !spread {
             let items = array
                 .elements
@@ -56,6 +58,7 @@ impl<'a> Lowerer<'a, '_> {
                 ArrayExpressionElement::SpreadElement(spread) => {
                     Expr::tagged("spread", self.expr(&spread.argument))
                 }
+                ArrayExpressionElement::Elision(_) => Expr::atom("hole"),
                 other => match other.as_expression() {
                     Some(expression) => Expr::tagged("item", self.expr(expression)),
                     None => Expr::tagged("item", Expr::undefined()),
@@ -75,10 +78,11 @@ impl<'a> Lowerer<'a, '_> {
             let mut entries = Vec::new();
             for (property, key) in object.properties.iter().zip(&keys) {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    let name = Expr::js_string(key);
                     let value = if property.method {
-                        self.method_value(&property.value)
+                        self.method_value(&property.value, name, property.span)
                     } else {
-                        self.expr(&property.value)
+                        self.named_expr(&property.value, Some(name))
                     };
                     entries.push((Expr::js_string(key), value));
                 }
@@ -101,15 +105,46 @@ impl<'a> Lowerer<'a, '_> {
                         vec![target.clone(), source],
                     ));
                 }
+                ObjectPropertyKind::ObjectProperty(property) if is_proto_setter(property) => {
+                    let value = self.expr(&property.value);
+                    self.pre.push(Expr::call(
+                        "bouy_ref",
+                        "literal_proto",
+                        vec![target.clone(), value],
+                    ));
+                }
                 ObjectPropertyKind::ObjectProperty(property) => {
                     let key = self.property_key(&property.key, property.computed);
+                    let prefix = match property.kind {
+                        PropertyKind::Init => "",
+                        PropertyKind::Get => "get",
+                        PropertyKind::Set => "set",
+                    };
+                    let name = match property.key.static_name().filter(|_| !property.computed) {
+                        Some(name) if prefix.is_empty() => Expr::js_string(&name),
+                        Some(name) => Expr::js_string(&format!("{prefix} {name}")),
+                        None => Expr::call(
+                            "bouy_ref",
+                            "function_name",
+                            vec![key.clone(), Expr::js_string(prefix)],
+                        ),
+                    };
                     let (function, value) = match property.kind {
-                        PropertyKind::Init if property.method => {
-                            ("define_field", self.method_value(&property.value))
+                        PropertyKind::Init if property.method => (
+                            "define_field",
+                            self.method_value(&property.value, name, property.span),
+                        ),
+                        PropertyKind::Init => {
+                            ("define_field", self.named_expr(&property.value, Some(name)))
                         }
-                        PropertyKind::Init => ("define_field", self.expr(&property.value)),
-                        PropertyKind::Get => ("literal_getter", self.method_value(&property.value)),
-                        PropertyKind::Set => ("literal_setter", self.method_value(&property.value)),
+                        PropertyKind::Get => (
+                            "literal_getter",
+                            self.method_value(&property.value, name, property.span),
+                        ),
+                        PropertyKind::Set => (
+                            "literal_setter",
+                            self.method_value(&property.value, name, property.span),
+                        ),
                     };
                     self.pre.push(Expr::call(
                         "bouy_ref",
@@ -121,6 +156,18 @@ impl<'a> Lowerer<'a, '_> {
         }
         target
     }
+}
+
+/// `__proto__: value` in an object literal sets the prototype (ECMA-262 §13.2.5.5).
+fn is_proto_setter(property: &oxc::ast::ast::ObjectProperty<'_>) -> bool {
+    !property.computed
+        && !property.shorthand
+        && !property.method
+        && property.kind == PropertyKind::Init
+        && property
+            .key
+            .static_name()
+            .is_some_and(|name| name == "__proto__")
 }
 
 /// `{'$o', Name}`: an intrinsic object.
@@ -136,7 +183,7 @@ pub fn literal_keys(object: &ObjectExpression<'_>) -> Option<Vec<String>> {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
             return None;
         };
-        if property.computed || property.kind != PropertyKind::Init {
+        if property.computed || property.kind != PropertyKind::Init || is_proto_setter(property) {
             return None;
         }
         let name = property.key.static_name()?.into_owned();

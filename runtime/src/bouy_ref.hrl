@@ -3,7 +3,8 @@
 
 -define(IS_OBJECT(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
 -define(OBJECT_PROTO, {'$o', 'Object.prototype'}).
--define(FUNCTION_PROTO, {'$o', 'Function.prototype'}).
+%% Function.prototype is itself a function that returns undefined.
+-define(FUNCTION_PROTO, {'$f', 'Function.prototype', fun bouy_ref_function:prototype_call/2}).
 -define(ITERATOR_PROTO, {'$o', 'Iterator.prototype'}).
 %% The attributes of a builtin data property: writable and configurable.
 -define(HIDDEN, 5).

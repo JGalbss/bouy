@@ -1,9 +1,9 @@
 //! Calls: argument lists with spread, method calls, calls of module functions and of
 //! the functions of "bouy", and `new`.
 
-use oxc::ast::ast::{Argument, CallExpression, Expression, NewExpression};
+use oxc::ast::ast::{Argument, CallExpression, Expression, IdentifierReference, NewExpression};
 
-use super::context::{Lowerer, Top};
+use super::context::{Local, Lowerer, Top};
 use super::expr::strip;
 use super::member::MemberKey;
 use crate::erlang::Expr;
@@ -64,6 +64,20 @@ impl<'a> Lowerer<'a, '_> {
                 let args = self.args(&call.arguments);
                 return self.bind(Expr::call("bouy_ref", "call", vec![method, object, args]));
             }
+            if !call.arguments.iter().all(is_pure) {
+                // The method is read before the arguments run (ECMA-262 §13.3.6.1).
+                let key = self.fix_key(key);
+                let method = self.get(object.clone(), key.clone());
+                let args = self.args(&call.arguments);
+                let MemberKey::Static(key) = key else {
+                    return Expr::undefined();
+                };
+                return self.bind(Expr::call(
+                    "bouy_ref",
+                    "call_method_value",
+                    vec![method, object, key, args],
+                ));
+            }
             let args = self.args(&call.arguments);
             let value = match key {
                 MemberKey::Static(key) => {
@@ -74,6 +88,22 @@ impl<'a> Lowerer<'a, '_> {
                 }
             };
             return self.bind(value);
+        }
+        if let Expression::Identifier(ident) = callee
+            && !call.optional
+            && !self.with_objects(ident).is_empty()
+        {
+            let objects = self.with_objects(ident);
+            let (function, this) = self.with_callee(ident, &objects);
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("bouy_ref", "call", vec![function, this, args]));
+        }
+        if let Expression::Identifier(ident) = callee
+            && ident.name == "eval"
+            && !call.optional
+            && self.symbol_of(ident.reference_id.get()).is_none()
+        {
+            return self.direct_eval(ident, call);
         }
         if let Expression::Identifier(ident) = callee
             && let Some(symbol) = self.symbol_of(ident.reference_id.get())
@@ -98,6 +128,91 @@ impl<'a> Lowerer<'a, '_> {
             "call",
             vec![function, Expr::undefined(), args],
         ))
+    }
+
+    /// A direct eval. The runtime checks that `eval` is still the intrinsic.
+    fn direct_eval(
+        &mut self,
+        ident: &'a IdentifierReference<'a>,
+        call: &'a CallExpression<'a>,
+    ) -> Expr {
+        let eval = self.identifier_read(ident);
+        let args = self.args(&call.arguments);
+        let mode = Expr::atom(if self.frame.sloppy {
+            "sloppy"
+        } else {
+            "strict"
+        });
+        let this = self.this_expr();
+        let scope = self.eval_scope(ident);
+        let lexical = self.eval_lexical(ident);
+        self.bind(Expr::call(
+            "bouy_ref_eval",
+            "direct",
+            vec![eval, args, mode, this, scope, lexical],
+        ))
+    }
+
+    /// The local bindings that a direct eval at `ident` sees, innermost first:
+    /// `[{Name, Cell}]`, with the arguments object in a cell of its own.
+    fn eval_scope(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        let scoping = self.semantic.scoping();
+        let root = scoping.root_scope_id();
+        let Some(reference) = ident.reference_id.get() else {
+            return Expr::List(vec![]);
+        };
+        let mut names: Vec<String> = Vec::new();
+        let mut entries = Vec::new();
+        for scope in scoping.scope_ancestors(scoping.get_reference(reference).scope_id()) {
+            if scope == root {
+                break;
+            }
+            for (name, symbol) in scoping.get_bindings(scope) {
+                if names.iter().any(|seen| seen == name.as_str()) {
+                    continue;
+                }
+                if let Some(Local::Cell(cell)) = self.frame.env.get(symbol) {
+                    names.push(name.to_string());
+                    entries.push(Expr::Tuple(vec![
+                        Expr::js_string(name),
+                        Expr::var(cell.clone()),
+                    ]));
+                }
+            }
+        }
+        if let Some(arguments) = self.frame.arguments.clone()
+            && !names.iter().any(|name| name == "arguments")
+        {
+            let cell = self.bind(Expr::call("bouy_heap", "cell", vec![Expr::var(arguments)]));
+            entries.push(Expr::Tuple(vec![Expr::js_string("arguments"), cell]));
+        }
+        Expr::List(entries)
+    }
+
+    /// The names that a sloppy direct eval at `ident` may not declare with `var`: the
+    /// lexical bindings between the call and its function's variables, and in a parameter
+    /// default the bindings of the parameter scope (ECMA-262 §19.2.1.3).
+    fn eval_lexical(&self, ident: &'a IdentifierReference<'a>) -> Expr {
+        let scoping = self.semantic.scoping();
+        let Some(reference) = ident.reference_id.get() else {
+            return Expr::List(vec![]);
+        };
+        let mut names: Vec<String> = self.frame.param_bindings.clone();
+        let scope = scoping.get_reference(reference).scope_id();
+        let home = super::analyze::function_scope(scoping, scope);
+        for ancestor in scoping.scope_ancestors(scope) {
+            for (name, symbol) in scoping.get_bindings(ancestor) {
+                if scoping.symbol_flags(*symbol).is_block_scoped()
+                    && !names.iter().any(|seen| seen == name.as_str())
+                {
+                    names.push(name.to_string());
+                }
+            }
+            if ancestor == home {
+                break;
+            }
+        }
+        Expr::List(names.iter().map(|name| Expr::js_string(name)).collect())
     }
 
     /// A function imported from "bouy".
@@ -143,5 +258,24 @@ impl<'a> Lowerer<'a, '_> {
         let constructor = self.expr(&new.callee);
         let args = self.args(&new.arguments);
         self.bind(Expr::call("bouy_ref", "construct", vec![constructor, args]))
+    }
+}
+
+/// Whether an argument has no effect that the read of the method could observe: a literal,
+/// a name, `this`, or a function.
+fn is_pure(argument: &Argument<'_>) -> bool {
+    match argument.as_expression().map(strip) {
+        Some(
+            Expression::NumericLiteral(_)
+            | Expression::StringLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::Identifier(_)
+            | Expression::ThisExpression(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_),
+        ) => true,
+        Some(Expression::TemplateLiteral(template)) => template.expressions.is_empty(),
+        _ => false,
     }
 }

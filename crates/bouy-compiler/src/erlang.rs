@@ -607,6 +607,26 @@ fn binary(text: &str) -> String {
     if text.is_empty() {
         return "<<>>".to_owned();
     }
+    // erl_scan rejects U+FFFE and U+FFFF in a string, even as an escape, so each one is an
+    // integer segment of its own.
+    if text.contains(['\u{FFFE}', '\u{FFFF}']) {
+        let mut segments = Vec::new();
+        let mut part = String::new();
+        for c in text.chars() {
+            if matches!(c, '\u{FFFE}' | '\u{FFFF}') {
+                if !part.is_empty() {
+                    segments.push(segment(&std::mem::take(&mut part)));
+                }
+                segments.push(format!("{}/utf8", u32::from(c)));
+            } else {
+                part.push(c);
+            }
+        }
+        if !part.is_empty() {
+            segments.push(segment(&part));
+        }
+        return format!("<<{}>>", segments.join(", "));
+    }
     let mut out = String::with_capacity(text.len() + 6);
     out.push_str("<<\"");
     for c in text.chars() {
@@ -617,6 +637,16 @@ fn binary(text: &str) -> String {
         out.push_str("/utf8");
     }
     out.push_str(">>");
+    out
+}
+
+/// A string segment of a binary: `"text"/utf8`.
+fn segment(text: &str) -> String {
+    let mut out = String::from("\"");
+    for c in text.chars() {
+        escape_char(&mut out, c, '"');
+    }
+    out.push_str("\"/utf8");
     out
 }
 
@@ -651,7 +681,11 @@ fn escape_char(out: &mut String, c: char, quote: char) {
             out.push('\\');
             out.push(c);
         }
-        c if c.is_control() || (c.is_whitespace() && c != ' ') => {
+        // erl_scan rejects U+FFFE and U+FFFF in source text, so they are escapes too.
+        c if c.is_control()
+            || (c.is_whitespace() && c != ' ')
+            || matches!(c, '\u{FFFE}' | '\u{FFFF}') =>
+        {
             let _ = write!(out, "\\x{{{:X}}}", u32::from(c));
         }
         c => out.push(c),
@@ -734,6 +768,14 @@ mod tests {
             printer
                 .out
                 .contains("fun(V) -> fun(V) -> fun(V) -> fun(V) -> ok end end end end")
+        );
+    }
+
+    #[test]
+    fn escapes_the_noncharacters_that_erl_scan_rejects() {
+        assert_eq!(
+            binary("a\u{FFFF}b"),
+            "<<\"a\"/utf8, 65535/utf8, \"b\"/utf8>>"
         );
     }
 

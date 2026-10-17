@@ -142,7 +142,8 @@ array_holes_test() ->
                   ?assert(bouy_heap:has_own(A, 0)),
                   bouy_heap:delete(A, 1),
                   ?assertNot(bouy_heap:has_own(A, 1)),
-                  ?assertEqual([0], bouy_heap:own_keys(A)),
+                  %% An array's length is an own key, after the indexes.
+                  ?assertEqual([0, <<"length">>], bouy_heap:own_keys(A)),
                   ?assertEqual(2, bouy_heap:array_push(A, [])),
                   ?assertEqual(4, bouy_heap:array_push(A, [x, y])),
                   ?assertEqual([undefined, undefined, x, y], bouy_heap:array_items(A))
@@ -204,4 +205,121 @@ clone_rejects_functions_test() ->
     realm(fun() ->
                   O = bouy_heap:object(?P, [{<<"f">>, bouy_heap:function(fun(_, _) -> ok end)}]),
                   ?assertError({'$throw', _}, bouy_heap:clone_out(O))
+          end).
+
+define_validates_test() ->
+    realm(fun() ->
+                  O = bouy_heap:new_object(?P),
+                  ?assert(bouy_heap:define_own_property(O, <<"x">>, #{value => 1})),
+                  ?assertEqual({data, 1, 0}, bouy_heap:get_own(O, <<"x">>)),
+                  %% A non-configurable, non-writable property keeps its value and kind.
+                  ?assertNot(bouy_heap:define_own_property(O, <<"x">>, #{value => 2})),
+                  ?assertNot(bouy_heap:define_own_property(O, <<"x">>, #{get => undefined})),
+                  ?assertNot(bouy_heap:define_own_property(O, <<"x">>, #{enumerable => true})),
+                  ?assert(bouy_heap:define_own_property(O, <<"x">>, #{value => 1, writable => false})),
+                  ?assert(bouy_heap:prevent_extensions(O)),
+                  ?assertNot(bouy_heap:define_own_property(O, <<"y">>, #{value => 1}))
+          end).
+
+array_length_test() ->
+    realm(fun() ->
+                  A = bouy_heap:new_array([a, b, c, d]),
+                  ?assert(bouy_heap:define_own_property(A, 1, #{configurable => false})),
+                  %% Shrinking stops above the non-configurable element and reports failure.
+                  ?assertNot(bouy_heap:define_own_property(A, <<"length">>, #{value => 0})),
+                  ?assertEqual(2, bouy_heap:get(A, <<"length">>)),
+                  ?assert(bouy_heap:define_own_property(A, <<"length">>, #{writable => false})),
+                  ?assertNot(bouy_heap:define_own_property(A, 5, #{value => x})),
+                  ?assertNot(bouy_heap:set(A, 5, x, A))
+          end).
+
+set_receiver_test() ->
+    realm(fun() ->
+                  Proto = bouy_heap:new_object(?P),
+                  bouy_heap:define(Proto, <<"fixed">>, #{value => 1, writable => false}),
+                  O = bouy_heap:new_object(Proto),
+                  ?assertNot(bouy_heap:set(O, <<"fixed">>, 2, O)),
+                  Receiver = bouy_heap:new_object(?P),
+                  ?assert(bouy_heap:set(O, <<"other">>, 3, Receiver)),
+                  ?assertEqual(3, bouy_heap:get(Receiver, <<"other">>)),
+                  ?assertNot(bouy_heap:has_own(O, <<"other">>))
+          end).
+
+set_prototype_test() ->
+    realm(fun() ->
+                  A = bouy_heap:new_object(?P),
+                  B = bouy_heap:new_object(A),
+                  ?assertNot(bouy_heap:set_prototype(A, B)),
+                  ?assertNot(bouy_heap:set_prototype(?P, A)),
+                  ?assert(bouy_heap:set_prototype(B, null)),
+                  ?assertEqual(null, bouy_heap:prototype_of(B))
+          end).
+
+mapped_arguments_test() ->
+    realm(fun() ->
+                  Cell = bouy_heap:cell(1),
+                  Args = bouy_ref:mapped_arguments([1, 2], [Cell], undefined),
+                  bouy_heap:set(Args, 0, 5),
+                  ?assertEqual(5, bouy_heap:cell_get(Cell)),
+                  bouy_heap:cell_set(Cell, 7),
+                  ?assertEqual(7, bouy_heap:get(Args, 0)),
+                  %% A non-writable define ends the mapping.
+                  bouy_heap:define(Args, 0, #{writable => false}),
+                  bouy_heap:cell_set(Cell, 9),
+                  ?assertEqual(7, bouy_heap:get(Args, 0))
+          end).
+
+proxy_invariant_test() ->
+    realm(fun() ->
+                  Target = bouy_heap:new_object(?P),
+                  bouy_heap:define(Target, <<"x">>, #{value => 1}),
+                  Get = bouy_heap:function(fun(_, _) -> 2 end),
+                  Handler = bouy_heap:object(?P, [{<<"get">>, Get}]),
+                  Proxy = bouy_heap:proxy(Target, Handler),
+                  %% A trap may not report another value for a fixed property.
+                  ?assertError({'$throw', _}, bouy_heap:get(Proxy, <<"x">>)),
+                  ?assertEqual(2, bouy_heap:get(Proxy, <<"y">>))
+          end).
+
+private_names_ignore_integrity_test() ->
+    realm(fun() ->
+                  O = bouy_heap:new_object(?P),
+                  K = {'#', <<"C">>, <<"x">>},
+                  bouy_heap:define(O, K, #{value => 1, writable => true, enumerable => true, configurable => true}),
+                  bouy_heap:freeze(O),
+                  %% Private names are no properties: freeze leaves them writable.
+                  ?assertEqual(2, bouy_heap:set(O, K, 2)),
+                  ?assertEqual(2, bouy_heap:get(O, K)),
+                  N = bouy_heap:new_object(?P),
+                  bouy_heap:prevent_extensions(N),
+                  ?assertEqual(3, bouy_heap:set(N, {'#', <<"C">>, <<"y">>}, 3)),
+                  ?assertEqual([], bouy_heap:own_keys(N))
+          end).
+
+weak_map_drops_dead_keys_test() ->
+    realm(fun() ->
+                  M = bouy_heap:new_exotic(weakmap, ?P, #{}),
+                  Kept = bouy_heap:new_object(?P),
+                  Value = bouy_heap:new_object(?P),
+                  Dead = bouy_heap:new_object(?P),
+                  bouy_heap:set_slots(M, #{Kept => Value, Dead => bouy_heap:new_object(?P)}),
+                  bouy_heap:gc([M, Kept]),
+                  %% The live key keeps its value, which nothing else holds; the dead key goes.
+                  ?assertEqual(#{Kept => Value}, bouy_heap:slots(M)),
+                  ?assertMatch({object, _, _, _, _, _}, erlang:get(element(2, Value))),
+                  ?assertEqual(undefined, erlang:get(element(2, Dead)))
+          end).
+
+weak_ref_and_registry_test() ->
+    realm(fun() ->
+                  Target = bouy_heap:new_object(?P),
+                  Ref = bouy_heap:new_exotic(weak_ref, ?P, Target),
+                  Held = bouy_heap:new_object(?P),
+                  Cleanup = bouy_heap:function(fun(_, [H]) -> erlang:put(cleaned, H) end),
+                  Registry = bouy_heap:new_exotic(finalization_registry, ?P, {Cleanup, [{Target, Held, undefined}]}),
+                  bouy_heap:gc([Ref, Registry]),
+                  ?assertEqual(undefined, bouy_heap:slots(Ref)),
+                  ?assertEqual({Cleanup, []}, bouy_heap:slots(Registry)),
+                  bouy_jobs:drain(),
+                  ?assertEqual(Held, erlang:get(cleaned))
           end).

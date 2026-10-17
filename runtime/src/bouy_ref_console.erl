@@ -117,15 +117,25 @@ object({'$f', _, _} = F, Level, Indent, Stack) ->
     end;
 object(O, Level, Indent, Stack) ->
     case bouy_heap:class_of(O) of
+        %% Node prints the target of a proxy.
+        proxy -> proxy(O, Level, Indent, Stack);
         array -> array(O, Level, Indent, Stack);
         map -> collection(O, <<"Map">>, map_items(O, Level, Indent, Stack), Level, Indent);
         set -> collection(O, <<"Set">>, [value(K, Level + 1, Indent + 2, Stack) || K <- set_members(O)], Level, Indent);
         promise -> promise(O, Level, Indent, Stack);
         error -> error_text(O);
         generator -> <<"Object [Generator] {}">>;
+        weakmap -> <<"WeakMap { <items unknown> }">>;
+        weakset -> <<"WeakSet { <items unknown> }">>;
         list_iterator -> <<"Object [", (element(1, bouy_heap:slots(O)))/binary, "] {}">>;
         date -> bouy_date:call(<<"toISOString">>, {'$date', bouy_heap:slots(O)}, []);
         _ -> plain(O, Level, Indent, Stack)
+    end.
+
+proxy(O, Level, Indent, Stack) ->
+    case bouy_heap:slots(O) of
+        {revoked, _} -> <<"<Revoked Proxy>">>;
+        {Target, _} -> object(Target, Level, Indent, Stack)
     end.
 
 plain(O, Level, Indent, Stack) ->
@@ -147,12 +157,27 @@ trim(Prefix) -> binary:part(Prefix, 0, byte_size(Prefix) - 1).
 prefix(O) ->
     case bouy_heap:prototype_of(O) of
         null -> <<"[Object: null prototype] ">>;
-        _ ->
-            case constructor_name(O) of
-                <<"Object">> -> <<>>;
-                undefined -> <<>>;
-                Name -> <<Name/binary, " ">>
-            end
+        _ -> tagged(constructor_name(O), tag(O))
+    end.
+
+%% Node adds Symbol.toStringTag in brackets when it differs from the
+%% constructor name, as in `Object [Reflect] {}`.
+tagged(Name, Tag) when Tag =/= <<>>, Tag =/= Name ->
+    <<(case Name of undefined -> <<"Object">>; _ -> Name end)/binary, " [", Tag/binary, "] ">>;
+tagged(<<"Object">>, _Tag) -> <<>>;
+tagged(undefined, _Tag) -> <<>>;
+tagged(Name, _Tag) -> <<Name/binary, " ">>.
+
+%% An own enumerable tag prints as a property already, so it is not repeated.
+tag(O) ->
+    Own = case bouy_heap:get_own(O, ?SYM(toStringTag)) of
+        {data, _, Bits} -> Bits band 2 =/= 0;
+        {accessor, _, _, Bits} -> Bits band 2 =/= 0;
+        none -> false
+    end,
+    case bouy_heap:get(O, ?SYM(toStringTag)) of
+        T when ?IS_STRING(T), not Own -> bouy_ref_string:to_utf8(T);
+        _ -> <<>>
     end.
 
 constructor_name(null) ->
@@ -265,6 +290,15 @@ function_label(F) ->
                 _ -> <<>>
             end,
             <<"[class ", Name/binary, Extends/binary, "]">>;
-        _ when Name =:= <<>> -> <<"[Function (anonymous)]">>;
-        _ -> <<"[Function: ", Name/binary, "]">>
+        Slots ->
+            Kind = case Slots of
+                #{kind := generator} -> <<"GeneratorFunction">>;
+                #{kind := async} -> <<"AsyncFunction">>;
+                #{kind := async_generator} -> <<"AsyncGeneratorFunction">>;
+                _ -> <<"Function">>
+            end,
+            case Name of
+                <<>> -> <<"[", Kind/binary, " (anonymous)]">>;
+                _ -> <<"[", Kind/binary, ": ", Name/binary, "]">>
+            end
     end.

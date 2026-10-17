@@ -244,7 +244,7 @@ reduce(A, Args, Indexed) ->
     end,
     lists:foldl(fun({I, V}, Acc) -> bouy_ref:call(F, undefined, [Acc, V, I, A]) end, Acc0, Rest).
 
-array_static(<<"isArray">>, Args) -> is_array(arg(1, Args));
+array_static(<<"isArray">>, Args) -> bouy_ref_object:is_array(arg(1, Args));
 array_static(<<"of">>, Args) -> bouy_heap:new_array(Args);
 array_static(<<"from">>, Args) ->
     Source = arg(1, Args),
