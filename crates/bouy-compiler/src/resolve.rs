@@ -538,7 +538,7 @@ impl Resolver {
             }
             Value::Object(map) => {
                 for (condition, value) in map {
-                    if condition == "default" || conditions(mode).contains(&condition.as_str()) {
+                    if self.matches(package_dir, mode, condition) {
                         match self.target_resolve(package_dir, value, pattern, is_imports, mode)? {
                             Resolution::Undefined => {}
                             found => return Ok(found),
@@ -694,6 +694,25 @@ enum Resolution {
     Null,
     Undefined,
 }
+
+impl Resolver {
+    /// Whether a condition of an `exports` or `imports` object applies: `default`, a
+    /// condition of the mode, or `browser` in a package of `BROWSER`.
+    fn matches(&self, package_dir: &Path, mode: Mode, condition: &str) -> bool {
+        condition == "default"
+            || conditions(mode).contains(&condition)
+            || (condition == "browser"
+                && self
+                    .read(package_dir)
+                    .and_then(|package| package.name.clone())
+                    .is_some_and(|name| BROWSER.contains(&name.as_str())))
+    }
+}
+
+/// The packages that resolve with the `browser` condition: ADR 0003 chooses the browser
+/// build of `@vercel/oidc`, which needs neither `process` nor `node:os` at load
+/// (docs/research/npm-package-census.md).
+const BROWSER: &[&str] = &["@vercel/oidc"];
 
 /// The conditions of Node 25 for each mode, without `node-addons`.
 fn conditions(mode: Mode) -> &'static [&'static str] {
@@ -903,6 +922,12 @@ mod tests {
         write(&modules.join("dual/cjs.js"), "");
         write(&modules.join("dual/lib/x.js"), "");
         write(&modules.join("old/package.json"), r#"{"main":"lib/main"}"#);
+        write(
+            &modules.join("@vercel/oidc/package.json"),
+            r#"{"name":"@vercel/oidc","exports":{".":{"browser":"./browser.js","import":"./node.js"}}}"#,
+        );
+        write(&modules.join("@vercel/oidc/browser.js"), "");
+        write(&modules.join("@vercel/oidc/node.js"), "");
         write(&modules.join("old/lib/main.js"), "");
         write(
             &root.join("package.json"),
@@ -940,6 +965,10 @@ mod tests {
             Path::new("node_modules/old/lib/main.js")
         );
         assert_eq!(file("#util", Mode::Import), Path::new("util.js"));
+        assert_eq!(
+            file("@vercel/oidc", Mode::Import),
+            Path::new("node_modules/@vercel/oidc/browser.js")
+        );
         assert_eq!(file("app", Mode::Import), Path::new("app.js"));
         assert_eq!(
             resolver
