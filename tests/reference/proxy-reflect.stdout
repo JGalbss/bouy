@@ -1,0 +1,11 @@
+1 true [ 'a', 'b' ] true undefined
+true true
+set b | gopd b | define b | get a | has a | ownKeys | gopd a | gopd b | delete a | getPrototypeOf | isExtensible | setPrototypeOf | preventExtensions
+TypeError TypeError TypeError
+TypeError object
+function 30 {"made":3}
+true base
+5 4
+false false
+6
+[object Reflect] true true
