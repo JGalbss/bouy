@@ -64,6 +64,10 @@ impl<'a> Lowerer<'a, '_> {
                     let value =
                         self.bind(Expr::call("bouy_ref_iterator", "rest_list", vec![state]));
                     self.declare_pattern(&rest.argument, value);
+                } else {
+                    // The pattern did not exhaust the iterator: IteratorClose.
+                    self.pre
+                        .push(Expr::call("bouy_ref_iterator", "close", vec![state]));
                 }
             }
         }
@@ -117,6 +121,9 @@ impl<'a> Lowerer<'a, '_> {
                     let value =
                         self.bind(Expr::call("bouy_ref_iterator", "rest_list", vec![state]));
                     self.assign_target(&rest.target, value);
+                } else {
+                    self.pre
+                        .push(Expr::call("bouy_ref_iterator", "close", vec![state]));
                 }
             }
             AssignmentTarget::ObjectAssignmentTarget(object) => {

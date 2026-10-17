@@ -6,7 +6,7 @@
 -include("bouy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4]).
--export([iterate/1, step/1, to_list/1, take/2, rest_list/1, for_in_keys/1]).
+-export([iterate/1, step/1, to_list/1, take/2, rest_list/1, close/1, for_in_keys/1]).
 -export([make_generator/1, generator_resume/2, list_iterator/2, list_iterator_next/1, result/2]).
 
 -import(bouy_ref_realm, [arg/2, builtin/2, record/4]).
@@ -54,7 +54,11 @@ list_iterator_next(O) ->
 -spec iterate(term()) -> term().
 iterate({'$o', _} = O) ->
     case bouy_heap:class_of(O) of
-        array -> {array, O, 0};
+        array ->
+            case plain_array(O) of
+                true -> {array, O, 0};
+                false -> protocol(O)
+            end;
         generator -> {generator, O};
         list_iterator -> {list_iterator, O};
         _ -> protocol(O)
@@ -62,6 +66,32 @@ iterate({'$o', _} = O) ->
 iterate(S) when ?IS_STRING(S) -> {list, [bouy_ref_string:from_code_points([C]) || C <- bouy_ref_string:code_points(S)]};
 iterate({'$f', _, _} = F) -> protocol(F);
 iterate(V) -> bouy_ref:type_error(bouy_ref_string:concat(bouy_ref:describe(V), <<" is not iterable">>)).
+
+%% Whether an array iterates with the builtin array iterator, so the loop can
+%% read its elements directly: its Symbol.iterator is Array.prototype's.
+plain_array(O) ->
+    case bouy_heap:get(O, bouy_heap:well_known(iterator)) of
+        {'$f', {builtin, <<"Array.prototype.values">>}, _} -> true;
+        _ -> false
+    end.
+
+%% IteratorClose after a destructuring that did not exhaust the iterator: the
+%% return method runs, and its result must be an object.
+-spec close(term()) -> ok.
+close({protocol, Iterator, _}) ->
+    case bouy_ref:get(Iterator, <<"return">>) of
+        Return when Return =:= undefined; Return =:= null ->
+            ok;
+        Return ->
+            Result = bouy_ref:call(Return, Iterator, []),
+            ?IS_OBJECT(Result) orelse bouy_ref:type_error(<<"Iterator result is not an object">>),
+            ok
+    end;
+close({generator, G}) ->
+    _ = generator_resume(G, {return, undefined}),
+    ok;
+close(_State) ->
+    ok.
 
 protocol(O) ->
     case bouy_ref:get(O, bouy_heap:well_known(iterator)) of
@@ -103,8 +133,13 @@ step({protocol, Iterator, Next} = State) ->
 -spec to_list(term()) -> list().
 to_list({'$o', _} = O) ->
     case bouy_heap:class_of(O) of
-        array -> bouy_heap:array_items(O);
-        _ -> drain(iterate(O), [])
+        array ->
+            case plain_array(O) of
+                true -> bouy_heap:array_items(O);
+                false -> drain(protocol(O), [])
+            end;
+        _ ->
+            drain(iterate(O), [])
     end;
 to_list(V) ->
     drain(iterate(V), []).
