@@ -18,6 +18,7 @@ pub enum Outcome {
     Rejected,
     Late,
     Skip,
+    Never,
     Fail,
     Timeout,
     HarnessError,
@@ -26,11 +27,12 @@ pub enum Outcome {
 
 impl Outcome {
     /// Every outcome, in the order of the table of section 3.1.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Pass,
         Self::Rejected,
         Self::Late,
         Self::Skip,
+        Self::Never,
         Self::Fail,
         Self::Timeout,
         Self::HarnessError,
@@ -44,6 +46,7 @@ impl Outcome {
             Self::Rejected => "rejected",
             Self::Late => "late",
             Self::Skip => "skip",
+            Self::Never => "never",
             Self::Fail => "fail",
             Self::Timeout => "timeout",
             Self::HarnessError => "harness_error",
@@ -56,7 +59,7 @@ impl Outcome {
     pub fn rank(self) -> u8 {
         match self {
             Self::Pass => 0,
-            Self::Rejected | Self::Late | Self::Skip => 1,
+            Self::Rejected | Self::Late | Self::Skip | Self::Never => 1,
             Self::Fail | Self::Timeout | Self::HarnessError => 2,
             Self::Crash => 3,
         }

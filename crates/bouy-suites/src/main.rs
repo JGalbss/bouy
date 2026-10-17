@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use bouy_suites::comparison::Selection;
 use bouy_suites::test262;
-use bouy_suites::{compat, node, packages, summary};
+use bouy_suites::{compat, node, node_surface, packages, summary};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// The lines of each list of the report. `results.json` holds every id.
@@ -36,6 +36,8 @@ enum Suite {
     },
     /// Node's own tests, vendored in tests/node/suite at the tag of .node-version.
     Node(Upstream),
+    /// The API surface of tests/node/surface.json, probed on Bouy.
+    NodeSurface(Surface),
     /// The ecosystem tier: tests/npm, tests/packages, and the areas of tests/equivalence
     /// that have an expectation file.
     Packages(Packages),
@@ -94,6 +96,28 @@ struct Packages {
     jobs: Option<usize>,
 }
 
+#[derive(Debug, Args)]
+struct Surface {
+    /// Rewrite tests/node/surface/expectations.txt and summary.json from a run of every group.
+    #[arg(long)]
+    update: bool,
+    /// Run only the groups whose name contains this text, such as `node:fs`.
+    #[arg(long)]
+    filter: Option<String>,
+    /// The expectation file of the base commit, for the regressions of section 3.3.
+    #[arg(long)]
+    base: Option<PathBuf>,
+    /// Report regressions without failing, as the `accept-regression` label asks.
+    #[arg(long)]
+    accept_regressions: bool,
+    /// The `bouy` binary under test. Defaults to the `bouy` next to this binary.
+    #[arg(long, env = "BOUY_BIN")]
+    bouy: Option<PathBuf>,
+    /// The worker threads. Defaults to the number of cores, at most 8.
+    #[arg(long)]
+    jobs: Option<usize>,
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum Select {
     All,
@@ -118,6 +142,7 @@ fn main() -> ExitCode {
         Suite::Compat { check } => write_compat(check),
         Suite::Packages(arguments) => run_packages(arguments),
         Suite::Node(upstream) => run_node(upstream),
+        Suite::NodeSurface(arguments) => run_node_surface(arguments),
         Suite::Test262 { upstream, checkout } => run_test262(upstream, checkout),
     }
 }
@@ -207,6 +232,39 @@ fn run_node(upstream: Upstream) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if report.comparison.fails(upstream.accept_regressions) {
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+fn run_node_surface(arguments: Surface) -> ExitCode {
+    let Some(bouy) = bouy_under_test(arguments.bouy) else {
+        return ExitCode::from(2);
+    };
+    let options = node_surface::Options {
+        directory: bouy_suites::repository().join("tests/node"),
+        output: target().join("suites/node-surface"),
+        bouy,
+        filter: arguments.filter,
+        base: arguments.base,
+        update: arguments.update,
+        jobs: arguments.jobs.unwrap_or_else(bouy_suites::default_jobs),
+        deadline: Duration::from_secs(20),
+    };
+    let report = match node_surface::run(&options) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("bouy-suites: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    print!("{}", report.text());
+    println!("wrote {}", options.output.display());
+    if options.update {
+        println!("updated {}", options.directory.join("surface").display());
+        return ExitCode::SUCCESS;
+    }
+    if report.comparison.fails(arguments.accept_regressions) {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS

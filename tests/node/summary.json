@@ -8,6 +8,7 @@
     "rejected": 3836,
     "late": 0,
     "skip": 583,
+    "never": 0,
     "fail": 0,
     "timeout": 0,
     "harness_error": 0,

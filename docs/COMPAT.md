@@ -2,7 +2,7 @@
 
 # Compatibility
 
-The pass rate of each test tier that exists today. `bouy-suites compat` writes this page and `docs/compat.json` from the committed `tests/*/summary.json` files and the Bouy corpora, and `pnpm check` fails when either file differs from them. [docs/design/testing.md](design/testing.md) defines the tiers and the outcomes. The denominator of a rate is every test, skips included. A silent failure is `fail`, `timeout`, or `harness_error`: the program ran and gave a wrong result.
+The pass rate of each test tier that exists today. `bouy-suites compat` writes this page and `docs/compat.json` from the committed summaries of the upstream suites, `tests/node/never.txt`, and the Bouy corpora, and `pnpm check` fails when either file differs from them. [docs/design/testing.md](design/testing.md) defines the tiers and the outcomes. The denominator of a rate is every test, skips included. A silent failure is `fail`, `timeout`, or `harness_error`: the program ran and gave a wrong result.
 
 ## Tiers
 
@@ -10,6 +10,7 @@ The pass rate of each test tier that exists today. `bouy-suites compat` writes t
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
 | node | node | v25.9.0 | 0 | 4,419 | 0.0% | 0 | 0 | 47731fd | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 0 | 4,460 | 0.0% | 0 | 0 | d38648d | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/equivalence.rs` |
@@ -31,237 +32,237 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 
 ### Outcomes
 
-| Tests | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 53,616 | 4,320 | 8.1% | 49,251 | 0 | 44 | 0 | 0 | 0 | 1 |
-| kind: negative | 4,734 | 4,315 | 91.1% | 419 | 0 | 0 | 0 | 0 | 0 | 0 |
-| kind: positive | 48,882 | 5 | 0.0% | 48,832 | 0 | 44 | 0 | 0 | 0 | 1 |
-| subset: dynamic-code | 1,968 | 5 | 0.3% | 1,962 | 0 | 1 | 0 | 0 | 0 | 0 |
-| subset: npm | 40,232 | 3,978 | 9.9% | 36,216 | 0 | 37 | 0 | 0 | 0 | 1 |
+| Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| every test | 53,616 | 4,320 | 8.1% | 49,251 | 0 | 44 | 0 | 0 | 0 | 0 | 1 |
+| kind: negative | 4,734 | 4,315 | 91.1% | 419 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| kind: positive | 48,882 | 5 | 0.0% | 48,832 | 0 | 44 | 0 | 0 | 0 | 0 | 1 |
+| subset: dynamic-code | 1,968 | 5 | 0.3% | 1,962 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| subset: npm | 40,232 | 3,978 | 9.9% | 36,216 | 0 | 37 | 0 | 0 | 0 | 0 | 1 |
 
 ### By edition
 
-| edition | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es5 | 8,165 | 474 | 5.8% | 7,690 | 0 | 0 | 0 | 0 | 0 | 1 |
-| es6 | 19,522 | 1,746 | 8.9% | 17,776 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es7 | 130 | 14 | 10.8% | 116 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es8 | 1,049 | 137 | 13.1% | 911 | 0 | 1 | 0 | 0 | 0 | 0 |
-| es9 | 4,858 | 444 | 9.1% | 4,382 | 0 | 32 | 0 | 0 | 0 | 0 |
-| es10 | 137 | 1 | 0.7% | 136 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es11 | 2,178 | 203 | 9.3% | 1,972 | 0 | 3 | 0 | 0 | 0 | 0 |
-| es12 | 922 | 75 | 8.1% | 843 | 0 | 4 | 0 | 0 | 0 | 0 |
-| es13 | 5,544 | 891 | 16.1% | 4,653 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es14 | 407 | 24 | 5.9% | 383 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es15 | 846 | 1 | 0.1% | 845 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es16 | 1,288 | 8 | 0.6% | 1,276 | 0 | 4 | 0 | 0 | 0 | 0 |
-| es17 | 313 | 0 | 0.0% | 313 | 0 | 0 | 0 | 0 | 0 | 0 |
-| esnext | 8,257 | 302 | 3.7% | 7,955 | 0 | 0 | 0 | 0 | 0 | 0 |
+| edition | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| es5 | 8,165 | 474 | 5.8% | 7,690 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| es6 | 19,522 | 1,746 | 8.9% | 17,776 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es7 | 130 | 14 | 10.8% | 116 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es8 | 1,049 | 137 | 13.1% | 911 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| es9 | 4,858 | 444 | 9.1% | 4,382 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
+| es10 | 137 | 1 | 0.7% | 136 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es11 | 2,178 | 203 | 9.3% | 1,972 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| es12 | 922 | 75 | 8.1% | 843 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| es13 | 5,544 | 891 | 16.1% | 4,653 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es14 | 407 | 24 | 5.9% | 383 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es15 | 846 | 1 | 0.1% | 845 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es16 | 1,288 | 8 | 0.6% | 1,276 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| es17 | 313 | 0 | 0.0% | 313 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| esnext | 8,257 | 302 | 3.7% | 7,955 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 ### By feature
 
 <details><summary>198 groups</summary>
 
-| feature | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| AggregateError | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Array.fromAsync | 95 | 0 | 0.0% | 95 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Array.prototype.at | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Array.prototype.flat | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Array.prototype.flatMap | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Array.prototype.includes | 69 | 0 | 0.0% | 69 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Array.prototype.values | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ArrayBuffer | 278 | 0 | 0.0% | 278 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Atomics | 386 | 0 | 0.0% | 384 | 0 | 2 | 0 | 0 | 0 | 0 |
-| Atomics.pause | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Atomics.waitAsync | 101 | 0 | 0.0% | 101 | 0 | 0 | 0 | 0 | 0 | 0 |
-| BigInt | 1,506 | 39 | 2.6% | 1,466 | 0 | 1 | 0 | 0 | 0 | 0 |
-| DataView | 193 | 0 | 0.0% | 193 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.getFloat32 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.getFloat64 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.getInt16 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.getInt32 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.getInt8 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.getUint16 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.getUint32 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| DataView.prototype.setUint8 | 56 | 0 | 0.0% | 56 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Error.isError | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| FinalizationRegistry | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Float16Array | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Float32Array | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Float64Array | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Int16Array | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Int32Array | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Int8Array | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl-enumeration | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DateTimeFormat-datetimestyle | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DateTimeFormat-dayPeriod | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DateTimeFormat-extend-timezonename | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DateTimeFormat-formatRange | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DateTimeFormat-fractionalSecondDigits | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DisplayNames | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DisplayNames-v2 | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.DurationFormat | 111 | 0 | 0.0% | 111 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.Era-monthcode | 1,566 | 0 | 0.0% | 1,566 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.ListFormat | 81 | 0 | 0.0% | 81 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.Locale | 194 | 0 | 0.0% | 194 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.Locale-info | 77 | 0 | 0.0% | 77 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.NumberFormat-unified | 68 | 0 | 0.0% | 68 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.NumberFormat-v3 | 99 | 0 | 0.0% | 99 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.RelativeTimeFormat | 79 | 0 | 0.0% | 79 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Intl.Segmenter | 79 | 0 | 0.0% | 79 | 0 | 0 | 0 | 0 | 0 | 0 |
-| IsHTMLDDA | 42 | 0 | 0.0% | 0 | 0 | 42 | 0 | 0 | 0 | 0 |
-| Iterator.prototype.join | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Map | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Math.sumPrecise | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Object.fromEntries | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Object.hasOwn | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Object.is | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Promise | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Promise.allSettled | 102 | 0 | 0.0% | 102 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Promise.any | 92 | 0 | 0.0% | 92 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Promise.prototype.finally | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Proxy | 479 | 0 | 0.0% | 479 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Reflect | 478 | 0 | 0.0% | 478 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Reflect.construct | 704 | 0 | 0.0% | 704 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Reflect.set | 46 | 0 | 0.0% | 46 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Reflect.setPrototypeOf | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 |
-| RegExp.escape | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Set | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| ShadowRealm | 64 | 0 | 0.0% | 64 | 0 | 0 | 0 | 0 | 0 | 0 |
-| SharedArrayBuffer | 467 | 0 | 0.0% | 465 | 0 | 2 | 0 | 0 | 0 | 0 |
-| String.fromCodePoint | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 |
-| String.prototype.at | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| String.prototype.endsWith | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| String.prototype.includes | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 |
-| String.prototype.isWellFormed | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| String.prototype.matchAll | 16 | 0 | 0.0% | 15 | 0 | 1 | 0 | 0 | 0 | 0 |
-| String.prototype.replaceAll | 41 | 0 | 0.0% | 40 | 0 | 1 | 0 | 0 | 0 | 0 |
-| String.prototype.toWellFormed | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| String.prototype.trimEnd | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| String.prototype.trimStart | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol | 1,494 | 0 | 0.0% | 1,494 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.asyncIterator | 538 | 0 | 0.0% | 538 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.hasInstance | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.isConcatSpreadable | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.iterator | 1,867 | 0 | 0.0% | 1,865 | 0 | 2 | 0 | 0 | 0 | 0 |
-| Symbol.match | 88 | 0 | 0.0% | 87 | 0 | 1 | 0 | 0 | 0 | 0 |
-| Symbol.matchAll | 63 | 0 | 0.0% | 62 | 0 | 1 | 0 | 0 | 0 | 0 |
-| Symbol.prototype.description | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.replace | 98 | 0 | 0.0% | 96 | 0 | 2 | 0 | 0 | 0 | 0 |
-| Symbol.search | 37 | 0 | 0.0% | 36 | 0 | 1 | 0 | 0 | 0 | 0 |
-| Symbol.species | 284 | 0 | 0.0% | 284 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.split | 58 | 0 | 0.0% | 57 | 0 | 1 | 0 | 0 | 0 | 0 |
-| Symbol.toPrimitive | 233 | 0 | 0.0% | 233 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.toStringTag | 131 | 0 | 0.0% | 131 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Symbol.unscopables | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Temporal | 6,716 | 0 | 0.0% | 6,716 | 0 | 0 | 0 | 0 | 0 | 0 |
-| TypedArray | 2,554 | 0 | 0.0% | 2,551 | 0 | 3 | 0 | 0 | 0 | 0 |
-| TypedArray.prototype.at | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Uint16Array | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Uint32Array | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Uint8Array | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Uint8ClampedArray | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| WeakMap | 79 | 0 | 0.0% | 79 | 0 | 0 | 0 | 0 | 0 | 0 |
-| WeakRef | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 |
-| WeakSet | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 |
-| __getter__ | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| __proto__ | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| __setter__ | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| align-detached-buffer-semantics-with-web-reality | 158 | 0 | 0.0% | 158 | 0 | 0 | 0 | 0 | 0 | 0 |
-| arbitrary-module-namespace-names | 16 | 7 | 43.8% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| array-find-from-last | 109 | 0 | 0.0% | 109 | 0 | 0 | 0 | 0 | 0 | 0 |
-| array-grouping | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 |
-| arraybuffer-transfer | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 |
-| arrow-function | 949 | 64 | 6.7% | 885 | 0 | 0 | 0 | 0 | 0 | 0 |
-| async-functions | 705 | 203 | 28.8% | 502 | 0 | 0 | 0 | 0 | 0 | 0 |
-| async-iteration | 4,971 | 594 | 11.9% | 4,376 | 0 | 1 | 0 | 0 | 0 | 0 |
-| await-dictionary | 89 | 0 | 0.0% | 89 | 0 | 0 | 0 | 0 | 0 | 0 |
-| caller | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 |
-| canonical-tz | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| change-array-by-copy | 137 | 0 | 0.0% | 137 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class | 4,794 | 750 | 15.6% | 4,042 | 0 | 2 | 0 | 0 | 0 | 0 |
-| class-fields-private | 1,134 | 382 | 33.7% | 752 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class-fields-private-in | 19 | 8 | 42.1% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class-fields-public | 2,058 | 290 | 14.1% | 1,768 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class-methods-private | 1,709 | 344 | 20.1% | 1,365 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class-static-block | 65 | 28 | 43.1% | 37 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class-static-fields-private | 345 | 17 | 4.9% | 328 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class-static-fields-public | 213 | 28 | 13.1% | 185 | 0 | 0 | 0 | 0 | 0 | 0 |
-| class-static-methods-private | 1,513 | 162 | 10.7% | 1,351 | 0 | 0 | 0 | 0 | 0 | 0 |
-| coalesce-expression | 26 | 4 | 15.4% | 21 | 0 | 1 | 0 | 0 | 0 | 0 |
-| computed-property-names | 478 | 12 | 2.5% | 466 | 0 | 0 | 0 | 0 | 0 | 0 |
-| const | 15 | 1 | 6.7% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| cross-realm | 203 | 0 | 0.0% | 203 | 0 | 0 | 0 | 0 | 0 | 0 |
-| decorators | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| default-parameters | 2,269 | 219 | 9.7% | 2,049 | 0 | 1 | 0 | 0 | 0 | 0 |
-| destructuring-assignment | 141 | 94 | 66.7% | 47 | 0 | 0 | 0 | 0 | 0 | 0 |
-| destructuring-binding | 6,637 | 516 | 7.8% | 6,117 | 0 | 4 | 0 | 0 | 0 | 0 |
-| dynamic-import | 1,011 | 376 | 37.2% | 635 | 0 | 0 | 0 | 0 | 0 | 0 |
-| error-cause | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| error-stack-accessor | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 |
-| explicit-resource-management | 483 | 61 | 12.6% | 422 | 0 | 0 | 0 | 0 | 0 | 0 |
-| exponentiation | 104 | 14 | 13.5% | 90 | 0 | 0 | 0 | 0 | 0 | 0 |
-| export-star-as-namespace-from-module | 19 | 4 | 21.1% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| for-in-order | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| for-of | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| generators | 4,119 | 433 | 10.5% | 3,683 | 0 | 3 | 0 | 0 | 0 | 0 |
-| globalThis | 148 | 3 | 2.0% | 145 | 0 | 0 | 0 | 0 | 0 | 0 |
-| hashbang | 29 | 24 | 82.8% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| host-gc-required | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| immutable-arraybuffer | 66 | 0 | 0.0% | 66 | 0 | 0 | 0 | 0 | 0 | 0 |
-| import-attributes | 101 | 8 | 7.9% | 93 | 0 | 0 | 0 | 0 | 0 | 0 |
-| import-bytes | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| import-defer | 252 | 92 | 36.5% | 160 | 0 | 0 | 0 | 0 | 0 | 0 |
-| import-text | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| import.meta | 23 | 12 | 52.2% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl-normative-optional | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| iterator-chunking | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 |
-| iterator-helpers | 567 | 0 | 0.0% | 563 | 0 | 4 | 0 | 0 | 0 | 0 |
-| iterator-includes | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 |
-| iterator-sequencing | 32 | 0 | 0.0% | 32 | 0 | 0 | 0 | 0 | 0 | 0 |
-| joint-iteration | 82 | 0 | 0.0% | 82 | 0 | 0 | 0 | 0 | 0 | 0 |
-| json-modules | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| json-parse-with-source | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 |
-| json-superset | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| legacy-regexp | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 |
-| let | 77 | 3 | 3.9% | 74 | 0 | 0 | 0 | 0 | 0 | 0 |
-| logical-assignment-operators | 108 | 12 | 11.1% | 93 | 0 | 3 | 0 | 0 | 0 | 0 |
-| new.target | 63 | 13 | 20.6% | 50 | 0 | 0 | 0 | 0 | 0 | 0 |
-| nonextensible-applies-to-private | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| numeric-separator-literal | 159 | 63 | 39.6% | 96 | 0 | 0 | 0 | 0 | 0 | 0 |
-| object-rest | 358 | 7 | 2.0% | 351 | 0 | 0 | 0 | 0 | 0 | 0 |
-| object-spread | 135 | 24 | 17.8% | 111 | 0 | 0 | 0 | 0 | 0 | 0 |
-| optional-catch-binding | 5 | 1 | 20.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| optional-chaining | 56 | 26 | 46.4% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| promise-try | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| promise-with-resolvers | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| proxy-missing-checks | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-dotall | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-duplicate-named-groups | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-lookbehind | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-match-indices | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-modifiers | 230 | 0 | 0.0% | 230 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-named-groups | 100 | 0 | 0.0% | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-unicode-property-escapes | 681 | 0 | 0.0% | 681 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-v-flag | 187 | 1 | 0.5% | 186 | 0 | 0 | 0 | 0 | 0 | 0 |
-| resizable-arraybuffer | 471 | 0 | 0.0% | 471 | 0 | 0 | 0 | 0 | 0 | 0 |
-| rest-parameters | 96 | 96 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| set-methods | 193 | 0 | 0.0% | 193 | 0 | 0 | 0 | 0 | 0 | 0 |
-| source-phase-imports | 253 | 149 | 58.9% | 104 | 0 | 0 | 0 | 0 | 0 | 0 |
-| source-phase-imports-module-source | 109 | 63 | 57.8% | 46 | 0 | 0 | 0 | 0 | 0 | 0 |
-| stable-array-sort | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| stable-typedarray-sort | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| string-trimming | 54 | 0 | 0.0% | 54 | 0 | 0 | 0 | 0 | 0 | 0 |
-| super | 19 | 4 | 21.1% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| symbols-as-weakmap-keys | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| tail-call-optimization | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 |
-| template | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| top-level-await | 277 | 8 | 2.9% | 269 | 0 | 0 | 0 | 0 | 0 | 0 |
-| u180e | 25 | 1 | 4.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| uint8array-base64 | 71 | 0 | 0.0% | 71 | 0 | 0 | 0 | 0 | 0 | 0 |
-| upsert | 72 | 0 | 0.0% | 72 | 0 | 0 | 0 | 0 | 0 | 0 |
-| well-formed-json-stringify | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| feature | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| AggregateError | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Array.fromAsync | 95 | 0 | 0.0% | 95 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Array.prototype.at | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Array.prototype.flat | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Array.prototype.flatMap | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Array.prototype.includes | 69 | 0 | 0.0% | 69 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Array.prototype.values | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ArrayBuffer | 278 | 0 | 0.0% | 278 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Atomics | 386 | 0 | 0.0% | 384 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| Atomics.pause | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Atomics.waitAsync | 101 | 0 | 0.0% | 101 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| BigInt | 1,506 | 39 | 2.6% | 1,466 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| DataView | 193 | 0 | 0.0% | 193 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.getFloat32 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.getFloat64 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.getInt16 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.getInt32 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.getInt8 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.getUint16 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.getUint32 | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DataView.prototype.setUint8 | 56 | 0 | 0.0% | 56 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Error.isError | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| FinalizationRegistry | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Float16Array | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Float32Array | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Float64Array | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Int16Array | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Int32Array | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Int8Array | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl-enumeration | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DateTimeFormat-datetimestyle | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DateTimeFormat-dayPeriod | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DateTimeFormat-extend-timezonename | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DateTimeFormat-formatRange | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DateTimeFormat-fractionalSecondDigits | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DisplayNames | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DisplayNames-v2 | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.DurationFormat | 111 | 0 | 0.0% | 111 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.Era-monthcode | 1,566 | 0 | 0.0% | 1,566 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.ListFormat | 81 | 0 | 0.0% | 81 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.Locale | 194 | 0 | 0.0% | 194 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.Locale-info | 77 | 0 | 0.0% | 77 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.NumberFormat-unified | 68 | 0 | 0.0% | 68 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.NumberFormat-v3 | 99 | 0 | 0.0% | 99 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.RelativeTimeFormat | 79 | 0 | 0.0% | 79 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Intl.Segmenter | 79 | 0 | 0.0% | 79 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| IsHTMLDDA | 42 | 0 | 0.0% | 0 | 0 | 42 | 0 | 0 | 0 | 0 | 0 |
+| Iterator.prototype.join | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Map | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Math.sumPrecise | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Object.fromEntries | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Object.hasOwn | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Object.is | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Promise | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Promise.allSettled | 102 | 0 | 0.0% | 102 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Promise.any | 92 | 0 | 0.0% | 92 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Promise.prototype.finally | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Proxy | 479 | 0 | 0.0% | 479 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Reflect | 478 | 0 | 0.0% | 478 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Reflect.construct | 704 | 0 | 0.0% | 704 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Reflect.set | 46 | 0 | 0.0% | 46 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Reflect.setPrototypeOf | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| RegExp.escape | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Set | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ShadowRealm | 64 | 0 | 0.0% | 64 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| SharedArrayBuffer | 467 | 0 | 0.0% | 465 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| String.fromCodePoint | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.at | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.endsWith | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.includes | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.isWellFormed | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.matchAll | 16 | 0 | 0.0% | 15 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.replaceAll | 41 | 0 | 0.0% | 40 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.toWellFormed | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.trimEnd | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| String.prototype.trimStart | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol | 1,494 | 0 | 0.0% | 1,494 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.asyncIterator | 538 | 0 | 0.0% | 538 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.hasInstance | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.isConcatSpreadable | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.iterator | 1,867 | 0 | 0.0% | 1,865 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.match | 88 | 0 | 0.0% | 87 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.matchAll | 63 | 0 | 0.0% | 62 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.prototype.description | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.replace | 98 | 0 | 0.0% | 96 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.search | 37 | 0 | 0.0% | 36 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.species | 284 | 0 | 0.0% | 284 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.split | 58 | 0 | 0.0% | 57 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.toPrimitive | 233 | 0 | 0.0% | 233 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.toStringTag | 131 | 0 | 0.0% | 131 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Symbol.unscopables | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Temporal | 6,716 | 0 | 0.0% | 6,716 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TypedArray | 2,554 | 0 | 0.0% | 2,551 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| TypedArray.prototype.at | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Uint16Array | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Uint32Array | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Uint8Array | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Uint8ClampedArray | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WeakMap | 79 | 0 | 0.0% | 79 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WeakRef | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WeakSet | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| __getter__ | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| __proto__ | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| __setter__ | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| align-detached-buffer-semantics-with-web-reality | 158 | 0 | 0.0% | 158 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| arbitrary-module-namespace-names | 16 | 7 | 43.8% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| array-find-from-last | 109 | 0 | 0.0% | 109 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| array-grouping | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| arraybuffer-transfer | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| arrow-function | 949 | 64 | 6.7% | 885 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| async-functions | 705 | 203 | 28.8% | 502 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| async-iteration | 4,971 | 594 | 11.9% | 4,376 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| await-dictionary | 89 | 0 | 0.0% | 89 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| caller | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| canonical-tz | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| change-array-by-copy | 137 | 0 | 0.0% | 137 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class | 4,794 | 750 | 15.6% | 4,042 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| class-fields-private | 1,134 | 382 | 33.7% | 752 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class-fields-private-in | 19 | 8 | 42.1% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class-fields-public | 2,058 | 290 | 14.1% | 1,768 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class-methods-private | 1,709 | 344 | 20.1% | 1,365 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class-static-block | 65 | 28 | 43.1% | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class-static-fields-private | 345 | 17 | 4.9% | 328 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class-static-fields-public | 213 | 28 | 13.1% | 185 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| class-static-methods-private | 1,513 | 162 | 10.7% | 1,351 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| coalesce-expression | 26 | 4 | 15.4% | 21 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| computed-property-names | 478 | 12 | 2.5% | 466 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| const | 15 | 1 | 6.7% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| cross-realm | 203 | 0 | 0.0% | 203 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| decorators | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| default-parameters | 2,269 | 219 | 9.7% | 2,049 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| destructuring-assignment | 141 | 94 | 66.7% | 47 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| destructuring-binding | 6,637 | 516 | 7.8% | 6,117 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| dynamic-import | 1,011 | 376 | 37.2% | 635 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| error-cause | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| error-stack-accessor | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| explicit-resource-management | 483 | 61 | 12.6% | 422 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| exponentiation | 104 | 14 | 13.5% | 90 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| export-star-as-namespace-from-module | 19 | 4 | 21.1% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| for-in-order | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| for-of | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| generators | 4,119 | 433 | 10.5% | 3,683 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| globalThis | 148 | 3 | 2.0% | 145 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| hashbang | 29 | 24 | 82.8% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| host-gc-required | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| immutable-arraybuffer | 66 | 0 | 0.0% | 66 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| import-attributes | 101 | 8 | 7.9% | 93 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| import-bytes | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| import-defer | 252 | 92 | 36.5% | 160 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| import-text | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| import.meta | 23 | 12 | 52.2% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl-normative-optional | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| iterator-chunking | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| iterator-helpers | 567 | 0 | 0.0% | 563 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| iterator-includes | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| iterator-sequencing | 32 | 0 | 0.0% | 32 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| joint-iteration | 82 | 0 | 0.0% | 82 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| json-modules | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| json-parse-with-source | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| json-superset | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| legacy-regexp | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| let | 77 | 3 | 3.9% | 74 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| logical-assignment-operators | 108 | 12 | 11.1% | 93 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| new.target | 63 | 13 | 20.6% | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| nonextensible-applies-to-private | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| numeric-separator-literal | 159 | 63 | 39.6% | 96 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| object-rest | 358 | 7 | 2.0% | 351 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| object-spread | 135 | 24 | 17.8% | 111 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| optional-catch-binding | 5 | 1 | 20.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| optional-chaining | 56 | 26 | 46.4% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| promise-try | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| promise-with-resolvers | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| proxy-missing-checks | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-dotall | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-duplicate-named-groups | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-lookbehind | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-match-indices | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-modifiers | 230 | 0 | 0.0% | 230 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-named-groups | 100 | 0 | 0.0% | 100 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-unicode-property-escapes | 681 | 0 | 0.0% | 681 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-v-flag | 187 | 1 | 0.5% | 186 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| resizable-arraybuffer | 471 | 0 | 0.0% | 471 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| rest-parameters | 96 | 96 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| set-methods | 193 | 0 | 0.0% | 193 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| source-phase-imports | 253 | 149 | 58.9% | 104 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| source-phase-imports-module-source | 109 | 63 | 57.8% | 46 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| stable-array-sort | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| stable-typedarray-sort | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| string-trimming | 54 | 0 | 0.0% | 54 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| super | 19 | 4 | 21.1% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| symbols-as-weakmap-keys | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| tail-call-optimization | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| template | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| top-level-await | 277 | 8 | 2.9% | 269 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| u180e | 25 | 1 | 4.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| uint8array-base64 | 71 | 0 | 0.0% | 71 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| upsert | 72 | 0 | 0.0% | 72 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| well-formed-json-stringify | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 </details>
 
@@ -269,627 +270,627 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 
 <details><summary>619 groups</summary>
 
-| directory | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| annexB/built-ins/Array | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/Date | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/Function | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/Object | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/RegExp | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/String | 111 | 0 | 0.0% | 105 | 0 | 6 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/TypedArrayConstructors | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/escape | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/built-ins/unescape | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/language/comments | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/language/eval-code | 469 | 0 | 0.0% | 469 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/language/expressions | 26 | 1 | 3.8% | 8 | 0 | 17 | 0 | 0 | 0 | 0 |
-| annexB/language/function-code | 159 | 0 | 0.0% | 159 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/language/global-code | 153 | 0 | 0.0% | 153 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/language/literals | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| annexB/language/statements | 22 | 6 | 27.3% | 7 | 0 | 9 | 0 | 0 | 0 | 0 |
-| built-ins/AbstractModuleSource | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AbstractModuleSource/prototype | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AggregateError | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AggregateError/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array | 50 | 0 | 0.0% | 50 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array/from | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array/fromAsync | 95 | 0 | 0.0% | 95 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array/isArray | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array/length | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array/of | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Array/prototype | 2,812 | 0 | 0.0% | 2,812 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ArrayBuffer | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ArrayBuffer/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ArrayBuffer/isView | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ArrayBuffer/prototype | 172 | 0 | 0.0% | 172 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ArrayIteratorPrototype/Symbol.toStringTag | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ArrayIteratorPrototype/next | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncDisposableStack | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncDisposableStack/prototype | 91 | 0 | 0.0% | 91 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncFromSyncIteratorPrototype/next | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncFromSyncIteratorPrototype/return | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncFromSyncIteratorPrototype/throw | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncFunction | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncGeneratorFunction | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncGeneratorFunction/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncGeneratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncGeneratorPrototype/next | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncGeneratorPrototype/return | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncGeneratorPrototype/throw | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncIteratorPrototype/Symbol.asyncDispose | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/AsyncIteratorPrototype/Symbol.asyncIterator | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/add | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/and | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/compareExchange | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/exchange | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/isLockFree | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/load | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/notify | 52 | 0 | 0.0% | 52 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/or | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/pause | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/store | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/sub | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/wait | 77 | 0 | 0.0% | 75 | 0 | 2 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/waitAsync | 101 | 0 | 0.0% | 101 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Atomics/xor | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/BigInt | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/BigInt/asIntN | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/BigInt/asUintN | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/BigInt/parseInt | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/BigInt/prototype | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Boolean | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Boolean/prototype | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/DataView | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/DataView/prototype | 499 | 0 | 0.0% | 499 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Date | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Date/UTC | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Date/now | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Date/parse | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Date/prototype | 485 | 0 | 0.0% | 485 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/DisposableStack | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/DisposableStack/prototype | 80 | 0 | 0.0% | 80 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Error | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Error/isError | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Error/prototype | 65 | 0 | 0.0% | 65 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/FinalizationRegistry | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/FinalizationRegistry/prototype | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Function | 179 | 0 | 0.0% | 179 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Function/internals | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Function/length | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Function/prototype | 309 | 0 | 0.0% | 309 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/GeneratorFunction | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/GeneratorFunction/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/GeneratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/GeneratorPrototype/next | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/GeneratorPrototype/return | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/GeneratorPrototype/throw | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Infinity | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Iterator | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Iterator/concat | 32 | 0 | 0.0% | 32 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Iterator/from | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Iterator/prototype | 513 | 0 | 0.0% | 513 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Iterator/zip | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Iterator/zipKeyed | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/JSON | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/JSON/isRawJSON | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/JSON/parse | 77 | 0 | 0.0% | 77 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/JSON/rawJSON | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/JSON/stringify | 67 | 0 | 0.0% | 67 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Map | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Map/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Map/groupBy | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Map/prototype | 156 | 0 | 0.0% | 156 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/MapIteratorPrototype | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/MapIteratorPrototype/next | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/E | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/LN10 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/LN2 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/LOG10E | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/LOG2E | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/PI | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/SQRT1_2 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/SQRT2 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/abs | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/acos | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/acosh | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/asin | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/asinh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/atan | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/atan2 | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/atanh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/cbrt | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/ceil | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/clz32 | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/cos | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/cosh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/exp | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/expm1 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/f16round | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/floor | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/fround | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/hypot | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/imul | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/log | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/log10 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/log1p | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/log2 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/max | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/min | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/pow | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/random | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/round | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/sign | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/sin | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/sinh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/sqrt | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/sumPrecise | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/tan | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/tanh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Math/trunc | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NaN | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NativeErrors | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NativeErrors/EvalError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NativeErrors/RangeError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NativeErrors/ReferenceError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NativeErrors/SyntaxError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NativeErrors/TypeError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/NativeErrors/URIError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number | 120 | 0 | 0.0% | 120 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/MAX_VALUE | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/MIN_VALUE | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/NEGATIVE_INFINITY | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/POSITIVE_INFINITY | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/isFinite | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/isInteger | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/isNaN | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/isSafeInteger | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/parseFloat | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/parseInt | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Number/prototype | 168 | 0 | 0.0% | 168 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object | 61 | 0 | 0.0% | 61 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/assign | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/create | 320 | 0 | 0.0% | 320 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/defineProperties | 632 | 0 | 0.0% | 632 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/defineProperty | 1,131 | 0 | 0.0% | 1,131 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/entries | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/freeze | 53 | 0 | 0.0% | 53 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/fromEntries | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/getOwnPropertyDescriptor | 310 | 0 | 0.0% | 310 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/getOwnPropertyDescriptors | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/getOwnPropertyNames | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/getOwnPropertySymbols | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/getPrototypeOf | 39 | 0 | 0.0% | 39 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/groupBy | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/hasOwn | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/internals | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/is | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/isExtensible | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/isFrozen | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/isSealed | 33 | 0 | 0.0% | 33 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/keys | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/preventExtensions | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/prototype | 248 | 0 | 0.0% | 248 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/seal | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/setPrototypeOf | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Object/values | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise | 58 | 0 | 0.0% | 58 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/Symbol.species | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/all | 98 | 0 | 0.0% | 98 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/allKeyed | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/allSettled | 104 | 0 | 0.0% | 104 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/allSettledKeyed | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/any | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/prototype | 124 | 0 | 0.0% | 124 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/race | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/reject | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/resolve | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/try | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Promise/withResolvers | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/apply | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/construct | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/defineProperty | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/deleteProperty | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/enumerate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/get | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/getOwnPropertyDescriptor | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/getPrototypeOf | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/has | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/isExtensible | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/ownKeys | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/preventExtensions | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/revocable | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/set | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Proxy/setPrototypeOf | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/apply | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/construct | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/defineProperty | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/deleteProperty | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/enumerate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/get | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/getOwnPropertyDescriptor | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/getPrototypeOf | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/has | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/isExtensible | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/ownKeys | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/preventExtensions | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/set | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Reflect/setPrototypeOf | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp | 488 | 0 | 0.0% | 488 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/CharacterClassEscapes | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/dotall | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/escape | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/lookBehind | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/match-indices | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/named-groups | 36 | 0 | 0.0% | 36 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/property-escapes | 613 | 0 | 0.0% | 613 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/prototype | 487 | 1 | 0.2% | 486 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/regexp-modifiers | 70 | 0 | 0.0% | 70 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/unicodeSets | 114 | 0 | 0.0% | 114 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExpStringIteratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExpStringIteratorPrototype/next | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Set | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Set/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Set/prototype | 357 | 0 | 0.0% | 357 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/SetIteratorPrototype | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/SetIteratorPrototype/next | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ShadowRealm | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ShadowRealm/WrappedFunction | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ShadowRealm/prototype | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/SharedArrayBuffer | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/SharedArrayBuffer/prototype | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/String | 92 | 0 | 0.0% | 92 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/String/fromCharCode | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/String/fromCodePoint | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/String/prototype | 1,073 | 0 | 0.0% | 1,073 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/String/raw | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/StringIteratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/StringIteratorPrototype/next | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/SuppressedError | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/SuppressedError/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/asyncDispose | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/asyncIterator | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/dispose | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/for | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/hasInstance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/isConcatSpreadable | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/iterator | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/keyFor | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/match | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/matchAll | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/prototype | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/replace | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/search | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/split | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/toPrimitive | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/toStringTag | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Symbol/unscopables | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/Duration | 540 | 0 | 0.0% | 540 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/Instant | 467 | 0 | 0.0% | 467 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/Now | 66 | 0 | 0.0% | 66 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/PlainDate | 652 | 0 | 0.0% | 652 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/PlainDateTime | 773 | 0 | 0.0% | 773 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/PlainMonthDay | 199 | 0 | 0.0% | 199 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/PlainTime | 493 | 0 | 0.0% | 493 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/PlainYearMonth | 509 | 0 | 0.0% | 509 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/ZonedDateTime | 901 | 0 | 0.0% | 901 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Temporal/toStringTag | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/ThrowTypeError | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArray | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArray/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArray/from | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArray/of | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArray/prototype | 1,411 | 0 | 0.0% | 1,411 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/BigInt64Array | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/BigUint64Array | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Float32Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Float64Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Int16Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Int32Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Int8Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Uint16Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Uint32Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Uint8Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/Uint8ClampedArray | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/ctors | 116 | 0 | 0.0% | 116 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/ctors-bigint | 113 | 0 | 0.0% | 113 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/from | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/internals | 240 | 0 | 0.0% | 240 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/of | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/TypedArrayConstructors/prototype | 60 | 0 | 0.0% | 60 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Uint8Array/fromBase64 | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Uint8Array/fromHex | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/Uint8Array/prototype | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/WeakMap | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/WeakMap/prototype | 117 | 0 | 0.0% | 117 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/WeakRef | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/WeakRef/prototype | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/WeakSet | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/WeakSet/prototype | 66 | 0 | 0.0% | 66 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/decodeURI | 55 | 0 | 0.0% | 55 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/decodeURIComponent | 56 | 0 | 0.0% | 56 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/encodeURI | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/encodeURIComponent | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/eval | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/global | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/isFinite | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/isNaN | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/parseFloat | 54 | 0 | 0.0% | 54 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/parseInt | 55 | 0 | 0.0% | 55 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/undefined | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| harness | 116 | 0 | 0.0% | 116 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402 | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Array/prototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/BigInt/prototype | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Collator | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Collator/prototype | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Collator/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Date/prototype | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DateTimeFormat | 58 | 0 | 0.0% | 58 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DateTimeFormat/prototype | 181 | 0 | 0.0% | 181 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DateTimeFormat/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DisplayNames | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DisplayNames/prototype | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DurationFormat | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DurationFormat/prototype | 81 | 0 | 0.0% | 81 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/DurationFormat/supportedLocalesOf | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/FallbackSymbol | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Intl | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Intl/getCanonicalLocales | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Intl/supportedValuesOf | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Intl/toStringTag | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/ListFormat/constructor | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/ListFormat/instance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/ListFormat/prototype | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Locale | 63 | 0 | 0.0% | 63 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Locale/prototype | 127 | 0 | 0.0% | 127 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Number/prototype | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/NumberFormat | 64 | 0 | 0.0% | 64 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/NumberFormat/prototype | 181 | 0 | 0.0% | 181 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/NumberFormat/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/PluralRules | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/PluralRules/prototype | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/PluralRules/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/RelativeTimeFormat/constructor | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/RelativeTimeFormat/instance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/RelativeTimeFormat/prototype | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Segmenter | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Segmenter/constructor | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Segmenter/instance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Segmenter/prototype | 36 | 0 | 0.0% | 36 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/String/prototype | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/Duration | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/Instant | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/Now | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/PlainDate | 493 | 0 | 0.0% | 493 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/PlainDateTime | 483 | 0 | 0.0% | 483 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/PlainMonthDay | 90 | 0 | 0.0% | 90 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/PlainTime | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/PlainYearMonth | 327 | 0 | 0.0% | 327 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/Temporal/ZonedDateTime | 583 | 0 | 0.0% | 583 | 0 | 0 | 0 | 0 | 0 | 0 |
-| intl402/TypedArray/prototype | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/arguments-object | 215 | 1 | 0.5% | 214 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/arguments-object/mapped | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/arguments-object/unmapped | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/asi | 102 | 35 | 34.3% | 67 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/block-scope/leave | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/block-scope/return-from | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/block-scope/shadowing | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/block-scope/syntax | 113 | 102 | 90.3% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/comments | 23 | 6 | 26.1% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/comments/hashbang | 29 | 24 | 82.8% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/computed-property-names/basics | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/computed-property-names/class | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/computed-property-names/object | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/computed-property-names/to-name-side-effects | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/destructuring/binding | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/directive-prologue | 62 | 11 | 17.7% | 51 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/eval-code/direct | 286 | 0 | 0.0% | 286 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/eval-code/indirect | 61 | 0 | 0.0% | 61 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/export | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/addition | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/array | 52 | 0 | 0.0% | 52 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/arrow-function | 343 | 93 | 27.1% | 250 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/assignment | 485 | 90 | 18.6% | 395 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/assignmenttargettype | 324 | 316 | 97.5% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/async-arrow-function | 60 | 29 | 48.3% | 31 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/async-function | 93 | 35 | 37.6% | 58 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/async-generator | 623 | 86 | 13.8% | 537 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/await | 22 | 3 | 13.6% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/bitwise-and | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/bitwise-not | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/bitwise-or | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/bitwise-xor | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/call | 92 | 1 | 1.1% | 91 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/class | 4,059 | 611 | 15.1% | 3,448 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/coalesce | 24 | 4 | 16.7% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/comma | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/compound-assignment | 454 | 34 | 7.5% | 420 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/concatenation | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/conditional | 22 | 2 | 9.1% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/delete | 69 | 2 | 2.9% | 67 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/division | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/does-not-equals | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/dynamic-import | 1,005 | 376 | 37.4% | 629 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/equals | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/exponentiation | 44 | 7 | 15.9% | 37 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/function | 264 | 39 | 14.8% | 225 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/generators | 290 | 41 | 14.1% | 249 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/greater-than | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/greater-than-or-equal | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/grouping | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/import.meta | 22 | 12 | 54.5% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/in | 36 | 9 | 25.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/instanceof | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/left-shift | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/less-than | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/less-than-or-equal | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/logical-and | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/logical-assignment | 78 | 12 | 15.4% | 66 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/logical-not | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/logical-or | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/member-expression | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/modulus | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/multiplication | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/new | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/new.target | 14 | 2 | 14.3% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/object | 1,170 | 163 | 13.9% | 1,007 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/optional-chaining | 38 | 12 | 31.6% | 26 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/postfix-decrement | 37 | 10 | 27.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/postfix-increment | 38 | 11 | 28.9% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/prefix-decrement | 34 | 7 | 20.6% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/prefix-increment | 33 | 6 | 18.2% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/property-accessors | 21 | 1 | 4.8% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/relational | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/right-shift | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/strict-does-not-equals | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/strict-equals | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/subtraction | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/super | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/tagged-template | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/template-literal | 57 | 16 | 28.1% | 41 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/this | 6 | 1 | 16.7% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/typeof | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/unary-minus | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/unary-plus | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/unsigned-right-shift | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/void | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/expressions/yield | 63 | 3 | 4.8% | 60 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/function-code | 217 | 0 | 0.0% | 217 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/future-reserved-words | 55 | 26 | 47.3% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/global-code | 42 | 14 | 33.3% | 28 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/identifier-resolution | 14 | 1 | 7.1% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/identifiers | 268 | 116 | 43.3% | 152 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/import | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/import/import-attributes | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/import/import-bytes | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/import/import-defer | 103 | 6 | 5.8% | 97 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/keywords | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/line-terminators | 41 | 17 | 41.5% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/bigint | 59 | 39 | 66.1% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/boolean | 4 | 2 | 50.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/null | 3 | 1 | 33.3% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/numeric | 157 | 56 | 35.7% | 101 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/regexp | 240 | 21 | 8.8% | 219 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/string | 73 | 35 | 47.9% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/module-code | 284 | 162 | 57.0% | 122 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/module-code/ambiguous-export-bindings | 10 | 2 | 20.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/module-code/import-attributes | 13 | 7 | 53.8% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/module-code/namespace | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/module-code/source-phase-import | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/module-code/top-level-await | 251 | 8 | 3.2% | 243 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/punctuators | 11 | 10 | 90.9% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/reserved-words | 27 | 13 | 48.1% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/rest-parameters | 11 | 1 | 9.1% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/source-text | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statementList | 80 | 0 | 0.0% | 80 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/async-function | 74 | 27 | 36.5% | 47 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/async-generator | 301 | 33 | 11.0% | 268 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/await-using | 98 | 26 | 26.5% | 72 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/block | 21 | 14 | 66.7% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/break | 20 | 11 | 55.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/class | 4,367 | 655 | 15.0% | 3,712 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/const | 136 | 26 | 19.1% | 110 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/continue | 24 | 12 | 50.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/debugger | 2 | 1 | 50.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/do-while | 36 | 17 | 47.2% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/empty | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/expression | 3 | 1 | 33.3% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/for | 385 | 49 | 12.7% | 336 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/for-await-of | 1,234 | 92 | 7.5% | 1,142 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/for-in | 119 | 62 | 52.1% | 57 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/for-of | 751 | 94 | 12.5% | 657 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/function | 451 | 60 | 13.3% | 390 | 0 | 0 | 0 | 0 | 0 | 1 |
-| language/statements/generators | 266 | 32 | 12.0% | 234 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/if | 69 | 40 | 58.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/labeled | 24 | 14 | 58.3% | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/let | 145 | 27 | 18.6% | 118 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/return | 16 | 10 | 62.5% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/switch | 111 | 69 | 62.2% | 42 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/throw | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/try | 201 | 27 | 13.4% | 174 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/using | 80 | 27 | 33.8% | 53 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/variable | 178 | 48 | 27.0% | 130 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/while | 38 | 16 | 42.1% | 22 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/with | 181 | 16 | 8.8% | 165 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/boolean | 5 | 2 | 40.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/list | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/null | 4 | 1 | 25.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/number | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/object | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/reference | 29 | 2 | 6.9% | 27 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/string | 24 | 6 | 25.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/types/undefined | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/white-space | 67 | 6 | 9.0% | 61 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/Temporal | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/Temporal/v8 | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/Uint8Array/fromBase64 | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/built-ins/Array | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/built-ins/Object | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/built-ins/Reflect | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/built-ins/RegExp | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/decorators | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/explicit-resource-management | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/explicit-resource-management/Symbol | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/set-methods | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Array | 90 | 0 | 0.0% | 90 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/ArrayBuffer | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/AsyncGenerators | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Atomics | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/BigInt | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Boolean | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/DataView | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Date | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Error | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Exceptions | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Function | 53 | 0 | 0.0% | 53 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Iterator | 174 | 0 | 0.0% | 170 | 0 | 4 | 0 | 0 | 0 | 0 |
-| staging/sm/JSON | 39 | 0 | 0.0% | 39 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Map | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Math | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Number | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/PrivateName | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Promise | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Proxy | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Reflect | 17 | 0 | 0.0% | 16 | 0 | 1 | 0 | 0 | 0 | 0 |
-| staging/sm/RegExp | 91 | 0 | 0.0% | 91 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Set | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/String | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/Symbol | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/TypedArray | 96 | 0 | 0.0% | 96 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/WeakMap | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/async-functions | 14 | 1 | 7.1% | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/class | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/destructuring | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/eval | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/expressions | 42 | 0 | 0.0% | 41 | 0 | 1 | 0 | 0 | 0 | 0 |
-| staging/sm/extensions | 64 | 0 | 0.0% | 64 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/fields | 8 | 3 | 37.5% | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/generators | 27 | 0 | 0.0% | 26 | 0 | 1 | 0 | 0 | 0 | 0 |
-| staging/sm/global | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/lexical-environment | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/literals | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/misc | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/module | 5 | 3 | 60.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/object | 65 | 0 | 0.0% | 65 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/regress | 106 | 0 | 0.0% | 106 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/statements | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/strict | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/syntax | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/sm/types | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/source-phase-imports | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
-| staging/top-level-await | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| annexB/built-ins/Array | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/Date | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/Function | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/Object | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/RegExp | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/String | 111 | 0 | 0.0% | 105 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/TypedArrayConstructors | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/escape | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/built-ins/unescape | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/language/comments | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/language/eval-code | 469 | 0 | 0.0% | 469 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/language/expressions | 26 | 1 | 3.8% | 8 | 0 | 17 | 0 | 0 | 0 | 0 | 0 |
+| annexB/language/function-code | 159 | 0 | 0.0% | 159 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/language/global-code | 153 | 0 | 0.0% | 153 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/language/literals | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| annexB/language/statements | 22 | 6 | 27.3% | 7 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AbstractModuleSource | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AbstractModuleSource/prototype | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AggregateError | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AggregateError/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array | 50 | 0 | 0.0% | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array/from | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array/fromAsync | 95 | 0 | 0.0% | 95 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array/isArray | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array/length | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array/of | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Array/prototype | 2,812 | 0 | 0.0% | 2,812 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ArrayBuffer | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ArrayBuffer/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ArrayBuffer/isView | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ArrayBuffer/prototype | 172 | 0 | 0.0% | 172 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ArrayIteratorPrototype/Symbol.toStringTag | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ArrayIteratorPrototype/next | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncDisposableStack | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncDisposableStack/prototype | 91 | 0 | 0.0% | 91 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncFromSyncIteratorPrototype/next | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncFromSyncIteratorPrototype/return | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncFromSyncIteratorPrototype/throw | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncFunction | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncGeneratorFunction | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncGeneratorFunction/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncGeneratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncGeneratorPrototype/next | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncGeneratorPrototype/return | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncGeneratorPrototype/throw | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncIteratorPrototype/Symbol.asyncDispose | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/AsyncIteratorPrototype/Symbol.asyncIterator | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/add | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/and | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/compareExchange | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/exchange | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/isLockFree | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/load | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/notify | 52 | 0 | 0.0% | 52 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/or | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/pause | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/store | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/sub | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/wait | 77 | 0 | 0.0% | 75 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/waitAsync | 101 | 0 | 0.0% | 101 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Atomics/xor | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/BigInt | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/BigInt/asIntN | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/BigInt/asUintN | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/BigInt/parseInt | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/BigInt/prototype | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Boolean | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Boolean/prototype | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/DataView | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/DataView/prototype | 499 | 0 | 0.0% | 499 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Date | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Date/UTC | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Date/now | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Date/parse | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Date/prototype | 485 | 0 | 0.0% | 485 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/DisposableStack | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/DisposableStack/prototype | 80 | 0 | 0.0% | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Error | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Error/isError | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Error/prototype | 65 | 0 | 0.0% | 65 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/FinalizationRegistry | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/FinalizationRegistry/prototype | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Function | 179 | 0 | 0.0% | 179 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Function/internals | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Function/length | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Function/prototype | 309 | 0 | 0.0% | 309 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/GeneratorFunction | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/GeneratorFunction/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/GeneratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/GeneratorPrototype/next | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/GeneratorPrototype/return | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/GeneratorPrototype/throw | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Infinity | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Iterator | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Iterator/concat | 32 | 0 | 0.0% | 32 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Iterator/from | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Iterator/prototype | 513 | 0 | 0.0% | 513 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Iterator/zip | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Iterator/zipKeyed | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/JSON | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/JSON/isRawJSON | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/JSON/parse | 77 | 0 | 0.0% | 77 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/JSON/rawJSON | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/JSON/stringify | 67 | 0 | 0.0% | 67 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Map | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Map/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Map/groupBy | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Map/prototype | 156 | 0 | 0.0% | 156 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/MapIteratorPrototype | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/MapIteratorPrototype/next | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/E | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/LN10 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/LN2 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/LOG10E | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/LOG2E | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/PI | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/SQRT1_2 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/SQRT2 | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/abs | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/acos | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/acosh | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/asin | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/asinh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/atan | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/atan2 | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/atanh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/cbrt | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/ceil | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/clz32 | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/cos | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/cosh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/exp | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/expm1 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/f16round | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/floor | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/fround | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/hypot | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/imul | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/log | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/log10 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/log1p | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/log2 | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/max | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/min | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/pow | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/random | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/round | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/sign | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/sin | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/sinh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/sqrt | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/sumPrecise | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/tan | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/tanh | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Math/trunc | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NaN | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NativeErrors | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NativeErrors/EvalError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NativeErrors/RangeError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NativeErrors/ReferenceError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NativeErrors/SyntaxError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NativeErrors/TypeError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/NativeErrors/URIError | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number | 120 | 0 | 0.0% | 120 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/MAX_VALUE | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/MIN_VALUE | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/NEGATIVE_INFINITY | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/POSITIVE_INFINITY | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/isFinite | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/isInteger | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/isNaN | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/isSafeInteger | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/parseFloat | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/parseInt | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Number/prototype | 168 | 0 | 0.0% | 168 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object | 61 | 0 | 0.0% | 61 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/assign | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/create | 320 | 0 | 0.0% | 320 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/defineProperties | 632 | 0 | 0.0% | 632 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/defineProperty | 1,131 | 0 | 0.0% | 1,131 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/entries | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/freeze | 53 | 0 | 0.0% | 53 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/fromEntries | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/getOwnPropertyDescriptor | 310 | 0 | 0.0% | 310 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/getOwnPropertyDescriptors | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/getOwnPropertyNames | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/getOwnPropertySymbols | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/getPrototypeOf | 39 | 0 | 0.0% | 39 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/groupBy | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/hasOwn | 62 | 0 | 0.0% | 62 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/internals | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/is | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/isExtensible | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/isFrozen | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/isSealed | 33 | 0 | 0.0% | 33 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/keys | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/preventExtensions | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/prototype | 248 | 0 | 0.0% | 248 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/seal | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/setPrototypeOf | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Object/values | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise | 58 | 0 | 0.0% | 58 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/Symbol.species | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/all | 98 | 0 | 0.0% | 98 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/allKeyed | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/allSettled | 104 | 0 | 0.0% | 104 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/allSettledKeyed | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/any | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/prototype | 124 | 0 | 0.0% | 124 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/race | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/reject | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/resolve | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/try | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Promise/withResolvers | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/apply | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/construct | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/defineProperty | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/deleteProperty | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/enumerate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/get | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/getOwnPropertyDescriptor | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/getPrototypeOf | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/has | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/isExtensible | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/ownKeys | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/preventExtensions | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/revocable | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/set | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Proxy/setPrototypeOf | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/apply | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/construct | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/defineProperty | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/deleteProperty | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/enumerate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/get | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/getOwnPropertyDescriptor | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/getPrototypeOf | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/has | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/isExtensible | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/ownKeys | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/preventExtensions | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/set | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Reflect/setPrototypeOf | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp | 488 | 0 | 0.0% | 488 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/CharacterClassEscapes | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/dotall | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/escape | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/lookBehind | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/match-indices | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/named-groups | 36 | 0 | 0.0% | 36 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/property-escapes | 613 | 0 | 0.0% | 613 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/prototype | 487 | 1 | 0.2% | 486 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/regexp-modifiers | 70 | 0 | 0.0% | 70 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/unicodeSets | 114 | 0 | 0.0% | 114 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExpStringIteratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExpStringIteratorPrototype/next | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Set | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Set/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Set/prototype | 357 | 0 | 0.0% | 357 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/SetIteratorPrototype | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/SetIteratorPrototype/next | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ShadowRealm | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ShadowRealm/WrappedFunction | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ShadowRealm/prototype | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/SharedArrayBuffer | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/SharedArrayBuffer/prototype | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/String | 92 | 0 | 0.0% | 92 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/String/fromCharCode | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/String/fromCodePoint | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/String/prototype | 1,073 | 0 | 0.0% | 1,073 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/String/raw | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/StringIteratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/StringIteratorPrototype/next | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/SuppressedError | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/SuppressedError/prototype | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/asyncDispose | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/asyncIterator | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/dispose | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/for | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/hasInstance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/isConcatSpreadable | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/iterator | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/keyFor | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/match | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/matchAll | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/prototype | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/replace | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/search | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/split | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/toPrimitive | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/toStringTag | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Symbol/unscopables | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/Duration | 540 | 0 | 0.0% | 540 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/Instant | 467 | 0 | 0.0% | 467 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/Now | 66 | 0 | 0.0% | 66 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/PlainDate | 652 | 0 | 0.0% | 652 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/PlainDateTime | 773 | 0 | 0.0% | 773 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/PlainMonthDay | 199 | 0 | 0.0% | 199 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/PlainTime | 493 | 0 | 0.0% | 493 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/PlainYearMonth | 509 | 0 | 0.0% | 509 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/ZonedDateTime | 901 | 0 | 0.0% | 901 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Temporal/toStringTag | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/ThrowTypeError | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArray | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArray/Symbol.species | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArray/from | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArray/of | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArray/prototype | 1,411 | 0 | 0.0% | 1,411 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/BigInt64Array | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/BigUint64Array | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Float32Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Float64Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Int16Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Int32Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Int8Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Uint16Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Uint32Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Uint8Array | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/Uint8ClampedArray | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/ctors | 116 | 0 | 0.0% | 116 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/ctors-bigint | 113 | 0 | 0.0% | 113 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/from | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/internals | 240 | 0 | 0.0% | 240 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/of | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/TypedArrayConstructors/prototype | 60 | 0 | 0.0% | 60 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Uint8Array/fromBase64 | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Uint8Array/fromHex | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/Uint8Array/prototype | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/WeakMap | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/WeakMap/prototype | 117 | 0 | 0.0% | 117 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/WeakRef | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/WeakRef/prototype | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/WeakSet | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/WeakSet/prototype | 66 | 0 | 0.0% | 66 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/decodeURI | 55 | 0 | 0.0% | 55 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/decodeURIComponent | 56 | 0 | 0.0% | 56 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/encodeURI | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/encodeURIComponent | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/eval | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/global | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/isFinite | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/isNaN | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/parseFloat | 54 | 0 | 0.0% | 54 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/parseInt | 55 | 0 | 0.0% | 55 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/undefined | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| harness | 116 | 0 | 0.0% | 116 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402 | 22 | 0 | 0.0% | 22 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Array/prototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/BigInt/prototype | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Collator | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Collator/prototype | 35 | 0 | 0.0% | 35 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Collator/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Date/prototype | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DateTimeFormat | 58 | 0 | 0.0% | 58 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DateTimeFormat/prototype | 181 | 0 | 0.0% | 181 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DateTimeFormat/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DisplayNames | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DisplayNames/prototype | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DurationFormat | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DurationFormat/prototype | 81 | 0 | 0.0% | 81 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/DurationFormat/supportedLocalesOf | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/FallbackSymbol | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Intl | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Intl/getCanonicalLocales | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Intl/supportedValuesOf | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Intl/toStringTag | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/ListFormat/constructor | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/ListFormat/instance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/ListFormat/prototype | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Locale | 63 | 0 | 0.0% | 63 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Locale/prototype | 127 | 0 | 0.0% | 127 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Number/prototype | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/NumberFormat | 64 | 0 | 0.0% | 64 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/NumberFormat/prototype | 181 | 0 | 0.0% | 181 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/NumberFormat/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/PluralRules | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/PluralRules/prototype | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/PluralRules/supportedLocalesOf | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/RelativeTimeFormat/constructor | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/RelativeTimeFormat/instance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/RelativeTimeFormat/prototype | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Segmenter | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Segmenter/constructor | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Segmenter/instance | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Segmenter/prototype | 36 | 0 | 0.0% | 36 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/String/prototype | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/Duration | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/Instant | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/Now | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/PlainDate | 493 | 0 | 0.0% | 493 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/PlainDateTime | 483 | 0 | 0.0% | 483 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/PlainMonthDay | 90 | 0 | 0.0% | 90 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/PlainTime | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/PlainYearMonth | 327 | 0 | 0.0% | 327 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/Temporal/ZonedDateTime | 583 | 0 | 0.0% | 583 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| intl402/TypedArray/prototype | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/arguments-object | 215 | 1 | 0.5% | 214 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/arguments-object/mapped | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/arguments-object/unmapped | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/asi | 102 | 35 | 34.3% | 67 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/block-scope/leave | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/block-scope/return-from | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/block-scope/shadowing | 15 | 0 | 0.0% | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/block-scope/syntax | 113 | 102 | 90.3% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/comments | 23 | 6 | 26.1% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/comments/hashbang | 29 | 24 | 82.8% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/computed-property-names/basics | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/computed-property-names/class | 29 | 0 | 0.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/computed-property-names/object | 12 | 0 | 0.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/computed-property-names/to-name-side-effects | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/destructuring/binding | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/directive-prologue | 62 | 11 | 17.7% | 51 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/eval-code/direct | 286 | 0 | 0.0% | 286 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/eval-code/indirect | 61 | 0 | 0.0% | 61 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/export | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/addition | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/array | 52 | 0 | 0.0% | 52 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/arrow-function | 343 | 93 | 27.1% | 250 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/assignment | 485 | 90 | 18.6% | 395 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/assignmenttargettype | 324 | 316 | 97.5% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/async-arrow-function | 60 | 29 | 48.3% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/async-function | 93 | 35 | 37.6% | 58 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/async-generator | 623 | 86 | 13.8% | 537 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/await | 22 | 3 | 13.6% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/bitwise-and | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/bitwise-not | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/bitwise-or | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/bitwise-xor | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/call | 92 | 1 | 1.1% | 91 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/class | 4,059 | 611 | 15.1% | 3,448 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/coalesce | 24 | 4 | 16.7% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/comma | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/compound-assignment | 454 | 34 | 7.5% | 420 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/concatenation | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/conditional | 22 | 2 | 9.1% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/delete | 69 | 2 | 2.9% | 67 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/division | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/does-not-equals | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/dynamic-import | 1,005 | 376 | 37.4% | 629 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/equals | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/exponentiation | 44 | 7 | 15.9% | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/function | 264 | 39 | 14.8% | 225 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/generators | 290 | 41 | 14.1% | 249 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/greater-than | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/greater-than-or-equal | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/grouping | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/import.meta | 22 | 12 | 54.5% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/in | 36 | 9 | 25.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/instanceof | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/left-shift | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/less-than | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/less-than-or-equal | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/logical-and | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/logical-assignment | 78 | 12 | 15.4% | 66 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/logical-not | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/logical-or | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/member-expression | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/modulus | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/multiplication | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/new | 59 | 0 | 0.0% | 59 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/new.target | 14 | 2 | 14.3% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/object | 1,170 | 163 | 13.9% | 1,007 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/optional-chaining | 38 | 12 | 31.6% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/postfix-decrement | 37 | 10 | 27.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/postfix-increment | 38 | 11 | 28.9% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/prefix-decrement | 34 | 7 | 20.6% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/prefix-increment | 33 | 6 | 18.2% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/property-accessors | 21 | 1 | 4.8% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/relational | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/right-shift | 37 | 0 | 0.0% | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/strict-does-not-equals | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/strict-equals | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/subtraction | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/super | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/tagged-template | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/template-literal | 57 | 16 | 28.1% | 41 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/this | 6 | 1 | 16.7% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/typeof | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/unary-minus | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/unary-plus | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/unsigned-right-shift | 45 | 0 | 0.0% | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/void | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/expressions/yield | 63 | 3 | 4.8% | 60 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/function-code | 217 | 0 | 0.0% | 217 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/future-reserved-words | 55 | 26 | 47.3% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/global-code | 42 | 14 | 33.3% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/identifier-resolution | 14 | 1 | 7.1% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/identifiers | 268 | 116 | 43.3% | 152 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/import | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/import/import-attributes | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/import/import-bytes | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/import/import-defer | 103 | 6 | 5.8% | 97 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/keywords | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/line-terminators | 41 | 17 | 41.5% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/bigint | 59 | 39 | 66.1% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/boolean | 4 | 2 | 50.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/null | 3 | 1 | 33.3% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/numeric | 157 | 56 | 35.7% | 101 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/regexp | 240 | 21 | 8.8% | 219 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/string | 73 | 35 | 47.9% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/module-code | 284 | 162 | 57.0% | 122 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/module-code/ambiguous-export-bindings | 10 | 2 | 20.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/module-code/import-attributes | 13 | 7 | 53.8% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/module-code/namespace | 38 | 0 | 0.0% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/module-code/source-phase-import | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/module-code/top-level-await | 251 | 8 | 3.2% | 243 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/punctuators | 11 | 10 | 90.9% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/reserved-words | 27 | 13 | 48.1% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/rest-parameters | 11 | 1 | 9.1% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/source-text | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statementList | 80 | 0 | 0.0% | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/async-function | 74 | 27 | 36.5% | 47 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/async-generator | 301 | 33 | 11.0% | 268 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/await-using | 98 | 26 | 26.5% | 72 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/block | 21 | 14 | 66.7% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/break | 20 | 11 | 55.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/class | 4,367 | 655 | 15.0% | 3,712 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/const | 136 | 26 | 19.1% | 110 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/continue | 24 | 12 | 50.0% | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/debugger | 2 | 1 | 50.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/do-while | 36 | 17 | 47.2% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/empty | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/expression | 3 | 1 | 33.3% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/for | 385 | 49 | 12.7% | 336 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/for-await-of | 1,234 | 92 | 7.5% | 1,142 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/for-in | 119 | 62 | 52.1% | 57 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/for-of | 751 | 94 | 12.5% | 657 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/function | 451 | 60 | 13.3% | 390 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| language/statements/generators | 266 | 32 | 12.0% | 234 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/if | 69 | 40 | 58.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/labeled | 24 | 14 | 58.3% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/let | 145 | 27 | 18.6% | 118 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/return | 16 | 10 | 62.5% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/switch | 111 | 69 | 62.2% | 42 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/throw | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/try | 201 | 27 | 13.4% | 174 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/using | 80 | 27 | 33.8% | 53 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/variable | 178 | 48 | 27.0% | 130 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/while | 38 | 16 | 42.1% | 22 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/statements/with | 181 | 16 | 8.8% | 165 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/boolean | 5 | 2 | 40.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/list | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/null | 4 | 1 | 25.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/number | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/object | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/reference | 29 | 2 | 6.9% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/string | 24 | 6 | 25.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/types/undefined | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/white-space | 67 | 6 | 9.0% | 61 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/Temporal | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/Temporal/v8 | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/Uint8Array/fromBase64 | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/built-ins/Array | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/built-ins/Object | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/built-ins/Reflect | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/built-ins/RegExp | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/decorators | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/explicit-resource-management | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/explicit-resource-management/Symbol | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/set-methods | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Array | 90 | 0 | 0.0% | 90 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/ArrayBuffer | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/AsyncGenerators | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Atomics | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/BigInt | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Boolean | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/DataView | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Date | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Error | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Exceptions | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Function | 53 | 0 | 0.0% | 53 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Iterator | 174 | 0 | 0.0% | 170 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/JSON | 39 | 0 | 0.0% | 39 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Map | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Math | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Number | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/PrivateName | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Promise | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Proxy | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Reflect | 17 | 0 | 0.0% | 16 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/RegExp | 91 | 0 | 0.0% | 91 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Set | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/String | 47 | 0 | 0.0% | 47 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/Symbol | 30 | 0 | 0.0% | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/TypedArray | 96 | 0 | 0.0% | 96 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/WeakMap | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/async-functions | 14 | 1 | 7.1% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/class | 94 | 0 | 0.0% | 94 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/destructuring | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/eval | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/expressions | 42 | 0 | 0.0% | 41 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/extensions | 64 | 0 | 0.0% | 64 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/fields | 8 | 3 | 37.5% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/generators | 27 | 0 | 0.0% | 26 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/global | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/lexical-environment | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/literals | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/misc | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/module | 5 | 3 | 60.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/object | 65 | 0 | 0.0% | 65 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/regress | 106 | 0 | 0.0% | 106 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/statements | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/strict | 51 | 0 | 0.0% | 51 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/syntax | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/sm/types | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/source-phase-imports | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| staging/top-level-await | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 </details>
 
@@ -953,84 +954,84 @@ node at v25.9.0, updated at 47731fd. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
-| Tests | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 0 | 0.0% | 3,836 | 0 | 583 | 0 | 0 | 0 | 0 |
-| kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 0 | 0.0% | 3,836 | 0 | 240 | 0 | 0 | 0 | 0 |
+| Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| every test | 4,419 | 0 | 0.0% | 3,836 | 0 | 583 | 0 | 0 | 0 | 0 | 0 |
+| kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
+| kind: public | 4,076 | 0 | 0.0% | 3,836 | 0 | 240 | 0 | 0 | 0 | 0 | 0 |
 
 ### By module
 
 <details><summary>46 groups</summary>
 
-| module | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| assert | 14 | 0 | 0.0% | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
-| async_hooks | 56 | 0 | 0.0% | 45 | 0 | 11 | 0 | 0 | 0 | 0 |
-| buffer | 69 | 0 | 0.0% | 63 | 0 | 6 | 0 | 0 | 0 | 0 |
-| child_process | 114 | 0 | 0.0% | 107 | 0 | 7 | 0 | 0 | 0 | 0 |
-| cluster | 88 | 0 | 0.0% | 86 | 0 | 2 | 0 | 0 | 0 | 0 |
-| console | 22 | 0 | 0.0% | 21 | 0 | 1 | 0 | 0 | 0 | 0 |
-| constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
-| crypto | 161 | 0 | 0.0% | 152 | 0 | 9 | 0 | 0 | 0 | 0 |
-| dgram | 79 | 0 | 0.0% | 68 | 0 | 11 | 0 | 0 | 0 | 0 |
-| diagnostics_channel | 56 | 0 | 0.0% | 53 | 0 | 3 | 0 | 0 | 0 | 0 |
-| dns | 29 | 0 | 0.0% | 19 | 0 | 10 | 0 | 0 | 0 | 0 |
-| domain | 50 | 0 | 0.0% | 48 | 0 | 2 | 0 | 0 | 0 | 0 |
-| events | 40 | 0 | 0.0% | 34 | 0 | 6 | 0 | 0 | 0 | 0 |
-| fs | 343 | 0 | 0.0% | 323 | 0 | 20 | 0 | 0 | 0 | 0 |
-| http | 394 | 0 | 0.0% | 379 | 0 | 15 | 0 | 0 | 0 | 0 |
-| http2 | 274 | 0 | 0.0% | 242 | 0 | 32 | 0 | 0 | 0 | 0 |
-| https | 65 | 0 | 0.0% | 63 | 0 | 2 | 0 | 0 | 0 | 0 |
-| inspector | 114 | 0 | 0.0% | 0 | 0 | 114 | 0 | 0 | 0 | 0 |
-| module | 280 | 0 | 0.0% | 263 | 0 | 17 | 0 | 0 | 0 | 0 |
-| net | 162 | 0 | 0.0% | 152 | 0 | 10 | 0 | 0 | 0 | 0 |
-| os | 8 | 0 | 0.0% | 6 | 0 | 2 | 0 | 0 | 0 | 0 |
-| other | 616 | 0 | 0.0% | 438 | 0 | 178 | 0 | 0 | 0 | 0 |
-| path | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| perf_hooks | 27 | 0 | 0.0% | 24 | 0 | 3 | 0 | 0 | 0 | 0 |
-| process | 131 | 0 | 0.0% | 123 | 0 | 8 | 0 | 0 | 0 | 0 |
-| punycode | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| querystring | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| quic | 9 | 0 | 0.0% | 6 | 0 | 3 | 0 | 0 | 0 | 0 |
-| readline | 22 | 0 | 0.0% | 15 | 0 | 7 | 0 | 0 | 0 | 0 |
-| repl | 106 | 0 | 0.0% | 92 | 0 | 14 | 0 | 0 | 0 | 0 |
-| sea | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| sqlite | 18 | 0 | 0.0% | 16 | 0 | 2 | 0 | 0 | 0 | 0 |
-| stream | 263 | 0 | 0.0% | 255 | 0 | 8 | 0 | 0 | 0 | 0 |
-| string_decoder | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| sys | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| test | 65 | 0 | 0.0% | 60 | 0 | 5 | 0 | 0 | 0 | 0 |
-| timers | 60 | 0 | 0.0% | 48 | 0 | 12 | 0 | 0 | 0 | 0 |
-| tls | 220 | 0 | 0.0% | 205 | 0 | 15 | 0 | 0 | 0 | 0 |
-| trace_events | 29 | 0 | 0.0% | 26 | 0 | 3 | 0 | 0 | 0 | 0 |
-| tty | 3 | 0 | 0.0% | 2 | 0 | 1 | 0 | 0 | 0 | 0 |
-| url | 42 | 0 | 0.0% | 39 | 0 | 3 | 0 | 0 | 0 | 0 |
-| util | 30 | 0 | 0.0% | 20 | 0 | 10 | 0 | 0 | 0 | 0 |
-| v8 | 22 | 0 | 0.0% | 17 | 0 | 5 | 0 | 0 | 0 | 0 |
-| vm | 99 | 0 | 0.0% | 90 | 0 | 9 | 0 | 0 | 0 | 0 |
-| worker_threads | 148 | 0 | 0.0% | 136 | 0 | 12 | 0 | 0 | 0 | 0 |
-| zlib | 63 | 0 | 0.0% | 60 | 0 | 3 | 0 | 0 | 0 | 0 |
+| module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| assert | 14 | 0 | 0.0% | 13 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| async_hooks | 56 | 0 | 0.0% | 45 | 0 | 11 | 0 | 0 | 0 | 0 | 0 |
+| buffer | 69 | 0 | 0.0% | 63 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
+| child_process | 114 | 0 | 0.0% | 107 | 0 | 7 | 0 | 0 | 0 | 0 | 0 |
+| cluster | 88 | 0 | 0.0% | 86 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| console | 22 | 0 | 0.0% | 21 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| crypto | 161 | 0 | 0.0% | 152 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
+| dgram | 79 | 0 | 0.0% | 68 | 0 | 11 | 0 | 0 | 0 | 0 | 0 |
+| diagnostics_channel | 56 | 0 | 0.0% | 53 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| dns | 29 | 0 | 0.0% | 19 | 0 | 10 | 0 | 0 | 0 | 0 | 0 |
+| domain | 50 | 0 | 0.0% | 48 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| events | 40 | 0 | 0.0% | 34 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
+| fs | 343 | 0 | 0.0% | 323 | 0 | 20 | 0 | 0 | 0 | 0 | 0 |
+| http | 394 | 0 | 0.0% | 379 | 0 | 15 | 0 | 0 | 0 | 0 | 0 |
+| http2 | 274 | 0 | 0.0% | 242 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
+| https | 65 | 0 | 0.0% | 63 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| inspector | 114 | 0 | 0.0% | 0 | 0 | 114 | 0 | 0 | 0 | 0 | 0 |
+| module | 280 | 0 | 0.0% | 263 | 0 | 17 | 0 | 0 | 0 | 0 | 0 |
+| net | 162 | 0 | 0.0% | 152 | 0 | 10 | 0 | 0 | 0 | 0 | 0 |
+| os | 8 | 0 | 0.0% | 6 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| other | 616 | 0 | 0.0% | 438 | 0 | 178 | 0 | 0 | 0 | 0 | 0 |
+| path | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| perf_hooks | 27 | 0 | 0.0% | 24 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| process | 131 | 0 | 0.0% | 123 | 0 | 8 | 0 | 0 | 0 | 0 | 0 |
+| punycode | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| querystring | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| quic | 9 | 0 | 0.0% | 6 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| readline | 22 | 0 | 0.0% | 15 | 0 | 7 | 0 | 0 | 0 | 0 | 0 |
+| repl | 106 | 0 | 0.0% | 92 | 0 | 14 | 0 | 0 | 0 | 0 | 0 |
+| sea | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| sqlite | 18 | 0 | 0.0% | 16 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| stream | 263 | 0 | 0.0% | 255 | 0 | 8 | 0 | 0 | 0 | 0 | 0 |
+| string_decoder | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| sys | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| test | 65 | 0 | 0.0% | 60 | 0 | 5 | 0 | 0 | 0 | 0 | 0 |
+| timers | 60 | 0 | 0.0% | 48 | 0 | 12 | 0 | 0 | 0 | 0 | 0 |
+| tls | 220 | 0 | 0.0% | 205 | 0 | 15 | 0 | 0 | 0 | 0 | 0 |
+| trace_events | 29 | 0 | 0.0% | 26 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| tty | 3 | 0 | 0.0% | 2 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| url | 42 | 0 | 0.0% | 39 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| util | 30 | 0 | 0.0% | 20 | 0 | 10 | 0 | 0 | 0 | 0 | 0 |
+| v8 | 22 | 0 | 0.0% | 17 | 0 | 5 | 0 | 0 | 0 | 0 | 0 |
+| vm | 99 | 0 | 0.0% | 90 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
+| worker_threads | 148 | 0 | 0.0% | 136 | 0 | 12 | 0 | 0 | 0 | 0 | 0 |
+| zlib | 63 | 0 | 0.0% | 60 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
 
 </details>
 
 ### By skip reason
 
-| skip reason | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| native-addon | 2 | 0 | 0.0% | 0 | 0 | 2 | 0 | 0 | 0 | 0 |
-| node-inspector | 109 | 0 | 0.0% | 0 | 0 | 109 | 0 | 0 | 0 | 0 |
-| node-internals | 342 | 0 | 0.0% | 0 | 0 | 342 | 0 | 0 | 0 | 0 |
-| node-permission-model | 46 | 0 | 0.0% | 0 | 0 | 46 | 0 | 0 | 0 | 0 |
-| v8-flag | 84 | 0 | 0.0% | 0 | 0 | 84 | 0 | 0 | 0 | 0 |
+| skip reason | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| native-addon | 2 | 0 | 0.0% | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| node-inspector | 109 | 0 | 0.0% | 0 | 0 | 109 | 0 | 0 | 0 | 0 | 0 |
+| node-internals | 342 | 0 | 0.0% | 0 | 0 | 342 | 0 | 0 | 0 | 0 | 0 |
+| node-permission-model | 46 | 0 | 0.0% | 0 | 0 | 46 | 0 | 0 | 0 | 0 | 0 |
+| v8-flag | 84 | 0 | 0.0% | 0 | 0 | 84 | 0 | 0 | 0 | 0 | 0 |
 
 ### By directory
 
-| directory | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es-module | 222 | 0 | 0.0% | 206 | 0 | 16 | 0 | 0 | 0 | 0 |
-| parallel | 4,079 | 0 | 0.0% | 3,534 | 0 | 545 | 0 | 0 | 0 | 0 |
-| sequential | 118 | 0 | 0.0% | 96 | 0 | 22 | 0 | 0 | 0 | 0 |
+| directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| es-module | 222 | 0 | 0.0% | 206 | 0 | 16 | 0 | 0 | 0 | 0 | 0 |
+| parallel | 4,079 | 0 | 0.0% | 3,534 | 0 | 545 | 0 | 0 | 0 | 0 | 0 |
+| sequential | 118 | 0 | 0.0% | 96 | 0 | 22 | 0 | 0 | 0 | 0 | 0 |
 
 ### Blockers
 
@@ -1048,6 +1049,183 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 | `BOUY200` | 98 | 0 |
 | `BOUY203` | 6 | 0 |
 
+## Node API surface
+
+node-surface at v25.9.0, updated at d38648d. Evidence: `tests/node/surface/expectations.txt`.
+
+### Outcomes
+
+| Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| every test | 4,460 | 0 | 0.0% | 4,460 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+### By docs
+
+| docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| deprecated | 129 | 0 | 0.0% | 129 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| documented | 4,331 | 0 | 0.0% | 4,331 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+### By module
+
+<details><summary>135 groups</summary>
+
+| module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| AbortController | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| AbortSignal | 11 | 0 | 0.0% | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Blob | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| BroadcastChannel | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Buffer | 72 | 0 | 0.0% | 72 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ByteLengthQueuingStrategy | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CloseEvent | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CompressionStream | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CountQueuingStrategy | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Crypto | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CryptoKey | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CustomEvent | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DOMException | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| DecompressionStream | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ErrorEvent | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Event | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| EventTarget | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| File | 10 | 0 | 0.0% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| FormData | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Headers | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| MessageChannel | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| MessageEvent | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| MessagePort | 21 | 0 | 0.0% | 21 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Navigator | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Performance | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceEntry | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceMark | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceMeasure | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceObserver | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceObserverEntryList | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| PerformanceResourceTiming | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableByteStreamController | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStream | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamBYOBReader | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamBYOBRequest | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamDefaultController | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ReadableStreamDefaultReader | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Request | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Response | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Storage | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| SubtleCrypto | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TextDecoder | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TextDecoderStream | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TextEncoder | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TextEncoderStream | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TransformStream | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TransformStreamDefaultController | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| URL | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| URLPattern | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| URLSearchParams | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WebSocket | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WritableStream | 5 | 0 | 0.0% | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WritableStreamDefaultController | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| WritableStreamDefaultWriter | 8 | 0 | 0.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| __dirname | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| __filename | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| atob | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| btoa | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| clearImmediate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| clearInterval | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| clearTimeout | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| console | 23 | 0 | 0.0% | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| crypto | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| exports | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| fetch | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| global | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| localStorage | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| module | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| navigator | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:assert | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:assert/strict | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:async_hooks | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:buffer | 106 | 0 | 0.0% | 106 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:child_process | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:cluster | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:console | 26 | 0 | 0.0% | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:crypto | 401 | 0 | 0.0% | 401 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:dgram | 43 | 0 | 0.0% | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:diagnostics_channel | 13 | 0 | 0.0% | 13 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:dns | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:dns/promises | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:domain | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:events | 49 | 0 | 0.0% | 49 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:fs | 241 | 0 | 0.0% | 241 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:fs/promises | 34 | 0 | 0.0% | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:http | 318 | 0 | 0.0% | 318 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:http2 | 112 | 0 | 0.0% | 112 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:https | 78 | 0 | 0.0% | 78 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:inspector | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:inspector/promises | 40 | 0 | 0.0% | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:module | 20 | 0 | 0.0% | 20 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:net | 119 | 0 | 0.0% | 119 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:os | 24 | 0 | 0.0% | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:path | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:path/posix | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:path/win32 | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:perf_hooks | 69 | 0 | 0.0% | 69 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:process | 86 | 0 | 0.0% | 86 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:punycode | 9 | 0 | 0.0% | 9 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:querystring | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:readline | 48 | 0 | 0.0% | 48 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:readline/promises | 27 | 0 | 0.0% | 27 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:repl | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:sea | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:sqlite | 32 | 0 | 0.0% | 32 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:stream | 250 | 0 | 0.0% | 250 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:stream/consumers | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:stream/promises | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:stream/web | 81 | 0 | 0.0% | 81 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:string_decoder | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:sys | 25 | 0 | 0.0% | 25 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:test | 28 | 0 | 0.0% | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:test/reporters | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:timers | 7 | 0 | 0.0% | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:timers/promises | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:tls | 126 | 0 | 0.0% | 126 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:trace_events | 3 | 0 | 0.0% | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:tty | 143 | 0 | 0.0% | 143 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:url | 46 | 0 | 0.0% | 46 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:util | 97 | 0 | 0.0% | 97 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:util/types | 44 | 0 | 0.0% | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:v8 | 72 | 0 | 0.0% | 72 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:vm | 16 | 0 | 0.0% | 16 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:wasi | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:worker_threads | 84 | 0 | 0.0% | 84 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:zlib | 553 | 0 | 0.0% | 553 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| performance | 18 | 0 | 0.0% | 18 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| process | 87 | 0 | 0.0% | 87 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| queueMicrotask | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| require | 6 | 0 | 0.0% | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| sessionStorage | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| setImmediate | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| setInterval | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| setTimeout | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| structuredClone | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+</details>
+
+### Blockers
+
+A blocker is a diagnostic code, a built-in that throws a late rejection, or a harness file that does not compile. The table counts the tests that each one blocks and the tests where it is the only blocker, and it sorts by the second count.
+
+| Blocker | Tests blocked | Only blocker |
+| --- | --- | --- |
+| `BOUY201` | 3,854 | 3,854 |
+| `BOUY206` | 606 | 12 |
+| `BOUY207` | 594 | 0 |
+
+### Never
+
+The entries of `tests/node/never.txt` that Bouy will never have, each approved by a reviewer.
+
+No entry is on the list.
+
 ## Web
 
 Not measured yet. Phase 10 of section 11 of [testing.md](design/testing.md) builds this suite.
@@ -1058,13 +1236,13 @@ packages at Node 25.9.0, updated at 47731fd. Evidence: `tests/packages/expectati
 
 ### Outcomes
 
-| Tests | Total | Pass | Rate | rejected | late | skip | fail | timeout | harness_error | crash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 298 | 1 | 0.3% | 295 | 0 | 0 | 2 | 0 | 0 | 0 |
-| kind: exports.cjs | 99 | 0 | 0.0% | 99 | 0 | 0 | 0 | 0 | 0 | 0 |
-| kind: exports.mjs | 99 | 0 | 0.0% | 99 | 0 | 0 | 0 | 0 | 0 | 0 |
-| kind: main-jitless.mjs | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| kind: main.mjs | 99 | 1 | 1.0% | 96 | 0 | 0 | 2 | 0 | 0 | 0 |
+| Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| every test | 298 | 1 | 0.3% | 295 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
+| kind: exports.cjs | 99 | 0 | 0.0% | 99 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| kind: exports.mjs | 99 | 0 | 0.0% | 99 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| kind: main-jitless.mjs | 1 | 0 | 0.0% | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| kind: main.mjs | 99 | 1 | 1.0% | 96 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 
 ### By package
 

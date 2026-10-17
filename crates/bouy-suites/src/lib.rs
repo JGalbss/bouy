@@ -1,8 +1,8 @@
 //! The runner of the upstream test suites of docs/design/testing.md: the outcomes and
 //! `classify` of section 3.1, the expectation files of section 3.2, the comparison of
 //! section 3.3, the summaries of section 3.6, the selection of section 3.7, the test262
-//! runner of section 5.5, the Node runner of section 5.7, the ecosystem tier of section 5.8,
-//! and the dashboard of section 6.
+//! runner of section 5.5, the Node runner of section 5.7, the Node API surface of section
+//! 5.7.1, the ecosystem tier of section 5.8, and the dashboard of section 6.
 //! `tests/rules.rs` checks the rules of the test layout of section 7.
 
 pub mod comparison;
@@ -10,6 +10,7 @@ pub mod compat;
 pub mod expectations;
 pub mod fake_server;
 pub mod node;
+pub mod node_surface;
 pub mod outcome;
 pub mod packages;
 pub mod summary;

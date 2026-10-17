@@ -1,0 +1,451 @@
+{
+  "suite": "node-surface",
+  "version": "v25.9.0",
+  "updated": "d38648d8c7e45da6b32407634b9a73737a8d3816",
+  "total": 4460,
+  "outcomes": {
+    "pass": 0,
+    "rejected": 4460,
+    "late": 0,
+    "skip": 0,
+    "never": 0,
+    "fail": 0,
+    "timeout": 0,
+    "harness_error": 0,
+    "crash": 0
+  },
+  "groups": {
+    "docs": {
+      "deprecated": {
+        "rejected": 129
+      },
+      "documented": {
+        "rejected": 4331
+      }
+    },
+    "module": {
+      "AbortController": {
+        "rejected": 3
+      },
+      "AbortSignal": {
+        "rejected": 11
+      },
+      "Blob": {
+        "rejected": 8
+      },
+      "BroadcastChannel": {
+        "rejected": 10
+      },
+      "Buffer": {
+        "rejected": 72
+      },
+      "ByteLengthQueuingStrategy": {
+        "rejected": 3
+      },
+      "CloseEvent": {
+        "rejected": 19
+      },
+      "CompressionStream": {
+        "rejected": 3
+      },
+      "CountQueuingStrategy": {
+        "rejected": 3
+      },
+      "Crypto": {
+        "rejected": 4
+      },
+      "CryptoKey": {
+        "rejected": 5
+      },
+      "CustomEvent": {
+        "rejected": 20
+      },
+      "DOMException": {
+        "rejected": 1
+      },
+      "DecompressionStream": {
+        "rejected": 3
+      },
+      "ErrorEvent": {
+        "rejected": 19
+      },
+      "Event": {
+        "rejected": 19
+      },
+      "EventTarget": {
+        "rejected": 4
+      },
+      "File": {
+        "rejected": 10
+      },
+      "FormData": {
+        "rejected": 1
+      },
+      "Headers": {
+        "rejected": 1
+      },
+      "MessageChannel": {
+        "rejected": 1
+      },
+      "MessageEvent": {
+        "rejected": 19
+      },
+      "MessagePort": {
+        "rejected": 21
+      },
+      "Navigator": {
+        "rejected": 1
+      },
+      "Performance": {
+        "rejected": 3
+      },
+      "PerformanceEntry": {
+        "rejected": 5
+      },
+      "PerformanceMark": {
+        "rejected": 6
+      },
+      "PerformanceMeasure": {
+        "rejected": 6
+      },
+      "PerformanceObserver": {
+        "rejected": 5
+      },
+      "PerformanceObserverEntryList": {
+        "rejected": 4
+      },
+      "PerformanceResourceTiming": {
+        "rejected": 17
+      },
+      "ReadableByteStreamController": {
+        "rejected": 6
+      },
+      "ReadableStream": {
+        "rejected": 9
+      },
+      "ReadableStreamBYOBReader": {
+        "rejected": 5
+      },
+      "ReadableStreamBYOBRequest": {
+        "rejected": 4
+      },
+      "ReadableStreamDefaultController": {
+        "rejected": 5
+      },
+      "ReadableStreamDefaultReader": {
+        "rejected": 5
+      },
+      "Request": {
+        "rejected": 1
+      },
+      "Response": {
+        "rejected": 1
+      },
+      "Storage": {
+        "rejected": 1
+      },
+      "SubtleCrypto": {
+        "rejected": 19
+      },
+      "TextDecoder": {
+        "rejected": 5
+      },
+      "TextDecoderStream": {
+        "rejected": 6
+      },
+      "TextEncoder": {
+        "rejected": 4
+      },
+      "TextEncoderStream": {
+        "rejected": 4
+      },
+      "TransformStream": {
+        "rejected": 3
+      },
+      "TransformStreamDefaultController": {
+        "rejected": 5
+      },
+      "URL": {
+        "rejected": 19
+      },
+      "URLPattern": {
+        "rejected": 3
+      },
+      "URLSearchParams": {
+        "rejected": 14
+      },
+      "WebSocket": {
+        "rejected": 4
+      },
+      "WritableStream": {
+        "rejected": 5
+      },
+      "WritableStreamDefaultController": {
+        "rejected": 3
+      },
+      "WritableStreamDefaultWriter": {
+        "rejected": 8
+      },
+      "__dirname": {
+        "rejected": 1
+      },
+      "__filename": {
+        "rejected": 1
+      },
+      "atob": {
+        "rejected": 1
+      },
+      "btoa": {
+        "rejected": 1
+      },
+      "clearImmediate": {
+        "rejected": 1
+      },
+      "clearInterval": {
+        "rejected": 1
+      },
+      "clearTimeout": {
+        "rejected": 1
+      },
+      "console": {
+        "rejected": 23
+      },
+      "crypto": {
+        "rejected": 4
+      },
+      "exports": {
+        "rejected": 1
+      },
+      "fetch": {
+        "rejected": 1
+      },
+      "global": {
+        "rejected": 1
+      },
+      "localStorage": {
+        "rejected": 1
+      },
+      "module": {
+        "rejected": 3
+      },
+      "navigator": {
+        "rejected": 2
+      },
+      "node:assert": {
+        "rejected": 24
+      },
+      "node:assert/strict": {
+        "rejected": 24
+      },
+      "node:async_hooks": {
+        "rejected": 20
+      },
+      "node:buffer": {
+        "rejected": 106
+      },
+      "node:child_process": {
+        "rejected": 28
+      },
+      "node:cluster": {
+        "rejected": 48
+      },
+      "node:console": {
+        "rejected": 26
+      },
+      "node:crypto": {
+        "rejected": 401
+      },
+      "node:dgram": {
+        "rejected": 43
+      },
+      "node:diagnostics_channel": {
+        "rejected": 13
+      },
+      "node:dns": {
+        "rejected": 25
+      },
+      "node:dns/promises": {
+        "rejected": 25
+      },
+      "node:domain": {
+        "rejected": 27
+      },
+      "node:events": {
+        "rejected": 49
+      },
+      "node:fs": {
+        "rejected": 241
+      },
+      "node:fs/promises": {
+        "rejected": 34
+      },
+      "node:http": {
+        "rejected": 318
+      },
+      "node:http2": {
+        "rejected": 112
+      },
+      "node:https": {
+        "rejected": 78
+      },
+      "node:inspector": {
+        "rejected": 40
+      },
+      "node:inspector/promises": {
+        "rejected": 40
+      },
+      "node:module": {
+        "rejected": 20
+      },
+      "node:net": {
+        "rejected": 119
+      },
+      "node:os": {
+        "rejected": 24
+      },
+      "node:path": {
+        "rejected": 18
+      },
+      "node:path/posix": {
+        "rejected": 18
+      },
+      "node:path/win32": {
+        "rejected": 18
+      },
+      "node:perf_hooks": {
+        "rejected": 69
+      },
+      "node:process": {
+        "rejected": 86
+      },
+      "node:punycode": {
+        "rejected": 9
+      },
+      "node:querystring": {
+        "rejected": 7
+      },
+      "node:readline": {
+        "rejected": 48
+      },
+      "node:readline/promises": {
+        "rejected": 27
+      },
+      "node:repl": {
+        "rejected": 28
+      },
+      "node:sea": {
+        "rejected": 6
+      },
+      "node:sqlite": {
+        "rejected": 32
+      },
+      "node:stream": {
+        "rejected": 250
+      },
+      "node:stream/consumers": {
+        "rejected": 7
+      },
+      "node:stream/promises": {
+        "rejected": 3
+      },
+      "node:stream/web": {
+        "rejected": 81
+      },
+      "node:string_decoder": {
+        "rejected": 4
+      },
+      "node:sys": {
+        "rejected": 25
+      },
+      "node:test": {
+        "rejected": 28
+      },
+      "node:test/reporters": {
+        "rejected": 2
+      },
+      "node:timers": {
+        "rejected": 7
+      },
+      "node:timers/promises": {
+        "rejected": 6
+      },
+      "node:tls": {
+        "rejected": 126
+      },
+      "node:trace_events": {
+        "rejected": 3
+      },
+      "node:tty": {
+        "rejected": 143
+      },
+      "node:url": {
+        "rejected": 46
+      },
+      "node:util": {
+        "rejected": 97
+      },
+      "node:util/types": {
+        "rejected": 44
+      },
+      "node:v8": {
+        "rejected": 72
+      },
+      "node:vm": {
+        "rejected": 16
+      },
+      "node:wasi": {
+        "rejected": 6
+      },
+      "node:worker_threads": {
+        "rejected": 84
+      },
+      "node:zlib": {
+        "rejected": 553
+      },
+      "performance": {
+        "rejected": 18
+      },
+      "process": {
+        "rejected": 87
+      },
+      "queueMicrotask": {
+        "rejected": 1
+      },
+      "require": {
+        "rejected": 6
+      },
+      "sessionStorage": {
+        "rejected": 1
+      },
+      "setImmediate": {
+        "rejected": 1
+      },
+      "setInterval": {
+        "rejected": 1
+      },
+      "setTimeout": {
+        "rejected": 1
+      },
+      "structuredClone": {
+        "rejected": 1
+      }
+    }
+  },
+  "blockers": [
+    {
+      "blocker": "BOUY201",
+      "files": 3854,
+      "only": 3854
+    },
+    {
+      "blocker": "BOUY206",
+      "files": 606,
+      "only": 12
+    },
+    {
+      "blocker": "BOUY207",
+      "files": 594,
+      "only": 0
+    }
+  ]
+}

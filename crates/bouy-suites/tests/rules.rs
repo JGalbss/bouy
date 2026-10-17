@@ -26,8 +26,9 @@ const UPSTREAM: [&str; 1] = ["tests/node/suite/"];
 
 /// The files that may name node as a program: the oracle tools, the test that checks that
 /// the `node` shim answers, and this file, which names the patterns.
-const ORACLE_TOOLS: [&str; 5] = [
+const ORACLE_TOOLS: [&str; 6] = [
     "scripts/freeze-expectations.sh",
+    "scripts/node-surface.sh",
     "crates/bouy-bench/",
     "crates/bouy-fuzz/",
     "crates/bouy-cli/tests/harness.rs",
@@ -251,9 +252,9 @@ fn vendored_node_tests_match_their_upstream_hash() {
     );
 }
 
-/// Rule 6: only `scripts/freeze-expectations.sh`, `crates/bouy-bench`, and `crates/bouy-fuzz`
-/// start node. The `node` shim stops a test that starts node when it runs. This check finds
-/// the code before it runs.
+/// Rule 6: only `scripts/freeze-expectations.sh`, `scripts/node-surface.sh`, `crates/bouy-bench`,
+/// and `crates/bouy-fuzz` start node. The `node` shim stops a test that starts node when it
+/// runs. This check finds the code before it runs.
 #[test]
 fn only_the_oracle_tools_start_node() {
     let root = repository();
@@ -276,8 +277,8 @@ fn only_the_oracle_tools_start_node() {
         .collect();
     assert!(
         found.is_empty(),
-        "only scripts/freeze-expectations.sh, crates/bouy-bench, and crates/bouy-fuzz may \
-         start node:\n{}",
+        "only scripts/freeze-expectations.sh, scripts/node-surface.sh, crates/bouy-bench, and \
+         crates/bouy-fuzz may start node:\n{}",
         found.join("\n")
     );
 }

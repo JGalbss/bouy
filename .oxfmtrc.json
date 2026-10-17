@@ -12,6 +12,7 @@
     ".claude/",
     "docs/COMPAT.md",
     "tests/fuzz/",
-    "tests/node/suite/"
+    "tests/node/suite/",
+    "tests/node/surface.json"
   ]
 }
