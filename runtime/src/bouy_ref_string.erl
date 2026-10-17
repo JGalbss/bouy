@@ -45,7 +45,10 @@ intrinsics() ->
      {{builtin, <<"String">>}, ctor_record(<<"String">>, 1, {'$o', 'String.prototype'}, ?METHODS(<<"String">>, [{<<"fromCharCode">>, 1}, {<<"fromCodePoint">>, 1}, {<<"raw">>, 1}]), fun construct/2)}].
 
 -spec globals() -> [{binary(), term()}].
-globals() -> [{<<"String">>, constructor()}].
+globals() ->
+    [{<<"String">>, constructor()}]
+    ++ ?METHODS(<<"globalThis">>, [{<<"encodeURI">>, 1}, {<<"encodeURIComponent">>, 1}, {<<"decodeURI">>, 1},
+                                   {<<"decodeURIComponent">>, 1}, {<<"escape">>, 1}, {<<"unescape">>, 1}]).
 
 constructor() -> bouy_ref_realm:constructor(?MODULE, <<"String">>).
 
@@ -55,7 +58,16 @@ methods() ->
      {<<"normalize">>, 0}, {<<"padEnd">>, 1}, {<<"padStart">>, 1}, {<<"repeat">>, 1}, {<<"replace">>, 2}, {<<"replaceAll">>, 2},
      {<<"slice">>, 2}, {<<"split">>, 2}, {<<"startsWith">>, 1}, {<<"substring">>, 2}, {<<"substr">>, 2},
      {<<"toLowerCase">>, 0}, {<<"toUpperCase">>, 0}, {<<"toLocaleLowerCase">>, 0}, {<<"toLocaleUpperCase">>, 0},
-     {<<"toString">>, 0}, {<<"valueOf">>, 0}, {<<"toWellFormed">>, 0}, {<<"trim">>, 0}, {<<"trimStart">>, 0}, {<<"trimEnd">>, 0}].
+     {<<"toString">>, 0}, {<<"valueOf">>, 0}, {<<"toWellFormed">>, 0}, {<<"trim">>, 0}, {<<"trimStart">>, 0}, {<<"trimEnd">>, 0}]
+    ++ [{Name, case Attribute of none -> 0; _ -> 1 end} || {Name, _Tag, Attribute} <- html_methods()].
+
+%% The HTML methods of Annex B: the tag and the attribute of each.
+html_methods() ->
+    [{<<"anchor">>, <<"a">>, <<"name">>}, {<<"big">>, <<"big">>, none}, {<<"blink">>, <<"blink">>, none},
+     {<<"bold">>, <<"b">>, none}, {<<"fixed">>, <<"tt">>, none}, {<<"fontcolor">>, <<"font">>, <<"color">>},
+     {<<"fontsize">>, <<"font">>, <<"size">>}, {<<"italics">>, <<"i">>, none}, {<<"link">>, <<"a">>, <<"href">>},
+     {<<"small">>, <<"small">>, none}, {<<"strike">>, <<"strike">>, none}, {<<"sub">>, <<"sub">>, none},
+     {<<"sup">>, <<"sup">>, none}].
 
 -spec call_constructor(binary(), term(), list()) -> js_string().
 call_constructor(<<"String">>, _This, []) -> <<>>;
@@ -106,6 +118,7 @@ method(<<"StringIterator.prototype">>, <<"next">>, This, _Args) ->
         done ->
             bouy_ref_iterator:result(undefined, true)
     end;
+method(<<"globalThis">>, Name, _This, Args) -> uri(Name, bouy_ref:to_string(arg(1, Args)));
 method(<<"String">>, <<"fromCharCode">>, _This, Args) ->
     from_units([bouy_ref_number:to_uint32(bouy_ref:to_number(A)) band 16#FFFF || A <- Args]);
 method(<<"String">>, <<"fromCodePoint">>, _This, Args) ->
@@ -457,6 +470,18 @@ is_whitespace(C) ->
 %%% String.prototype
 
 proto(<<"[Symbol.iterator]">>, S, _Args) -> iterator(S);
+proto(Name, S, Args) when Name =:= <<"anchor">>; Name =:= <<"big">>; Name =:= <<"blink">>; Name =:= <<"bold">>;
+                          Name =:= <<"fixed">>; Name =:= <<"fontcolor">>; Name =:= <<"fontsize">>; Name =:= <<"italics">>;
+                          Name =:= <<"link">>; Name =:= <<"small">>; Name =:= <<"strike">>; Name =:= <<"sub">>; Name =:= <<"sup">> ->
+    {_, Tag, Attribute} = lists:keyfind(Name, 1, html_methods()),
+    Open = case Attribute of
+        none -> [<<"<">>, Tag];
+        _ ->
+            Value = bouy_ref:to_string(arg(1, Args)),
+            Escaped = from_units(lists:flatmap(fun($") -> units(<<"&quot;">>); (U) -> [U] end, units(Value))),
+            [<<"<">>, Tag, <<" ">>, Attribute, <<"=\"">>, Escaped, <<"\"">>]
+    end,
+    concat(Open ++ [<<">">>, S, <<"</">>, Tag, <<">">>]);
 proto(<<"at">>, S, Args) ->
     Length = length_of(S),
     case integer(arg(1, Args)) of
@@ -692,3 +717,108 @@ substitution([$$, $' | Rest], S, Matched, Pos) ->
     concat(slice(S, min(Pos + length_of(Matched), length_of(S)), length_of(S)), substitution(Rest, S, Matched, Pos));
 substitution([U | Rest], S, Matched, Pos) -> concat(from_units([U]), substitution(Rest, S, Matched, Pos));
 substitution([], _S, _Matched, _Pos) -> <<>>.
+
+%%% The URI functions and escape
+
+uri(<<"encodeURI">>, S) -> encode(S, <<";/?:@&=+$,#">>);
+uri(<<"encodeURIComponent">>, S) -> encode(S, <<>>);
+uri(<<"decodeURI">>, S) -> decode(S, <<";/?:@&=+$,#">>);
+uri(<<"decodeURIComponent">>, S) -> decode(S, <<>>);
+uri(<<"escape">>, S) -> escape(units(S));
+uri(<<"unescape">>, S) -> from_units(unescape(units(S))).
+
+-spec uri_error() -> no_return().
+uri_error() -> bouy_heap:throw_error('URIError', <<"URI malformed">>).
+
+is_uri_unreserved(C) ->
+    (C >= $a andalso C =< $z) orelse (C >= $A andalso C =< $Z) orelse (C >= $0 andalso C =< $9)
+        orelse lists:member(C, "-_.!~*'()").
+
+%% Encode: the code points outside the unescaped set as %XX of their UTF-8.
+encode(S, Extra) ->
+    Reserved = binary_to_list(Extra),
+    Out = lists:flatmap(fun(C) ->
+                                case C < 128 andalso (is_uri_unreserved(C) orelse lists:member(C, Reserved)) of
+                                    true -> [C];
+                                    false ->
+                                        C >= 16#D800 andalso C =< 16#DFFF andalso uri_error(),
+                                        lists:flatten([io_lib:format("%~2.16.0B", [B]) || <<B>> <= <<C/utf8>>])
+                                end
+                        end, code_points(S)),
+    list_to_binary(Out).
+
+%% Decode: each %XX sequence as UTF-8, except the escapes of the preserved
+%% characters, which stay as they are.
+decode(S, Preserve) -> from_code_points(decode_units(units(S), binary_to_list(Preserve))).
+
+decode_units([], _Preserve) -> [];
+decode_units([$% | Rest], Preserve) ->
+    {B, Rest1} = hex_byte(Rest),
+    case B < 16#80 of
+        true ->
+            case lists:member(B, Preserve) of
+                true -> [$%, hd(Rest), hd(tl(Rest)) | decode_units(Rest1, Preserve)];
+                false -> [B | decode_units(Rest1, Preserve)]
+            end;
+        false ->
+            N = leading_ones(B),
+            (N =:= 1 orelse N > 4) andalso uri_error(),
+            {Continuation, Rest2} = continuation_bytes(Rest1, N - 1, []),
+            Bytes = list_to_binary([B | Continuation]),
+            case unicode:characters_to_list(Bytes, utf8) of
+                [C] when is_integer(C) -> [C | decode_units(Rest2, Preserve)];
+                _ -> uri_error()
+            end
+    end;
+decode_units([C | Rest], Preserve) -> [C | decode_units(Rest, Preserve)].
+
+hex_byte([A, B | Rest]) ->
+    case {hex_value(A), hex_value(B)} of
+        {X, Y} when is_integer(X), is_integer(Y) -> {X * 16 + Y, Rest};
+        _ -> uri_error()
+    end;
+hex_byte(_) -> uri_error().
+
+hex_value(C) when C >= $0, C =< $9 -> C - $0;
+hex_value(C) when C >= $a, C =< $f -> C - $a + 10;
+hex_value(C) when C >= $A, C =< $F -> C - $A + 10;
+hex_value(_) -> error.
+
+leading_ones(B) when B band 16#80 =:= 0 -> 0;
+leading_ones(B) when B band 16#40 =:= 0 -> 1;
+leading_ones(B) when B band 16#20 =:= 0 -> 2;
+leading_ones(B) when B band 16#10 =:= 0 -> 3;
+leading_ones(B) when B band 16#08 =:= 0 -> 4;
+leading_ones(_) -> 5.
+
+continuation_bytes(Rest, 0, Acc) -> {lists:reverse(Acc), Rest};
+continuation_bytes([$% | Rest], N, Acc) ->
+    {B, Rest1} = hex_byte(Rest),
+    B band 16#C0 =:= 16#80 orelse uri_error(),
+    continuation_bytes(Rest1, N - 1, [B | Acc]);
+continuation_bytes(_, _, _) -> uri_error().
+
+%% escape of Annex B.
+escape(Units) ->
+    list_to_binary(lists:flatmap(fun(U) ->
+                                         case (U >= $a andalso U =< $z) orelse (U >= $A andalso U =< $Z) orelse (U >= $0 andalso U =< $9) orelse lists:member(U, "@*_+-./") of
+                                             true -> [U];
+                                             false when U < 256 -> io_lib:format("%~2.16.0B", [U]);
+                                             false -> io_lib:format("%u~4.16.0B", [U])
+                                         end
+                                 end, Units)).
+
+%% unescape of Annex B.
+unescape([$%, $u, A, B, C, D | Rest] = Units) ->
+    case [hex_value(X) || X <- [A, B, C, D]] of
+        [W, X, Y, Z] when is_integer(W), is_integer(X), is_integer(Y), is_integer(Z) ->
+            [((W * 16 + X) * 16 + Y) * 16 + Z | unescape(Rest)];
+        _ -> [hd(Units) | unescape(tl(Units))]
+    end;
+unescape([$%, A, B | Rest] = Units) ->
+    case {hex_value(A), hex_value(B)} of
+        {X, Y} when is_integer(X), is_integer(Y) -> [X * 16 + Y | unescape(Rest)];
+        _ -> [hd(Units) | unescape(tl(Units))]
+    end;
+unescape([U | Rest]) -> [U | unescape(Rest)];
+unescape([]) -> [].

@@ -1,0 +1,6 @@
+http://a.b/c%20d?x=%C3%A4&y=%F0%9F%98%80#f a%20b%26c%3Dd%2F%C3%A9 A%2F中%3B A/中
+a%E9%20%u2713@*_+-./ A✓%zz% <a name="a&quot;b">x</a> <font size="7">y</font> <b>z</b>
+URIError URI malformed
+URIError URI malformed
+URIError URI malformed
+URIError URI malformed
