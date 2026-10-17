@@ -17,6 +17,9 @@ export default defineConfig({
     // Benchmark programs: Bouy compiler inputs and the plain Node baselines that they
     // measure against, which await in loops on purpose to time one call at a time.
     "bench/programs/**",
+    // Speed kernels: idiomatic TypeScript ports of Octane and other benchmarks, compiled by
+    // the engine and run on Node and Bun as they are.
+    "bench/speed/**",
   ],
   overrides: [...(preset.overrides ?? [])],
 });
