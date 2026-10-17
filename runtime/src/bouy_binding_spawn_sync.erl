@@ -163,9 +163,9 @@ collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, Acc, Size, Error) ->
             case MaxBuffer =/= infinity andalso NewSize > MaxBuffer andalso Error =:= none of
                 true ->
                     kill(OsPid, KillSignal),
-                    collect(Port, OsPid, infinity, MaxBuffer, KillSignal, [Acc | Data], NewSize, -55);
+                    collect(Port, OsPid, infinity, MaxBuffer, KillSignal, [Acc, Data], NewSize, -55);
                 false ->
-                    collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, [Acc | Data], NewSize, Error)
+                    collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, [Acc, Data], NewSize, Error)
             end;
         {Port, {exit_status, Status}} ->
             {Status, iolist_to_binary(Acc), Error}
