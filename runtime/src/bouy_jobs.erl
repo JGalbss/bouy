@@ -412,12 +412,18 @@ maybe_gc() ->
     end.
 
 %% Waits for messages while the realm has work: timers, replies it waits
-%% for, or, in an actor, always.
+%% for, or, in an actor, always. Without work, it still takes the messages
+%% that have arrived, such as the wake of an async wait that the realm
+%% notified itself.
 -spec loop() -> ok.
 loop() ->
     case has_work() of
         false ->
-            ok;
+            receive
+                Message -> event_step(Message), loop()
+            after 0 ->
+                ok
+            end;
         true ->
             receive
                 stop -> ok;
@@ -438,6 +444,12 @@ pending() ->
 -spec event_step(term()) -> ok.
 event_step({'$bouy_timer', _Id}) ->
     run_due_timers();
+event_step({'$bouy_atomics_wake', _} = Event) ->
+    update_now(),
+    bouy_ref_atomics:async_event(Event);
+event_step({'$bouy_atomics_timeout', _} = Event) ->
+    update_now(),
+    bouy_ref_atomics:async_event(Event);
 event_step({'$bouy_reply', Tag, Outcome}) ->
     update_now(),
     case maps:take(Tag, pending()) of

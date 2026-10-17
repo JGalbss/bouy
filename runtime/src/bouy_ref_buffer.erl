@@ -129,12 +129,21 @@ write_bytes(Ref, Offset, Bytes) ->
     Start = Offset rem 8,
     Take = min(8 - Start, byte_size(Bytes)),
     <<Part:Take/binary, Rest/binary>> = Bytes,
-    Index = Word + 1,
-    Old = <<(atomics:get(Ref, Index)):64/little>>,
-    <<Before:Start/binary, _:Take/binary, After/binary>> = Old,
-    <<New:64/little>> = <<Before/binary, Part/binary, After/binary>>,
-    atomics:put(Ref, Index, New),
+    write_word(Ref, Word + 1, Start, Part),
     write_bytes(Ref, Offset + Take, Rest).
+
+%% Replaces the bytes of a word from Start with Part, through a
+%% compare-and-swap, so that a write does not undo the write of another
+%% agent to the other bytes of the word.
+write_word(Ref, Index, Start, Part) ->
+    Old = atomics:get(Ref, Index),
+    Take = byte_size(Part),
+    <<Before:Start/binary, _:Take/binary, After/binary>> = <<Old:64/little>>,
+    <<New:64/little>> = <<Before/binary, Part/binary, After/binary>>,
+    case atomics:compare_exchange(Ref, Index, Old, New) of
+        ok -> ok;
+        _ -> write_word(Ref, Index, Start, Part)
+    end.
 
 %% Copies Count bytes from one buffer to another, as a read then a write,
 %% so overlapping ranges copy correctly.
