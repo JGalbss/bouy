@@ -27,6 +27,9 @@ pub struct Project {
     pub entry: String,
     /// Every module of the program. The entry module comes first.
     pub modules: Vec<Module>,
+    /// The diagnostics of the modules other than the entry that do not compile. Each such
+    /// module throws its first diagnostic when the program loads it.
+    pub deferred: Vec<Diagnostic>,
 }
 
 /// One compiled module.
@@ -109,6 +112,11 @@ fn compile_reference(entry: &Path, root: &Path, script: bool) -> Result<Project,
     let links = reference::link::link(&graph);
     let mut modules = Vec::with_capacity(graph.units.len());
     let mut diagnostics = Vec::new();
+    let mut deferred: Vec<Diagnostic> = graph
+        .units
+        .iter()
+        .flat_map(|unit| unit.broken.iter().cloned())
+        .collect();
     for (index, unit) in graph.units.iter().enumerate() {
         let erlang = match reference::lower_unit(&graph, index, &links[index], index == 0) {
             Ok(erlang) => erlang,
@@ -117,15 +125,19 @@ fn compile_reference(entry: &Path, root: &Path, script: bool) -> Result<Project,
                 continue;
             }
             // Another module that does not compile throws when the program loads it.
-            Err(found) => reference::broken_module(
-                reference::Linking {
-                    graph: &graph,
-                    unit: index,
-                    link: &links[index],
-                    entry: false,
-                },
-                &found,
-            ),
+            Err(mut found) => {
+                let erlang = reference::broken_module(
+                    reference::Linking {
+                        graph: &graph,
+                        unit: index,
+                        link: &links[index],
+                        entry: false,
+                    },
+                    &found,
+                );
+                deferred.append(&mut found);
+                erlang
+            }
         };
         modules.push(Module {
             name: unit.name.clone(),
@@ -137,7 +149,9 @@ fn compile_reference(entry: &Path, root: &Path, script: bool) -> Result<Project,
         .units
         .first()
         .map_or_else(String::new, |unit| unit.name.clone());
-    finish(root.to_path_buf(), entry_name, modules, diagnostics)
+    let mut project = finish(root.to_path_buf(), entry_name, modules, diagnostics)?;
+    project.deferred = deferred;
+    Ok(project)
 }
 
 fn finish(
@@ -154,6 +168,7 @@ fn finish(
         root,
         entry,
         modules,
+        deferred: Vec::new(),
     })
 }
 
