@@ -1,29 +1,126 @@
 %% Explicit resource management: the resources of `using` and `await using`
-%% declarations, and DisposeResources at the end of their block.
+%% declarations, DisposeResources at the end of their block, and the
+%% DisposableStack and AsyncDisposableStack built-ins.
 %%
 %% The resources of a block are a cell that holds {Value, Hint, Method}
 %% entries, newest first, so that disposal runs in reverse order. Hint is
 %% sync or async. Method is the dispose method, {sync_as_async, M} for an
 %% `await using` of a value that has only Symbol.dispose, or undefined for
 %% an `await using` of null or undefined.
+%%
+%% A DisposableStack or an AsyncDisposableStack is an object of the class
+%% disposable_stack or async_disposable_stack whose slots are {State,
+%% Resources}: State is pending or disposed, and Resources is such a cell.
+%% The SuppressedError constructor is in bouy_ref_error.
 -module(bouy_ref_dispose).
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3]).
 -export([new/0, add/3, dispose/2, dispose_async/3]).
 
-%%% SuppressedError
+-import(bouy_ref_realm, [arg/2, record/4, ctor_record/5, callable/1]).
 
-%% The SuppressedError constructor is in bouy_ref_error, which disposal calls.
+-define(NAMES, [<<"DisposableStack">>, <<"AsyncDisposableStack">>]).
+
+%%% DisposableStack and AsyncDisposableStack
+
 -spec intrinsics() -> [{term(), tuple()}].
-intrinsics() -> [].
+intrinsics() ->
+    Sync = ?METHODS(<<"DisposableStack.prototype">>, [{<<"adopt">>, 2}, {<<"defer">>, 1}, {<<"dispose">>, 0}, {<<"move">>, 0}, {<<"use">>, 1}]),
+    Async = ?METHODS(<<"AsyncDisposableStack.prototype">>, [{<<"adopt">>, 2}, {<<"defer">>, 1}, {<<"disposeAsync">>, 0}, {<<"move">>, 0}, {<<"use">>, 1}]),
+    {_, Dispose} = lists:keyfind(<<"dispose">>, 1, Sync),
+    {_, DisposeAsync} = lists:keyfind(<<"disposeAsync">>, 1, Async),
+    [prototype(<<"DisposableStack">>, Sync ++ [{?SYM(dispose), Dispose}]),
+     prototype(<<"AsyncDisposableStack">>, Async ++ [{?SYM(asyncDispose), DisposeAsync}])]
+    ++ [{{builtin, N}, ctor_record(N, 0, {'$o', prototype_id(N)}, [], fun(NT, _) -> construct(N, NT) end)} || N <- ?NAMES].
+
+prototype(Name, Methods) ->
+    Owner = <<Name/binary, ".prototype">>,
+    Disposed = bouy_ref_realm:builtin(<<"get ", Owner/binary, ".disposed">>, <<"get disposed">>, 0,
+                                      fun(This, _) -> ?MODULE:method(Owner, <<"disposed">>, This, []) end),
+    {prototype_id(Name), record(object, ?OBJECT_PROTO, Methods
+         ++ [{<<"disposed">>, {'$accessor', Disposed, undefined}, 4}, {<<"constructor">>, constructor(Name)}, {?SYM(toStringTag), Name, 4}], none)}.
+
+prototype_id(Name) -> binary_to_atom(<<Name/binary, ".prototype">>).
+
+class(<<"DisposableStack">>) -> disposable_stack;
+class(<<"AsyncDisposableStack">>) -> async_disposable_stack.
 
 -spec globals() -> [{binary(), term()}].
-globals() -> [].
+globals() -> [{N, constructor(N)} || N <- ?NAMES].
 
--spec method(binary(), binary(), term(), list()) -> no_return().
-method(Owner, Name, _This, _Args) -> erlang:error({no_method, Owner, Name}).
+constructor(Name) -> bouy_ref_realm:constructor(?MODULE, Name).
+
+-spec call_constructor(binary(), term(), list()) -> no_return().
+call_constructor(Name, _This, _Args) -> bouy_ref:type_error(<<"Constructor ", Name/binary, " requires 'new'">>).
+
+construct(Name, NewTarget) ->
+    bouy_heap:new_exotic(class(Name), bouy_ref_realm:proto_for(NewTarget, prototype_id(Name)), {pending, new()}).
+
+-spec method(binary(), binary(), term(), list()) -> term().
+method(<<"AsyncDisposableStack.prototype">>, <<"disposeAsync">>, This, _) ->
+    {P, Resolve, Reject} = bouy_jobs:capability(),
+    case attempt(fun() -> slots(This, <<"AsyncDisposableStack">>, <<"disposeAsync">>) end) of
+        {error, E} -> Reject(E);
+        {ok, {disposed, _}} -> Resolve(undefined);
+        {ok, {pending, Resources}} ->
+            bouy_heap:set_slots(This, {disposed, Resources}),
+            dispose_async(Resources, normal, fun({throw, E}) -> Reject(E); (_) -> Resolve(undefined) end)
+    end,
+    P;
+method(<<"DisposableStack.prototype">>, <<"dispose">>, This, _) ->
+    case slots(This, <<"DisposableStack">>, <<"dispose">>) of
+        {disposed, _} -> undefined;
+        {pending, Resources} ->
+            bouy_heap:set_slots(This, {disposed, Resources}),
+            case dispose(Resources, normal) of
+                {throw, E} -> erlang:error({'$throw', E});
+                _ -> undefined
+            end
+    end;
+method(Owner, <<"disposed">>, This, _) ->
+    element(1, slots(This, stack_name(Owner), <<"disposed">>)) =:= disposed;
+method(Owner, Name, This, Args) ->
+    Stack = stack_name(Owner),
+    case slots(This, Stack, Name) of
+        {disposed, _} -> bouy_heap:throw_error('ReferenceError', <<"Cannot call ", Owner/binary, ".", Name/binary, " on an already-disposed ", Stack/binary>>);
+        {pending, Resources} -> pending(Name, Stack, This, Resources, Args)
+    end.
+
+stack_name(<<"DisposableStack.prototype">>) -> <<"DisposableStack">>;
+stack_name(<<"AsyncDisposableStack.prototype">>) -> <<"AsyncDisposableStack">>.
+
+hint(<<"DisposableStack">>) -> sync;
+hint(<<"AsyncDisposableStack">>) -> async.
+
+%% The methods that need a pending stack.
+pending(<<"use">>, Stack, _This, Resources, Args) ->
+    add(Resources, arg(1, Args), hint(Stack));
+pending(<<"defer">>, Stack, _This, Resources, Args) ->
+    push(Resources, {undefined, hint(Stack), callable(arg(1, Args))}),
+    undefined;
+pending(<<"adopt">>, Stack, _This, Resources, Args) ->
+    V = arg(1, Args),
+    OnDispose = callable(arg(2, Args)),
+    push(Resources, {undefined, hint(Stack), bouy_heap:function(fun(_, _) -> bouy_ref:call(OnDispose, undefined, [V]) end)}),
+    V;
+pending(<<"move">>, Stack, This, Resources, _Args) ->
+    bouy_heap:set_slots(This, {disposed, new()}),
+    bouy_heap:new_exotic(class(Stack), {'$o', prototype_id(Stack)}, {pending, Resources}).
+
+%% RequireInternalSlot: the slots of a stack of the class of Stack.
+slots({'$o', _} = O, Stack, Name) ->
+    Class = class(Stack),
+    case bouy_heap:class_of(O) of
+        Class -> bouy_heap:slots(O);
+        _ -> incompatible(Stack, Name)
+    end;
+slots(_, Stack, Name) -> incompatible(Stack, Name).
+
+-spec incompatible(binary(), binary()) -> no_return().
+incompatible(Stack, Name) ->
+    bouy_ref:type_error(<<"Method ", Stack/binary, ".prototype.", Name/binary, " called on incompatible receiver">>).
 
 %%% Resources
 

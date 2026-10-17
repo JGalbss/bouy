@@ -1,6 +1,7 @@
 // Explicit resource management: `using` and `await using` dispose their resources,
 // newest first, when their block ends, also by a return, a break, or a throw, and the
-// errors of disposal become SuppressedErrors.
+// errors of disposal become SuppressedErrors. DisposableStack and AsyncDisposableStack
+// hold resources until their dispose method runs.
 function resource(name: string, fails = false): Disposable {
   return {
     [Symbol.dispose]() {
@@ -55,4 +56,67 @@ async function asynchronous(): Promise<void> {
   await using fallback = resource("sync in await using");
   console.log("async body");
 }
-asynchronous().then(() => console.log("async done"));
+
+function stacks(): void {
+  const stack = new DisposableStack();
+  stack.use(resource("used"));
+  stack.defer(() => console.log("deferred"));
+  console.log(
+    "adopted",
+    stack.adopt(7, (value) => console.log("adopt", value)),
+  );
+  const moved = stack.move();
+  console.log("disposed", stack.disposed, moved.disposed);
+  try {
+    stack.use(resource("late"));
+  } catch (error) {
+    console.log((error as Error).constructor.name);
+  }
+  {
+    using scope = moved;
+    console.log(Object.prototype.toString.call(scope));
+  }
+  console.log("disposed", moved.disposed);
+  moved.dispose();
+
+  const failing = new DisposableStack();
+  failing.use(resource("first", true));
+  failing.use(resource("second", true));
+  try {
+    failing.dispose();
+  } catch (error) {
+    const suppressed = error as SuppressedError;
+    console.log(
+      suppressed.constructor.name,
+      (suppressed.error as Error).message,
+      (suppressed.suppressed as Error).message,
+    );
+  }
+
+  class Named extends DisposableStack {}
+  const named = new Named();
+  console.log(named instanceof Named, named.move() instanceof Named);
+}
+stacks();
+
+async function asyncStacks(): Promise<void> {
+  const stack = new AsyncDisposableStack();
+  stack.use(resource("sync in async stack"));
+  stack.defer(async () => {
+    await null;
+    console.log("async deferred");
+  });
+  stack.use(null);
+  const pending = stack.disposeAsync();
+  console.log("disposing", stack.disposed);
+  console.log("resolved", await pending);
+  try {
+    await AsyncDisposableStack.prototype.disposeAsync.call({});
+  } catch (error) {
+    console.log("rejected", (error as Error).constructor.name);
+  }
+}
+
+asynchronous()
+  .then(() => console.log("async done"))
+  .then(asyncStacks);
