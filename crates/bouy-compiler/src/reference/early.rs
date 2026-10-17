@@ -172,15 +172,31 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// Whether a reference to `symbol` comes before `end` or inside a hoisted function.
+    /// Whether code may read `symbol` before its declaration ends at `end`: a reference, or
+    /// a direct eval in its scope, before it or in a hoisted function.
     fn read_early(&self, symbol: SymbolId, end: u32, hoisted: &[Span]) -> bool {
         let nodes = self.semantic.nodes();
-        self.semantic
-            .scoping()
+        let scoping = self.semantic.scoping();
+        let early = |span: Span| {
+            span.start < end || hoisted.iter().any(|function| contains(*function, span))
+        };
+        let scope = nodes
+            .get_node(scoping.get_node_id(scoping.symbol_scope_id(symbol)))
+            .span();
+        scoping
             .get_resolved_references(symbol)
-            .any(|reference| {
-                let span = nodes.get_node(reference.node_id()).span();
-                span.start < end || hoisted.iter().any(|function| contains(*function, span))
-            })
+            .any(|reference| early(nodes.get_node(reference.node_id()).span()))
+            || scoping
+                .root_unresolved_references()
+                .get("eval")
+                .into_iter()
+                .flatten()
+                .map(|reference| {
+                    nodes
+                        .get_node(scoping.get_reference(*reference).node_id())
+                        .span()
+                })
+                .any(|span| contains(scope, span) && early(span))
     }
 
     fn early_cell(&mut self, symbol: SymbolId) -> Expr {

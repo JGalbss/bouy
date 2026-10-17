@@ -1,0 +1,19 @@
+newVar [ 'number', 1 ]
+newFunction g
+existing 2
+shadowsOuter [ 'inner', 'outer' ]
+closure 2
+deleted [ 'number', 'undefined' ]
+laterEval 10
+nestedEval 3
+strictKeeps undefined
+arrowOwn undefined
+capturesCaller 42
+classCaptures 21
+earlyLexical 5
+deadZone [ 'ReferenceError', 1 ]
+lexicalStays [ 'undefined', 2 ]
+withObject from with
+thisValue true
+callThis true
+undefined outer

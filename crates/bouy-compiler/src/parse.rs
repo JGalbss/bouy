@@ -44,11 +44,42 @@ pub fn with_program_as<R>(
     parse_program(path, source, source_type, false, use_program)
 }
 
+/// `with_program_as` for the code of a direct eval: `allowed` drops each error that the
+/// context of the call permits, such as `super.x` in a method, given the program, the
+/// message, and its offset.
+pub fn with_program_allowing<R>(
+    path: &Path,
+    source: &str,
+    source_type: SourceType,
+    allowed: &dyn Fn(&Program<'_>, &str, usize) -> bool,
+    use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
+) -> Result<R, Vec<Diagnostic>> {
+    parse_filtered(path, source, source_type, false, allowed, use_program)
+}
+
 fn parse_program<R>(
     path: &Path,
     source: &str,
     source_type: SourceType,
     effect_hint: bool,
+    use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
+) -> Result<R, Vec<Diagnostic>> {
+    parse_filtered(
+        path,
+        source,
+        source_type,
+        effect_hint,
+        &|_, _, _| false,
+        use_program,
+    )
+}
+
+fn parse_filtered<R>(
+    path: &Path,
+    source: &str,
+    source_type: SourceType,
+    effect_hint: bool,
+    allowed: &dyn Fn(&Program<'_>, &str, usize) -> bool,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
     let allocator = Allocator::default();
@@ -57,9 +88,21 @@ fn parse_program<R>(
         parse_regular_expression: true,
         ..ParseOptions::default()
     };
-    let parsed = Parser::new(&allocator, source, source_type)
+    let mut parsed = Parser::new(&allocator, source, source_type)
         .with_options(options)
         .parse();
+    let program = &parsed.program;
+    let keep = |error: &oxc::diagnostics::OxcDiagnostic| {
+        let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
+        !allowed(program, &error.message, offset)
+    };
+    let kept: Vec<_> = parsed
+        .diagnostics
+        .iter()
+        .filter(|error| keep(error))
+        .cloned()
+        .collect();
+    parsed.diagnostics = kept.into();
     if parsed.fatal_error || parsed.diagnostics.has_errors() {
         return Err(syntax_errors(
             path,
@@ -68,10 +111,14 @@ fn parse_program<R>(
             effect_hint,
         ));
     }
-    let built = SemanticBuilder::new()
+    let mut built = SemanticBuilder::new()
         .with_build_nodes(true)
         .with_check_syntax_error(true)
         .build(&parsed.program);
+    built.diagnostics.retain(|error| {
+        let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
+        !allowed(&parsed.program, &error.message, offset)
+    });
     if built.diagnostics.has_errors() {
         return Err(syntax_errors(path, source, &built.diagnostics, effect_hint));
     }

@@ -119,6 +119,20 @@ set_global(Name, Value, Mode) ->
 -spec declare_globals([binary()], [{binary(), term()}], boolean()) -> ok.
 declare_globals(Vars, Functions, Configurable) ->
     G = {'$o', 'globalThis'},
+    %% CanDeclareGlobalFunction and CanDeclareGlobalVar: nothing is declared
+    %% when one name cannot be.
+    lists:foreach(fun({Name, _}) ->
+                          case can_declare_function(bouy_heap:get_own(G, Name)) of
+                              true -> ok;
+                              false -> bouy_heap:throw_error('TypeError', bouy_ref_string:concat(<<"Cannot redefine global function ">>, Name))
+                          end
+                  end, Functions),
+    lists:foreach(fun(Name) ->
+                          case bouy_heap:has_own(G, Name) orelse bouy_heap:is_extensible(G) of
+                              true -> ok;
+                              false -> bouy_heap:throw_error('TypeError', bouy_ref_string:concat(<<"Cannot define global variable ">>, Name))
+                          end
+                  end, Vars),
     lists:foreach(fun({Name, F}) ->
                           Desc = case bouy_heap:get_own(G, Name) of
                               {_, _, _, Bits} when Bits band 4 =:= 0 -> #{value => F};
@@ -133,6 +147,12 @@ declare_globals(Vars, Functions, Configurable) ->
                               false -> bouy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => Configurable})
                           end
                   end, Vars).
+
+%% A function may replace a configurable global, or a writable and
+%% enumerable data property, or define a new one on an extensible global.
+can_declare_function(none) -> bouy_heap:is_extensible({'$o', 'globalThis'});
+can_declare_function({data, _, Bits}) -> Bits band 4 =/= 0 orelse Bits band 3 =:= 3;
+can_declare_function({accessor, _, _, Bits}) -> Bits band 4 =/= 0.
 
 %% `delete name` in sloppy code for a global.
 -spec delete_global(binary()) -> boolean().

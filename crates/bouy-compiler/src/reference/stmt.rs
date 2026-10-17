@@ -152,7 +152,13 @@ impl<'a> Lowerer<'a, '_> {
     pub fn simple(&mut self, statement: &'a Statement<'a>) -> Vec<Expr> {
         let saved = std::mem::take(&mut self.pre);
         match statement {
-            Statement::ExpressionStatement(statement) => self.effect(&statement.expression),
+            Statement::ExpressionStatement(statement) => match self.frame.completion.clone() {
+                Some(completion) => {
+                    let value = self.expr(&statement.expression);
+                    self.pre.push(cell_set(&completion, value));
+                }
+                None => self.effect(&statement.expression),
+            },
             Statement::VariableDeclaration(declaration) => self.variables(declaration),
             Statement::ExportDeclaration(export) => match &export.declaration {
                 Declaration::VariableDeclaration(declaration) => self.variables(declaration),
@@ -208,7 +214,7 @@ impl<'a> Lowerer<'a, '_> {
                     (&declarator.id, &declarator.init)
                 && let Some(symbol) = id.symbol_id.get()
             {
-                let objects = self.with_objects_for(Some(symbol));
+                let objects = self.with_objects_for(Some(symbol), id.name.as_str());
                 if !objects.is_empty() {
                     self.with_var_initializer(id.name.as_str(), symbol, &objects, init);
                     continue;
@@ -238,7 +244,8 @@ impl<'a> Lowerer<'a, '_> {
     /// Lowers a compound statement with continuation `k`.
     pub fn stmt(&mut self, statement: &'a Statement<'a>, k: &Cont<'a>) -> Vec<Expr> {
         let saved = std::mem::take(&mut self.pre);
-        let code = match statement {
+        let reset = self.completion_reset(statement);
+        let mut code = match statement {
             Statement::IfStatement(statement) => self.if_statement(statement, k),
             Statement::WhileStatement(statement) => self.while_statement(statement, k),
             Statement::DoWhileStatement(statement) => self.do_while_statement(statement, k),
@@ -285,8 +292,31 @@ impl<'a> Lowerer<'a, '_> {
                 code
             }
         };
+        if let Some(reset) = reset {
+            code.insert(0, reset);
+        }
         self.pre = saved;
         code
+    }
+
+    /// In eval code, the reset of the completion value to undefined before a statement
+    /// whose completion `UpdateEmpty(C, undefined)` makes undefined when its body
+    /// produces no value: `if`, the loops, `switch`, `try`, and `with`.
+    fn completion_reset(&self, statement: &Statement<'_>) -> Option<Expr> {
+        let completion = self.frame.completion.as_ref()?;
+        matches!(
+            statement,
+            Statement::IfStatement(_)
+                | Statement::WhileStatement(_)
+                | Statement::DoWhileStatement(_)
+                | Statement::ForStatement(_)
+                | Statement::ForOfStatement(_)
+                | Statement::ForInStatement(_)
+                | Statement::SwitchStatement(_)
+                | Statement::TryStatement(_)
+                | Statement::WithStatement(_)
+        )
+        .then(|| cell_set(completion, Expr::undefined()))
     }
 
     /// The code of one arm of a branch: the environment of the arm does not leak.

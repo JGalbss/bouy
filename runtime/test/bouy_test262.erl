@@ -27,6 +27,7 @@ main() ->
     Tests = list_to_tuple([parse(Line) || Line <- binary:split(Text, <<"\n">>, [global, trim_all])]),
     {ok, Runtime} = bouy_app:start(normal, []),
     true = unlink(Runtime),
+    ok = bouy_ref_eval:warm_up(),
     Next = atomics:new(1, []),
     Loader = spawn(fun() -> loader(#{}) end),
     Workers = [spawn_monitor(fun() -> worker(Tests, Next, Out, Loader) end) || _ <- lists:seq(1, list_to_integer(Jobs))],

@@ -8,7 +8,7 @@ use oxc::ast::ast::{
 use oxc::ast_visit::Visit;
 
 use super::analyze;
-use super::context::{Cont, Frame, Kind, Local, Lowerer, Top};
+use super::context::{Cont, Frame, Kind, Local, Lowerer, Top, capitalize, cell_get};
 use super::function::{Callee, FnBody, UsesNewTarget, kind_of, length_of};
 use super::literal::literal;
 use crate::erlang::{Clause, Expr, Function};
@@ -120,8 +120,7 @@ impl<'a> Lowerer<'a, '_> {
             let name = self.semantic.scoping().symbol_name(symbol).to_owned();
             self.tops.entry(symbol).or_insert(Top::Var(name));
         }
-        // The `var` names of strict eval code belong to the eval.
-        if self.is_script() && (self.eval.is_none() || self.is_sloppy(None)) {
+        if self.is_script() {
             self.declare_script_globals(program);
         }
     }
@@ -159,11 +158,6 @@ impl<'a> Lowerer<'a, '_> {
         }
         for symbol in top_level_vars(program) {
             let name = self.semantic.scoping().symbol_name(symbol).to_owned();
-            // A `var` of sloppy eval code that the caller already binds is that binding.
-            if self.eval_binding(&name).is_some() {
-                self.tops.remove(&symbol);
-                continue;
-            }
             if !function_symbols.contains(&symbol) {
                 self.script_globals.push(name.clone());
             }
@@ -335,22 +329,34 @@ impl<'a> Lowerer<'a, '_> {
         });
         functions.reverse();
         self.nested_var_getters(program);
-        functions.push(match self.eval {
-            Some(_) => {
-                // A directive is an expression statement too: `eval("'1'")` is "1".
-                // compile_eval writes the directive of strict eval code before the code.
-                let injected = usize::from(self.eval == Some(true));
-                let directive = program
-                    .directives
-                    .iter()
-                    .skip(injected)
-                    .last()
-                    .filter(|_| program.body.is_empty())
-                    .map(|directive| Expr::js_string(directive.directive.as_str()));
-                self.eval_function(&body, directive)
-            }
-            None => self.body_function(&body),
-        });
+        functions.push(self.body_function(&body));
+        functions.push(self.class_dispatch());
+        functions.extend(source_functions(program, source));
+        functions.push(self.export_function(program));
+        functions.extend(self.linking.interface());
+        functions.append(&mut self.extra);
+        functions
+    }
+
+    /// Every Erlang function of the module of eval code: `'__eval__'/3` holds the whole
+    /// program, whose declarations are locals of the eval, or bindings of the caller's
+    /// variables for the `var` names and functions of sloppy code.
+    pub fn eval_module_functions(
+        &mut self,
+        program: &'a Program<'a>,
+        source: &str,
+    ) -> Vec<Function> {
+        // A directive is an expression statement too: `eval("'1'")` is "1".
+        // compile_eval writes the directive of strict eval code before the code.
+        let injected = usize::from(self.eval == Some(true));
+        let directive = program
+            .directives
+            .iter()
+            .skip(injected)
+            .last()
+            .map(|directive| Expr::js_string(directive.directive.as_str()));
+        let body: Vec<&'a Statement<'a>> = program.body.iter().collect();
+        let mut functions = vec![self.eval_function(&body, directive)];
         functions.push(self.class_dispatch());
         functions.extend(source_functions(program, source));
         functions.push(self.export_function(program));
@@ -377,15 +383,10 @@ impl<'a> Lowerer<'a, '_> {
                 ])
             })
             .collect();
-        // The bindings of eval code are configurable (ECMA-262 §19.2.1.3).
         Expr::call(
             "bouy_ref_realm",
             "declare_globals",
-            vec![
-                Expr::List(vars),
-                Expr::List(functions),
-                Expr::atom(if self.eval.is_some() { "true" } else { "false" }),
-            ],
+            vec![Expr::List(vars), Expr::List(functions), Expr::atom("false")],
         )
     }
 
@@ -565,8 +566,10 @@ impl<'a> Lowerer<'a, '_> {
             .collect()
     }
 
-    /// `'__eval__'/1`: runs the code of an `eval` in the current realm with its `this` and
-    /// returns the value of its last statement when that is an expression statement.
+    /// `'__eval__'/3`: runs the code of an `eval` in the current realm with its `this` and
+    /// returns its completion value. Each expression statement of the eval code stores its
+    /// value in the completion cell, and the statements whose completion ECMA-262 updates
+    /// from empty to undefined reset it (`completion_reset`).
     pub fn eval_function(
         &mut self,
         body: &[&'a Statement<'a>],
@@ -586,92 +589,166 @@ impl<'a> Lowerer<'a, '_> {
             .map(|(_, cell)| Expr::Tuple(vec![Expr::var("_"), Expr::var(cell.clone())]))
             .collect();
         code.push(Expr::matches(Expr::List(cells), Expr::var("Scope")));
-        self.bind_eval_vars(body);
-        if !self.script_globals.is_empty() || !self.script_functions.is_empty() {
-            code.push(self.declare_globals_call());
-        }
-        code.extend(self.dead_zone());
-        // The completion is the value of the last expression statement that only
-        // declarations follow, as a declaration completes empty.
-        let last_value = body
-            .iter()
-            .rposition(|statement| matches!(statement, Statement::ExpressionStatement(_)))
-            .filter(|index| {
-                body[index + 1..]
-                    .iter()
-                    .all(|statement| completes_empty(statement))
-            });
-        let (init, last, trailing) = match last_value {
-            Some(index) => match body[index] {
-                Statement::ExpressionStatement(last) => (
-                    body[..index].to_vec(),
-                    Some(last),
-                    body[index + 1..].to_vec(),
-                ),
-                _ => (body.to_vec(), None, Vec::new()),
-            },
-            None => (body.to_vec(), None, Vec::new()),
-        };
-        match last {
-            None => {
-                let completion = match (body.is_empty(), directive) {
-                    (true, Some(directive)) => directive,
-                    _ => Expr::undefined(),
-                };
-                code.extend(self.stmts(init, &Cont::Value(completion)));
-            }
-            Some(last) => {
-                let saved = std::mem::take(&mut self.pre);
-                let value = self.expr(&last.expression);
-                let value = self.bind(value);
-                let mut tail = std::mem::replace(&mut self.pre, saved);
-                tail.extend(self.stmts(trailing, &Cont::Value(value)));
-                let join = self.fresh("K");
-                code.push(Expr::matches(
-                    Expr::var(join.clone()),
-                    Expr::Fun {
-                        name: None,
-                        clauses: vec![Clause {
-                            patterns: vec![],
-                            guards: vec![],
-                            body: tail,
-                        }],
-                    },
-                ));
-                let next = Cont::Call {
-                    fun: join,
-                    args: vec![],
-                    vars: vec![],
-                    region: 0,
-                };
-                code.extend(self.stmts(init, &next));
-            }
-        }
+        code.extend(self.eval_context_frame());
+        code.extend(self.eval_declarations(body));
+        let completion = self.fresh("Completion");
+        code.push(Expr::matches(
+            Expr::var(completion.clone()),
+            Expr::call(
+                "bouy_heap",
+                "cell",
+                vec![directive.unwrap_or_else(Expr::undefined)],
+            ),
+        ));
+        self.frame.completion = Some(completion.clone());
+        code.extend(self.stmts(body.to_vec(), &Cont::Value(cell_get(&completion))));
         Function {
             name: "__eval__".to_owned(),
             clauses: vec![Clause {
-                patterns: vec![Expr::var(this), Expr::var("Scope")],
+                patterns: vec![Expr::var(this), Expr::var("Scope"), Expr::var("Context")],
                 guards: vec![],
                 body: code,
             }],
         }
     }
 
-    /// Maps each top-level `var` of sloppy eval code that the caller binds to the caller's
-    /// cell.
-    fn bind_eval_vars(&mut self, body: &[&'a Statement<'a>]) {
+    /// Reads what the context of a direct eval gives its code from the map `Context`: the
+    /// home object, `new.target`, the `this` cell of a derived constructor with its class
+    /// and field initializer, and the private names.
+    fn eval_context_frame(&mut self) -> Vec<Expr> {
+        let context = self.eval_context.clone();
+        let mut code = Vec::new();
+        let mut take = |me: &mut Self, key: &str| {
+            let var = me.fresh(&capitalize(key));
+            code.push(Expr::matches(
+                Expr::var(var.clone()),
+                Expr::call("maps", "get", vec![Expr::atom(key), Expr::var("Context")]),
+            ));
+            var
+        };
+        let place = context.place;
+        self.frame.in_function = place.has_new_target();
+        self.frame.in_field = place == super::EvalPlace::Field;
+        if place.has_new_target() {
+            self.frame.new_target = Some(take(self, "new_target"));
+        }
+        let constructor = place == super::EvalPlace::Constructor;
+        if constructor {
+            self.frame.this_cell = Some(take(self, "this_cell"));
+        }
+        if place.has_home() {
+            let home = take(self, "home");
+            let (class, init) = if constructor {
+                (Some(take(self, "class")), Some(take(self, "init")))
+            } else {
+                (None, None)
+            };
+            self.frame.class = Some(super::context::ClassFrame { home, class, init });
+        }
+        if !context.privates.is_empty() {
+            let keys = take(self, "privates");
+            let names = context
+                .privates
+                .iter()
+                .enumerate()
+                .map(|(index, name)| {
+                    let position = Expr::Integer(i64::try_from(index + 1).unwrap_or(0));
+                    let key =
+                        Expr::call("erlang", "element", vec![position, Expr::var(keys.clone())]);
+                    (name.clone(), key)
+                })
+                .collect();
+            self.privates.push(names);
+        }
+        code
+    }
+
+    /// `EvalDeclarationInstantiation` (ECMA-262 §19.2.1.3): the `var` names and the top-level
+    /// functions of the code. Strict code keeps them as locals. In sloppy code, a name
+    /// that the caller's function binds is that binding, and every other name is a
+    /// binding of the caller's variables: the object of the first `@vars` entry of the
+    /// scope, or the global object.
+    fn eval_declarations(&mut self, body: &[&'a Statement<'a>]) -> Vec<Expr> {
         let mut vars = analyze::VarDeclarations::default();
         for statement in body {
             vars.visit_statement(statement);
         }
-        for symbol in vars.0 {
-            let name = self.semantic.scoping().symbol_name(symbol).to_owned();
-            if !self.tops.contains_key(&symbol)
-                && let Some(cell) = self.eval_binding(&name)
-            {
-                self.frame.env.insert(symbol, Local::Cell(cell));
+        let functions: Vec<&'a oxc::ast::ast::Function<'a>> = body
+            .iter()
+            .filter_map(|statement| match statement {
+                Statement::FunctionDeclaration(function) if function.body.is_some() => {
+                    Some(&**function)
+                }
+                _ => None,
+            })
+            .collect();
+        let saved = std::mem::take(&mut self.pre);
+        if !self.frame.sloppy {
+            for symbol in vars.0 {
+                if !self.frame.env.contains_key(&symbol) {
+                    self.declare_symbol(symbol, Expr::undefined());
+                }
+            }
+            return std::mem::replace(&mut self.pre, saved);
+        }
+        // The caller's own bindings come before the object of its variables.
+        let own: Vec<(String, String)> = self
+            .eval_bindings
+            .iter()
+            .take_while(|(name, _)| name != "@vars")
+            .cloned()
+            .collect();
+        let target = self
+            .eval_bindings
+            .iter()
+            .find(|(name, _)| name == "@vars")
+            .map(|(_, object)| object.clone());
+        let declare = |me: &mut Self, symbol: oxc::semantic::SymbolId| -> Option<String> {
+            let name = me.semantic.scoping().symbol_name(symbol).to_owned();
+            if let Some((_, cell)) = own.iter().find(|(binding, _)| *binding == name) {
+                me.frame.env.insert(symbol, Local::Cell(cell.clone()));
+                return None;
+            }
+            me.tops.insert(symbol, Top::Global(name.clone()));
+            Some(name)
+        };
+        // The functions exist before the code runs, so the bindings that they read early
+        // get their cells first.
+        let early = self.early_bindings(body);
+        self.pre.extend(early);
+        let mut values = Vec::new();
+        for function in functions {
+            let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get()) else {
+                continue;
+            };
+            if let Some(name) = declare(self, symbol) {
+                let value = self.function_value(function, None);
+                values.push(Expr::Tuple(vec![Expr::js_string(&name), value]));
             }
         }
+        let mut names = Vec::new();
+        for symbol in vars.0 {
+            if !self.tops.contains_key(&symbol)
+                && !self.frame.env.contains_key(&symbol)
+                && let Some(name) = declare(self, symbol)
+            {
+                names.push(Expr::js_string(&name));
+            }
+        }
+        let call = match target {
+            Some(object) => Expr::call(
+                "bouy_ref_eval",
+                "declare_vars",
+                vec![Expr::var(object), Expr::List(names), Expr::List(values)],
+            ),
+            None => Expr::call(
+                "bouy_ref_realm",
+                "declare_globals",
+                vec![Expr::List(names), Expr::List(values), Expr::atom("true")],
+            ),
+        };
+        self.pre.push(call);
+        std::mem::replace(&mut self.pre, saved)
     }
 
     /// `'$class'/1`: the class of this realm, created on first use.
@@ -1011,16 +1088,4 @@ fn source_functions(program: &Program<'_>, source: &str) -> Vec<Function> {
             clauses: spans,
         },
     ]
-}
-
-/// Whether a statement completes empty, so that the completion of the code before it
-/// stays: a declaration or an empty statement.
-fn completes_empty(statement: &Statement<'_>) -> bool {
-    matches!(
-        statement,
-        Statement::VariableDeclaration(_)
-            | Statement::FunctionDeclaration(_)
-            | Statement::ClassDeclaration(_)
-            | Statement::EmptyStatement(_)
-    )
 }

@@ -91,7 +91,7 @@ const TEMPORAL_EDITS: &[(&str, &str)] = &[
 /// with the namespace in its place.
 const TEMPORAL_TAIL: &str = "  const DateTimeFormat = createDateTimeFormatClass(";
 
-/// Compiles the polyfill at `vendored` into `out/bouy_temporal.erl`, whose `'__eval__'/2`
+/// Compiles the polyfill at `vendored` into `out/bouy_temporal.erl`, whose `'__eval__'/3`
 /// runs the code of `TEMPORAL_EDITS`. `bouy_ref_temporal` calls it the first time a realm
 /// reads `Temporal`.
 fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
@@ -110,17 +110,25 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
         .find(TEMPORAL_TAIL)
         .expect("the polyfill ends by installing its globals");
     let source = format!("{}Temporal;\n", &edited[..tail]);
-    let erlang = bouy_compiler::compile_eval(&source, "bouy_temporal", false, false, &[], &[])
-        .unwrap_or_else(|diagnostics| {
-            panic!(
-                "the reference compiler rejects the polyfill: {}",
-                diagnostics
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        });
+    let erlang = bouy_compiler::compile_eval(
+        &source,
+        "bouy_temporal",
+        false,
+        false,
+        &[],
+        &[],
+        &bouy_compiler::EvalContext::default(),
+    )
+    .unwrap_or_else(|diagnostics| {
+        panic!(
+            "the reference compiler rejects the polyfill: {}",
+            diagnostics
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    });
     let path = out.join("bouy_temporal.erl");
     fs::write(&path, erlang).expect("OUT_DIR is writable");
     path

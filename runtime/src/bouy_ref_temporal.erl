@@ -50,7 +50,7 @@ load(?NAMESPACE = Id) ->
         Intl = bouy_heap:object(?OBJECT_PROTO, [{<<"DateTimeFormat">>, bouy_ref_realm:constructor(?MODULE, <<"Intl.DateTimeFormat">>)}]),
         Clock = bouy_ref_realm:builtin(<<"Temporal.nowNanoseconds">>, fun(_, _) -> {'$bigint', erlang:system_time(nanosecond)} end),
         Host = bouy_heap:object(?OBJECT_PROTO, [{<<"Intl">>, Intl}, {<<"nowNanoseconds">>, Clock}]),
-        {'$o', Made} = Module:'__eval__'(Host, []),
+        {'$o', Made} = Module:'__eval__'(Host, [], #{}),
         Record = erlang:get(Made),
         erlang:put(Id, Record),
         erlang:put({?MODULE, instant}, maps:get(<<"Instant">>, element(3, Record))),

@@ -440,10 +440,12 @@ impl<'a> Lowerer<'a, '_> {
     fn deferred(&mut self, this: &str, element: Deferred<'a>) -> Vec<Expr> {
         match element {
             Deferred::Field(key, property, private) => {
+                self.frame.in_field = true;
                 let value = match &property.value {
                     Some(value) => self.named_expr(value, Some(key.clone())),
                     None => Expr::undefined(),
                 };
+                self.frame.in_field = false;
                 let function = if private {
                     "private_add"
                 } else {
@@ -489,6 +491,8 @@ impl<'a> Lowerer<'a, '_> {
             this: Some(this.to_owned()),
             kind: Kind::Sync,
             class: Some(class),
+            in_function: true,
+            withs: outer.withs.clone(),
             ..Frame::default()
         };
         let mut code = build(self);
@@ -520,6 +524,8 @@ impl<'a> Lowerer<'a, '_> {
             kind: Kind::Sync,
             class: Some(class.clone()),
             new_target: Some(new_target.clone()),
+            in_function: true,
+            withs: outer.withs.clone(),
             ..Frame::default()
         };
         let mut code = Vec::new();
@@ -595,7 +601,7 @@ impl<'a> Lowerer<'a, '_> {
         let Some(body) = &function.body else {
             return vec![];
         };
-        let mut code = self.entry(&function.params, FnBody::Block(body), args, true);
+        let mut code = self.entry(&function.params, FnBody::Block(body), args, true, None);
         for param in &function.params.items {
             if param.accessibility.is_none() && !param.readonly {
                 continue;
