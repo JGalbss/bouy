@@ -1,32 +1,32 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "06131cdb0c852cb3ed26adde1fa0b0ff3cef132a",
+  "updated": "672383777b66ee140d55a10650ac4d7c76a99749",
   "total": 4419,
   "outcomes": {
-    "pass": 1561,
+    "pass": 1592,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 2258,
-    "timeout": 6,
+    "fail": 2224,
+    "timeout": 7,
     "harness_error": 0,
-    "crash": 11
+    "crash": 13
   },
   "groups": {
     "directory": {
       "es-module": {
-        "pass": 26,
+        "pass": 27,
         "skip": 16,
-        "fail": 180
+        "fail": 179
       },
       "parallel": {
-        "pass": 1502,
+        "pass": 1532,
         "skip": 545,
-        "fail": 2018,
-        "timeout": 4,
-        "crash": 10
+        "fail": 1985,
+        "timeout": 5,
+        "crash": 12
       },
       "sequential": {
         "pass": 33,
@@ -41,19 +41,19 @@
         "skip": 343
       },
       "public": {
-        "pass": 1561,
+        "pass": 1592,
         "skip": 240,
-        "fail": 2258,
-        "timeout": 6,
-        "crash": 11
+        "fail": 2224,
+        "timeout": 7,
+        "crash": 13
       }
     },
     "module": {
       "assert": {
         "pass": 7,
         "skip": 1,
-        "fail": 5,
-        "crash": 1
+        "fail": 4,
+        "crash": 2
       },
       "async_hooks": {
         "pass": 15,
@@ -61,9 +61,9 @@
         "fail": 30
       },
       "buffer": {
-        "pass": 55,
+        "pass": 58,
         "skip": 6,
-        "fail": 8
+        "fail": 5
       },
       "child_process": {
         "pass": 13,
@@ -136,9 +136,9 @@
         "skip": 114
       },
       "module": {
-        "pass": 38,
+        "pass": 39,
         "skip": 17,
-        "fail": 224,
+        "fail": 223,
         "crash": 1
       },
       "net": {
@@ -177,8 +177,7 @@
         "pass": 1
       },
       "querystring": {
-        "pass": 3,
-        "fail": 1
+        "pass": 4
       },
       "quic": {
         "pass": 6,
@@ -245,9 +244,9 @@
         "fail": 4
       },
       "util": {
-        "pass": 7,
+        "pass": 11,
         "skip": 10,
-        "fail": 12,
+        "fail": 8,
         "crash": 1
       },
       "v8": {
@@ -256,8 +255,11 @@
         "fail": 9
       },
       "vm": {
+        "pass": 22,
         "skip": 9,
-        "fail": 90
+        "fail": 66,
+        "timeout": 1,
+        "crash": 1
       },
       "worker_threads": {
         "pass": 10,
