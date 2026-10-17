@@ -125,7 +125,9 @@ set({'$o', _} = O, K, V) -> bouy_heap:set(O, K, V);
 set({'$f', _, _} = F, K, V) -> bouy_heap:set(F, K, V);
 set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
 set(null, K, _V) -> cannot_set(<<"null">>, K);
-set(P, K, _V) -> type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])).
+set(P, K, V) ->
+    primitive_set(P, K, V) orelse type_error(text([<<"Cannot create property '">>, key_text(K), <<"' on ">>, typeof(P), <<" '">>, to_string(P), <<"'">>])),
+    V.
 
 -spec set_computed(term(), term(), term()) -> term().
 set_computed(O, K, V) -> set(O, to_property_key(K), V).
@@ -140,14 +142,23 @@ sloppy_set({'$o', _} = O, K, V) -> bouy_heap:sloppy_set(O, K, V);
 sloppy_set({'$f', _, _} = F, K, V) -> bouy_heap:sloppy_set(F, K, V);
 sloppy_set(undefined, K, _V) -> cannot_set(<<"undefined">>, K);
 sloppy_set(null, K, _V) -> cannot_set(<<"null">>, K);
-sloppy_set({'$actor', _}, _K, V) -> V;
 sloppy_set(P, K, V) ->
-    _ = bouy_heap:set(primitive_proto(P), K, V, P),
+    _ = primitive_set(P, K, V),
     V.
+
+%% PutValue on a primitive base: [[Set]] of ToObject(base) with the
+%% primitive as the receiver, so only a setter up the chain takes the
+%% write. The own indexes and length of a string are read-only.
+primitive_set({'$actor', _}, _K, _V) -> false;
+primitive_set(S, <<"length">>, _V) when ?IS_STRING(S) -> false;
+primitive_set(S, I, V) when ?IS_STRING(S), is_integer(I) ->
+    I >= bouy_ref_string:length_of(S) andalso bouy_heap:set(primitive_proto(S), I, V, S);
+primitive_set(P, K, V) -> bouy_heap:set(primitive_proto(P), K, V, P).
 
 primitive_proto(S) when ?IS_STRING(S) -> {'$o', 'String.prototype'};
 primitive_proto(B) when is_boolean(B) -> {'$o', 'Boolean.prototype'};
 primitive_proto({'$sym', _, _}) -> {'$o', 'Symbol.prototype'};
+primitive_proto({'$bigint', _}) -> {'$o', 'BigInt.prototype'};
 primitive_proto(_) -> {'$o', 'Number.prototype'}.
 
 -spec sloppy_set_computed(term(), term(), term()) -> term().
