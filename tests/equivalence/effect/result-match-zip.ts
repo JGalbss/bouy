@@ -31,8 +31,13 @@ const logged = (label: string) =>
   });
 console.log(Effect.runSync(Effect.zip(logged("first"), logged("second"))));
 
-const started = Date.now();
-const slow = (value: string) => Effect.sleep("300 millis").pipe(Effect.as(value));
-const both = await Effect.runPromise(Effect.zip(slow("a"), slow("b"), { concurrent: true }));
-const elapsed = Date.now() - started;
-console.log(both, elapsed < 550 ? "concurrent" : `sequential (${elapsed} ms)`);
+const sleepThenLog = (value: string, millis: number) =>
+  Effect.sleep(millis).pipe(
+    Effect.tap(() => Effect.sync(() => console.log("finished", value))),
+    Effect.as(value),
+  );
+// "b" sleeps less, so it finishes before "a" only when the two run at once.
+const both = await Effect.runPromise(
+  Effect.zip(sleepThenLog("a", 300), sleepThenLog("b", 50), { concurrent: true }),
+);
+console.log(both);

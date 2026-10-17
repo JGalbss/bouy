@@ -26,5 +26,5 @@ Turborepo orders and caches the runtime tasks. Cargo builds the crates. `rust-to
 - Every claim about library compatibility names the package, the version, and the test that proves it, or links to its row of `docs/COMPAT.md`.
 - Put a new test where the placement table of `tests/README.md` says. Add it to the existing file of the behavior, and name a program after the behavior that it shows.
 - A `fix(...)` commit adds a test that fails on the merge base. Prove it with `BOUY_BIN=<bouy built from the base>` (`tests/README.md`).
-- Only `scripts/freeze-expectations.sh`, `crates/bouy-bench`, and `crates/bouy-fuzz` start node. `crates/bouy-suites/tests/rules.rs` checks it.
+- Only `scripts/freeze-expectations.sh`, `scripts/node-surface.sh`, `crates/bouy-bench`, and `crates/bouy-fuzz` start node. `crates/bouy-suites/tests/rules.rs` checks it.
 - A runner that starts many test VMs gives each one a memory limit and starts at most 8 at once: build the command with `bouy_suites::bouy_env` (`BOUY_MAX_MEMORY=1G`) and use `bouy_suites::default_jobs`. An unbounded run once grew three VMs to 128 GB and rebooted a 64 GB machine.
