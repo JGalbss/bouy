@@ -7,8 +7,8 @@ use oxc::ast::ast::{
 };
 use oxc::span::GetSpan;
 
-use super::Lowerer;
-use super::expr::MemberKey;
+use super::context::Lowerer;
+use super::member::MemberKey;
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {

@@ -6,7 +6,8 @@ use oxc::ast::ast::{
     BindingPattern, Class, ClassElement, MethodDefinitionKind, PropertyDefinition,
 };
 
-use super::{ClassFrame, FnBody, Frame, Kind, Lowerer, Ret};
+use super::context::{ClassFrame, Cont, Frame, Kind, Lowerer, Ret};
+use super::function::FnBody;
 use crate::erlang::{Clause, Expr, Function};
 
 impl<'a> Lowerer<'a, '_> {
@@ -139,8 +140,7 @@ impl<'a> Lowerer<'a, '_> {
                     self.define_field(&c, property);
                 }
                 ClassElement::StaticBlock(block) => {
-                    let code =
-                        self.stmts(block.body.iter().collect(), &super::Cont::Value(Expr::ok()));
+                    let code = self.stmts(block.body.iter().collect(), &Cont::Value(Expr::ok()));
                     self.pre.extend(code);
                 }
                 ClassElement::AccessorProperty(accessor) => {
@@ -283,9 +283,7 @@ impl<'a> Lowerer<'a, '_> {
 
     fn body_of(&mut self, body: FnBody<'a>) -> Vec<Expr> {
         match body {
-            FnBody::Block(block) => {
-                self.stmts(block.statements.iter().collect(), &super::Cont::Return)
-            }
+            FnBody::Block(block) => self.stmts(block.statements.iter().collect(), &Cont::Return),
             FnBody::Expr(expression) => {
                 let value = self.expr(expression);
                 let mut code = std::mem::take(&mut self.pre);
