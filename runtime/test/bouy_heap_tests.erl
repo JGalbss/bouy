@@ -295,3 +295,31 @@ private_names_ignore_integrity_test() ->
                   ?assertEqual(3, bouy_heap:set(N, {'#', <<"C">>, <<"y">>}, 3)),
                   ?assertEqual([], bouy_heap:own_keys(N))
           end).
+
+weak_map_drops_dead_keys_test() ->
+    realm(fun() ->
+                  M = bouy_heap:new_exotic(weakmap, ?P, #{}),
+                  Kept = bouy_heap:new_object(?P),
+                  Value = bouy_heap:new_object(?P),
+                  Dead = bouy_heap:new_object(?P),
+                  bouy_heap:set_slots(M, #{Kept => Value, Dead => bouy_heap:new_object(?P)}),
+                  bouy_heap:gc([M, Kept]),
+                  %% The live key keeps its value, which nothing else holds; the dead key goes.
+                  ?assertEqual(#{Kept => Value}, bouy_heap:slots(M)),
+                  ?assertMatch({object, _, _, _, _, _}, erlang:get(element(2, Value))),
+                  ?assertEqual(undefined, erlang:get(element(2, Dead)))
+          end).
+
+weak_ref_and_registry_test() ->
+    realm(fun() ->
+                  Target = bouy_heap:new_object(?P),
+                  Ref = bouy_heap:new_exotic(weak_ref, ?P, Target),
+                  Held = bouy_heap:new_object(?P),
+                  Cleanup = bouy_heap:function(fun(_, [H]) -> erlang:put(cleaned, H) end),
+                  Registry = bouy_heap:new_exotic(finalization_registry, ?P, {Cleanup, [{Target, Held, undefined}]}),
+                  bouy_heap:gc([Ref, Registry]),
+                  ?assertEqual(undefined, bouy_heap:slots(Ref)),
+                  ?assertEqual({Cleanup, []}, bouy_heap:slots(Registry)),
+                  bouy_jobs:drain(),
+                  ?assertEqual(Held, erlang:get(cleaned))
+          end).

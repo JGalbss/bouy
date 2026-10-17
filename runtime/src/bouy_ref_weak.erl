@@ -1,14 +1,14 @@
 %% The weak family: WeakMap, WeakSet, WeakRef, and FinalizationRegistry.
 %%
-%% shortcut: the heap collector (bouy_heap:gc/1) marks through these objects,
-%% so a WeakMap keeps its keys, a WeakRef keeps its target alive, and a
-%% registry never calls its cleanup callback. ECMA-262 allows an engine that
-%% never collects a target. Weak marking needs ephemeron support in the
-%% collector.
+%% The heap collector (bouy_heap:gc/1) treats them as weak: it marks the value
+%% of a WeakMap entry only while the key is live, drops the entries of dead
+%% keys, empties a WeakRef whose target died, and queues the cleanup callback
+%% of each registry cell whose target died. A symbol key never dies.
 %%
 %% A WeakMap is the class weakmap with the slots #{Key => Value}, and a
 %% WeakSet the class weakset with #{Key => true}: weak collections have no
-%% order, because they cannot be iterated.
+%% order, because they cannot be iterated. A WeakRef holds its target, and a
+%% registry {Cleanup, [{Target, Held, Token}]}.
 -module(bouy_ref_weak).
 
 -include("bouy_ref.hrl").

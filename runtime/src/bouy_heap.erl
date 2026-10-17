@@ -1265,7 +1265,9 @@ throw_error(Name, Message) ->
 gc(Roots) ->
     Start = erlang:monotonic_time(microsecond),
     {Ids, Others} = lists:partition(fun erlang:is_integer/1, erlang:get_keys()),
-    {Live, Chunks} = mark([erlang:get(K) || K <- Others] ++ Roots, #{}, 0),
+    {Live0, Chunks0, Weak0} = mark([erlang:get(K) || K <- Others] ++ Roots, #{}, 0, []),
+    {Live, Chunks, Weak} = ephemerons(Live0, Chunks0, Weak0),
+    clear_weak(Weak, Chunks),
     Freed = sweep(Ids, Chunks, 0),
     Us = erlang:monotonic_time(microsecond) - Start,
     Stats = #{live => Live, freed => Freed, us => Us},
@@ -1319,43 +1321,101 @@ is_marked(Id, Chunks) ->
         _ -> false
     end.
 
-mark([], Chunks, Live) ->
-    {Live, Chunks};
-mark([{'$o', Id} | Rest], Chunks, Live) when is_integer(Id) ->
+%% Weak collects the ids of the weak containers that marking reaches: their
+%% keys and targets are not marked through them (ephemerons/3).
+mark([], Chunks, Live, Weak) ->
+    {Live, Chunks, Weak};
+mark([{'$o', Id} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
     case first_mark(Id, Chunks) of
-        {true, Chunks1} -> mark(record_terms(erlang:get(Id), Rest), Chunks1, Live + 1);
-        {false, Chunks1} -> mark(Rest, Chunks1, Live)
+        {true, Chunks1} ->
+            {Terms, Weak1} = record_terms(erlang:get(Id), Id, Rest, Weak),
+            mark(Terms, Chunks1, Live + 1, Weak1);
+        {false, Chunks1} ->
+            mark(Rest, Chunks1, Live, Weak)
     end;
-mark([{'$f', Id, Fun} | Rest], Chunks, Live) when is_integer(Id) ->
+mark([{'$f', Id, Fun} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
     case first_mark(Id, Chunks) of
-        {true, Chunks1} -> mark(record_terms(erlang:get(Id), [Fun | Rest]), Chunks1, Live + 1);
-        {false, Chunks1} -> mark(Rest, Chunks1, Live)
+        {true, Chunks1} ->
+            {Terms, Weak1} = record_terms(erlang:get(Id), Id, [Fun | Rest], Weak),
+            mark(Terms, Chunks1, Live + 1, Weak1);
+        {false, Chunks1} ->
+            mark(Rest, Chunks1, Live, Weak)
     end;
-mark([{'$f', _, Fun} | Rest], Chunks, Live) ->
-    mark([Fun | Rest], Chunks, Live);
-mark([{'$c', Id} | Rest], Chunks, Live) when is_integer(Id) ->
+mark([{'$f', _, Fun} | Rest], Chunks, Live, Weak) ->
+    mark([Fun | Rest], Chunks, Live, Weak);
+mark([{'$c', Id} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
     case first_mark(Id, Chunks) of
-        {true, Chunks1} -> mark([erlang:get(Id) | Rest], Chunks1, Live + 1);
-        {false, Chunks1} -> mark(Rest, Chunks1, Live)
+        {true, Chunks1} -> mark([erlang:get(Id) | Rest], Chunks1, Live + 1, Weak);
+        {false, Chunks1} -> mark(Rest, Chunks1, Live, Weak)
     end;
-mark([T | Rest], Chunks, Live) when is_tuple(T) ->
-    mark(tuple_to_list(T) ++ Rest, Chunks, Live);
-mark([[H | T] | Rest], Chunks, Live) ->
-    mark([H, T | Rest], Chunks, Live);
-mark([M | Rest], Chunks, Live) when is_map(M) ->
-    mark(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Chunks, Live);
-mark([F | Rest], Chunks, Live) when is_function(F) ->
+mark([T | Rest], Chunks, Live, Weak) when is_tuple(T) ->
+    mark(tuple_to_list(T) ++ Rest, Chunks, Live, Weak);
+mark([[H | T] | Rest], Chunks, Live, Weak) ->
+    mark([H, T | Rest], Chunks, Live, Weak);
+mark([M | Rest], Chunks, Live, Weak) when is_map(M) ->
+    mark(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Chunks, Live, Weak);
+mark([F | Rest], Chunks, Live, Weak) when is_function(F) ->
     {env, Env} = erlang:fun_info(F, env),
-    mark(Env ++ Rest, Chunks, Live);
-mark([_ | Rest], Chunks, Live) ->
-    mark(Rest, Chunks, Live).
+    mark(Env ++ Rest, Chunks, Live, Weak);
+mark([_ | Rest], Chunks, Live, Weak) ->
+    mark(Rest, Chunks, Live, Weak).
 
 %% The terms of a record that can hold references: the prototype, the
-%% values, and the slots. Keys and attributes hold none.
-record_terms({_, Proto, Props, _, _, Slots}, Rest) ->
-    [Proto, Slots | maps:values(Props) ++ Rest];
-record_terms(_, Rest) ->
-    Rest.
+%% values, and the slots. Keys and attributes hold none. A weak container
+%% gives only what it holds strongly: a registry's callback and held values.
+record_terms({Class, Proto, Props, _, _, Slots}, Id, Rest, Weak)
+  when Class =:= weakmap; Class =:= weakset; Class =:= weak_ref; Class =:= finalization_registry ->
+    Strong = case {Class, Slots} of
+        {finalization_registry, {Cleanup, Cells}} -> [Cleanup | [Held || {_, Held, _} <- Cells]];
+        _ -> []
+    end,
+    {[Proto | Strong ++ maps:values(Props) ++ Rest], [Id | Weak]};
+record_terms({_, Proto, Props, _, _, Slots}, _Id, Rest, Weak) ->
+    {[Proto, Slots | maps:values(Props) ++ Rest], Weak};
+record_terms(_, _Id, Rest, Weak) ->
+    {Rest, Weak}.
+
+%% Marks the value of each WeakMap entry whose key is live, until no new
+%% object becomes live: the ephemeron semantics of ECMA-262 §9.10.3.
+ephemerons(Live, Chunks, Weak) ->
+    Values = [V || Id <- Weak, {weakmap, _, _, _, _, Entries} <- [erlang:get(Id)],
+                   K := V <- Entries, live_key(K, Chunks)],
+    case mark(Values, Chunks, Live, Weak) of
+        {Live, Chunks1, Weak} -> {Live, Chunks1, Weak};
+        {Live1, Chunks1, Weak1} -> ephemerons(Live1, Chunks1, Weak1)
+    end.
+
+%% Whether a weak key or target survives: an object or a function that
+%% marking reached, or a value that the collector never frees, such as an
+%% intrinsic or a symbol.
+live_key({'$o', Id}, Chunks) when is_integer(Id) -> is_marked(Id, Chunks);
+live_key({'$f', Id, _}, Chunks) when is_integer(Id) -> is_marked(Id, Chunks);
+live_key(_, _Chunks) -> true.
+
+%% Drops the entries of dead keys, empties the WeakRefs of dead targets, and
+%% queues the cleanup callback of each registry cell whose target died.
+clear_weak(Weak, Chunks) ->
+    lists:foreach(fun(Id) -> clear_container(Id, erlang:get(Id), Chunks) end, lists:usort(Weak)).
+
+clear_container(Id, {Class, P, Props, Keys, Attrs, Entries}, Chunks) when Class =:= weakmap; Class =:= weakset ->
+    Kept = maps:filter(fun(K, _) -> live_key(K, Chunks) end, Entries),
+    map_size(Kept) =:= map_size(Entries) orelse erlang:put(Id, {Class, P, Props, Keys, Attrs, Kept}),
+    ok;
+clear_container(Id, {weak_ref, P, Props, Keys, Attrs, Target}, Chunks) ->
+    live_key(Target, Chunks) orelse erlang:put(Id, {weak_ref, P, Props, Keys, Attrs, undefined}),
+    ok;
+clear_container(Id, {finalization_registry, P, Props, Keys, Attrs, {Cleanup, Cells}}, Chunks) ->
+    {Kept, Dead} = lists:partition(fun({Target, _, _}) -> live_key(Target, Chunks) end, Cells),
+    case Dead of
+        [] ->
+            ok;
+        _ ->
+            erlang:put(Id, {finalization_registry, P, Props, Keys, Attrs, {Cleanup, Kept}}),
+            [bouy_jobs:enqueue(fun() -> call(Cleanup, undefined, [Held]) end) || {_, Held, _} <- Dead],
+            ok
+    end;
+clear_container(_Id, _Record, _Chunks) ->
+    ok.
 
 sweep([], _Chunks, Freed) ->
     Freed;

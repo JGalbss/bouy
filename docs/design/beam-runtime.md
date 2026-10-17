@@ -478,7 +478,7 @@ An intrinsic is a static record in `persistent_term` that every realm reads. A r
 
 - A proxy has the class `proxy` and the slots `{Target, Handler}`, or `{revoked, IsConstructor}` after a revoke. A proxy of a callable target is a function value. Each internal method of a proxy record goes to `bouy_ref_proxy`, which runs the trap and its invariant checks.
 - A mapped arguments object, of a sloppy function with simple parameters, has the class `arguments` and slots that map each index to the heap cell of its parameter. An unmapped one has the slots `none`.
-- `weakmap` and `weakset` hold their entries in a map in their slots. The collector marks through the weak family, so a WeakMap keeps its keys, a WeakRef keeps its target, and a FinalizationRegistry never calls its callback. The specification allows an engine that never collects a target. Ephemerons are future work.
+- `weakmap` and `weakset` hold their entries in a map in their slots, `weak_ref` its target, and `finalization_registry` `{Cleanup, [{Target, Held, Token}]}`. The collector does not mark through these keys and targets. It marks the value of a WeakMap entry while its key is live, until nothing new becomes live (ephemerons), then drops the entries of dead keys, empties each WeakRef whose target died, and queues the cleanup callback of each registry cell whose target died as a job.
 
 V8 and JSC share one hidden class (a Map in V8, a Structure in JSC) among objects with the same keys, and inline caches remember where a key is. Bouy keeps a map for each object. Shapes and inline caches are Phase 5 of ADR 0003.
 
