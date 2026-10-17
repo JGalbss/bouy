@@ -149,6 +149,7 @@ object(O, Level, Indent, Stack) ->
         boolean -> wrapper(<<"Boolean">>, O, Level, Indent, Stack);
         bigint -> wrapper(<<"BigInt">>, O, Level, Indent, Stack);
         symbol -> wrapper(<<"Symbol">>, O, Level, Indent, Stack);
+        regexp -> bouy_ref_regexp:display(O);
         _ -> plain(O, Level, Indent, Stack)
     end.
 

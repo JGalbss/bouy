@@ -11,7 +11,7 @@
 
 -include("bouy_ref.hrl").
 
--export([create/3, set_construct/2, method/4, method/5, function_name/2, define_field/3, define_method/4, set_literal_proto/3]).
+-export([create/4, set_construct/2, method/4, method/5, function_name/2, define_field/3, define_method/4]).
 -export([base_return/2, initialized/2, set_module/3]).
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
 -export([super_get/3, super_set/4]).
@@ -22,9 +22,10 @@
 %%% Class definition
 
 %% The constructor and the prototype of a class, up to its elements. Parent
-%% is none without extends.
--spec create(term(), term(), non_neg_integer()) -> {term(), term()}.
-create(Name, Parent, Length) ->
+%% is none without extends. Source is where the source text of the class is,
+%% {Module, Start, End}, for Function.prototype.toString.
+-spec create(term(), term(), non_neg_integer(), {module(), non_neg_integer(), non_neg_integer()}) -> {term(), term()}.
+create(Name, Parent, Length, Source) ->
     {ProtoParent, CtorParent} = case Parent of
         none -> {?OBJECT_PROTO, ?FUNCTION_PROTO};
         null -> {null, ?FUNCTION_PROTO};
@@ -37,7 +38,7 @@ create(Name, Parent, Length) ->
             end
     end,
     Proto = bouy_heap:new_object(ProtoParent),
-    Slots = #{kind => class, derived => Parent =/= none},
+    Slots = #{kind => class, derived => Parent =/= none, source => Source},
     C = bouy_heap:function(fun bouy_ref:class_call/2, function_name(Name, <<>>), Length, Slots),
     bouy_heap:set_prototype_of(C, CtorParent),
     bouy_heap:define(C, <<"prototype">>, #{value => Proto, writable => false, enumerable => false, configurable => false}),
@@ -127,12 +128,6 @@ define_field(O, K, V) ->
 -spec cannot_define(term()) -> no_return().
 cannot_define(K) ->
     bouy_ref:type_error(bouy_ref_string:concat([<<"Cannot define property ">>, function_name(K, <<>>), <<", object is not extensible">>])).
-
-%% `__proto__: V` in an object literal: the prototype when V is an object or
-%% null, else nothing.
--spec set_literal_proto(term(), term(), term()) -> term().
-set_literal_proto(O, _Key, V) when ?IS_OBJECT(V); V =:= null -> bouy_heap:set_prototype_of(O, V);
-set_literal_proto(O, _Key, _V) -> O.
 
 %%% Constructors
 

@@ -39,7 +39,7 @@
 
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
--export([function/1, function/4, function/5, new_id/0, call/3, construct/3, new_target/1, is_constructor/1]).
+-export([function/1, function/4, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
@@ -60,7 +60,6 @@
 -type property() :: {data, value(), 0..7} | {accessor, value(), value(), 0..7} | none.
 
 -define(NEXT, '$bouy_next').
--define(NEW_TARGET, '$bouy_new_target').
 -define(STATS, '$bouy_gc').
 -define(WORDS_PER_ID, 16).
 -define(MIN_HEAP_WORDS, 4096).
@@ -261,18 +260,6 @@ length_of_array_like(O) ->
 -spec function(fun((value(), list()) -> value())) -> value().
 function(Fun) -> {'$f', next_id(), Fun}.
 
-%% An id for a function value that its own code builds, before its fun exists.
--spec new_id() -> pos_integer().
-new_id() -> next_id().
-
-%% A function with a record under an id from new_id/0.
--spec function(pos_integer(), fun((value(), list()) -> value()), binary(), value(), map()) -> value().
-function(Id, Fun, Name, Length, Slots) ->
-    Props = #{<<"length">> => Length, <<"name">> => Name},
-    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
-    erlang:put(Id, {function, ?FUNCTION_PROTO, Props, [<<"name">>, <<"length">>], Attrs, Slots}),
-    {'$f', Id, Fun}.
-
 %% A function with a record: a name, a length, and internal slots, such as the
 %% construct behaviour of a class.
 -spec function(fun((value(), list()) -> value()), binary(), value(), map()) -> value().
@@ -287,10 +274,10 @@ function(Fun, Name, Length, Slots) ->
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
 call(V, _This, _Args) -> throw_error('TypeError', text([describe(V), <<" is not a function">>])).
 
-%% [[Construct]]. A class or a builtin keeps its construct fun in its slots,
-%% fun((NewTarget, Args) -> Object). An ordinary function gets a new this
-%% whose prototype comes from NewTarget, and reads NewTarget with
-%% new_target/1. A bound function or a proxy constructs through its target.
+%% [[Construct]]. A class, a builtin, or a function that reads new.target
+%% keeps its construct fun in its slots, fun((NewTarget, Args) -> Object).
+%% Another ordinary function gets a new this whose prototype comes from
+%% NewTarget. A bound function or a proxy constructs through its target.
 -spec construct(value(), list(), value()) -> value().
 construct({'$f', _, Fun} = F, Args, NewTarget) ->
     case fn_record(F) of
@@ -308,31 +295,9 @@ construct(V, _Args, _NewTarget) ->
 
 construct_ordinary(Fun, Args, NewTarget) ->
     This = new_object(prototype_for(NewTarget)),
-    Saved = erlang:put(?NEW_TARGET, {This, NewTarget}),
-    Result = try
-                 Fun(This, Args)
-             after
-                 restore(?NEW_TARGET, Saved)
-             end,
-    case Result of
+    case Fun(This, Args) of
         Object when ?is_obj(Object) -> Object;
         _ -> This
-    end.
-
-restore(Key, undefined) -> erlang:erase(Key);
-restore(Key, Saved) -> erlang:put(Key, Saved).
-
-%% new.target in an ordinary function whose this is This: the NewTarget of
-%% the construct that made This, else undefined. The read takes the entry, so
-%% a call inside the constructor on the same this sees undefined.
--spec new_target(value()) -> value().
-new_target(This) ->
-    case erlang:get(?NEW_TARGET) of
-        {This, NewTarget} ->
-            erlang:erase(?NEW_TARGET),
-            NewTarget;
-        _ ->
-            undefined
     end.
 
 %% IsConstructor.
@@ -1614,6 +1579,8 @@ out_record({typed_array, _, _, _, _, {Kind, Buffer, Offset, Length}}, _O, N, See
 out_record({data_view, _, _, _, _, {Buffer, Offset, Length}}, _O, N, Seen) ->
     {BufferTerm, Seen1} = out(Buffer, Seen),
     {{'$data_view', N, BufferTerm, Offset, Length}, Seen1};
+out_record({regexp, _, _, _, _, #{source := Source, flags := Flags}}, _O, N, Seen) ->
+    {{'$regexp', N, Source, Flags}, Seen};
 out_record({error, _, _, _, _, _}, O, N, Seen) ->
     Name = value_text(get(O, <<"name">>)),
     {{'$error', N, Name, value_text(get(O, <<"message">>)), value_text(get(O, <<"stack">>))}, Seen};
@@ -1706,6 +1673,9 @@ in({'$data_view', N, BufferTerm, Offset, Length}, Made) ->
     {O, Made1#{N => O}};
 in({'$date', N, Ms}, Made) ->
     O = new_exotic(date, {'$o', 'Date.prototype'}, Ms),
+    {O, Made#{N => O}};
+in({'$regexp', N, Source, Flags}, Made) ->
+    O = bouy_ref_regexp:literal(Source, Flags),
     {O, Made#{N => O}};
 in({'$error', N, Name, Message, Stack}, Made) ->
     Proto = case lists:member(Name, [<<"Error">>, <<"TypeError">>, <<"RangeError">>, <<"SyntaxError">>, <<"ReferenceError">>]) of

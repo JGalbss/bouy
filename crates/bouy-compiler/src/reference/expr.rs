@@ -29,6 +29,7 @@ impl<'a> Lowerer<'a, '_> {
             Expression::TemplateLiteral(template) => self.template(template),
             Expression::TaggedTemplateExpression(tagged) => self.tagged_template(tagged),
             Expression::BigIntLiteral(literal) => bigint(literal.value.as_str()),
+            Expression::RegExpLiteral(literal) => self.regexp(literal),
             Expression::Identifier(ident) => self.identifier(ident),
             Expression::ThisExpression(_) => self.this_expr(),
             Expression::NewTarget(_) => self.new_target_expr(),
@@ -96,9 +97,6 @@ impl<'a> Lowerer<'a, '_> {
             Expression::ImportMeta(_) => self.import_meta(),
             other => {
                 let what = match other {
-                    Expression::RegExpLiteral(_) => "a regular expression literal",
-                    Expression::ImportExpression(_) => "`import()`",
-                    Expression::ImportMeta(_) => "`import.meta`",
                     Expression::Super(_) => "this use of `super`",
                     _ => "this syntax",
                 };

@@ -3,7 +3,7 @@
 
 use oxc::ast::ast::{
     ArrayExpression, ArrayExpressionElement, Expression, ObjectExpression, ObjectPropertyKind,
-    PropertyKey, PropertyKind, Super, TaggedTemplateExpression, TemplateLiteral,
+    PropertyKey, PropertyKind, RegExpLiteral, Super, TaggedTemplateExpression, TemplateLiteral,
 };
 use oxc::ast_visit::Visit;
 use oxc::syntax::operator::UnaryOperator;
@@ -88,6 +88,20 @@ impl<'a> Lowerer<'a, '_> {
             "bouy_ref",
             "call",
             vec![function, this, Expr::List(args)],
+        ))
+    }
+
+    /// A regular expression literal: a new `RegExp` each evaluation. The parser has checked
+    /// the pattern for early errors.
+    pub fn regexp(&mut self, literal: &'a RegExpLiteral<'a>) -> Expr {
+        let flags = literal.regex.flags.to_inline_string();
+        self.bind(Expr::call(
+            "bouy_ref_regexp",
+            "literal",
+            vec![
+                Expr::js_string(literal.regex.pattern.text.as_str()),
+                Expr::js_string(flags.as_str()),
+            ],
         ))
     }
 

@@ -125,6 +125,7 @@ impl<'a> Lowerer<'a, '_> {
         let length = constructor.map_or(0, |method| length_of(&method.value.params));
         let c = self.fresh("C");
         let proto = self.fresh("Proto");
+        let source = self.source_span(class.span);
         self.pre.push(Expr::matches(
             Expr::Tuple(vec![Expr::var(c.clone()), Expr::var(proto.clone())]),
             Expr::call(
@@ -134,6 +135,7 @@ impl<'a> Lowerer<'a, '_> {
                     name,
                     parent.clone().unwrap_or_else(|| Expr::atom("none")),
                     int(length),
+                    source,
                 ],
             ),
         ));
@@ -323,6 +325,32 @@ impl<'a> Lowerer<'a, '_> {
         }
     }
 
+    /// The source text of a method for `Function.prototype.toString`: the
+    /// `MethodDefinition`, which starts after `static` and the comments that follow it.
+    fn method_span(&self, method: &MethodDefinition<'_>) -> oxc::span::Span {
+        let text = self.semantic.source_text();
+        let mut start = method.span.start as usize;
+        if method.r#static {
+            start += "static".len();
+            loop {
+                let rest = &text[start..];
+                let trimmed = rest.trim_start();
+                start += rest.len() - trimmed.len();
+                if trimmed.starts_with("//") {
+                    start += trimmed.find('\n').unwrap_or(trimmed.len());
+                } else if trimmed.starts_with("/*") {
+                    start += trimmed.find("*/").map_or(trimmed.len(), |end| end + 2);
+                } else {
+                    break;
+                }
+            }
+        }
+        oxc::span::Span::new(
+            u32::try_from(start).unwrap_or(method.span.start),
+            method.span.end,
+        )
+    }
+
     /// Defines a method or an accessor on `home`. A private one is returned as
     /// `{Name, Kind, Function}` for `add_private_methods`.
     fn define_method(
@@ -344,6 +372,7 @@ impl<'a> Lowerer<'a, '_> {
             _ => method_kind(method.value.r#async, method.value.generator),
         };
         let fun = self.function_fun(&method.value, Callee::Method(Some(frame)));
+        let source = self.source_span(self.method_span(method));
         let value = self.bind(Expr::call(
             "bouy_ref_class",
             "method",
@@ -352,6 +381,7 @@ impl<'a> Lowerer<'a, '_> {
                 key.clone(),
                 int(length_of(&method.value.params)),
                 Expr::atom(kind),
+                source,
             ],
         ));
         let slot = match method.kind {

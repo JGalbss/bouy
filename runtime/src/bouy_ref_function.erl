@@ -160,7 +160,28 @@ module_function_text(F, Module, Name) ->
 slice(Module, Start, End) ->
     bouy_ref_string:from_utf8(binary:part(Module:'$source'(), Start, End - Start)).
 
-native_text(F) -> bouy_ref_string:concat([<<"function ">>, name_of(F), <<"() { [native code] }">>]).
+%% NativeFunction syntax: a name that is not a property name, such as the
+%% `$&` of a legacy RegExp accessor, is left out.
+native_text(F) ->
+    Name = name_of(F),
+    Shown = case is_property_name(Name) of
+        true -> Name;
+        false -> <<>>
+    end,
+    bouy_ref_string:concat([<<"function ">>, Shown, <<"() { [native code] }">>]).
+
+is_property_name(Name) when is_binary(Name) ->
+    Bare = case Name of
+        <<"get ", N/binary>> -> N;
+        <<"set ", N/binary>> -> N;
+        N -> N
+    end,
+    case Bare of
+        <<"[", _/binary>> -> true;
+        _ -> re:run(Bare, <<"^[A-Za-z_$][A-Za-z0-9_$]*$|^$">>, [{capture, none}]) =:= match
+    end;
+is_property_name(_) ->
+    true.
 
 name_of(F) ->
     case bouy_ref:get(F, <<"name">>) of

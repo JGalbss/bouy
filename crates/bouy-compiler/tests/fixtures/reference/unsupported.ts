@@ -1,2 +1,4 @@
-const pattern = /a+/;
-console.log(pattern);
+class Box {
+  accessor value = 1;
+}
+console.log(new Box().value);

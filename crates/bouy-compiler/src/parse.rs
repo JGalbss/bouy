@@ -5,7 +5,7 @@ use std::path::Path;
 use oxc::allocator::Allocator;
 use oxc::ast::ast::Program;
 use oxc::diagnostics::{Diagnostics, LabeledSpan};
-use oxc::parser::Parser;
+use oxc::parser::{ParseOptions, Parser};
 use oxc::semantic::{Semantic, SemanticBuilder};
 use oxc::span::SourceType;
 
@@ -52,7 +52,14 @@ fn parse_program<R>(
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
     let allocator = Allocator::default();
-    let parsed = Parser::new(&allocator, source, source_type).parse();
+    // Parsing each regular expression pattern reports its early errors as syntax errors.
+    let options = ParseOptions {
+        parse_regular_expression: true,
+        ..ParseOptions::default()
+    };
+    let parsed = Parser::new(&allocator, source, source_type)
+        .with_options(options)
+        .parse();
     if parsed.fatal_error || parsed.diagnostics.has_errors() {
         return Err(syntax_errors(
             path,

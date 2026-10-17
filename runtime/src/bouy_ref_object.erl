@@ -131,6 +131,7 @@ builtin_tag(V) when ?IS_OBJECT(V) ->
                 number -> <<"Number">>;
                 string -> <<"String">>;
                 boolean -> <<"Boolean">>;
+                regexp -> <<"RegExp">>;
                 _ -> <<"Object">>
             end
     end;

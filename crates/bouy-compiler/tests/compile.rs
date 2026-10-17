@@ -126,6 +126,6 @@ fn reference_lowering_names_unsupported_syntax() {
         .collect();
     assert_eq!(
         messages,
-        ["a regular expression literal is not supported by the reference-semantics prototype",]
+        ["`accessor` fields is not supported by the reference-semantics prototype"]
     );
 }
