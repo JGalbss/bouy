@@ -292,7 +292,7 @@ define_properties(O, Properties) ->
 %% SetIntegrityLevel. An ordinary object takes one flag for frozen.
 integrity(O, Level) when ?IS_OBJECT(O) ->
     case {Level, bouy_heap:class_of(O)} of
-        {frozen, Class} when Class =/= proxy, Class =/= arguments ->
+        {frozen, Class} when Class =/= proxy, Class =/= arguments, Class =/= typed_array ->
             bouy_heap:freeze(O);
         _ ->
             bouy_heap:prevent_extensions(O) orelse type_error(<<"Cannot prevent extensions">>),

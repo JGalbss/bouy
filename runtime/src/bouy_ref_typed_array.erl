@@ -13,7 +13,7 @@
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3]).
 -export([numeric_key/1, element_get/2, element_set/3, element_has/2, element_define/3, element_delete/2, index_keys/1]).
--export([iterated_length/1, create/2, validate/2]).
+-export([iterated_length/1, create/2, validate/2, is_fixed_length/1]).
 
 -import(bouy_ref_realm, [arg/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
@@ -97,6 +97,14 @@ length_of({Kind, Buffer, Offset, Length}) ->
                 _ -> out_of_bounds
             end
     end.
+
+%% IsTypedArrayFixedLength: false for an array that tracks the length of
+%% its buffer and for an array over a resizable ArrayBuffer.
+-spec is_fixed_length(term()) -> boolean().
+is_fixed_length(O) ->
+    {_Kind, Buffer, _Offset, Length} = slots(O),
+    Length =/= auto andalso
+        (bouy_heap:class_of(Buffer) =:= shared_array_buffer orelse element(3, bouy_heap:slots(Buffer)) =:= none).
 
 %% The length of an array iterator's typed array: a TypeError when it is
 %% out of bounds.

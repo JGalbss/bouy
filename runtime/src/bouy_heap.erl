@@ -1126,12 +1126,18 @@ prevent_extensions(O) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             bouy_ref_proxy:prevent_extensions(Handler);
+        %% A typed array whose length can change stays extensible (§10.4.5.3).
+        {typed_array, _, _, _, _, _} ->
+            bouy_ref_typed_array:is_fixed_length(O) andalso ordinary_prevent_extensions(O);
         _ ->
-            Id = id_for_write(O),
-            {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
-            erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
-            true
+            ordinary_prevent_extensions(O)
     end.
+
+ordinary_prevent_extensions(O) ->
+    Id = id_for_write(O),
+    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
+    true.
 
 %% Object.freeze of an ordinary object: one flag makes every property
 %% read-only and non-configurable, and the object non-extensible.
