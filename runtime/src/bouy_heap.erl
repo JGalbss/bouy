@@ -1061,6 +1061,21 @@ out_record({set, _, _, _, _, {Index, _}}, _O, N, Seen) ->
     {{'$set', N, Items}, Seen1};
 out_record({date, _, _, _, _, Ms}, _O, N, Seen) ->
     {{'$date', N, Ms}, Seen};
+out_record({Class, _, _, _, _, Primitive}, _O, N, Seen) when Class =:= number; Class =:= string; Class =:= boolean; Class =:= bigint ->
+    {{'$wrapper', N, Class, Primitive}, Seen};
+out_record({array_buffer, _, _, _, _, {detached, _, _}}, _O, _N, _Seen) ->
+    throw_error('DataCloneError', <<"An ArrayBuffer is detached and could not be cloned.">>);
+out_record({array_buffer, _, _, _, _, {_, Length, Max}}, O, N, Seen) ->
+    {{'$array_buffer', N, bouy_ref_buffer:read(O, 0, Length), Max}, Seen};
+out_record({shared_array_buffer, _, _, _, _, Slots}, _O, N, Seen) ->
+    %% A SharedArrayBuffer shares its atomics array with the receiving realm.
+    {{'$shared_array_buffer', N, Slots}, Seen};
+out_record({typed_array, _, _, _, _, {Kind, Buffer, Offset, Length}}, _O, N, Seen) ->
+    {BufferTerm, Seen1} = out(Buffer, Seen),
+    {{'$typed_array', N, Kind, BufferTerm, Offset, Length}, Seen1};
+out_record({data_view, _, _, _, _, {Buffer, Offset, Length}}, _O, N, Seen) ->
+    {BufferTerm, Seen1} = out(Buffer, Seen),
+    {{'$data_view', N, BufferTerm, Offset, Length}, Seen1};
 out_record({error, _, _, _, _, _}, O, N, Seen) ->
     Name = value_text(get(O, <<"name">>)),
     {{'$error', N, Name, value_text(get(O, <<"message">>)), value_text(get(O, <<"stack">>))}, Seen};
@@ -1123,6 +1138,34 @@ in({'$set', N, Members}, Made) ->
     {Values, Made1} = lists:mapfoldl(fun in/2, Made#{N => O}, Members),
     set_slots(O, {maps:from_list([{K, Seq} || {Seq, K} <- lists:enumerate(0, Values)]), length(Values)}),
     {O, Made1};
+in({'$wrapper', N, Class, Primitive}, Made) ->
+    Proto = case Class of
+        number -> {'$o', 'Number.prototype'};
+        string -> {'$o', 'String.prototype'};
+        boolean -> {'$o', 'Boolean.prototype'};
+        bigint -> {'$o', 'BigInt.prototype'}
+    end,
+    O = case Class of
+        string -> bouy_ref_string:wrap(Primitive, Proto);
+        _ -> new_exotic(Class, Proto, Primitive)
+    end,
+    {O, Made#{N => O}};
+in({'$array_buffer', N, Bytes, Max}, Made) ->
+    O = bouy_ref_buffer:allocate(byte_size(Bytes), Max),
+    bouy_ref_buffer:write(O, 0, Bytes),
+    {O, Made#{N => O}};
+in({'$shared_array_buffer', N, Slots}, Made) ->
+    O = new_exotic(shared_array_buffer, {'$o', 'SharedArrayBuffer.prototype'}, Slots),
+    {O, Made#{N => O}};
+in({'$typed_array', N, Kind, BufferTerm, Offset, Length}, Made) ->
+    {Buffer, Made1} = in(BufferTerm, Made),
+    Proto = {'$o', binary_to_atom(<<(bouy_ref_buffer:kind_name(Kind))/binary, ".prototype">>)},
+    O = new_exotic(typed_array, Proto, {Kind, Buffer, Offset, Length}),
+    {O, Made1#{N => O}};
+in({'$data_view', N, BufferTerm, Offset, Length}, Made) ->
+    {Buffer, Made1} = in(BufferTerm, Made),
+    O = new_exotic(data_view, {'$o', 'DataView.prototype'}, {Buffer, Offset, Length}),
+    {O, Made1#{N => O}};
 in({'$date', N, Ms}, Made) ->
     O = new_exotic(date, {'$o', 'Date.prototype'}, Ms),
     {O, Made#{N => O}};
