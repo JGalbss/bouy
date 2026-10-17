@@ -19,6 +19,7 @@ This file is the objective and the definition of done. The owner sets it, and ev
 11. **Faster than Bun, and better recovery than Bun.** Bun is the bar. Bouy must beat it on speed, measured on single-thread and concurrent suites, through type-directed compilation, native built-ins, a native tier for hot typed code that still yields to the BEAM scheduler, and all cores by default. Bouy must also recover better: a crash, a runaway loop, a memory leak, or a stuck call in one agent never stops the others, and a supervisor restarts that agent within milliseconds. `bench/` measures speed and recovery against Bun and Node.
 12. **Durable execution built in.** Long-running workflows survive crashes and restarts on Bouy's own runtime: durable timers, retries with backoff, signals, cancellation, and replay or snapshots, with no external workflow server. Code written against Temporal's TypeScript SDK runs on it without the Temporal server.
 13. **Flagship: a real production codebase.** The owner's company monorepo, a large multi-service TypeScript app that runs on Bun today and uses Temporal, builds and runs on Bouy on the owner's machine out of the box, faster than on Bun, with Bouy's durable runtime in place of Temporal. Its name and code stay out of this public repository.
+14. **Production ready.** Teams can run Bouy in production: a self-contained release with the Erlang runtime inside, so the machine needs no Erlang install; Linux x86-64 and arm64 builds and a container image; OpenTelemetry tracing, metrics, and logs that work with existing Node instrumentation; soak, chaos, and memory tests that run for hours without a leak or a crash; a security review of the compiler, the runtime, and the native code; and versioned releases with a changelog.
 
 ## Definition of done
 
@@ -32,6 +33,7 @@ This file is the objective and the definition of done. The owner sets it, and ev
 - `bench/results` shows Bouy faster than Bun on the speed suites, and the recovery suites show each fault contained to one agent and restarted, where Bun loses the process or stalls.
 - The documents state the limitations and the next milestones.
 - The owner's production monorepo runs on Bouy unchanged, faster than on Bun, with its Temporal workflows on Bouy's durable runtime.
+- A production release ships for Linux and macOS with the runtime inside, and the soak and chaos suites pass.
 - Tests prove each invariant: fault isolation, state isolation, message ordering, supervision recovery, cancellation, bounded mailboxes, npm equivalence, and stability under load.
 
 ## Amendments
@@ -48,4 +50,5 @@ The owner added these on 2026-10-16, in order:
 - "we need complete coverage of node and like a verifiable way to have that with tests"
 - "shoudlnt this also be super fast", then "we shold i think be able to make it fast as hell"
 - "it needsto be more performant and better recovery then bun"
-- "like a sick goal would be, being able to build [the owner's production repo] on my computer and have it work on our runtime more performantly out of the box with swapping out temporal probs for just default runtime"
+- "like a sick goal would be, being able to build [the owner's production repo] on my computer and have it work on our runtime more performantly out of the box with swapping out temporal probs for just default runtime", then "ideally the agent server"
+- "we need 100% node coverage", "if this is going to be used in prod"
