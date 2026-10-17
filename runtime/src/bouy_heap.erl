@@ -1048,15 +1048,16 @@ static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) 
 static_function_record({'$f', {fn, _Module, Name, Length, Kind} = Id, _}) ->
     Props = #{<<"length">> => Length, <<"name">> => Name},
     Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
+    FunctionProto = {'$o', bouy_ref_function:kind_prototype_id(Kind)},
     Record = case Kind of
         async ->
-            {function, ?FUNCTION_PROTO, Props, [<<"name">>, <<"length">>], Attrs, #{kind => Kind}};
+            {function, FunctionProto, Props, [<<"name">>, <<"length">>], Attrs, #{kind => Kind}};
         _ ->
             Parent = case Kind of
                 generator -> {'$o', 'Generator.prototype'};
                 _ -> {'$o', 'AsyncGenerator.prototype'}
             end,
-            {function, ?FUNCTION_PROTO, Props#{<<"prototype">> => new_object(Parent)}, [<<"prototype">>, <<"name">>, <<"length">>],
+            {function, FunctionProto, Props#{<<"prototype">> => new_object(Parent)}, [<<"prototype">>, <<"name">>, <<"length">>],
              Attrs#{<<"prototype">> => ?WRITABLE}, #{kind => Kind}}
     end,
     erlang:put(Id, Record),

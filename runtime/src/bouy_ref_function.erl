@@ -5,7 +5,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, call_constructor/3, ordinary_has_instance/2, throw_type_error/0, prototype_call/2]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3, ordinary_has_instance/2, throw_type_error/0, prototype_call/2, kind_prototype_id/1]).
 
 -import(bouy_ref_realm, [arg/2, rest/2, builtin/2, record/4, ctor_record/5, callable/1]).
 -import(bouy_ref, [type_error/1]).
@@ -25,7 +25,33 @@ intrinsics() ->
                      #{<<"length">> => 0, <<"name">> => 0, '$noext' => true}, #{}},
     [{'Function.prototype', {Class, Proto, Props, Keys, maps:merge(Attrs, Fixed), Slots}},
      {{builtin, <<"ThrowTypeError">>}, ThrowerRecord},
-     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Args) end)}].
+     {{builtin, <<"Function">>}, ctor_record(<<"Function">>, 1, ?FUNCTION_PROTO, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Args) end)}]
+    ++ lists:append([kind_intrinsics(Kind) || Kind <- [generator, async, async_generator]]).
+
+%% %GeneratorFunction%, %AsyncFunction%, and %AsyncGeneratorFunction%: the
+%% constructors of the other kinds of function and their prototypes, which
+%% are not globals (ECMA-262 §27.3, §27.4, §27.7).
+kind_intrinsics(Kind) ->
+    {Name, Instances} = kind_names(Kind),
+    ProtoId = kind_prototype_id(Kind),
+    Ctor = {'$f', {builtin, Name}, fun(This, Args) -> ?MODULE:call_constructor(Name, This, Args) end},
+    ProtoEntries = [{<<"constructor">>, Ctor}, {?SYM(toStringTag), Name}]
+        ++ [{<<"prototype">>, {'$o', Instances}} || Instances =/= none],
+    {PC, PP, PProps, PKeys, PAttrs, PSlots} = record(object, ?FUNCTION_PROTO, ProtoEntries, none),
+    ProtoRecord = {PC, PP, PProps, PKeys, PAttrs#{<<"constructor">> => 4, ?SYM(toStringTag) => 4, <<"prototype">> => 4}, PSlots},
+    {CC, _, CProps, CKeys, CAttrs, CSlots} =
+        ctor_record(Name, 1, {'$o', ProtoId}, [], fun(_NewTarget, Args) -> bouy_ref_eval:create_function(Kind, Args) end),
+    [{ProtoId, ProtoRecord}, {{builtin, Name}, {CC, constructor(), CProps, CKeys, CAttrs, CSlots}}].
+
+kind_names(generator) -> {<<"GeneratorFunction">>, 'Generator.prototype'};
+kind_names(async) -> {<<"AsyncFunction">>, none};
+kind_names(async_generator) -> {<<"AsyncGeneratorFunction">>, 'AsyncGenerator.prototype'}.
+
+%% The id of the prototype of the functions of a kind.
+-spec kind_prototype_id(generator | async | async_generator) -> atom().
+kind_prototype_id(generator) -> 'GeneratorFunction.prototype';
+kind_prototype_id(async) -> 'AsyncFunction.prototype';
+kind_prototype_id(async_generator) -> 'AsyncGeneratorFunction.prototype'.
 
 %% The [[Call]] of Function.prototype: it accepts any arguments and returns
 %% undefined.
@@ -42,7 +68,10 @@ globals() -> [{<<"Function">>, constructor()}].
 constructor() -> bouy_ref_realm:constructor(?MODULE, <<"Function">>).
 
 -spec call_constructor(binary(), term(), list()) -> term().
-call_constructor(<<"Function">>, _This, Args) -> bouy_ref_eval:create_function(Args).
+call_constructor(<<"Function">>, _This, Args) -> bouy_ref_eval:create_function(Args);
+call_constructor(<<"GeneratorFunction">>, _This, Args) -> bouy_ref_eval:create_function(generator, Args);
+call_constructor(<<"AsyncFunction">>, _This, Args) -> bouy_ref_eval:create_function(async, Args);
+call_constructor(<<"AsyncGeneratorFunction">>, _This, Args) -> bouy_ref_eval:create_function(async_generator, Args).
 
 -spec method(binary(), binary(), term(), list()) -> term().
 method(<<"Function.prototype">>, Name, This, Args) -> function_proto(Name, This, Args).

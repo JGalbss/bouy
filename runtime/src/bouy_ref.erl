@@ -405,14 +405,14 @@ finish_fn(F, normal) ->
     bouy_heap:define(F, <<"prototype">>, #{value => Proto, writable => true, enumerable => false, configurable => false}),
     F;
 finish_fn(F, async) ->
-    F;
+    bouy_heap:set_prototype_of(F, {'$o', bouy_ref_function:kind_prototype_id(async)});
 finish_fn(F, Kind) ->
     Parent = case Kind of
         generator -> {'$o', 'Generator.prototype'};
         async_generator -> {'$o', 'AsyncGenerator.prototype'}
     end,
     bouy_heap:define(F, <<"prototype">>, #{value => bouy_heap:new_object(Parent), writable => true, enumerable => false, configurable => false}),
-    F.
+    bouy_heap:set_prototype_of(F, {'$o', bouy_ref_function:kind_prototype_id(Kind)}).
 
 %% ClassDefinitionEvaluation up to the methods: the constructor function
 %% and its prototype object. Parent is none without extends.

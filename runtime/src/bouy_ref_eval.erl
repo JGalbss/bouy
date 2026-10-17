@@ -13,7 +13,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/4, create_function/1]).
+-export([intrinsics/0, globals/0, method/4, direct/4, create_function/1, create_function/2]).
 
 -import(bouy_ref, [type_error/1]).
 
@@ -49,14 +49,25 @@ direct(F, Args, _Mode, _This) ->
 
 %% CreateDynamicFunction: new Function(p1, ..., body).
 -spec create_function(list()) -> term().
-create_function(Args) ->
+create_function(Args) -> create_function(normal, Args).
+
+%% CreateDynamicFunction of a kind: normal, generator, async, or
+%% async_generator.
+-spec create_function(normal | generator | async | async_generator, list()) -> term().
+create_function(Kind, Args) ->
     {Params, Body} = case Args of
         [] -> {[], <<>>};
         _ -> {lists:droplast(Args), lists:last(Args)}
     end,
     P = bouy_ref_string:concat(lists:join(<<",">>, [bouy_ref:to_string(A) || A <- Params])),
     B = bouy_ref:to_string(Body),
-    Source = bouy_ref_string:concat([<<"(function anonymous(">>, P, <<"\n) {\n">>, B, <<"\n})">>]),
+    Prefix = case Kind of
+        normal -> <<"(function anonymous(">>;
+        generator -> <<"(function* anonymous(">>;
+        async -> <<"(async function anonymous(">>;
+        async_generator -> <<"(async function* anonymous(">>
+    end,
+    Source = bouy_ref_string:concat([Prefix, P, <<"\n) {\n">>, B, <<"\n})">>]),
     run(Source, false, true, ?GLOBAL).
 
 run(Source, Strict, Function, This) ->
