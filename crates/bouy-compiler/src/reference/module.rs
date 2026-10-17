@@ -246,10 +246,15 @@ impl<'a> Lowerer<'a, '_> {
                 ])
             })
             .collect();
+        // The bindings of eval code are configurable (ECMA-262 §19.2.1.3).
         Expr::call(
             "bouy_ref_realm",
             "declare_globals",
-            vec![Expr::List(vars), Expr::List(functions)],
+            vec![
+                Expr::List(vars),
+                Expr::List(functions),
+                Expr::atom(if self.eval.is_some() { "true" } else { "false" }),
+            ],
         )
     }
 
@@ -272,27 +277,7 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::Tuple(vec![Expr::atom("$o"), Expr::atom("globalThis")]),
             ));
             self.frame.this = Some(this);
-            let vars = self
-                .script_globals
-                .iter()
-                .map(|name| Expr::js_string(name))
-                .collect();
-            let functions = self
-                .script_functions
-                .clone()
-                .into_iter()
-                .map(|(name, length, kind)| {
-                    Expr::Tuple(vec![
-                        Expr::js_string(&name),
-                        self.static_function(&name, length, kind),
-                    ])
-                })
-                .collect();
-            code.push(Expr::call(
-                "bouy_ref_realm",
-                "declare_globals",
-                vec![Expr::List(vars), Expr::List(functions)],
-            ));
+            code.push(self.declare_globals_call());
         }
         let statements = body.to_vec();
         code.extend(if suspends.0 {

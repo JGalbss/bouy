@@ -16,7 +16,7 @@
 
 -include("bouy_ref.hrl").
 
--export([install/0, global/1, set_global/3, declare_globals/2, delete_global/1, constructor/2]).
+-export([install/0, global/1, set_global/3, declare_globals/3, delete_global/1, constructor/2]).
 -export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
 -export([intrinsics/0, globals/0, method/4]).
 
@@ -106,23 +106,23 @@ set_global(Name, Value, Mode) ->
 
 %% GlobalDeclarationInstantiation of a script (ECMA-262 §16.1.7): each `var`
 %% name that the global object lacks becomes a property, and each function a
-%% property with its value. Both are writable, enumerable, and not
-%% configurable.
--spec declare_globals([binary()], [{binary(), term()}]) -> ok.
-declare_globals(Vars, Functions) ->
+%% property with its value. Both are writable and enumerable, and
+%% configurable only for eval code (EvalDeclarationInstantiation).
+-spec declare_globals([binary()], [{binary(), term()}], boolean()) -> ok.
+declare_globals(Vars, Functions, Configurable) ->
     G = {'$o', 'globalThis'},
     lists:foreach(fun({Name, F}) ->
                           Desc = case bouy_heap:get_own(G, Name) of
                               {_, _, _, Bits} when Bits band 4 =:= 0 -> #{value => F};
                               {_, _, Bits} when Bits band 4 =:= 0 -> #{value => F};
-                              _ -> #{value => F, writable => true, enumerable => true, configurable => false}
+                              _ -> #{value => F, writable => true, enumerable => true, configurable => Configurable}
                           end,
                           bouy_heap:define(G, Name, Desc)
                   end, Functions),
     lists:foreach(fun(Name) ->
                           case bouy_heap:has_own(G, Name) of
                               true -> ok;
-                              false -> bouy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => false})
+                              false -> bouy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => Configurable})
                           end
                   end, Vars).
 
