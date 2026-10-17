@@ -220,11 +220,15 @@ index_keys(O) ->
 
 %%% Construction
 
+construct(Kind, NewTarget, [First | _]) when not ?IS_OBJECT(First) ->
+    %% ToIndex of the length runs before the prototype of NewTarget is read.
+    Length = bouy_ref_buffer:to_index(First),
+    allocate(Kind, bouy_ref_realm:proto_for(NewTarget, proto_id(Kind)), Length);
 construct(Kind, NewTarget, Args) ->
     Proto = bouy_ref_realm:proto_for(NewTarget, proto_id(Kind)),
     case Args of
         [] -> allocate(Kind, Proto, 0);
-        [First | _] when ?IS_OBJECT(First) ->
+        [First | _] ->
             case bouy_heap:class_of(First) of
                 typed_array -> from_typed_array(Kind, Proto, First);
                 C when C =:= array_buffer; C =:= shared_array_buffer -> from_buffer(Kind, Proto, First, arg(2, Args), arg(3, Args));
@@ -233,8 +237,7 @@ construct(Kind, NewTarget, Args) ->
                         undefined -> from_array_like(Kind, Proto, First);
                         Method -> from_list(Kind, Proto, iterator_to_list(First, Method))
                     end
-            end;
-        [First | _] -> allocate(Kind, Proto, bouy_ref_buffer:to_index(First))
+            end
     end.
 
 %% IteratorToList of GetIteratorFromMethod.
