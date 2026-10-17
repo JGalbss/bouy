@@ -224,7 +224,14 @@ impl<'a> Lowerer<'a, '_> {
         }
         self.nested_var_getters(program);
         functions.push(match self.eval {
-            Some(_) => self.eval_function(&body),
+            Some(_) => {
+                // A directive is an expression statement too: `eval("'1'")` is "1".
+                let directive = program
+                    .directives
+                    .last()
+                    .map(|directive| Expr::js_string(directive.directive.as_str()));
+                self.eval_function(&body, directive)
+            }
             None => self.init(&body),
         });
         functions.push(self.class_dispatch());
@@ -310,7 +317,11 @@ impl<'a> Lowerer<'a, '_> {
 
     /// `'__eval__'/1`: runs the code of an `eval` in the current realm with its `this` and
     /// returns the value of its last statement when that is an expression statement.
-    pub fn eval_function(&mut self, body: &[&'a Statement<'a>]) -> Function {
+    pub fn eval_function(
+        &mut self,
+        body: &[&'a Statement<'a>],
+        directive: Option<Expr>,
+    ) -> Function {
         self.frame = Frame::default();
         self.frame.sloppy = self.is_sloppy(None);
         // The `this` of the eval: the caller's for a direct eval, else the global object.
@@ -334,7 +345,13 @@ impl<'a> Lowerer<'a, '_> {
             _ => (body.to_vec(), None),
         };
         match last {
-            None => code.extend(self.stmts(init, &Cont::Value(Expr::undefined()))),
+            None => {
+                let completion = match (body.is_empty(), directive) {
+                    (true, Some(directive)) => directive,
+                    _ => Expr::undefined(),
+                };
+                code.extend(self.stmts(init, &Cont::Value(completion)));
+            }
             Some(last) => {
                 let saved = std::mem::take(&mut self.pre);
                 let value = self.expr(&last.expression);

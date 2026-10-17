@@ -171,7 +171,8 @@ pub struct Frame<'a> {
     pub callee: Option<Expr>,
     /// The `with` statements around the code, outermost first.
     pub withs: Vec<super::with::WithScope>,
-    /// The code is a parameter default, where a direct eval may not declare `arguments`.
+    /// The code is a parameter default of a parameter scope that binds `arguments`, where a
+    /// direct eval may not declare it.
     pub in_params: bool,
 }
 

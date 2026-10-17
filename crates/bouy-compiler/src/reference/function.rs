@@ -175,7 +175,14 @@ impl<'a> Lowerer<'a, '_> {
             ));
             self.frame.arguments = Some(arguments);
         }
-        self.frame.in_params = true;
+        // The parameter scope binds `arguments`: the arguments object of an ordinary
+        // function, or a parameter of that name. A direct eval there may not declare it.
+        self.frame.in_params = own_arguments
+            || params
+                .items
+                .iter()
+                .flat_map(|param| param.pattern.get_binding_identifiers())
+                .any(|id| id.name == "arguments");
         code.extend(self.params(params, args));
         self.frame.in_params = false;
         if mapped {
