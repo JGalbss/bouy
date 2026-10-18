@@ -444,7 +444,7 @@ shapes_share_test() ->
                   [buoy_heap:set(O, K, V) || O <- [A, B], {K, V} <- [{<<"x">>, 1}, {<<"y">>, 2}]],
                   {'$o', IdA} = A,
                   {'$o', IdB} = B,
-                  ?assertMatch({{'$shape', _, {<<"x">>, <<"y">>}, _}, ?P, 1, 2}, erlang:get(IdA)),
+                  ?assertMatch({{'$shape', _, {<<"x">>, <<"y">>}, _, _}, ?P, 1, 2}, erlang:get(IdA)),
                   ?assertEqual(element(1, erlang:get(IdA)), element(1, erlang:get(IdB))),
                   buoy_heap:set(A, <<"x">>, 10),
                   ?assertEqual(10, buoy_heap:get(A, <<"x">>)),
@@ -454,6 +454,21 @@ shapes_share_test() ->
                   ?assert(buoy_heap:has(A, <<"y">>)),
                   ?assertEqual(object, buoy_heap:class_of(A)),
                   ?assertEqual(none, buoy_heap:slots(A))
+          end).
+
+%% A shape finds each of its keys, and a missing key whose filter bit one of
+%% its keys shares ("ab" and "ad" have the same size and first byte) stays
+%% missing, as does a key of another kind.
+shapes_filter_test() ->
+    realm(fun() ->
+                  O = buoy_heap:new_object(?P),
+                  [buoy_heap:set(O, K, V) || {K, V} <- [{<<"ab">>, 1}, {<<"ac">>, 2}, {<<>>, 3}]],
+                  ?assertEqual([1, 2, 3], [buoy_heap:get(O, K) || K <- [<<"ab">>, <<"ac">>, <<>>]]),
+                  ?assertEqual(none, buoy_heap:get_own(O, <<"ad">>)),
+                  ?assertEqual(none, buoy_heap:get_own(O, <<"zz">>)),
+                  ?assertEqual(none, buoy_heap:get_own(O, 7)),
+                  buoy_heap:set(O, <<"ad">>, 4),
+                  ?assertEqual({data, 4, 7}, buoy_heap:get_own(O, <<"ad">>))
           end).
 
 %% A delete, an accessor, an attribute, an index key, or a frozen object

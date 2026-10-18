@@ -38,15 +38,15 @@
 %%
 %%   {Shape, Proto, V1, ..., Vn}
 %%
-%% Shape is {'$shape', ShapeId, Keys, Index}: Keys is the tuple of its keys in
-%% insertion order, and Index maps each key to its position. The value of the
-%% key at position I is element I + 2 of the record. Every object that gains
-%% the same keys in the same order shares one shape, through the transitions
-%% that the realm keeps under {'$shape', ShapeId, Key}. Any other change, such
-%% as a delete, an accessor, or an attribute, turns the record into the one
-%% above for good, as JavaScriptCore turns a structure into a dictionary. Only
-%% this module reads a record: raw/1 gives either form, record_of/1 the one
-%% above.
+%% Shape is {'$shape', ShapeId, Keys, Index, Filter}: Keys is the tuple of its
+%% keys in insertion order, Index maps each key to its position, and Filter
+%% has the bit of each key (key_bit/1). The value of the key at position I is
+%% element I + 2 of the record. Every object that gains the same keys in the
+%% same order shares one shape, through the transitions that the realm keeps
+%% under {'$shape', ShapeId, Key}. Any other change, such as a delete, an
+%% accessor, or an attribute, turns the record into the one above for good, as
+%% JavaScriptCore turns a structure into a dictionary. Only this module reads a
+%% record: raw/1 gives either form, record_of/1 the one above.
 %%
 %% The heap collects garbage with gc/1, a mark and sweep that the owner runs
 %% when its stack is empty, between jobs. Every pdict entry whose key is not
@@ -96,7 +96,7 @@
 -define(is_obj(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
 %% A shaped record (see the top of this module); R is a record or undefined.
 -define(is_shaped(R), is_tuple(element(1, R))).
--define(EMPTY_SHAPE, {'$shape', 0, {}, #{}}).
+-define(EMPTY_SHAPE, {'$shape', 0, {}, #{}, 0}).
 %% A shape has at most this many keys, and a realm at most this many shapes.
 -define(MAX_SHAPE_KEYS, 64).
 -define(MAX_SHAPES, 10000).
@@ -202,15 +202,15 @@ shape_of(Keys) ->
 
 %% The shape of Shape with the new key K appended, or none: K is not a string
 %% key, or the shape or the realm has no room.
-next_shape({'$shape', Id, Keys, Index}, K) when is_binary(K), tuple_size(Keys) < ?MAX_SHAPE_KEYS ->
+next_shape({'$shape', Id, Keys, Index, Filter}, K) when is_binary(K), tuple_size(Keys) < ?MAX_SHAPE_KEYS ->
     case erlang:get({'$shape', Id, K}) of
-        undefined -> new_shape(Id, Keys, Index, K);
+        undefined -> new_shape(Id, Keys, Index, Filter, K);
         Shape -> Shape
     end;
 next_shape(_Shape, _K) ->
     none.
 
-new_shape(Parent, Keys, Index, K) ->
+new_shape(Parent, Keys, Index, Filter, K) ->
     case erlang:get(?SHAPES) of
         Count when is_integer(Count), Count >= ?MAX_SHAPES ->
             none;
@@ -220,14 +220,35 @@ new_shape(Parent, Keys, Index, K) ->
                 _ -> Count + 1
             end,
             erlang:put(?SHAPES, Next),
-            Shape = {'$shape', Next, erlang:append_element(Keys, K), Index#{K => tuple_size(Keys) + 1}},
+            Shape = {'$shape', Next, erlang:append_element(Keys, K), Index#{K => tuple_size(Keys) + 1},
+                     Filter bor key_bit(K)},
             erlang:put({'$shape', Parent, K}, Shape),
             Shape
     end.
 
+%% The position of the key K in Shape, or none. Most misses skip Index, whose
+%% binary keys a lookup compares by content one at a time: V8 and JSC look a
+%% key up in a hash table of the hidden class.
+position({'$shape', _, _, Index, Filter}, K) ->
+    case Filter band key_bit(K) of
+        0 ->
+            none;
+        _ ->
+            case Index of
+                #{K := I} -> I;
+                _ -> none
+            end
+    end.
+
+%% The bit of a key in the filter of a shape, from its size and first byte. A
+%% shape holds only binary keys, so any other key has no bit.
+key_bit(<<C, _/binary>> = K) -> 1 bsl ((byte_size(K) * 7 + C) band 31);
+key_bit(<<>>) -> 1;
+key_bit(_) -> 0.
+
 %% The record of a shaped object in the form of every other object.
 expand(R) when ?is_shaped(R) ->
-    [{'$shape', _, Keys, _}, Proto | Values] = tuple_to_list(R),
+    [{'$shape', _, Keys, _, _}, Proto | Values] = tuple_to_list(R),
     List = tuple_to_list(Keys),
     {object, Proto, maps:from_list(lists:zip(List, Values)), lists:reverse(List), #{}, none};
 expand(R) ->
@@ -235,9 +256,9 @@ expand(R) ->
 
 %% The own property K of a shaped record: its value, or none.
 shaped_value(R, K) ->
-    case element(4, element(1, R)) of
-        #{K := I} -> {data, element(I + 2, R), ?ALL};
-        _ -> none
+    case position(element(1, R), K) of
+        none -> none;
+        I -> {data, element(I + 2, R), ?ALL}
     end.
 
 %% A read of `o.k`, where the compiler expects the key K at position I of a
@@ -259,9 +280,9 @@ get_slot(O, K, _I) ->
 method({'$o', Id} = O, K) ->
     case erlang:get(Id) of
         R when ?is_shaped(R) ->
-            case element(4, element(1, R)) of
-                #{K := I} -> element(I + 2, R);
-                _ -> proto_method(element(2, R), K, O)
+            case position(element(1, R), K) of
+                none -> proto_method(element(2, R), K, O);
+                I -> element(I + 2, R)
             end;
         _ ->
             get(O, K, O)
@@ -296,15 +317,15 @@ add_field({'$o', Id}, K, V) ->
     case erlang:get(Id) of
         R when ?is_shaped(R) ->
             Shape = element(1, R),
-            case element(4, Shape) of
-                #{K := I} ->
-                    erlang:put(Id, setelement(I + 2, R, V)),
-                    true;
-                _ ->
+            case position(Shape, K) of
+                none ->
                     case next_shape(Shape, K) of
                         none -> false;
                         Next -> erlang:put(Id, erlang:append_element(setelement(1, R, Next), V)), true
-                    end
+                    end;
+                I ->
+                    erlang:put(Id, setelement(I + 2, R, V)),
+                    true
             end;
         _ ->
             false
@@ -521,9 +542,9 @@ get({'$f', Id, _} = F, K, Receiver) ->
     end.
 
 from_record(R, K, Receiver) when ?is_shaped(R) ->
-    case element(4, element(1, R)) of
-        #{K := I} -> element(I + 2, R);
-        _ -> inherited(element(2, R), K, Receiver)
+    case position(element(1, R), K) of
+        none -> inherited(element(2, R), K, Receiver);
+        I -> element(I + 2, R)
     end;
 from_record({array, Proto, _, _, _, {_, Elements}}, K, Receiver) when is_integer(K) ->
     case Elements of
@@ -599,12 +620,12 @@ assign({'$o', Id} = O, K, V, Mode) ->
     case erlang:get(Id) of
         R when ?is_shaped(R) ->
             Shape = element(1, R),
-            case element(4, Shape) of
-                #{K := I} ->
+            case position(Shape, K) of
+                none ->
+                    add_shaped(Id, R, Shape, K, V, O, Mode);
+                I ->
                     erlang:put(Id, setelement(I + 2, R, V)),
-                    V;
-                _ ->
-                    add_shaped(Id, R, Shape, K, V, O, Mode)
+                    V
             end;
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K), map_size(Attrs) =:= 0 ->
             case Elements of
@@ -734,9 +755,9 @@ inherited_setter(P, K) ->
     setter_in(raw(P), K).
 
 setter_in(R, K) when ?is_shaped(R) ->
-    case element(4, element(1, R)) of
-        #{K := _} -> none;
-        _ -> inherited_setter(element(2, R), K)
+    case position(element(1, R), K) of
+        none -> inherited_setter(element(2, R), K);
+        _ -> none
     end;
 setter_in({proxy, _, _, _, _, _}, _K) -> slow;
 setter_in({typed_array, _, _, _, _, _}, _K) -> slow;
