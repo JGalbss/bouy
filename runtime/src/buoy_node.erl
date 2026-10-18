@@ -149,7 +149,25 @@ boot() ->
     end,
     [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- Bootstrap, is_compiled(Id)],
     erlang:put(?STATE, ready),
+    keep_engine_timers(),
     debug("bootstrap done~n", []),
+    ok.
+
+%% A timer that the program set before the bootstrap is the engine's, whose
+%% id Node's clearTimeout and clearInterval do not know: while one is live,
+%% the globals clear an engine id before they call Node's.
+%% shortcut: a Node timer's number that equals a live engine id clears both;
+%% move the engine timers into lib/timers if a program hits it.
+keep_engine_timers() ->
+    G = {'$o', 'globalThis'},
+    buoy_jobs:has_timers() andalso
+        lists:foreach(fun(Name) ->
+            Clear = buoy_heap:get(G, Name),
+            buoy_heap:set(G, Name, fn(Name, 1, fun(This, Args) ->
+                buoy_jobs:clear_timer(buoy_ref_realm:arg(1, Args)),
+                buoy_heap:call(Clear, This, Args)
+            end))
+        end, [<<"clearTimeout">>, <<"clearInterval">>]),
     ok.
 
 is_compiled(Id) -> lists:member(Id, (index()):ids()).
