@@ -146,7 +146,12 @@ fn erlc() -> OsString {
 }
 
 fn cache_root() -> Option<PathBuf> {
-    cache_root_in(env::var_os("XDG_CACHE_HOME"), env::var_os("HOME"))
+    // `home_dir` reads HOME, then the passwd entry of the user, as libuv's
+    // uv_os_homedir does, so a child that runs with no HOME still finds the cache.
+    cache_root_in(
+        env::var_os("XDG_CACHE_HOME"),
+        env::home_dir().map(PathBuf::into_os_string),
+    )
 }
 
 /// `$XDG_CACHE_HOME/buoy`, or `$HOME/.cache/buoy`. The XDG Base Directory specification
