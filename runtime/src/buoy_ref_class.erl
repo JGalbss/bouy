@@ -304,13 +304,23 @@ missing(O, P, What) when ?IS_OBJECT(O) ->
 missing(O, P, What) ->
     buoy_ref:type_error(<<"Cannot ", What/binary, " private member ", (key_text(P))/binary, " from ", (describe(O))/binary>>).
 
-%% PrivateFieldAdd: a TypeError when the object has the element already.
+%% PrivateFieldAdd: a TypeError when the object has the element already, or
+%% when it is not extensible (the nonextensible-applies-to-private proposal).
 -spec private_add(term(), tuple(), term()) -> term().
 private_add(O, P, V) ->
     find(O, P) =:= error orelse
         buoy_ref:type_error(<<"Cannot initialize ", (key_text(P))/binary, " twice on the same object">>),
+    ensure_extensible(O, P),
     buoy_heap:private_put(O, P, V),
     V.
+
+%% O.[[Extensible]]. A proxy has no such slot, so its private elements are
+%% added without a call of its isExtensible trap.
+ensure_extensible(O, P) ->
+    case buoy_heap:class_of(O) =:= proxy orelse buoy_heap:is_extensible(O) of
+        true -> ok;
+        false -> buoy_ref:type_error(<<"Cannot define private field ", (key_text(P))/binary, " on a non-extensible object">>)
+    end.
 
 %% PrivateMethodOrAccessorAdd for each method: {P, method | get | set, F}. A
 %% getter and a setter of one name make one accessor.
@@ -320,6 +330,7 @@ add_private_methods(O, Methods) ->
     [begin
          find(O, P) =:= error orelse
              buoy_ref:type_error(<<"Cannot initialize private methods of class ", (key_text(P))/binary, " twice on the same object">>),
+         ensure_extensible(O, P),
          buoy_heap:private_put(O, P, Slot)
      end || {P, Slot} <- lists:reverse(Elements)],
     ok.
