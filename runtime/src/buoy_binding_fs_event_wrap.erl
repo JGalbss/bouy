@@ -65,7 +65,7 @@ start(This, Path0, Persistent, Recursive, Encoding) ->
             erlang:put({?MODULE, Token}, This),
             save(This, State#{active => true, token => Token, path => Path, recursive => Recursive =:= true,
                               encoding => Encoding, refed => Refed, snapshot => Snapshot}),
-            schedule(This, Token),
+            schedule(Token),
             0
     end.
 
@@ -94,9 +94,17 @@ set_ref(This, Refed) ->
     save(This, State#{refed => Refed}),
     undefined.
 
-schedule(This, Token) ->
-    erlang:send_after(?INTERVAL, self(), {'$buoy_node_call', fun() -> poll(This, Token) end}),
+schedule(Token) ->
+    erlang:send_after(?INTERVAL, self(), {'$buoy_node_call', fun() -> poll(Token) end}),
     ok.
+
+%% The timer names the watcher by its token, since a closed watcher is no
+%% root of the heap any more.
+poll(Token) ->
+    case erlang:get({?MODULE, Token}) of
+        undefined -> ok;
+        This -> poll(This, Token)
+    end.
 
 poll(This, Token) ->
     case state(This) of
@@ -105,7 +113,7 @@ poll(This, Token) ->
             save(This, State#{snapshot => New}),
             Events = events(Old, New, filename:basename(Path)),
             emit(This, Token, Events, maps:get(encoding, State)),
-            schedule(This, Token);
+            schedule(Token);
         _ ->
             ok
     end.

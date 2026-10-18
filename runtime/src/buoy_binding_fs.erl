@@ -11,8 +11,8 @@
 %% 0, 1, and 2 are the standard streams of the VM.
 %%
 %% shortcut: prim_file has no sub-second times, no statfs, and no call that
-%% leaves a symlink itself unchanged, so stats carry whole seconds, statfs
-%% throws ENOSYS, and lutimes and lchown throw ENOSYS on a symlink. A NIF of
+%% changes a symlink itself, so stats carry whole seconds, and statfs and the
+%% calls on a symlink run a tool (df, chmod, chown, touch). A NIF of
 %% crates/buoy-nif removes these limits.
 -module(buoy_binding_fs).
 
@@ -38,6 +38,7 @@
 -define(O_EXCL, 2048).
 -define(O_DIRECTORY, 1048576).
 -define(O_DSYNC, 4194304).
+-define(O_SYMLINK, 2097152).
 -define(COPYFILE_EXCL, 1).
 -define(COPYFILE_FICLONE_FORCE, 4).
 -define(S_IFMT, 8#170000).
@@ -47,7 +48,10 @@ binding() ->
     Promises = buoy_node:symbol(<<"fs_use_promises_symbol">>),
     Stats = buoy_node:typed_array(<<"Float64Array">>, 2 * ?STAT_FIELDS),
     BigStats = buoy_node:typed_array(<<"BigInt64Array">>, 2 * ?STAT_FIELDS),
-    erlang:put(?STATE, #{promises => Promises, stats => Stats, bigint_stats => BigStats}),
+    StatFs = buoy_node:typed_array(<<"Float64Array">>, 7),
+    BigStatFs = buoy_node:typed_array(<<"BigInt64Array">>, 7),
+    erlang:put(?STATE, #{promises => Promises, stats => Stats, bigint_stats => BigStats, statfs => StatFs,
+                         bigint_statfs => BigStatFs}),
     Req = buoy_node:constructor(<<"FSReqCallback">>, 1, fun(This, Args) ->
         buoy_heap:set(This, <<"bigint">>, buoy_ref:truthy(buoy_node:arg(1, Args))),
         undefined
@@ -85,8 +89,8 @@ binding() ->
             {<<"kUsePromises">>, Promises},
             {<<"statValues">>, Stats},
             {<<"bigintStatValues">>, BigStats},
-            {<<"statFsValues">>, buoy_node:typed_array(<<"Float64Array">>, 7)},
-            {<<"bigintStatFsValues">>, buoy_node:typed_array(<<"BigInt64Array">>, 7)}]
+            {<<"statFsValues">>, StatFs},
+            {<<"bigintStatFsValues">>, BigStatFs}]
         ++ buoy_node:stubs(<<"fs">>, [<<"legacyMainResolve">>])).
 
 %%% Requests
@@ -95,8 +99,88 @@ binding() ->
 %% the loop runs on.
 call(<<"read">>, [0, Buffer, Offset, Length, _Position, Req | _], _, _) when ?IS_OBJECT(Req) ->
     read_stdin_async(Req, Buffer, int(Offset), int(Length));
-call(_Name, Args, At, Fun) ->
+call(Name, Args, At, Fun) ->
+    validate(Name, Args),
     request(buoy_node:arg(At, Args), fun() -> Fun(Args) end).
+
+%% The checks that the C++ side makes before it dispatches a call, so they
+%% throw at once even for a callback or a promise.
+validate(<<"access">>, Args) -> file_mode(buoy_node:arg(2, Args));
+validate(<<"copyFile">>, Args) -> file_mode(buoy_node:arg(3, Args));
+validate(Name, Args) ->
+    Fd = [<<"close">>, <<"fstat">>, <<"ftruncate">>, <<"fdatasync">>, <<"fsync">>, <<"writeBuffer">>,
+          <<"writeBuffers">>, <<"writeString">>, <<"read">>, <<"readBuffers">>, <<"fchmod">>, <<"fchown">>,
+          <<"futimes">>],
+    lists:member(Name, Fd) andalso validated_fd(buoy_node:arg(1, Args)),
+    ok.
+
+%% GetValidatedFd: an int32 descriptor, or ERR_INVALID_ARG_TYPE and
+%% ERR_OUT_OF_RANGE as src/util.cc throws them.
+-spec validated_fd(term()) -> non_neg_integer().
+validated_fd(Fd) when is_integer(Fd), Fd >= 0, Fd =< 16#7FFFFFFF -> Fd;
+validated_fd(Fd) when is_float(Fd), Fd >= 0, Fd =< 16#7FFFFFFF, Fd == trunc(Fd) -> trunc(Fd);
+validated_fd(Fd) when ?IS_NUMBER(Fd) ->
+    Rule = case is_number(Fd) andalso (Fd < 0 orelse Fd > 16#7FFFFFFF) of
+        true -> <<"It must be >= 0 && <= 2147483647">>;
+        false -> <<"It must be an integer">>
+    end,
+    buoy_node:throw_code('RangeError', <<"ERR_OUT_OF_RANGE">>,
+                         text([<<"The value of \"fd\" is out of range. ">>, Rule, <<". Received ">>, buoy_ref:to_string(Fd)]));
+validated_fd(Fd) ->
+    buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>,
+                         text([<<"The \"fd\" argument must be of type number. Received ">>, received(Fd)])).
+
+%% GetValidFileMode for access and copyFile: null, undefined, or 0 to 7.
+file_mode(Mode) when Mode =:= undefined; Mode =:= null -> ok;
+file_mode(Mode) when Mode =:= 'NaN'; Mode =:= 'Infinity'; Mode =:= '-Infinity' ->
+    buoy_node:throw_code('RangeError', <<"ERR_OUT_OF_RANGE">>, <<"mode is out of range">>);
+file_mode(Mode) when is_number(Mode) ->
+    Int = buoy_ref:bit_or(Mode, 0),
+    Int >= 0 andalso Int =< 7 orelse
+        buoy_node:throw_code('RangeError', <<"ERR_OUT_OF_RANGE">>, <<"mode is out of range: >= 0 && <= 7">>),
+    ok;
+file_mode(_) ->
+    buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>, <<"mode must be int32 or null/undefined">>).
+
+text(Parts) -> buoy_ref_string:from_utf8(iolist_to_binary([part(P) || P <- Parts])).
+
+part(P) when is_binary(P) -> P;
+part(P) -> buoy_ref_string:to_utf8(P).
+
+%% DetermineSpecificErrorType of src/util.cc: how an error names a value.
+-spec received(term()) -> binary().
+received(V) when ?IS_STRING(V) ->
+    Bytes = buoy_ref_string:to_utf8(V),
+    Short = case byte_size(Bytes) > 28 of
+        true -> <<(binary:part(Bytes, 0, 25))/binary, "...">>;
+        false -> Bytes
+    end,
+    case binary:match(Short, <<"'">>) of
+        nomatch -> <<"type string ('", Short/binary, "')">>;
+        _ -> <<"type string (", (buoy_ref_string:to_utf8(buoy_ref_json:stringify(V, undefined, undefined)))/binary, ")">>
+    end;
+received(V) when ?IS_OBJECT(V) ->
+    case buoy_heap:is_callable(V) of
+        true -> <<"function">>;
+        false -> <<"an instance of ", (constructor_name(V))/binary>>
+    end;
+received({'$sym', _, _} = V) -> buoy_ref_string:to_utf8(buoy_ref:describe(V));
+received('NaN') -> <<"type number (NaN)">>;
+received(V) when V =:= 'Infinity'; V =:= '-Infinity' -> <<"type number (Infinity)">>;
+received(V) when is_number(V) -> <<"type number (", (buoy_ref_string:to_utf8(buoy_ref:to_string(V)))/binary, ")">>;
+received({'$bigint', N}) -> <<"type bigint (", (integer_to_binary(N))/binary, ")">>;
+received(true) -> <<"type boolean (true)">>;
+received(false) -> <<"type boolean (false)">>;
+received(V) -> buoy_ref_string:to_utf8(buoy_ref:to_string(V)).
+
+constructor_name(V) ->
+    Name = try buoy_heap:get(buoy_heap:get(V, <<"constructor">>), <<"name">>)
+           catch _:_ -> undefined
+           end,
+    case Name of
+        N when ?IS_STRING(N), N =/= <<>> -> buoy_ref_string:to_utf8(N);
+        _ -> <<"Object">>
+    end.
 
 %% Runs Call for the request argument Req of a binding function: now for
 %% undefined, with req.oncomplete for an FSReqCallback, and with a promise
@@ -134,6 +218,15 @@ settle(Promise, {error, E}) -> buoy_jobs:reject_promise(Promise, E).
 %% as FillGlobalStatsArray does, at the moment JavaScript reads them; a
 %% promise gets an array of its own, as FSReqPromise has.
 value({stats, Info, BigInt}, Where) -> stat_array(Info, BigInt, Where);
+value({statfs, Values, BigInt}, Where) ->
+    Array = case {Where, BigInt} of
+        {global, true} -> maps:get(bigint_statfs, erlang:get(?STATE));
+        {global, false} -> maps:get(statfs, erlang:get(?STATE));
+        {fresh, true} -> buoy_node:typed_array(<<"BigInt64Array">>, 7);
+        {fresh, false} -> buoy_node:typed_array(<<"Float64Array">>, 7)
+    end,
+    [buoy_heap:set(Array, I, field(V, BigInt)) || {I, V} <- lists:enumerate(0, Values)],
+    Array;
 value(Value, _) -> Value.
 
 %%% Paths, names, and errors
@@ -243,16 +336,23 @@ open_path(Path, Flags, Mode) ->
         _ -> read_write
     end,
     Create = Flags band ?O_CREAT =/= 0,
-    Info = prim_file:read_link_info(Path),
-    Existed = case Info of
-        {ok, #file_info{type = symlink}} -> element(1, prim_file:read_file_info(Path)) =:= ok;
-        {ok, _} -> true;
-        _ -> false
-    end,
-    Flags band ?O_NOFOLLOW =/= 0 andalso element(1, Info) =:= ok andalso
-        (element(2, Info))#file_info.type =:= symlink andalso uv_error(eloop, <<"open">>, Path),
-    not Create andalso not Existed andalso Access =/= read andalso
+    IsLink = is_symlink(Path),
+    Existed = element(1, prim_file:read_file_info(Path)) =:= ok,
+    Flags band ?O_NOFOLLOW =/= 0 andalso IsLink andalso uv_error(eloop, <<"open">>, Path),
+    not Create andalso not Existed andalso not IsLink andalso Access =/= read andalso
         uv_error(check_missing(Path), <<"open">>, Path),
+    case Flags band ?O_SYMLINK =/= 0 andalso IsLink of
+        true -> {link_handle(), link};
+        false -> open_file(Path, Flags, Mode, Access, Create, Existed)
+    end.
+
+%% O_SYMLINK opens a symlink itself, which prim_file cannot: the descriptor
+%% of /dev/null holds the number, and the calls on it act on the path.
+link_handle() ->
+    {ok, File} = file:open(<<"/dev/null">>, [raw, binary, read]),
+    File.
+
+open_file(Path, Flags, Mode, Access, Create, Existed) ->
     Truncate = Flags band ?O_TRUNC =/= 0,
     Base = case {Access, Flags band ?O_APPEND =/= 0} of
         {read, _} -> [read];
@@ -568,6 +668,8 @@ fstat(Args) ->
     Fd = fd(buoy_node:arg(1, Args)),
     BigInt = buoy_ref:truthy(buoy_node:arg(2, Args)),
     Info = case fds() of
+        #{Fd := {_, Path, link}} ->
+            check(read_info(Path, nofollow), <<"fstat">>, undefined);
         #{Fd := {File, _, _}} ->
             check(prim_file:read_handle_info(File, [{time, posix}]), <<"fstat">>, undefined);
         _ when Fd >= 0, Fd =< 2 ->
@@ -578,8 +680,42 @@ fstat(Args) ->
     end,
     {stats, Info, BigInt}.
 
+%% statfs(path, bigint): type, bsize, blocks, bfree, bavail, files, and
+%% ffree of the file system that holds path.
 statfs(Args) ->
-    uv_error(enosys, <<"statfs">>, path(buoy_node:arg(1, Args))).
+    Path = path(buoy_node:arg(1, Args)),
+    check(read_info(Path, follow), <<"statfs">>, Path),
+    {statfs, df(absolute(Path)), buoy_ref:truthy(buoy_node:arg(2, Args))}.
+
+%% shortcut: prim_file has no statfs(2), so this runs /bin/df, one process
+%% for each call, as disksup of os_mon reads the space of a disk. df gives
+%% no file system type, which stays 0, and counts 1024-byte blocks, which
+%% this gives in 4096-byte ones. A statfs NIF of crates/buoy-nif replaces it.
+df(Path) ->
+    case os:type() of
+        {unix, darwin} ->
+            [KBlocks, _Used, KAvail, _Capacity, IUsed, IFree | _] = df_row(["-k", "-i", Path]),
+            [0, 4096, KBlocks div 4, KAvail div 4, KAvail div 4, IUsed + IFree, IFree];
+        _ ->
+            [KBlocks, KUsed, KAvail | _] = df_row(["-P", "-k", Path]),
+            [Inodes, _, IFree | _] = df_row(["-P", "-i", Path]),
+            [0, 4096, KBlocks div 4, (KBlocks - KUsed) div 4, KAvail div 4, Inodes, IFree]
+    end.
+
+%% The numbers of the row of df for one path, from a directory that exists.
+df_row(Args) ->
+    Port = open_port({spawn_executable, "/bin/df"}, [{args, Args}, {cd, "/"}, binary, exit_status, use_stdio]),
+    {_, Output} = collect_status(Port, []),
+    [_Header, Row | _] = binary:split(Output, <<"\n">>, [global]),
+    [binary_to_integer(T) || T <- binary:split(Row, [<<" ">>, <<"\t">>, <<"%">>], [global, trim_all]),
+                             re:run(T, <<"^[0-9]+$">>) =/= nomatch].
+
+absolute(Path) ->
+    case {filename:pathtype(Path), prim_file:get_cwd()} of
+        {absolute, _} -> Path;
+        {_, {ok, Cwd}} -> filename:join(name(Cwd), Path);
+        _ -> Path
+    end.
 
 %% Fills a stat array in Node's field order: the shared array of the
 %% binding, or a fresh one.
@@ -945,8 +1081,11 @@ chmod(Args) ->
     undefined.
 
 fchmod(Args) ->
-    {_, Path, _} = file(fd(buoy_node:arg(1, Args)), <<"fchmod">>),
-    check(prim_file:write_file_info(Path, #file_info{mode = int(buoy_node:arg(2, Args))}), <<"fchmod">>, undefined),
+    Mode = int(buoy_node:arg(2, Args)),
+    case file(fd(buoy_node:arg(1, Args)), <<"fchmod">>) of
+        {_, Path, link} -> tool("chmod", ["-h", integer_to_list(Mode band 8#7777, 8), Path], <<"fchmod">>, undefined);
+        {_, Path, _} -> check(prim_file:write_file_info(Path, #file_info{mode = Mode}), <<"fchmod">>, undefined)
+    end,
     undefined.
 
 chown(Args) ->
@@ -954,13 +1093,30 @@ chown(Args) ->
     set_owner(Path, Args, <<"chown">>, Path).
 
 fchown(Args) ->
-    {_, Path, _} = file(fd(buoy_node:arg(1, Args)), <<"fchown">>),
-    set_owner(Path, Args, <<"fchown">>, undefined).
+    case file(fd(buoy_node:arg(1, Args)), <<"fchown">>) of
+        {_, Path, link} -> link_owner(Path, Args, <<"fchown">>, undefined);
+        {_, Path, _} -> set_owner(Path, Args, <<"fchown">>, undefined)
+    end.
 
 lchown(Args) ->
     Path = path(buoy_node:arg(1, Args)),
-    is_symlink(Path) andalso uv_error(enosys, <<"lchown">>, Path),
-    set_owner(Path, Args, <<"lchown">>, Path).
+    case is_symlink(Path) of
+        true -> link_owner(Path, Args, <<"lchown">>, Path);
+        false -> set_owner(Path, Args, <<"lchown">>, Path)
+    end.
+
+%% chown -h, with -1 as the owner that the symlink has.
+link_owner(Path, Args, Syscall, ErrorPath) ->
+    #file_info{uid = OldUid, gid = OldGid} = check(prim_file:read_link_info(Path), Syscall, ErrorPath),
+    Id = fun(V, Old) ->
+        case owner_id(V) of
+            -1 -> integer_to_list(Old);
+            N -> integer_to_list(N)
+        end
+    end,
+    tool("chown", ["-h", Id(buoy_node:arg(2, Args), OldUid) ++ ":" ++ Id(buoy_node:arg(3, Args), OldGid), Path],
+         Syscall, ErrorPath),
+    undefined.
 
 set_owner(Path, Args, Syscall, ErrorPath) ->
     Info = #file_info{uid = owner_id(buoy_node:arg(2, Args)), gid = owner_id(buoy_node:arg(3, Args))},
@@ -985,13 +1141,63 @@ utimes(Args) ->
     set_times(Path, Args, <<"utime">>, Path).
 
 futimes(Args) ->
-    {_, Path, _} = file(fd(buoy_node:arg(1, Args)), <<"futime">>),
-    set_times(Path, Args, <<"futime">>, undefined).
+    case file(fd(buoy_node:arg(1, Args)), <<"futime">>) of
+        {_, Path, link} -> link_times(Path, Args, <<"futime">>, undefined);
+        {_, Path, _} -> set_times(Path, Args, <<"futime">>, undefined)
+    end.
 
 lutimes(Args) ->
     Path = path(buoy_node:arg(1, Args)),
-    is_symlink(Path) andalso uv_error(enosys, <<"lutime">>, Path),
-    set_times(Path, Args, <<"lutime">>, Path).
+    case is_symlink(Path) of
+        true -> link_times(Path, Args, <<"lutime">>, Path);
+        false -> set_times(Path, Args, <<"lutime">>, Path)
+    end.
+
+%% touch -h, once for the access time and once for the modification time.
+link_times(Path, Args, Syscall, ErrorPath) ->
+    Stamp = fun(V) ->
+        Micros = case buoy_ref:to_number(V) of
+            N when is_number(N) -> round(N * 1000000);
+            _ -> 0
+        end,
+        calendar:system_time_to_rfc3339(Micros, [{unit, microsecond}, {offset, "Z"}])
+    end,
+    tool("touch", ["-h", "-a", "-d", Stamp(buoy_node:arg(2, Args)), Path], Syscall, ErrorPath),
+    tool("touch", ["-h", "-m", "-d", Stamp(buoy_node:arg(3, Args)), Path], Syscall, ErrorPath),
+    undefined.
+
+%% shortcut: prim_file cannot change a symlink itself, so lchmod, lchown,
+%% and lutimes run chmod, chown, and touch with -h, one process each. A NIF
+%% of crates/buoy-nif with lchmod, lchown, and lutimes replaces them.
+tool(Name, Args, Syscall, ErrorPath) ->
+    Exe = hd([P || Dir <- ["/bin", "/usr/bin", "/usr/sbin"], P <- [Dir ++ "/" ++ Name],
+                   element(1, prim_file:read_file_info(P)) =:= ok] ++ [Name]),
+    Port = open_port({spawn_executable, Exe},
+                     [{args, [absolute_arg(A) || A <- Args]}, {cd, "/"}, binary, exit_status, stderr_to_stdout,
+                      use_stdio]),
+    case collect_status(Port, []) of
+        {0, _} -> ok;
+        {_, Output} -> uv_error(tool_reason(Output), Syscall, ErrorPath)
+    end.
+
+absolute_arg(Arg) when is_binary(Arg) -> absolute(Arg);
+absolute_arg(Arg) -> Arg.
+
+collect_status(Port, Acc) ->
+    receive
+        {Port, {data, Data}} -> collect_status(Port, [Data | Acc]);
+        {Port, {exit_status, Status}} -> {Status, iolist_to_binary(lists:reverse(Acc))}
+    end.
+
+%% The errno of the strerror text that a tool printed.
+tool_reason(Output) ->
+    Known = [{<<"Operation not permitted">>, eperm}, {<<"No such file or directory">>, enoent},
+             {<<"Permission denied">>, eacces}, {<<"Not a directory">>, enotdir},
+             {<<"Read-only file system">>, erofs}, {<<"Invalid argument">>, einval}],
+    case [Reason || {Text, Reason} <- Known, binary:match(Output, Text) =/= nomatch] of
+        [Reason | _] -> Reason;
+        [] -> eio
+    end.
 
 %% The times are seconds; prim_file keeps whole ones.
 set_times(Path, Args, Syscall, ErrorPath) ->
@@ -1049,6 +1255,7 @@ executable(#file_info{mode = Mode, uid = Uid}) ->
 uid() ->
     case persistent_term:get({?MODULE, uid}, undefined) of
         undefined ->
+            %% os:cmd fails when the working directory is gone.
             Uid = try list_to_integer(string:trim(os:cmd("id -u")))
                   catch _:_ -> -1
                   end,

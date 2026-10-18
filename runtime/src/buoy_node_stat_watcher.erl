@@ -50,7 +50,7 @@ start(This, Path, Interval) ->
             erlang:put({?MODULE, Token}, This),
             save(This, State#{active => true, token => Token, path => buoy_binding_fs:path(Path),
                               interval => max(1, buoy_binding_fs:int(Interval)), last => none}),
-            self() ! {'$buoy_node_call', fun() -> poll(This, Token) end},
+            self() ! {'$buoy_node_call', fun() -> poll(Token) end},
             undefined
     end.
 
@@ -80,6 +80,14 @@ set_ref(This, Refed) ->
     undefined.
 
 %% One poll: stat, compare with the last result, and schedule the next.
+%% The timer names the watcher by its token, since a closed watcher is no
+%% root of the heap any more.
+poll(Token) ->
+    case erlang:get({?MODULE, Token}) of
+        undefined -> ok;
+        This -> poll(This, Token)
+    end.
+
 poll(This, Token) ->
     case state(This) of
         #{active := true, token := Token, path := Path, interval := Interval, last := Last, bigint := BigInt} = State ->
@@ -92,7 +100,7 @@ poll(This, Token) ->
             end,
             save(This, State#{last => Next}),
             Self = self(),
-            erlang:send_after(Interval, Self, {'$buoy_node_call', fun() -> poll(This, Token) end}),
+            erlang:send_after(Interval, Self, {'$buoy_node_call', fun() -> poll(Token) end}),
             ok;
         _ ->
             ok
