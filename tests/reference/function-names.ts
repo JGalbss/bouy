@@ -1,5 +1,6 @@
 // Function names: NamedEvaluation names anonymous functions, arrows, and classes after
 // their binding, and the name of a function expression refers to the function inside it.
+import DefaultWithName from "./modules/default-static-name.ts";
 const factorial = function fact(n: number): number {
   return n <= 1 ? 1 : n * fact(n - 1);
 };
@@ -24,3 +25,6 @@ function* countdown(this: unknown, from: number): Generator<number> {
   }
 }
 console.log([...countdown(3)], countdown.name, countdown.length);
+
+const named = DefaultWithName as unknown as { name(): string };
+console.log(typeof named.name, named.name());

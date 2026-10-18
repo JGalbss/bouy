@@ -542,31 +542,10 @@ impl<'a> Lowerer<'a, '_> {
     /// `export default <expression>`: the variable `*default*`.
     /// An anonymous function takes the name `default`, as `NamedEvaluation` gives it.
     pub fn export_default(&mut self, expression: &'a oxc::ast::ast::Expression<'a>) {
-        use oxc::ast::ast::Expression as E;
-        let value = self.expr(expression);
+        // NamedEvaluation names an anonymous function or class "default" before its static
+        // elements run, so a static `name` method replaces the name.
+        let value = self.named_expr(expression, Some(Expr::js_string("default")));
         let value = self.bind(value);
-        let anonymous = match expression.without_parentheses() {
-            E::FunctionExpression(function) => function.id.is_none(),
-            E::ArrowFunctionExpression(_) => true,
-            E::ClassExpression(class) => class.id.is_none(),
-            _ => false,
-        };
-        if anonymous {
-            self.pre.push(Expr::call(
-                "buoy_heap",
-                "define",
-                vec![
-                    value.clone(),
-                    Expr::binary("name"),
-                    Expr::Map(vec![
-                        (Expr::atom("value"), Expr::binary("default")),
-                        (Expr::atom("writable"), Expr::atom("false")),
-                        (Expr::atom("enumerable"), Expr::atom("false")),
-                        (Expr::atom("configurable"), Expr::atom("true")),
-                    ]),
-                ],
-            ));
-        }
         let key = self.var_key("*default*");
         self.pre.push(Expr::call(
             "erlang",
@@ -584,7 +563,7 @@ impl<'a> Lowerer<'a, '_> {
         let value = if suspends.0 {
             Expr::undefined()
         } else {
-            self.expr(expression)
+            self.named_expr(expression, Some(Expr::js_string("default")))
         };
         let init = std::mem::take(&mut self.pre);
         self.var_getter("*default*", init, value, Absent::Uninitialized);
