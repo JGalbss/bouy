@@ -15,6 +15,9 @@
 #   BUOY_ENGINE   optional: the buoy CLI built from the engine branch. Its programs have no
 #                 process.argv yet, so the script writes a copy of each kernel with smaller
 #                 sizes, and the report scales the time to the same unit of work.
+#   ENGINE_LABEL  the runtime name of BUOY_ENGINE in the results, "engine" by default, so
+#                 two builds can be compared in one file
+#   KERNELS       the kernels of the single mode, all eight by default
 #   ROUNDS        rounds of the single mode, 5 by default
 #   ERL, ERLC     the OTP tools, erl and erlc on PATH by default
 #
@@ -91,7 +94,7 @@ erlang_modules() {
 
 single() {
     for round in $(seq 1 "$rounds"); do
-        for kernel in richards deltablue nbody json strings regex mapset closures; do
+        for kernel in ${KERNELS:-richards deltablue nbody json strings regex mapset closures}; do
             for pair in ${SPEED_JS:-}; do
                 record "${pair%%=*}" "$round" "${pair#*=}" "$here/kernels/$kernel.ts"
             done
@@ -105,7 +108,7 @@ single() {
             esac
             if [ -n "${BUOY_ENGINE:-}" ]; then
                 engine_copy "$kernel"
-                record engine "$round" "$BUOY_ENGINE" run --semantics reference "$build/engine/$kernel.ts"
+                record "${ENGINE_LABEL:-engine}" "$round" "$BUOY_ENGINE" run --semantics reference "$build/engine/$kernel.ts"
             fi
         done
     done
