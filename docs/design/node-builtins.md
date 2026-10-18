@@ -21,7 +21,7 @@ build.rs compiles each id with the reference compiler into the runtime module `b
 
 ## 2. The bootstrap
 
-The first use of a built-in module, or of `process`, `Buffer`, `global`, `setImmediate`, or `clearImmediate`, runs the bootstrap in the realm. It runs the steps of Node's `node.cc`:
+The first use of a built-in module, or of `process`, `Buffer`, `global`, `setImmediate`, or `clearImmediate`, or the first call of `setTimeout` or `setInterval`, runs the bootstrap in the realm. It runs the steps of Node's `node.cc`:
 
 1. `internal/per_context/primordials`, `domexception`, and `messageport`, with the private and per-isolate symbols of `src/env_properties.h`.
 2. `internal/bootstrap/realm`, which defines `BuiltinModule` and hands `internalBinding` and `requireBuiltin` to the `builtins` binding.
@@ -41,7 +41,8 @@ The helpers in `buoy_node`:
 - `throw_code(Class, Code, Message)` for an error with Node's `code`, `arg/2`, `string/1`, `symbol/1`, and `from_json/1`.
 - `buoy_binding_fs:uv_error/3,4` throws Node's `uvException`, and `buoy_binding_uv:name/1` gives the name of an errno.
 - `buoy_node_encoding` converts strings and bytes, and reads and writes the bytes of a typed array.
-- `buoy_node_loop:defer(Fun)` runs a callback as a later macrotask, as libuv calls back from its thread pool, and `ref_handle/0` and `unref_handle/0` keep the loop alive for an open handle.
+- `buoy_node_loop:defer(Fun)` runs a callback as a later macrotask, as libuv calls back from its thread pool, with the async context frame of the call that deferred it, and `ref_handle/0` and `unref_handle/0` keep the loop alive for an open handle.
+- `buoy_binding_async_wrap:wrap(Resource, Provider)` makes a handle or request an AsyncWrap: an async id, the trigger id, the async context frame, and the init hooks. `make_callback(Resource, Callback, Args)` calls back as `MakeCallback` does, between the before and after hooks, and `emit_destroy(Resource)` queues the destroy hooks when the resource ends.
 - A process of a binding runs a callback in the realm with `buoy_node_stream:call(Realm, Fun)`, the message `{'$buoy_node_call', Fun}`, which the loop runs as a job. A JavaScript value that only such a callback names must stay a root of the heap, in the process dictionary under a key that is no integer, until the callback has run.
 - `buoy_node_stream` gives a stream handle the StreamBase methods of `src/stream_base.cc` (`readStart`, `writeBuffer`, `shutdown`, `close`, and the others) over a channel process; `attach/2` binds a handle and `deliver/2` hands it data or `eof`. The pipes of `process_wrap` use it.
 - `buoy_node_url` is the WHATWG URL parser of ada, and `buoy_binding_spawn_sync` and `buoy_binding_process_wrap` start child processes through `/bin/sh`, which wires their stdio.
@@ -73,7 +74,6 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 - Buoy has no OpenSSL, Intl, or inspector yet: `process.versions` has no `openssl`, and `process.config` sets no `v8_enable_i18n_support`, so the tests that need them skip.
 - The constants of the `constants`, `uv`, and `os` bindings are darwin's, as the oracle recorded them.
 - Stack traces of errors are `at <buoy>`: the engine has no JavaScript call stack yet.
-- `async_context_frame` keeps one value per realm, which promise jobs do not carry yet.
 - The engine has no call stack limit, so deep recursion grows the process until `BUOY_MAX_MEMORY` stops the VM, where V8 throws `RangeError: Maximum call stack size exceeded`. `assert.deepStrictEqual` of a cyclic value relies on that error to switch to its cycle check.
 - Child processes start through `/bin/bash`, which connects their piped stdin, stderr, and extra pipes as loopback sockets (`/dev/tcp`). Handles cannot pass over an IPC channel yet, and `process.execve` cannot replace the VM.
 - `process.title` keeps the value that a program sets, but the OS process keeps its name. Signals that OTP cannot catch, such as SIGINT, reach `process.on` only when the program sends them to itself.

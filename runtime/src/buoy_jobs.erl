@@ -583,13 +583,15 @@ maybe_gc() ->
 %% Waits for messages while the realm has work: timers, replies it waits
 %% for, or, in an actor, always. Without work, it still takes the messages
 %% that have arrived, such as the wake of an async wait that the realm
-%% notified itself.
+%% notified itself, but not the timer of Node: its timers are unref'd then,
+%% and libuv runs no timer of a loop that is not alive.
 -spec loop() -> ok.
 loop() ->
     case has_work() of
         false ->
             receive
-                Message -> event_step(Message), loop()
+                Message when not is_tuple(Message); element(1, Message) =/= '$buoy_node_timer' ->
+                    event_step(Message), loop()
             after 0 ->
                 ok
             end;
