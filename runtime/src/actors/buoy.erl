@@ -106,8 +106,8 @@ child(_Arguments) ->
 schedule([Ref, Timing, Method | Args]) when is_binary(Method) ->
     Cast = cast([Ref]),
     {Repeat, Ms} = timing(Timing),
-    Owner = buoy_actor:owner(),
-    {'$schedule', erlang:spawn(fun() -> timer(monitor(process, Owner), Repeat, Ms, Cast, Method, Args) end)};
+    {_Actor, Pid} = Owner = buoy_actor:timer_owner(),
+    {'$schedule', erlang:spawn(fun() -> timer({Owner, monitor(process, Pid)}, Repeat, Ms, Cast, Method, Args) end)};
 schedule(_Arguments) ->
     type_error(<<"schedule() needs a ref, { every } or { after }, and a method name">>).
 
@@ -282,15 +282,15 @@ milliseconds(Ms) -> max(0, trunc(Ms)).
 %% The timer of one schedule() call. It ends when it is cancelled, after its
 %% one `after` cast, when the actor has stopped, or when its owner ends. A
 %% full mailbox skips a cast, whatever the overflow of the mailbox is.
-timer(OwnerMonitor, Repeat, Ms, Cast, Method, Args) ->
+timer({Owner, OwnerMonitor} = Owned, Repeat, Ms, Cast, Method, Args) ->
     case due(OwnerMonitor, Ms) of
         {cancel, From, Monitor} ->
             From ! {Monitor, cancelled};
         ended ->
             ok;
         due ->
-            case {Repeat, buoy_actor:offer(Cast, Method, Args)} of
-                {every, Delivery} when Delivery =/= stopped -> timer(OwnerMonitor, Repeat, Ms, Cast, Method, Args);
+            case {Repeat, buoy_actor:offer(Cast, Method, Args, Owner)} of
+                {every, Delivery} when Delivery =/= stopped -> timer(Owned, Repeat, Ms, Cast, Method, Args);
                 _Done -> ok
             end
     end.
