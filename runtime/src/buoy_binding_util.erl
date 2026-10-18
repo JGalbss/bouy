@@ -209,7 +209,7 @@ handle_type(Fd) ->
 %% TCP, UDP, or PIPE for a socket descriptor, which a duplicate probes, and
 %% FILE for another one.
 socket_type(Fd) ->
-    case socket:open(Fd, #{dup => true}) of
+    case buoy_node_socket:open_inherited(Fd, #{dup => true}) of
         {ok, Socket} ->
             Info = socket:info(Socket),
             socket:close(Socket),
