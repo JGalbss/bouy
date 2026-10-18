@@ -16,7 +16,7 @@ buoy-compiler.workspace = true
 clap.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", default-features = false, features = ["process"] }
+nix = { version = "0.31", default-features = false, features = ["fs", "process"] }
 
 # build.rs compiles the vendored Temporal polyfill into a runtime module.
 [build-dependencies]

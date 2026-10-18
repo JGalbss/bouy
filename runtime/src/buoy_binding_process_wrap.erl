@@ -6,8 +6,8 @@
 %% stdout from fd 4 (nouse_stdio) and reports the exit. A socket never
 %% blocks the child when the VM is gone, and it half-closes, so the end of
 %% stdin reaches the child while its output still flows. Each stdio pipe is
-%% a Pipe of pipe_wrap that buoy_node_stream drives; IPC channels are not
-%% supported yet.
+%% a Pipe of pipe_wrap that buoy_node_stream drives; the IPC channel of fork
+%% is buoy_node_ipc's local socket.
 -module(buoy_binding_process_wrap).
 
 -export([binding/0]).
@@ -108,13 +108,15 @@ start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
     ok = start_inet_db(),
     {ok, Listen} = gen_tcp:listen(0, [binary, {ip, loopback}, {active, false}, {reuseaddr, true}, {backlog, 8}]),
     {ok, ListenPort} = inet:port(Listen),
-    %% A pipe past stderr, and the IPC channel of fork at any index, is a
-    %% socket at its index in the child (NODE_CHANNEL_FD) that reads and
-    %% writes; it connects at fd 10 + index first.
+    %% A pipe past stderr is a socket at its index in the child that reads
+    %% and writes; it connects at fd 10 + index first. The IPC channel of
+    %% fork, at any index (NODE_CHANNEL_FD), is a local socket that the exec
+    %% step connects (buoy_node_ipc), so handles can pass over it.
     Realm0 = self(),
+    Stdio = lists:enumerate(0, [In, Out, Err | More]),
     Extras = [{Index, Handle, spawn(fun() -> ipc_channel(Realm0, Handle) end)}
-              || {Index, {Kind, Handle}} <- lists:enumerate(0, [In, Out, Err | More]),
-                 Kind =:= ipc orelse (Kind =:= pipe andalso Index >= 3)],
+              || {Index, {pipe, Handle}} <- Stdio, Index >= 3],
+    Ipcs = [{Index, ipc_listen(Handle)} || {Index, {ipc, Handle}} <- Stdio],
     Piped = [Name || {Name, {Kind, _}} <- [{stdin, In}, {stderr, Err}], Kind =:= pipe orelse Kind =:= wrap]
             ++ [{extra, I} || {I, _, _} <- Extras],
     Tcp = "<>/dev/tcp/127.0.0.1/" ++ integer_to_list(ListenPort) ++ " || exit 127; ",
@@ -122,13 +124,16 @@ start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
     Connect = lists:append(["exec " ++ integer_to_list(fd_of(Name)) ++ Tcp || Name <- Piped]),
     Redirects = redirect(0, In) ++ redirect(1, Out) ++ redirect(2, Err),
     Moves = lists:append([" " ++ integer_to_list(I) ++ ">&" ++ integer_to_list(10 + I) ++ " " ++ integer_to_list(10 + I) ++ ">&-"
-                          || {I, _, _} <- Extras]),
+                          || {I, _, _} <- Extras])
+            ++ lists:append([" " ++ integer_to_list(I) ++ "<&-" || {I, _} <- Ipcs]),
+    ExecArgs = exec_options(ProgramArgs, ["unix=" ++ integer_to_list(I) ++ ":" ++ Path || {I, {_, Path}} <- Ipcs]),
+    IpcChannels = [Channel || {_, {Channel, _}} <- Ipcs],
     Script = Connect ++ "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&- 5<&- 6<&-" ++ Moves,
     Realm = self(),
     Handles = #{stdin => pipe_handle(In), stdout => output_handle(Out), stderr => output_handle(Err)},
     {Manager, Monitor} = spawn_monitor(fun() ->
         Port = open_port({spawn_executable, "/bin/bash"},
-                         [nouse_stdio, binary, exit_status, {cd, Cwd}, {args, ["-c", Script, Program | ProgramArgs]}]),
+                         [nouse_stdio, binary, exit_status, {cd, Cwd}, {args, ["-c", Script, Program | ExecArgs]}]),
         OsPid = case erlang:port_info(Port, os_pid) of {os_pid, P} -> P; _ -> 0 end,
         Realm ! {self(), started, OsPid},
         Sockets = accept(Listen, Piped),
@@ -144,7 +149,7 @@ start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
         end,
         Waiting = case maps:is_key(stderr, Sockets) of true -> [exit, stderr]; false -> [exit] end,
         manage(#{port => Port, realm => Realm, this => This, handles => Handles, writer => Writer,
-                 stderr => maps:get(stderr, Sockets, none), waiting => Waiting})
+                 stderr => maps:get(stderr, Sockets, none), waiting => Waiting, ipc => IpcChannels})
     end),
     ok = gen_tcp:controlling_process(Listen, Manager),
     receive
@@ -153,6 +158,7 @@ start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
             started(This, Manager, OsPid, Handles, Extras, In);
         {'DOWN', Monitor, process, Manager, _} ->
             [exit(Channel, kill) || {_, _, Channel} <- Extras],
+            [buoy_node_ipc:abandon(Channel) || Channel <- IpcChannels],
             unstarted([In, Out, Err | More])
     end.
 
@@ -170,6 +176,16 @@ start_inet_db() ->
         _ ->
             ok
     end.
+
+%% The parent's end of an IPC channel, and the path that the child connects.
+ipc_listen(Handle) ->
+    {ok, Channel, Path} = buoy_node_ipc:listen(Handle),
+    {Channel, Path}.
+
+%% The options of `buoy --buoy-exec` with the local sockets to connect.
+exec_options(Args, []) -> Args;
+exec_options(["--buoy-exec", "-" | Rest], Unix) -> ["--buoy-exec", lists:flatten(lists:join(",", Unix)) | Rest];
+exec_options(["--buoy-exec", Flags | Rest], Unix) -> ["--buoy-exec", lists:flatten(lists:join(",", [Flags | Unix])) | Rest].
 
 fd_of(stdin) -> 5;
 fd_of(stderr) -> 6;
@@ -287,6 +303,7 @@ manage(#{port := Port, realm := Realm, handles := Handles, writer := Writer, std
                 S -> {S, 0}
             end,
             This = maps:get(this, M),
+            [buoy_node_ipc:child_exited(Channel) || Channel <- maps:get(ipc, M)],
             buoy_node_stream:call(Realm, fun() -> exited(This, Code, Signal) end),
             manage(M#{waiting := lists:delete(exit, maps:get(waiting, M))});
         {tcp, Stderr, Data} ->
