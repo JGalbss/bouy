@@ -220,8 +220,21 @@ key_text(K) -> to_string(K).
 %%% Calls
 
 -spec call(term(), term(), list()) -> term().
-call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
+call({'$f', _, Fun} = F, This, Args) ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> Fun(This, Args);
+        _ -> call_in_realm(F, This, Args)
+    end;
 call(V, _This, _Args) -> type_error(text([describe(V), <<" is not a function">>])).
+
+%% A call while another realm than the first is current, such as a callback
+%% that a builtin of that realm calls: a function of the first realm runs in
+%% it, as a function of another realm sets its own realm when it runs.
+call_in_realm({'$f', _, Fun} = F, This, Args) ->
+    case buoy_heap:class_of(F) =/= proxy andalso buoy_ref_realm:function_realm(F) of
+        0 -> buoy_ref_realm:realm_fun(0, Fun)(This, Args);
+        _ -> Fun(This, Args)
+    end.
 
 %% r.k(args): the method of the receiver, called with the receiver as this.
 -spec call_method(term(), buoy_heap:key(), list()) -> term().
@@ -233,7 +246,11 @@ call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 -spec call_method_value(term(), term(), buoy_heap:key(), list()) -> term().
 call_method_value(F, This, K, Args) -> invoke(F, This, K, Args).
 
-invoke({'$f', _, Fun}, This, _K, Args) -> Fun(This, Args);
+invoke({'$f', _, Fun} = F, This, _K, Args) ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> Fun(This, Args);
+        _ -> call_in_realm(F, This, Args)
+    end;
 invoke(_V, This, K, _Args) -> type_error(text([receiver_text(This), <<".">>, key_text(K), <<" is not a function">>])).
 
 receiver_text(V) when ?IS_OBJECT(V) -> <<"object">>;
