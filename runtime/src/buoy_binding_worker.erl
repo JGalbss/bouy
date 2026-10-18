@@ -101,15 +101,19 @@ new_worker(This, Args) ->
     A = fun(N) -> buoy_node:arg(N, Args) end,
     buoy_heap:is_object(This) orelse
         buoy_node:throw_code('TypeError', <<"ERR_CONSTRUCT_CALL_REQUIRED">>, <<"Class constructor Worker cannot be invoked without 'new'">>),
+    %% Only an execArgv of the options is checked; an inherited one is the parent's.
     ExecArgv = case A(3) of
-        undefined -> buoy_node_process:exec_argv();
-        List -> [buoy_ref_string:to_utf8(buoy_ref:to_string(V)) || V <- buoy_heap:array_items(List)]
+        undefined ->
+            buoy_node_process:exec_argv();
+        List ->
+            Own = [buoy_ref_string:to_utf8(buoy_ref:to_string(V)) || V <- buoy_heap:array_items(List)],
+            case invalid_options(Own) of
+                [] -> ok;
+                Invalid -> buoy_heap:set(This, <<"invalidExecArgv">>, buoy_heap:new_array([buoy_ref_string:from_utf8(I) || I <- Invalid]))
+            end,
+            Own
     end,
     Env = env_spec(A(2)),
-    case invalid_options(ExecArgv) of
-        [] -> ok;
-        Invalid -> buoy_heap:set(This, <<"invalidExecArgv">>, buoy_heap:new_array([buoy_ref_string:from_utf8(I) || I <- Invalid]))
-    end,
     case Env of
         {entries, Pairs} ->
             case lists:keyfind("NODE_OPTIONS", 1, Pairs) of
@@ -404,7 +408,7 @@ loaded({program, _Path, Entry, _Graph}, _) ->
 loaded({builtin, _}, Path) ->
     buoy_node:throw_code('Error', <<"MODULE_NOT_FOUND">>, buoy_ref_string:from_utf8(<<"Cannot find module '", Path/binary, "'">>));
 loaded({error, Code, Message}, _) ->
-    buoy_node:throw_code('Error', Code, buoy_ref_string:from_utf8(Message)).
+    buoy_module:throw_load(Code, buoy_ref_string:from_utf8(Message)).
 
 %% The limits apply from here, so the bootstrap does not count against them.
 run(Entry) ->
@@ -417,4 +421,16 @@ run(Entry) ->
             Words = Base + trunc(lists:sum(Set) * ?MB / erlang:system_info(wordsize)),
             erlang:process_flag(max_heap_size, #{size => Words, kill => true, error_logger => false})
     end,
-    buoy_module:run_worker(Entry, Known).
+    P = buoy_module:run_worker(Entry, Known),
+    buoy_jobs:set_main_result(P),
+    %% A module that throws as it runs throws here, as an uncaught exception;
+    %% one that awaits gives its promise to the main script.
+    case buoy_heap:slots(P) of
+        {fulfilled, _, _} ->
+            undefined;
+        {rejected, Reason, _} ->
+            buoy_jobs:perform_then(P, fun(_) -> undefined end, fun(_) -> undefined end, undefined),
+            erlang:error({'$throw', Reason});
+        _ ->
+            P
+    end.

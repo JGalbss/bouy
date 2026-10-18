@@ -329,10 +329,8 @@ fn source_answer(path: &str, text: &str) -> Vec<u8> {
     match buoy_compiler::compile_source(path, text.to_owned()) {
         Ok(project) => program_answer(path, &project),
         Err(diagnostics) => {
-            let message = diagnostics
-                .first()
-                .map_or_else(String::new, |d| d.message.clone());
-            [&[DIAGNOSTICS], format!("ERR_BUOY_COMPILE\t{message}").as_bytes()].concat()
+            let (code, message) = buoy_compiler::load_error(&diagnostics);
+            [&[DIAGNOSTICS], format!("{code}\t{message}").as_bytes()].concat()
         }
     }
 }

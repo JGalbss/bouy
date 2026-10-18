@@ -16,7 +16,7 @@
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
 -export([await/3, async_call/1, enqueue/1, drain/0]).
 -export([set_timer/4, clear_timer/1]).
--export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
+-export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0, set_main_result/1, unsettled_main/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
 -export([all/1]).
 
@@ -383,6 +383,22 @@ run_main(Body) ->
             end;
         _ ->
             ok
+    end.
+
+%% The evaluation of the entry module, when it runs after the first job, as
+%% the script of a worker does.
+-spec set_main_result(term()) -> ok.
+set_main_result(Result) ->
+    erlang:put(?MAIN, Result),
+    ok.
+
+%% Whether the evaluation of the entry module still waits: an unsettled
+%% top-level await.
+-spec unsettled_main() -> boolean().
+unsettled_main() ->
+    case erlang:get(?MAIN) of
+        {'$o', _} = P -> is_promise(P) andalso element(1, buoy_heap:slots(P)) =:= pending;
+        _ -> false
     end.
 
 %% One macrotask: the job, every microtask it queues, and then a collection

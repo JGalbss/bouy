@@ -13,7 +13,7 @@
 
 -include("buoy_ref.hrl").
 
--export([run/1, run_worker/2, graph/0, evaluate_dependencies/1]).
+-export([run/1, run_worker/2, graph/0, evaluate_dependencies/1, throw_load/2]).
 -export([namespace/1, foreign_export/2, builtin_export/2, builtin_namespace/1]).
 -export([uninitialized/2, hoisted/1]).
 -export([dynamic_import/4, meta/1, require/2]).
@@ -651,7 +651,7 @@ dynamic_import(From, Specifier, Options, Phase) ->
         Target = case target(From, Text, import) of
             {_Path, Module} when is_atom(Module), Module =/= none -> Module;
             {builtin, Name} -> {builtin, Name};
-            {error, Code, Message} -> throw_coded('Error', Code, Message);
+            {error, Code, Message} -> throw_load(Code, Message);
             _ -> throw_coded('Error', <<"ERR_MODULE_NOT_FOUND">>,
                              buoy_ref_string:concat([<<"Cannot find module '">>, Text, <<"' imported from ">>, info(From, path)]))
         end,
@@ -789,7 +789,7 @@ meta_resolve(M, Specifier) ->
     Text = buoy_ref:to_string(Specifier),
     case target(M, Text, import) of
         {builtin, Name} -> buoy_ref_string:concat([<<"node:">>, Name]);
-        {error, Code, Message} -> throw_coded('Error', Code, Message);
+        {error, Code, Message} -> throw_load(Code, Message);
         {Path, _} -> file_url(Path);
         none -> throw_coded('Error', <<"ERR_MODULE_NOT_FOUND">>,
                             buoy_ref_string:concat([<<"Cannot find module '">>, Text, <<"' imported from ">>, info(M, path)]))
@@ -952,7 +952,7 @@ require(M, Specifier) ->
         _ when Internal ->
             builtin_exports(Specifier);
         {error, Code, Message} ->
-            throw_coded('Error', Code, Message);
+            throw_load(Code, Message);
         {_Path, Target} when is_atom(Target), Target =/= none ->
             require_module(Target);
         _ ->
@@ -1017,7 +1017,7 @@ require_resolve(M, Specifier) ->
                                              <<"The \"request\" argument must be of type string">>),
     case target(M, Specifier, require) of
         {builtin, Name} -> Name;
-        {error, Code, Message} -> throw_coded('Error', Code, Message);
+        {error, Code, Message} -> throw_load(Code, Message);
         {Path, _} -> Path;
         none -> throw_coded('Error', <<"MODULE_NOT_FOUND">>,
                             buoy_ref_string:concat([<<"Cannot find module '">>, Specifier, <<"'\nRequire stack:\n- ">>, info(M, path)]))
@@ -1030,6 +1030,12 @@ resolve_paths(M, Specifier) ->
     end.
 
 -spec throw_coded(atom(), term(), term()) -> no_return().
+%% A module that the compiler of the VM cannot load: a SyntaxError for a
+%% syntax error, as Node's loaders throw it, else an Error with Node's code.
+-spec throw_load(binary(), term()) -> no_return().
+throw_load(<<"SyntaxError">>, Message) -> buoy_heap:throw_error('SyntaxError', Message);
+throw_load(Code, Message) -> throw_coded('Error', Code, Message).
+
 throw_coded(Name, Code, Message) ->
     E = buoy_heap:error_object(Name, Message, buoy_ref_string:concat([atom_to_binary(Name), <<": ">>, Message])),
     buoy_heap:define(E, <<"code">>, #{value => Code, writable => true, enumerable => true, configurable => true}),

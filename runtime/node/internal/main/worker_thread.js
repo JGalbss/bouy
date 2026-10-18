@@ -209,9 +209,16 @@ port.on('message', (message) => {
       }
 
       case 'data-url': {
+        // The ES module of the URL, whose MIME type must be JavaScript, as
+        // mimeToFormat of internal/modules/esm/get_format requires.
         const { dataURLProcessor } = require('internal/data_url');
         const { URL } = require('internal/url');
-        const { body } = dataURLProcessor(new URL(filename));
+        const { mimeType, body } = dataURLProcessor(new URL(filename));
+        const mime = mimeType.essence;
+        if (RegExpPrototypeExec(/^(text|application)\/javascript$/i, mime) === null) {
+          const { ERR_UNKNOWN_MODULE_FORMAT } = require('internal/errors').codes;
+          throw new ERR_UNKNOWN_MODULE_FORMAT(mime, filename);
+        }
         const code = new (require('util').TextDecoder)().decode(body);
         const entry = join(process.cwd(), `[worker data ${hash(filename)}].mjs`);
         RegExpPrototypeExec(/^/, '');
