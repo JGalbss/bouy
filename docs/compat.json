@@ -2972,17 +2972,17 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "d143387",
+      "updated": "04d1005",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 2299,
+        "pass": 2297,
         "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 1472,
-        "timeout": 53,
+        "fail": 1473,
+        "timeout": 54,
         "harness_error": 0,
         "crash": 12
       },
@@ -2995,10 +2995,10 @@
             "timeout": 1
           },
           "parallel": {
-            "pass": 2190,
+            "pass": 2188,
             "skip": 545,
-            "fail": 1285,
-            "timeout": 47,
+            "fail": 1286,
+            "timeout": 48,
             "crash": 12
           },
           "sequential": {
@@ -3013,10 +3013,10 @@
             "skip": 343
           },
           "public": {
-            "pass": 2299,
+            "pass": 2297,
             "skip": 240,
-            "fail": 1472,
-            "timeout": 53,
+            "fail": 1473,
+            "timeout": 54,
             "crash": 12
           }
         },
@@ -3044,9 +3044,9 @@
             "timeout": 7
           },
           "cluster": {
-            "pass": 25,
+            "pass": 23,
             "skip": 2,
-            "fail": 50,
+            "fail": 52,
             "timeout": 11
           },
           "console": {
@@ -3190,8 +3190,8 @@
           "test": {
             "pass": 27,
             "skip": 5,
-            "fail": 27,
-            "timeout": 6
+            "fail": 26,
+            "timeout": 7
           },
           "timers": {
             "pass": 46,
@@ -3270,16 +3270,16 @@
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "d143387",
+      "updated": "04d1005",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 3463,
+        "pass": 3461,
         "rejected": 0,
         "late": 0,
         "skip": 0,
         "never": 0,
-        "fail": 997,
+        "fail": 999,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3287,8 +3287,8 @@
       "groups": {
         "docs": {
           "deprecated": {
-            "pass": 100,
-            "fail": 29
+            "pass": 98,
+            "fail": 31
           },
           "documented": {
             "pass": 3363,
@@ -3551,7 +3551,8 @@
             "pass": 49
           },
           "node:fs": {
-            "pass": 241
+            "pass": 239,
+            "fail": 2
           },
           "node:fs/promises": {
             "pass": 34

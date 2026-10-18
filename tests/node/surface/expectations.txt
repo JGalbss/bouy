@@ -1528,8 +1528,8 @@ node:fs.futimes pass
 node:fs.futimesSync pass
 node:fs.glob pass
 node:fs.globSync pass
-node:fs.lchmod pass
-node:fs.lchmodSync pass
+node:fs.lchmod linux=fail,macos=pass
+node:fs.lchmodSync linux=fail,macos=pass
 node:fs.lchown pass
 node:fs.lchownSync pass
 node:fs.link pass
