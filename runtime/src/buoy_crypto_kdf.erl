@@ -3,7 +3,7 @@
 %% crypto_scrypt.cc), on the HMAC of OTP's crypto.
 -module(buoy_crypto_kdf).
 
--export([members/0, pbkdf2/5, hkdf/5, scrypt/6]).
+-export([members/0, pbkdf2/5, pkcs12/6, hkdf/5, scrypt/6]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
 -dialyzer({no_return, [invalid_digest/1, invalid_scrypt_params/1]}).
@@ -57,6 +57,43 @@ pbkdf2_iterate(_, _, 0, _, T) -> T;
 pbkdf2_iterate(Md, Password, N, U, T) ->
     Next = buoy_crypto_hash:hmac(Md, Password, U),
     pbkdf2_iterate(Md, Password, N - 1, Next, crypto:exor(T, Next)).
+
+%%% PKCS #12
+
+%% N bytes of the key derivation of PKCS #12 (RFC 7292, appendix B.2) for
+%% the purpose Id (1 a key, 2 an IV, 3 a MAC key), from Password, which is
+%% a BMPString with its two zero bytes, or empty for no password.
+-spec pkcs12(buoy_crypto_hash:md(), 1..3, binary(), binary(), pos_integer(), non_neg_integer()) -> binary().
+pkcs12(#{size := U} = Md, Id, Password, Salt, Iterations, N) ->
+    V = pkcs12_block(Md),
+    D = binary:copy(<<Id>>, V),
+    I0 = <<(stretch(Salt, V))/binary, (stretch(Password, V))/binary>>,
+    {Blocks, _} = lists:mapfoldl(fun(_, I) ->
+        A = rehash(Md, buoy_crypto_hash:hash(Md, <<D/binary, I/binary>>), Iterations - 1),
+        B = binary:part(binary:copy(A, (V + U - 1) div U), 0, V),
+        {A, << <<(add_block(Block, B, V))/binary>> || <<Block:V/binary>> <= I >>}
+    end, I0, lists:seq(1, (N + U - 1) div U)),
+    binary:part(iolist_to_binary(Blocks), 0, N).
+
+%% The input block size of the hash, v of appendix B.2.
+pkcs12_block(#{name := Name}) when Name =:= sha384; Name =:= sha512; Name =:= sha512_224; Name =:= sha512_256 -> 128;
+pkcs12_block(_) -> 64.
+
+%% Bytes repeated to the next multiple of V bytes.
+stretch(<<>>, _) -> <<>>;
+stretch(Bytes, V) ->
+    Length = V * ((byte_size(Bytes) + V - 1) div V),
+    binary:part(binary:copy(Bytes, (Length + byte_size(Bytes) - 1) div byte_size(Bytes)), 0, Length).
+
+rehash(_, A, 0) -> A;
+rehash(Md, A, N) -> rehash(Md, buoy_crypto_hash:hash(Md, A), N - 1).
+
+%% (Block + B + 1) mod 2^(8V).
+add_block(Block, B, V) ->
+    Bits = V * 8,
+    <<X:Bits>> = Block,
+    <<Y:Bits>> = B,
+    <<(X + Y + 1):Bits>>.
 
 %%% HKDF
 

@@ -5,7 +5,7 @@
 %% of crypto_spkac.cc under crypto.Certificate.
 -module(buoy_crypto_x509).
 
--export([members/0, certificate/1, decode/1, from_clone/1]).
+-export([members/0, certificate/1, decode/1, from_clone/1, holds_private_key/2]).
 
 -define(SAN, {2,5,29,17}).
 -define(AIA, {1,3,6,1,5,5,7,1,1}).
@@ -456,6 +456,15 @@ verify_signature(#{sig_oid := Oid, tbs := Tbs, signature := Sig}, Public) ->
 check_private_key(This, Args) ->
     {private, K} = buoy_crypto_keys:key_data(buoy_node:arg(1, Args)),
     same_key(public_key(cert(This)), buoy_crypto_pkey:public(K)).
+
+%% Whether the certificate of the DER Der holds the public key of the
+%% private key K (a key of buoy_crypto_pkey), as X509_check_private_key.
+-spec holds_private_key(binary(), term()) -> boolean().
+holds_private_key(Der, K) ->
+    case decode(Der) of
+        {ok, Cert} -> same_key(public_key(Cert), buoy_crypto_pkey:public(K));
+        error -> false
+    end.
 
 same_key(#{kind := ec, curve := C, pub := A}, #{kind := ec, curve := C, pub := B}) ->
     buoy_crypto_pkey:decode_point(C, A) =:= buoy_crypto_pkey:decode_point(C, B);

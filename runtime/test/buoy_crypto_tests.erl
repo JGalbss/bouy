@@ -71,3 +71,14 @@ x25519_low_order_test() ->
     {_, Priv} = crypto:generate_key(eddh, x25519),
     ?assertError({crypto_failure, {openssl, failed_during_derivation}},
                  buoy_crypto_dh:derive(#{kind => x25519, priv => Priv}, #{kind => x25519, pub => <<0:256>>})).
+
+%% The PKCS #12 key derivation (RFC 7292, appendix B.2) with SHA-1, on the
+%% vectors of OpenSSL's test of PKCS12_key_gen: the password "smeg".
+pkcs12_kdf_test() ->
+    {ok, Sha1} = buoy_crypto_hash:digest(<<"sha1">>),
+    Smeg = buoy_crypto_pkey:bmp_password(<<"smeg">>),
+    ?assertEqual(hex(<<"8aaae6297b6cb04642ab5b077851284eb7128f1a2a7fbca3">>),
+                 buoy_crypto_kdf:pkcs12(Sha1, 1, Smeg, hex(<<"0a58cf64530d823f">>), 1, 24)),
+    ?assertEqual(hex(<<"79993dfe048d3b76">>), buoy_crypto_kdf:pkcs12(Sha1, 2, Smeg, hex(<<"0a58cf64530d823f">>), 1, 8)),
+    ?assertEqual(hex(<<"8d967d88f6caa9d714800ab3d48051d63f73a312">>),
+                 buoy_crypto_kdf:pkcs12(Sha1, 3, Smeg, hex(<<"3d83c0e4546ac140">>), 1, 20)).

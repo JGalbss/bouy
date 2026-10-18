@@ -40,7 +40,7 @@ members() ->
         {<<"setTicketKeys">>, 1, Set(ticket_keys, fun(Args) -> buoy_crypto:bytes(A(1, Args)) end)},
         {<<"getTicketKeys">>, 0, fun(This, _) -> buoy_crypto:buffer(maps:get(ticket_keys, state(This))) end},
         {<<"setAllowPartialTrustChain">>, 0, Set(partial_chain, fun(_) -> true end)},
-        {<<"loadPKCS12">>, 2, fun(_, _) -> fail(<<"ERR_CRYPTO_UNSUPPORTED_OPERATION">>, <<"PKCS#12 is not supported on Buoy">>) end},
+        {<<"loadPKCS12">>, 2, fun load_pkcs12/2},
         {<<"setClientCertEngine">>, 1, fun(_, _) -> fail(<<"ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED">>, <<"Custom engines not supported by this OpenSSL">>) end},
         {<<"getCertificate">>, 0, fun(This, _) -> certificate(This, leaf) end},
         {<<"getIssuer">>, 0, fun(This, _) -> certificate(This, issuer) end},
@@ -61,7 +61,7 @@ ticket_keys(Context) -> maps:get(ticket_keys, state(Context)).
 
 -spec is_context(term()) -> boolean().
 is_context(V) ->
-    buoy_heap:is_object(V) andalso buoy_heap:private_find(V, {'#', buoy_crypto, secure_context}) =/= error.
+    buoy_heap:is_object(V) andalso buoy_heap:private_find(V, buoy_crypto:state_key(secure_context)) =/= error.
 
 fail(Code, Message) -> buoy_crypto:fail({code, 'Error', Code, Message}).
 
@@ -169,9 +169,23 @@ add_ca(This, Cert) ->
     update(This, fun(#{cas := Cas} = S) -> S#{cas := case Cas of none -> Ders; _ -> Cas ++ Ders end} end),
     undefined.
 
+%% loadPKCS12(pfx, passphrase): the key and the chain of a PFX, as setKey
+%% and setCert take them, and its extra certificates as CAs too.
+load_pkcs12(This, Args) ->
+    Passphrase = case Args of
+        [_, P | _] -> buoy_crypto:bytes(P);
+        _ -> null
+    end,
+    #{key := Key, cert := Cert, extra := Extra} = buoy_crypto_pkcs12:parse(buoy_crypto:bytes(buoy_node:arg(1, Args)), Passphrase),
+    update(This, fun(#{chains := Chains, keys := Keys, cas := Cas} = S) ->
+        S#{chains := Chains ++ [[Cert | Extra]], keys := Keys ++ [Key],
+           cas := case {Cas, Extra} of {_, []} -> Cas; {none, _} -> Extra; _ -> Cas ++ Extra end}
+    end),
+    undefined.
+
 add_crl(This, Crl) ->
     case [Der || {'CertificateList', Der, _} <- public_key:pem_decode(pem(Crl))] of
-        [] -> buoy_crypto:throw_openssl(pem_no_start_line);
+        [] -> fail(<<"ERR_CRYPTO_OPERATION_FAILED">>, <<"Failed to parse CRL">>);
         Ders -> update(This, fun(S) -> S#{crls := maps:get(crls, S) ++ Ders} end)
     end,
     undefined.
@@ -415,6 +429,13 @@ pairs(Chains, Keys) ->
         end
     end, Chains).
 
+%% A PKCS #8 key, of a PEM PRIVATE KEY or a PFX, has the type of its record.
+matches(Cert, {'PrivateKeyInfo', Der}) ->
+    try public_key:der_decode('PrivateKeyInfo', Der) of
+        Key -> matches(Cert, {element(1, Key), Der})
+    catch
+        _:_ -> false
+    end;
 matches(Cert, {Type, _}) ->
     try
         #'OTPCertificate'{tbsCertificate = #'OTPTBSCertificate'{subjectPublicKeyInfo = Spki}} = public_key:pkix_decode_cert(Cert, otp),

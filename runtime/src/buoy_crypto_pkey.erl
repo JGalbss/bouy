@@ -15,7 +15,7 @@
 -export([write_public/3, write_private/5, spki/1, pkcs8/1]).
 -export([is_private/1, complete/1, public/1]).
 -export([curve/1, curve_by_name/1, curve_name/1, curve_info/1, curve_bits/1, decode_point/2, encode_point/3, on_curve/2]).
--export([pss_params/1]).
+-export([pss_params/1, pbe_decrypt/3, bmp_password/1]).
 
 %% Functions that only throw.
 -dialyzer({no_return, [fail/1]}).
@@ -298,11 +298,20 @@ is_encrypted_pkcs8(_) -> false.
 %% The PrivateKeyInfo inside an EncryptedPrivateKeyInfo.
 decrypt_pkcs8(_, undefined) -> fail(interrupted_or_cancelled);
 decrypt_pkcs8(Der, Passphrase) ->
-    {Scheme, Data} = der_or_fail(fun() ->
-        {seq, [{seq, [{oid, ?PBES2}, {seq, [KdfSpec, EncSpec]}]}, {octets, D}]} = decode(Der),
-        {{KdfSpec, EncSpec}, D}
+    {Algorithm, Data} = der_or_fail(fun() ->
+        {seq, [{seq, _} = A, {octets, D}]} = decode(Der),
+        {A, D}
     end),
-    {{seq, [{oid, ?PBKDF2}, {seq, [{octets, Salt}, {int, Iter} | KdfRest]}]}, {seq, [{oid, CipherOid} | CipherParams]}} = Scheme,
+    pbe_decrypt(Algorithm, Data, Passphrase).
+
+%% Data decrypted under the password-based encryption Algorithm, an
+%% AlgorithmIdentifier: PBES2 with PBKDF2 (RFC 8018), or a PBE of PKCS #12
+%% (RFC 7292, appendix C) with 3DES. OpenSSL's default provider has no RC2
+%% or RC4, so their PBEs are unsupported, as in Node. A null passphrase is
+%% no password, which differs from the empty one in PKCS #12.
+-spec pbe_decrypt(buoy_crypto_der:value(), binary(), binary() | null) -> binary().
+pbe_decrypt({seq, [{oid, ?PBES2}, {seq, [{seq, [{oid, ?PBKDF2}, {seq, [{octets, Salt}, {int, Iter} | KdfRest]}]},
+                                         {seq, [{oid, CipherOid} | CipherParams]}]}]}, Data, Passphrase) ->
     Cipher = case [Name || {Name, Oid} <- cipher_oids(), Oid =:= CipherOid] of
         [Name] -> pbe_cipher(Name);
         [] -> fail(unsupported)
@@ -312,12 +321,42 @@ decrypt_pkcs8(Der, Passphrase) ->
         [] -> <<"sha1">>
     end,
     {ok, Md} = buoy_crypto_hash:digest(Prf),
-    Key = buoy_crypto_kdf:pbkdf2(Md, Passphrase, Salt, Iter, maps:get(key, Cipher)),
+    Key = buoy_crypto_kdf:pbkdf2(Md, password_bytes(Passphrase), Salt, Iter, maps:get(key, Cipher)),
     IV = case CipherParams of
         [{octets, V}] -> V;
         _ -> <<>>
     end,
-    crypt(Cipher, Key, IV, Data, false).
+    crypt(Cipher, Key, IV, Data, false);
+pbe_decrypt({seq, [{oid, {1,2,840,113549,1,12,1,N}}, {seq, [{octets, Salt}, {int, Iter}]}]}, Data, Passphrase)
+  when N =:= 3; N =:= 4 ->
+    {ok, Sha1} = buoy_crypto_hash:digest(<<"sha1">>),
+    Password = bmp_password(Passphrase),
+    IV = buoy_crypto_kdf:pkcs12(Sha1, 2, Password, Salt, Iter, 8),
+    %% Two-key 3DES (N = 4) is 3DES with the first key again.
+    Key3 = case N of
+        3 -> buoy_crypto_kdf:pkcs12(Sha1, 1, Password, Salt, Iter, 24);
+        4 -> two_key(buoy_crypto_kdf:pkcs12(Sha1, 1, Password, Salt, Iter, 16))
+    end,
+    crypt(pbe_cipher(<<"des-ede3-cbc">>), Key3, IV, Data, false);
+pbe_decrypt(_, _, _) ->
+    fail(unsupported).
+
+%% The password of the PKCS #12 key derivation: the UTF-8 passphrase as a
+%% BMPString with two zero bytes, or its bytes as Latin-1 when it is no
+%% UTF-8, as PKCS12_key_gen_utf8 reads it.
+-spec bmp_password(binary() | null) -> binary().
+bmp_password(null) -> <<>>;
+bmp_password(Passphrase) ->
+    Utf16 = case unicode:characters_to_binary(Passphrase, utf8, {utf16, big}) of
+        B when is_binary(B) -> B;
+        _ -> << <<0, C>> || <<C>> <= Passphrase >>
+    end,
+    <<Utf16/binary, 0, 0>>.
+
+two_key(<<K1:8/binary, _/binary>> = Key) -> <<Key/binary, K1/binary>>.
+
+password_bytes(null) -> <<>>;
+password_bytes(Passphrase) -> Passphrase.
 
 %% The ciphers of OpenSSL's key encryption that OTP's crypto runs, with the
 %% OIDs that PBES2 names them by.
