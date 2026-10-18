@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "b8d2189c6128578027b7df035c5fe6f489d80939",
+  "updated": "78826336ff1504b0655e1bfe8446ee211fe7ed4a",
   "total": 4419,
   "outcomes": {
-    "pass": 1967,
+    "pass": 2064,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1748,
-    "timeout": 111,
+    "fail": 1649,
+    "timeout": 113,
     "harness_error": 0,
     "crash": 10
   },
@@ -23,16 +23,16 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1864,
+        "pass": 1959,
         "skip": 545,
-        "fail": 1569,
-        "timeout": 91,
+        "fail": 1472,
+        "timeout": 93,
         "crash": 10
       },
       "sequential": {
-        "pass": 38,
+        "pass": 40,
         "skip": 22,
-        "fail": 51,
+        "fail": 49,
         "timeout": 7
       }
     },
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 1967,
+        "pass": 2064,
         "skip": 240,
-        "fail": 1748,
-        "timeout": 111,
+        "fail": 1649,
+        "timeout": 113,
         "crash": 10
       }
     },
@@ -267,10 +267,10 @@
         "crash": 1
       },
       "worker_threads": {
-        "pass": 11,
+        "pass": 108,
         "skip": 12,
-        "fail": 124,
-        "timeout": 1
+        "fail": 25,
+        "timeout": 3
       },
       "zlib": {
         "pass": 2,
