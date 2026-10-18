@@ -21,7 +21,7 @@ spawn_sync(Options) ->
     [_Argv0 | Args] = [text(A) || A <- items(get(Options, <<"args">>))],
     Env = [split_pair(text(P)) || P <- items(get(Options, <<"envPairs">>))],
     Cwd = case get(Options, <<"cwd">>) of
-        V when V =:= undefined; V =:= null -> element(2, file:get_cwd());
+        V when V =:= undefined; V =:= null; V =:= <<>> -> element(2, file:get_cwd());
         V -> text(V)
     end,
     Stdio = [stdio(S) || S <- items(get(Options, <<"stdio">>))],
