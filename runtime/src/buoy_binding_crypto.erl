@@ -40,7 +40,7 @@ timing_operand(Name, V) ->
 %% crypto_util.cc and crypto_timing.cc.
 util() ->
     F = fun buoy_crypto:fn/3,
-    [{<<"timingSafeEqual">>, F(<<"timingSafeEqual">>, 2, fun(_, Args) ->
+    [{<<"timingSafeEqual">>, F(<<"timingSafeEqual">>, 0, fun(_, Args) ->
         A = timing_operand(<<"buf1">>, buoy_node:arg(1, Args)),
         B = timing_operand(<<"buf2">>, buoy_node:arg(2, Args)),
         byte_size(A) =:= byte_size(B) orelse
