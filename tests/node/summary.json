@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "25d078a04ed87b1fbb93eb859ca662e9a3b74758",
+  "updated": "8e4e29ed2b60b5dbae6db05532f57cf4a2c2b620",
   "total": 4419,
   "outcomes": {
-    "pass": 1950,
+    "pass": 1955,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1755,
-    "timeout": 121,
+    "fail": 1751,
+    "timeout": 120,
     "harness_error": 0,
     "crash": 10
   },
@@ -23,16 +23,16 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1846,
+        "pass": 1850,
         "skip": 545,
-        "fail": 1577,
-        "timeout": 101,
+        "fail": 1574,
+        "timeout": 100,
         "crash": 10
       },
       "sequential": {
-        "pass": 39,
+        "pass": 40,
         "skip": 22,
-        "fail": 50,
+        "fail": 49,
         "timeout": 7
       }
     },
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 1950,
+        "pass": 1955,
         "skip": 240,
-        "fail": 1755,
-        "timeout": 121,
+        "fail": 1751,
+        "timeout": 120,
         "crash": 10
       }
     },
@@ -167,10 +167,9 @@
         "pass": 17
       },
       "perf_hooks": {
-        "pass": 15,
+        "pass": 20,
         "skip": 3,
-        "fail": 7,
-        "timeout": 1,
+        "fail": 3,
         "crash": 1
       },
       "process": {
