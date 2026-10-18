@@ -219,3 +219,19 @@ const withPattern = new Function(`
   return [env.c, env.e, c, d, e].join();
 `) as () => string;
 console.log(withPattern());
+
+// Math.pow converts its base, then its exponent, and a missing exponent is NaN.
+const powOrder: string[] = [];
+const powBase = {
+  valueOf(): number {
+    powOrder.push("base");
+    return 2;
+  },
+};
+const powExponent = {
+  valueOf(): number {
+    powOrder.push("exponent");
+    return 3;
+  },
+};
+console.log("pow", Math.pow(powBase as unknown as number, powExponent as unknown as number), powOrder.join(","), (Math.pow as (x: number) => number)(2));
