@@ -3,7 +3,7 @@
 %% ECDSA, DSA, EdDSA, ML-DSA, and SLH-DSA signatures.
 -module(buoy_crypto_sig).
 
--export([members/0, sign/5, verify/6]).
+-export([members/0, verify/6]).
 
 -define(RSA_PKCS1_PADDING, 1).
 -define(RSA_PKCS1_PSS_PADDING, 6).
@@ -91,25 +91,30 @@ salt(S) -> S.
 
 %%% Signatures
 
-%% The signature of Data, a message for a one-shot key and else a message
-%% that Md digests, under the private key K.
--spec sign(map(), undefined | buoy_crypto_hash:md(), binary(), integer() | undefined, integer() | undefined) -> binary().
-sign(K, Md0, Data, Padding, Salt) ->
+%% The signature of Data, a message for a one-shot key (with the context
+%% Ctx) and else a message that Md digests, under the private key K.
+sign(K, Md0, Data, Padding, Salt, Ctx) ->
     case one_shot_only(K) of
-        true -> sign_message(K, Data);
+        true -> no_digest(Md0), sign_message(K, Data, Ctx);
         false ->
             Md = default_md(Md0),
             sign_digest(K, Md, buoy_crypto_hash:hash(Md, Data), padding(K, Padding), Salt)
     end.
 
 -spec verify(map(), undefined | buoy_crypto_hash:md(), binary(), binary(), integer() | undefined, integer() | undefined) -> boolean().
-verify(K, Md0, Data, Sig, Padding, Salt) ->
+verify(K, Md0, Data, Sig, Padding, Salt) -> verify(K, Md0, Data, Sig, Padding, Salt, <<>>).
+
+verify(K, Md0, Data, Sig, Padding, Salt, Ctx) ->
     case one_shot_only(K) of
-        true -> verify_message(K, Data, Sig);
+        true -> no_digest(Md0), verify_message(K, Data, Sig, Ctx);
         false ->
             Md = default_md(Md0),
             verify_digest(K, Md, buoy_crypto_hash:hash(Md, Data), Sig, padding(K, Padding), Salt)
     end.
+
+%% A key that signs the message itself takes no digest (EVP_DigestSignInit).
+no_digest(undefined) -> ok;
+no_digest(_) -> buoy_crypto:fail({openssl, invalid_digest}).
 
 %% OpenSSL's default digest of a signature without one.
 default_md(undefined) ->
@@ -117,14 +122,30 @@ default_md(undefined) ->
     Md;
 default_md(Md) -> Md.
 
-sign_message(#{kind := Kind, priv := Priv}, Data) when Kind =:= ed25519; Kind =:= ed448 ->
+%% OTP's crypto signs with the empty context only, so Ed448 and ML-DSA
+%% with another context run in Erlang.
+sign_message(#{kind := ed448, priv := Priv}, Data, Ctx) when Ctx =/= <<>> ->
+    buoy_crypto_ed448:sign(Priv, Data, Ctx);
+sign_message(#{kind := Kind, priv := Priv}, Data, Ctx) when Ctx =/= <<>>, Kind =/= ed25519 ->
+    case lists:member(Kind, [ml_dsa_44, ml_dsa_65, ml_dsa_87]) of
+        true -> buoy_crypto_pqc:ml_dsa_sign(Kind, Priv, Data, Ctx);
+        false -> context_not_implemented()
+    end;
+sign_message(#{kind := Kind, priv := Priv}, Data, _) when Kind =:= ed25519; Kind =:= ed448 ->
     crypto:sign(eddsa, none, Data, [Priv, Kind]);
-sign_message(#{kind := Kind} = K, Data) ->
+sign_message(#{kind := Kind} = K, Data, _) ->
     Priv = case K of
         #{seed := Seed} -> {seed, Seed};
         #{priv := P} -> pqc_private(Kind, P)
     end,
     crypto:sign(buoy_crypto_pqc:otp_type(Kind), none, Data, Priv).
+
+%% shortcut: SLH-DSA with a context fails loudly; it needs SLH-DSA in Erlang
+%% until OTP's crypto passes a context.
+-spec context_not_implemented() -> no_return().
+context_not_implemented() ->
+    buoy_crypto:fail({code, 'Error', <<"ERR_BUOY_NOT_IMPLEMENTED">>,
+                      <<"SLH-DSA with a context string is not implemented on Buoy: OTP's crypto signs with the empty context">>}).
 
 pqc_private(Kind, P) ->
     case lists:member(Kind, [ml_dsa_44, ml_dsa_65, ml_dsa_87]) of
@@ -132,13 +153,20 @@ pqc_private(Kind, P) ->
         false -> P
     end.
 
-verify_message(#{kind := Kind, pub := Pub}, Data, Sig) when Kind =:= ed25519; Kind =:= ed448 ->
+verify_message(#{kind := ed448, pub := Pub}, Data, Sig, Ctx) when Ctx =/= <<>> ->
+    buoy_crypto_ed448:verify(Pub, Data, Sig, Ctx);
+verify_message(#{kind := Kind, pub := Pub}, Data, Sig, Ctx) when Ctx =/= <<>>, Kind =/= ed25519 ->
+    case lists:member(Kind, [ml_dsa_44, ml_dsa_65, ml_dsa_87]) of
+        true -> buoy_crypto_pqc:ml_dsa_verify(Kind, Pub, Data, Sig, Ctx);
+        false -> context_not_implemented()
+    end;
+verify_message(#{kind := Kind, pub := Pub}, Data, Sig, _) when Kind =:= ed25519; Kind =:= ed448 ->
     crypto:verify(eddsa, none, Data, Sig, [Pub, Kind]);
-verify_message(#{kind := Kind, pub := Pub}, Data, Sig) ->
+verify_message(#{kind := Kind, pub := Pub}, Data, Sig, _) ->
     crypto:verify(buoy_crypto_pqc:otp_type(Kind), none, Data, Sig, Pub).
 
 sign_digest(#{kind := Kind} = K, Md, Digest, Padding, Salt) when Kind =:= rsa; Kind =:= rsa_pss ->
-    Opts = rsa_options(K, Md, Padding, Salt),
+    Opts = rsa_options(K, Md, Padding, sign_salt(K, Md, Padding, Salt)),
     #{size := Size} = Md,
     Bytes = (bit_length(maps:get(n, K)) + 7) div 8,
     (Padding =:= ?RSA_PKCS1_PADDING andalso Bytes < Size + 11 + digest_info_size(Md)) andalso
@@ -192,6 +220,18 @@ rsa_private(#{e := E, n := N, d := D, p := P, q := Q, dp := DP, dq := DQ, qi := 
 
 %% The options of an RSA signature: the padding, and for PSS the salt and
 %% the MGF1 digest, which a restricted RSA-PSS key sets.
+%% The salt length of a PSS signature: RSA_PSS_SALTLEN_MAX_SIGN by default,
+%% which OTP's crypto does not take, as the length that RSA_padding_add_PKCS1_PSS_mgf1 gives it.
+sign_salt(K, #{size := HLen}, ?RSA_PKCS1_PSS_PADDING, Salt) when Salt =:= undefined; Salt =:= -2 ->
+    case buoy_crypto_pkey:pss_params(K) of
+        undefined ->
+            Bits = bit_length(maps:get(n, K)),
+            EmLen = (Bits + 7) div 8 - case (Bits - 1) band 7 of 0 -> 1; _ -> 0 end,
+            EmLen - HLen - 2;
+        _ -> Salt
+    end;
+sign_salt(_, _, _, Salt) -> Salt.
+
 rsa_options(K, Md, ?RSA_PKCS1_PSS_PADDING, Salt) ->
     {Mgf1, KeySalt} = case buoy_crypto_pkey:pss_params(K) of
         #{md := KeyMd, mgf1 := M, salt := S} ->
@@ -205,7 +245,8 @@ rsa_options(K, Md, ?RSA_PKCS1_PSS_PADDING, Salt) ->
         undefined -> {otp_md(Md), undefined}
     end,
     SaltOpt = case {Salt, KeySalt} of
-        {undefined, undefined} -> [];
+        %% RSA_PSS_SALTLEN_AUTO
+        {undefined, undefined} -> [{rsa_pss_saltlen, -2}];
         {undefined, _} -> [{rsa_pss_saltlen, KeySalt}];
         _ -> [{rsa_pss_saltlen, Salt}]
     end,
@@ -278,20 +319,23 @@ sign_job([Mode | Args]) ->
         undefined -> ?DER;
         _ -> sig_encoding(Enc)
     end,
-    has_context(Ctx) andalso not supports_context(K) andalso
+    CtxBytes = context_bytes(Ctx),
+    CtxBytes =/= <<>> andalso not supports_context(K) andalso
         buoy_crypto:fail_code(<<"ERR_CRYPTO_OPERATION_FAILED">>, <<"Context parameter is unsupported">>),
+    byte_size(CtxBytes) > 255 andalso
+        buoy_crypto:fail_code(<<"ERR_OUT_OF_RANGE">>, <<"context string must be at most 255 bytes">>),
     case Mode of
         ?SIGN ->
-            {fun() -> {ok, encode_signature(K, sign(K, Md, Data, Padding, Salt), Encoding)} end,
+            {fun() -> {ok, encode_signature(K, sign(K, Md, Data, Padding, Salt, CtxBytes), Encoding)} end,
              fun buoy_crypto:array_buffer/1};
         _ ->
             Sig = decode_signature(K, buoy_crypto:bytes(SigV), Encoding, invalid),
-            {fun() -> {ok, Sig =/= <<>> andalso verify(K, Md, Data, Sig, Padding, Salt)} end,
+            {fun() -> {ok, Sig =/= <<>> andalso verify(K, Md, Data, Sig, Padding, Salt, CtxBytes)} end,
              fun(Result) -> Result end}
     end.
 
-has_context(undefined) -> false;
-has_context(Ctx) -> buoy_crypto:bytes(Ctx) =/= <<>>.
+context_bytes(undefined) -> <<>>;
+context_bytes(Ctx) -> buoy_crypto:bytes(Ctx).
 
 supports_context(#{kind := Kind}) ->
     Kind =:= ed448 orelse lists:member(Kind, [ml_dsa_44, ml_dsa_65, ml_dsa_87]) orelse

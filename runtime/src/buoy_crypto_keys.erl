@@ -249,10 +249,14 @@ export_jwk_object({Type, #{kind := Kind, pub := Pub} = K}, Target, _)
     set(Target, [{<<"crv">>, okp_name(Kind)}] ++ D ++ [{<<"x">>, b64(Pub)}, {<<"kty">>, <<"OKP">>}]);
 export_jwk_object({Type, #{kind := Kind, pub := Pub} = K}, Target, _)
   when Kind =:= ml_dsa_44; Kind =:= ml_dsa_65; Kind =:= ml_dsa_87 ->
-    Priv = [{<<"priv">>, b64(maps:get(seed, K))} || Type =:= private],
+    Priv = [{<<"priv">>, b64(seed(K))} || Type =:= private],
     set(Target, [{<<"kty">>, <<"AKP">>}, {<<"alg">>, string:uppercase(kind_name(Kind))}, {<<"pub">>, b64(Pub)}] ++ Priv);
 export_jwk_object(_, _, _) ->
     buoy_crypto:fail_code(<<"ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE">>).
+
+%% A JWK of ML-DSA holds the seed, which a key from an expanded private key lacks.
+seed(#{seed := Seed}) -> Seed;
+seed(_) -> buoy_crypto:fail_code(<<"ERR_CRYPTO_OPERATION_FAILED">>, <<"key does not have an available seed">>).
 
 set(Target, Pairs) ->
     [buoy_heap:set(Target, K, V) || {K, V} <- Pairs],
