@@ -338,6 +338,53 @@ fn a_timed_out_run_stops_the_processes_that_it_started() {
     );
 }
 
+/// A VM starts each child process in a session of its own (`erl_child_setup` calls setsid),
+/// out of the group of the run. When the VM exits, such a child loses its parent, and the
+/// run still stops it.
+#[test]
+fn a_run_stops_the_child_processes_of_a_vm_when_the_vm_exits() {
+    let directory = std::env::temp_dir().join(format!("buoy-suites-orphan-{}", std::process::id()));
+    fs::create_dir_all(&directory).expect("the directory");
+    let pid_file = directory.join("pid");
+    let mut command = std::process::Command::new("erl");
+    command.args([
+        "-noshell",
+        "-eval",
+        &format!(
+            "Port = open_port({{spawn_executable, \"/bin/sleep\"}}, [{{args, [\"30\"]}}]), \
+             {{os_pid, Pid}} = erlang:port_info(Port, os_pid), \
+             ok = file:write_file(\"{}\", integer_to_list(Pid)), \
+             timer:sleep(1000), halt().",
+            pid_file.display()
+        ),
+    ]);
+    let run = buoy_suites::run(&mut command, std::time::Duration::from_secs(20));
+    let pid = fs::read_to_string(&pid_file).expect("the VM wrote the pid of its child");
+    let _ = fs::remove_dir_all(&directory);
+    let alive = (0..20).all(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        is_running(&pid)
+    });
+    if alive {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid])
+            .status();
+    }
+    assert!(!run.timed_out);
+    assert!(!alive, "the child {pid} of the VM still runs");
+}
+
+/// Whether `pid` names a process that has not exited.
+fn is_running(pid: &str) -> bool {
+    std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .is_ok_and(|output| {
+            let stat = String::from_utf8_lossy(&output.stdout);
+            !stat.trim().is_empty() && !stat.trim_start().starts_with('Z')
+        })
+}
+
 /// A program that exits and leaves a process behind, which holds its pipes open and outlives
 /// its parent, ends the run at its exit, with the output that it wrote.
 #[test]

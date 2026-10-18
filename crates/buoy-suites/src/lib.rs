@@ -26,7 +26,7 @@ use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, PoisonError, mpsc};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -96,7 +96,7 @@ pub fn buoy_env<'a>(command: &'a mut Command, temporary: &Path) -> &'a mut Comma
 /// takes longer than the deadline of one run. A binary without `buoy runtime`, such as one
 /// built from an older commit, builds it on its first run instead.
 fn warm(program: &std::ffi::OsStr) {
-    static WARMED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    static WARMED: OnceLock<()> = OnceLock::new();
     WARMED.get_or_init(|| {
         let _ = Command::new(program)
             .arg("runtime")
@@ -122,8 +122,8 @@ const OUTPUT_GRACE: Duration = Duration::from_secs(2);
 ///
 /// The run ends when the program exits, as Bun's runner ends a test, and not when its
 /// pipes close: a process that the program left behind can hold them open for good. The
-/// processes left in the group die after the exit, and the output is what the pipes held
-/// up to `OUTPUT_GRACE` later.
+/// processes that the run started die after the exit, those that `Watch` recorded out of
+/// the group as well, and the output is what the pipes held up to `OUTPUT_GRACE` later.
 ///
 /// # Panics
 ///
@@ -136,7 +136,7 @@ pub fn run(command: &mut Command, deadline: Duration) -> Run {
         .process_group(0)
         .spawn()
         .unwrap_or_else(|error| panic!("cannot run {command:?}: {error}"));
-    let pid = child.id();
+    let watched = Watched::start(child.id());
     let stdout = Drain::start(child.stdout.take());
     let stderr = Drain::start(child.stderr.take());
     let (finished, waited) = mpsc::channel();
@@ -144,12 +144,10 @@ pub fn run(command: &mut Command, deadline: Duration) -> Run {
     let (status, timed_out) = if let Ok(status) = waited.recv_timeout(deadline) {
         (status, false)
     } else {
-        // A process that left the group, such as a detached child, dies first, before it
-        // loses its parent.
-        kill(pid, &descendants(pid));
+        watched.stop(true);
         (waited.recv().expect("the waiting thread sends"), true)
     };
-    kill(pid, &[]);
+    watched.stop(false);
     let grace = Instant::now() + OUTPUT_GRACE;
     let output = Output {
         status: status.unwrap_or_else(|error| panic!("cannot wait for {command:?}: {error}")),
@@ -169,6 +167,167 @@ fn kill(group: u32, pids: &[u32]) {
         .args(pids.iter().map(u32::to_string))
         .stderr(Stdio::null())
         .status();
+}
+
+/// How long the thread of `Watch` waits between two reads of the process table.
+const WATCH_INTERVAL: Duration = Duration::from_millis(100);
+
+/// A process of the table that `ps` prints. `start` tells it from a later process that
+/// reuses its pid.
+#[derive(Clone, Debug)]
+struct Process {
+    pid: u32,
+    parent: u32,
+    group: u32,
+    start: String,
+}
+
+/// The processes of each run that goes on, by the pid of its program, which one thread
+/// records from `ps` every `WATCH_INTERVAL`.
+///
+/// A process group cannot hold the processes of a run: the VM starts each child process in
+/// a session of its own, because `erl_child_setup` calls setsid, and when the VM exits, the
+/// child gets init as its parent. The record still names it then. Bun's no-orphans mode
+/// (src/io/ParentDeathWatchdog.rs) walks the tree from inside the runtime, with
+/// `PR_SET_CHILD_SUBREAPER` on Linux and the `p_puniqueid` of libproc on macOS; the runner has
+/// no unsafe code for these calls, and a VM killed at the deadline runs no code, so the
+/// runner reads `ps` on both systems.
+///
+/// shortcut: a process that starts and loses its parent between two reads escapes the
+/// record; a subreaper on Linux would close that gap if it shows up.
+struct Watch {
+    runs: Mutex<BTreeMap<u32, BTreeMap<u32, Process>>>,
+    added: Condvar,
+}
+
+fn watch() -> &'static Watch {
+    static WATCH: OnceLock<Watch> = OnceLock::new();
+    WATCH.get_or_init(|| {
+        thread::spawn(|| {
+            let watch = watch();
+            loop {
+                drop(
+                    watch
+                        .added
+                        .wait_while(lock(&watch.runs), |runs| runs.is_empty())
+                        .unwrap_or_else(PoisonError::into_inner),
+                );
+                let table = processes();
+                for (root, record) in lock(&watch.runs).iter_mut() {
+                    for process in tree(&table, Some(*root), record) {
+                        record.insert(process.pid, process.clone());
+                    }
+                }
+                thread::sleep(WATCH_INTERVAL);
+            }
+        });
+        Watch {
+            runs: Mutex::new(BTreeMap::new()),
+            added: Condvar::new(),
+        }
+    })
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A run in the record of `Watch`, which leaves the record when it drops.
+struct Watched(u32);
+
+impl Watched {
+    fn start(root: u32) -> Self {
+        let watch = watch();
+        lock(&watch.runs).insert(root, BTreeMap::new());
+        watch.added.notify_one();
+        Self(root)
+    }
+
+    /// Kills the group of the run and every process of its record that still runs, with
+    /// the processes under them. `alive` says that the program still runs, so the tree under
+    /// it holds as well. A record with nothing out of the group needs no read of `ps`.
+    fn stop(&self, alive: bool) {
+        let root = self.0;
+        let record = lock(&watch().runs).get(&root).cloned().unwrap_or_default();
+        let pids = if alive || record.values().any(|process| process.group != root) {
+            let table = processes();
+            tree(&table, alive.then_some(root), &record)
+                .iter()
+                .map(|process| process.pid)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        kill(root, &pids);
+    }
+}
+
+impl Drop for Watched {
+    fn drop(&mut self) {
+        lock(&watch().runs).remove(&self.0);
+    }
+}
+
+/// The processes of `table` that are `root`, the processes of `record` with the same start,
+/// or the children or group members of one of them. The runner and its group are never
+/// among them.
+fn tree<'t>(
+    table: &'t [Process],
+    root: Option<u32>,
+    record: &BTreeMap<u32, Process>,
+) -> Vec<&'t Process> {
+    let runner = std::process::id();
+    let mut found: Vec<&Process> = table
+        .iter()
+        .filter(|process| {
+            Some(process.pid) == root
+                || record
+                    .get(&process.pid)
+                    .is_some_and(|seen| seen.start == process.start)
+        })
+        .collect();
+    let mut index = 0;
+    while let Some(parent) = found.get(index).map(|process| process.pid) {
+        index += 1;
+        for process in table {
+            if (process.parent == parent || process.group == parent)
+                && !found.iter().any(|known| known.pid == process.pid)
+            {
+                found.push(process);
+            }
+        }
+    }
+    let group = table
+        .iter()
+        .find(|process| process.pid == runner)
+        .map(|process| process.group);
+    found.retain(|process| process.pid != runner && Some(process.group) != group);
+    found
+}
+
+/// The process table, from `ps`.
+fn processes() -> Vec<Process> {
+    let Ok(output) = Command::new("ps")
+        .args(["-A", "-o", "pid=,ppid=,pgid=,lstart="])
+        .stderr(Stdio::null())
+        .output()
+    else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let mut number = || fields.next()?.parse().ok();
+            let (pid, parent, group) = (number()?, number()?, number()?);
+            Some(Process {
+                pid,
+                parent,
+                group,
+                start: fields.collect::<Vec<_>>().join(" "),
+            })
+        })
+        .collect()
 }
 
 /// A pipe that a thread reads to its end. The caller takes what has arrived so far.
@@ -209,29 +368,6 @@ impl Drain {
             .recv_timeout(until.saturating_duration_since(Instant::now()));
         mem::take(&mut *self.bytes.lock().unwrap_or_else(PoisonError::into_inner))
     }
-}
-
-/// The processes under `pid`, from `ps`.
-fn descendants(pid: u32) -> Vec<u32> {
-    let Ok(output) = Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output() else {
-        return Vec::new();
-    };
-    let pairs: Vec<(u32, u32)> = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace().map(str::parse::<u32>);
-            Some((fields.next()?.ok()?, fields.next()?.ok()?))
-        })
-        .collect();
-    let mut found = Vec::new();
-    let mut frontier = vec![pid];
-    while let Some(parent) = frontier.pop() {
-        for &(child, _) in pairs.iter().filter(|(_, ppid)| *ppid == parent) {
-            found.push(child);
-            frontier.push(child);
-        }
-    }
-    found
 }
 
 /// The lines that differ, as `-` (node) and `+` (buoy).
