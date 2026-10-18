@@ -8,7 +8,7 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
+| language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
 | node | node | v25.9.0 | 1,950 | 4,419 | 44.1% | 1,876 | 10 | 25d078a | `tests/node/expectations.txt` |
 | node api surface | node-surface | v25.9.0 | 3,450 | 4,460 | 77.4% | 1,010 | 0 | 25d078a | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
@@ -28,34 +28,34 @@ The corpora have no update commit: `pnpm check` runs them on each commit.
 
 ## Language
 
-test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.txt`.
+test262 at d53ebc8, updated at e75ea79. Evidence: `tests/test262/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 53,616 | 4,320 | 8.1% | 49,251 | 0 | 44 | 0 | 0 | 0 | 0 | 1 |
-| kind: negative | 4,734 | 4,315 | 91.1% | 419 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| kind: positive | 48,882 | 5 | 0.0% | 48,832 | 0 | 44 | 0 | 0 | 0 | 0 | 1 |
+| every test | 53,616 | 4,678 | 8.7% | 48,894 | 0 | 44 | 0 | 0 | 0 | 0 | 0 |
+| kind: negative | 4,734 | 4,673 | 98.7% | 61 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| kind: positive | 48,882 | 5 | 0.0% | 48,833 | 0 | 44 | 0 | 0 | 0 | 0 | 0 |
 | subset: dynamic-code | 1,968 | 5 | 0.3% | 1,962 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| subset: npm | 40,232 | 3,978 | 9.9% | 36,216 | 0 | 37 | 0 | 0 | 0 | 0 | 1 |
+| subset: npm | 40,232 | 4,204 | 10.4% | 35,991 | 0 | 37 | 0 | 0 | 0 | 0 | 0 |
 
 ### By edition
 
 | edition | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es5 | 8,165 | 474 | 5.8% | 7,690 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| es6 | 19,522 | 1,746 | 8.9% | 17,776 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es5 | 8,165 | 474 | 5.8% | 7,691 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es6 | 19,522 | 1,775 | 9.1% | 17,747 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es7 | 130 | 14 | 10.8% | 116 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es8 | 1,049 | 137 | 13.1% | 911 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| es9 | 4,858 | 444 | 9.1% | 4,382 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
+| es9 | 4,858 | 640 | 13.2% | 4,186 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
 | es10 | 137 | 1 | 0.7% | 136 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es11 | 2,178 | 203 | 9.3% | 1,972 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
-| es12 | 922 | 75 | 8.1% | 843 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| es12 | 922 | 76 | 8.2% | 842 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
 | es13 | 5,544 | 891 | 16.1% | 4,653 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es14 | 407 | 24 | 5.9% | 383 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es15 | 846 | 1 | 0.1% | 845 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es16 | 1,288 | 8 | 0.6% | 1,276 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| es15 | 846 | 50 | 5.9% | 796 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es16 | 1,288 | 91 | 7.1% | 1,193 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
 | es17 | 313 | 0 | 0.0% | 313 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | esnext | 8,257 | 302 | 3.7% | 7,955 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
@@ -230,7 +230,7 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | logical-assignment-operators | 108 | 12 | 11.1% | 93 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
 | new.target | 63 | 13 | 20.6% | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | nonextensible-applies-to-private | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| numeric-separator-literal | 159 | 63 | 39.6% | 96 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| numeric-separator-literal | 159 | 64 | 40.3% | 95 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | object-rest | 358 | 7 | 2.0% | 351 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | object-spread | 135 | 24 | 17.8% | 111 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | optional-catch-binding | 5 | 1 | 20.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -242,10 +242,10 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | regexp-duplicate-named-groups | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | regexp-lookbehind | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | regexp-match-indices | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-modifiers | 230 | 0 | 0.0% | 230 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-named-groups | 100 | 0 | 0.0% | 100 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-unicode-property-escapes | 681 | 0 | 0.0% | 681 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-v-flag | 187 | 1 | 0.5% | 186 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-modifiers | 230 | 83 | 36.1% | 147 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-named-groups | 100 | 54 | 54.0% | 46 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-unicode-property-escapes | 681 | 163 | 23.9% | 518 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-v-flag | 187 | 50 | 26.7% | 137 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | resizable-arraybuffer | 471 | 0 | 0.0% | 471 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | rest-parameters | 96 | 96 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | set-methods | 193 | 0 | 0.0% | 193 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -528,8 +528,8 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | built-ins/RegExp/lookBehind | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/match-indices | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/named-groups | 36 | 0 | 0.0% | 36 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/property-escapes | 613 | 0 | 0.0% | 613 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/prototype | 487 | 1 | 0.2% | 486 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/property-escapes | 613 | 163 | 26.6% | 450 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/prototype | 487 | 29 | 6.0% | 458 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/regexp-modifiers | 70 | 0 | 0.0% | 70 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/unicodeSets | 114 | 0 | 0.0% | 114 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExpStringIteratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -780,7 +780,7 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | language/literals/boolean | 4 | 2 | 50.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/literals/null | 3 | 1 | 33.3% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/literals/numeric | 157 | 56 | 35.7% | 101 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/regexp | 240 | 21 | 8.8% | 219 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/regexp | 240 | 188 | 78.3% | 52 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/literals/string | 73 | 35 | 47.9% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/module-code | 284 | 162 | 57.0% | 122 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/module-code/ambiguous-export-bindings | 10 | 2 | 20.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -809,7 +809,7 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | language/statements/for-await-of | 1,234 | 92 | 7.5% | 1,142 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/for-in | 119 | 62 | 52.1% | 57 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/for-of | 751 | 94 | 12.5% | 657 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/function | 451 | 60 | 13.3% | 390 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| language/statements/function | 451 | 60 | 13.3% | 391 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/generators | 266 | 32 | 12.0% | 234 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/if | 69 | 40 | 58.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/labeled | 24 | 14 | 58.3% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -900,11 +900,11 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 | Blocker | Tests blocked | Only blocker |
 | --- | --- | --- |
-| `BUOY206` | 48,753 | 371 |
+| `BUOY206` | 48,395 | 13 |
 | `BUOY200` | 14 | 6 |
 | `BUOY201` | 109 | 2 |
-| `harness/assert.js` | 48,868 | 0 |
-| `harness/sta.js` | 48,868 | 0 |
+| `harness/assert.js` | 48,869 | 0 |
+| `harness/sta.js` | 48,869 | 0 |
 | `BUOY202` | 29,498 | 0 |
 | `harness/doneprintHandle.js` | 5,623 | 0 |
 | `harness/propertyHelper.js` | 5,241 | 0 |
