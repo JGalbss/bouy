@@ -50,7 +50,9 @@ binding() ->
             end
         end)},
         {<<"flushCompileCache">>, F(<<"flushCompileCache">>, 1, fun(_, Args) -> flush_compile_cache(A(1, Args)) end)},
-        {<<"getCompileCacheEntry">>, F(<<"getCompileCacheEntry">>, 4, fun(_, _) -> undefined end)},
+        {<<"getCompileCacheEntry">>, F(<<"getCompileCacheEntry">>, 4, fun(_, Args) ->
+            compile_cache_entry(A(1, Args), A(3, Args))
+        end)},
         {<<"saveCompileCacheEntry">>, F(<<"saveCompileCacheEntry">>, 2, fun(_, _) -> undefined end)},
         {<<"compileCacheStatus">>, buoy_heap:new_array([<<"FAILED">>, <<"ENABLED">>, <<"ALREADY_ENABLED">>, <<"DISABLED">>])},
         {<<"cachedCodeTypes">>, buoy_node:object([{<<"kCommonJS">>, 0}, {<<"kESM">>, 1}, {<<"kStrippedTypeScript">>, 2},
@@ -195,6 +197,16 @@ file_path(<<"file://", Rest/binary>>) ->
     uri_string:percent_decode(Path);
 file_path(Path) ->
     Path.
+
+%% getCompileCacheEntry(source, filename, type): Buoy's compiler reads
+%% TypeScript itself, so the entry of stripped or transformed TypeScript
+%% (types 2 to 4 of cachedCodeTypes) is the source text, which the loaders
+%% then compile as TypeScript. Node strips the types with amaro, which needs
+%% WebAssembly.
+compile_cache_entry(Source, Type) when Type >= 2, Type =< 4 ->
+    buoy_node:object([{<<"transpiled">>, Source}]);
+compile_cache_entry(_, _) ->
+    undefined.
 
 %%% The compile cache of node:module. Buoy keeps every compiled module in its
 %%% own cache (~/.cache/buoy), so enableCompileCache records the directory and

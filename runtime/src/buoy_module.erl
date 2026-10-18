@@ -16,7 +16,7 @@
 -export([run/1, evaluate_dependencies/1]).
 -export([namespace/1, foreign_export/2, builtin_export/2, builtin_namespace/1]).
 -export([uninitialized/2, hoisted/1]).
--export([dynamic_import/4, meta/1, compiled_wrapper/1]).
+-export([dynamic_import/4, meta/1, compiled_wrapper/2]).
 -export([define_namespace/3, broken/1]).
 -export([deferred_namespace/1, ensure_deferred/1]).
 -export([hosted_import/3, new_synthetic/3, set_synthetic_export/3, link_requests/2, instantiate/1, evaluate/1]).
@@ -997,16 +997,49 @@ load_json(M) ->
             Module
     end.
 
-%% The compiled wrapper of the CommonJS module of the program at Path, which
-%% Node's CommonJS loader runs in place of a new compilation of the file.
--spec compiled_wrapper(term()) -> {ok, term()} | none.
-compiled_wrapper(Path) ->
+%% The compiled wrapper of the CommonJS module at Path whose source text is
+%% Content, which Node's CommonJS loader runs in place of a new compilation,
+%% as V8 takes a function from its code cache. The compiler compiled the
+%% file, so the cache holds only while Content is the text of the file: a
+%% hook of require.extensions may hand _compile other text. A file that the
+%% static graph did not reach compiles now and joins the graph.
+-spec compiled_wrapper(term(), term()) -> {ok, term()} | none.
+compiled_wrapper(Path, Content) ->
+    File = buoy_ref_string:to_utf8(Path),
+    case file:read_file(File) =:= {ok, buoy_ref_string:to_utf8(Content)} of
+        true ->
+            case graph_module(Path) of
+                {ok, M} -> cjs_wrapper(M);
+                none -> compile_file(File)
+            end;
+        false ->
+            none
+    end.
+
+graph_module(Path) ->
     Graph = case erlang:get(?GRAPH) of undefined -> #{}; G -> G end,
     case maps:find(Path, Graph) of
-        {ok, M} when is_atom(M), M =/= none ->
-            case kind(M) of
-                cjs -> {ok, M:'$cjs'()};
-                _ -> none
+        {ok, M} when is_atom(M), M =/= none -> {ok, M};
+        _ -> none
+    end.
+
+cjs_wrapper(M) ->
+    case kind(M) of
+        cjs -> {ok, M:'$cjs'()};
+        _ -> none
+    end.
+
+compile_file(File) ->
+    case os:getenv("BUOY_COMPILER") =/= false andalso erlang:get(?ENTRY) of
+        Entry when is_atom(Entry), Entry =/= undefined ->
+            Main = buoy_ref_string:to_utf8(info(Entry, path)),
+            case buoy_ref_eval:load_module(Main, File, File, require) of
+                {program, _, M, Added} ->
+                    Graph = case erlang:get(?GRAPH) of undefined -> #{}; G -> G end,
+                    erlang:put(?GRAPH, maps:merge(maps:from_list(Added), Graph)),
+                    cjs_wrapper(M);
+                _ ->
+                    none
             end;
         _ ->
             none

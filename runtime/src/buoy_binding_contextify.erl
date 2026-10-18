@@ -233,12 +233,13 @@ set_host(_, _, _, _) ->
 
 %% compileFunctionForCJSLoader(content, filename, isSeaMain, shouldDetectModule):
 %% the function of a CommonJS module of the parameters of Node's wrapper, as
-%% Node's CommonJS loader runs it. A module of the program has its compiled
-%% function already, as V8 takes a function from its code cache. A hashbang
-%% line becomes a comment, as V8 reads it in the source of a script.
+%% Node's CommonJS loader runs it. A file of the program has its compiled
+%% function, as V8 takes a function from its code cache, and other text
+%% compiles here. A hashbang line becomes a comment, as V8 reads it in the
+%% source of a script.
 compile_function_for_cjs_loader(Code, Filename) ->
     Text = buoy_ref:to_string(Code),
-    Function = case buoy_module:compiled_wrapper(Filename) of
+    Function = case buoy_module:compiled_wrapper(Filename, Text) of
         {ok, Wrapper} -> Wrapper;
         none -> compile_cjs(Text)
     end,
