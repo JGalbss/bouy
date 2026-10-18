@@ -44,6 +44,7 @@ mod jit;
 pub mod link;
 mod linking;
 mod literal;
+pub(crate) use literal::string_units;
 mod loops;
 mod member;
 mod module;

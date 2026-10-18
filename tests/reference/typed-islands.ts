@@ -17,7 +17,7 @@ function bits(n: number): number {
     x = (x ^ (i << 7)) + (i >>> 1) - (~i & 0xff);
     x = x | 0;
   }
-  return x + (n >> 2) + (-1 >>> 0) + (2 ** 31 | 0) + ((2 ** 32 + 5) >> 0);
+  return x + (n >> 2) + (-1 >>> 0) + ((2 ** 31) | 0) + ((2 ** 32 + 5) >> 0);
 }
 
 function edges(kind: number): number {

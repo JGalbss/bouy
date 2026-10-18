@@ -8,17 +8,25 @@
 //!   `{error, Message}`.
 //! - `context(HeapLimit)`: a new context, which holds the stack and the heap of the runs
 //!   of one process.
-//! - `run(Code, Context, Entry, Args, Globals)`: runs the entry. The result is
-//!   `{ok, Value}`, `{bail, Reason}` when the Erlang tier must run the call instead, or
-//!   `badtype` when an argument or a global does not have the type of the entry. A run
-//!   that outlasts a slice yields to the scheduler and continues in `run_slice`.
+//! - `run(Code, Context, Entry, Args, Globals, Items)`: runs the entry. `Items` are the
+//!   objects and arrays that the globals reach, flattened (`crate::boundary`). The result
+//!   is `{ok, Value, Written, Items}` with the values of the written globals and the items
+//!   as the run leaves them, `{bail, Reason}` when the Erlang tier must run the call
+//!   instead, or `badtype` when a value does not have the type of its place. A run that
+//!   outlasts a slice yields to the scheduler and continues in `run_slice`.
+//!
+//! A value is a term of the engine (contract section 17.1): a number, a boolean, `null`,
+//! `undefined`, a string, or `{'$ref', N}` for the item at index `N`. An item is
+//! `{Class, Fields}` for an instance of the class with that index, and `{array, Elements}`.
 
+mod boundary;
 mod codegen;
 #[cfg(not(test))]
 mod nif;
 mod run;
 #[cfg(test)]
 mod tests;
+mod text;
 
 #[cfg(not(test))]
 #[allow(unsafe_code)]
@@ -29,9 +37,10 @@ mod erlang {
 
     use buoy_jit_ir::Program;
 
+    use crate::boundary::Item;
     use crate::codegen::{self, Code};
     use crate::nif::{Entry, Env, Func, NifFn, RawEnv, ResourceType, Term, is_identical};
-    use crate::run::{Context, SLICE, Step, Value};
+    use crate::run::{Context, Finished, SLICE, Step, Value};
 
     struct Types {
         code: ResourceType<Arc<Code>>,
@@ -121,7 +130,7 @@ mod erlang {
         })
     }
 
-    /// The value of a term of the engine: a number in its canonical form, or a boolean.
+    /// The value of a term of the engine.
     fn value_of(env: Env, term: Term) -> Option<Value> {
         if let Some(integer) = env.get_long(term) {
             // The engine keeps integers within 2^53, which a double holds exactly.
@@ -131,9 +140,35 @@ mod erlang {
         if let Some(number) = env.get_double(term) {
             return Some(Value::Num(number));
         }
-        let atoms: [(&std::ffi::CStr, Value); 5] = [
+        // A string whose units all fit a byte has a byte for each unit.
+        if let Some(bytes) = env.binary(term) {
+            return Some(Value::Str(
+                bytes.iter().map(|byte| u16::from(*byte)).collect(),
+            ));
+        }
+        if let Some(tuple) = env.get_tuple(term) {
+            return match tuple {
+                [tag, bytes] if is_identical(*tag, env.atom(c"$u16")) => {
+                    let bytes = env.binary(*bytes)?;
+                    let units = bytes
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|pair| u16::from_be_bytes(*pair))
+                        .collect();
+                    Some(Value::Str(units))
+                }
+                [tag, index] if is_identical(*tag, env.atom(c"$ref")) => {
+                    Some(Value::Ref(u32::try_from(env.get_long(*index)?).ok()?))
+                }
+                _ => None,
+            };
+        }
+        let atoms: [(&std::ffi::CStr, Value); 7] = [
             (c"true", Value::Bool(true)),
             (c"false", Value::Bool(false)),
+            (c"null", Value::Null),
+            (c"undefined", Value::Undefined),
             (c"NaN", Value::Num(f64::NAN)),
             (c"Infinity", Value::Num(f64::INFINITY)),
             (c"-Infinity", Value::Num(f64::NEG_INFINITY)),
@@ -141,16 +176,79 @@ mod erlang {
         atoms
             .iter()
             .find(|(name, _)| is_identical(term, env.atom(name)))
-            .map(|(_, value)| *value)
+            .map(|(_, value)| value.clone())
     }
 
-    /// The canonical term of a result (contract section 17.1).
-    fn term_of(env: Env, value: Value) -> Term {
+    /// The items of a list of `{Class, Fields}` and `{array, Elements}`.
+    fn items_of(env: Env, list: Term) -> Option<Vec<Item>> {
+        env.list(list)?
+            .into_iter()
+            .map(|term| {
+                let [kind, values] = env.get_tuple(term)? else {
+                    return None;
+                };
+                let values = self::values(env, *values, usize::MAX)?;
+                if is_identical(*kind, env.atom(c"array")) {
+                    return Some(Item::Array(values));
+                }
+                let class = u32::try_from(env.get_long(*kind)?).ok()?;
+                Some(Item::Object {
+                    class,
+                    fields: values,
+                })
+            })
+            .collect()
+    }
+
+    fn item_term(env: Env, item: &Item) -> Term {
+        let (kind, values) = match item {
+            Item::Object { class, fields } => (env.long(i64::from(*class)), fields),
+            Item::Array(elements) => (env.atom(c"array"), elements),
+        };
+        let values: Vec<Term> = values.iter().map(|value| term_of(env, value)).collect();
+        env.tuple(&[kind, env.list_of(&values)])
+    }
+
+    /// `{ok, Value, Written, Items}`.
+    fn finished_term(env: Env, finished: &Finished) -> Term {
+        let written: Vec<Term> = finished
+            .written
+            .iter()
+            .map(|value| term_of(env, value))
+            .collect();
+        let items: Vec<Term> = finished
+            .items
+            .iter()
+            .map(|item| item_term(env, item))
+            .collect();
+        env.tuple(&[
+            env.atom(c"ok"),
+            term_of(env, &finished.result),
+            env.list_of(&written),
+            env.list_of(&items),
+        ])
+    }
+
+    /// The canonical term of a value (contract section 17.1).
+    fn term_of(env: Env, value: &Value) -> Term {
         const SAFE: f64 = 9_007_199_254_740_992.0;
-        match value {
+        match *value {
             Value::Bool(true) => env.atom(c"true"),
             Value::Bool(false) => env.atom(c"false"),
+            Value::Null => env.atom(c"null"),
             Value::Undefined => env.atom(c"undefined"),
+            Value::Ref(index) => env.tuple(&[env.atom(c"$ref"), env.long(i64::from(index))]),
+            Value::Str(ref units) => {
+                if let Ok(bytes) = units
+                    .iter()
+                    .map(|unit| u8::try_from(*unit))
+                    .collect::<Result<Vec<u8>, _>>()
+                {
+                    return env.binary_from(&bytes);
+                }
+                let bytes: Vec<u8> = units.iter().flat_map(|unit| unit.to_be_bytes()).collect();
+                env.tuple(&[env.atom(c"$u16"), env.binary_from(&bytes)])
+            }
             Value::Num(number) if number.is_nan() => env.atom(c"NaN"),
             Value::Num(number) if number == f64::INFINITY => env.atom(c"Infinity"),
             Value::Num(number) if number == f64::NEG_INFINITY => env.atom(c"-Infinity"),
@@ -177,7 +275,7 @@ mod erlang {
         // SAFETY: the VM passes `count` terms.
         let given = unsafe { arguments(count, terms) };
         guarded(raw, |env| {
-            let [code_term, context_term, entry, call_args, globals] = given else {
+            let [code_term, context_term, entry, call_args, globals, items] = given else {
                 return env.badarg();
             };
             let Some(types) = types() else {
@@ -193,9 +291,10 @@ mod erlang {
             let Some(function) = code.entry(entry) else {
                 return env.badarg();
             };
-            let (Some(call_args), Some(globals)) = (
+            let (Some(call_args), Some(globals), Some(items)) = (
                 values(env, *call_args, function.params.len()),
                 values(env, *globals, usize::MAX),
+                items_of(env, *items),
             ) else {
                 return env.atom(c"badtype");
             };
@@ -203,7 +302,7 @@ mod erlang {
                 return env.atom(c"busy");
             };
             let started = std::time::Instant::now();
-            let Some(step) = context_guard.start(code, entry, &call_args, &globals) else {
+            let Some(step) = context_guard.start(code, entry, &call_args, &globals, &items) else {
                 return env.atom(c"badtype");
             };
             drop(context_guard);
@@ -244,7 +343,7 @@ mod erlang {
         let percent = i32::try_from(micros * 100 / SLICE.as_micros().max(1)).unwrap_or(100);
         let spent = env.consume_timeslice(percent);
         match step {
-            Step::Done(value) => env.tuple(&[env.atom(c"ok"), term_of(env, value)]),
+            Step::Done(finished) => finished_term(env, &finished),
             Step::Bail(reason) => {
                 let name = std::ffi::CString::new(reason.name()).unwrap_or_default();
                 env.tuple(&[env.atom(c"bail"), env.atom(&name)])
@@ -282,7 +381,7 @@ mod erlang {
         },
         Func {
             name: c"run".as_ptr(),
-            arity: 5,
+            arity: 6,
             fptr: run,
             flags: 0,
         },

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use buoy_jit_ir::{Bail, Binary, Class, Expr, Function, MathFn, Method, Program, Stmt, Ty, Unary};
 
 use crate::codegen::compile;
-use crate::run::{Context, Step, Value};
+use crate::run::{Context, Finished, Step, Value};
 
 fn local(index: u32) -> Expr {
     Expr::Local(index)
@@ -23,12 +23,21 @@ fn set(local: u32, value: Expr) -> Stmt {
     Stmt::Expr(Expr::SetLocal(local, value.into()))
 }
 
+/// The step of a run that ends with `result` and gives back nothing else.
+fn done(result: Value) -> Step {
+    Step::Done(Box::new(Finished {
+        result,
+        written: vec![],
+        items: vec![],
+    }))
+}
+
 /// Runs the first entry to its end, and counts the slices after the first.
 fn run(program: &Program, args: &[Value], globals: &[Value]) -> (Step, usize) {
     let code = Arc::new(compile(program).expect("the program compiles"));
     let mut context = Context::new(64 << 20);
     let mut step = context
-        .start(&code, 0, args, globals)
+        .start(&code, 0, args, globals, &[])
         .expect("the run starts");
     let mut slices = 0;
     while step == Step::Yield {
@@ -77,7 +86,7 @@ fn sum_program() -> Program {
 fn a_loop_runs_to_its_result_over_many_slices() {
     let (step, slices) = run(&sum_program(), &[Value::Num(2e7)], &[Value::Num(2.0)]);
     let n = 2e7_f64;
-    assert_eq!(step, Step::Done(Value::Num(n * (n - 1.0))));
+    assert_eq!(step, done(Value::Num(n * (n - 1.0))));
     assert!(slices > 0, "a run of 20 million turns yields");
 }
 
@@ -87,10 +96,14 @@ fn arguments_of_another_type_do_not_start() {
     let mut context = Context::new(1 << 20);
     assert!(
         context
-            .start(&code, 0, &[Value::Bool(true)], &[Value::Num(1.0)])
+            .start(&code, 0, &[Value::Bool(true)], &[Value::Num(1.0)], &[])
             .is_none()
     );
-    assert!(context.start(&code, 0, &[], &[Value::Num(1.0)]).is_none());
+    assert!(
+        context
+            .start(&code, 0, &[], &[Value::Num(1.0)], &[])
+            .is_none()
+    );
 }
 
 fn field(object: Expr, class: u32, index: u32) -> Expr {
@@ -266,7 +279,7 @@ fn constructor(name: &str, class: u32, fields: u32) -> Function {
 #[test]
 fn objects_arrays_and_dispatch_compute_in_the_heap() {
     let (step, _) = run(&shapes_program(), &[Value::Num(10_000.0)], &[]);
-    assert_eq!(step, Step::Done(Value::Num(10_000.0 * (5.0 + 10.0))));
+    assert_eq!(step, done(Value::Num(10_000.0 * (5.0 + 10.0))));
 }
 
 #[test]
@@ -274,7 +287,7 @@ fn a_heap_past_its_limit_bails() {
     let code = Arc::new(compile(&shapes_program()).expect("the program compiles"));
     let mut context = Context::new(4 << 20);
     let mut step = context
-        .start(&code, 0, &[Value::Num(1e7)], &[])
+        .start(&code, 0, &[Value::Num(1e7)], &[], &[])
         .expect("the run starts");
     while step == Step::Yield {
         step = context.resume();
@@ -282,12 +295,12 @@ fn a_heap_past_its_limit_bails() {
     assert_eq!(step, Step::Bail(Bail::Memory));
     // The context runs again after a bail.
     let mut step = context
-        .start(&code, 0, &[Value::Num(2.0)], &[])
+        .start(&code, 0, &[Value::Num(2.0)], &[], &[])
         .expect("the run starts");
     while step == Step::Yield {
         step = context.resume();
     }
-    assert_eq!(step, Step::Done(Value::Num(30.0)));
+    assert_eq!(step, done(Value::Num(30.0)));
 }
 
 /// `function f(n) { const a = [1, 2]; return a[n] + (null).x; }` without the null part when
@@ -331,11 +344,11 @@ fn reads_outside_the_heap_bail() {
     let program = bails_program();
     assert_eq!(
         run(&program, &[Value::Num(1.0)], &[]).0,
-        Step::Done(Value::Num(2.0))
+        done(Value::Num(2.0))
     );
     assert_eq!(
         run(&program, &[Value::Num(-0.0)], &[]).0,
-        Step::Done(Value::Num(1.0))
+        done(Value::Num(1.0))
     );
     assert_eq!(
         run(&program, &[Value::Num(2.0)], &[]).0,
@@ -383,7 +396,7 @@ fn deep_recursion_bails_with_the_stack() {
     };
     assert_eq!(
         run(&program, &[Value::Num(1000.0)], &[]).0,
-        Step::Done(Value::Num(1000.0))
+        done(Value::Num(1000.0))
     );
     assert_eq!(
         run(&program, &[Value::Num(1e9)], &[]).0,
@@ -438,7 +451,7 @@ fn bitwise_operators_wrap_like_javascript() {
     ] {
         assert_eq!(
             run(&program, &[Value::Num(a), Value::Num(b)], &[]).0,
-            Step::Done(Value::Num(reference(a, b))),
+            done(Value::Num(reference(a, b))),
             "{a} {b}"
         );
     }
@@ -478,7 +491,7 @@ fn run_ir_file() {
     for _ in 0..repeat {
         let started = std::time::Instant::now();
         let mut step = context
-            .start(&code, 0, &args, &globals)
+            .start(&code, 0, &args, &globals, &[])
             .expect("the run starts");
         while step == Step::Yield {
             step = context.resume();
@@ -535,6 +548,179 @@ fn int_compares_and_short_circuits_agree_with_doubles() {
     let (step, _) = run(&program, &[Value::Num(40.0)], &[]);
     assert_eq!(
         step,
-        Step::Done(Value::Num(f64::from(u32::try_from(expected).unwrap_or(0))))
+        done(Value::Num(f64::from(u32::try_from(expected).unwrap_or(0))))
+    );
+}
+
+fn text(value: &str) -> Vec<u16> {
+    value.encode_utf16().collect()
+}
+
+/// `class Node { value: number; next: Node | null; name: string }` and an entry that pushes
+/// a new node onto the list in the global `head`, renames the old head, and reports
+/// facts about the strings it builds.
+fn nodes_program() -> Program {
+    const NODE: u32 = 0;
+    let node = Ty::Object(NODE);
+    let this = local(0);
+    let constructor = Function {
+        name: "Node.constructor".to_owned(),
+        receiver: true,
+        params: 4,
+        locals: vec![node.clone(), Ty::Num, node.clone(), Ty::Str],
+        result: Ty::Void,
+        body: vec![
+            set_field(this.clone(), NODE, 0, local(1)),
+            set_field(this.clone(), NODE, 1, local(2)),
+            set_field(this, NODE, 2, local(3)),
+        ],
+    };
+    let label = Expr::Text(vec![Expr::Str(text("n")), local(0), Expr::Bool(true)]);
+    let pushed = Expr::SetGlobal(
+        0,
+        Box::new(Expr::New(
+            NODE,
+            1,
+            vec![local(0), Expr::Global(0), label.clone()],
+        )),
+    );
+    let entry = Function {
+        name: "push".to_owned(),
+        receiver: false,
+        params: 1,
+        locals: vec![Ty::Num, Ty::Array(Box::new(Ty::Str)), Ty::Str],
+        result: Ty::Num,
+        body: vec![
+            Stmt::Expr(pushed),
+            // The old head, now `head.next`, gets a new name: the global string twice.
+            set_field(
+                field(Expr::Global(0), NODE, 1),
+                NODE,
+                2,
+                Expr::Text(vec![Expr::Global(1), Expr::Global(1)]),
+            ),
+            set(
+                1,
+                Expr::ArrayOf(
+                    Ty::Str,
+                    vec![Expr::Str(text("a")), Expr::Str(text("")), Expr::Null],
+                ),
+            ),
+            set(2, Expr::Shift(Box::new(local(1)))),
+            // 1 when the label is equal to a new string of the same units, 2 when the
+            // shifted string is "a", 4 when the remaining first string is falsy.
+            Stmt::Return(Some(bin(
+                Binary::Add,
+                Expr::Cond(
+                    Ty::Num,
+                    Box::new(bin(
+                        Binary::Eq,
+                        field(Expr::Global(0), NODE, 2),
+                        Expr::Text(vec![Expr::Str(text("n5true"))]),
+                    )),
+                    Box::new(num(1.0)),
+                    Box::new(num(0.0)),
+                ),
+                bin(
+                    Binary::Add,
+                    Expr::Cond(
+                        Ty::Num,
+                        Box::new(bin(Binary::Eq, local(2), Expr::Str(text("a")))),
+                        Box::new(num(2.0)),
+                        Box::new(num(0.0)),
+                    ),
+                    Expr::Cond(
+                        Ty::Num,
+                        Box::new(Expr::Unary(
+                            Unary::Truthy,
+                            Box::new(Expr::Index(Box::new(local(1)), Box::new(num(0.0)))),
+                        )),
+                        Box::new(num(0.0)),
+                        Box::new(num(4.0)),
+                    ),
+                ),
+            ))),
+        ],
+    };
+    Program {
+        classes: vec![Class {
+            name: "Node".to_owned(),
+            parent: None,
+            fields: vec![Ty::Num, node.clone(), Ty::Str],
+            methods: vec![],
+        }],
+        functions: vec![entry, constructor],
+        entries: vec![0],
+        globals: vec![node, Ty::Str],
+    }
+}
+
+#[test]
+fn objects_cross_by_copy_and_come_back_with_their_changes() {
+    use crate::boundary::Item;
+    let code = Arc::new(compile(&nodes_program()).expect("the program compiles"));
+    let mut context = Context::new(1 << 20);
+    let first = Item::Object {
+        class: 0,
+        fields: vec![Value::Num(1.0), Value::Null, Value::Str(text("first"))],
+    };
+    let step = context
+        .start(
+            &code,
+            0,
+            &[Value::Num(5.0)],
+            &[Value::Ref(0), Value::Str(text("hé☃"))],
+            &[first],
+        )
+        .expect("the run starts");
+    let expected = Finished {
+        result: Value::Num(7.0),
+        written: vec![Value::Ref(1)],
+        items: vec![
+            Item::Object {
+                class: 0,
+                fields: vec![Value::Num(1.0), Value::Null, Value::Str(text("hé☃hé☃"))],
+            },
+            Item::Object {
+                class: 0,
+                fields: vec![Value::Num(5.0), Value::Ref(0), Value::Str(text("n5true"))],
+            },
+        ],
+    };
+    assert_eq!(step, Step::Done(Box::new(expected)));
+}
+
+#[test]
+fn items_of_another_type_do_not_start() {
+    use crate::boundary::Item;
+    let code = Arc::new(compile(&nodes_program()).expect("the program compiles"));
+    let mut context = Context::new(1 << 20);
+    let wrong_field = Item::Object {
+        class: 0,
+        fields: vec![Value::Str(text("1")), Value::Null, Value::Str(text("x"))],
+    };
+    let globals = [Value::Ref(0), Value::Str(text(""))];
+    assert!(
+        context
+            .start(&code, 0, &[Value::Num(1.0)], &globals, &[wrong_field])
+            .is_none()
+    );
+    let array = Item::Array(vec![]);
+    assert!(
+        context
+            .start(&code, 0, &[Value::Num(1.0)], &globals, &[array])
+            .is_none()
+    );
+    let unreached = Item::Array(vec![]);
+    assert!(
+        context
+            .start(
+                &code,
+                0,
+                &[Value::Num(1.0)],
+                &[Value::Null, Value::Null],
+                &[unreached]
+            )
+            .is_none()
     );
 }

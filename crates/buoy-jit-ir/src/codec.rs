@@ -7,7 +7,7 @@ use std::fmt;
 use super::{Bail, Binary, Class, Expr, Function, MathFn, Method, Program, Stmt, Ty, Unary};
 
 /// The first bytes of an encoded program, with the version of the format.
-const MAGIC: &[u8; 4] = b"BNI2";
+const MAGIC: &[u8; 4] = b"BNI3";
 
 /// Bytes that are not a program of this version.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +80,15 @@ trait Codec: Sized {
 }
 
 impl Codec for u32 {
+    fn write(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.to_le_bytes());
+    }
+    fn read(reader: &mut Reader<'_>) -> Result<Self, DecodeError> {
+        Ok(Self::from_le_bytes(reader.array()?))
+    }
+}
+
+impl Codec for u16 {
     fn write(&self, out: &mut Vec<u8>) {
         out.extend_from_slice(&self.to_le_bytes());
     }
@@ -325,6 +334,7 @@ variants!(Ty {
     4 => Object(class),
     5 => Any,
     6 => Array(element),
+    7 => Str,
 });
 
 variants!(Stmt {
@@ -363,6 +373,12 @@ variants!(Expr {
     22 => Math(function, args),
     23 => Seq(items),
     24 => Global(index),
+    25 => Str(units),
+    26 => SetGlobal(index, value),
+    27 => Shift(array),
+    28 => Text(parts),
+    29 => Fail(reason, ty),
+    30 => Block(stmts, value),
 });
 
 #[cfg(test)]
@@ -394,8 +410,14 @@ mod tests {
                             Box::new(Expr::Local(1)),
                             Box::new(Expr::Num(10.5)),
                         )),
+                        update: vec![Stmt::Expr(Expr::SetGlobal(
+                            1,
+                            Box::new(Expr::Text(vec![
+                                Expr::Str(vec![0x76, 0x2603]),
+                                Expr::Local(1),
+                            ])),
+                        ))],
                         body: vec![Stmt::Break(0), Stmt::Bail(Bail::Throw)],
-                        update: vec![],
                         test_after: false,
                     },
                     Stmt::Return(Some(Expr::Math(
@@ -405,7 +427,7 @@ mod tests {
                 ],
             }],
             entries: vec![0],
-            globals: vec![Ty::Num],
+            globals: vec![Ty::Num, Ty::Str],
         };
         let bytes = program.encode();
         assert_eq!(Program::decode(&bytes), Ok(program));

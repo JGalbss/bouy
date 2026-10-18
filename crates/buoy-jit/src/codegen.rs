@@ -14,6 +14,8 @@
 //!   byte of its word.
 //! - An array: [`ARRAY_TAG`], the length, the capacity, and the address of the elements,
 //!   one word each.
+//! - A string: [`STRING_TAG`], the length in UTF-16 code units, and the code units, two
+//!   bytes each, padded to a whole word.
 //! - `null` is the address 0 and `undefined` the address 1.
 
 #![allow(unsafe_code)]
@@ -25,15 +27,15 @@ use buoy_jit_ir::{
 };
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::{
-    AbiParam, Block, BlockArg, FuncRef, InstBuilder, MemFlagsData, Signature, TrapCode, Value,
-    types,
+    AbiParam, Block, BlockArg, FuncRef, InstBuilder, MemFlagsData, Signature, StackSlotData,
+    StackSlotKind, TrapCode, Value, types,
 };
 use cranelift_codegen::isa::CallConv;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Switch, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId as ModuleFuncId, Linkage, Module, default_libcall_names};
 
-use crate::run::{self, Value as RunValue};
+use crate::{run, text};
 
 /// The offsets of the fields of [`run::Frame`] that the machine code uses.
 pub mod frame {
@@ -53,8 +55,17 @@ pub mod array {
     pub const SIZE: i64 = 32;
 }
 
+/// The offsets of the words of a string.
+pub mod string {
+    pub const LENGTH: i32 = 8;
+    pub const UNITS: usize = 16;
+}
+
 /// The class word of an array, which no class id takes.
 pub const ARRAY_TAG: i64 = 0xffff_ffff;
+
+/// The class word of a string, which no class id takes.
+pub const STRING_TAG: i64 = 0xffff_fffe;
 
 /// The most elements of an array.
 const MAX_ELEMENTS: i64 = 1 << 31;
@@ -66,6 +77,35 @@ const UNDEFINED: i64 = 1;
 pub struct Code {
     module: Option<JITModule>,
     entries: Vec<EntryFn>,
+    layout: Layout,
+    /// The strings of the literals, which the machine code points to.
+    _literals: Vec<Box<[u64]>>,
+}
+
+/// What a run needs to know of the program to copy values into its heap and out of it.
+#[derive(Debug, Clone, Default)]
+pub struct Layout {
+    /// The types of the fields of each class.
+    pub fields: Vec<Vec<Ty>>,
+    /// The parent of each class.
+    pub parents: Vec<Option<ClassId>>,
+    /// The globals that the code writes, in order.
+    pub written: Vec<u32>,
+}
+
+impl Layout {
+    /// Whether `class` is `ancestor` or one of its subclasses.
+    #[must_use]
+    pub fn is_subclass(&self, class: ClassId, ancestor: ClassId) -> bool {
+        let mut current = Some(class);
+        while let Some(id) = current {
+            if id == ancestor {
+                return true;
+            }
+            current = self.parents.get(id as usize).copied().flatten();
+        }
+        false
+    }
 }
 
 // SAFETY: after `finalize_definitions` the module is only read, and freed on drop; its
@@ -101,30 +141,13 @@ pub struct EntryFn {
     pub result: Ty,
 }
 
-impl EntryFn {
-    /// The words of the arguments and the globals, when each has the type of its place.
-    /// Arguments past the parameters are ignored, as JavaScript ignores them.
-    pub fn arguments(&self, args: &[RunValue], globals: &[RunValue]) -> Option<Vec<u64>> {
-        let args = args.get(..self.params.len())?;
-        if globals.len() != self.globals.len() {
-            return None;
-        }
-        self.params
-            .iter()
-            .chain(&self.globals)
-            .zip(args.iter().chain(globals))
-            .map(|(ty, value)| match (ty, value) {
-                (Ty::Num, RunValue::Num(number)) => Some(number.to_bits()),
-                (Ty::Bool, RunValue::Bool(flag)) => Some(u64::from(*flag)),
-                _ => None,
-            })
-            .collect()
-    }
-}
-
 impl Code {
     pub fn entry(&self, index: usize) -> Option<&EntryFn> {
         self.entries.get(index)
+    }
+
+    pub fn layout(&self) -> &Layout {
+        &self.layout
     }
 }
 
@@ -143,8 +166,8 @@ struct Helper {
     returns: &'static [types::Type],
 }
 
-fn helpers() -> [Helper; 8] {
-    use types::{F64, I32, I64};
+fn helpers() -> [Helper; 12] {
+    use types::{F64, I8, I32, I64};
     [
         Helper {
             name: "buoy_tick",
@@ -194,6 +217,30 @@ fn helpers() -> [Helper; 8] {
             params: &[I32, F64, F64],
             returns: &[F64],
         },
+        Helper {
+            name: "buoy_text",
+            address: text::buoy_text as *const u8,
+            params: &[I64, I64, I64],
+            returns: &[I64],
+        },
+        Helper {
+            name: "buoy_str_eq",
+            address: text::buoy_str_eq as *const u8,
+            params: &[I64, I64],
+            returns: &[I8],
+        },
+        Helper {
+            name: "buoy_str_truthy",
+            address: text::buoy_str_truthy as *const u8,
+            params: &[I64],
+            returns: &[I8],
+        },
+        Helper {
+            name: "buoy_shift",
+            address: run::buoy_shift as *const u8,
+            params: &[I64],
+            returns: &[I64],
+        },
     ]
 }
 
@@ -205,6 +252,10 @@ const FMOD: usize = 4;
 const POW: usize = 5;
 const INT32: usize = 6;
 const MATH: usize = 7;
+const TEXT: usize = 8;
+const STR_EQ: usize = 9;
+const STR_TRUTHY: usize = 10;
+const SHIFT: usize = 11;
 
 /// Compiles every function of `program` and the trampolines of its entries.
 pub fn compile(program: &Program) -> Result<Code, Error> {
@@ -221,11 +272,20 @@ pub fn compile(program: &Program) -> Result<Code, Error> {
         builder.symbol(helper.name, helper.address);
     }
     let mut module = JITModule::new(builder);
-    let compiled = define_all(&mut module, program, &helpers);
+    let mut literals = Vec::new();
+    let written = written_globals(program);
+    let compiled = define_all(&mut module, program, &helpers, &written, &mut literals);
+    let layout = Layout {
+        fields: program.classes.iter().map(|c| c.fields.clone()).collect(),
+        parents: program.classes.iter().map(|c| c.parent).collect(),
+        written: written.iter().copied().collect(),
+    };
     match compiled {
         Ok(entries) => Ok(Code {
             module: Some(module),
             entries,
+            layout,
+            _literals: literals,
         }),
         Err(error) => {
             // SAFETY: no code of the module has run.
@@ -235,27 +295,24 @@ pub fn compile(program: &Program) -> Result<Code, Error> {
     }
 }
 
+/// The globals that some code writes, in order.
+fn written_globals(program: &Program) -> std::collections::BTreeSet<u32> {
+    let mut written = std::collections::BTreeSet::new();
+    for function in &program.functions {
+        written_in_stmts(&function.body, &mut written);
+    }
+    written
+}
+
 fn define_all(
     module: &mut JITModule,
     program: &Program,
     helpers: &[Helper],
+    written: &std::collections::BTreeSet<u32>,
+    literals: &mut Vec<Box<[u64]>>,
 ) -> Result<Vec<EntryFn>, Error> {
     let call_conv = module.isa().default_call_conv();
-    let mut helper_ids = Vec::with_capacity(helpers.len());
-    for helper in helpers {
-        let mut signature = Signature::new(call_conv);
-        signature
-            .params
-            .extend(helper.params.iter().map(|ty| AbiParam::new(*ty)));
-        signature
-            .returns
-            .extend(helper.returns.iter().map(|ty| AbiParam::new(*ty)));
-        let id = module
-            .declare_function(helper.name, Linkage::Import, &signature)
-            .map_err(|error| error.to_string())?;
-        helper_ids.push(id);
-    }
-    helper_ids[TICK] = define_tick(module, helper_ids[TICK])?;
+    let helper_ids = declare_helpers(module, helpers)?;
     let mut ids = Vec::with_capacity(program.functions.len());
     for (index, function) in program.functions.iter().enumerate() {
         let id = module
@@ -275,8 +332,16 @@ fn define_all(
     for (index, function) in program.functions.iter().enumerate() {
         context.func.signature = signature_of(function, call_conv);
         let builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
-        let mut generator = Gen::new(program, function, builder, module, &ids, &helper_ids);
+        let mut generator = Gen::new(
+            program,
+            function,
+            builder,
+            module,
+            (&ids, &helper_ids),
+            written,
+        );
         generator.body()?;
+        literals.append(&mut generator.literals);
         generator.b.finalize(target);
         context.set_disasm(dump);
         module
@@ -335,6 +400,28 @@ fn define_all(
         }
     }
     Ok(entries)
+}
+
+/// The ids of the helpers in the module, with the tick that refills the fuel in place of
+/// the helper it calls.
+fn declare_helpers(module: &mut JITModule, helpers: &[Helper]) -> Result<Vec<ModuleFuncId>, Error> {
+    let call_conv = module.isa().default_call_conv();
+    let mut helper_ids = Vec::with_capacity(helpers.len());
+    for helper in helpers {
+        let mut signature = Signature::new(call_conv);
+        signature
+            .params
+            .extend(helper.params.iter().map(|ty| AbiParam::new(*ty)));
+        signature
+            .returns
+            .extend(helper.returns.iter().map(|ty| AbiParam::new(*ty)));
+        let id = module
+            .declare_function(helper.name, Linkage::Import, &signature)
+            .map_err(|error| error.to_string())?;
+        helper_ids.push(id);
+    }
+    helper_ids[TICK] = define_tick(module, helper_ids[TICK])?;
+    Ok(helper_ids)
 }
 
 /// The function that the code calls when its fuel is gone: it calls [`run::buoy_tick`]
@@ -433,7 +520,7 @@ fn repr(ty: &Ty) -> Option<types::Type> {
         Ty::Void => None,
         Ty::Num => Some(types::F64),
         Ty::Bool => Some(types::I8),
-        Ty::Null | Ty::Object(_) | Ty::Any | Ty::Array(_) => Some(types::I64),
+        Ty::Null | Ty::Object(_) | Ty::Any | Ty::Array(_) | Ty::Str => Some(types::I64),
     }
 }
 
@@ -496,9 +583,7 @@ fn check_program(program: &Program) -> Result<(), Error> {
         }
     }
     for ty in &program.globals {
-        if !matches!(ty, Ty::Num | Ty::Bool) {
-            return fail("a global is a number or a boolean");
-        }
+        check_value_type(program, ty)?;
     }
     for &entry in &program.entries {
         let function = function_at(program, entry)?;
@@ -538,7 +623,7 @@ fn is_subclass(program: &Program, class: ClassId, ancestor: ClassId) -> bool {
 /// Whether a value of type `from` may go where the type `to` is.
 fn fits(program: &Program, from: &Ty, to: &Ty) -> bool {
     match (from, to) {
-        (Ty::Null, Ty::Null | Ty::Object(_) | Ty::Any | Ty::Array(_))
+        (Ty::Null, Ty::Null | Ty::Object(_) | Ty::Any | Ty::Array(_) | Ty::Str)
         | (Ty::Object(_), Ty::Any) => true,
         (Ty::Object(a), Ty::Object(b)) => is_subclass(program, *a, *b),
         _ => from == to,
@@ -572,6 +657,10 @@ struct Gen<'a, 'm> {
     int32s: HashMap<Value, Value>,
     /// The numbers of constants.
     constants: HashMap<Value, f64>,
+    /// The globals that some code writes.
+    written: &'a std::collections::BTreeSet<u32>,
+    /// The strings of the literals of the function.
+    literals: Vec<Box<[u64]>>,
 }
 
 /// The most IR nodes of a function that a call inlines.
@@ -606,12 +695,16 @@ fn size_of_expr(expr: &Expr) -> usize {
         | Expr::Bool(_)
         | Expr::Null
         | Expr::Undefined
+        | Expr::Str(_)
         | Expr::Local(_)
-        | Expr::Global(_) => 0,
+        | Expr::Global(_)
+        | Expr::Fail(..) => 0,
         Expr::SetLocal(_, value)
+        | Expr::SetGlobal(_, value)
         | Expr::Unary(_, value)
         | Expr::Field(value, _, _)
-        | Expr::Length(value) => size_of_expr(value),
+        | Expr::Length(value)
+        | Expr::Shift(value) => size_of_expr(value),
         Expr::Binary(_, a, b)
         | Expr::And(a, b)
         | Expr::Or(a, b)
@@ -625,7 +718,10 @@ fn size_of_expr(expr: &Expr) -> usize {
         // A call or a dispatch costs about as much as a small body that it would inline.
         Expr::Call(_, args) | Expr::New(_, _, args) => 4 + all(args),
         Expr::Dispatch { args, .. } => 6 + all(args),
-        Expr::ArrayOf(_, items) | Expr::Math(_, items) | Expr::Seq(items) => all(items),
+        Expr::ArrayOf(_, items) | Expr::Math(_, items) | Expr::Seq(items) | Expr::Text(items) => {
+            all(items)
+        }
+        Expr::Block(stmts, value) => size_of_stmts(stmts) + size_of_expr(value),
     }
 }
 
@@ -666,9 +762,15 @@ fn assigned_in_expr(expr: &Expr, out: &mut HashSet<u32>) {
         | Expr::Bool(_)
         | Expr::Null
         | Expr::Undefined
+        | Expr::Str(_)
         | Expr::Local(_)
-        | Expr::Global(_) => {}
-        Expr::Unary(_, value) | Expr::Field(value, _, _) | Expr::Length(value) => {
+        | Expr::Global(_)
+        | Expr::Fail(..) => {}
+        Expr::Unary(_, value)
+        | Expr::Field(value, _, _)
+        | Expr::Length(value)
+        | Expr::Shift(value)
+        | Expr::SetGlobal(_, value) => {
             assigned_in_expr(value, out);
         }
         Expr::Binary(_, a, b)
@@ -687,7 +789,86 @@ fn assigned_in_expr(expr: &Expr, out: &mut HashSet<u32>) {
             assigned_in_expr(c, out);
         }
         Expr::Call(_, args) | Expr::New(_, _, args) | Expr::Dispatch { args, .. } => all(args),
-        Expr::ArrayOf(_, items) | Expr::Math(_, items) | Expr::Seq(items) => all(items),
+        Expr::ArrayOf(_, items) | Expr::Math(_, items) | Expr::Seq(items) | Expr::Text(items) => {
+            all(items);
+        }
+        Expr::Block(stmts, value) => {
+            assigned_in_stmts(stmts, out);
+            assigned_in_expr(value, out);
+        }
+    }
+}
+
+/// The globals that statements write.
+fn written_in_stmts(stmts: &[Stmt], out: &mut std::collections::BTreeSet<u32>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Expr(expr) | Stmt::Return(Some(expr)) => written_in_expr(expr, out),
+            Stmt::If(test, then, otherwise) => {
+                written_in_expr(test, out);
+                written_in_stmts(then, out);
+                written_in_stmts(otherwise, out);
+            }
+            Stmt::Loop {
+                cond, body, update, ..
+            } => {
+                if let Some(expr) = cond {
+                    written_in_expr(expr, out);
+                }
+                written_in_stmts(body, out);
+                written_in_stmts(update, out);
+            }
+            Stmt::Return(None) | Stmt::Break(_) | Stmt::Continue(_) | Stmt::Bail(_) => {}
+        }
+    }
+}
+
+fn written_in_expr(expr: &Expr, out: &mut std::collections::BTreeSet<u32>) {
+    if let Expr::SetGlobal(index, _) = expr {
+        out.insert(*index);
+    }
+    if let Expr::Block(stmts, _) = expr {
+        written_in_stmts(stmts, out);
+    }
+    for child in children(expr) {
+        written_in_expr(child, out);
+    }
+}
+
+/// The operands of an expression.
+fn children(expr: &Expr) -> Vec<&Expr> {
+    match expr {
+        Expr::Num(_)
+        | Expr::Bool(_)
+        | Expr::Null
+        | Expr::Undefined
+        | Expr::Str(_)
+        | Expr::Local(_)
+        | Expr::Global(_)
+        | Expr::Fail(..) => vec![],
+        Expr::SetLocal(_, value)
+        | Expr::SetGlobal(_, value)
+        | Expr::Unary(_, value)
+        | Expr::Field(value, _, _)
+        | Expr::Length(value)
+        | Expr::Shift(value) => vec![value],
+        Expr::Binary(_, a, b)
+        | Expr::And(a, b)
+        | Expr::Or(a, b)
+        | Expr::SetField(a, _, _, b)
+        | Expr::Index(a, b)
+        | Expr::Push(a, b)
+        | Expr::ArrayFill(_, a, b) => vec![a, b],
+        Expr::Cond(_, a, b, c) | Expr::SetIndex(a, b, c) => vec![a, b, c],
+        // The statements of a block are not operands; `written_in_expr` visits them.
+        Expr::Block(_, value) => vec![value],
+        Expr::Call(_, items)
+        | Expr::New(_, _, items)
+        | Expr::Dispatch { args: items, .. }
+        | Expr::ArrayOf(_, items)
+        | Expr::Math(_, items)
+        | Expr::Seq(items)
+        | Expr::Text(items) => items.iter().collect(),
     }
 }
 
@@ -697,8 +878,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         function: &'a Function,
         b: FunctionBuilder<'m>,
         module: &'m mut JITModule,
-        ids: &'a [ModuleFuncId],
-        helper_ids: &'a [ModuleFuncId],
+        (ids, helper_ids): (&'a [ModuleFuncId], &'a [ModuleFuncId]),
+        written: &'a std::collections::BTreeSet<u32>,
     ) -> Self {
         Self {
             program,
@@ -718,6 +899,8 @@ impl<'a, 'm> Gen<'a, 'm> {
             nonnull: HashSet::new(),
             int32s: HashMap::new(),
             constants: HashMap::new(),
+            written,
+            literals: Vec::new(),
         }
     }
 
@@ -1195,6 +1378,18 @@ impl<'a, 'm> Gen<'a, 'm> {
                 (Some(self.b.use_var(var)), ty)
             }
             Expr::Global(index) => self.global(*index)?,
+            Expr::SetGlobal(index, value) => self.set_global(*index, value)?,
+            Expr::Str(units) => (Some(self.literal(units)), Ty::Str),
+            Expr::Text(parts) => (Some(self.text(parts)?), Ty::Str),
+            Expr::Shift(array) => self.shift(array)?,
+            Expr::Fail(reason, ty) => self.fail_with(*reason, ty)?,
+            Expr::Block(stmts, value) => {
+                self.stmts(stmts)?;
+                if self.is_filled() {
+                    self.unreachable();
+                }
+                self.expr(value)?
+            }
             Expr::SetLocal(local, value) => {
                 let (var, ty) = self.local(*local)?;
                 let (value, value_ty) = self.value(value)?;
@@ -1221,14 +1416,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.b.ins().store(flags, value, object, at);
                 (Some(value), ty)
             }
-            Expr::Length(array) => {
-                let (array, _) = self.array(array)?;
-                let length = self.b.ins().load(types::I64, flags, array, array::LENGTH);
-                (
-                    Some(self.b.ins().fcvt_from_uint(types::F64, length)),
-                    Ty::Num,
-                )
-            }
+            Expr::Length(target) => (Some(self.length(target)?), Ty::Num),
             Expr::Index(array, index) => self.index(array, index)?,
             Expr::SetIndex(array, index, value) => self.set_index(array, index, value)?,
             Expr::Push(array, value) => {
@@ -1277,15 +1465,122 @@ impl<'a, 'm> Gen<'a, 'm> {
             .get(index as usize)
             .ok_or("no such global")?
             .clone();
-        // The globals never change during a run, so their loads may move and merge.
-        let flags = MemFlagsData::trusted().with_readonly().with_can_move();
+        // A global that no code writes never changes during a run, so its loads may move
+        // and merge.
+        let fixed = MemFlagsData::trusted().with_readonly().with_can_move();
+        let flags = if self.written.contains(&index) {
+            MemFlagsData::trusted()
+        } else {
+            fixed
+        };
         let globals = self
             .b
             .ins()
-            .load(types::I64, flags, self.frame, frame::GLOBALS);
+            .load(types::I64, fixed, self.frame, frame::GLOBALS);
         let at = i32::try_from(8 * u64::from(index)).map_err(|e| e.to_string())?;
         let repr = repr(&ty).ok_or("a global without a value")?;
         Ok((Some(self.b.ins().load(repr, flags, globals, at)), ty))
+    }
+
+    /// The length of an array or a string.
+    fn length(&mut self, target: &Expr) -> Result<Value, Error> {
+        let (value, ty) = self.value(target)?;
+        if !matches!(ty, Ty::Array(_) | Ty::Str) {
+            return fail(format!("{}: a length of a value", self.function.name));
+        }
+        let value = self.checked(value, Some(target))?;
+        // An array and a string keep their length at the same offset.
+        let length = self
+            .b
+            .ins()
+            .load(types::I64, MemFlagsData::trusted(), value, array::LENGTH);
+        Ok(self.b.ins().fcvt_from_uint(types::F64, length))
+    }
+
+    fn shift(&mut self, array: &Expr) -> Result<Typed, Error> {
+        let (array, element) = self.array(array)?;
+        if !element.is_reference() {
+            return fail("shift of an array of numbers or booleans");
+        }
+        let first = self.call_helper(SHIFT, &[array]).ok_or("shift")?;
+        Ok((Some(first), element))
+    }
+
+    /// A bail where a value of `ty` stands: the code after it never runs.
+    fn fail_with(&mut self, reason: Bail, ty: &Ty) -> Result<Typed, Error> {
+        self.bail(reason);
+        self.unreachable();
+        if *ty == Ty::Void {
+            return Ok((None, Ty::Void));
+        }
+        check_value_type(self.program, ty)?;
+        Ok((Some(self.zero(ty)), ty.clone()))
+    }
+
+    fn set_global(&mut self, index: u32, value: &Expr) -> Result<Typed, Error> {
+        let ty = self
+            .program
+            .globals
+            .get(index as usize)
+            .ok_or("no such global")?
+            .clone();
+        let (value, value_ty) = self.value(value)?;
+        self.expect(&value_ty, &ty)?;
+        let fixed = MemFlagsData::trusted().with_readonly().with_can_move();
+        let globals = self
+            .b
+            .ins()
+            .load(types::I64, fixed, self.frame, frame::GLOBALS);
+        let at = i32::try_from(8 * u64::from(index)).map_err(|e| e.to_string())?;
+        self.b
+            .ins()
+            .store(MemFlagsData::trusted(), value, globals, at);
+        Ok((Some(value), ty))
+    }
+
+    /// The address of the string of a literal, which the code keeps.
+    fn literal(&mut self, units: &[u16]) -> Value {
+        let words = text::string_words(units);
+        let address = words.as_ptr() as i64;
+        self.literals.push(words);
+        let value = self.b.ins().iconst(types::I64, address);
+        self.nonnull.insert(value);
+        value
+    }
+
+    /// A new string of the parts, each converted as `ToString` does: the helper reads
+    /// pairs of words, a kind and the value, from a slot of the stack.
+    fn text(&mut self, parts: &[Expr]) -> Result<Value, Error> {
+        let bytes = u32::try_from(16 * parts.len().max(1)).map_err(|e| e.to_string())?;
+        let slot = self.b.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            bytes,
+            3,
+        ));
+        for (index, part) in parts.iter().enumerate() {
+            let (value, ty) = self.value(part)?;
+            let (kind, word) = match ty {
+                Ty::Num => (text::TEXT_NUM, value),
+                Ty::Bool => (text::TEXT_BOOL, self.b.ins().uextend(types::I64, value)),
+                Ty::Str | Ty::Null => (text::TEXT_STR, value),
+                _ => return fail("a part of a template that is not a primitive"),
+            };
+            let at = i32::try_from(16 * index).map_err(|e| e.to_string())?;
+            let kind = self.b.ins().iconst(types::I64, kind);
+            self.b.ins().stack_store(types::I64, kind, slot, at);
+            self.b.ins().stack_store(types::I64, word, slot, at + 8);
+        }
+        let address = self.b.ins().stack_addr(types::I64, slot, 0);
+        let count = self
+            .b
+            .ins()
+            .iconst(types::I64, i64::try_from(parts.len()).unwrap_or(0));
+        let frame = self.frame;
+        let text = self
+            .call_helper(TEXT, &[frame, address, count])
+            .ok_or("text")?;
+        self.nonnull.insert(text);
+        Ok(text)
     }
 
     fn conditional(
@@ -1362,6 +1657,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         self.b.ins().fcmp(FloatCC::OrderedNotEqual, value, zero)
                     }
                     Ty::Bool => value,
+                    Ty::Str => self.call_helper(STR_TRUTHY, &[value]).ok_or("truthy")?,
                     _ => self
                         .b
                         .ins()
@@ -1527,6 +1823,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             (Ty::Bool, Ty::Bool) => {
                 let cc = if equal { IntCC::Equal } else { IntCC::NotEqual };
                 self.b.ins().icmp(cc, a, b)
+            }
+            (Ty::Str, Ty::Str) => {
+                let same = self.call_helper(STR_EQ, &[a, b]).ok_or("equality")?;
+                let cc = if equal { IntCC::NotEqual } else { IntCC::Equal };
+                self.b.ins().icmp_imm_s(cc, same, 0)
             }
             _ if a_ty.is_reference() && b_ty.is_reference() => {
                 let cc = if equal { IntCC::Equal } else { IntCC::NotEqual };

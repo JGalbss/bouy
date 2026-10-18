@@ -40,6 +40,7 @@ pub enum T {
     /// An interface, whose values are instances of island classes.
     Iface(usize),
     Array(Box<T>),
+    Str,
 }
 
 impl T {
@@ -52,15 +53,25 @@ impl T {
             Self::Class(class) => ir::Ty::Object(*class),
             Self::Iface(_) => ir::Ty::Any,
             Self::Array(element) => ir::Ty::Array(Box::new(element.ir())),
+            Self::Str => ir::Ty::Str,
         }
     }
 
     pub fn is_reference(&self) -> bool {
         matches!(
             self,
-            Self::Null | Self::Class(_) | Self::Iface(_) | Self::Array(_)
+            Self::Null | Self::Class(_) | Self::Iface(_) | Self::Array(_) | Self::Str
         )
     }
+}
+
+/// A value outside the island that its code reads or writes, which the entry passes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Global {
+    /// A variable.
+    Variable(SymbolId),
+    /// A static field of a class: the class and the name of the field.
+    Static(SymbolId, String),
 }
 
 /// A method or function signature.
@@ -74,6 +85,7 @@ pub struct Signature {
 
 /// A class of the source that the island uses.
 pub struct ClassInfo<'a> {
+    pub symbol: SymbolId,
     pub name: String,
     pub node: &'a Class<'a>,
     pub parent: Option<ir::ClassId>,
@@ -124,8 +136,9 @@ pub struct Island<'a, 's> {
     method_ids: HashMap<(ir::ClassId, String, bool), ir::FuncId>,
     pub signatures: Vec<Signature>,
     jobs: Vec<Job<'a>>,
-    /// The variables outside the island that its code reads, in the order of the IR.
-    pub globals: Vec<(SymbolId, T)>,
+    /// The values outside the island that its code reads or writes, in the order of the
+    /// IR.
+    pub globals: Vec<(Global, T)>,
     /// The method names that a dispatch calls.
     pub dispatched: BTreeSet<String>,
     pub uses_math: bool,
@@ -189,15 +202,28 @@ impl<'a, 's> Island<'a, 's> {
             .into_iter()
             .map(|function| function.ok_or_else(|| Reject("a function did not compile".into())))
             .collect::<Checked<Vec<_>>>()?;
-        let class_symbols = self.class_ids.into_keys().collect();
+        let class_symbols = self
+            .classes
+            .iter()
+            .map(|class| {
+                let keys = class.fields.iter().map(|(name, _)| name.clone()).collect();
+                (class.symbol, keys)
+            })
+            .collect();
+        let program = ir::Program {
+            classes,
+            functions,
+            entries: vec![entry],
+            globals: self.globals.iter().map(|(_, ty)| ty.ir()).collect(),
+        };
+        let written = written_globals(&program)
+            .into_iter()
+            .map(|index| self.globals[index as usize].0.clone())
+            .collect();
         Ok(Built {
-            program: ir::Program {
-                classes,
-                functions,
-                entries: vec![entry],
-                globals: self.globals.iter().map(|(_, ty)| ty.ir()).collect(),
-            },
-            globals: self.globals.into_iter().map(|(symbol, _)| symbol).collect(),
+            written,
+            program,
+            globals: self.globals.into_iter().map(|(global, _)| global).collect(),
             classes: class_symbols,
             uses_math: self.uses_math,
         })
@@ -363,6 +389,7 @@ impl<'a, 's> Island<'a, 's> {
         Ok(match ty {
             TSType::TSNumberKeyword(_) => T::Num,
             TSType::TSBooleanKeyword(_) => T::Bool,
+            TSType::TSStringKeyword(_) => T::Str,
             TSType::TSVoidKeyword(_) => T::Void,
             TSType::TSNullKeyword(_) | TSType::TSUndefinedKeyword(_) => T::Null,
             TSType::TSParenthesizedType(inner) => self.ty(&inner.type_annotation)?,
@@ -510,6 +537,7 @@ impl<'a, 's> Island<'a, 's> {
             .map_or_else(String::new, |id| id.name.to_string());
         let mut fields = parent.map_or_else(Vec::new, |p| self.classes[p as usize].fields.clone());
         self.classes.push(ClassInfo {
+            symbol,
             name,
             node: class,
             parent,
@@ -536,8 +564,10 @@ impl<'a, 's> Island<'a, 's> {
                     let PropertyKey::StaticIdentifier(key) = &property.key else {
                         return reject("a field with a computed or private name");
                     };
+                    // A static field is a property of the class, which the code reads as a
+                    // global.
                     if property.r#static {
-                        return reject("a static field");
+                        continue;
                     }
                     if property.declare || property.optional {
                         return reject("a declared or optional field");
@@ -548,7 +578,10 @@ impl<'a, 's> Island<'a, 's> {
                     }
                     let ty = match &property.type_annotation {
                         Some(annotation) => self.annotation(annotation)?,
-                        None => field_type(property.value.as_ref())?,
+                        None => match &property.value {
+                            Some(value) => self.initializer_type(value, 0)?,
+                            None => return reject("a field without a type"),
+                        },
                     };
                     if ty == T::Void {
                         return reject("a field of type void");
@@ -729,7 +762,7 @@ impl<'a, 's> Island<'a, 's> {
     /// Whether a value of type `from` may go where `to` is.
     pub fn fits(&mut self, from: &T, to: &T) -> bool {
         match (from, to) {
-            (T::Null, T::Class(_) | T::Iface(_) | T::Array(_)) => true,
+            (T::Null, T::Class(_) | T::Iface(_) | T::Array(_) | T::Str) => true,
             (T::Class(a), T::Class(b)) => self.is_subclass(*a, *b),
             (T::Class(class), T::Iface(iface)) => self.implements(*class, *iface),
             _ => from == to,
@@ -749,31 +782,198 @@ impl<'a, 's> Island<'a, 's> {
     }
 
     /// The index of a global, added on first use.
-    pub fn global(&mut self, symbol: SymbolId, ty: T) -> u32 {
+    pub fn global(&mut self, global: Global, ty: T) -> u32 {
         let index = self
             .globals
             .iter()
-            .position(|(found, _)| *found == symbol)
+            .position(|(found, _)| *found == global)
             .unwrap_or_else(|| {
-                self.globals.push((symbol, ty));
+                self.globals.push((global, ty));
                 self.globals.len() - 1
             });
         u32::try_from(index).unwrap_or(u32::MAX)
     }
+
+    /// The type of an initializer that has no annotation: a literal, a variable or a static
+    /// field of a known type, or a new instance of a class.
+    pub fn initializer_type(&mut self, init: &'a Expression<'a>, depth: u32) -> Checked<T> {
+        if depth > 8 {
+            return reject("an initializer whose type is unknown");
+        }
+        match init {
+            Expression::NumericLiteral(_) => Ok(T::Num),
+            Expression::BooleanLiteral(_) => Ok(T::Bool),
+            Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => Ok(T::Str),
+            Expression::ParenthesizedExpression(inner) => {
+                self.initializer_type(&inner.expression, depth + 1)
+            }
+            Expression::UnaryExpression(unary)
+                if matches!(unary.argument, Expression::NumericLiteral(_)) =>
+            {
+                Ok(T::Num)
+            }
+            Expression::Identifier(ident) => {
+                let symbol = self
+                    .semantic
+                    .scoping()
+                    .get_reference(ident.reference_id())
+                    .symbol_id()
+                    .ok_or_else(|| Reject(format!("the global {}", ident.name)))?;
+                let node = self.semantic.scoping().symbol_declaration(symbol);
+                let AstKind::VariableDeclarator(declarator) = self.semantic.nodes().kind(node)
+                else {
+                    return reject("an initializer that reads a value that is not a variable");
+                };
+                match (&declarator.type_annotation, &declarator.init) {
+                    (Some(annotation), _) => self.annotation(annotation),
+                    (None, Some(value)) => self.initializer_type(value, depth + 1),
+                    (None, None) => reject("an initializer that reads a variable without a type"),
+                }
+            }
+            Expression::StaticMemberExpression(member) => {
+                let Expression::Identifier(ident) = &member.object else {
+                    return reject("an initializer that reads a property");
+                };
+                let class = self.class_of_name(ident)?;
+                let property = self
+                    .static_field(class, member.property.name.as_str())
+                    .ok_or_else(|| Reject("an initializer that reads a property".into()))?;
+                match (&property.type_annotation, &property.value) {
+                    (Some(annotation), _) => self.annotation(annotation),
+                    (None, Some(value)) => self.initializer_type(value, depth + 1),
+                    (None, None) => reject("a static field without a type"),
+                }
+            }
+            Expression::NewExpression(new) if new.type_arguments.is_none() => {
+                let Expression::Identifier(ident) = &new.callee else {
+                    return reject("new of an expression");
+                };
+                Ok(T::Class(self.class_of_name(ident)?))
+            }
+            _ => reject("an initializer whose type is unknown"),
+        }
+    }
+
+    /// The class that a name refers to.
+    pub fn class_of_name(
+        &mut self,
+        ident: &oxc::ast::ast::IdentifierReference<'a>,
+    ) -> Checked<ir::ClassId> {
+        let symbol = self
+            .semantic
+            .scoping()
+            .get_reference(ident.reference_id())
+            .symbol_id()
+            .ok_or_else(|| Reject(format!("the global {}", ident.name)))?;
+        let node = self.semantic.scoping().symbol_declaration(symbol);
+        let AstKind::Class(class) = self.semantic.nodes().kind(node) else {
+            return reject(format!("{} that is not a class", ident.name));
+        };
+        self.class(symbol, class)
+    }
+
+    /// The static field `name` of the class: its initializer and type annotation.
+    pub fn static_field(
+        &self,
+        class: ir::ClassId,
+        name: &str,
+    ) -> Option<&'a oxc::ast::ast::PropertyDefinition<'a>> {
+        self.classes[class as usize]
+            .node
+            .body
+            .body
+            .iter()
+            .find_map(|element| match element {
+                ClassElement::PropertyDefinition(property)
+                    if property.r#static
+                        && matches!(&property.key, PropertyKey::StaticIdentifier(key) if key.name == name) =>
+                {
+                    Some(&**property)
+                }
+                _ => None,
+            })
+    }
 }
 
-/// The type of a field without an annotation, from its initializer.
-fn field_type(value: Option<&Expression<'_>>) -> Checked<T> {
-    match value {
-        Some(Expression::NumericLiteral(_)) => Ok(T::Num),
-        Some(Expression::BooleanLiteral(_)) => Ok(T::Bool),
-        Some(Expression::UnaryExpression(unary))
-            if matches!(unary.argument, Expression::NumericLiteral(_)) =>
-        {
-            Ok(T::Num)
+/// The globals that the code of a program writes, in order.
+fn written_globals(program: &ir::Program) -> BTreeSet<u32> {
+    fn visit_stmts(stmts: &[ir::Stmt], out: &mut BTreeSet<u32>) {
+        for stmt in stmts {
+            match stmt {
+                ir::Stmt::Expr(expr) | ir::Stmt::Return(Some(expr)) => visit(expr, out),
+                ir::Stmt::If(test, then, otherwise) => {
+                    visit(test, out);
+                    visit_stmts(then, out);
+                    visit_stmts(otherwise, out);
+                }
+                ir::Stmt::Loop {
+                    cond, body, update, ..
+                } => {
+                    if let Some(cond) = cond {
+                        visit(cond, out);
+                    }
+                    visit_stmts(body, out);
+                    visit_stmts(update, out);
+                }
+                _ => {}
+            }
         }
-        _ => reject("a field without a type"),
     }
+    fn visit(expr: &ir::Expr, out: &mut BTreeSet<u32>) {
+        use ir::Expr as E;
+        match expr {
+            E::SetGlobal(index, value) => {
+                out.insert(*index);
+                visit(value, out);
+            }
+            E::SetLocal(_, a) | E::Unary(_, a) | E::Field(a, _, _) | E::Length(a) | E::Shift(a) => {
+                visit(a, out)
+            }
+            E::Binary(_, a, b)
+            | E::And(a, b)
+            | E::Or(a, b)
+            | E::SetField(a, _, _, b)
+            | E::Index(a, b)
+            | E::Push(a, b)
+            | E::ArrayFill(_, a, b) => {
+                visit(a, out);
+                visit(b, out);
+            }
+            E::Cond(_, a, b, c) | E::SetIndex(a, b, c) => {
+                visit(a, out);
+                visit(b, out);
+                visit(c, out);
+            }
+            E::Call(_, items)
+            | E::New(_, _, items)
+            | E::Dispatch { args: items, .. }
+            | E::ArrayOf(_, items)
+            | E::Math(_, items)
+            | E::Seq(items)
+            | E::Text(items) => {
+                for item in items {
+                    visit(item, out);
+                }
+            }
+            E::Block(stmts, value) => {
+                visit_stmts(stmts, out);
+                visit(value, out);
+            }
+            E::Num(_)
+            | E::Bool(_)
+            | E::Null
+            | E::Undefined
+            | E::Str(_)
+            | E::Local(_)
+            | E::Global(_)
+            | E::Fail(..) => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    for function in &program.functions {
+        visit_stmts(&function.body, &mut out);
+    }
+    out
 }
 
 /// Whether a `return` with a value appears in the body, outside nested functions.
@@ -805,10 +1005,13 @@ fn returns_value(function: &Function<'_>) -> bool {
 /// An island, lowered.
 pub struct Built {
     pub program: ir::Program,
-    /// The variables whose values the entry passes, in the order of the IR globals.
-    pub globals: Vec<SymbolId>,
-    /// The classes whose definitions the entry checks.
-    pub classes: Vec<SymbolId>,
+    /// The values that the entry passes, in the order of the IR globals.
+    pub globals: Vec<Global>,
+    /// The globals that the code writes, in the order of their indexes.
+    pub written: Vec<Global>,
+    /// The classes of the island, in the order of their ids, with the keys of their
+    /// fields. The entry checks their definitions.
+    pub classes: Vec<(SymbolId, Vec<String>)>,
     pub uses_math: bool,
 }
 

@@ -13,7 +13,8 @@
 //!
 //! Each run allocates its objects in a [`Heap`]: chunks of memory that the run fills from
 //! the front and that are all free again when the run ends. A context, one per BEAM
-//! process, keeps its stack and its heap between runs.
+//! process, keeps its stack and its heap between runs. The objects that a run receives
+//! and gives back cross by copy (`crate::boundary`).
 
 #![allow(unsafe_code)]
 
@@ -21,6 +22,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use buoy_jit_ir::{Bail, Ty};
+
+use crate::boundary::{self, Item};
 use corosensei::stack::{DefaultStack, Stack};
 use corosensei::{Coroutine, CoroutineResult, Yielder};
 
@@ -71,18 +74,36 @@ pub enum Event {
     Bail(u8),
 }
 
-/// The value of an argument or a result.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A value outside the heap of a run: an argument, a global, a field of an item, or a
+/// result.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Num(f64),
     Bool(bool),
+    Null,
     Undefined,
+    /// A string, as its UTF-16 code units.
+    Str(Vec<u16>),
+    /// The object or the array at this index of the items.
+    Ref(u32),
+}
+
+/// What a run that ends gives back.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Finished {
+    pub result: Value,
+    /// The values of the globals that the code writes, in the order of
+    /// [`crate::codegen::Layout::written`].
+    pub written: Vec<Value>,
+    /// The items that the run received, as it leaves them, and then the objects and arrays
+    /// that the run made and that the globals it writes or the items reach.
+    pub items: Vec<Item>,
 }
 
 /// The end of a slice.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Step {
-    Done(Value),
+    Done(Box<Finished>),
     Bail(Bail),
     /// The slice is spent, and the run continues in the next one.
     Yield,
@@ -92,7 +113,7 @@ pub enum Step {
 /// chunk, between `heap_next` and `heap_end` of the frame, and calls [`buoy_alloc`] when
 /// the chunk is full.
 #[derive(Debug, Default)]
-struct Heap {
+pub struct Heap {
     chunks: Vec<Box<[u64]>>,
     /// The chunks in use by the run: the others wait for reuse.
     used: usize,
@@ -123,12 +144,33 @@ impl Heap {
     }
 }
 
+impl Frame {
+    /// The address of `words` new words of the heap, outside the machine code. `None` when
+    /// the run would pass its limit.
+    pub fn allocate_words(&mut self, words: usize) -> Option<*mut u64> {
+        let bytes = u64::try_from(words.checked_mul(8)?).ok()?;
+        let next = self.heap_next;
+        if let Some(end) = next.checked_add(bytes)
+            && end <= self.heap_end
+        {
+            self.heap_next = end;
+            return Some(next as *mut u64);
+        }
+        let (start, end) = self.heap.next_chunk(usize::try_from(bytes).ok()?)?;
+        self.heap_next = start + bytes;
+        self.heap_end = end;
+        Some(start as *mut u64)
+    }
+}
+
 /// A run between two slices.
 struct Running {
     coroutine: Coroutine<(), Event, (), DefaultStack>,
     /// Keeps the machine code alive while the run uses it.
     code: Arc<Code>,
-    result: Ty,
+    entry: usize,
+    /// The addresses of the items that the run received.
+    items: boundary::Imported,
 }
 
 // SAFETY: the coroutine runs only machine code of `Code` and the helpers of this module,
@@ -141,6 +183,9 @@ pub struct Context {
     stack: Option<DefaultStack>,
     frame: Box<Frame>,
     running: Option<Running>,
+    /// The words of the arguments and the globals of the run, which the machine code reads
+    /// and writes.
+    words: Vec<u64>,
 }
 
 // SAFETY: see `Running`; the frame holds raw pointers into the run, which only the thread
@@ -176,24 +221,40 @@ impl Context {
                 },
             }),
             running: None,
+            words: Vec::new(),
         }
     }
 
-    /// Starts the entry `entry` of `code` with `args` and `globals`, and runs its first
-    /// slice. `None` when a value does not have the type of its place, or a run is in
-    /// progress.
+    /// Starts the entry `entry` of `code` with `args`, `globals`, and the `items` that
+    /// they refer to, and runs its first slice. `None` when a value does not have the type
+    /// of its place, or a run is in progress.
     pub fn start(
         &mut self,
         code: &Arc<Code>,
         entry: usize,
         args: &[Value],
         globals: &[Value],
+        items: &[Item],
     ) -> Option<Step> {
         if self.running.is_some() {
             return None;
         }
         let function = code.entry(entry)?;
-        let words = function.arguments(args, globals)?;
+        let args = args.get(..function.params.len())?;
+        if globals.len() != function.globals.len() {
+            return None;
+        }
+        let frame = &mut *self.frame;
+        frame.fuel = FUEL;
+        frame.result = 0;
+        frame.heap.used = 0;
+        let (next, end) = frame.heap.next_chunk(0)?;
+        frame.heap_next = next;
+        frame.heap_end = end;
+        let places = function.params.iter().chain(&function.globals);
+        let values = args.iter().chain(globals);
+        let (words, imported) = boundary::import(frame, code.layout(), places.zip(values), items)?;
+        self.words = words;
         let stack = match self.stack.take() {
             Some(stack) => stack,
             None => DefaultStack::new(STACK_SIZE).ok()?,
@@ -201,28 +262,25 @@ impl Context {
         let limit = stack.limit().get() + STACK_MARGIN;
         let frame = &mut *self.frame;
         frame.stack_limit = limit as u64;
-        frame.fuel = FUEL;
-        frame.result = 0;
-        frame.heap.used = 0;
-        let (next, end) = frame.heap.next_chunk(0)?;
-        frame.heap_next = next;
-        frame.heap_end = end;
         let frame_ptr: *mut Frame = frame;
+        let words_ptr = self.words.as_ptr();
         let address = function.address;
         let coroutine = Coroutine::with_stack(stack, move |yielder: &Yielder<(), Event>, ()| {
-            // SAFETY: the frame outlives the coroutine, and `address` is an entry of the
-            // code that the run keeps alive, of the signature that `codegen` gives it.
+            // SAFETY: the frame and the words outlive the coroutine, and `address` is an
+            // entry of the code that the run keeps alive, of the signature that `codegen`
+            // gives it.
             unsafe {
                 (*frame_ptr).yielder = yielder;
                 let entry: extern "C" fn(*mut Frame, *const u64) =
                     std::mem::transmute::<*const u8, _>(address);
-                entry(frame_ptr, words.as_ptr());
+                entry(frame_ptr, words_ptr);
             }
         });
         self.running = Some(Running {
             coroutine,
             code: Arc::clone(code),
-            result: function.result.clone(),
+            entry,
+            items: imported,
         });
         Some(self.resume())
     }
@@ -240,20 +298,40 @@ impl Context {
                 Step::Bail(Bail::from_code(code).unwrap_or(Bail::Throw))
             }
             CoroutineResult::Return(()) => {
-                let result = self.read_result();
+                let finished = self.export();
                 self.finish();
-                Step::Done(result)
+                finished.map_or(Step::Bail(Bail::Memory), |finished| {
+                    Step::Done(Box::new(finished))
+                })
             }
         }
     }
 
-    fn read_result(&self) -> Value {
+    /// The result, the written globals, and the items of a run that returned, read from
+    /// its heap before the heap is reused.
+    fn export(&self) -> Option<Finished> {
+        let running = self.running.as_ref()?;
+        let function = running.code.entry(running.entry)?;
         let bits = self.frame.result;
-        match self.running.as_ref().map(|running| &running.result) {
-            Some(Ty::Num) => Value::Num(f64::from_bits(bits)),
-            Some(Ty::Bool) => Value::Bool(bits & 0xff != 0),
+        let result = match function.result {
+            Ty::Num => Value::Num(f64::from_bits(bits)),
+            Ty::Bool => Value::Bool(bits & 0xff != 0),
             _ => Value::Undefined,
-        }
+        };
+        let layout = running.code.layout();
+        let params = function.params.len();
+        let written = layout.written.iter().map(|&index| {
+            let index = index as usize;
+            (self.words[params + index], &function.globals[index])
+        });
+        // SAFETY: the run returned, so the words of the written globals and the fields of
+        // the items hold values of their types in its heap, which nothing has reused.
+        let (written, items) = unsafe { boundary::export(layout, written, &running.items) };
+        Some(Finished {
+            result,
+            written,
+            items,
+        })
     }
 
     /// Drops the run and keeps its stack for the next one.
@@ -370,6 +448,25 @@ pub extern "C" fn buoy_math(code: i32, a: f64, b: f64) -> f64 {
     }
 }
 
+/// Removes the first element of an array of references and returns it, or `undefined`
+/// when the array is empty.
+pub extern "C" fn buoy_shift(array: u64) -> u64 {
+    // SAFETY: `array` is a live array of the run's heap, with the layout of
+    // `codegen::array`, whose elements are words.
+    unsafe {
+        let header = array as *mut u64;
+        let length = usize::try_from(*header.add(1)).unwrap_or(0);
+        if length == 0 {
+            return 1;
+        }
+        let data = *header.add(3) as *mut u64;
+        let first = data.read();
+        std::ptr::copy(data.add(1), data, length - 1);
+        *header.add(1) = (length - 1) as u64;
+        first
+    }
+}
+
 /// Moves the elements of an array to a block of twice the capacity.
 pub extern "C" fn buoy_grow(frame: *mut Frame, array: u64) {
     // SAFETY: `array` is a live array of the run's heap, with the layout of
@@ -396,7 +493,7 @@ pub extern "C" fn buoy_grow(frame: *mut Frame, array: u64) {
 /// # Safety
 ///
 /// `frame` must be the frame of a running run.
-unsafe fn allocate(frame: *mut Frame, bytes: u64) -> u64 {
+pub unsafe fn allocate(frame: *mut Frame, bytes: u64) -> u64 {
     // SAFETY: as the caller promises.
     unsafe {
         let next = (*frame).heap_next;

@@ -1,16 +1,19 @@
 //! The compiler side of the native tier (section 17.10 of the contract).
 //!
 //! An island is a function whose parameters and result are numbers or booleans and whose
-//! whole call graph is typed code that this module lowers: numbers, booleans, instances of
-//! the classes of the module, and arrays of those. Its code writes no variable outside
-//! itself and calls nothing outside the island, so a run of it changes nothing that any
-//! other code can see, except through its result. The reference lowering starts such a
-//! function with `buoy_jit:enter/4`, which runs the machine code when the arguments
-//! have their types, and else runs the Erlang code that it always emits too.
+//! whole call graph is typed code that this module lowers: numbers, booleans, strings,
+//! instances of the classes of the module, and arrays of those. Its code calls nothing
+//! outside the island. It may read and write variables outside itself and the objects
+//! that they hold, and read the static fields of its classes: the entry passes their
+//! values in, and a run that returns writes the variables and the objects back, so a run
+//! changes what other code can see only as the Erlang code would. The reference lowering
+//! starts such a function with `buoy_jit:enter/4`, which runs the machine code when the
+//! values have their types, and else runs the Erlang code that it always emits too.
 //!
-//! The entry checks at run time what the compiler cannot know: the type of each argument
-//! and of each variable outside the island that the code reads, and that no code replaced
-//! a method of a class or a property of the prototypes the island relies on.
+//! The entry checks at run time what the compiler cannot know: the type of each argument,
+//! of each value outside the island that the code uses, and of every object that those
+//! reach, and that no code replaced a method of a class or a property of the prototypes
+//! the island relies on.
 
 mod body;
 mod island;
@@ -22,6 +25,7 @@ use oxc::ast::ast::{Expression, Function};
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{Semantic, SymbolId};
 
+pub use island::Global;
 use island::Island;
 
 /// The islands of a module.
@@ -40,10 +44,13 @@ pub struct Plan {
 pub struct Entry {
     /// The index of the island, the argument of `'$jit'/1`.
     pub index: usize,
-    /// The variables whose values the entry passes to the machine code, in order.
-    pub globals: Vec<SymbolId>,
-    /// The classes whose definitions must be unchanged.
-    pub classes: Vec<SymbolId>,
+    /// The values that the entry passes to the machine code, in order.
+    pub globals: Vec<Global>,
+    /// The variables that a run that returns writes back, in order.
+    pub written: Vec<Global>,
+    /// The classes of the island in the order of their ids, with the keys of their
+    /// fields. Their definitions must be unchanged.
+    pub classes: Vec<(SymbolId, Vec<String>)>,
     /// Whether the code calls `Math`, which must be the intrinsic, unchanged.
     pub uses_math: bool,
 }
@@ -78,7 +85,8 @@ pub fn plan(semantic: &Semantic<'_>) -> Plan {
                 if trace {
                     eprintln!("buoy jit: {name} is an island");
                 }
-                plan.sealed.extend(built.classes.iter().copied());
+                plan.sealed
+                    .extend(built.classes.iter().map(|(symbol, _)| *symbol));
                 let index = plan.programs.len();
                 plan.programs.push(built.program.encode());
                 plan.entries.insert(
@@ -86,6 +94,7 @@ pub fn plan(semantic: &Semantic<'_>) -> Plan {
                     Entry {
                         index,
                         globals: built.globals,
+                        written: built.written,
                         classes: built.classes,
                         uses_math: built.uses_math,
                     },

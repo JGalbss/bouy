@@ -8,9 +8,14 @@
 //! code with Cranelift.
 //!
 //! Every value has one of the types of [`Ty`]. A number is an IEEE 754 double, as in
-//! JavaScript. An object or an array is a reference into the native heap of the run;
-//! `null` and `undefined` are two reference values that point nowhere. An object stores
-//! the id of its class, so a call through an interface dispatches on it.
+//! JavaScript. An object, an array, or a string is a reference into the native heap of
+//! the run; `null` and `undefined` are two reference values that point nowhere. An object
+//! stores the id of its class, so a call through an interface dispatches on it.
+//!
+//! The objects, arrays, and strings that the globals of an entry hold cross the boundary
+//! by copy: the run starts with copies of them in its heap, and when it ends, the caller
+//! writes the fields of each copy back to its original and makes the objects that the
+//! run made and left reachable from them or from the globals it wrote.
 
 mod codec;
 
@@ -32,8 +37,9 @@ pub struct Program {
     /// a number, a boolean, or nothing.
     pub entries: Vec<FuncId>,
     /// The types of the values that the caller passes after the arguments of an entry:
-    /// the variables outside the island that its code reads, and never writes. A run
-    /// cannot see them change, because nothing else runs in the process during it.
+    /// the variables outside the island that its code reads or writes. A run cannot see
+    /// them change, because nothing else runs in the process during it. A run that ends
+    /// gives back the values of the globals that [`Expr::SetGlobal`] writes.
     pub globals: Vec<Ty>,
 }
 
@@ -70,7 +76,7 @@ pub struct Function {
 }
 
 /// The type of a value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ty {
     /// No value: the result of a function that returns nothing.
     Void,
@@ -84,6 +90,8 @@ pub enum Ty {
     Any,
     /// An array of elements of the type.
     Array(Box<Ty>),
+    /// A string: a sequence of UTF-16 code units.
+    Str,
 }
 
 impl Ty {
@@ -92,7 +100,7 @@ impl Ty {
     pub fn is_reference(&self) -> bool {
         matches!(
             self,
-            Self::Null | Self::Object(_) | Self::Any | Self::Array(_)
+            Self::Null | Self::Object(_) | Self::Any | Self::Array(_) | Self::Str
         )
     }
 }
@@ -174,9 +182,13 @@ pub enum Expr {
     Bool(bool),
     Null,
     Undefined,
+    /// A string literal, as its UTF-16 code units.
+    Str(Vec<u16>),
     Local(LocalId),
     /// The value of [`Program::globals`] at the index.
     Global(u32),
+    /// Stores the value in the global at the index, and is the value.
+    SetGlobal(u32, Box<Expr>),
     /// Stores the value in the local, and is the value.
     SetLocal(LocalId, Box<Expr>),
     Unary(Unary, Box<Expr>),
@@ -190,7 +202,7 @@ pub enum Expr {
     /// bail with [`Bail::Nullish`].
     Field(Box<Expr>, ClassId, u32),
     SetField(Box<Expr>, ClassId, u32, Box<Expr>),
-    /// The length of an array.
+    /// The length of an array or a string.
     Length(Box<Expr>),
     /// An element of an array. An index outside the elements reads `undefined` from an
     /// array of references and bails from any other array.
@@ -199,6 +211,17 @@ pub enum Expr {
     SetIndex(Box<Expr>, Box<Expr>, Box<Expr>),
     /// Appends an element, and is the new length.
     Push(Box<Expr>, Box<Expr>),
+    /// Removes the first element of an array of references and is it, or `undefined` when
+    /// the array is empty.
+    Shift(Box<Expr>),
+    /// The string of the concatenation of the parts: numbers, booleans, strings, and
+    /// `null` or `undefined`, each converted as `ToString` does.
+    Text(Vec<Expr>),
+    /// Bails with the reason. The type is that of the place where it stands.
+    Fail(Bail, Ty),
+    /// Runs the statements, which neither return nor leave a loop around the block, and
+    /// is the value of the expression.
+    Block(Vec<Stmt>, Box<Expr>),
     Call(FuncId, Vec<Expr>),
     /// Calls the method of the class of the first argument.
     Dispatch {
@@ -225,7 +248,7 @@ pub enum Unary {
     Not,
     /// `~x`.
     BitNot,
-    /// The truth value of a number or a reference (`ToBoolean`).
+    /// The truth value of a number, a string, or a reference (`ToBoolean`).
     Truthy,
     /// Whether a reference is `null` or `undefined`.
     Nullish,
@@ -249,7 +272,8 @@ pub enum Binary {
     Le,
     Gt,
     Ge,
-    /// `===` on two numbers, two booleans, or two references.
+    /// `===` on two numbers, two booleans, two strings by their code units, or two
+    /// references.
     Eq,
     Ne,
 }

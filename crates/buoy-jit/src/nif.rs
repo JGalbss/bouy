@@ -68,6 +68,13 @@ unsafe extern "C" {
     fn enif_make_badarg(env: *mut RawEnv) -> Term;
     fn enif_make_new_binary(env: *mut RawEnv, size: usize, term: *mut Term) -> *mut u8;
     fn enif_make_tuple_from_array(env: *mut RawEnv, array: *const Term, count: c_uint) -> Term;
+    fn enif_make_list_from_array(env: *mut RawEnv, array: *const Term, count: c_uint) -> Term;
+    fn enif_get_tuple(
+        env: *mut RawEnv,
+        term: Term,
+        arity: *mut c_int,
+        array: *mut *const Term,
+    ) -> c_int;
     fn enif_get_long(env: *mut RawEnv, term: Term, value: *mut c_long) -> c_int;
     fn enif_get_double(env: *mut RawEnv, term: Term, value: *mut f64) -> c_int;
     fn enif_get_list_cell(env: *mut RawEnv, term: Term, head: *mut Term, tail: *mut Term) -> c_int;
@@ -151,6 +158,28 @@ impl Env {
         let count = c_uint::try_from(items.len()).unwrap_or(0);
         // SAFETY: the env is valid, and `items` holds `count` terms of this env.
         unsafe { enif_make_tuple_from_array(self.0, items.as_ptr(), count) }
+    }
+
+    pub fn list_of(self, items: &[Term]) -> Term {
+        let count = c_uint::try_from(items.len()).unwrap_or(0);
+        // SAFETY: the env is valid, and `items` holds `count` terms of this env.
+        unsafe { enif_make_list_from_array(self.0, items.as_ptr(), count) }
+    }
+
+    /// The elements of a tuple, which live as long as the term.
+    pub fn get_tuple<'a>(self, term: Term) -> Option<&'a [Term]> {
+        let mut arity: c_int = 0;
+        let mut array: *const Term = ptr::null();
+        // SAFETY: the env and the term are valid; on success `array` holds `arity` terms
+        // that live as long as the tuple.
+        unsafe {
+            (enif_get_tuple(self.0, term, &raw mut arity, &raw mut array) != 0).then_some(())?;
+            let count = usize::try_from(arity).ok()?;
+            if count == 0 || array.is_null() {
+                return Some(&[]);
+            }
+            Some(std::slice::from_raw_parts(array, count))
+        }
     }
 
     pub fn get_long(self, term: Term) -> Option<i64> {

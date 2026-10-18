@@ -19,7 +19,10 @@ use oxc::ast::ast::{
 };
 use oxc::semantic::{ScopeId, SymbolId};
 
-use super::island::{Checked, Island, Job, Owner, Reject, Signature, T, reject, statements};
+use super::island::{
+    Checked, Global, Island, Job, Owner, Reject, Signature, T, reject, statements,
+};
+use crate::reference::string_units;
 
 /// The fields that a constructor has not yet assigned, while `this` must not escape.
 struct Pending {
@@ -507,13 +510,7 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
     /// The truth value of an expression, as `if` and `while` test it.
     fn condition(&mut self, expression: &'a Expression<'a>) -> Checked<ir::Expr> {
         let (value, ty) = self.expr(expression)?;
-        Ok(match ty {
-            T::Bool => value,
-            T::Num | T::Class(_) | T::Iface(_) | T::Array(_) | T::Null => {
-                ir::Expr::Unary(Unary::Truthy, Box::new(value))
-            }
-            T::Void => return reject("a test of a void value"),
-        })
+        truthy(value, &ty)
     }
 
     /// An expression where a value of type `ty` goes.
@@ -536,6 +533,15 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             Expression::NumericLiteral(number) => (ir::Expr::Num(number.value), T::Num),
             Expression::BooleanLiteral(flag) => (ir::Expr::Bool(flag.value), T::Bool),
             Expression::NullLiteral(_) => (ir::Expr::Null, T::Null),
+            Expression::StringLiteral(literal) => (
+                ir::Expr::Str(string_units(
+                    literal.value.as_str(),
+                    literal.lone_surrogates,
+                )),
+                T::Str,
+            ),
+            Expression::TemplateLiteral(template) => (self.template(template)?, T::Str),
+            Expression::ChainExpression(chain) => self.chain(chain)?,
             Expression::ParenthesizedExpression(inner) => self.expr(&inner.expression)?,
             Expression::TSNonNullExpression(inner) => self.expr(&inner.expression)?,
             Expression::TSSatisfiesExpression(inner) => self.expr(&inner.expression)?,
@@ -649,7 +655,7 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             return reject("a variable read before its declaration");
         }
         let ty = self.global_type(symbol)?;
-        let index = self.island.global(symbol, ty.clone());
+        let index = self.island.global(Global::Variable(symbol), ty.clone());
         // The entry still reads a constant, which throws before its declaration runs.
         if ty == T::Num
             && let Some(value) = constant(self.island, symbol, 0)
@@ -671,15 +677,89 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
         if !matches!(declarator.id, BindingPattern::BindingIdentifier(_)) {
             return reject("a destructured variable outside the island");
         }
-        let ty = match (&declarator.type_annotation, &declarator.init) {
-            (Some(annotation), _) => self.island.annotation(annotation)?,
-            (None, Some(init)) => primitive_type(init)?,
-            (None, None) => return reject("a variable outside the island without a type"),
-        };
-        if !matches!(ty, T::Num | T::Bool) {
-            return reject("a variable outside the island that is not a number or a boolean");
+        match (&declarator.type_annotation, &declarator.init) {
+            (Some(annotation), _) => self.island.annotation(annotation),
+            (None, Some(init)) => self.initializer_type(init),
+            (None, None) => reject("a variable outside the island without a type"),
         }
-        Ok(ty)
+    }
+
+    /// The type of the initializer of a value outside the island: a literal, a variable or
+    /// a static field of a known type, a new instance of a class, or a number expression.
+    /// The entry checks the value.
+    fn initializer_type(&mut self, init: &'a Expression<'a>) -> Checked<T> {
+        self.island
+            .initializer_type(init, 0)
+            .or_else(|_| primitive_type(init))
+    }
+
+    /// `` `a${b}c` ``: the string of the parts.
+    fn template(&mut self, template: &'a oxc::ast::ast::TemplateLiteral<'a>) -> Checked<ir::Expr> {
+        let mut parts = Vec::new();
+        for (index, quasi) in template.quasis.iter().enumerate() {
+            let cooked = quasi
+                .value
+                .cooked
+                .as_ref()
+                .ok_or_else(|| Reject("a template with an invalid escape".into()))?;
+            if !cooked.is_empty() {
+                parts.push(ir::Expr::Str(string_units(
+                    cooked.as_str(),
+                    quasi.lone_surrogates,
+                )));
+            }
+            if let Some(expression) = template.expressions.get(index) {
+                parts.push(self.text_part(expression)?);
+            }
+        }
+        Ok(ir::Expr::Text(parts))
+    }
+
+    /// An operand of a string concatenation: a primitive, which `ToString` converts.
+    fn text_part(&mut self, expression: &'a Expression<'a>) -> Checked<ir::Expr> {
+        let (value, ty) = self.expr(expression)?;
+        if !matches!(ty, T::Num | T::Bool | T::Str | T::Null) {
+            return reject("a string of a value that is not a primitive");
+        }
+        Ok(value)
+    }
+
+    /// `a?.b`: `undefined` when `a` is `null` or `undefined`, else the field. A field of a
+    /// number or a boolean has no `undefined`, so there the run bails, and the Erlang tier
+    /// computes the result.
+    fn chain(&mut self, chain: &'a oxc::ast::ast::ChainExpression<'a>) -> Checked<(ir::Expr, T)> {
+        use oxc::ast::ast::ChainElement;
+        let ChainElement::StaticMemberExpression(member) = &chain.expression else {
+            return reject("an optional chain other than a?.b");
+        };
+        if !member.optional {
+            return reject("an optional chain other than a?.b");
+        }
+        let (object, ty) = self.object(&member.object)?;
+        let T::Class(class) = ty else {
+            return reject("?. on a value that is not an object");
+        };
+        let (index, field_ty) = self.field(class, member.property.name.as_str())?;
+        let held = self.local(ty);
+        let read = ir::Expr::Field(Box::new(ir::Expr::Local(held)), class, index);
+        let missing = if field_ty.is_reference() {
+            ir::Expr::Undefined
+        } else {
+            ir::Expr::Fail(Bail::Undefined, field_ty.ir())
+        };
+        let test = ir::Expr::Unary(
+            Unary::Nullish,
+            Box::new(ir::Expr::SetLocal(held, Box::new(object))),
+        );
+        Ok((
+            ir::Expr::Cond(
+                field_ty.ir(),
+                Box::new(test),
+                Box::new(missing),
+                Box::new(read),
+            ),
+            field_ty,
+        ))
     }
 
     fn this_value(&mut self) -> Checked<(ir::Expr, T)> {
@@ -744,15 +824,37 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             };
             return Ok((ir::Expr::Num(value), T::Num));
         }
+        if let Some(class) = self.class_name(&member.object)? {
+            return self.static_field(class, name);
+        }
         let (object, ty) = self.object(&member.object)?;
         match ty {
-            T::Array(_) if name == "length" => Ok((ir::Expr::Length(Box::new(object)), T::Num)),
+            T::Array(_) | T::Str if name == "length" => {
+                Ok((ir::Expr::Length(Box::new(object)), T::Num))
+            }
             T::Class(class) => {
                 let (index, field_ty) = self.field(class, name)?;
                 Ok((ir::Expr::Field(Box::new(object), class, index), field_ty))
             }
             _ => reject(format!("the property {name}")),
         }
+    }
+
+    /// A static field of a class, which the entry reads as a global.
+    fn static_field(&mut self, class: ir::ClassId, name: &str) -> Checked<(ir::Expr, T)> {
+        let property = self
+            .island
+            .static_field(class, name)
+            .ok_or_else(|| Reject(format!("the static member {name} that is not a field")))?;
+        let ty = match (&property.type_annotation, &property.value) {
+            (Some(annotation), _) => self.island.annotation(annotation)?,
+            (None, Some(value)) => self.initializer_type(value)?,
+            (None, None) => return reject("a static field without a type"),
+        };
+        let symbol = self.island.classes[class as usize].symbol;
+        let global = Global::Static(symbol, name.to_owned());
+        let index = self.island.global(global, ty.clone());
+        Ok((ir::Expr::Global(index), ty))
     }
 
     /// The index and the type of the field `name` in the layout of the class.
@@ -883,6 +985,12 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             Expression::ThisExpression(_) => self.this_value()?,
             other => self.expr(other)?,
         };
+        if let T::Array(element) = &ty
+            && name != "push"
+        {
+            let element = (**element).clone();
+            return self.array_method(object, element, name, call);
+        }
         let signature = match &ty {
             T::Array(element) if name == "push" => {
                 let [arg] = call.arguments.as_slice() else {
@@ -1152,6 +1260,9 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             BinaryOperator::GreaterEqualThan => comparison(Op::Ge),
             _ => None,
         };
+        if operator == BinaryOperator::Addition {
+            return self.addition(left, right);
+        }
         if let Some((op, ty)) = numeric {
             let a = self.expr_to(left, &T::Num)?;
             let b = self.expr_to(right, &T::Num)?;
@@ -1188,6 +1299,292 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
         Ok((value, T::Bool))
     }
 
+    /// `a + b`: a number sum, or the concatenation of the strings of both when either is a
+    /// string.
+    fn addition(
+        &mut self,
+        left: &'a Expression<'a>,
+        right: &'a Expression<'a>,
+    ) -> Checked<(ir::Expr, T)> {
+        let (a, a_ty) = self.expr(left)?;
+        let (b, b_ty) = self.expr(right)?;
+        if a_ty == T::Str || b_ty == T::Str {
+            let primitive = |ty: &T| matches!(ty, T::Num | T::Bool | T::Str | T::Null);
+            if !primitive(&a_ty) || !primitive(&b_ty) {
+                return reject("a string of a value that is not a primitive");
+            }
+            let mut parts = Vec::new();
+            for part in [a, b] {
+                match part {
+                    ir::Expr::Text(inner) => parts.extend(inner),
+                    other => parts.push(other),
+                }
+            }
+            return Ok((ir::Expr::Text(parts), T::Str));
+        }
+        if a_ty != T::Num || b_ty != T::Num {
+            return reject(format!("a sum of {a_ty:?} and {b_ty:?}"));
+        }
+        Ok((ir::Expr::Binary(Op::Add, Box::new(a), Box::new(b)), T::Num))
+    }
+
+    /// A method of an array other than `push`: `shift`, `indexOf`, `includes`, and the
+    /// methods that take a callback. The callback must be an arrow function with an
+    /// expression body, which the loop runs inline for each element in order, as the
+    /// method would call it.
+    fn array_method(
+        &mut self,
+        array: ir::Expr,
+        element: T,
+        name: &str,
+        call: &'a CallExpression<'a>,
+    ) -> Checked<(ir::Expr, T)> {
+        if name == "shift" {
+            if !call.arguments.is_empty() || !element.is_reference() {
+                return reject("shift with arguments or of numbers or booleans");
+            }
+            return Ok((ir::Expr::Shift(Box::new(array)), element));
+        }
+        if matches!(name, "indexOf" | "includes") {
+            return self.search(array, element, name, call);
+        }
+        let [Argument::ArrowFunctionExpression(arrow)] = call.arguments.as_slice() else {
+            return reject(format!("{name} without an arrow function"));
+        };
+        let Some(body) = arrow.body.as_expression() else {
+            return reject("a callback with a block body");
+        };
+        if arrow.r#async || arrow.params.rest.is_some() || arrow.params.items.len() > 3 {
+            return reject("an async callback or one with a rest parameter");
+        }
+        let array_ty = T::Array(Box::new(element.clone()));
+        let held = self.local(array_ty.clone());
+        let index = self.local(T::Num);
+        let item = self.local(element.clone());
+        let mut setup = vec![set(
+            item,
+            ir::Expr::Index(Box::new(local(held)), Box::new(local(index))),
+        )];
+        let reads = [local(item), local(index), local(held)];
+        let types = [element.clone(), T::Num, array_ty];
+        for ((param, read), ty) in arrow.params.items.iter().zip(reads).zip(types) {
+            let BindingPattern::BindingIdentifier(id) = &param.pattern else {
+                return reject("a destructured callback parameter");
+            };
+            if param.initializer.is_some() || param.optional {
+                return reject("a callback parameter with a default");
+            }
+            if let Some(annotation) = &param.type_annotation {
+                let annotated = self.island.annotation(annotation)?;
+                if !self.island.fits(&ty, &annotated) {
+                    return reject("a callback parameter of another type");
+                }
+            }
+            let bound = self.declare(id.symbol_id(), ty);
+            setup.push(set(bound, read));
+        }
+        let (value, value_ty) = self.expr(body)?;
+        let (before, each, after, result) =
+            self.callback_steps(name, &element, item, index, value, &value_ty)?;
+        setup.extend(each);
+        // An element that the callback removed is no longer there to visit. `map` keeps
+        // a hole in its place, which its array of results cannot hold, so it bails.
+        let missing = if name == "map" {
+            vec![ir::Stmt::Bail(Bail::Index)]
+        } else {
+            Vec::new()
+        };
+        let mut stmts = vec![set(held, array)];
+        stmts.extend(before);
+        let length = self.local(T::Num);
+        stmts.push(set(length, ir::Expr::Length(Box::new(local(held)))));
+        stmts.push(set(index, ir::Expr::Num(0.0)));
+        let present = ir::Expr::Binary(
+            Op::Lt,
+            Box::new(local(index)),
+            Box::new(ir::Expr::Length(Box::new(local(held)))),
+        );
+        stmts.push(ir::Stmt::Loop {
+            cond: Some(ir::Expr::Binary(
+                Op::Lt,
+                Box::new(local(index)),
+                Box::new(local(length)),
+            )),
+            body: vec![ir::Stmt::If(present, setup, missing)],
+            update: vec![set(
+                index,
+                ir::Expr::Binary(
+                    Op::Add,
+                    Box::new(local(index)),
+                    Box::new(ir::Expr::Num(1.0)),
+                ),
+            )],
+            test_after: false,
+        });
+        stmts.extend(after);
+        Ok((ir::Expr::Block(stmts, Box::new(result.0)), result.1))
+    }
+
+    /// What a method with a callback does before its loop, with each value of the callback,
+    /// and after its loop, and its result.
+    fn callback_steps(
+        &mut self,
+        name: &str,
+        element: &T,
+        item: u32,
+        index: u32,
+        value: ir::Expr,
+        value_ty: &T,
+    ) -> Checked<(Vec<ir::Stmt>, Vec<ir::Stmt>, Vec<ir::Stmt>, (ir::Expr, T))> {
+        let found = |found: Vec<ir::Stmt>, test: ir::Expr| {
+            let mut then = found;
+            then.push(ir::Stmt::Break(0));
+            vec![ir::Stmt::If(test, then, Vec::new())]
+        };
+        Ok(match name {
+            "forEach" => (
+                Vec::new(),
+                vec![ir::Stmt::Expr(value)],
+                Vec::new(),
+                (ir::Expr::Undefined, T::Void),
+            ),
+            "filter" | "map" => {
+                let (kept, pushed, test) = if name == "filter" {
+                    (element.clone(), local(item), Some(truthy(value, value_ty)?))
+                } else {
+                    if matches!(value_ty, T::Null | T::Void) {
+                        return reject("map to null or void");
+                    }
+                    (value_ty.clone(), value, None)
+                };
+                let out = self.local(T::Array(Box::new(kept.clone())));
+                let push = ir::Stmt::Expr(ir::Expr::Push(Box::new(local(out)), Box::new(pushed)));
+                let each = match test {
+                    Some(test) => vec![ir::Stmt::If(test, vec![push], Vec::new())],
+                    None => vec![push],
+                };
+                (
+                    vec![set(out, ir::Expr::ArrayOf(kept.ir(), Vec::new()))],
+                    each,
+                    Vec::new(),
+                    (local(out), T::Array(Box::new(kept))),
+                )
+            }
+            "some" | "every" => {
+                let some = name == "some";
+                let result = self.local(T::Bool);
+                let test = truthy(value, value_ty)?;
+                let test = if some {
+                    test
+                } else {
+                    ir::Expr::Unary(Unary::Not, Box::new(test))
+                };
+                (
+                    vec![set(result, ir::Expr::Bool(!some))],
+                    found(vec![set(result, ir::Expr::Bool(some))], test),
+                    Vec::new(),
+                    (local(result), T::Bool),
+                )
+            }
+            "find" if element.is_reference() => {
+                let result = self.local(element.clone());
+                (
+                    vec![set(result, ir::Expr::Undefined)],
+                    found(vec![set(result, local(item))], truthy(value, value_ty)?),
+                    Vec::new(),
+                    (local(result), element.clone()),
+                )
+            }
+            "findIndex" => {
+                let result = self.local(T::Num);
+                (
+                    vec![set(result, ir::Expr::Num(-1.0))],
+                    found(vec![set(result, local(index))], truthy(value, value_ty)?),
+                    Vec::new(),
+                    (local(result), T::Num),
+                )
+            }
+            _ => return reject(format!("the array method {name}")),
+        })
+    }
+
+    /// `indexOf(v)` and `includes(v)`: `===`, and SameValueZero, which finds NaN, for
+    /// `includes`.
+    fn search(
+        &mut self,
+        array: ir::Expr,
+        element: T,
+        name: &str,
+        call: &'a CallExpression<'a>,
+    ) -> Checked<(ir::Expr, T)> {
+        let [argument] = call.arguments.as_slice() else {
+            return reject(format!("{name} with a start index"));
+        };
+        let wanted = argument
+            .as_expression()
+            .ok_or_else(|| Reject("a spread argument".into()))?;
+        let (wanted, wanted_ty) = self.expr(wanted)?;
+        let comparable =
+            wanted_ty == element || (wanted_ty.is_reference() && element.is_reference());
+        if !comparable || element == T::Str {
+            return reject(format!("{name} of a value of another type or of a string"));
+        }
+        let held = self.local(T::Array(Box::new(element.clone())));
+        let target = self.local(wanted_ty);
+        let index = self.local(T::Num);
+        let result = self.local(T::Num);
+        let item = ir::Expr::Index(Box::new(local(held)), Box::new(local(index)));
+        let mut equal = ir::Expr::Binary(Op::Eq, Box::new(item.clone()), Box::new(local(target)));
+        if name == "includes" && element == T::Num {
+            let nan = |value: ir::Expr| {
+                ir::Expr::Binary(Op::Ne, Box::new(value.clone()), Box::new(value))
+            };
+            equal = ir::Expr::Or(
+                Box::new(equal),
+                Box::new(ir::Expr::And(
+                    Box::new(nan(item)),
+                    Box::new(nan(local(target))),
+                )),
+            );
+        }
+        let stmts = vec![
+            set(held, array),
+            set(target, wanted),
+            set(result, ir::Expr::Num(-1.0)),
+            set(index, ir::Expr::Num(0.0)),
+            ir::Stmt::Loop {
+                cond: Some(ir::Expr::Binary(
+                    Op::Lt,
+                    Box::new(local(index)),
+                    Box::new(ir::Expr::Length(Box::new(local(held)))),
+                )),
+                body: vec![ir::Stmt::If(
+                    equal,
+                    vec![set(result, local(index)), ir::Stmt::Break(0)],
+                    Vec::new(),
+                )],
+                update: vec![set(
+                    index,
+                    ir::Expr::Binary(
+                        Op::Add,
+                        Box::new(local(index)),
+                        Box::new(ir::Expr::Num(1.0)),
+                    ),
+                )],
+                test_after: false,
+            },
+        ];
+        if name == "includes" {
+            let found = ir::Expr::Binary(
+                Op::Ge,
+                Box::new(local(result)),
+                Box::new(ir::Expr::Num(0.0)),
+            );
+            return Ok((ir::Expr::Block(stmts, Box::new(found)), T::Bool));
+        }
+        Ok((ir::Expr::Block(stmts, Box::new(local(result))), T::Num))
+    }
+
     /// A place that an assignment or an update writes.
     fn place(&mut self, target: &'a SimpleAssignmentTarget<'a>) -> Checked<Place> {
         match target {
@@ -1195,15 +1592,21 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
                 let symbol = self
                     .symbol(ident)
                     .ok_or_else(|| Reject(format!("a write of the global {}", ident.name)))?;
-                let local = *self
-                    .names
-                    .get(&symbol)
-                    .ok_or_else(|| Reject("a write of a variable outside the function".into()))?;
                 let scoping = self.island.semantic.scoping();
                 if scoping.symbol_flags(symbol).is_const_variable() {
                     return reject("a write of a const");
                 }
-                Ok(Place::Local(local, self.locals[local as usize].clone()))
+                if let Some(local) = self.names.get(&symbol) {
+                    return Ok(Place::Local(*local, self.locals[*local as usize].clone()));
+                }
+                if self.is_inside(symbol) {
+                    return reject("a write of a variable before its declaration");
+                }
+                // A variable outside the island: the entry passes its value in, and a run
+                // that returns writes the new value back.
+                let ty = self.global_type(symbol)?;
+                let index = self.island.global(Global::Variable(symbol), ty.clone());
+                Ok(Place::Global(index, ty))
             }
             SimpleAssignmentTarget::StaticMemberExpression(member) => {
                 let (object, ty) = self.object(&member.object)?;
@@ -1312,6 +1715,9 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             Place::Local(local, _) => {
                 ir::Expr::SetLocal(local, Box::new(make(ir::Expr::Local(local))))
             }
+            Place::Global(index, _) => {
+                ir::Expr::SetGlobal(index, Box::new(make(ir::Expr::Global(index))))
+            }
             Place::Field(object, class, index, _) => {
                 let held = self.local(T::Class(class));
                 let read = ir::Expr::Field(Box::new(ir::Expr::Local(held)), class, index);
@@ -1376,6 +1782,7 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
 /// A place that a write goes to.
 enum Place {
     Local(u32, T),
+    Global(u32, T),
     Field(ir::Expr, ir::ClassId, u32, T),
     Element(ir::Expr, ir::Expr, T),
 }
@@ -1383,13 +1790,17 @@ enum Place {
 impl Place {
     fn ty(&self) -> &T {
         match self {
-            Self::Local(_, ty) | Self::Field(_, _, _, ty) | Self::Element(_, _, ty) => ty,
+            Self::Local(_, ty)
+            | Self::Global(_, ty)
+            | Self::Field(_, _, _, ty)
+            | Self::Element(_, _, ty) => ty,
         }
     }
 
     fn store(self, value: ir::Expr) -> ir::Expr {
         match self {
             Self::Local(local, _) => ir::Expr::SetLocal(local, Box::new(value)),
+            Self::Global(index, _) => ir::Expr::SetGlobal(index, Box::new(value)),
             Self::Field(object, class, index, _) => {
                 ir::Expr::SetField(Box::new(object), class, index, Box::new(value))
             }
@@ -1398,6 +1809,25 @@ impl Place {
             }
         }
     }
+}
+
+/// `ToBoolean` of a value of the type.
+fn truthy(value: ir::Expr, ty: &T) -> Checked<ir::Expr> {
+    Ok(match ty {
+        T::Bool => value,
+        T::Num | T::Class(_) | T::Iface(_) | T::Array(_) | T::Null | T::Str => {
+            ir::Expr::Unary(Unary::Truthy, Box::new(value))
+        }
+        T::Void => return reject("a test of a void value"),
+    })
+}
+
+fn local(index: u32) -> ir::Expr {
+    ir::Expr::Local(index)
+}
+
+fn set(local: u32, value: ir::Expr) -> ir::Stmt {
+    ir::Stmt::Expr(ir::Expr::SetLocal(local, Box::new(value)))
 }
 
 fn number(index: usize) -> ir::Expr {
