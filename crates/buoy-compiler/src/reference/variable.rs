@@ -159,6 +159,16 @@ impl<'a> Lowerer<'a, '_> {
         self.assign_initialized(symbol, value, span)
     }
 
+    /// Whether a write of `symbol` at `span` only binds a new version of an Erlang
+    /// variable: a mutable local that no closure, block function, or TDZ check sees.
+    pub fn is_versioned(&self, symbol: SymbolId, span: Span) -> bool {
+        matches!(self.frame.env.get(&symbol), Some(Local::Var(_)))
+            && !self.early.contains(&symbol)
+            && !self.class_bindings.contains(&symbol)
+            && !self.semantic.scoping().symbol_flags(symbol).is_const_variable()
+            && self.block_cell(symbol, span).is_none()
+    }
+
     fn assign_initialized(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
         if let Some(cell) = self.block_cell(symbol, span) {
             let value = self.bind(value);

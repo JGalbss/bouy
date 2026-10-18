@@ -79,3 +79,21 @@ function varsReadEarly(): unknown[] {
 }
 console.log(varsReadEarly());
 console.log("block functions", blockFunctions);
+function shortCircuitWrites(): unknown[] {
+  const off = false;
+  const on = true;
+  let named: unknown = null;
+  let unnamed: unknown = null;
+  named ??= function (): void {};
+  (unnamed) ??= function (): void {};
+  const outcomes: unknown[] = [];
+  for (const attempt of [() => (off &&= true), () => (on ||= false), () => (on &&= false)]) {
+    try {
+      outcomes.push(attempt());
+    } catch (error) {
+      outcomes.push((error as Error).name);
+    }
+  }
+  return [...outcomes, (named as () => void).name, (unnamed as () => void).name];
+}
+console.log(shortCircuitWrites());

@@ -7,3 +7,4 @@ TypeError: Cannot read properties of undefined (reading 'call') false
 TypeError: Assignment to constant variable.
 [ 5, 10 ]
 block functions undefined,inner,replaced,number,undefined,function
+[ false, true, 'TypeError', 'named', '' ]
