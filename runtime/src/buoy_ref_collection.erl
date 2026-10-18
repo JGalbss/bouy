@@ -4,12 +4,18 @@
 %% The slots of a Map or a Set are {Index, Order}. Index maps each key to
 %% {Seq, Value} for a Map and to Seq for a Set: Seq is the position of the
 %% entry in insertion order, and each new entry gets the next one. Order is
-%% {Next, Tree}, where the gb_tree maps each live Seq to its key. An
-%% iterator, forEach, and the Set methods remember the last Seq they
-%% visited and ask the tree for the next one, so they see the entries that
-%% a callback adds and skip the ones it deletes, as the specification's
-%% list of entries with empty slots does. The structured clone and the
-%% console read only Index.
+%% {Next, Count, Gen, Front, Back}, a log of {Seq, Key} in insertion order:
+%% Front holds the older entries oldest first, Back the newer ones newest
+%% first, so an insert is one cons. A delete leaves its entry in the log;
+%% readers skip each entry whose key no longer has that Seq in Index, and
+%% the log is rebuilt from the live entries when more than half of its
+%% Count entries are dead. Gen counts the rebuilds of Front. This is the
+%% ordered hash table of V8 and of JavaScriptCore: entries in insertion
+%% order with deleted markers, compacted later. A Seq never changes, so an
+%% iterator, forEach, and the Set methods remember the last Seq they passed
+%% and see the entries that a callback adds and skip the ones it deletes,
+%% as the specification's list of entries with empty slots does. The
+%% structured clone and the console read only Index.
 -module(buoy_ref_collection).
 
 -include("buoy_ref.hrl").
@@ -110,7 +116,7 @@ fill(Class, C, Iterable) ->
                                                        {Index0#{K => Entry}, [{Next0, K} | Order0], Next0 + 1}
                                                end
                                        end, {#{}, [], 0}, Entries),
-    buoy_heap:set_slots(C, {Index, {Next, gb_trees:from_orddict(lists:reverse(Order))}}).
+    buoy_heap:set_slots(C, {Index, {Next, Next, 0, [], Order}}).
 
 collect(Class, State, Acc) ->
     case buoy_ref_iterator:step(State) of
@@ -128,7 +134,7 @@ collect(Class, State, Acc) ->
             collect(Class, State1, [Entry | Acc])
     end.
 
-empty() -> {#{}, {0, gb_trees:empty()}}.
+empty() -> {#{}, {0, 0, 0, [], []}}.
 
 add_all(map, C, Adder, Iterable) ->
     each_value(Iterable, fun(Entry) ->
@@ -179,38 +185,42 @@ close(_) -> ok.
 key(F) when is_float(F), F == 0 -> 0;
 key(K) -> K.
 
-%% The slots, with the order tree built for a collection that a structured
-%% clone made.
+%% The slots, with the order built and stored for a collection that a
+%% structured clone or the deserializer made with an index alone.
 slots(C) ->
     case buoy_heap:slots(C) of
-        {Index, {_, _} = Order} -> {Index, Order};
-        {Index, _} -> {Index, rebuild(Index)}
+        {_, {_, _, _, _, _}} = Slots -> Slots;
+        {Index, _} ->
+            Slots = {Index, rebuild(Index)},
+            buoy_heap:set_slots(C, Slots),
+            Slots
     end.
 
+index(C) -> element(1, buoy_heap:slots(C)).
+
 rebuild(Index) ->
-    Pairs = lists:sort([{seq_of(E), K} || K := E <- Index]),
-    Next = case Pairs of
+    Log = lists:sort([{seq_of(E), K} || K := E <- Index]),
+    Next = case Log of
         [] -> 0;
-        _ -> element(1, lists:last(Pairs)) + 1
+        _ -> element(1, lists:last(Log)) + 1
     end,
-    {Next, gb_trees:from_orddict(Pairs)}.
+    {Next, length(Log), 0, Log, []}.
 
 seq_of({Seq, _}) -> Seq;
 seq_of(Seq) -> Seq.
 
-%% The entry after the position Seq: {Seq1, Key}, or none.
-next_after(C, Seq) ->
-    {_, {_, Tree}} = slots(C),
-    case gb_trees:next(gb_trees:iterator_from(Seq + 1, Tree)) of
-        {Seq1, K, _} -> {Seq1, K};
-        none -> none
+is_live(Index, Seq, K) ->
+    case Index of
+        #{K := Seq} -> true;
+        #{K := {Seq, _}} -> true;
+        _ -> false
     end.
 
 put_entry(C, K, Entry) ->
-    {Index, {Next, Tree}} = slots(C),
+    {Index, {Next, Count, Gen, Front, Back} = Order} = slots(C),
     case Index of
-        #{K := Old} -> buoy_heap:set_slots(C, {Index#{K := replace(Old, Entry)}, {Next, Tree}});
-        _ -> buoy_heap:set_slots(C, {Index#{K => entry(Next, Entry)}, {Next + 1, gb_trees:insert(Next, K, Tree)}})
+        #{K := Old} -> buoy_heap:set_slots(C, {Index#{K := replace(Old, Entry)}, Order});
+        _ -> buoy_heap:set_slots(C, {Index#{K => entry(Next, Entry)}, {Next + 1, Count + 1, Gen, Front, [{Next, K} | Back]}})
     end.
 
 replace({Seq, _}, {value, V}) -> {Seq, V};
@@ -220,54 +230,122 @@ entry(Seq, {value, V}) -> {Seq, V};
 entry(Seq, member) -> Seq.
 
 remove_entry(C, K) ->
-    {Index, {Next, Tree}} = slots(C),
+    {Index, {Next, Count, Gen, Front, Back}} = slots(C),
     case Index of
-        #{K := E} ->
-            buoy_heap:set_slots(C, {maps:remove(K, Index), {Next, gb_trees:delete(seq_of(E), Tree)}}),
+        #{K := _} ->
+            Index1 = maps:remove(K, Index),
+            {Front1, Dropped} = drop_dead(Index1, Front, 0),
+            buoy_heap:set_slots(C, {Index1, compact(Index1, {Next, Count - Dropped, Gen, Front1, Back})}),
             true;
         _ -> false
     end.
 
-clear(C) ->
-    {_, {Next, _}} = slots(C),
-    buoy_heap:set_slots(C, {#{}, {Next, gb_trees:empty()}}).
+%% Drops the dead entries at the head of a Front, so that a new cursor
+%% starts at a live entry: a queue that deletes its oldest key stays O(1).
+drop_dead(Index, [{Seq, K} | Rest] = Front, N) ->
+    case is_live(Index, Seq, K) of
+        true -> {Front, N};
+        false -> drop_dead(Index, Rest, N + 1)
+    end;
+drop_dead(_, [], N) -> {[], N}.
 
-has_key(C, K) ->
-    {Index, _} = slots(C),
-    is_map_key(K, Index).
+%% Rebuilds the log from the live entries once more than half of it is dead.
+compact(Index, {Next, Count, Gen, Front, Back}) when Count > 2 * map_size(Index) + 16 ->
+    Live = [E || {Seq, K} = E <- Front ++ lists:reverse(Back), is_live(Index, Seq, K)],
+    {Next, map_size(Index), Gen + 1, Live, []};
+compact(_, Order) -> Order.
+
+clear(C) ->
+    {_, {Next, _, Gen, _, _}} = slots(C),
+    buoy_heap:set_slots(C, {#{}, {Next, 0, Gen + 1, [], []}}).
+
+has_key(C, K) -> is_map_key(K, index(C)).
 
 lookup(C, K) ->
-    {Index, _} = slots(C),
-    case Index of
+    case index(C) of
         #{K := {_, V}} -> {ok, V};
         _ -> error
     end.
 
-%% Calls F with each live key in order, seeing the changes F makes.
-each_key(C, F) -> each_key(C, F, -1).
+%% A cursor walks the live entries in order and sees the changes made
+%% meanwhile: {Last, Buffer, Gen}. Last is the Seq of the last entry that it
+%% took from a buffer, and Buffer holds the entries that it has yet to check.
+%% Gen is the generation of the Front whose rest it took last, so once it
+%% has passed that Front, it reads only the new entries of Back.
+cursor() -> {-1, [], none}.
 
-each_key(C, F, Seq) ->
-    case next_after(C, Seq) of
-        none -> ok;
-        {Seq1, K} ->
-            F(K),
-            each_key(C, F, Seq1)
+%% The next live entry and the cursor after it: {Key, Entry, Cursor}, or none.
+next_entry(C, {Last, Buffer, Gen}) ->
+    next_entry(C, index(C), Last, Buffer, Gen).
+
+next_entry(C, Index, _Last, [{Seq, K} | Rest], Gen) ->
+    case Index of
+        #{K := Seq} -> {K, Seq, {Seq, Rest, Gen}};
+        #{K := {Seq, _} = E} -> {K, E, {Seq, Rest, Gen}};
+        _ -> next_entry(C, Index, Seq, Rest, Gen)
+    end;
+next_entry(C, Index, Last, [], Gen) ->
+    case refill(C, Last, Gen) of
+        {Buffer, Gen1} -> next_entry(C, Index, Last, Buffer, Gen1);
+        none -> none
     end.
 
-%% Like each_key, but stops with Result when F returns {stop, Result}.
-find_key(C, F, Seq, Default) ->
-    case next_after(C, Seq) of
+%% The entries after Last that a cursor has not seen: {Buffer, Gen}, or none.
+%% A Front made of the whole Back is stored, so later cursors start at once.
+refill(C, Last, Seen) ->
+    {Index, {Next, Count, Gen, Front, Back}} = slots(C),
+    case {Seen, Front, Back} of
+        {Gen, _, _} -> after_in_back(Last, Back, Gen);
+        {_, [], [_ | _]} ->
+            {Front1, Dropped} = drop_dead(Index, lists:reverse(Back), 0),
+            buoy_heap:set_slots(C, {Index, {Next, Count - Dropped, Gen + 1, Front1, []}}),
+            refill(C, Last, Seen);
+        _ ->
+            case drop_through(Last, Front) of
+                [] -> after_in_back(Last, Back, Gen);
+                Rest -> {Rest, Gen}
+            end
+    end.
+
+drop_through(Last, [{Seq, _} | Rest]) when Seq =< Last -> drop_through(Last, Rest);
+drop_through(_, Front) -> Front.
+
+after_in_back(Last, Back, Gen) ->
+    case take_after(Last, Back, []) of
+        [] -> none;
+        Buffer -> {Buffer, Gen}
+    end.
+
+take_after(Last, [{Seq, _} = E | Rest], Acc) when Seq > Last -> take_after(Last, Rest, [E | Acc]);
+take_after(_, _, Acc) -> Acc.
+
+%% Calls F with each live key and its entry in order, seeing the changes F makes.
+each_key(C, F) -> each_key(C, F, cursor()).
+
+each_key(C, F, Cursor) ->
+    case next_entry(C, Cursor) of
+        none -> ok;
+        {K, E, Cursor1} ->
+            F(K, E),
+            each_key(C, F, Cursor1)
+    end.
+
+%% Like each_key with F(K), but stops with Result when F returns {stop, Result}.
+find_key(C, F, Default) -> find_key(C, F, cursor(), Default).
+
+find_key(C, F, Cursor, Default) ->
+    case next_entry(C, Cursor) of
         none -> Default;
-        {Seq1, K} ->
+        {K, _, Cursor1} ->
             case F(K) of
                 {stop, Result} -> Result;
-                continue -> find_key(C, F, Seq1, Default)
+                continue -> find_key(C, F, Cursor1, Default)
             end
     end.
 
 keys(C) ->
-    {_, {_, Tree}} = slots(C),
-    gb_trees:values(Tree).
+    {Index, {_, _, _, Front, Back}} = slots(C),
+    [K || {Seq, K} <- Front ++ lists:reverse(Back), is_live(Index, Seq, K)].
 
 %%% Methods
 
@@ -313,12 +391,7 @@ map_proto(<<"getOrInsertComputed">>, M, Args) -> get_or_insert_computed(M, arg(1
 map_proto(<<"forEach">>, M, Args) ->
     F = callable(arg(1, Args)),
     This = arg(2, Args),
-    each_key(M, fun(K) ->
-                        case lookup(M, K) of
-                            {ok, V} -> buoy_ref:call(F, This, [V, K, M]);
-                            error -> ok
-                        end
-                end),
+    each_key(M, fun(K, {_, V}) -> buoy_ref:call(F, This, [V, K, M]) end),
     undefined;
 map_proto(<<"keys">>, M, _) -> iterator(map_iterator, M, keys);
 map_proto(<<"values">>, M, _) -> iterator(map_iterator, M, values);
@@ -355,7 +428,7 @@ set_proto(<<"clear">>, S, _) ->
 set_proto(<<"forEach">>, S, Args) ->
     F = callable(arg(1, Args)),
     This = arg(2, Args),
-    each_key(S, fun(K) -> buoy_ref:call(F, This, [K, K, S]) end),
+    each_key(S, fun(K, _) -> buoy_ref:call(F, This, [K, K, S]) end),
     undefined;
 set_proto(<<"values">>, S, _) -> iterator(set_iterator, S, values);
 set_proto(<<"keys">>, S, _) -> iterator(set_iterator, S, values);
@@ -376,7 +449,7 @@ set_proto(<<"intersection">>, S, Args) ->
                                     false -> ok
                                 end,
                                 continue
-                        end, -1, ok);
+                        end, ok);
         false ->
             other_keys(Other, fun(K) ->
                                       case has_key(S, K) of
@@ -421,7 +494,7 @@ set_proto(<<"isSubsetOf">>, S, Args) ->
                                     true -> continue;
                                     false -> {stop, false}
                                 end
-                        end, -1, true)
+                        end, true)
     end;
 set_proto(<<"isSupersetOf">>, S, Args) ->
     Other = set_record(arg(1, Args)),
@@ -444,7 +517,7 @@ set_proto(<<"isDisjointFrom">>, S, Args) ->
                                     true -> {stop, false};
                                     false -> continue
                                 end
-                        end, -1, true);
+                        end, true);
         false ->
             other_keys(Other, fun(K) ->
                                       case has_key(S, K) of
@@ -508,27 +581,22 @@ key_steps(Iterator, Next, F, Default) ->
 
 %%% Iterators
 
+%% The slots of an iterator are done, or {Collection, Kind, Cursor}.
 iterator(Class, C, Kind) ->
     Proto = case Class of
         map_iterator -> {'$o', 'MapIterator.prototype'};
         set_iterator -> {'$o', 'SetIterator.prototype'}
     end,
-    buoy_heap:new_exotic(Class, Proto, {C, -1, Kind}).
+    buoy_heap:new_exotic(Class, Proto, {C, Kind, cursor()}).
 
 %% The entries that a Map or Set iterator has yet to give, without moving
 %% it, for the console: {Label, Items}, each item a value or a [K, V] list.
 -spec remaining(term()) -> {binary(), list()}.
 remaining(It) ->
     Class = buoy_heap:class_of(It),
-    Kind = case buoy_heap:slots(It) of
-        done -> values;
-        {_, _, K} -> K;
-        {_, _, K, _} -> K
-    end,
-    Items = case buoy_heap:slots(It) of
-        done -> [];
-        {C, Seq, _} -> collect_after(C, Seq, Class, Kind, []);
-        {C, Seq, _, _} -> collect_after(C, Seq, Class, Kind, [])
+    {Kind, Items} = case buoy_heap:slots(It) of
+        done -> {values, []};
+        {C, K, Cursor} -> {K, collect_after(C, Cursor, Class, K, [])}
     end,
     Label = case {Class, Kind} of
         {map_iterator, entries} -> <<"Map Entries">>;
@@ -538,18 +606,18 @@ remaining(It) ->
     end,
     {Label, Items}.
 
-collect_after(C, Seq, Class, Kind, Acc) ->
-    case next_after(C, Seq) of
+collect_after(C, Cursor, Class, Kind, Acc) ->
+    case next_entry(C, Cursor) of
         none -> lists:reverse(Acc);
-        {Seq1, K} ->
-            Item = case {Class, Kind} of
-                {_, keys} -> K;
-                {set_iterator, values} -> K;
-                {set_iterator, entries} -> [K, K];
-                {map_iterator, values} -> element(2, lookup(C, K));
-                {map_iterator, entries} -> [K, element(2, lookup(C, K))]
+        {K, E, Cursor1} ->
+            Item = case {Class, Kind, E} of
+                {_, keys, _} -> K;
+                {set_iterator, values, _} -> K;
+                {set_iterator, entries, _} -> [K, K];
+                {map_iterator, values, {_, V}} -> V;
+                {map_iterator, entries, {_, V}} -> [K, V]
             end,
-            collect_after(C, Seq1, Class, Kind, [Item | Acc])
+            collect_after(C, Cursor1, Class, Kind, [Item | Acc])
     end.
 
 iterator_next(It, Class) ->
@@ -562,51 +630,25 @@ iterator_next(It, Class) ->
 
 %% The next value of a Map or Set iterator: {value, V}, or done.
 -spec step(term()) -> {value, term()} | done.
-%%
-%% The iterator buffers the next entries of the order tree, and checks that
-%% each is still live before it gives it: a deleted entry is gone from the
-%% index, and a key set again after a delete has a new position, which a
-%% later refill finds.
 step(It) ->
     case buoy_heap:slots(It) of
         done -> done;
-        {C, Seq, Kind} -> step(It, C, Seq, Kind, []);
-        {C, Seq, Kind, Buffer} -> step(It, C, Seq, Kind, Buffer)
+        {C, Kind, Cursor} ->
+            case next_entry(C, Cursor) of
+                {K, E, Cursor1} ->
+                    buoy_heap:set_slots(It, {C, Kind, Cursor1}),
+                    {value, item(buoy_heap:class_of(It), Kind, K, E)};
+                none ->
+                    buoy_heap:set_slots(It, done),
+                    done
+            end
     end.
 
-step(It, C, Seq, Kind, [{Seq1, K} | Rest]) ->
-    {Index, _} = slots(C),
-    case maps:find(K, Index) of
-        {ok, Entry} when Entry =:= Seq1; element(1, Entry) =:= Seq1 ->
-            buoy_heap:set_slots(It, {C, Seq1, Kind, Rest}),
-            {value, case {buoy_heap:class_of(It), Kind} of
-                        {_, keys} -> K;
-                        {set_iterator, values} -> K;
-                        {set_iterator, entries} -> buoy_heap:new_array([K, K]);
-                        {map_iterator, values} -> element(2, Entry);
-                        {map_iterator, entries} -> buoy_heap:new_array([K, element(2, Entry)])
-                    end};
-        _ -> step(It, C, Seq, Kind, Rest)
-    end;
-step(It, C, Seq, Kind, []) ->
-    case entries_after(C, Seq, 64) of
-        [] ->
-            buoy_heap:set_slots(It, done),
-            done;
-        Buffer -> step(It, C, Seq, Kind, Buffer)
-    end.
-
-%% Up to Count entries {Seq, Key} after the position Seq, in order.
-entries_after(C, Seq, Count) ->
-    {_, {_, Tree}} = slots(C),
-    take(gb_trees:iterator_from(Seq + 1, Tree), Count).
-
-take(_Iter, 0) -> [];
-take(Iter, Count) ->
-    case gb_trees:next(Iter) of
-        {Seq, K, Iter1} -> [{Seq, K} | take(Iter1, Count - 1)];
-        none -> []
-    end.
+item(_, keys, K, _) -> K;
+item(set_iterator, values, K, _) -> K;
+item(set_iterator, entries, K, _) -> buoy_heap:new_array([K, K]);
+item(map_iterator, values, _, {_, V}) -> V;
+item(map_iterator, entries, K, {_, V}) -> buoy_heap:new_array([K, V]).
 
 %%% Map.groupBy
 
