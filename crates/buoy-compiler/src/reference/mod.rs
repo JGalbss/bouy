@@ -86,7 +86,7 @@ pub fn lower_unit(
             functions: linking.json_functions(),
         }));
     }
-    lower(linking, None, &[])
+    lower(linking, None, &[], false)
 }
 
 /// What the code of a direct eval may use from the place of its call (ECMA-262 §19.2.1.1,
@@ -246,17 +246,24 @@ pub fn lower_eval(
             )]);
         }
     }
-    lower_one_script(path, name, source, Some((strict, context)), scope)
+    lower_one_script(path, name, source, Some((strict, context)), scope, false)
 }
 
 /// Lowers a classic script of its own (`compile_script` of the crate), named `name`.
-pub fn lower_script(source: String, name: &str) -> Result<String, Vec<Diagnostic>> {
+/// `interruptible` code checks the deadline of a run at each turn of a loop
+/// (`buoy_ref_eval:interrupt/0`), as `vm.Script` with a `timeout` needs.
+pub fn lower_script(
+    source: String,
+    name: &str,
+    interruptible: bool,
+) -> Result<String, Vec<Diagnostic>> {
     lower_one_script(
         std::path::PathBuf::from("script.js"),
         name,
         source,
         None,
         &[],
+        interruptible,
     )
 }
 
@@ -267,6 +274,7 @@ fn lower_one_script(
     source: String,
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
+    interruptible: bool,
 ) -> Result<String, Vec<Diagnostic>> {
     let graph = Graph {
         units: vec![graph::Unit {
@@ -287,7 +295,7 @@ fn lower_one_script(
         link: &link,
         entry: false,
     };
-    lower(linking, eval, scope)
+    lower(linking, eval, scope, interruptible)
 }
 
 /// The names that sloppy eval code declares in its variable environment: its top-level
@@ -339,6 +347,7 @@ fn lower(
     linking: Linking<'_>,
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
+    interruptible: bool,
 ) -> Result<String, Vec<Diagnostic>> {
     let module = linking.unit();
     let context = eval.map(|(_, context)| context.clone()).unwrap_or_default();
@@ -389,6 +398,7 @@ fn lower(
                 using_stacks: Vec::new(),
                 hoisted: std::collections::HashSet::new(),
                 linking,
+                interruptible,
             };
             let functions = if module.kind == Kind::CommonJs {
                 lowerer.commonjs_functions(program, &module.source)

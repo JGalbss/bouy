@@ -282,8 +282,12 @@ pub fn compile_eval(
 /// Compiles a classic script at run time (reference semantics) into the Erlang module
 /// `name`, as a host's `evalScript` runs it: its `'$body'/0` declares the script's
 /// top-level names in the global environment of the current realm and runs its code.
-pub fn compile_eval_script(source: &str, name: &str) -> Result<String, Vec<Diagnostic>> {
-    reference::lower_script(source.to_owned(), name)
+pub fn compile_eval_script(
+    source: &str,
+    name: &str,
+    interruptible: bool,
+) -> Result<String, Vec<Diagnostic>> {
+    reference::lower_script(source.to_owned(), name, interruptible)
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

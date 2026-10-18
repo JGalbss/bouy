@@ -78,4 +78,4 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 - Child processes start through `/bin/bash`, which connects their piped stdin, stderr, and extra pipes as loopback sockets (`/dev/tcp`). Handles cannot pass over an IPC channel yet, and `process.execve` cannot replace the VM.
 - `process.title` keeps the value that a program sets, but the OS process keeps its name. Signals that OTP cannot catch, such as SIGINT, reach `process.on` only when the program sends them to itself.
 - The `tcp_wrap`, `udp_wrap`, `tty_wrap` handle, `cares_wrap`, `url_pattern`, `worker`, and `webstorage` bindings are stubs: net, dgram, an interactive terminal, dns, URLPattern, worker_threads, and Web Storage, which needs SQLite, do not work yet.
-- `node:vm` contexts copy the sandbox's properties into the context's realm before a run and back after it, where V8 intercepts each access.
+- A `node:vm` context is a realm whose global proxy intercepts the sandbox, as V8's named property callbacks do. A `timeout` compiles the script again to check its deadline at each turn of a loop, so a loop in a function that the script calls but did not define runs on.

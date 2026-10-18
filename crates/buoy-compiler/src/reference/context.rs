@@ -255,6 +255,8 @@ pub struct Lowerer<'a, 'c> {
     pub hoisted: std::collections::HashSet<SymbolId>,
     /// What the module's imports and exports refer to.
     pub linking: Linking<'c>,
+    /// Whether each turn of a loop checks the deadline of the run (`lower_script`).
+    pub interruptible: bool,
 }
 
 impl Lowerer<'_, '_> {

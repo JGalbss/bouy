@@ -24,10 +24,12 @@
 
 -include("buoy_ref.hrl").
 
+-define(GLOBAL_PROXY, '$buoy_global_proxy').
+
 -export([install/0, global/1, set_global/3, has_binding/1, set_resolved/3, not_defined/1, declare_globals/3, declare_script/4, delete_global/1, constructor/2]).
 -export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
 -export([function_record/2, proto_for/2]).
--export([create/0, function_realm/1, realm_fun/2, callee/1, localize/2, current/1, global_object/0]).
+-export([create/0, script_function/1, global_object/1, set_global_proxy/2, function_realm/1, realm_fun/2, callee/1, localize/2, current/1, global_object/0]).
 -export([intrinsics/0, globals/0, method/4]).
 
 families() ->
@@ -86,6 +88,22 @@ install() ->
 
 %%% Realms
 
+%% The function of a declaration of a script that a host evaluates, such as
+%% vm.Script: in another realm, a new function of that realm each time the
+%% script runs, as V8 makes one, and the module's own function in realm 0.
+-spec script_function(term()) -> term().
+script_function({'$f', Id, Fun} = F) ->
+    case {erlang:get(?REALM_KEY), Id} of
+        {undefined, _} -> F;
+        {_, {fn, _, Name, Length}} -> buoy_ref_class:method(Fun, Name, Length, normal);
+        {_, {fn, _, Name, Length, sloppy}} -> buoy_ref_class:method(Fun, Name, Length, sloppy);
+        {_, {async, _, Name, Length}} -> buoy_ref_class:method(Fun, Name, Length, async);
+        {_, {fn_nt, Module, Name, Length}} ->
+            Fun3 = erlang:make_fun(Module, binary_to_atom(buoy_ref_string:to_utf8(Name), utf8), 3),
+            buoy_ref_class:method(Fun3, Name, Length, normal_nt);
+        {N, _} -> {'$f', Id, realm_fun(N, Fun)}
+    end.
+
 %% A new realm in this process: its global object.
 -spec create() -> term().
 create() ->
@@ -96,9 +114,31 @@ create() ->
     erlang:put('$buoy_realms', N),
     buoy_heap:intrinsic(N, 'globalThis').
 
-%% The global object of the current realm.
+%% The global object of the current realm: the global proxy that
+%% set_global_proxy/2 gave the realm, such as a node:vm context's, else the
+%% realm's own global object.
 -spec global_object() -> term().
-global_object() -> buoy_heap:intrinsic('globalThis').
+global_object() ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> {'$o', 'globalThis'};
+        N -> global_object(N)
+    end.
+
+%% The global object that the code of the realm N sees.
+-spec global_object(non_neg_integer()) -> term().
+global_object(0) -> {'$o', 'globalThis'};
+global_object(N) ->
+    case erlang:get({?GLOBAL_PROXY, N}) of
+        undefined -> {'$o', {N, 'globalThis'}};
+        Proxy -> Proxy
+    end.
+
+%% Makes Proxy the global object that the code of the realm N sees, as the
+%% global proxy of V8 stands in front of the global object of a context.
+-spec set_global_proxy(pos_integer(), term()) -> ok.
+set_global_proxy(N, Proxy) ->
+    erlang:put({?GLOBAL_PROXY, N}, Proxy),
+    ok.
 
 %% A record of realm 0 for the realm N: each intrinsic in it becomes its twin
 %% of realm N, and each builtin function and construct fun runs in realm N.
@@ -228,7 +268,7 @@ not_defined(Name) ->
 has_binding(Name) ->
     case erlang:get(lexical_key()) of
         #{Name := _} -> true;
-        _ -> buoy_heap:has(global_object(), Name)
+        _ -> global_has(global_object(), Name)
     end.
 
 %% `name = value` in strict code for a name that no scope declares, which
@@ -240,10 +280,16 @@ set_resolved(Name, _Value, false) -> not_defined(Name).
 
 global_slow(Name) ->
     G = global_object(),
-    case buoy_heap:has(G, Name) of
+    case global_has(G, Name) of
         true -> buoy_heap:get(G, Name);
         false -> not_defined(Name)
     end.
+
+%% HasBinding of the global object: a global proxy may find a name that its
+%% HasProperty does not, as a node:vm context finds the names up its sandbox's
+%% prototype chain.
+global_has({'$o', Id} = G, Name) when is_integer(Id) -> buoy_ref_proxy:has_binding(G, Name);
+global_has(G, Name) -> buoy_heap:has(G, Name).
 
 %% `name = value` for an identifier that no scope declares: a binding of the
 %% global declarative record, else the global object. Strict code throws a
@@ -258,7 +304,7 @@ set_global(Name, Value, Mode) ->
 
 set_global_object(Name, Value, Mode) ->
     G = global_object(),
-    case Mode =:= sloppy orelse buoy_heap:has(G, Name) of
+    case Mode =:= sloppy orelse global_has(G, Name) of
         true -> set_in_mode(G, Name, Value, Mode);
         false -> not_defined(Name)
     end.

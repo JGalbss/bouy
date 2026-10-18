@@ -14,11 +14,13 @@
 
 -include("buoy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, warm_up/0, load_module/4]).
+-export([interrupt/0, run_until/2]).
 
 -import(buoy_ref, [type_error/1]).
 
 -define(GLOBAL, buoy_ref_realm:global_object()).
+-define(DEADLINE, '$buoy_deadline').
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() -> [].
@@ -152,13 +154,46 @@ script(Source) ->
 %% The module of a classic script, which '$body'/0 evaluates; a SyntaxError
 %% of the source throws here, as vm.Script compiles before it runs.
 -spec compile_script(term()) -> module().
-compile_script(Source) ->
+compile_script(Source) -> compile_script(Source, []).
+
+%% compile_script/1 with more options of `buoy compile-eval`, such as
+%% --interruptible.
+-spec compile_script(term(), [string()]) -> module().
+compile_script(Source, Options) ->
     Text = buoy_ref:to_string(Source),
-    Flags = ["--script"],
+    Flags = ["--script" | Options],
     Key = erlang:md5(term_to_binary({Text, Flags})),
     case cached(Key) of
         {ok, M} -> M;
         none -> compile(Text, Flags, Key)
+    end.
+
+%% Runs Fun until the deadline Ms milliseconds from now: interruptible code
+%% (compile_script/2) checks it at each turn of a loop and ends the run with
+%% timeout, which no JavaScript catch takes. A run inside another keeps the
+%% earlier deadline.
+-spec run_until(non_neg_integer(), fun(() -> term())) -> {ok, term()} | timeout.
+run_until(Ms, Fun) ->
+    Outer = erlang:get(?DEADLINE),
+    Deadline = erlang:monotonic_time(millisecond) + Ms,
+    erlang:put(?DEADLINE, case Outer of undefined -> Deadline; _ -> min(Outer, Deadline) end),
+    try {ok, Fun()}
+    catch throw:{?DEADLINE, D} when Outer =:= undefined; D < Outer -> timeout
+    after
+        case Outer of
+            undefined -> erlang:erase(?DEADLINE);
+            _ -> erlang:put(?DEADLINE, Outer)
+        end
+    end.
+
+%% The check of interruptible code at each turn of a loop.
+-spec interrupt() -> ok.
+interrupt() ->
+    case erlang:get(?DEADLINE) of
+        undefined -> ok;
+        Deadline ->
+            erlang:monotonic_time(millisecond) < Deadline orelse erlang:throw({?DEADLINE, Deadline}),
+            ok
     end.
 
 %% Flags are the options of `buoy compile-eval`. A source text that is only

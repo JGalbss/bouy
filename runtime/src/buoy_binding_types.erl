@@ -52,7 +52,7 @@ is(<<"isWeakSet">>, Class, _) -> Class =:= weakset;
 is(<<"isArrayBuffer">>, Class, _) -> Class =:= array_buffer;
 is(<<"isDataView">>, Class, _) -> Class =:= data_view;
 is(<<"isSharedArrayBuffer">>, Class, _) -> Class =:= shared_array_buffer;
-is(<<"isProxy">>, Class, _) -> Class =:= proxy;
+is(<<"isProxy">>, Class, V) -> Class =:= proxy andalso not buoy_ref_proxy:is_host(V);
 is(<<"isModuleNamespaceObject">>, Class, _) -> Class =:= namespace orelse Class =:= deferred_namespace;
 is(<<"isAnyArrayBuffer">>, Class, _) -> Class =:= array_buffer orelse Class =:= shared_array_buffer;
 is(<<"isBoxedPrimitive">>, Class, _) -> lists:member(Class, [number, string, boolean, bigint, symbol]);

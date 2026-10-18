@@ -121,7 +121,7 @@ boot() ->
     persistent_term:put({buoy_node, debug}, os:getenv("BUOY_NODE_DEBUG") =/= false),
     Primordials = buoy_heap:object(null, []),
     erlang:put(?PRIMORDIALS, Primordials),
-    Private = symbols(private_symbol_names()),
+    Private = buoy_heap:object(null, [{N, {'$sym', {private, erlang:unique_integer()}, D}} || {N, D} <- private_symbol_names()]),
     PerIsolate = symbols(per_isolate_symbol_names()),
     erlang:put(?SYMBOLS, {Private, PerIsolate}),
     Context = object([{<<"primordials">>, Primordials}]),

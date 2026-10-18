@@ -144,7 +144,9 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// A script's top-level `var` names and functions are properties of the global object.
-    /// A function that the code never assigns keeps its Erlang function for calls.
+    /// A function that the code never assigns keeps its Erlang function for calls, unless
+    /// the script is one that a host evaluates, such as `vm.Script`: it may run in another
+    /// realm, whose function the global object holds (`buoy_ref_realm:script_function/1`).
     fn declare_script_globals(&mut self, program: &'a Program<'a>) {
         let mut function_symbols = Vec::new();
         for statement in &program.body {
@@ -171,7 +173,7 @@ impl<'a> Lowerer<'a, '_> {
                 .scoping()
                 .get_resolved_references(symbol)
                 .any(oxc::semantic::Reference::is_write);
-            if assigned {
+            if assigned || !self.linking.entry {
                 let name = self.semantic.scoping().symbol_name(symbol).to_owned();
                 self.tops.insert(symbol, Top::Global(name));
             }
@@ -331,7 +333,12 @@ impl<'a> Lowerer<'a, '_> {
         });
         functions.reverse();
         self.nested_var_getters(program);
-        functions.push(self.body_function(&body));
+        // A directive is an expression statement too: `vm.runInThisContext("'a'")` is "a".
+        let directive = program
+            .directives
+            .last()
+            .map(|directive| Expr::js_string(directive.expression.value.as_str()));
+        functions.push(self.body_function(&body, directive));
         functions.push(self.class_dispatch());
         functions.extend(source_functions(program, source));
         functions.push(self.export_function(program));
@@ -356,7 +363,7 @@ impl<'a> Lowerer<'a, '_> {
             .iter()
             .skip(injected)
             .last()
-            .map(|directive| Expr::js_string(directive.directive.as_str()));
+            .map(|directive| Expr::js_string(directive.expression.value.as_str()));
         let body: Vec<&'a Statement<'a>> = program.body.iter().collect();
         let mut functions = vec![self.eval_function(&body, directive)];
         functions.push(self.class_dispatch());
@@ -407,9 +414,14 @@ impl<'a> Lowerer<'a, '_> {
             .script_functions
             .iter()
             .map(|(name, length, form)| {
+                let function = self.static_function(name, *length, form);
                 Expr::Tuple(vec![
                     Expr::js_string(name),
-                    self.static_function(name, *length, form),
+                    if self.linking.entry {
+                        function
+                    } else {
+                        Expr::call("buoy_ref_realm", "script_function", vec![function])
+                    },
                 ])
             })
             .collect();
@@ -427,7 +439,11 @@ impl<'a> Lowerer<'a, '_> {
 
     /// `'$body'/0`: the top-level code. A module whose top-level code awaits returns the
     /// promise of its completion.
-    pub fn body_function(&mut self, body: &[&'a Statement<'a>]) -> Function {
+    pub fn body_function(
+        &mut self,
+        body: &[&'a Statement<'a>],
+        directive: Option<Expr>,
+    ) -> Function {
         let mut suspends = analyze::Suspends::default();
         for statement in body {
             suspends.visit_statement(statement);
@@ -452,7 +468,11 @@ impl<'a> Lowerer<'a, '_> {
             let completion = self.fresh("Completion");
             code.push(Expr::matches(
                 Expr::var(completion.clone()),
-                Expr::call("buoy_heap", "cell", vec![Expr::undefined()]),
+                Expr::call(
+                    "buoy_heap",
+                    "cell",
+                    vec![directive.unwrap_or_else(Expr::undefined)],
+                ),
             ));
             self.frame.completion = Some(completion.clone());
         }

@@ -81,6 +81,10 @@ struct EvalRequest {
     /// The source is a classic script of its own, as a host's `evalScript` runs it.
     #[arg(long)]
     script: bool,
+    /// The script checks the deadline of its run at each turn of a loop, for the
+    /// `timeout` of `vm.Script`.
+    #[arg(long)]
+    interruptible: bool,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -124,7 +128,7 @@ impl EvalRequest {
             privates: self.private,
         };
         let compiled = if self.script {
-            buoy_compiler::compile_eval_script(text, &module)
+            buoy_compiler::compile_eval_script(text, &module, self.interruptible)
         } else {
             buoy_compiler::compile_eval(
                 text,

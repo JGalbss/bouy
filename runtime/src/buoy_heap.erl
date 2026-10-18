@@ -12,8 +12,9 @@
 %%                        function gets a record only when it needs one, so
 %%                        an arrow function costs one id and no record.
 %%   {'$sym', Tag, Desc}  a symbol. Tag is an integer for Symbol(), the atom
-%%                        registered for Symbol.for(), or an atom such as
-%%                        iterator for a well-known symbol.
+%%                        registered for Symbol.for(), an atom such as
+%%                        iterator for a well-known symbol, or {private, N}
+%%                        for a private symbol of the host, as V8's.
 %%   {'$c', Id}           a heap cell for a captured mutable variable. It is
 %%                        never a JavaScript value; it appears in fun envs.
 %%
@@ -551,7 +552,13 @@ failed(_O, _K, V, sloppy) -> V.
 
 -spec set_failed(value(), key()) -> no_return().
 set_failed(O, K) ->
-    Message = case find_property(O, K) of
+    Found = case record_of(O) of
+        %% A host proxy, such as the global proxy of a node:vm context, defines what it sets.
+        {proxy, _, _, _, _, {_, {host, _, _}}} -> host;
+        _ -> find_property(O, K)
+    end,
+    Message = case Found of
+        host -> text([<<"Cannot redefine property: ">>, key_text(K)]);
         proxy -> text([<<"'set' on proxy: trap returned falsish for property '">>, key_text(K), <<"'">>]);
         {accessor, _, _, _} -> text([<<"Cannot set property ">>, key_text(K), <<" of ">>, describe(O), <<" which has only a getter">>]);
         {data, _, _} -> text([<<"Cannot assign to read only property '">>, key_text(K), <<"' of object">>]);
@@ -797,7 +804,9 @@ record_keys({Class, _, Props, Keys, _, Slots}) ->
             {lists:sort([K || K <- maps:keys(Props), is_integer(K)]), []}
     end,
     Ordered = lists:reverse(Keys),
-    Indexes ++ First ++ [K || K <- Ordered, ?IS_STRING(K)] ++ [K || {'$sym', _, _} = K <- Ordered].
+    %% A private symbol of the host ({'$sym', {private, _}, _}), as V8's, is no key that
+    %% reflection lists.
+    Indexes ++ First ++ [K || K <- Ordered, ?IS_STRING(K)] ++ [K || {'$sym', Tag, _} = K <- Ordered, not is_tuple(Tag)].
 
 %% The enumerable own string keys, for Object.keys, for-in, spread, and JSON.
 -spec enumerable_keys(value()) -> [key()].
@@ -834,6 +843,8 @@ define(O, K, Descriptor) ->
 -spec define_failed(value(), key()) -> no_return().
 define_failed(O, K) ->
     Message = case record_of(O) of
+        {proxy, _, _, _, _, {_, {host, _, _}}} ->
+            text([<<"Cannot redefine property: ">>, key_text(K)]);
         {proxy, _, _, _, _, _} ->
             text([<<"'defineProperty' on proxy: trap returned falsish for property '">>, key_text(K), <<"'">>]);
         R ->

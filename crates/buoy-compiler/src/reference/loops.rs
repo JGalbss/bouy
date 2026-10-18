@@ -15,8 +15,18 @@ use super::context::{
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
-    /// `(fun Loop(Params) -> Body end)(Initial)`.
-    pub fn loop_call(name: String, params: Vec<Expr>, body: Vec<Expr>, initial: Vec<Expr>) -> Expr {
+    /// `(fun Loop(Params) -> Body end)(Initial)`. Interruptible code checks the deadline of
+    /// the run before each turn.
+    pub fn loop_call(
+        &self,
+        name: String,
+        params: Vec<Expr>,
+        mut body: Vec<Expr>,
+        initial: Vec<Expr>,
+    ) -> Expr {
+        if self.interruptible {
+            body.insert(0, Expr::call("buoy_ref_eval", "interrupt", vec![]));
+        }
         Expr::Apply(
             Box::new(Expr::Fun {
                 name: Some(name),
@@ -64,7 +74,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.targets.pop();
         let body = self.seal(body);
         self.frame.env = saved_env;
-        vec![Self::loop_call(fun, params, body, initial)]
+        vec![self.loop_call(fun, params, body, initial)]
     }
 
     pub fn do_while_statement(
@@ -97,7 +107,7 @@ impl<'a> Lowerer<'a, '_> {
         let body = self.arm(&statement.body, &again);
         self.frame.targets.pop();
         self.frame.env = saved_env;
-        vec![Self::loop_call(fun, params, body, initial)]
+        vec![self.loop_call(fun, params, body, initial)]
     }
 
     pub fn for_statement(&mut self, statement: &'a ForStatement<'a>, k: &Cont<'a>) -> Vec<Expr> {
@@ -187,7 +197,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.targets.pop();
         let body = self.seal(body);
         self.frame.env = saved_env;
-        code.push(Self::loop_call(fun, params, body, initial));
+        code.push(self.loop_call(fun, params, body, initial));
         code
     }
 
@@ -346,7 +356,7 @@ impl<'a> Lowerer<'a, '_> {
             code.extend(self.close_funs(each, &initial_state, funs, dispatch));
         }
         self.frame.env = saved_env;
-        code.push(Self::loop_call(fun, params, body, initial));
+        code.push(self.loop_call(fun, params, body, initial));
         code
     }
 
