@@ -1355,7 +1355,7 @@ parallel/test-fs-read-position-validation.mjs pass
 parallel/test-fs-read-promises-optional-params.js pass
 parallel/test-fs-read-promises-position-validation.mjs pass
 parallel/test-fs-read-stream-autoClose.js pass
-parallel/test-fs-read-stream-concurrent-reads.js timeout
+parallel/test-fs-read-stream-concurrent-reads.js pass
 parallel/test-fs-read-stream-double-close.js pass
 parallel/test-fs-read-stream-encoding.js pass
 parallel/test-fs-read-stream-err.js pass
@@ -1387,12 +1387,12 @@ parallel/test-fs-readfile-error.js fail
 parallel/test-fs-readfile-fd.js pass
 parallel/test-fs-readfile-flags.js pass
 parallel/test-fs-readfile-pipe-large.js pass
-parallel/test-fs-readfile-pipe.js timeout
+parallel/test-fs-readfile-pipe.js pass
 parallel/test-fs-readfile-unlink.js pass
 parallel/test-fs-readfile-zero-byte-liar.js pass
 parallel/test-fs-readfile.js pass
 parallel/test-fs-readfilesync-enoent.js pass
-parallel/test-fs-readfilesync-pipe-large.js timeout
+parallel/test-fs-readfilesync-pipe-large.js pass
 parallel/test-fs-readlink-type-check.js pass
 parallel/test-fs-readv-promises.js pass
 parallel/test-fs-readv-promisify.js pass
@@ -1402,7 +1402,7 @@ parallel/test-fs-ready-event-stream.js pass
 parallel/test-fs-realpath-buffer-encoding.js pass
 parallel/test-fs-realpath-native.js pass
 parallel/test-fs-realpath-on-substed-drive.js pass
-parallel/test-fs-realpath-pipe.js timeout
+parallel/test-fs-realpath-pipe.js pass
 parallel/test-fs-realpath.js pass
 parallel/test-fs-rename-type-check.js pass
 parallel/test-fs-rm.js skip
@@ -1411,7 +1411,7 @@ parallel/test-fs-rmdir-recursive-error.js pass
 parallel/test-fs-rmdir-throws-not-found.js pass
 parallel/test-fs-rmdir-throws-on-file.js pass
 parallel/test-fs-rmdir-type-check.js pass
-parallel/test-fs-sir-writes-alot.js timeout
+parallel/test-fs-sir-writes-alot.js pass
 parallel/test-fs-stat-bigint.js pass
 parallel/test-fs-stat-date.mjs fail
 parallel/test-fs-stat.js pass
@@ -1431,7 +1431,7 @@ parallel/test-fs-symlink-dir.js pass
 parallel/test-fs-symlink-longpath.js pass
 parallel/test-fs-symlink.js pass
 parallel/test-fs-sync-fd-leak.js skip
-parallel/test-fs-syncwritestream.js timeout
+parallel/test-fs-syncwritestream.js pass
 parallel/test-fs-timestamp-parsing-error.js pass
 parallel/test-fs-truncate-clear-file-zero.js pass
 parallel/test-fs-truncate-sync.js pass
@@ -1489,7 +1489,7 @@ parallel/test-fs-write-negativeoffset.js pass
 parallel/test-fs-write-no-fd.js pass
 parallel/test-fs-write-optional-params.js pass
 parallel/test-fs-write-reuse-callback.js skip
-parallel/test-fs-write-sigxfsz.js timeout
+parallel/test-fs-write-sigxfsz.js fail
 parallel/test-fs-write-stream-autoclose-option.js pass
 parallel/test-fs-write-stream-change-open.js pass
 parallel/test-fs-write-stream-close-without-callback.js pass
@@ -4342,7 +4342,7 @@ sequential/test-dgram-pingpong.js fail
 sequential/test-diagnostic-dir-cpu-prof.js pass
 sequential/test-diagnostic-dir-heap-prof.js pass
 sequential/test-error-serdes.js skip
-sequential/test-fs-opendir-recursive.js timeout
+sequential/test-fs-opendir-recursive.js pass
 sequential/test-fs-readdir-recursive.js pass
 sequential/test-fs-stat-sync-overflow.js timeout
 sequential/test-fs-watch.js pass
