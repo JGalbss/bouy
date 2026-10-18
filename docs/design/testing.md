@@ -167,7 +167,7 @@ A skip counts in the denominator. The dashboard shows skips by reason, so a read
 
 ### 3.7 Selection on a pull request
 
-On a pull request, an upstream suite runs every id that the file expects to pass in some mode, and every id with no line. It also runs a fixed 10% sample of the other ids: the ids whose 32-bit FNV-1a hash of the UTF-8 bytes, modulo 100, is below 10. The nightly job runs every id. Until the nightly job runs the suites, a push to `main` runs every id. A suite runs whole on every pull request once it takes less than 10 minutes on the CI runner. Buoy's own corpora always run whole.
+On a pull request, an upstream suite runs every id that the file expects to pass in some mode, and every id with no line. It also runs a fixed 10% sample of the other ids: the ids whose 32-bit FNV-1a hash of the UTF-8 bytes, modulo 100, is below 10. The nightly job runs every id. Until the nightly job runs a suite, a push to `main` runs every id of it: test262 runs whole on each push, and Node's tests run the selection. A suite runs whole on every pull request once it takes less than 10 minutes on the CI runner. Buoy's own corpora always run whole.
 
 ## 4. `buoy test`
 
@@ -637,7 +637,7 @@ The proof job checks step 3. For a pull request with a `fix` commit, CI builds `
 | Job         | Trigger                                | Work                                                                                                                                                                                                                     |
 | ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `check`     | every push and pull request (exists)   | `pnpm check`: formats, lints, tiers 1 to 4, 8a to 8c, 9, the fuzz replay, the migration fixture, the rule checks, and `compat --check`                                                                                   |
-| `suites`    | every pull request and push to `main`  | `buoy-suites` for test262, web-platform-tests, Node, and `tests/bun-test`, selected by section 3.7. Phase 1 runs test262, and phase 4 adds Node. A push to `main` runs every id until the nightly job runs the suites.   |
+| `suites`    | every pull request and push to `main`  | `buoy-suites` for test262, web-platform-tests, Node, and `tests/bun-test`, selected by section 3.7. Phase 1 runs test262, and phase 4 adds Node. A push to `main` runs every id of a suite until the nightly job runs it.   |
 | `proof`     | a pull request with a `fix` commit     | section 9                                                                                                                                                                                                                |
 | `comment`   | `workflow_run` of `CI`, after `suites` | `.github/workflows/comment.yml` posts the comment of section 6                                                                                                                                                           |
 | `nightly`   | schedule                               | every suite in full, the package suites, the bench limits, the checked lane, and the platform matrix. It opens one pull request that updates the expectation files, with regressions listed first and an issue for each. |
