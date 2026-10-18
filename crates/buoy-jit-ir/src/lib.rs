@@ -59,6 +59,9 @@ pub struct Method {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub name: String,
+    /// Whether the first parameter is a receiver, which no caller passes as `null` or
+    /// `undefined`: a dispatch and a direct call check it, and `new` passes a new object.
+    pub receiver: bool,
     /// The parameters are the first locals.
     pub params: u32,
     pub locals: Vec<Ty>,

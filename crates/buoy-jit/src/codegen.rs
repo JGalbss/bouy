@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 
-use buoy_native_ir::{
+use buoy_jit_ir::{
     Bail, Binary, ClassId, Expr, FuncId, Function, MathFn, Program, Stmt, Ty, Unary,
 };
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
@@ -102,8 +102,10 @@ pub struct EntryFn {
 
 impl EntryFn {
     /// The words of the arguments and the globals, when each has the type of its place.
+    /// Arguments past the parameters are ignored, as JavaScript ignores them.
     pub fn arguments(&self, args: &[RunValue], globals: &[RunValue]) -> Option<Vec<u64>> {
-        if args.len() != self.params.len() || globals.len() != self.globals.len() {
+        let args = args.get(..self.params.len())?;
+        if globals.len() != self.globals.len() {
             return None;
         }
         self.params
@@ -1484,30 +1486,6 @@ impl<'a, 'm> Gen<'a, 'm> {
             Ty::Any | Ty::Null => None,
             _ => return fail("a dispatch on an array"),
         };
-        // Each class that the receiver may have, and the function its method calls.
-        let mut targets: Vec<(ClassId, FuncId)> = Vec::new();
-        for (index, class) in program.classes.iter().enumerate() {
-            let id = u32::try_from(index).map_err(|e| e.to_string())?;
-            if bound.is_some_and(|bound| !is_subclass(program, id, bound)) {
-                continue;
-            }
-            if let Some(found) = class.methods.iter().find(|m| m.name == method) {
-                let function = function_at(program, found.function)?;
-                let this_ok = function
-                    .locals
-                    .first()
-                    .is_some_and(|ty| function.params > 0 && fits(program, &Ty::Object(id), ty));
-                let result_ok = if *result == Ty::Void {
-                    function.result == Ty::Void
-                } else {
-                    fits(program, &function.result, result)
-                };
-                if !this_ok || !result_ok {
-                    return fail(format!("{method} of {} has another signature", class.name));
-                }
-                targets.push((id, found.function));
-            }
-        }
         let mut values = Vec::with_capacity(rest.len());
         let mut value_tys = Vec::with_capacity(rest.len());
         for arg in rest {
@@ -1515,16 +1493,37 @@ impl<'a, 'm> Gen<'a, 'm> {
             values.push(value);
             value_tys.push(ty);
         }
-        for &(_, function_id) in &targets {
-            let function = function_at(program, function_id)?;
-            let params = &function.locals[1..function.params as usize];
-            if params.len() != value_tys.len()
-                || !params
+        // Each class that the receiver may have, and the function its method calls. A
+        // class whose method of that name takes or returns other types cannot be the class
+        // of the receiver of a well-typed call, such as a class that has a method of the
+        // name but does not implement the interface; it stays out, and an object of it
+        // bails.
+        let mut targets: Vec<(ClassId, FuncId)> = Vec::new();
+        for (index, class) in program.classes.iter().enumerate() {
+            let id = u32::try_from(index).map_err(|e| e.to_string())?;
+            if bound.is_some_and(|bound| !is_subclass(program, id, bound)) {
+                continue;
+            }
+            let Some(found) = class.methods.iter().find(|m| m.name == method) else {
+                continue;
+            };
+            let function = function_at(program, found.function)?;
+            let params = &function.locals[..function.params as usize];
+            let this_ok = params
+                .first()
+                .is_some_and(|ty| fits(program, &Ty::Object(id), ty));
+            let args_ok = params.len() == value_tys.len() + 1
+                && params[1..]
                     .iter()
                     .zip(&value_tys)
-                    .all(|(to, from)| fits(program, from, to))
-            {
-                return fail(format!("{method}: the arguments do not fit"));
+                    .all(|(to, from)| fits(program, from, to));
+            let result_ok = if *result == Ty::Void {
+                function.result == Ty::Void
+            } else {
+                fits(program, &function.result, result)
+            };
+            if this_ok && args_ok && result_ok {
+                targets.push((id, found.function));
             }
         }
         self.check_object(receiver);

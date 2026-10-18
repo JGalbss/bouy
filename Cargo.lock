@@ -140,6 +140,7 @@ name = "buoy-cli"
 version = "0.1.0"
 dependencies = [
  "buoy-compiler",
+ "buoy-jit",
  "buoy-suites",
  "clap",
 ]
@@ -148,6 +149,7 @@ dependencies = [
 name = "buoy-compiler"
 version = "0.1.0"
 dependencies = [
+ "buoy-jit-ir",
  "insta",
  "oxc",
  "serde_json",
@@ -163,10 +165,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "buoy-native"
+name = "buoy-jit"
 version = "0.1.0"
 dependencies = [
- "buoy-native-ir",
+ "buoy-jit-ir",
  "corosensei",
  "cranelift-codegen",
  "cranelift-frontend",
@@ -176,7 +178,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "buoy-native-ir"
+name = "buoy-jit-ir"
 version = "0.1.0"
 
 [[package]]

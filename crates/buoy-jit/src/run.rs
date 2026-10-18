@@ -20,7 +20,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use buoy_native_ir::{Bail, Ty};
+use buoy_jit_ir::{Bail, Ty};
 use corosensei::stack::{DefaultStack, Stack};
 use corosensei::{Coroutine, CoroutineResult, Yielder};
 
@@ -43,6 +43,9 @@ const STACK_MARGIN: usize = 64 << 10;
 
 /// The size of a chunk of the heap.
 const CHUNK: usize = 1 << 20;
+
+/// The chunks that a context keeps for its next run.
+const KEPT_CHUNKS: usize = 4;
 
 /// The state that the machine code reads and writes, at the offsets of
 /// [`crate::codegen::frame`]. The coroutine and the helpers find the rest of the run from
@@ -264,6 +267,7 @@ impl Context {
             drop(running.code);
         }
         self.frame.yielder = std::ptr::null();
+        self.frame.heap.chunks.truncate(KEPT_CHUNKS);
     }
 }
 
@@ -329,19 +333,19 @@ pub extern "C" fn buoy_fmod(a: f64, b: f64) -> f64 {
 
 /// `a ** b` (ECMA-262 §6.1.6.1.3).
 pub extern "C" fn buoy_pow(a: f64, b: f64) -> f64 {
-    buoy_native_ir::exponentiate(a, b)
+    buoy_jit_ir::exponentiate(a, b)
 }
 
 /// `ToInt32` of a number outside the range of a 64-bit integer, or not finite.
 pub extern "C" fn buoy_int32(value: f64) -> i32 {
-    buoy_native_ir::to_int32(value)
+    buoy_jit_ir::to_int32(value)
 }
 
 /// The `Math` functions that have no machine instruction, by their [`MathFn`] code.
 ///
-/// [`MathFn`]: buoy_native_ir::MathFn
+/// [`MathFn`]: buoy_jit_ir::MathFn
 pub extern "C" fn buoy_math(code: i32, a: f64, b: f64) -> f64 {
-    use buoy_native_ir::MathFn;
+    use buoy_jit_ir::MathFn;
     const ROUND: i32 = MathFn::Round as i32;
     const SIGN: i32 = MathFn::Sign as i32;
     const SIN: i32 = MathFn::Sin as i32;
@@ -352,7 +356,7 @@ pub extern "C" fn buoy_math(code: i32, a: f64, b: f64) -> f64 {
     const EXP: i32 = MathFn::Exp as i32;
     const LOG: i32 = MathFn::Log as i32;
     match code {
-        ROUND => buoy_native_ir::round(a),
+        ROUND => buoy_jit_ir::round(a),
         SIGN if a.is_nan() || a == 0.0 => a,
         SIGN => a.signum(),
         SIN => a.sin(),
@@ -362,7 +366,7 @@ pub extern "C" fn buoy_math(code: i32, a: f64, b: f64) -> f64 {
         ATAN2 => a.atan2(b),
         EXP => a.exp(),
         LOG => a.ln(),
-        _ => buoy_native_ir::exponentiate(a, b),
+        _ => buoy_jit_ir::exponentiate(a, b),
     }
 }
 

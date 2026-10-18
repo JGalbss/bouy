@@ -1,5 +1,5 @@
 [package]
-name = "buoy-native-ir"
+name = "buoy-jit-ir"
 description = "The typed IR that the Buoy compiler emits for hot typed code and that the native tier compiles to machine code."
 version.workspace = true
 edition.workspace = true

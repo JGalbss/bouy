@@ -40,6 +40,7 @@ mod exception;
 mod expr;
 mod function;
 pub mod graph;
+mod jit;
 pub mod link;
 mod linking;
 mod literal;
@@ -389,8 +390,13 @@ fn lower(
                 using_stacks: Vec::new(),
                 hoisted: std::collections::HashSet::new(),
                 linking,
+                jit: if eval.is_none() {
+                    crate::jit::plan(semantic)
+                } else {
+                    crate::jit::Plan::default()
+                },
             };
-            let functions = if module.kind == Kind::CommonJs {
+            let mut functions = if module.kind == Kind::CommonJs {
                 lowerer.commonjs_functions(program, &module.source)
             } else if lowerer.eval.is_some() {
                 lowerer.eval_module_functions(program, &module.source)
@@ -398,6 +404,7 @@ fn lower(
                 lowerer.declare(program);
                 lowerer.module_functions(program, &module.source)
             };
+            functions.extend(lowerer.jit_programs());
             if lowerer.reporter.diagnostics.is_empty() {
                 Ok(erlang::print_module(&erlang::Module {
                     name: module.name.clone(),

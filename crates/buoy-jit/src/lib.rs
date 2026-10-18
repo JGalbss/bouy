@@ -1,8 +1,8 @@
-//! The native tier (section 17.10 of the contract): the NIF library `buoy_native`, which
+//! The native tier (section 17.10 of the contract): the NIF library `buoy_jit`, which
 //! compiles the typed IR of an island with Cranelift and runs its entries in time slices
 //! inside the calling BEAM process.
 //!
-//! The Erlang side is `buoy_native.erl`. Its NIFs:
+//! The Erlang side is `buoy_jit.erl`. Its NIFs:
 //!
 //! - `compile(Bytes)`: `{ok, Code}` with the machine code of the program in `Bytes`, or
 //!   `{error, Message}`.
@@ -27,7 +27,7 @@ mod erlang {
     use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::sync::{Arc, Mutex, OnceLock};
 
-    use buoy_native_ir::Program;
+    use buoy_jit_ir::Program;
 
     use crate::codegen::{self, Code};
     use crate::nif::{Entry, Env, Func, NifFn, RawEnv, ResourceType, Term, is_identical};
@@ -49,8 +49,8 @@ mod erlang {
         let env = unsafe { Env::new(raw) };
         let opened = (|| {
             Some(Types {
-                code: ResourceType::open(env, c"buoy_native_code")?,
-                context: ResourceType::open(env, c"buoy_native_context")?,
+                code: ResourceType::open(env, c"buoy_jit_code")?,
+                context: ResourceType::open(env, c"buoy_jit_context")?,
             })
         })();
         match opened {
@@ -164,9 +164,11 @@ mod erlang {
         }
     }
 
-    fn values(env: Env, list: Term) -> Option<Vec<Value>> {
+    /// The values of the first `limit` terms of a list.
+    fn values(env: Env, list: Term, limit: usize) -> Option<Vec<Value>> {
         env.list(list)?
             .into_iter()
+            .take(limit)
             .map(|term| value_of(env, term))
             .collect()
     }
@@ -188,8 +190,13 @@ mod erlang {
             ) else {
                 return env.badarg();
             };
-            let (Some(call_args), Some(globals)) = (values(env, *call_args), values(env, *globals))
-            else {
+            let Some(function) = code.entry(entry) else {
+                return env.badarg();
+            };
+            let (Some(call_args), Some(globals)) = (
+                values(env, *call_args, function.params.len()),
+                values(env, *globals, usize::MAX),
+            ) else {
                 return env.atom(c"badtype");
             };
             let Ok(mut context_guard) = context.lock() else {
@@ -244,11 +251,7 @@ mod erlang {
             }
             Step::Yield => {
                 let _ = spent;
-                env.schedule(
-                    c"buoy_native_run_slice",
-                    run_slice as NifFn,
-                    &[code, context],
-                )
+                env.schedule(c"buoy_jit_run_slice", run_slice as NifFn, &[code, context])
             }
         }
     }
@@ -258,11 +261,12 @@ mod erlang {
     // SAFETY: the entry and the tables it points to are immutable statics.
     unsafe impl Sync for EntryCell {}
 
-    struct FuncsCell([Func; 4]);
+    struct FuncsCell([Func; 3]);
 
     // SAFETY: as above.
     unsafe impl Sync for FuncsCell {}
 
+    // `run_slice` needs no entry: `enif_schedule_nif` takes its address.
     static FUNCS: FuncsCell = FuncsCell([
         Func {
             name: c"compile".as_ptr(),
@@ -282,19 +286,13 @@ mod erlang {
             fptr: run,
             flags: 0,
         },
-        Func {
-            name: c"run_slice".as_ptr(),
-            arity: 2,
-            fptr: run_slice,
-            flags: 0,
-        },
     ]);
 
     static ENTRY: EntryCell = EntryCell(Entry {
         major: 2,
         minor: 16,
-        name: c"buoy_native".as_ptr(),
-        num_of_funcs: 4,
+        name: c"buoy_jit".as_ptr(),
+        num_of_funcs: 3,
         funcs: FUNCS.0.as_ptr(),
         load: Some(load),
         reload: std::ptr::null(),

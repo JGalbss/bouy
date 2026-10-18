@@ -223,7 +223,7 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         self.privates.pop();
-        Expr::var(c)
+        self.jit_seal(binding, c)
     }
 
     /// `ClassElementEvaluation` in order: defines the methods and accessors, and evaluates

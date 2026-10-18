@@ -255,6 +255,8 @@ pub struct Lowerer<'a, 'c> {
     pub hoisted: std::collections::HashSet<SymbolId>,
     /// What the module's imports and exports refer to.
     pub linking: Linking<'c>,
+    /// The islands of typed code that the native tier runs (contract section 17.10).
+    pub jit: crate::jit::Plan,
 }
 
 impl Lowerer<'_, '_> {

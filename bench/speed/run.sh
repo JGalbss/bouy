@@ -7,6 +7,8 @@
 #   single     each kernel on every runtime, in turns, ROUNDS times
 #   multicore  N copies of Richards and of NBody at once, N = the core count
 #   preempt    the preemption proof on a VM with one scheduler
+#   jit        each kernel of the native tier on BUOY_JIT_CLI, with the native tier and
+#              without it (BUOY_JIT=0), and on the baselines of SPEED_JS, ROUNDS times
 #
 # Environment:
 #   SPEED_JS      the JavaScript baselines as name=path pairs, such as
@@ -15,7 +17,9 @@
 #   BUOY_ENGINE   optional: the buoy CLI built from the engine branch. Its programs have no
 #                 process.argv yet, so the script writes a copy of each kernel with smaller
 #                 sizes, and the report scales the time to the same unit of work.
-#   ROUNDS        rounds of the single mode, 5 by default
+#   BUOY_JIT_CLI  the buoy CLI that the jit mode measures. The Erlang tier runs smaller
+#                 sizes, as BUOY_ENGINE does, and the report scales its time.
+#   ROUNDS        rounds of the single and jit modes, 5 by default
 #   ERL, ERLC     the OTP tools, erl and erlc on PATH by default
 #
 # Every VM gets +hmax of 4 GiB, so a runaway process dies and not the machine, and the
@@ -131,6 +135,21 @@ preempt() {
         record native "$round" "$erl" +S 1 +hmax 536870912 -noshell -pa "$build/ebin" -run preempt main native-richards 100000
         record erlang:nbody_flat "$round" "$erl" +S 1 +hmax 536870912 -noshell -pa "$build/ebin" -run preempt main erlang-nbody 4000000
         record blocking "$round" "$erl" +S 1 +hmax 536870912 -noshell -pa "$build/ebin" -run preempt main blocking-nbody 30000000
+    done
+}
+
+# The native tier runs the kernels at full size; the Erlang tier runs the sizes of
+# engine_size with one warm-up and three timed iterations.
+jit() {
+    for round in $(seq 1 "$rounds"); do
+        for kernel in nbody richards deltablue; do
+            for pair in ${SPEED_JS:-}; do
+                record "${pair%%=*}" "$round" "${pair#*=}" "$here/kernels/$kernel.ts"
+            done
+            record buoy:jit "$round" "$BUOY_JIT_CLI" run --semantics reference "$here/kernels/$kernel.ts"
+            record buoy:erlang "$round" env BUOY_JIT=0 "$BUOY_JIT_CLI" run --semantics reference \
+                "$here/kernels/$kernel.ts" 1 3 "$(engine_size "$kernel")"
+        done
     done
 }
 

@@ -633,3 +633,32 @@ The engine matches regular expressions in Erlang, with the semantics of ECMA-262
 - The protocols of Symbol.match, Symbol.replace, and Symbol.split follow the spec step by step, with one exception. When a RegExp is pristine, so reading it runs no user code, they call the matcher directly: its prototype is `RegExp.prototype`, its only own property is a numeric `lastIndex`, and the realm has not written to `RegExp.prototype` (or, for split, to `RegExp`). An intrinsic that a realm has not written has no entry in its heap (section 17.2), so `exec`, `flags`, and the flag accessors are the builtins, and the result is the same.
 
 The compiler lowers a regular expression literal to `buoy_ref_regexp:literal/2`, which makes a new object each time it runs. The parser of oxc checks the pattern of each literal, so an invalid literal is a `BUOY200` diagnostic, as an early error must be.
+
+### 17.10 The native tier
+
+The native tier runs hot typed code as machine code inside the actor's process, as step 5 of [the speed ceiling note](../research/speed-ceiling.md) plans. Three parts make it:
+
+- `crates/buoy-compiler/src/jit` finds the islands of a module and lowers each one to the IR of `crates/buoy-jit-ir`.
+- `crates/buoy-jit` is the NIF library `buoy_jit`. It checks the IR as a verifier does and compiles it with Cranelift.
+- `runtime/src/buoy_jit.erl` loads the library and runs an island's entry.
+
+**Islands.** An island starts at a function declaration whose parameters and result have the TypeScript types `number`, `boolean`, or (for the result) `void`, and whose body loops or calls. Its code may use numbers, booleans, `null`, and `undefined`. It may use instances of the classes of the module, values of interfaces that those classes implement, and arrays of these. It may read variables outside the island whose values are numbers or booleans, and call function declarations, methods, `super`, constructors, and the functions and constants of `Math`. It may not write a variable outside itself, or call anything else. A `throw` ends the native run. The checker of the compiler infers and verifies every type: an annotation is a claim it checks, never a fact it trusts. A constructor must assign every field without an initializer before `this` escapes. The constructor of a class whose subclass has fields must not let `this` escape at all. So no code reads a field that holds no value.
+
+**Entry.** The compiler starts the function of each island with
+
+```erlang
+case buoy_jit:enter(Module, Index, Args, Prepare) of
+    {ok, Value} -> Value;
+    _ -> <the Erlang code of the function>
+end
+```
+
+`Module:'$jit'(Index)` returns the encoded IR of the island. `Prepare` reads the variables outside the island that its code reads, in the realm of the call, and returns their values. It throws when an assumption fails: a class of the island has another record than `buoy_jit:seal/1` recorded right after its definition ran, such as a replaced method; `Math` is not the unchanged intrinsic; or `Object.prototype`, `Array.prototype`, `%ArrayIteratorPrototype%`, or `%IteratorPrototype%` was written; or the realm is not the first of the process. `enter/4` compiles the IR once per VM and keeps the code in a persistent term. It runs the machine code when each argument and global has its type, and returns `deopt` otherwise.
+
+**Runs.** A run executes on a stack of its own (`corosensei`), over a heap of chunks that the run fills from the front and that are free again when it ends. A context, the pdict key `'$buoy_jit_context'`, keeps the stack and up to 4 chunks of 1 MiB for the next run of the process. A run may allocate a quarter of `BUOY_MAX_MEMORY`. The machine code spends fuel at each function entry and each loop turn. When the fuel is gone and 200 µs have passed since the slice began, the run yields: the NIF returns through `enif_schedule_nif`, and the process can be descheduled, receive signals, or be killed between two slices.
+
+**Bails.** The machine code checks that each reference is neither `null` nor `undefined` before a field access, each index lies in its array, each dispatch finds a method, and the stack and the heap have room. A failed check, and a `throw`, ends the run with a bail. `enter/4` then returns `deopt`, and the Erlang tier runs the call again from its start. An island writes nothing outside the objects it makes and returns a primitive, so nothing outside it can see the run that bailed, and the second run is exact. A process that bails 4 times from one island runs it in the Erlang tier from then on.
+
+**Values.** A number is a double. A result converts to the canonical form of section 17.1: NaN and the infinities to their atoms, -0 to `-0.0`, and an integral double within 2^53 to an integer. `null` is the address 0 and `undefined` the address 1. An object is its class id followed by one word for each field, and an array is a header of its length, capacity, and the address of its elements.
+
+**Configuration.** The CLI looks for the library next to the `buoy` binary or in `deps/` there, where `cargo build -p buoy-cli` leaves it, or at `BUOY_JIT_LIB`. It copies it into the cache as `jit-<size>-<time>/buoy_jit.so` and passes its path without the extension in `BUOY_JIT`. `BUOY_JIT=0` keeps every call in the Erlang tier. `BUOY_JIT_TRACE=1` prints each island that the compiler finds, and how each entry ends, to stderr.

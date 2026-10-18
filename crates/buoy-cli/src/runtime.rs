@@ -145,7 +145,7 @@ fn erlc() -> OsString {
         .map_or_else(|| OsString::from("erlc"), PathBuf::into_os_string)
 }
 
-fn cache_root() -> Option<PathBuf> {
+pub(crate) fn cache_root() -> Option<PathBuf> {
     cache_root_in(env::var_os("XDG_CACHE_HOME"), env::var_os("HOME"))
 }
 

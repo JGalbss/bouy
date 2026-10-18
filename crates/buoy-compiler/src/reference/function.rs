@@ -109,9 +109,13 @@ impl<'a> Lowerer<'a, '_> {
         let own = own.unwrap_or_else(Expr::undefined);
         let code = match kind {
             Kind::Sync => {
+                let jit = self.jit_entry(body, &args);
                 let mut code = self.entry(params, body, &args, own_arguments, scope);
                 code.extend(self.body(body));
-                code
+                match jit {
+                    Some(enter) => self.jit_switch(enter, code),
+                    None => code,
+                }
             }
             Kind::Async => {
                 let args_var = args.clone();

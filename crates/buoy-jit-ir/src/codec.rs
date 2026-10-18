@@ -7,7 +7,7 @@ use std::fmt;
 use super::{Bail, Binary, Class, Expr, Function, MathFn, Method, Program, Stmt, Ty, Unary};
 
 /// The first bytes of an encoded program, with the version of the format.
-const MAGIC: &[u8; 4] = b"BNI1";
+const MAGIC: &[u8; 4] = b"BNI2";
 
 /// Bytes that are not a program of this version.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -206,6 +206,7 @@ record!(Class {
 record!(Method { name, function });
 record!(Function {
     name,
+    receiver,
     params,
     locals,
     result,
@@ -382,6 +383,7 @@ mod tests {
             }],
             functions: vec![Function {
                 name: "step".to_owned(),
+                receiver: true,
                 params: 1,
                 locals: vec![Ty::Object(0), Ty::Num],
                 result: Ty::Num,
