@@ -39,8 +39,17 @@ binding() ->
             undefined
         end)},
         Noop(<<"queueDestroyAsyncId">>, 1),
-        Noop(<<"setPromiseHooks">>, 4),
-        {<<"getPromiseHooks">>, F(<<"getPromiseHooks">>, 0, fun(_, _) -> buoy_heap:new_array([undefined, undefined, undefined, undefined]) end)},
+        {<<"setPromiseHooks">>, F(<<"setPromiseHooks">>, 4, fun(_, Args) ->
+            buoy_jobs:set_promise_hooks(list_to_tuple([hook(A(I, Args)) || I <- [1, 2, 3, 4]])),
+            undefined
+        end)},
+        {<<"getPromiseHooks">>, F(<<"getPromiseHooks">>, 0, fun(_, _) ->
+            Hooks = case buoy_jobs:promise_hooks() of
+                undefined -> [undefined, undefined, undefined, undefined];
+                H -> tuple_to_list(H)
+            end,
+            buoy_heap:new_array(Hooks)
+        end)},
         Noop(<<"registerDestroyHook">>, 3),
         {<<"async_hook_fields">>, HookFields},
         {<<"async_id_fields">>, IdFields},
@@ -53,6 +62,13 @@ binding() ->
             {<<"kStackLength">>, 7}])},
         {<<"Providers">>, buoy_node:object(
                                             [{P, I} || {I, P} <- lists:enumerate(0, providers())])}]).
+
+%% A promise hook: a function, else none.
+hook(F) ->
+    case buoy_heap:is_callable(F) of
+        true -> F;
+        false -> undefined
+    end.
 
 push(HookFields, IdFields, AsyncId, TriggerId) ->
     Old = {buoy_heap:get(IdFields, ?K_EXECUTION_ASYNC_ID), buoy_heap:get(IdFields, ?K_TRIGGER_ASYNC_ID)},
