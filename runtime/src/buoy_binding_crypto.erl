@@ -12,7 +12,8 @@ binding() ->
         ++ buoy_crypto_hash:members()
         ++ buoy_crypto_random:members()
         ++ buoy_crypto_kdf:members()
-        ++ buoy_crypto_keys:members(),
+        ++ buoy_crypto_keys:members()
+        ++ buoy_crypto_cipher:members(),
     Names = [Name || {Name, _} <- Members],
     Missing = [{Name, missing(Name)} || Name <- node_members(), not lists:member(Name, Names)],
     buoy_node:object(Members ++ Missing).
@@ -23,7 +24,7 @@ missing(Name) -> buoy_node:not_implemented(<<"crypto">>, Name).
 
 %% crypto_util.cc and crypto_timing.cc.
 util() ->
-    F = fun buoy_node:fn/3,
+    F = fun buoy_crypto:fn/3,
     [{<<"timingSafeEqual">>, F(<<"timingSafeEqual">>, 2, fun(_, Args) ->
         buoy_crypto:equal_bytes(buoy_crypto:bytes(buoy_node:arg(1, Args)), buoy_crypto:bytes(buoy_node:arg(2, Args)))
      end)},
@@ -48,13 +49,13 @@ set_fips(Enable) ->
         false -> buoy_crypto:throw_openssl(unsupported)
     end.
 
-%% The constants of node_crypto.cc and of each part, as Node 25.9.0 has them.
+%% The constants of the binding of Node 25.9.0, in its order.
 constants() ->
-    [{<<"kCryptoJobAsync">>, 0}, {<<"kCryptoJobSync">>, 1},
-     {<<"kKeyVariantAES_CTR_128">>, 0}, {<<"kKeyVariantAES_CTR_192">>, 1}, {<<"kKeyVariantAES_CTR_256">>, 2},
+    [{<<"kKeyVariantAES_CTR_128">>, 0}, {<<"kKeyVariantAES_CTR_192">>, 1}, {<<"kKeyVariantAES_CTR_256">>, 2},
      {<<"kKeyVariantAES_CBC_128">>, 3}, {<<"kKeyVariantAES_CBC_192">>, 4}, {<<"kKeyVariantAES_CBC_256">>, 5},
      {<<"kKeyVariantAES_GCM_128">>, 6}, {<<"kKeyVariantAES_GCM_192">>, 7}, {<<"kKeyVariantAES_GCM_256">>, 8},
      {<<"kKeyVariantAES_KW_128">>, 9}, {<<"kKeyVariantAES_KW_192">>, 10}, {<<"kKeyVariantAES_KW_256">>, 11},
+     {<<"kKeyVariantAES_OCB_128">>, 12}, {<<"kKeyVariantAES_OCB_192">>, 13}, {<<"kKeyVariantAES_OCB_256">>, 14},
      {<<"kWebCryptoCipherEncrypt">>, 0}, {<<"kWebCryptoCipherDecrypt">>, 1},
      {<<"OPENSSL_EC_NAMED_CURVE">>, 1}, {<<"OPENSSL_EC_EXPLICIT_CURVE">>, 0},
      {<<"kWebCryptoKeyFormatRaw">>, 0}, {<<"kWebCryptoKeyFormatPKCS8">>, 1},
@@ -75,7 +76,7 @@ constants() ->
      {<<"kSigEncDER">>, 0}, {<<"kSigEncP1363">>, 1},
      {<<"kKeyVariantRSA_SSA_PKCS1_v1_5">>, 0}, {<<"kKeyVariantRSA_PSS">>, 1}, {<<"kKeyVariantRSA_OAEP">>, 2},
      {<<"kSignJobModeSign">>, 0}, {<<"kSignJobModeVerify">>, 1},
-     {<<"RSA_PKCS1_PSS_PADDING">>, 6},
+     {<<"RSA_PKCS1_PSS_PADDING">>, 6}, {<<"kCryptoJobAsync">>, 0}, {<<"kCryptoJobSync">>, 1},
      {<<"X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT">>, 1}, {<<"X509_CHECK_FLAG_NEVER_CHECK_SUBJECT">>, 32},
      {<<"X509_CHECK_FLAG_NO_WILDCARDS">>, 2}, {<<"X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS">>, 4},
      {<<"X509_CHECK_FLAG_MULTI_LABEL_WILDCARDS">>, 8}, {<<"X509_CHECK_FLAG_SINGLE_LABEL_SUBDOMAINS">>, 16},
@@ -99,4 +100,5 @@ node_members() ->
      <<"certVerifySpkac">>, <<"certExportPublicKey">>, <<"certExportChallenge">>, <<"timingSafeEqual">>,
      <<"setEngine">>, <<"getFipsCrypto">>, <<"setFipsCrypto">>, <<"testFipsCrypto">>, <<"secureBuffer">>,
      <<"secureHeapUsed">>, <<"getOpenSSLSecLevelCrypto">>, <<"Verify">>, <<"parseX509">>,
-     <<"KEMEncapsulateJob">>, <<"KEMDecapsulateJob">>, <<"ScryptJob">>].
+     <<"Argon2Job">>, <<"KEMEncapsulateJob">>, <<"KEMDecapsulateJob">>, <<"KmacJob">>, <<"ScryptJob">>,
+     <<"TurboShakeJob">>, <<"KangarooTwelveJob">>].

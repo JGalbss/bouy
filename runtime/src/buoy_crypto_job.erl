@@ -17,7 +17,7 @@
 %% constructed: it checks the parameters, throws as Node's AdditionalConfig
 %% throws, and returns {Work, Encode}. Work only reads Erlang terms, never
 %% the JavaScript heap, and returns {ok, Out} or {error, Reason} (an error
-%% of buoy_crypto:error_value/1). Encode(Out) makes the result in the realm.
+%% of buoy_crypto:error_value/1, or a failure of buoy_crypto:fail/1). Encode(Out) makes the result in the realm.
 -spec class(binary(), fun((list()) -> {fun(() -> outcome()), fun((term()) -> term())})) -> term().
 class(Name, Config) ->
     buoy_crypto:class(Name, fun(This, Args) -> init(This, Args, Config) end,
@@ -46,6 +46,8 @@ run(This, _) ->
 perform(Work) ->
     try Work()
     catch
+        error:{crypto_failure, Reason} ->
+            {error, Reason};
         error:{Tag, {_File, _Line}, Description} when Tag =:= error; Tag =:= badarg; Tag =:= notsup ->
             {error, {message, unicode:characters_to_binary(Description)}};
         %% A bug of the binding fails the job loudly, and never leaves the loop waiting.
@@ -53,7 +55,11 @@ perform(Work) ->
             {error, {message, iolist_to_binary(io_lib:format("Crypto job failed: ~p:~0p", [Class, Reason]))}}
     end.
 
-result({ok, Out}, Encode) -> [undefined, Encode(Out)];
+result({ok, Out}, Encode) ->
+    try [undefined, Encode(Out)]
+    catch
+        error:{crypto_failure, Reason} -> [buoy_crypto:error_value(Reason), undefined]
+    end;
 result({error, Reason}, _) -> [buoy_crypto:error_value(Reason), undefined].
 
 %% The job and Encode stay roots of the heap, in the process dictionary,
