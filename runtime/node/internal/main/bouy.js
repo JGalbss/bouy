@@ -6,6 +6,7 @@
 // module loaders do not run.
 
 const {
+  NumberParseInt,
   ObjectDefineProperty,
 } = primordials;
 
@@ -144,12 +145,21 @@ function loadEnvFiles() {
   }
 }
 
+// A child that child_process.fork started talks to its parent on the
+// descriptor of NODE_CHANNEL_FD, as setupChildProcessIpcChannel does.
+function setupChildProcessIpcChannel() {
+  if (process.env.NODE_CHANNEL_FD) {
+    const fd = NumberParseInt(process.env.NODE_CHANNEL_FD, 10);
+    delete process.env.NODE_CHANNEL_FD;
+    const serializationMode = process.env.NODE_CHANNEL_SERIALIZATION_MODE || 'json';
+    delete process.env.NODE_CHANNEL_SERIALIZATION_MODE;
+    require('child_process')._forkChild(fd, serializationMode);
+  }
+}
+
 // Web Storage needs SQLite, which Bouy lacks, as a node built without it does.
 patchProcessObject();
 loadEnvFiles();
-if (getOptionValue('--expose-internals')) {
-  require('internal/bootstrap/realm').BuiltinModule.exposeInternals();
-}
 setupWebsocket();
 setupEventsource();
 initializeReport();
@@ -157,4 +167,5 @@ initializeDeprecations();
 setupNavigator();
 setupWarningHandler();
 setupDebugEnv();
+setupChildProcessIpcChannel();
 require('internal/process/pre_execution').markBootstrapComplete();

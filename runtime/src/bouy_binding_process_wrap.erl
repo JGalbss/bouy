@@ -58,7 +58,7 @@ spawn_child(This, Options) ->
         V when V =:= undefined; V =:= null -> element(2, file:get_cwd());
         V -> text(V)
     end,
-    Stdio = lists:sublist([stdio(S) || S <- items(get(Options, <<"stdio">>))] ++ [ignore, ignore, ignore], 3),
+    Stdio = [stdio(S) || S <- items(get(Options, <<"stdio">>))] ++ lists:duplicate(3, ignore),
     case {filelib:is_dir(Cwd), bouy_binding_spawn_sync:executable(File, Cwd, Env)} of
         {true, {ok, Path}} -> start(This, Path, Args, Cwd, Env, Stdio);
         {false, _} -> -2;
@@ -78,16 +78,23 @@ stdio(S) ->
         _ -> ignore
     end.
 
-start(This, Path, Args, Cwd, Env, [In, Out, Err]) ->
+start(This, Path, Args, Cwd, Env, [In, Out, Err | More]) ->
     ok = start_inet_db(),
-    {ok, Listen} = gen_tcp:listen(0, [binary, {ip, loopback}, {active, false}, {reuseaddr, true}, {backlog, 4}]),
+    {ok, Listen} = gen_tcp:listen(0, [binary, {ip, loopback}, {active, false}, {reuseaddr, true}, {backlog, 8}]),
     {ok, ListenPort} = inet:port(Listen),
-    Piped = [Name || {Name, {pipe, _}} <- [{stdin, In}, {stderr, Err}]],
+    %% A pipe past stderr, such as the IPC channel of fork, is a socket at its
+    %% index in the child (NODE_CHANNEL_FD); it connects at fd 10 + index first.
+    Realm0 = self(),
+    Extras = [{Index, Handle, spawn(fun() -> ipc_channel(Realm0, Handle) end)}
+              || {Index, {pipe, Handle}} <- lists:enumerate(3, More)],
+    Piped = [Name || {Name, {pipe, _}} <- [{stdin, In}, {stderr, Err}]] ++ [{extra, I} || {I, _, _} <- Extras],
+    Tcp = "<>/dev/tcp/127.0.0.1/" ++ integer_to_list(ListenPort) ++ " || exit 127; ",
     %% Each piped stream connects in this order, so the accepts know which is which.
-    Connect = lists:append(["exec " ++ integer_to_list(Fd) ++ "<>/dev/tcp/127.0.0.1/" ++ integer_to_list(ListenPort) ++ " || exit 127; "
-                            || {Name, Fd} <- [{stdin, 5}, {stderr, 6}], lists:member(Name, Piped)]),
+    Connect = lists:append(["exec " ++ integer_to_list(fd_of(Name)) ++ Tcp || Name <- Piped]),
     Redirects = redirect(0, In) ++ redirect(1, Out) ++ redirect(2, Err),
-    Script = Connect ++ "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&- 5<&- 6<&-",
+    Moves = lists:append([" " ++ integer_to_list(I) ++ ">&" ++ integer_to_list(10 + I) ++ " " ++ integer_to_list(10 + I) ++ ">&-"
+                          || {I, _, _} <- Extras]),
+    Script = Connect ++ "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&- 5<&- 6<&-" ++ Moves,
     Unset = [{K, false} || K <- [element(1, bouy_binding_spawn_sync:split_pair(P)) || P <- os:getenv()],
                            not lists:keymember(K, 1, Env)],
     Realm = self(),
@@ -99,6 +106,7 @@ start(This, Path, Args, Cwd, Env, [In, Out, Err]) ->
         Realm ! {self(), started, OsPid},
         Sockets = accept(Listen, Piped),
         gen_tcp:close(Listen),
+        [give_socket(maps:get({extra, I}, Sockets, none), Channel) || {I, _, Channel} <- Extras],
         Writer = case maps:get(stdin, Sockets, none) of
             none -> none;
             Stdin -> spawn_link(fun() -> write_loop(Stdin) end)
@@ -115,7 +123,7 @@ start(This, Path, Args, Cwd, Env, [In, Out, Err]) ->
     receive
         {Manager, started, OsPid} ->
             erlang:demonitor(Monitor, [flush]),
-            started(This, Manager, OsPid, Handles);
+            started(This, Manager, OsPid, Handles, Extras);
         {'DOWN', Monitor, process, Manager, _} ->
             -2
     end.
@@ -135,6 +143,49 @@ start_inet_db() ->
             ok
     end.
 
+fd_of(stdin) -> 5;
+fd_of(stderr) -> 6;
+fd_of({extra, Index}) -> 10 + Index.
+
+%% The channel of an extra pipe, such as fork's IPC channel: a process that
+%% reads and writes the socket for the handle once the manager hands it over;
+%% writes wait in its mailbox until then.
+ipc_channel(Realm, Handle) ->
+    receive
+        {socket, none} ->
+            deliver(Realm, Handle, eof);
+        {socket, Socket} ->
+            ok = inet:setopts(Socket, [{active, true}]),
+            socket_loop(Socket, Realm, Handle)
+    end.
+
+give_socket(none, Channel) ->
+    Channel ! {socket, none};
+give_socket(Socket, Channel) ->
+    ok = gen_tcp:controlling_process(Socket, Channel),
+    Channel ! {socket, Socket}.
+
+socket_loop(Socket, Realm, Handle) ->
+    receive
+        {tcp, Socket, Data} ->
+            deliver(Realm, Handle, Data),
+            socket_loop(Socket, Realm, Handle);
+        {tcp_closed, Socket} ->
+            deliver(Realm, Handle, eof),
+            Self = self(),
+            bouy_node_stream:call(Realm, fun() -> erlang:erase({?MODULE, root, Self}) end);
+        {write, Bytes} ->
+            _ = gen_tcp:send(Socket, Bytes),
+            socket_loop(Socket, Realm, Handle);
+        shutdown ->
+            _ = gen_tcp:shutdown(Socket, write),
+            socket_loop(Socket, Realm, Handle);
+        close ->
+            gen_tcp:close(Socket),
+            Self = self(),
+            bouy_node_stream:call(Realm, fun() -> erlang:erase({?MODULE, root, Self}) end)
+    end.
+
 %% The connections of the piped streams, in their order; a child that fails
 %% before it connects leaves the rest out.
 accept(_Listen, []) -> #{};
@@ -144,7 +195,11 @@ accept(Listen, [Name | Rest]) ->
         _ -> #{}
     end.
 
-started(This, Manager, OsPid, Handles) ->
+started(This, Manager, OsPid, Handles, Extras) ->
+    [begin
+         erlang:put({?MODULE, root, Channel}, Handle),
+         bouy_node_stream:attach(Handle, Channel)
+     end || {_, Handle, Channel} <- Extras],
     %% The handles stay roots of the heap until the manager has sent its last
     %% callback, which may still name them.
     erlang:put({?MODULE, root, Manager}, {This, Handles}),
