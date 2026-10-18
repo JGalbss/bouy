@@ -192,7 +192,8 @@ handle_type(Fd) ->
             case buoy_node_stdio:kind(N) of
                 tty -> 1;
                 file -> 3;
-                pipe -> 4
+                pipe -> 4;
+                closed -> 5
             end;
         N when is_integer(N), N > 2 ->
             3;

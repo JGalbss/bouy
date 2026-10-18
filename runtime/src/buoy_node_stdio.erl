@@ -10,7 +10,7 @@
 %% inherits stdin before then still gets its bytes.
 -module(buoy_node_stdio).
 
--export([methods/1, open/2, kind/1]).
+-export([methods/1, open/2, kind/1, close/1]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -62,9 +62,15 @@ write(Device, Bytes) ->
 
 %% What the standard descriptor Fd of the VM is, as uv_guess_handle reports
 %% it: a terminal, a pipe or a socket, or a file, which a character device
-%% such as /dev/null also is.
--spec kind(0..2) -> tty | pipe | file.
+%% such as /dev/null also is, or closed after fs.closeSync(Fd).
+-spec kind(0..2) -> tty | pipe | file | closed.
 kind(Fd) ->
+    case persistent_term:get({?MODULE, closed, Fd}, false) of
+        true -> closed;
+        false -> open_kind(Fd)
+    end.
+
+open_kind(Fd) ->
     case buoy_binding_tty_wrap:is_tty(Fd) of
         true ->
             tty;
@@ -110,3 +116,14 @@ ended(Realm, Handle) ->
         buoy_node_stream:deliver(Handle, eof),
         erlang:erase({?MODULE, root, Self})
     end).
+
+%% fs.closeSync(Fd) of a standard descriptor: OTP keeps the descriptor open,
+%% so the VM records it as closed, and a stream that the program creates
+%% after that gets no handle, as for a descriptor that libuv cannot guess.
+%% It returns error when the descriptor was closed already, which is EBADF.
+-spec close(0..2) -> ok | error.
+close(Fd) ->
+    case persistent_term:get({?MODULE, closed, Fd}, false) of
+        true -> error;
+        false -> persistent_term:put({?MODULE, closed, Fd}, true)
+    end.

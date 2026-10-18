@@ -459,7 +459,10 @@ close(Args) ->
             check(file:close(File), <<"close">>, undefined),
             undefined;
         _ when Fd >= 0, Fd =< 2 ->
-            undefined;
+            case buoy_node_stdio:close(Fd) of
+                ok -> undefined;
+                error -> uv_error(ebadf, <<"close">>, undefined)
+            end;
         _ ->
             uv_error(ebadf, <<"close">>, undefined)
     end.
