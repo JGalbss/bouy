@@ -282,27 +282,51 @@ line_terminator(C) -> C =:= 10 orelse C =:= 13 orelse C =:= 16#2028 orelse C =:=
 %% port, which a registered process owns, so that each eval costs a message
 %% and not a new OS process. A request is the flags and the module name, one
 %% on each line, then an empty line and the source text; an answer is a
-%% status byte and the text. The server process also compiles and loads the
-%% Erlang module, so the realm's heap and dictionary stay out of it.
+%% status byte and the text. The server only turns source text into Erlang;
+%% a process of the caller's own compiles and loads that Erlang, so evals of
+%% several realms compile at once, and the realm's heap and dictionary stay
+%% out of it. The name of each module is unique, so two realms that compile
+%% the same text at once load two modules, and the table keeps either.
 compile(Source, Flags, Key) ->
     Name = "buoy_eval_" ++ integer_to_list(erlang:unique_integer([positive])),
     Request = [lists:join("\n", Flags ++ [Name]), "\n\n", buoy_ref_string:to_utf8(Source)],
-    case call_compiler({Key, list_to_atom(Name)}, iolist_to_binary(Request)) of
-        {module, Module} -> Module;
-        {diagnostic, Diagnostic} -> report(Diagnostic);
-        {failed, Output} -> type_error(buoy_ref_string:from_utf8(<<"the Buoy compiler failed: ", Output/binary>>))
+    case call_compiler(iolist_to_binary(Request)) of
+        <<0, Erlang/binary>> -> loaded(load_apart(Key, list_to_atom(Name), Erlang));
+        <<2, Diagnostic/binary>> -> report(Diagnostic);
+        <<_, Output/binary>> -> loaded({failed, Output})
     end.
 
-call_compiler(Target, Request) ->
+loaded({module, Module}) -> Module;
+loaded({failed, Output}) -> type_error(buoy_ref_string:from_utf8(<<"the Buoy compiler failed: ", Output/binary>>)).
+
+call_compiler(Request) ->
     Server = compiler(),
     Ref = erlang:monitor(process, Server),
-    Server ! {compile, self(), Ref, Target, Request},
+    Server ! {raw, self(), Ref, Request},
     receive
-        {Ref, Answer} ->
+        {Ref, {answer, Answer}} ->
             erlang:demonitor(Ref, [flush]),
             Answer;
         {'DOWN', Ref, process, _, Reason} ->
             type_error(buoy_ref_string:from_utf8(unicode:characters_to_binary(io_lib:format("the Buoy compiler stopped: ~0tP", [Reason, 8]))))
+    end.
+
+%% load/3 in a process linked to the caller, which a timeout or a kill of the
+%% caller stops too.
+load_apart(Key, Module, Erlang) ->
+    Caller = self(),
+    {Pid, Ref} = spawn_opt(fun() ->
+                                   Result = try load(Key, Module, Erlang)
+                                            catch Class:Reason -> {failed, unicode:characters_to_binary(io_lib:format("~p: ~0tP", [Class, Reason, 8]))}
+                                            end,
+                                   Caller ! {self(), Result}
+                           end, [link, monitor]),
+    receive
+        {Pid, Result} ->
+            erlang:demonitor(Ref, [flush]),
+            Result;
+        {'DOWN', Ref, process, Pid, Reason} ->
+            {failed, unicode:characters_to_binary(io_lib:format("the Erlang compiler stopped: ~0tP", [Reason, 8]))}
     end.
 
 %% The compiler process of the VM, started on first use.
@@ -344,16 +368,6 @@ serve(Port) ->
                 {Port, {exit_status, Status}} -> exit({compiler_exit, Status})
             end,
             From ! {Ref, {answer, Answer}},
-            serve(Port);
-        {compile, From, Ref, {Key, Module}, Request} ->
-            true = port_command(Port, Request),
-            Answer = receive
-                {Port, {data, <<0, Erlang/binary>>}} -> load(Key, Module, Erlang);
-                {Port, {data, <<2, Diagnostic/binary>>}} -> {diagnostic, Diagnostic};
-                {Port, {data, <<_, Output/binary>>}} -> {failed, Output};
-                {Port, {exit_status, Status}} -> exit({compiler_exit, Status})
-            end,
-            From ! {Ref, Answer},
             serve(Port);
         {Port, {exit_status, Status}} ->
             exit({compiler_exit, Status})
