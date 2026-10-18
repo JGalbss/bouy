@@ -37,7 +37,7 @@ binding() ->
     Port = buoy_node:constructor(<<"MessagePort">>, 0, fun ?MODULE:construct_invalid/2),
     Proto = buoy_heap:get(Port, <<"prototype">>),
     [buoy_heap:define(Proto, Name, #{value => F(Name, Length, Fun), writable => true, enumerable => true, configurable => true})
-     || {Name, Length, Fun} <- [{<<"postMessage">>, 1, fun post_message/2},
+     || {Name, Length, Fun} <- [{<<"postMessage">>, 0, fun post_message/2},
                                 {<<"start">>, 0, fun(This, _) -> start(This) end},
                                 {<<"close">>, 0, fun(This, _) -> close(This), undefined end},
                                 {<<"ref">>, 0, fun(This, _) -> set_ref(This, true) end},
