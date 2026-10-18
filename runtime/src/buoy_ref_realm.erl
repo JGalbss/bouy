@@ -58,6 +58,7 @@ families() ->
      buoy_ref_reflect,
      buoy_ref_proxy,
      buoy_ref_weak,
+     buoy_ref_shadow_realm,
      buoy_ref_eval,
      buoy_ref_temporal,
      ?MODULE].

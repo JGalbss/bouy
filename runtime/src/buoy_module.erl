@@ -18,7 +18,7 @@
 -export([uninitialized/2, hoisted/1]).
 -export([dynamic_import/4, meta/1, require/2]).
 -export([define_namespace/3, broken/1]).
--export([deferred_namespace/1, ensure_deferred/1]).
+-export([deferred_namespace/1, ensure_deferred/1, entry/0]).
 
 -define(RECORD(M), {'$buoy_module', M}).
 -define(NAMESPACE(M), {'$buoy_namespace', M}).
@@ -34,6 +34,11 @@
 -define(ENUMERABLE, 2).
 
 %%% Entry points
+
+%% The entry module of the program of this realm process, from which a
+%% ShadowRealm's importValue resolves.
+-spec entry() -> module() | undefined.
+entry() -> erlang:get(?ENTRY).
 
 %% Links and evaluates the program from its entry module. Returns the promise
 %% of the evaluation when the graph awaits, else undefined. An error of a

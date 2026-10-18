@@ -14,6 +14,7 @@
 
 -include("buoy_ref.hrl").
 
+-export([shadow_evaluate/2]).
 -export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4]).
 
 -import(buoy_ref, [type_error/1]).
@@ -178,6 +179,31 @@ run(Source, Flags, This, Scope, Context) ->
             end,
             Module:'__eval__'(This, Scope, Context)
     end.
+
+%% PerformShadowRealmEval: the code compiles where evaluate runs, so that a
+%% syntax error throws in the caller's realm, and runs as an indirect eval in
+%% the realm N. An error of the code comes back as {error, Value}.
+-spec shadow_evaluate(term(), pos_integer()) -> {ok, term()} | {error, term()}.
+shadow_evaluate(Source, N) ->
+    Code = case trivial(Source) of
+        empty ->
+            fun() -> undefined end;
+        {regexp, Body, RegExpFlags} ->
+            fun() -> buoy_ref_regexp:literal(buoy_ref_string:from_units(Body), buoy_ref_string:to_utf8(buoy_ref_string:from_units(RegExpFlags))) end;
+        code ->
+            Key = erlang:md5(term_to_binary({Source, []})),
+            Module = case cached(Key) of
+                {ok, M} -> M;
+                none -> compile(Source, [], Key)
+            end,
+            fun() -> Module:'__eval__'(?GLOBAL, [], #{}) end
+    end,
+    Run = buoy_ref_realm:realm_fun(N, fun(_, _) ->
+                                              try {ok, Code()}
+                                              catch error:Reason:Stack -> {error, buoy_ref:caught(Reason, Stack)}
+                                              end
+                                      end),
+    Run(undefined, undefined).
 
 %% Starts the compiler process of the VM and waits for its first answer, so
 %% that the start of the Buoy binary does not count against the first program
