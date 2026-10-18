@@ -217,12 +217,13 @@ start_ssl() ->
 
 %% The ssl options of the connection; the verify_fun reports to Agent.
 ssl_options(S, Role, Agent) ->
-    #{context := Context, verify := {Request, _Reject}, servername := Name, alpn := Alpn, session := Session} = S,
+    #{context := Context, verify := {Request, Reject}, servername := Name, alpn := Alpn, session := Session} = S,
     Base = buoy_crypto_context:options(Context, Role),
     Cas = proplists:get_value(cacerts, Base, []),
     Verify = case {Role, Request} of
         {server, false} -> [{verify, verify_none}];
-        {server, true} -> [{verify, verify_peer}, {fail_if_no_peer_cert, false}, {verify_fun, verify_fun(Agent, Cas)}];
+        %% SSL_VERIFY_FAIL_IF_NO_PEER_CERT comes with rejectUnauthorized.
+        {server, true} -> [{verify, verify_peer}, {fail_if_no_peer_cert, Reject}, {verify_fun, verify_fun(Agent, Cas)}];
         {client, _} -> [{verify, verify_peer}, {verify_fun, verify_fun(Agent, Cas)}]
     end,
     Sni = case {Role, Name} of
@@ -259,7 +260,7 @@ ssl_options(S, Role, Agent) ->
     Versions = proplists:get_value(versions, Base, []),
     Tls13 = lists:member('tlsv1.3', Versions),
     Older = Versions -- ['tlsv1.3'] =/= [],
-    Tickets = [O || O <- Resume, Tls13 orelse not lists:member(element(1, O), [session_tickets, use_ticket]),
+    Tickets = [O || O <- Resume, Tls13 orelse not lists:member(element(1, O), [session_tickets, use_ticket, stateless_tickets_seed]),
                     Older orelse not lists:member(element(1, O), [reuse_sessions, reuse_session])],
     [{cb_info, buoy_tls_transport:cb_info()}, {log_level, none}, {handshake, full}]
         ++ Verify ++ Sni ++ AlpnOption ++ Tickets ++ SniFun ++ Keylog ++ Base.
@@ -484,6 +485,8 @@ agent_loop(Ssl, Report, Reading, Armed) ->
 arm(Ssl, Report, Reading) ->
     case ssl:setopts(Ssl, [{active, once}]) of
         ok -> agent_loop(Ssl, Report, Reading, true);
+        %% A passive connection keeps the alert that ended it for setopts.
+        {error, {tls_alert, _} = Alert} -> Report({error, Alert});
         {error, _} -> Report(cleartext_eof)
     end.
 
@@ -531,6 +534,9 @@ event(This, S, {written, Ref, Status}) ->
     end;
 event(This, S, {shutdown, Req, Status}) ->
     save(This, S#{shutdown := none}),
+    %% ssl that the peer's close_notify ended shuts nothing; the parent's
+    %% write side still ends, as SSL_shutdown is followed by the stream's.
+    Status =:= ok orelse parent_shutdown(maps:get(parent, S)),
     complete(Req, status(Status), This);
 event(This, S, {ticket, Ticket}) ->
     save(This, S#{ticket => Ticket}),
@@ -799,7 +805,12 @@ shutdown(This, Req) ->
     case state(This) of
         #{phase := open, agent := Agent} = S -> save(This, S#{shutdown := Req}), Agent ! {shutdown, Req}, 0;
         #{phase := P} = S when P =:= idle; P =:= handshaking -> save(This, S#{shutdown := Req}), 0;
-        _ -> 1
+        %% The TLS session is over, and the parent's write side still ends,
+        %% as TLSWrap::DoShutdown always shuts the underlying stream.
+        #{parent := Parent} ->
+            parent_shutdown(Parent),
+            buoy_node_socket:later(fun() -> complete(Req, 0, This) end),
+            0
     end.
 
 destroy(This) ->
@@ -1071,8 +1082,9 @@ message(Text) ->
 
 local_reason(insufficient_security, _, _) -> {16#C1, <<"no shared cipher">>};
 local_reason(handshake_failure, Description, _) ->
-    case string:find(Description, "cipher") of
-        nomatch -> {16#410, <<"sslv3 alert handshake failure">>};
+    case {string:find(Description, "cipher"), string:find(Description, "client_certificate")} of
+        {nomatch, nomatch} -> {1040, alert_text(handshake_failure)};
+        {nomatch, _} -> {16#C7, <<"peer did not return a certificate">>};
         _ -> {16#C1, <<"no shared cipher">>}
     end;
 local_reason(protocol_version, _, _) -> {16#102, <<"unsupported protocol">>};
@@ -1120,7 +1132,18 @@ alert_text(Alert) ->
     Words = binary:replace(atom_to_binary(Alert), <<"_">>, <<" ">>, [global]),
     case alert_code(Alert) of
         116 -> <<"tlsv13 alert certificate required">>;
+        109 -> <<"tlsv13 alert missing extension">>;
         112 -> <<"tlsv1 unrecognized name">>;
-        Code when Code < 48 -> <<"sslv3 alert ", Words/binary>>;
+        90 -> <<"tlsv1 alert user cancelled">>;
+        Code when Code < 48 -> <<(sslv3_alert_prefix())/binary, " alert ", Words/binary>>;
         _ -> <<"tlsv1 alert ", Words/binary>>
+    end.
+
+%% The SSLv3 alert reasons read "sslv3 alert", "ssl/tls alert" from OpenSSL
+%% 3.2, and "tls alert" from 4.0, the version that process.versions reports.
+sslv3_alert_prefix() ->
+    case crypto:info_lib() of
+        [{_, Version, _} | _] when Version >= 16#40000000 -> <<"tls">>;
+        [{_, Version, _} | _] when Version >= 16#30200000 -> <<"ssl/tls">>;
+        _ -> <<"sslv3">>
     end.

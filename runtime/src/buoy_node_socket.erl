@@ -27,7 +27,7 @@
 
 -export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, write_kick/1, later/1, js/1, event/1]).
 -export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
--export([sockaddr/3, address_text/1, scope/1]).
+-export([sockaddr/3, address_text/1, scope/1, open_inherited/2]).
 -export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1]).
 -export_type([kind/0]).
 
@@ -636,9 +636,31 @@ connected(Handle, Req, Status) ->
 %% open(fd): the handle takes a socket descriptor that the VM inherited.
 -spec open_fd(term(), integer()) -> integer().
 open_fd(Handle, Fd) ->
-    case socket:open(Fd) of
+    case open_inherited(Fd, #{}) of
         {ok, Socket} -> attach(Handle, Socket), 0;
         {error, Reason} -> errno(Reason)
+    end.
+
+%% socket:open/2 of a descriptor that the VM did not open. macOS has no
+%% SO_DOMAIN, so a duplicate opened as inet finds the family with
+%% getsockname, as uv_guess_handle does.
+-spec open_inherited(integer(), map()) -> {ok, socket:socket()} | {error, term()}.
+open_inherited(Fd, Options) ->
+    case socket:open(Fd, Options) of
+        {error, {invalid, {options, domain, _}}} ->
+            case socket:open(Fd, #{dup => true, domain => inet}) of
+                {ok, Probe} ->
+                    Name = socket:sockname(Probe),
+                    socket:close(Probe),
+                    case Name of
+                        {ok, #{family := Family}} -> socket:open(Fd, Options#{domain => Family});
+                        {error, _} = Error -> Error
+                    end;
+                {error, _} = Error ->
+                    Error
+            end;
+        Result ->
+            Result
     end.
 
 %% The socket's own address or its peer's, or a negative errno.
