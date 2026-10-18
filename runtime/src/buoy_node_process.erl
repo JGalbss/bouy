@@ -63,7 +63,13 @@ patch(Process) ->
         {_, {ok, _}, [_ | Args]} -> Args;
         _ -> Argv0
     end,
-    buoy_heap:set(Process, <<"argv">>, buoy_heap:new_array([exec_path() | [buoy_ref_string:from_utf8(A) || A <- Argv]])),
+    %% argv[0] as the program was started, which internal/main/buoy keeps as
+    %% process.argv0 before it puts execPath in its place.
+    First = case {erlang:get('$buoy_argv'), init:get_argument(buoy_argv0)} of
+        {undefined, {ok, [[Given]]}} -> buoy_ref_string:from_utf8(unicode:characters_to_binary(Given));
+        _ -> exec_path()
+    end,
+    buoy_heap:set(Process, <<"argv">>, buoy_heap:new_array([First | [buoy_ref_string:from_utf8(A) || A <- Argv]])),
     buoy_heap:set(Process, <<"execArgv">>, buoy_heap:new_array([buoy_ref_string:from_utf8(A) || A <- exec_argv()])),
     readonly(Process, <<"pid">>, list_to_integer(os:getpid())),
     Ppid = buoy_node:fn(<<"get ppid">>, 0, fun(_, _) -> parent_pid() end),

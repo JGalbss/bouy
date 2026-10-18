@@ -1,7 +1,8 @@
 %% internalBinding('process_wrap') (src/process_wrap.cc): Process, the handle
 %% of a child process that child_process.spawn starts. A manager process
 %% owns the child: bash connects a loopback socket for each piped stdin and
-%% stderr (/dev/tcp), wires the stdio, and execs the file. The port reads
+%% stderr (/dev/tcp), wires the stdio, and execs the file through
+%% `buoy --buoy-exec` (buoy_binding_spawn_sync:exec/4). The port reads
 %% stdout from fd 4 (nouse_stdio) and reports the exit. A socket never
 %% blocks the child when the VM is gone, and it half-closes, so the end of
 %% stdin reaches the child while its output still flows. Each stdio pipe is
@@ -49,19 +50,17 @@ items(A) -> buoy_heap:array_items(A).
 %% spawn(options): 0, or the negative errno of a spawn that fails.
 spawn_child(This, Options) ->
     File = text(get(Options, <<"file">>)),
-    Args = case [text(A) || A <- items(get(Options, <<"args">>))] of
-        [_Argv0 | Rest] -> Rest;
-        [] -> []
-    end,
     Env = [buoy_binding_spawn_sync:split_pair(text(P)) || P <- items(get(Options, <<"envPairs">>))],
     Cwd = case get(Options, <<"cwd">>) of
         V when V =:= undefined; V =:= null; V =:= <<>> -> element(2, file:get_cwd());
         V -> text(V)
     end,
     Stdio = [stdio(S) || S <- items(get(Options, <<"stdio">>))] ++ lists:duplicate(3, ignore),
-    case {filelib:is_dir(Cwd), buoy_binding_spawn_sync:executable(File, Cwd, Env)} of
-        {true, {ok, Path}} -> start(This, Path, Args, Cwd, Env, Stdio);
-        _ -> unstarted(Stdio)
+    case filelib:is_dir(Cwd) andalso buoy_binding_spawn_sync:exec(File, Cwd, Env, Options) of
+        {ok, Exec} -> start(This, Exec, Cwd, Stdio);
+        {error, -2} -> unstarted(Stdio);
+        {error, Errno} -> Errno;
+        false -> unstarted(Stdio)
     end.
 
 %% uv_spawn opens the parent's end of each stdio pipe even when the child
@@ -96,7 +95,7 @@ stdio(S) ->
         _ -> ignore
     end.
 
-start(This, Path, Args, Cwd, Env, [In, Out, Err | More]) ->
+start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
     ok = start_inet_db(),
     {ok, Listen} = gen_tcp:listen(0, [binary, {ip, loopback}, {active, false}, {reuseaddr, true}, {backlog, 8}]),
     {ok, ListenPort} = inet:port(Listen),
@@ -113,13 +112,11 @@ start(This, Path, Args, Cwd, Env, [In, Out, Err | More]) ->
     Moves = lists:append([" " ++ integer_to_list(I) ++ ">&" ++ integer_to_list(10 + I) ++ " " ++ integer_to_list(10 + I) ++ ">&-"
                           || {I, _, _} <- Extras]),
     Script = Connect ++ "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&- 5<&- 6<&-" ++ Moves,
-    Unset = [{K, false} || K <- [element(1, buoy_binding_spawn_sync:split_pair(P)) || P <- os:getenv()],
-                           not lists:keymember(K, 1, Env)],
     Realm = self(),
     Handles = #{stdin => pipe_handle(In), stdout => pipe_handle(Out), stderr => pipe_handle(Err)},
     {Manager, Monitor} = spawn_monitor(fun() ->
         Port = open_port({spawn_executable, "/bin/bash"},
-                         [nouse_stdio, binary, exit_status, {cd, Cwd}, {env, Unset ++ Env}, {args, ["-c", Script, Path | Args]}]),
+                         [nouse_stdio, binary, exit_status, {cd, Cwd}, {args, ["-c", Script, Program | ProgramArgs]}]),
         OsPid = case erlang:port_info(Port, os_pid) of {os_pid, P} -> P; _ -> 0 end,
         Realm ! {self(), started, OsPid},
         Sockets = accept(Listen, Piped),

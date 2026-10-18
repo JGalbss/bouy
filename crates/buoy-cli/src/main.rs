@@ -2,6 +2,8 @@
 
 mod node;
 mod runtime;
+#[cfg(unix)]
+mod spawn;
 
 use std::env;
 use std::ffi::OsString;
@@ -175,6 +177,11 @@ const DIAGNOSTICS: u8 = 2;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().collect();
+    // The last step of a child process that the runtime starts (spawn.rs).
+    #[cfg(unix)]
+    if arguments.get(1).is_some_and(|first| first == "--buoy-exec") {
+        return spawn::exec(&arguments[2..]);
+    }
     // `buoy [node options] <script> [args...]`, `buoy -e <code>`, and `buoy -p <code>` run
     // as `node` does, on the reference engine, so a program that starts `process.execPath`
     // as node starts Buoy.
@@ -422,6 +429,9 @@ fn start_program(
     ])
     .arg(&runtime.ebin)
     .args(["-buoy_exec_argv", &options.exec_argv_json()])
+    // `process.argv0`: the argv[0] of this invocation, which spawn's `argv0` option sets.
+    .arg("-buoy_argv0")
+    .arg(&*env::args_os().next().unwrap_or_default().to_string_lossy())
     .args(
         options
             .eval
