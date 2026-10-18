@@ -1,15 +1,15 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "f6201c7bdd29acbed5f747da46a37a2dfb138492",
+  "updated": "6ef5b3d3daf9b685f1f062305212a56bc3e7d6af",
   "total": 4419,
   "outcomes": {
-    "pass": 1968,
+    "pass": 1998,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1741,
+    "fail": 1711,
     "timeout": 117,
     "harness_error": 0,
     "crash": 10
@@ -23,9 +23,9 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1863,
+        "pass": 1893,
         "skip": 545,
-        "fail": 1564,
+        "fail": 1534,
         "timeout": 97,
         "crash": 10
       },
@@ -41,9 +41,9 @@
         "skip": 343
       },
       "public": {
-        "pass": 1968,
+        "pass": 1998,
         "skip": 240,
-        "fail": 1741,
+        "fail": 1711,
         "timeout": 117,
         "crash": 10
       }
@@ -56,9 +56,9 @@
         "crash": 2
       },
       "async_hooks": {
-        "pass": 15,
+        "pass": 30,
         "skip": 11,
-        "fail": 30
+        "fail": 15
       },
       "buffer": {
         "pass": 58,
@@ -97,9 +97,9 @@
         "timeout": 4
       },
       "diagnostics_channel": {
-        "pass": 41,
+        "pass": 46,
         "skip": 3,
-        "fail": 11,
+        "fail": 6,
         "timeout": 1
       },
       "dns": {
@@ -157,9 +157,9 @@
         "fail": 4
       },
       "other": {
-        "pass": 216,
+        "pass": 222,
         "skip": 178,
-        "fail": 207,
+        "fail": 201,
         "timeout": 13,
         "crash": 2
       },
@@ -224,9 +224,9 @@
         "timeout": 22
       },
       "timers": {
-        "pass": 42,
+        "pass": 46,
         "skip": 12,
-        "fail": 6
+        "fail": 2
       },
       "tls": {
         "pass": 204,
