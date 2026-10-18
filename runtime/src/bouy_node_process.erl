@@ -99,10 +99,23 @@ exec_path() ->
         Path -> bouy_ref_string:from_utf8(unicode:characters_to_binary(Path))
     end.
 
+%% The parent of the VM. A child that a Bouy program spawned has the
+%% erl_child_setup of the parent's VM as its OS parent; its parent is the
+%% VM of that program, as a node child's parent is node.
 parent_pid() ->
-    try list_to_integer(string:trim(os:cmd("ps -o ppid= -p " ++ os:getpid())))
+    try
+        [Parent, _] = ps(os:getpid()),
+        [Grandparent, Command] = ps(Parent),
+        case lists:suffix("erl_child_setup", Command) of
+            true -> list_to_integer(Grandparent);
+            false -> list_to_integer(Parent)
+        end
     catch _:_ -> 0
     end.
+
+ps(Pid) ->
+    [P, C | _] = string:lexemes(os:cmd("ps -o ppid=,comm= -p " ++ Pid), " \n") ++ ["", ""],
+    [P, C].
 
 readonly(O, Key, Value) ->
     bouy_heap:define(O, Key, #{value => Value, writable => false, enumerable => true, configurable => false}).
