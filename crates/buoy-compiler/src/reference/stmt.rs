@@ -28,15 +28,18 @@ impl<'a> Lowerer<'a, '_> {
             .map(|function| function.cell.clone())
             .collect();
         let mut code = self.hoist(&list);
-        let mut list = list;
-        let mut index = 0;
+        // The statements still to lower, the last first, so that the body of a block
+        // joins the list at its end without a copy of the rest.
+        let mut pending: Vec<&'a Statement<'a>> = list.into_iter().rev().collect();
         loop {
-            let Some(statement) = list.get(index).copied() else {
+            let Some(statement) = pending.pop() else {
                 code.extend(self.jump(k));
                 break;
             };
             if is_using(statement) {
-                code.extend(self.using_block(&list[index..], k));
+                pending.push(statement);
+                let rest: Vec<_> = pending.into_iter().rev().collect();
+                code.extend(self.using_block(&rest, k));
                 break;
             }
             // A block with `using` declarations disposes at its own end, so it stays a
@@ -44,20 +47,16 @@ impl<'a> Lowerer<'a, '_> {
             if let Statement::BlockStatement(inner) = statement
                 && !inner.body.iter().any(is_using)
             {
-                let mut spliced: Vec<&'a Statement<'a>> = inner.body.iter().collect();
-                code.extend(self.hoist(&spliced));
-                spliced.extend_from_slice(&list[index + 1..]);
-                list = spliced;
-                index = 0;
+                let body: Vec<&'a Statement<'a>> = inner.body.iter().collect();
+                code.extend(self.hoist(&body));
+                pending.extend(body.into_iter().rev());
                 continue;
             }
             if is_simple(statement) {
                 code.extend(self.simple(statement));
-                index += 1;
                 continue;
             }
-            let rest = &list[index + 1..];
-            if rest.is_empty() || !completes_normally(statement) {
+            if pending.is_empty() || !completes_normally(statement) {
                 code.extend(self.stmt(statement, k));
                 break;
             }
@@ -67,7 +66,7 @@ impl<'a> Lowerer<'a, '_> {
             let join = self.fresh("K");
             let saved_env = self.frame.env.clone();
             let params = self.rebind_params(&vars);
-            let rest_code = self.stmts(rest.to_vec(), k);
+            let rest_code = self.stmts(pending.into_iter().rev().collect(), k);
             self.frame.env = saved_env;
             code.push(Expr::matches(
                 Expr::var(join.clone()),
