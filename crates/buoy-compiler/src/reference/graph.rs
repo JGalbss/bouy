@@ -892,18 +892,45 @@ impl Requests {
     }
 }
 
-/// The text of a string literal or of a template without expressions.
+/// The text of a string literal or of a template without expressions. A text with a
+/// surrogate that pairs with none is no string of Rust, so it has none.
 fn string_of(expression: &Expression<'_>) -> Option<String> {
     match expression {
-        Expression::StringLiteral(literal) => Some(literal.value.to_string()),
-        Expression::TemplateLiteral(template) if template.expressions.is_empty() => template
-            .quasis
-            .first()
-            .and_then(|quasi| quasi.value.cooked.as_ref())
-            .map(ToString::to_string),
+        Expression::StringLiteral(literal) => {
+            decoded(literal.value.as_str(), literal.lone_surrogates)
+        }
+        Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
+            template.quasis.first().and_then(|quasi| {
+                quasi
+                    .value
+                    .cooked
+                    .as_ref()
+                    .and_then(|cooked| decoded(cooked.as_str(), quasi.lone_surrogates))
+            })
+        }
         Expression::ParenthesizedExpression(inner) => string_of(&inner.expression),
         _ => None,
     }
+}
+
+/// The text of a literal value whose surrogates oxc writes as U+FFFD and four hex
+/// digits, as `literal::js_string_literal` reads them: a pair joins into its character.
+fn decoded(value: &str, lone_surrogates: bool) -> Option<String> {
+    if !lone_surrogates {
+        return Some(value.to_owned());
+    }
+    let mut units = Vec::new();
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{FFFD}' {
+            let hex: String = chars.by_ref().take(4).collect();
+            units.push(u16::from_str_radix(&hex, 16).ok()?);
+            continue;
+        }
+        let mut buffer = [0; 2];
+        units.extend_from_slice(c.encode_utf16(&mut buffer));
+    }
+    String::from_utf16(&units).ok()
 }
 
 /// The specifier of `require('x')`.
