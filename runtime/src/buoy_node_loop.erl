@@ -199,8 +199,7 @@ event(_) ->
 %% left, the next expiry when a ref'd one is, and its negation when only
 %% unref'd ones are.
 run_timers() ->
-    Process = process(),
-    Expiry = buoy_ref:to_number(buoy_heap:call(callback(process_timers), Process, [now()])),
+    Expiry = process_timers(process(), now()),
     case Expiry of
         0 ->
             toggle_timer_ref(false);
@@ -209,6 +208,18 @@ run_timers() ->
             toggle_timer_ref(E > 0);
         _ ->
             toggle_timer_ref(false)
+    end.
+
+%% An exception of a timer goes to the uncaught exception handler, and then
+%% processTimers runs again for the timers that are still due, as the
+%% verbose TryCatch of RunTimers loops.
+process_timers(Process, Now) ->
+    try buoy_heap:call(callback(process_timers), Process, [Now]) of
+        Expiry -> buoy_ref:to_number(Expiry)
+    catch
+        error:Reason:Stack ->
+            _ = uncaught(buoy_ref:caught(Reason, Stack), false),
+            process_timers(Process, Now)
     end.
 
 %% The check phase: CheckImmediate.
