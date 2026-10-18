@@ -55,7 +55,9 @@ check_prime_job([Candidate, Checks | _]) ->
 -spec generate_prime(pos_integer(), boolean(), undefined | non_neg_integer(), undefined | non_neg_integer()) -> non_neg_integer().
 generate_prime(Bits, Safe, Add, Rem) ->
     Candidate = candidate(Bits, Safe, Add, Rem),
-    case is_prime(Candidate, 0) andalso (not Safe orelse is_prime(Candidate bsr 1, 0)) of
+    Sieved = small_factor(Candidate) =/= composite andalso
+        (not Safe orelse small_factor(Candidate bsr 1) =/= composite),
+    case Sieved andalso is_prime(Candidate, 0) andalso (not Safe orelse is_prime(Candidate bsr 1, 0)) of
         true -> Candidate;
         false -> generate_prime(Bits, Safe, Add, Rem)
     end.
@@ -113,20 +115,33 @@ is_prime(N, Checks) ->
     end.
 
 small_factor(N) ->
-    Primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97],
-    case lists:member(N, Primes) of
-        true -> prime;
+    Primes = small_primes(),
+    case N =< 2048 of
+        true ->
+            case lists:member(N, Primes) of
+                true -> prime;
+                false -> composite
+            end;
         false ->
             case lists:any(fun(P) -> N rem P =:= 0 end, Primes) of
                 true -> composite;
-                false when N < 10000 -> trial(N, 101);
                 false -> unknown
             end
     end.
 
-trial(N, P) when P * P > N -> prime;
-trial(N, P) when N rem P =:= 0 -> composite;
-trial(N, P) -> trial(N, P + 2).
+%% The odd primes below 2048, made once per node: trial division by them
+%% rejects most candidates before a Miller-Rabin round.
+small_primes() ->
+    case persistent_term:get({?MODULE, small_primes}, undefined) of
+        undefined ->
+            Primes = sieve(lists:seq(2, 2048)),
+            persistent_term:put({?MODULE, small_primes}, Primes),
+            Primes;
+        Primes -> Primes
+    end.
+
+sieve([]) -> [];
+sieve([P | Rest]) -> [P | sieve([X || X <- Rest, X rem P =/= 0])].
 
 odd_part(D, S) when D band 1 =:= 0 -> odd_part(D bsr 1, S + 1);
 odd_part(D, S) -> {D, S}.

@@ -13,7 +13,10 @@ binding() ->
         ++ buoy_crypto_random:members()
         ++ buoy_crypto_kdf:members()
         ++ buoy_crypto_keys:members()
-        ++ buoy_crypto_cipher:members(),
+        ++ buoy_crypto_cipher:members()
+        ++ buoy_crypto_sig:members()
+        ++ buoy_crypto_keygen:members()
+        ++ buoy_crypto_dh:members(),
     Names = [Name || {Name, _} <- Members],
     Missing = [{Name, missing(Name)} || Name <- node_members(), not lists:member(Name, Names)],
     buoy_node:object(Members ++ Missing).

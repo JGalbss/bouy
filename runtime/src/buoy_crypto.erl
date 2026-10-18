@@ -8,7 +8,7 @@
 
 -export([bytes/1, data/2, is_buffer_source/1, array_buffer/1, buffer/1, encoding/2, encode/2, encode_output/3]).
 -export([class/3, fn/3, method/3, state/2, put_state/2, guard/1]).
--export([fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, error_value/1]).
+-export([fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, error_value/1, openssl_message/1]).
 -export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
@@ -189,10 +189,9 @@ throw_openssl(Reason) -> erlang:error({'$throw', error_value({openssl, Reason})}
 error_value({message, Message}) ->
     buoy_heap:error_object('Error', Message, <<"Error: ", Message/binary>>);
 error_value({openssl, Reason}) ->
-    {Lib, Number, Text} = reason(Reason),
-    {LibNumber, LibName, Prefix} = library(Lib),
-    Message = iolist_to_binary(io_lib:format("error:~8.16.0B:~s::~s", [(LibNumber bsl 23) bor Number, LibName, Text])),
-    E = error_value({message, Message}),
+    {Lib, _, Text} = reason(Reason),
+    {_, LibName, Prefix} = library(Lib),
+    E = error_value({message, openssl_message(Reason)}),
     Upper = string:uppercase(binary:replace(Text, <<" ">>, <<"_">>, [global])),
     Code = <<"ERR_OSSL_", Prefix/binary, Upper/binary>>,
     [buoy_heap:set(E, K, V) || {K, V} <- [{<<"library">>, LibName}, {<<"reason">>, Text}, {<<"code">>, Code}]],
@@ -201,6 +200,13 @@ error_value({code, Class, Code, Message}) ->
     E = buoy_heap:error_object(Class, Message, buoy_ref_string:concat([atom_to_binary(Class), <<": ">>, Message])),
     buoy_heap:define(E, <<"code">>, #{value => Code, writable => true, enumerable => true, configurable => true}),
     E.
+
+%% The text of the OpenSSL error Reason, as ERR_error_string_n writes it.
+-spec openssl_message(atom()) -> binary().
+openssl_message(Reason) ->
+    {Lib, Number, Text} = reason(Reason),
+    {LibNumber, LibName, _} = library(Lib),
+    iolist_to_binary(io_lib:format("error:~8.16.0B:~s::~s", [(LibNumber bsl 23) bor Number, LibName, Text])).
 
 %% The OpenSSL 3 errors that the binding raises: the library, and the number
 %% and the text of the reason. A number with 16#80000 is a common reason.
@@ -211,7 +217,10 @@ reason(invalid_iv_length) -> {prov, 109, <<"invalid iv length">>};
 reason(illegal_padding) -> {prov, 165, <<"illegal or unsupported padding mode">>};
 reason(oaep_decoding_error) -> {rsa, 121, <<"oaep decoding error">>};
 reason(digest_too_big) -> {rsa, 112, <<"digest too big for rsa key">>};
-reason(data_too_large_for_key_size) -> {prov, 116, <<"data too large for key size">>};
+reason(data_too_large_for_key_size) -> {rsa, 110, <<"data too large for key size">>};
+reason(key_size_too_small) -> {prov, 171, <<"key size too small">>};
+reason(pub_exponent_out_of_range) -> {rsa, 178, <<"pub exponent out of range">>};
+reason(provider_keymgmt_failure) -> {evp, 233, <<"provider keymgmt failure">>};
 reason(unsupported) -> {evp, 16#8010C, <<"unsupported">>};
 reason(decoder_unsupported) -> {decoder, 16#8010C, <<"unsupported">>};
 reason(interrupted_or_cancelled) -> {crypto, 16#80109, <<"interrupted or cancelled">>};
@@ -221,8 +230,8 @@ reason(operation_not_supported_for_this_keytype) -> {evp, 150, <<"operation not 
 reason(different_parameters) -> {evp, 153, <<"different parameters">>};
 reason(mismatching_domain_parameters) -> {prov, 203, <<"mismatching domain parameters">>};
 reason(invalid_digest) -> {prov, 122, <<"invalid digest">>};
-reason(bad_generator) -> {dh, 115, <<"bad generator">>};
-reason(modulus_too_small) -> {dh, 103, <<"modulus too small">>};
+reason(bad_generator) -> {dh, 101, <<"bad generator">>};
+reason(modulus_too_small) -> {dh, 126, <<"modulus too small">>};
 reason(bits_too_small) -> {bn, 118, <<"bits too small">>};
 reason(bignum_too_long) -> {bn, 114, <<"bignum too long">>};
 reason(missing_oid) -> {ec, 167, <<"missing OID">>};

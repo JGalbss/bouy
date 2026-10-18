@@ -14,7 +14,7 @@
 -export([parse_public_pem/1, parse_public_der/2, parse_private/4, is_rsa_private/1]).
 -export([write_public/3, write_private/5, spki/1, pkcs8/1]).
 -export([is_private/1, complete/1, public/1]).
--export([curve/1, curve_name/1, curve_info/1, curve_bits/1, decode_point/2, encode_point/3, on_curve/2]).
+-export([curve/1, curve_by_name/1, curve_name/1, curve_info/1, curve_bits/1, decode_point/2, encode_point/3, on_curve/2]).
 -export([pss_params/1]).
 
 -define(RSA, {1,2,840,113549,1,1,1}).
@@ -552,18 +552,23 @@ hmac_oid(_) -> fail(unsupported).
 %%% Curves
 
 %% The OTP name of an OpenSSL curve name, or error.
+%% The NIST names count, as EC_curve_nist2nid reads them.
 -spec curve(binary()) -> {ok, atom()} | error.
-curve(<<"wap-wsg-idm-ecid-", Name/binary>>) -> known_curve(Name);
-curve(<<"Oakley-EC2N-3">>) -> {ok, ipsec3};
-curve(<<"Oakley-EC2N-4">>) -> {ok, ipsec4};
 curve(<<"P-192">>) -> {ok, prime192v1};
 curve(<<"P-224">>) -> {ok, secp224r1};
 curve(<<"P-256">>) -> {ok, prime256v1};
 curve(<<"P-384">>) -> {ok, secp384r1};
 curve(<<"P-521">>) -> {ok, secp521r1};
-curve(<<"secp256r1">>) -> error;
-curve(<<"secp192r1">>) -> error;
-curve(Name) -> known_curve(Name).
+curve(Name) -> curve_by_name(Name).
+
+%% The OTP name of an OpenSSL short name of a curve (OBJ_sn2nid).
+-spec curve_by_name(binary()) -> {ok, atom()} | error.
+curve_by_name(<<"wap-wsg-idm-ecid-", Name/binary>>) -> known_curve(Name);
+curve_by_name(<<"Oakley-EC2N-3">>) -> {ok, ipsec3};
+curve_by_name(<<"Oakley-EC2N-4">>) -> {ok, ipsec4};
+curve_by_name(<<"secp256r1">>) -> error;
+curve_by_name(<<"secp192r1">>) -> error;
+curve_by_name(Name) -> known_curve(Name).
 
 known_curve(Name) ->
     Curves = curves(),

@@ -4,7 +4,7 @@
 %% jobs of subtle.digest and of HMAC keys.
 -module(buoy_crypto_hash).
 
--export([members/0, digest/1, digest_names/0, hash/2, hmac/3]).
+-export([members/0, digest/1, digest_names/0, hash/2, hmac/3, init/1, update/2, final/3]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
 -dialyzer({no_return, [invalid_digest/1]}).
@@ -120,12 +120,15 @@ digest_names() ->
 -spec hash(md(), binary()) -> binary().
 hash(Md, Data) -> final(update(init(Md), Data), Md, maps:get(size, Md)).
 
+-spec init(md()) -> term().
 init(#{name := md5_sha1}) -> {crypto:hash_init(md5), crypto:hash_init(sha)};
 init(#{name := Name}) -> crypto:hash_init(Name).
 
+-spec update(term(), iodata()) -> term().
 update({Md5, Sha}, Data) -> {crypto:hash_update(Md5, Data), crypto:hash_update(Sha, Data)};
 update(State, Data) -> crypto:hash_update(State, Data).
 
+-spec final(term(), md(), non_neg_integer()) -> binary().
 final(_, _, 0) -> <<>>;
 final({Md5, Sha}, _, _) -> <<(crypto:hash_final(Md5))/binary, (crypto:hash_final(Sha))/binary>>;
 final(State, #{xof := true}, Length) -> crypto:hash_final_xof(State, Length * 8);
