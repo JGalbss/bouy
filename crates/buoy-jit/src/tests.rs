@@ -486,3 +486,55 @@ fn run_ir_file() {
         println!("{step:?} in {:?}", started.elapsed());
     }
 }
+
+/// Counts the `i` in `[0, n)` with `(i & 3) === 1 || !((i | 0) >= 5 && (i >> 1) < 4)`: the
+/// comparisons of int32s and the jumps of `&&`, `||`, and `!` give what doubles give.
+#[test]
+fn int_compares_and_short_circuits_agree_with_doubles() {
+    let int = |op, value: Expr, by: f64| bin(op, value, num(by));
+    let test = Expr::Or(
+        Box::new(bin(
+            Binary::Eq,
+            int(Binary::BitAnd, local(2), 3.0),
+            num(1.0),
+        )),
+        Box::new(Expr::Unary(
+            Unary::Not,
+            Box::new(Expr::And(
+                Box::new(bin(Binary::Ge, int(Binary::BitOr, local(2), 0.0), num(5.0))),
+                Box::new(bin(Binary::Lt, int(Binary::Shr, local(2), 1.0), num(4.0))),
+            )),
+        )),
+    );
+    let program = Program {
+        classes: vec![],
+        functions: vec![Function {
+            name: "count".to_owned(),
+            receiver: false,
+            params: 1,
+            locals: vec![Ty::Num, Ty::Num, Ty::Num],
+            result: Ty::Num,
+            body: vec![
+                counted(
+                    local(0),
+                    vec![Stmt::If(
+                        test,
+                        vec![set(1, bin(Binary::Add, local(1), num(1.0)))],
+                        vec![],
+                    )],
+                ),
+                Stmt::Return(Some(local(1))),
+            ],
+        }],
+        entries: vec![0],
+        globals: vec![],
+    };
+    let expected = (0..40)
+        .filter(|i| i & 3 == 1 || !(*i >= 5 && (i >> 1) < 4))
+        .count();
+    let (step, _) = run(&program, &[Value::Num(40.0)], &[]);
+    assert_eq!(
+        step,
+        Step::Done(Value::Num(f64::from(u32::try_from(expected).unwrap_or(0))))
+    );
+}

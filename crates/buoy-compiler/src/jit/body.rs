@@ -93,10 +93,7 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
         };
         Ok(ir::Function {
             receiver: this.is_some(),
-            name: job
-                .function
-                .and_then(|function| function.id.as_ref())
-                .map_or_else(|| format!("f{}", job.id), |id| id.name.to_string()),
+            name: job.name.clone(),
             params: count,
             locals: body.locals.iter().map(T::ir).collect(),
             result: body.result.ir(),

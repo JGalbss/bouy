@@ -106,6 +106,8 @@ pub enum Owner<'a> {
 /// A function whose body waits to compile.
 pub struct Job<'a> {
     pub id: ir::FuncId,
+    /// The name of the function in the IR: `name`, `Class.name`, or `Class.constructor`.
+    pub name: String,
     pub function: Option<&'a Function<'a>>,
     pub owner: Owner<'a>,
     pub signature: Signature,
@@ -251,6 +253,7 @@ impl<'a, 's> Island<'a, 's> {
 
     fn reserve(
         &mut self,
+        name: String,
         signature: Signature,
         function: Option<&'a Function<'a>>,
         owner: Owner<'a>,
@@ -260,6 +263,7 @@ impl<'a, 's> Island<'a, 's> {
         self.signatures.push(signature.clone());
         self.jobs.push(Job {
             id,
+            name,
             function,
             owner,
             signature,
@@ -283,7 +287,11 @@ impl<'a, 's> Island<'a, 's> {
             return reject("a function whose name the code assigns");
         }
         let signature = self.signature(&function.params, function)?;
-        let id = self.reserve(signature, Some(function), Owner::Plain)?;
+        let name = function
+            .id
+            .as_ref()
+            .map_or_else(String::new, |id| id.name.to_string());
+        let id = self.reserve(name, signature, Some(function), Owner::Plain)?;
         self.function_ids.insert(symbol, id);
         Ok(id)
     }
@@ -611,7 +619,8 @@ impl<'a, 's> Island<'a, 's> {
             signature.defaults.insert(0, None);
             Owner::Method(class)
         };
-        let id = self.reserve(signature, Some(function), owner)?;
+        let name = format!("{}.{name}", self.classes[class as usize].name);
+        let id = self.reserve(name, signature, Some(function), owner)?;
         self.method_ids.insert(key, id);
         Ok(Some(id))
     }
@@ -694,7 +703,13 @@ impl<'a, 's> Island<'a, 's> {
         };
         signature.params.insert(0, T::Class(class));
         signature.defaults.insert(0, None);
-        let id = self.reserve(signature, declared, Owner::Constructor(class, declared))?;
+        let name = format!("{}.constructor", self.classes[class as usize].name);
+        let id = self.reserve(
+            name,
+            signature,
+            declared,
+            Owner::Constructor(class, declared),
+        )?;
         self.classes[class as usize].constructor = Some(id);
         Ok(id)
     }

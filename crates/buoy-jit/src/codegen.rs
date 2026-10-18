@@ -326,6 +326,14 @@ fn define_all(
     for (entry, id) in entries.iter_mut().zip(trampolines) {
         entry.address = module.get_finalized_function(id);
     }
+    if dump {
+        for (index, id) in ids.iter().enumerate() {
+            eprintln!(
+                "buoy jit: f{index} at {:?}",
+                module.get_finalized_function(*id)
+            );
+        }
+    }
     Ok(entries)
 }
 
@@ -623,6 +631,66 @@ fn size_of_expr(expr: &Expr) -> usize {
 
 type Typed = (Option<Value>, Ty);
 
+/// The locals that statements assign.
+fn assigned_in_stmts(stmts: &[Stmt], out: &mut HashSet<u32>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Expr(expr) | Stmt::Return(Some(expr)) => assigned_in_expr(expr, out),
+            Stmt::If(test, then, otherwise) => {
+                assigned_in_expr(test, out);
+                assigned_in_stmts(then, out);
+                assigned_in_stmts(otherwise, out);
+            }
+            Stmt::Loop {
+                cond, body, update, ..
+            } => {
+                if let Some(expr) = cond {
+                    assigned_in_expr(expr, out);
+                }
+                assigned_in_stmts(body, out);
+                assigned_in_stmts(update, out);
+            }
+            Stmt::Return(None) | Stmt::Break(_) | Stmt::Continue(_) | Stmt::Bail(_) => {}
+        }
+    }
+}
+
+fn assigned_in_expr(expr: &Expr, out: &mut HashSet<u32>) {
+    let mut all = |items: &[Expr]| items.iter().for_each(|item| assigned_in_expr(item, out));
+    match expr {
+        Expr::SetLocal(local, value) => {
+            out.insert(*local);
+            assigned_in_expr(value, out);
+        }
+        Expr::Num(_)
+        | Expr::Bool(_)
+        | Expr::Null
+        | Expr::Undefined
+        | Expr::Local(_)
+        | Expr::Global(_) => {}
+        Expr::Unary(_, value) | Expr::Field(value, _, _) | Expr::Length(value) => {
+            assigned_in_expr(value, out);
+        }
+        Expr::Binary(_, a, b)
+        | Expr::And(a, b)
+        | Expr::Or(a, b)
+        | Expr::SetField(a, _, _, b)
+        | Expr::Index(a, b)
+        | Expr::Push(a, b)
+        | Expr::ArrayFill(_, a, b) => {
+            assigned_in_expr(a, out);
+            assigned_in_expr(b, out);
+        }
+        Expr::Cond(_, a, b, c) | Expr::SetIndex(a, b, c) => {
+            assigned_in_expr(a, out);
+            assigned_in_expr(b, out);
+            assigned_in_expr(c, out);
+        }
+        Expr::Call(_, args) | Expr::New(_, _, args) | Expr::Dispatch { args, .. } => all(args),
+        Expr::ArrayOf(_, items) | Expr::Math(_, items) | Expr::Seq(items) => all(items),
+    }
+}
+
 impl<'a, 'm> Gen<'a, 'm> {
     fn new(
         program: &'a Program,
@@ -855,13 +923,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     }
 
     fn if_stmt(&mut self, test: &Expr, then: &[Stmt], otherwise: &[Stmt]) -> Result<(), Error> {
-        let condition = self.boolean(test)?;
         let then_block = self.b.create_block();
         let else_block = self.b.create_block();
         let merge = self.b.create_block();
-        self.b
-            .ins()
-            .brif(condition, then_block, &[], else_block, &[]);
+        self.branch(test, then_block, else_block)?;
         self.b.seal_block(then_block);
         self.b.seal_block(else_block);
         self.b.switch_to_block(then_block);
@@ -890,19 +955,23 @@ impl<'a, 'm> Gen<'a, 'm> {
         let body_block = self.b.create_block();
         let update_block = self.b.create_block();
         let exit = self.b.create_block();
+        let invariant = self.checked_invariants(cond, body, update);
         self.b
             .ins()
             .jump(if test_after { body_block } else { header }, &[]);
         self.b.switch_to_block(header);
+        self.keep_checked(&invariant);
         self.fuel();
         if let Some(cond) = cond {
-            let condition = self.boolean(cond)?;
-            self.b.ins().brif(condition, body_block, &[], exit, &[]);
+            self.branch(cond, body_block, exit)?;
         } else {
             self.b.ins().jump(body_block, &[]);
         }
         self.b.switch_to_block(body_block);
         self.b.seal_block(body_block);
+        if test_after {
+            self.keep_checked(&invariant);
+        }
         self.loops.push((update_block, exit));
         self.stmts(body)?;
         if !self.is_filled() {
@@ -919,6 +988,65 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.b.switch_to_block(exit);
         self.b.seal_block(exit);
         Ok(())
+    }
+
+    /// The checked locals that a loop never assigns: they stay checked in all of it.
+    fn checked_invariants(
+        &mut self,
+        cond: Option<&Expr>,
+        body: &[Stmt],
+        update: &[Stmt],
+    ) -> Vec<Variable> {
+        let mut assigned = HashSet::new();
+        if let Some(expr) = cond {
+            assigned_in_expr(expr, &mut assigned);
+        }
+        assigned_in_stmts(body, &mut assigned);
+        assigned_in_stmts(update, &mut assigned);
+        let mut kept = Vec::new();
+        for (index, var) in self.vars.clone().into_iter().enumerate() {
+            let local = u32::try_from(index).unwrap_or(u32::MAX);
+            if !assigned.contains(&local) && self.function.locals[index].is_reference() {
+                let value = self.b.use_var(var);
+                if self.nonnull.contains(&value) {
+                    kept.push(var);
+                }
+            }
+        }
+        kept
+    }
+
+    /// Marks the values of `vars` in the current block as checked: a loop header or body
+    /// sees them as block parameters, whose every incoming value is checked.
+    fn keep_checked(&mut self, vars: &[Variable]) {
+        for var in vars {
+            let value = self.b.use_var(*var);
+            self.nonnull.insert(value);
+        }
+    }
+
+    /// Branches to `then` when the boolean `test` holds, else to `otherwise`. `&&`, `||`,
+    /// and `!` become jumps, so no boolean is built only to be tested.
+    fn branch(&mut self, test: &Expr, then: Block, otherwise: Block) -> Result<(), Error> {
+        match test {
+            Expr::And(left, right) | Expr::Or(left, right) => {
+                let rest = self.b.create_block();
+                if matches!(test, Expr::And(..)) {
+                    self.branch(left, rest, otherwise)?;
+                } else {
+                    self.branch(left, then, rest)?;
+                }
+                self.b.switch_to_block(rest);
+                self.b.seal_block(rest);
+                self.branch(right, then, otherwise)
+            }
+            Expr::Unary(Unary::Not, operand) => self.branch(operand, otherwise, then),
+            _ => {
+                let condition = self.boolean(test)?;
+                self.b.ins().brif(condition, then, &[], otherwise, &[]);
+                Ok(())
+            }
+        }
     }
 
     fn return_stmt(&mut self, value: Option<&Expr>) -> Result<(), Error> {
@@ -1167,15 +1295,12 @@ impl<'a, 'm> Gen<'a, 'm> {
         then: &Expr,
         otherwise: &Expr,
     ) -> Result<Typed, Error> {
-        let condition = self.boolean(test)?;
         let repr = repr(ty).ok_or("a conditional without a value")?;
         let then_block = self.b.create_block();
         let else_block = self.b.create_block();
         let merge = self.b.create_block();
         let result = self.b.append_block_param(merge, repr);
-        self.b
-            .ins()
-            .brif(condition, then_block, &[], else_block, &[]);
+        self.branch(test, then_block, else_block)?;
         for (block, branch) in [(then_block, then), (else_block, otherwise)] {
             self.b.switch_to_block(block);
             self.b.seal_block(block);
@@ -1300,6 +1425,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
         let a = self.number(left)?;
         let b = self.number(right)?;
+        if let Some(compared) = self.int_compare(op, a, b) {
+            return Ok((Some(compared), Ty::Bool));
+        }
         let ins = self.b.ins();
         let number = |value| (Some(value), Ty::Num);
         Ok(match op {
@@ -1345,6 +1473,38 @@ impl<'a, 'm> Gen<'a, 'm> {
         number
     }
 
+    /// The 32-bit integer of a number that is one: a result of a bitwise operator, or a
+    /// constant that is an int32.
+    fn known_int32(&mut self, value: Value) -> Option<Value> {
+        if let Some(int) = self.int32s.get(&value) {
+            return Some(*int);
+        }
+        let constant = *self.constants.get(&value)?;
+        let int = buoy_jit_ir::to_int32(constant);
+        (f64::from(int).to_bits() == constant.to_bits() || (int == 0 && constant == 0.0))
+            .then(|| self.b.ins().iconst(types::I32, i64::from(int)))
+    }
+
+    /// A comparison of two numbers that are both int32s, as one of integers: it gives the
+    /// result of the comparison of doubles, which hold them exactly.
+    fn int_compare(&mut self, op: Binary, a: Value, b: Value) -> Option<Value> {
+        let cc = match op {
+            Binary::Lt => IntCC::SignedLessThan,
+            Binary::Le => IntCC::SignedLessThanOrEqual,
+            Binary::Gt => IntCC::SignedGreaterThan,
+            Binary::Ge => IntCC::SignedGreaterThanOrEqual,
+            Binary::Eq => IntCC::Equal,
+            Binary::Ne => IntCC::NotEqual,
+            _ => return None,
+        };
+        if !self.int32s.contains_key(&a) && !self.int32s.contains_key(&b) {
+            return None;
+        }
+        let x = self.known_int32(a)?;
+        let y = self.known_int32(b)?;
+        Some(self.b.ins().icmp(cc, x, y))
+    }
+
     /// `===` and `!==`: of numbers by value, of booleans and references by identity.
     /// Operands of different kinds are never equal.
     fn equality(&mut self, equal: bool, left: &Expr, right: &Expr) -> Result<Typed, Error> {
@@ -1352,12 +1512,17 @@ impl<'a, 'm> Gen<'a, 'm> {
         let (b, b_ty) = self.value(right)?;
         let result = match (&a_ty, &b_ty) {
             (Ty::Num, Ty::Num) => {
-                let cc = if equal {
-                    FloatCC::Equal
+                let op = if equal { Binary::Eq } else { Binary::Ne };
+                if let Some(compared) = self.int_compare(op, a, b) {
+                    compared
                 } else {
-                    FloatCC::NotEqual
-                };
-                self.b.ins().fcmp(cc, a, b)
+                    let cc = if equal {
+                        FloatCC::Equal
+                    } else {
+                        FloatCC::NotEqual
+                    };
+                    self.b.ins().fcmp(cc, a, b)
+                }
             }
             (Ty::Bool, Ty::Bool) => {
                 let cc = if equal { IntCC::Equal } else { IntCC::NotEqual };
