@@ -365,7 +365,7 @@ pub fn js_string_literal(value: &str, lone_surrogates: bool) -> Expr {
 
 /// An array literal of literals that nests another, such as a table of pairs, as one
 /// Erlang term: `{'$array', Items}` for each array and `'$hole'` for each elision. The code
-/// then builds the arrays from the term in one call, as JavaScriptCore's
+/// then builds the arrays from the term in one call, as `JavaScriptCore`'s
 /// `op_new_array_buffer` does from a constant buffer, so a table of thousands of rows is
 /// not thousands of variables in one Erlang function.
 fn constant_tree(array: &ArrayExpression<'_>) -> Option<Expr> {
