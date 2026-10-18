@@ -23,6 +23,7 @@
 -export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, later/1, event/1]).
 -export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
 -export([sockaddr/3, address_text/1, scope/1]).
+-export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1]).
 -export_type([kind/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -43,7 +44,7 @@ create(Handle, Kind) ->
     buoy_heap:private_put(Handle, ?STATE, #{
         kind => Kind, socket => none, refed => true, closed => false, reading => false,
         listening => false, rsel => none, wsel => none, kicked => false, queue => [], queued => 0,
-        shutdown => none, connect => none, rbuf => <<>>, user_buffer => none, path => none,
+        shutdown => none, connect => none, rbuf => <<>>, user_buffer => none, path => none, listener => none,
         read => 0, written => 0, async_id => new_async_id()}).
 
 %% The handle of a socket that a listener accepted, made with the constructor
@@ -124,6 +125,8 @@ methods(Proto) ->
                {<<"bytesWritten">>, fun(This, _) -> maps:get(written, state(This)) end},
                {<<"writeQueueSize">>, fun(This, _) -> maps:get(queued, state(This)) end}],
     [define(Proto, Name, get, Fun) || {Name, Fun} <- Getters],
+    %% LibuvStreamWrap's flag, which tls.TLSSocket asserts before it wraps.
+    buoy_heap:define(Proto, <<"isStreamBase">>, #{value => true, writable => true, enumerable => true, configurable => true}),
     handle_methods(Proto).
 
 %% Defines the methods of HandleWrap on Proto, and the fd getter.
@@ -167,12 +170,6 @@ fd(#{socket := Socket}) ->
     end.
 
 %%% Reads
-
-read_start(Handle) ->
-    S = state(Handle),
-    save(Handle, S#{reading := true}),
-    kick(Handle),
-    0.
 
 %% Reads in a later callback, unless a read waits for the socket already.
 -spec kick(term()) -> ok.
@@ -224,9 +221,17 @@ read(Handle) ->
     end.
 
 %% Data to onread, through the user's buffer when net set one (useUserBuffer):
-%% what does not fit waits for the next read.
+%% what does not fit waits for the next read. A listener, such as the
+%% TLSWrap that wraps the handle, takes the data in place of onread.
 data(Handle, Data) ->
-    S = state(Handle),
+    case state(Handle) of
+        #{listener := none} = S -> data(Handle, S, Data);
+        #{listener := Listener} = S ->
+            save(Handle, S#{read := maps:get(read, S) + byte_size(Data)}),
+            Listener({data, Data})
+    end.
+
+data(Handle, S, Data) ->
     {Chunk, Rest} = case S of
         #{user_buffer := none} -> {Data, <<>>};
         #{user_buffer := User} ->
@@ -253,9 +258,17 @@ data(Handle, Data) ->
 %% The end of the stream (UV_EOF) or a read error: reading stops, as
 %% uv__stream_eof stops it.
 ended(Handle, Status) ->
-    save(Handle, (state(Handle))#{reading := false}),
-    buoy_heap:set(stream_state(), ?K_READ_BYTES, Status),
-    onread(Handle, undefined).
+    S = state(Handle),
+    save(Handle, S#{reading := false}),
+    case S of
+        #{listener := none} ->
+            buoy_heap:set(stream_state(), ?K_READ_BYTES, Status),
+            onread(Handle, undefined);
+        #{listener := Listener} when Status =:= ?UV_EOF ->
+            Listener(eof);
+        #{listener := Listener} ->
+            Listener({error, Status})
+    end.
 
 onread(Handle, Arg) ->
     Onread = buoy_heap:get(Handle, <<"onread">>),
@@ -336,6 +349,9 @@ flush(Handle) ->
     end.
 
 %% A request's oncomplete(status, handle, error), as StreamReq::Done calls it.
+%% A write of a listener, {raw, Done}, calls Done(status).
+complete({raw, Done}, Status, _Handle) ->
+    Done(Status);
 complete(Req, Status, Handle) ->
     Oncomplete = buoy_heap:get(Req, <<"oncomplete">>),
     buoy_heap:is_callable(Oncomplete) andalso buoy_heap:call(Oncomplete, Req, [Status, Handle, undefined]).
@@ -385,6 +401,36 @@ finish_shutdown(Handle) ->
         _ ->
             ok
     end.
+
+%%% The parent of a wrapping stream
+
+%% Listener(Event) takes the reads of the handle in place of onread: {data,
+%% Bytes}, eof, or {error, Status}; none gives them back to onread.
+-spec set_listener(term(), none | fun((term()) -> term())) -> ok.
+set_listener(Handle, Listener) ->
+    save(Handle, (state(Handle))#{listener := Listener}).
+
+-spec read_start(term()) -> integer().
+read_start(Handle) ->
+    S = state(Handle),
+    save(Handle, S#{reading := true}),
+    kick(Handle),
+    0.
+
+-spec read_stop(term()) -> integer().
+read_stop(Handle) ->
+    save(Handle, (state(Handle))#{reading := false}),
+    0.
+
+%% Writes bytes of a listener: 0, or a negative errno.
+-spec write_raw(term(), iodata()) -> integer().
+write_raw(Handle, Bytes) ->
+    write(Handle, {raw, fun(_) -> ok end}, iolist_to_binary(Bytes)).
+
+%% Shuts the write side after the queued writes: 0, or a negative errno.
+-spec shutdown_raw(term()) -> integer().
+shutdown_raw(Handle) ->
+    shutdown(Handle, {raw, fun(_) -> ok end}).
 
 %%% Close
 
