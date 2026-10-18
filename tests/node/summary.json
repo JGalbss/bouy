@@ -1,39 +1,39 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "d143387715e3728cc1e723f8287853047fb8673e",
+  "updated": "6df9671cb39034aa8ceb1d8fb17de14adc227c4c",
   "total": 4419,
   "outcomes": {
-    "pass": 2299,
+    "pass": 2361,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1472,
-    "timeout": 53,
+    "fail": 1412,
+    "timeout": 51,
     "harness_error": 0,
     "crash": 12
   },
   "groups": {
     "directory": {
       "es-module": {
-        "pass": 66,
+        "pass": 68,
         "skip": 16,
-        "fail": 139,
+        "fail": 137,
         "timeout": 1
       },
       "parallel": {
-        "pass": 2190,
+        "pass": 2249,
         "skip": 545,
-        "fail": 1285,
-        "timeout": 47,
+        "fail": 1227,
+        "timeout": 46,
         "crash": 12
       },
       "sequential": {
-        "pass": 43,
+        "pass": 44,
         "skip": 22,
         "fail": 48,
-        "timeout": 5
+        "timeout": 4
       }
     },
     "kind": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2299,
+        "pass": 2361,
         "skip": 240,
-        "fail": 1472,
-        "timeout": 53,
+        "fail": 1412,
+        "timeout": 51,
         "crash": 12
       }
     },
@@ -137,9 +137,9 @@
         "skip": 114
       },
       "module": {
-        "pass": 86,
+        "pass": 88,
         "skip": 17,
-        "fail": 175,
+        "fail": 173,
         "timeout": 2
       },
       "net": {
@@ -252,15 +252,14 @@
         "crash": 1
       },
       "v8": {
-        "pass": 9,
+        "pass": 15,
         "skip": 5,
-        "fail": 8
+        "fail": 2
       },
       "vm": {
-        "pass": 23,
+        "pass": 77,
         "skip": 9,
-        "fail": 64,
-        "timeout": 2,
+        "fail": 12,
         "crash": 1
       },
       "worker_threads": {
