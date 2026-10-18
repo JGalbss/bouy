@@ -26,7 +26,8 @@ libz-rs-sys = { version = "=0.6.8", default-features = false, features = ["std",
 brotli = { version = "9.0.0", default-features = false, features = ["std"] }
 brotli-decompressor = { version = "~6.0", default-features = false, features = ["std"] }
 # libzstd 1.5.7, the reference library that Node bundles: no Rust encoder has its levels.
-zstd-sys = { version = "2.1.1", default-features = false }
+# experimental gives ZSTD_customMem, so libzstd allocates through enif_alloc.
+zstd-sys = { version = "2.1.1", default-features = false, features = ["experimental"] }
 # WebAssembly: Cranelift compiles a module, and an async store runs it in time slices.
 wasmtime = { version = "49.0.3", default-features = false, features = [
   "anyhow",

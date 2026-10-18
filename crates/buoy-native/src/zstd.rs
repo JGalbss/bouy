@@ -1,6 +1,8 @@
 //! Node's `ZstdCompressContext` and `ZstdDecompressContext` (`src/node_zlib.cc`) on
 //! libzstd 1.5.7, the release that Node bundles, built without the legacy formats as Node
-//! builds it. No Rust encoder has libzstd's levels, flushes, and dictionaries.
+//! builds it. No Rust encoder has libzstd's levels, flushes, and dictionaries. libzstd
+//! allocates through the Rust allocator, which is `enif_alloc` in the NIF, so
+//! `BUOY_MAX_MEMORY` counts its windows and tables.
 
 use std::ffi::{CStr, c_int, c_void};
 use std::ptr::NonNull;
@@ -21,8 +23,9 @@ trait Context {
 impl Context for z::ZSTD_CCtx {
     #[allow(unsafe_code)]
     fn create() -> *mut Self {
-        // SAFETY: no arguments; a null result is handled by the caller.
-        unsafe { z::ZSTD_createCCtx() }
+        // SAFETY: the allocator functions of `memory` keep libzstd's contract; a null
+        // result is handled by the caller.
+        unsafe { z::ZSTD_createCCtx_advanced(memory::custom()) }
     }
     #[allow(unsafe_code)]
     unsafe fn free(context: *mut Self) {
@@ -34,13 +37,67 @@ impl Context for z::ZSTD_CCtx {
 impl Context for z::ZSTD_DCtx {
     #[allow(unsafe_code)]
     fn create() -> *mut Self {
-        // SAFETY: no arguments; a null result is handled by the caller.
-        unsafe { z::ZSTD_createDCtx() }
+        // SAFETY: as for the compression context.
+        unsafe { z::ZSTD_createDCtx_advanced(memory::custom()) }
     }
     #[allow(unsafe_code)]
     unsafe fn free(context: *mut Self) {
         // SAFETY: the caller's contract.
         let _ = unsafe { z::ZSTD_freeDCtx(context) };
+    }
+}
+
+/// The allocator of libzstd's `ZSTD_customMem` on the Rust allocator. A block keeps its
+/// size in a header, as free gets no size.
+#[allow(unsafe_code)]
+mod memory {
+    use std::alloc::{Layout, alloc, dealloc};
+    use std::ffi::c_void;
+    use std::ptr::null_mut;
+
+    use zstd_sys as z;
+
+    /// The header, which also keeps the alignment of malloc.
+    const HEADER: usize = 16;
+
+    pub fn custom() -> z::ZSTD_customMem {
+        z::ZSTD_customMem {
+            customAlloc: Some(allocate),
+            customFree: Some(free),
+            opaque: null_mut(),
+        }
+    }
+
+    unsafe extern "C" fn allocate(_opaque: *mut c_void, size: usize) -> *mut c_void {
+        let Some(layout) = size
+            .checked_add(HEADER)
+            .and_then(|total| Layout::from_size_align(total, HEADER).ok())
+        else {
+            return null_mut();
+        };
+        // SAFETY: the layout has a nonzero size.
+        let base = unsafe { alloc(layout) };
+        if base.is_null() {
+            return null_mut();
+        }
+        // SAFETY: the block holds the header and `size` bytes after it.
+        unsafe {
+            base.cast::<usize>().write_unaligned(layout.size());
+            base.add(HEADER).cast()
+        }
+    }
+
+    unsafe extern "C" fn free(_opaque: *mut c_void, address: *mut c_void) {
+        if address.is_null() {
+            return;
+        }
+        // SAFETY: libzstd frees only what `allocate` returned, whose header holds the
+        // size of the block.
+        unsafe {
+            let base = address.cast::<u8>().sub(HEADER);
+            let size = base.cast::<usize>().read_unaligned();
+            dealloc(base, Layout::from_size_align_unchecked(size, HEADER));
+        }
     }
 }
 
