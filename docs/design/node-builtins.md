@@ -4,18 +4,18 @@ Buoy runs Node's own JavaScript for the built-in modules, as ADR 0003 chooses: t
 
 ## 1. The parts
 
-| Path                                  | What it holds                                                                                                                |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `runtime/vendor/node/lib/`            | Node's `lib/` at the tag of `.node-version`, byte for byte. `scripts/vendor-node-lib.sh` copies it and writes `lib.sha256`.  |
-| `runtime/vendor/node/deps/`           | The bundled dependencies that `lib/` requires as `internal/deps/<path>`: undici, acorn, and minimatch.                       |
-| `runtime/node/builtins.txt`           | The ids that `crates/buoy-cli/build.rs` compiles into the runtime. It lists every file of `lib/` and of `deps/`.             |
-| `runtime/node/<id>.js`                | Buoy's own version of an id. build.rs takes it in place of the vendored file. `internal/main/buoy.js` is Buoy's main script. |
-| `runtime/src/buoy_node.erl`           | The C++ side of Node: the bootstrap, the primordials, `internalBinding`, and the helpers of the bindings.                    |
-| `runtime/src/buoy_node_process.erl`   | The process object before the bootstrap, and `process.env`.                                                                  |
-| `runtime/src/buoy_node_loop.erl`      | The event loop of Node on the job queue of the realm.                                                                        |
-| `runtime/src/buoy_node_encoding.erl`  | The byte encodings of Buffer, and the bytes of typed arrays.                                                                 |
-| `runtime/src/buoy_binding_<name>.erl` | `internalBinding('<name>')`. Its `binding/0` returns the binding object.                                                     |
-| `runtime/src/buoy_node_stubs.erl`     | The bindings that have no `buoy_binding_<name>.erl` yet, with Node's shape.                                                  |
+| Path                                                | What it holds                                                                                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `runtime/vendor/node/lib/`                          | Node's `lib/` at the tag of `.node-version`, byte for byte. `scripts/vendor-node-lib.sh` copies it and writes `lib.sha256`.  |
+| `runtime/vendor/node/deps/`                         | The bundled dependencies that `lib/` requires as `internal/deps/<path>`: undici, acorn, and minimatch.                       |
+| `runtime/node/builtins.txt`                         | The ids that `crates/buoy-cli/build.rs` compiles into the runtime. It lists every file of `lib/` and of `deps/`.             |
+| `runtime/node/<id>.js`                              | Buoy's own version of an id. build.rs takes it in place of the vendored file. `internal/main/buoy.js` is Buoy's main script. |
+| `runtime/src/node/buoy_node.erl`                    | The C++ side of Node: the bootstrap, the primordials, `internalBinding`, and the helpers of the bindings.                    |
+| `runtime/src/node/buoy_node_process.erl`            | The process object before the bootstrap, and `process.env`.                                                                  |
+| `runtime/src/node/buoy_node_loop.erl`               | The event loop of Node on the job queue of the realm.                                                                        |
+| `runtime/src/node/buoy_node_encoding.erl`           | The byte encodings of Buffer, and the bytes of typed arrays.                                                                 |
+| `runtime/src/node/bindings/buoy_binding_<name>.erl` | `internalBinding('<name>')`. Its `binding/0` returns the binding object.                                                     |
+| `runtime/src/node/buoy_node_stubs.erl`              | The bindings that have no `buoy_binding_<name>.erl` yet, with Node's shape.                                                  |
 
 build.rs compiles each id with the reference compiler into the runtime module `buoy_node@<id>`, with `/` as `@` and `-` as `_`. Its `'__eval__'/3` returns the function that Node wraps around the code: `(exports, require, module, process, internalBinding, primordials)` for a module, and the parameters of `src/builtin_info.h` for the bootstrap and per-context scripts. The CLI caches each compiled `.beam` by the hash of its source, so a change to one id compiles one module.
 

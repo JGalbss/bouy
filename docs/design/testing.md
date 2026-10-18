@@ -27,7 +27,7 @@ Requirement 7 of [goal.md](../goal.md): "test262 covers the language. Node's own
 | Tier               | Location                                          | Runner                                 | Size                  |
 | ------------------ | ------------------------------------------------- | -------------------------------------- | --------------------- |
 | Compiler snapshots | `crates/buoy-compiler/tests/{fixtures,snapshots}` | insta, plus an `erlc` check            | 34 snapshots          |
-| Runtime unit tests | `runtime/test/*_tests.erl`                        | EUnit through rebar3                   | 24 modules            |
+| Runtime unit tests | `runtime/test/**/*_tests.erl`                     | EUnit through rebar3                   | 24 modules            |
 | Conformance        | `tests/conformance`                               | `crates/buoy-cli/tests/conformance.rs` | 72 programs           |
 | Equivalence        | `tests/equivalence/{effect,ai}`                   | `equivalence.rs`, `ai.rs`              | 23 Effect, 7 AI       |
 | Actor invariants   | `tests/programs`                                  | `crates/buoy-cli/tests/programs.rs`    | 31 tests              |
@@ -258,8 +258,8 @@ Under `CI=1`, `.only` fails the run, and a missing snapshot fails the test unles
 
 ### 4.5 Where it lives
 
-- `runtime/src/buoy_test_runner.erl`: collection, order, deadlines, the supervisors of each test, and the reporters.
-- `runtime/src/buoy_expect.erl`, `buoy_mock.erl`, and `buoy_snapshot.erl`.
+- `runtime/src/test_runner/buoy_test_runner.erl`: collection, order, deadlines, the supervisors of each test, and the reporters.
+- `runtime/src/test_runner/buoy_expect.erl`, `buoy_mock.erl`, and `buoy_snapshot.erl`.
 - `buoy:test` in the library table of contract section 11, and the `test` command in the CLI.
 
 ### 4.6 `node:test` and the other front ends
@@ -400,7 +400,7 @@ The owner's bar: "we need complete coverage of node and like a verifiable way to
 - **Replacements.** When Buoy replaces a package with a native module, as Bun replaces `ws` and `undici`, the replacement must print the frozen Node output of the real package, and the dashboard names the replacement. Today the library modules of contract section 11 replace `effect`, `ai`, and `@ai-sdk/openai` for every installed version, so `effect@4/main.mjs` passes through `buoy_effect`. The dashboard does not name the replacement yet.
 - **Runner.** `buoy-suites packages` runs `tests/npm`, `tests/packages`, and each area of `tests/equivalence` apart from `effect` and `ai`. It runs each program with `buoy run` from the repository root, as the freeze script runs Node, and classifies the facts of `BUOY_RESULT_FILE` with `classify`. It compares each corpus with its `expectations.txt` as a Buoy corpus (section 3.3). `--update` rewrites the expectation files and `tests/packages/summary.json`, and `--filter` runs the programs whose path contains its text. `crates/buoy-cli/tests/ecosystem.rs` calls the same runner with the `buoy` of the build, so `pnpm check` runs tiers 8a to 8c. A run of the 323 programs takes about 10 s with 8 workers, because the compiler rejects most of them before a VM starts.
 
-**c. AI-stack scenarios: `tests/equivalence/<area>/`.** Programs on the model of `tests/equivalence/ai`, against fake servers. Each new area has an `expectations.txt`, because its programs cannot pass yet. `effect` and `ai` keep their rule that every program passes. `runtime/test/buoy_fake_openai.erl` gains the OpenAI Responses API and the Anthropic Messages API with SSE and `tool_use`. A request with `"stream": true` gets server-sent events for each of the three APIs, Chat Completions included, and a prompt that holds `JSON <json>` gets that JSON as its text, for structured output. The areas are `ai-zod`, `openai`, `anthropic`, and `mcp`. The first scenarios: `ai` with `zod` (text, streaming, tools, structured output), `openai` (chat and Responses streaming), `@anthropic-ai/sdk` (a streamed tool call), and an MCP server and client over `InMemoryTransport`, then over stdio, then over Streamable HTTP. Package mocks replace the server where they exist: `MockLanguageModelV4` of `ai/test` and `FakeListChatModel` of `@langchain/core` run in the `main.mjs` of those packages. The stdio scenario starts `stdio-server-fixture.ts` with `process.execPath`, and the freeze script gives a `-fixture.ts` file no output. A Buoy-only variant in `tests/programs` runs one SDK in many actors at once and checks that each actor keeps its own module state. It waits for phase 12, because no SDK loads yet.
+**c. AI-stack scenarios: `tests/equivalence/<area>/`.** Programs on the model of `tests/equivalence/ai`, against fake servers. Each new area has an `expectations.txt`, because its programs cannot pass yet. `effect` and `ai` keep their rule that every program passes. `runtime/test/library/buoy_fake_openai.erl` gains the OpenAI Responses API and the Anthropic Messages API with SSE and `tool_use`. A request with `"stream": true` gets server-sent events for each of the three APIs, Chat Completions included, and a prompt that holds `JSON <json>` gets that JSON as its text, for structured output. The areas are `ai-zod`, `openai`, `anthropic`, and `mcp`. The first scenarios: `ai` with `zod` (text, streaming, tools, structured output), `openai` (chat and Responses streaming), `@anthropic-ai/sdk` (a streamed tool call), and an MCP server and client over `InMemoryTransport`, then over stdio, then over Streamable HTTP. Package mocks replace the server where they exist: `MockLanguageModelV4` of `ai/test` and `FakeListChatModel` of `@langchain/core` run in the `main.mjs` of those packages. The stdio scenario starts `stdio-server-fixture.ts` with `process.execPath`, and the freeze script gives a `-fixture.ts` file no output. A Buoy-only variant in `tests/programs` runs one SDK in many actors at once and checks that each actor keeps its own module state. It waits for phase 12, because no SDK loads yet.
 
 **d. Package suites: `tests/package-suites/`.**
 
@@ -555,7 +555,7 @@ Naming and placement:
 - A file that a test spawns ends in `-fixture.ts`.
 - A Rust test function reads as a sentence, as in `programs.rs` today. A `buoy:test` name is `describe("<module or API>")` with `test("<behavior>")`.
 
-`crates/buoy-suites/tests/rules.rs` checks the rules that matter, in `pnpm check`. Rules 3 and 6, and the `tests/regressions` half of rule 1, exist since phase 0. Rule 5 exists for `tests/test262/config.json` since phase 1: the loader refuses a skip without a reason code, and a unit test loads the committed file. The `tests/fuzz` half of rule 1 exists since phase 6. Rule 2, and rule 5 for `tests/node/edited.txt`, exist for `tests/node` since phase 4. Rule 6 does not read `tests/node/test`: rule 7 keeps that tree byte-identical, and the `node` shim stops any call to node at run time. The others land with the phases that create their files.
+`crates/buoy-suites/tests/rules.rs` checks the rules that matter, in `pnpm check`. Rules 3 and 6, and the `tests/regressions` half of rule 1, exist since phase 0. Rule 5 exists for `tests/test262/config.json` since phase 1: the loader refuses a skip without a reason code, and a unit test loads the committed file. The `tests/fuzz` half of rule 1 exists since phase 6. Rule 2, and rule 5 for `tests/node/edited.txt`, exist for `tests/node` since phase 4. Rule 6 does not read `tests/node/test`: rule 2 keeps that tree byte-identical, and the `node` shim stops any call to node at run time. Rule 7 exists since the runtime moved into subsystem directories. The others land with the phases that create their files.
 
 1. Each name in `tests/regressions` is an issue number, and each name in `tests/fuzz` is a seed.
 2. Each vendored file matches its upstream hash, unless an `edited.txt` lists it with a reason.
@@ -563,6 +563,7 @@ Naming and placement:
 4. Each file in `tests/unit` has a line in `node-verified.txt` with its current hash.
 5. Each skip, flaky id, and edited file has a reason.
 6. Only `scripts/freeze-expectations.sh`, `scripts/node-surface.sh`, `crates/buoy-bench`, and `crates/buoy-fuzz` start `node`. `crates/buoy-cli/tests/harness.rs` also names `node`, to check that the shim answers.
+7. Each Erlang file of `runtime/src` and `runtime/test` sits in the directory of its subsystem, never at the top.
 
 ## 8. The test harness API
 
@@ -607,18 +608,18 @@ The procedure for an agent or a person:
 5. When the fix changes upstream outcomes, run `buoy-suites <suite> --update` and `buoy-suites compat`, and commit the expectation, summary, and `COMPAT` files.
 6. Commit the test and the fix together, as `fix(<scope>): <summary>`.
 
-| The bug                                     | The test goes to                                                              |
-| ------------------------------------------- | ----------------------------------------------------------------------------- |
-| Language behavior differs from Node         | the conformance program of that behavior                                      |
-| A documented difference                     | `tests/divergence`                                                            |
-| A built-in or a Node API                    | `tests/unit/<module>.test.ts`                                                 |
-| A package misbehaves                        | `tests/packages/<name>@<major>/main.mjs`, or a new program in that directory  |
-| Module resolution                           | `tests/npm/<case>`                                                            |
-| An actor, supervision, or CLI behavior      | `tests/programs` with a test in `programs.rs`, or `tests/cli`                 |
-| A compiler crash or wrong Erlang            | a fixture in `crates/buoy-compiler/tests/fixtures`, and a conformance program |
-| A runtime function                          | `runtime/test/<module>_tests.erl`                                             |
-| It worked before, then broke, with an issue | `tests/regressions/<issue>.ts`                                                |
-| A fuzz finding                              | `tests/fuzz/<generator>/<seed>.ts`, written by the campaign                   |
+| The bug                                     | The test goes to                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Language behavior differs from Node         | the conformance program of that behavior                                                 |
+| A documented difference                     | `tests/divergence`                                                                       |
+| A built-in or a Node API                    | `tests/unit/<module>.test.ts`                                                            |
+| A package misbehaves                        | `tests/packages/<name>@<major>/main.mjs`, or a new program in that directory             |
+| Module resolution                           | `tests/npm/<case>`                                                                       |
+| An actor, supervision, or CLI behavior      | `tests/programs` with a test in `programs.rs`, or `tests/cli`                            |
+| A compiler crash or wrong Erlang            | a fixture in `crates/buoy-compiler/tests/fixtures`, and a conformance program            |
+| A runtime function                          | `runtime/test/<dir>/<module>_tests.erl`, with the `<dir>` of the module in `runtime/src` |
+| It worked before, then broke, with an issue | `tests/regressions/<issue>.ts`                                                           |
+| A fuzz finding                              | `tests/fuzz/<generator>/<seed>.ts`, written by the campaign                              |
 
 Rules for writing a test, from Bun's rules:
 

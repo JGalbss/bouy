@@ -57,18 +57,18 @@ Node is the oracle, and no test runs it. `scripts/freeze-expectations.sh <direct
 
 ## Where a test goes
 
-| The bug                                     | The test goes to                                                              |
-| ------------------------------------------- | ----------------------------------------------------------------------------- |
-| Language behavior differs from Node         | the conformance program of that behavior                                      |
-| A documented difference                     | `tests/divergence`                                                            |
-| A built-in or a Node API                    | `tests/unit/<module>.test.ts`                                                 |
-| A package misbehaves                        | `tests/packages/<name>@<major>/main.mjs`, or a new program in that directory  |
-| Module resolution                           | `tests/npm/<case>`                                                            |
-| An actor, supervision, or CLI behavior      | `tests/programs` with a test in `programs.rs`, or `tests/cli`                 |
-| A compiler crash or wrong Erlang            | a fixture in `crates/buoy-compiler/tests/fixtures`, and a conformance program |
-| A runtime function                          | `runtime/test/<module>_tests.erl`                                             |
-| It worked before, then broke, with an issue | `tests/regressions/<issue>.ts`                                                |
-| A fuzz finding                              | `tests/fuzz/<generator>/<seed>.ts`, written by the campaign                   |
+| The bug                                     | The test goes to                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Language behavior differs from Node         | the conformance program of that behavior                                                 |
+| A documented difference                     | `tests/divergence`                                                                       |
+| A built-in or a Node API                    | `tests/unit/<module>.test.ts`                                                            |
+| A package misbehaves                        | `tests/packages/<name>@<major>/main.mjs`, or a new program in that directory             |
+| Module resolution                           | `tests/npm/<case>`                                                                       |
+| An actor, supervision, or CLI behavior      | `tests/programs` with a test in `programs.rs`, or `tests/cli`                            |
+| A compiler crash or wrong Erlang            | a fixture in `crates/buoy-compiler/tests/fixtures`, and a conformance program            |
+| A runtime function                          | `runtime/test/<dir>/<module>_tests.erl`, with the `<dir>` of the module in `runtime/src` |
+| It worked before, then broke, with an issue | `tests/regressions/<issue>.ts`                                                           |
+| A fuzz finding                              | `tests/fuzz/<generator>/<seed>.ts`, written by the campaign                              |
 
 Section 11 of the design builds `tests/divergence`, `tests/unit`, and `tests/cli`. Until a directory exists, put the test in the nearest corpus that exists.
 
