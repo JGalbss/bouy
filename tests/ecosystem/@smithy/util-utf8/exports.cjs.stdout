@@ -1,0 +1,4 @@
+module.exports: object
+  fromUtf8: function/1
+  toUint8Array: function/1
+  toUtf8: function/1

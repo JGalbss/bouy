@@ -1,0 +1,8 @@
+module.exports: object
+  EnforceExtension: object
+  ModuleType: object
+  ResolveDtsTask: function/0
+  ResolveFileTask: function/0
+  ResolveTask: function/0
+  ResolverFactory: class/0 {async, clearCache, cloneWithOptions, resolveDtsAsync, resolveDtsSync, resolveFileAsync, resolveFileSync, sync}
+  sync: function/0

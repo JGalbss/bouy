@@ -1,0 +1,7 @@
+module.exports: object
+  ValidationError: class/2 {formatSchema, formatValidationError, formatValidationErrors, getSchemaPart, getSchemaPartDescription, getSchemaPartText}
+  disableValidation: function/0
+  enableValidation: function/0
+  needValidate: function/0
+  precompile: function/0
+  validate: function/4

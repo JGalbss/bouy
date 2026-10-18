@@ -1,0 +1,7 @@
+module.exports: function/2
+  parse: function/2
+    parse: function/2
+    parseString: function/2
+    splitCookiesString: function/1
+  parseString: function/2
+  splitCookiesString: function/1

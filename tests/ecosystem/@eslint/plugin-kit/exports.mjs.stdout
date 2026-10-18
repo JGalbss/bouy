@@ -1,0 +1,6 @@
+namespace: object Module
+  CallMethodStep: function/1
+  ConfigCommentParser: class/0 {parseDirective, parseJSONLikeConfig, parseListConfig, parseStringConfig}
+  Directive: function/1
+  TextSourceCodeBase: class/1 {getAncestors, getIndexFromLoc, getLoc, getLocFromIndex, getParent, getRange, getText, lines, traverse}
+  VisitNodeStep: function/1

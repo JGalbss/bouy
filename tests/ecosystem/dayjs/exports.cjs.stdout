@@ -1,0 +1,13 @@
+module.exports: class/2 {$g, $locale, $set, $utils, add, clone, date, day, daysInMonth, diff, endOf, format, get, hour, init, isAfter, isBefore, isSame, isValid, locale, millisecond, minute, month, parse, second, set, startOf, subtract, toDate, toISOString, toJSON, toString, unix, utcOffset, valueOf, year}
+  Ls: object
+    en: object
+  en: object
+    months: object Array
+    name: string
+    ordinal: function/1
+    weekdays: object Array
+  extend: function/2
+  isDayjs: function/1 (false, false, false, false, false, false, false, false, false)
+  locale: function/3
+  p: object
+  unix: function/1

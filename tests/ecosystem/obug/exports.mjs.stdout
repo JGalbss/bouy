@@ -1,0 +1,6 @@
+namespace: object Module
+  createDebug: function/2
+  disable: function/0
+  enable: function/1
+  enabled: function/1
+  namespaces: function/0

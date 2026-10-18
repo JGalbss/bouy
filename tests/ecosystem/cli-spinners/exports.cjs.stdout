@@ -1,0 +1,259 @@
+module.exports: object
+  aesthetic: object
+    frames: object Array
+    interval: number
+  arc: object
+    frames: object Array
+    interval: number
+  arrow: object
+    frames: object Array
+    interval: number
+  arrow2: object
+    frames: object Array
+    interval: number
+  arrow3: object
+    frames: object Array
+    interval: number
+  balloon: object
+    frames: object Array
+    interval: number
+  balloon2: object
+    frames: object Array
+    interval: number
+  betaWave: object
+    frames: object Array
+    interval: number
+  binary: object
+    frames: object Array
+    interval: number
+  bluePulse: object
+    frames: object Array
+    interval: number
+  bounce: object
+    frames: object Array
+    interval: number
+  bouncingBall: object
+    frames: object Array
+    interval: number
+  bouncingBar: object
+    frames: object Array
+    interval: number
+  boxBounce: object
+    frames: object Array
+    interval: number
+  boxBounce2: object
+    frames: object Array
+    interval: number
+  christmas: object
+    frames: object Array
+    interval: number
+  circle: object
+    frames: object Array
+    interval: number
+  circleHalves: object
+    frames: object Array
+    interval: number
+  circleQuarters: object
+    frames: object Array
+    interval: number
+  clock: object
+    frames: object Array
+    interval: number
+  dots: object
+    frames: object Array
+    interval: number
+  dots10: object
+    frames: object Array
+    interval: number
+  dots11: object
+    frames: object Array
+    interval: number
+  dots12: object
+    frames: object Array
+    interval: number
+  dots13: object
+    frames: object Array
+    interval: number
+  dots2: object
+    frames: object Array
+    interval: number
+  dots3: object
+    frames: object Array
+    interval: number
+  dots4: object
+    frames: object Array
+    interval: number
+  dots5: object
+    frames: object Array
+    interval: number
+  dots6: object
+    frames: object Array
+    interval: number
+  dots7: object
+    frames: object Array
+    interval: number
+  dots8: object
+    frames: object Array
+    interval: number
+  dots8Bit: object
+    frames: object Array
+    interval: number
+  dots9: object
+    frames: object Array
+    interval: number
+  dqpb: object
+    frames: object Array
+    interval: number
+  dwarfFortress: object
+    frames: object Array
+    interval: number
+  earth: object
+    frames: object Array
+    interval: number
+  fingerDance: object
+    frames: object Array
+    interval: number
+  fistBump: object
+    frames: object Array
+    interval: number
+  flip: object
+    frames: object Array
+    interval: number
+  grenade: object
+    frames: object Array
+    interval: number
+  growHorizontal: object
+    frames: object Array
+    interval: number
+  growVertical: object
+    frames: object Array
+    interval: number
+  hamburger: object
+    frames: object Array
+    interval: number
+  hearts: object
+    frames: object Array
+    interval: number
+  layer: object
+    frames: object Array
+    interval: number
+  line: object
+    frames: object Array
+    interval: number
+  line2: object
+    frames: object Array
+    interval: number
+  material: object
+    frames: object Array
+    interval: number
+  mindblown: object
+    frames: object Array
+    interval: number
+  monkey: object
+    frames: object Array
+    interval: number
+  moon: object
+    frames: object Array
+    interval: number
+  noise: object
+    frames: object Array
+    interval: number
+  orangeBluePulse: object
+    frames: object Array
+    interval: number
+  orangePulse: object
+    frames: object Array
+    interval: number
+  pipe: object
+    frames: object Array
+    interval: number
+  point: object
+    frames: object Array
+    interval: number
+  pong: object
+    frames: object Array
+    interval: number
+  runner: object
+    frames: object Array
+    interval: number
+  sand: object
+    frames: object Array
+    interval: number
+  shark: object
+    frames: object Array
+    interval: number
+  simpleDots: object
+    frames: object Array
+    interval: number
+  simpleDotsScrolling: object
+    frames: object Array
+    interval: number
+  smiley: object
+    frames: object Array
+    interval: number
+  soccerHeader: object
+    frames: object Array
+    interval: number
+  speaker: object
+    frames: object Array
+    interval: number
+  squareCorners: object
+    frames: object Array
+    interval: number
+  squish: object
+    frames: object Array
+    interval: number
+  star: object
+    frames: object Array
+    interval: number
+  star2: object
+    frames: object Array
+    interval: number
+  timeTravel: object
+    frames: object Array
+    interval: number
+  toggle: object
+    frames: object Array
+    interval: number
+  toggle10: object
+    frames: object Array
+    interval: number
+  toggle11: object
+    frames: object Array
+    interval: number
+  toggle12: object
+    frames: object Array
+    interval: number
+  toggle13: object
+    frames: object Array
+    interval: number
+  toggle2: object
+    frames: object Array
+    interval: number
+  toggle3: object
+    frames: object Array
+    interval: number
+  toggle4: object
+    frames: object Array
+    interval: number
+  toggle5: object
+    frames: object Array
+    interval: number
+  toggle6: object
+    frames: object Array
+    interval: number
+  toggle7: object
+    frames: object Array
+    interval: number
+  toggle8: object
+    frames: object Array
+    interval: number
+  toggle9: object
+    frames: object Array
+    interval: number
+  triangle: object
+    frames: object Array
+    interval: number
+  weather: object
+    frames: object Array
+    interval: number

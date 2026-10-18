@@ -1,0 +1,3 @@
+module.exports: object
+  fromTokenFile: function/0
+  fromWebToken: function/1

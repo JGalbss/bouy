@@ -1,0 +1,8 @@
+namespace: object Module
+  ExecProcess: class/3 {_resetState, _waitForOutput, aborted, exitCode, kill, killed, pid, pipe, process, signalCode, spawn, then}
+  NonZeroExitError: class/4 {signalCode}
+  exec: function/3
+  execSync: function/3
+  normalizeSpawnCommand: function/1
+  x: function/3
+  xSync: function/3

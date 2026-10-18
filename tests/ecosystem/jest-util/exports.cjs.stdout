@@ -1,0 +1,31 @@
+module.exports: object
+  ErrorWithStack: function/3
+  canDeleteProperties: function/1
+  clearLine: function/1
+  convertDescriptorToString: function/1
+  createDirectory: function/1
+  deepCyclicCopy: function/2
+  deleteProperties: function/1
+  formatTime: function/1
+  globsToMatcher: function/2
+  initializeGarbageCollectionUtils: function/2
+  installCommonGlobals: function/3
+  interopRequireDefault: function/1
+  invariant: function/1
+  isError: function/1 (false, false, false, false, false, false, false, false, false)
+  isInteractive: boolean
+  isNonNullable: function/1 (false, false, true, true, true, true, true, true, true)
+  isPromise: function/1 (false, false, false, false, false, false, false, false, false)
+  pluralize: function/2
+  preRunMessage: object
+    print: function/1
+    remove: function/1
+  protectProperties: function/1
+  replacePathSepForGlob: function/1
+  requireOrImportModule: function/1
+  setGlobal: function/3
+  specialChars: object
+    ARROW: string
+    CLEAR: string
+    ICONS: object
+  tryRealpath: function/1

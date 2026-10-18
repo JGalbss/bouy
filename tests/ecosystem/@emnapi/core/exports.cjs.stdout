@@ -1,0 +1,14 @@
+module.exports: object
+  MessageHandler: class/1 {handle, instantiate}
+  ThreadManager: class/1 {addMessageEventListener, allocateUnusedWorker, cleanThread, fireMessageEvent, getNewWorker, init, initMainThread, loadWasmModuleToAllWorkers, loadWasmModuleToWorker, markId, nextWorkerID, preloadWorkers, preparePool, returnWorkerToPool, setup, shouldPreloadWorkers, terminateAllThreads, terminateWorker}
+  ThreadMessageHandler: class/1 {_load, _loaded, _start, handle, handleAfterLoad, instantiate}
+  WASIThreads: class/1 {getImportObject, initialize, preloadWorkers, setup, start, terminateAllThreads}
+  createInstanceProxy: function/2
+  createNapiModule: function/1
+  instantiateNapiModule: function/2
+  instantiateNapiModuleSync: function/2
+  isSharedArrayBuffer: function/1 (false, false, false, false, false, false, false, false, false)
+  isTrapError: function/1 (false, false, false, false, false, false, false, false, false)
+  loadNapiModule: function/3
+  loadNapiModuleSync: function/3
+  version: string

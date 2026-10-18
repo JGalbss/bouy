@@ -157,8 +157,16 @@ function setupChildProcessIpcChannel() {
   }
 }
 
+// The tracing of async_hooks when --trace-event-categories enables it.
+function setupTraceCategoryState() {
+  const { isTraceCategoryEnabled } = internalBinding('trace_events');
+  const { toggleTraceCategoryState } = require('internal/process/per_thread');
+  toggleTraceCategoryState(isTraceCategoryEnabled('node.async_hooks'));
+}
+
 // Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
+setupTraceCategoryState();
 loadEnvFiles();
 setupWebsocket();
 setupEventsource();

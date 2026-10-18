@@ -1,0 +1,6 @@
+namespace: object Module
+  default: object
+    fromHttp: function/0
+  fromHttp: function/0
+  module.exports: object
+    fromHttp: function/0

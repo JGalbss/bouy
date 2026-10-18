@@ -1,0 +1,76 @@
+module.exports: object
+  AnyType: object
+    0: string
+    1: string
+    2: string
+    3: string
+    Any: number
+    AnyArray: number
+    PromiseAny: number
+    Safe: number
+  containsAllTypesByName: function/3
+  discriminateAnyType: function/4
+  getConstrainedTypeAtLocation: function/2
+  getContextualType: function/2
+  getDeclaration: function/2
+  getDecorators: function/1
+  getModifiers: function/1
+  getSourceFileOfNode: function/1
+  getTypeFlags: function/1
+  getTypeName: function/2
+  getTypeOfPropertyOfName: function/4
+  getTypeOfPropertyOfType: function/3
+  isBuiltinSymbolLike: function/3
+  isBuiltinSymbolLikeRecurser: function/3
+  isBuiltinTypeAliasLike: function/3
+  isErrorLike: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isNullableType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isPromiseConstructorLike: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isPromiseLike: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isReadonlyErrorLike: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isReadonlyTypeLike: function/3
+  isSymbolFromDefaultLibrary: function/2 (false, false, false, false, false, false, false, false, false)
+  isTypeAnyArrayType: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isTypeAnyType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isTypeArrayTypeOrUnionOfArrayTypes: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isTypeBigIntLiteralType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isTypeBrandedLiteralLike: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isTypeFlagSet: function/3
+  isTypeNeverType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isTypeReadonly: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isTypeReferenceType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isTypeTemplateLiteralType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isTypeUnknownArrayType: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isTypeUnknownType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isUnsafeAssignment: function/4
+  readonlynessOptionsDefaults: object
+    allow: object Array
+    treatMethodsAsReadonly: boolean
+  readonlynessOptionsSchema: object
+    additionalProperties: boolean
+    properties: object
+    type: string
+  requiresQuoting: function/1
+  typeIsOrHasBaseType: function/2
+  typeMatchesSomeSpecifier: function/1
+  typeMatchesSpecifier: function/3
+  typeOrValueSpecifiersSchema: object
+    items: object
+    type: string
+  typescriptVersionIsAtLeast: object
+    4.7: boolean
+    4.8: boolean
+    4.9: boolean
+    5.0: boolean
+    5.1: boolean
+    5.2: boolean
+    5.3: boolean
+    5.4: boolean
+    5.5: boolean
+    5.6: boolean
+    5.7: boolean
+    5.8: boolean
+    5.9: boolean
+    6.0: boolean
+  valueMatchesSomeSpecifier: function/1
+  valueMatchesSpecifier: function/4

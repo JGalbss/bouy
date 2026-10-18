@@ -1,0 +1,3 @@
+module.exports: object
+  defineConfig: function/0
+  globalIgnores: function/2

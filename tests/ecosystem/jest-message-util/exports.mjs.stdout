@@ -1,0 +1,12 @@
+namespace: object Module
+  flattenErrorStack: function/1
+  formatErrorStack: function/4
+  formatExecError: function/6
+  formatPath: function/2
+  formatResultsErrors: function/4
+  formatStackTrace: function/4
+  getStackTraceLines: function/2
+  getTopFrame: function/1
+  hasNestedErrors: function/1
+  indentAllLines: function/1
+  separateMessageFromStack: function/1

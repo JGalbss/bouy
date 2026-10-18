@@ -1,0 +1,17 @@
+module.exports: object
+  unstable_IdlePriority: number
+  unstable_ImmediatePriority: number
+  unstable_LowPriority: number
+  unstable_NormalPriority: number
+  unstable_Profiling: null
+  unstable_UserBlockingPriority: number
+  unstable_cancelCallback: function/1
+  unstable_forceFrameRate: function/1
+  unstable_getCurrentPriorityLevel: function/0
+  unstable_next: function/1
+  unstable_now: function/0
+  unstable_requestPaint: function/0
+  unstable_runWithPriority: function/2
+  unstable_scheduleCallback: function/3
+  unstable_shouldYield: function/0
+  unstable_wrapCallback: function/1

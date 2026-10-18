@@ -1,0 +1,4 @@
+namespace: object Module
+  default: function/2
+  deserialize: function/1
+  serialize: function/1

@@ -1,0 +1,4 @@
+module.exports: object
+  stderr: boolean
+  stdout: boolean
+  supportsColor: function/1

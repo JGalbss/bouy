@@ -1,0 +1,22 @@
+namespace: object Module
+  Immer: class/1 {applyPatches, createDraft, finishDraft, setAutoFreeze, setUseStrictIteration, setUseStrictShallowCopy, shouldUseStrictIteration}
+  applyPatches: function/2
+  castDraft: function/1
+  castImmutable: function/1
+  createDraft: function/1
+  current: function/1
+  enableArrayMethods: function/0
+  enableMapSet: function/0
+  enablePatches: function/0
+  finishDraft: function/2
+  freeze: function/1
+  immerable: symbol
+  isDraft: function/1 (false, false, false, false, false, false, false, false, false)
+  isDraftable: function/1 (false, false, false, false, false, false, true, true, false)
+  nothing: symbol
+  original: function/1
+  produce: function/3
+  produceWithPatches: function/2
+  setAutoFreeze: function/1
+  setUseStrictIteration: function/1
+  setUseStrictShallowCopy: function/1

@@ -1,0 +1,195 @@
+module.exports: object
+  alias: function/2
+  ansiRegex: object RegExp
+  bgBlack: function/1
+    stack: object Array
+  bgBlackBright: function/1
+    stack: object Array
+  bgBlue: function/1
+    stack: object Array
+  bgBlueBright: function/1
+    stack: object Array
+  bgCyan: function/1
+    stack: object Array
+  bgCyanBright: function/1
+    stack: object Array
+  bgGreen: function/1
+    stack: object Array
+  bgGreenBright: function/1
+    stack: object Array
+  bgMagenta: function/1
+    stack: object Array
+  bgMagentaBright: function/1
+    stack: object Array
+  bgRed: function/1
+    stack: object Array
+  bgRedBright: function/1
+    stack: object Array
+  bgWhite: function/1
+    stack: object Array
+  bgWhiteBright: function/1
+    stack: object Array
+  bgYellow: function/1
+    stack: object Array
+  bgYellowBright: function/1
+    stack: object Array
+  black: function/1
+    stack: object Array
+  blackBright: function/1
+    stack: object Array
+  blue: function/1
+    stack: object Array
+  blueBright: function/1
+    stack: object Array
+  bold: function/1
+    stack: object Array
+  clear: function/1
+    stack: object Array
+  create: function/0
+  cyan: function/1
+    stack: object Array
+  cyanBright: function/1
+    stack: object Array
+  define: function/3
+  dim: function/1
+    stack: object Array
+  enabled: boolean
+  gray: function/1
+    stack: object Array
+  green: function/1
+    stack: object Array
+  greenBright: function/1
+    stack: object Array
+  grey: function/1
+    stack: object Array
+  hasAnsi: function/1
+  hasColor: function/1
+  hidden: function/1
+    stack: object Array
+  inverse: function/1
+    stack: object Array
+  italic: function/1
+    stack: object Array
+  keys: object
+    bg: object Array
+    bgBright: object Array
+    bright: object Array
+    color: object Array
+    modifier: object Array
+  magenta: function/1
+    stack: object Array
+  magentaBright: function/1
+    stack: object Array
+  none: function/1
+    stack: object Array
+  noop: function/1
+    stack: object Array
+  red: function/1
+    stack: object Array
+  redBright: function/1
+    stack: object Array
+  reset: function/1
+    stack: object Array
+  strikethrough: function/1
+    stack: object Array
+  stripColor: function/1
+    stack: object Array
+  styles: object
+    bgBlack: object
+    bgBlackBright: object
+    bgBlue: object
+    bgBlueBright: object
+    bgCyan: object
+    bgCyanBright: object
+    bgGreen: object
+    bgGreenBright: object
+    bgMagenta: object
+    bgMagentaBright: object
+    bgRed: object
+    bgRedBright: object
+    bgWhite: object
+    bgWhiteBright: object
+    bgYellow: object
+    bgYellowBright: object
+    black: object
+    blackBright: object
+    blue: object
+    blueBright: object
+    bold: object
+    cyan: object
+    cyanBright: object
+    dim: object
+    gray: object
+    green: object
+    greenBright: object
+    grey: object
+    hidden: object
+    inverse: object
+    italic: object
+    magenta: object
+    magentaBright: object
+    noop: function/1
+    red: object
+    redBright: object
+    reset: object
+    strikethrough: object
+    underline: object
+    unstyle: function/1
+    white: object
+    whiteBright: object
+    yellow: object
+    yellowBright: object
+  symbols: object
+    ballotCross: string
+    ballotDisabled: string
+    ballotOff: string
+    ballotOn: string
+    bullet: string
+    bulletWhite: string
+    check: string
+    cross: string
+    ellipsis: string
+    ellipsisLarge: string
+    fullBlock: string
+    heart: string
+    identicalTo: string
+    info: string
+    line: string
+    mark: string
+    middot: string
+    minus: string
+    multiplication: string
+    obelus: string
+    pencilDownRight: string
+    pencilRight: string
+    pencilUpRight: string
+    percent: string
+    pilcrow: string
+    pilcrow2: string
+    plusMinus: string
+    pointer: string
+    pointerSmall: string
+    question: string
+    questionFull: string
+    questionSmall: string
+    radioOff: string
+    radioOn: string
+    section: string
+    starsOff: string
+    starsOn: string
+    upDownArrow: string
+    warning: string
+  theme: function/1
+  underline: function/1
+    stack: object Array
+  unstyle: function/1
+    stack: object Array
+  visible: boolean
+  white: function/1
+    stack: object Array
+  whiteBright: function/1
+    stack: object Array
+  yellow: function/1
+    stack: object Array
+  yellowBright: function/1
+    stack: object Array

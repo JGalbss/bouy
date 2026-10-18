@@ -1,0 +1,42 @@
+module.exports: function/1
+  ATTRIBUTE: string
+  CLASS: string
+  COMBINATOR: string
+  COMMENT: string
+  ID: string
+  NESTING: string
+  PSEUDO: string
+  ROOT: string
+  SELECTOR: string
+  STRING: string
+  TAG: string
+  UNIVERSAL: string
+  attribute: function/1
+  className: function/1
+  combinator: function/1
+  comment: function/1
+  id: function/1
+  isAttribute: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isClassName: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isCombinator: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isComment: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isContainer: function/1 (false, throws, false, false, false, false, false, false, false)
+  isIdentifier: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isNamespace: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isNesting: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isNode: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isPseudo: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isPseudoClass: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isPseudoElement: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isRoot: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isSelector: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isString: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isTag: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  isUniversal: function/1 (false, throws, false, false, false, false, undefined, undefined, false)
+  nesting: function/1
+  pseudo: function/1
+  root: function/1
+  selector: function/1
+  string: function/1
+  tag: function/1
+  universal: function/1

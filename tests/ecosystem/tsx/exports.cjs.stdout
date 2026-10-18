@@ -1,0 +1,5 @@
+module.exports: object Module
+  globalPreload: function/0
+  initialize: function/1
+  load: function/3
+  resolve: function/3

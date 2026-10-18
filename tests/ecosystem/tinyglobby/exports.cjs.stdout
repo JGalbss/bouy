@@ -1,0 +1,6 @@
+module.exports: object Module
+  convertPathToPattern: function/1
+  escapePath: function/1
+  glob: function/2
+  globSync: function/2
+  isDynamicPattern: function/2 (throws, throws, false, false, false, false, false, false, false)

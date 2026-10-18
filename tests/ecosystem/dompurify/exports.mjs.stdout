@@ -1,0 +1,5 @@
+namespace: object Module
+  default: function/1
+    isSupported: boolean
+    removed: object Array
+    version: string

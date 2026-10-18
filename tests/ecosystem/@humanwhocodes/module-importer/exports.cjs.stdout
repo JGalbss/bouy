@@ -1,0 +1,2 @@
+module.exports: object
+  ModuleImporter: class/0 {import, resolve}

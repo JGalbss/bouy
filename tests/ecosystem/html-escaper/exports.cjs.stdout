@@ -1,0 +1,3 @@
+module.exports: object
+  escape: function/1
+  unescape: function/1

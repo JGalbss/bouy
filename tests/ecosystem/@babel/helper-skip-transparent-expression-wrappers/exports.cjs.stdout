@@ -1,0 +1,4 @@
+module.exports: object
+  isTransparentExprWrapper: function/1 (false, false, false, false, false, false, false, false, false)
+  skipTransparentExprWrapperNodes: function/1
+  skipTransparentExprWrappers: function/1

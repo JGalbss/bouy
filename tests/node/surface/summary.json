@@ -1,15 +1,15 @@
 {
   "suite": "node-surface",
   "version": "v25.9.0",
-  "updated": "25d078a04ed87b1fbb93eb859ca662e9a3b74758",
+  "updated": "0bf743bbb1e44d6d7b38ec6eca83779c7e9004a8",
   "total": 4460,
   "outcomes": {
-    "pass": 3450,
+    "pass": 3458,
     "rejected": 0,
     "late": 0,
     "skip": 0,
     "never": 0,
-    "fail": 1010,
+    "fail": 1002,
     "timeout": 0,
     "harness_error": 0,
     "crash": 0
@@ -21,8 +21,8 @@
         "fail": 29
       },
       "documented": {
-        "pass": 3350,
-        "fail": 981
+        "pass": 3358,
+        "fail": 973
       }
     },
     "module": {
@@ -206,10 +206,10 @@
         "pass": 1
       },
       "clearInterval": {
-        "fail": 1
+        "pass": 1
       },
       "clearTimeout": {
-        "fail": 1
+        "pass": 1
       },
       "console": {
         "pass": 1,
@@ -382,7 +382,7 @@
         "fail": 126
       },
       "node:trace_events": {
-        "fail": 3
+        "pass": 3
       },
       "node:tty": {
         "pass": 143
@@ -421,7 +421,7 @@
         "pass": 87
       },
       "queueMicrotask": {
-        "fail": 1
+        "pass": 1
       },
       "require": {
         "pass": 6
@@ -433,10 +433,10 @@
         "pass": 1
       },
       "setInterval": {
-        "fail": 1
+        "pass": 1
       },
       "setTimeout": {
-        "fail": 1
+        "pass": 1
       },
       "structuredClone": {
         "fail": 1

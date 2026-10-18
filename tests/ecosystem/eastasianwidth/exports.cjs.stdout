@@ -1,0 +1,5 @@
+module.exports: object
+  characterLength: function/1
+  eastAsianWidth: function/1
+  length: function/1
+  slice: function/3

@@ -56,9 +56,13 @@ construct(NewTarget, Args) ->
 
 %% NewPromiseCapability(C). The intrinsic Promise needs no executor, because
 %% its construction is not observable.
-new_capability(C) ->
+new_capability(C) -> new_capability(C, undefined).
+
+%% Parent is the promise whose `then` derives the capability, for the init
+%% promise hook.
+new_capability(C, Parent) ->
     case C =:= constructor() of
-        true -> buoy_jobs:capability();
+        true -> buoy_jobs:capability(Parent);
         false -> capability_of(C)
     end.
 
@@ -99,7 +103,7 @@ as_js(F) -> F.
 
 promise_proto(<<"then">>, P, Args) ->
     buoy_jobs:is_promise(P) orelse type_error(<<"Method Promise.prototype.then called on incompatible receiver">>),
-    {Promise, _, _} = Capability = new_capability(species_constructor(P)),
+    {Promise, _, _} = Capability = new_capability(species_constructor(P), P),
     buoy_jobs:perform_then(P, arg(1, Args), arg(2, Args), Capability),
     Promise;
 promise_proto(<<"catch">>, P, Args) ->

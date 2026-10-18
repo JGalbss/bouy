@@ -1,0 +1,6 @@
+namespace: object Module
+  default: object
+    isNode: boolean
+  isNode: boolean
+  module.exports: object
+    isNode: boolean
