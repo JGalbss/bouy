@@ -1,15 +1,15 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "0e11e74a050fb674a905651e9c0c7df52a78aa01",
+  "updated": "373923dfb3a902c6b8f7c74d393b7f25d3e58af9",
   "total": 4419,
   "outcomes": {
-    "pass": 1968,
+    "pass": 2157,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1736,
+    "fail": 1547,
     "timeout": 122,
     "harness_error": 0,
     "crash": 10
@@ -23,16 +23,16 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1864,
+        "pass": 2042,
         "skip": 545,
-        "fail": 1558,
+        "fail": 1380,
         "timeout": 102,
         "crash": 10
       },
       "sequential": {
-        "pass": 39,
+        "pass": 50,
         "skip": 22,
-        "fail": 50,
+        "fail": 39,
         "timeout": 7
       }
     },
@@ -41,9 +41,9 @@
         "skip": 343
       },
       "public": {
-        "pass": 1968,
+        "pass": 2157,
         "skip": 240,
-        "fail": 1736,
+        "fail": 1547,
         "timeout": 122,
         "crash": 10
       }
@@ -91,10 +91,9 @@
         "skip": 9
       },
       "dgram": {
-        "pass": 1,
+        "pass": 63,
         "skip": 11,
-        "fail": 63,
-        "timeout": 4
+        "timeout": 5
       },
       "diagnostics_channel": {
         "pass": 40,
@@ -147,10 +146,10 @@
         "timeout": 15
       },
       "net": {
-        "pass": 19,
+        "pass": 146,
         "skip": 10,
-        "fail": 128,
-        "timeout": 5
+        "fail": 2,
+        "timeout": 4
       },
       "os": {
         "pass": 2,
