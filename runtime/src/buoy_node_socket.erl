@@ -471,7 +471,7 @@ close(Handle, Callback) ->
         #{closed := true} ->
             undefined;
         #{socket := Socket, queue := Queue, shutdown := Shutdown, connect := Connect, path := Path} = S ->
-            Socket =:= none orelse begin erlang:erase({?MODULE, Socket}), socket:close(Socket) end,
+            Socket =:= none orelse begin erlang:erase({?MODULE, Socket}), buoy_node_ipc:close_socket(Socket) end,
             Path =:= none orelse file:delete(Path),
             save(Handle, S#{closed := true, reading := false, listening := false, queue := [], queued := 0,
                             shutdown := none, connect := none}),

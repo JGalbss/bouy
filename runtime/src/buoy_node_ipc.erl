@@ -13,6 +13,15 @@
 %% socket, but only for the cluster's server handles; Node's protocol of
 %% NODE_HANDLE messages runs here unchanged.
 %%
+%% OTP's socket:close makes the descriptor blocking before it closes it, so
+%% that a linger can wait (essio_fin_close), and the flag belongs to the
+%% socket, which every process that holds it shares: a peer's next recv
+%% would block its scheduler. A socket that passed between processes
+%% therefore closes as its owner's exit closes it, without that step
+%% (close_socket/1). A received descriptor becomes a duplicate that OTP
+%% owns, and the descriptor itself closes through the destructor of a
+%% socket that never polled, which closes without changing a flag.
+%%
 %% A channel is two processes: a writer, which the realm's StreamBase
 %% methods send {write, Bytes, From, Ref}, {write, Bytes, From, Ref, Fds},
 %% shutdown, and close (buoy_node_stream), and a reader that blocks in
@@ -21,9 +30,10 @@
 %% once never deadlock (test-child-process-send-deadlock).
 -module(buoy_node_ipc).
 
--export([listen/1, open/2, child_exited/1, abandon/1, send_fds/1]).
+-export([listen/1, open/2, child_exited/1, abandon/1, send_fds/1, close_socket/1]).
 
 -define(ROOT(Channel), {?MODULE, root, Channel}).
+-define(SHARED(Socket), {?MODULE, shared, Socket}).
 %% Room for the SCM_RIGHTS of several descriptors in one read.
 -define(CTRL_SIZE, 256).
 
@@ -48,19 +58,20 @@ listen(Handle) ->
 open(Handle, Fd) ->
     Realm = self(),
     {Channel, Monitor} = spawn_monitor(fun() ->
-        case buoy_node_socket:open_inherited(Fd, #{dup => false}) of
+        case adopt_fd(Fd) of
             {ok, Socket} ->
-                Realm ! {self(), opened},
+                {ok, Own} = socket:getopt(Socket, {otp, fd}),
+                Realm ! {self(), opened, Own},
                 connected(Socket, Realm, Handle);
             {error, _} ->
                 exit(normal)
         end
     end),
     receive
-        {Channel, opened} ->
+        {Channel, opened, Own} ->
             erlang:demonitor(Monitor, [flush]),
             root(Handle, Channel),
-            buoy_node_stream:set_fd(Handle, Fd),
+            buoy_node_stream:set_fd(Handle, Own),
             ok;
         {'DOWN', Monitor, process, Channel, _} ->
             error
@@ -87,12 +98,78 @@ send_fds(SendHandle) ->
     case buoy_node_socket:find(SendHandle) of
         {ok, #{socket := Socket}} when Socket =/= none ->
             case socket:getopt(Socket, {otp, fd}) of
-                {ok, Fd} when is_integer(Fd), Fd >= 0 -> [Fd];
-                _ -> []
+                {ok, Fd} when is_integer(Fd), Fd >= 0 ->
+                    erlang:put(?SHARED(Socket), true),
+                    [Fd];
+                _ ->
+                    []
             end;
         _ ->
             []
     end.
+
+%% Closes a socket of this realm: one that another process may hold too
+%% closes as its owner's exit closes it, so the socket stays nonblocking.
+-spec close_socket(socket:socket()) -> ok | {error, term()}.
+close_socket(Socket) ->
+    case erlang:erase(?SHARED(Socket)) of
+        true ->
+            Holder = spawn(fun() -> receive _ -> ok end end),
+            _ = socket:setopt(Socket, {otp, controlling_process}, Holder),
+            exit(Holder, kill),
+            ok;
+        undefined ->
+            socket:close(Socket)
+    end.
+
+%% A descriptor that arrived in SCM_RIGHTS as a socket of the calling
+%% process: a duplicate that OTP owns and closes, while the descriptor
+%% closes at once. macOS has no SO_DOMAIN, so getsockname finds the
+%% family, as uv_guess_handle does.
+adopt_fd(Fd) ->
+    Owner = self(),
+    {Helper, Monitor} = spawn_monitor(fun() ->
+        Result = duplicate(Fd),
+        case Result of
+            {ok, Socket} -> ok = socket:setopt(Socket, {otp, controlling_process}, Owner);
+            _ -> ok
+        end,
+        Owner ! {self(), adopted, Result},
+        %% The probe of duplicate/1 is garbage now: its destructor closes Fd.
+        erlang:garbage_collect()
+    end),
+    receive
+        {Helper, adopted, Result} ->
+            erlang:demonitor(Monitor, [flush]),
+            Result;
+        {'DOWN', Monitor, process, Helper, Reason} ->
+            {error, Reason}
+    end.
+
+%% A duplicate of Fd in its family, through one socket on Fd that never
+%% polls, which the caller drops.
+duplicate(Fd) ->
+    case probe(Fd) of
+        {ok, Probe} ->
+            case socket:sockname(Probe) of
+                {ok, #{family := Family}} -> socket:open(Fd, #{dup => true, domain => Family});
+                {error, _} = Error -> Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+probe(Fd) -> socket:open(Fd, #{dup => false, domain => inet, use_registry => false}).
+
+%% Closes a descriptor that no socket owns: a socket that never polled
+%% closes it from its destructor (essio_dtor), with no other step, once
+%% nothing refers to it.
+close_fd(Fd) ->
+    spawn(fun() ->
+        _ = probe(Fd),
+        erlang:garbage_collect()
+    end),
+    ok.
 
 %% The handle stays a root of the heap while its channel may call back.
 root(Handle, Channel) ->
@@ -176,8 +253,9 @@ received(Handle, Bytes, Fd) ->
 %% uv_pipe_pending_type: a local socket is a Pipe, a datagram socket a UDP,
 %% and any other a TCP, each made as Instantiate makes it.
 pending_handle(Fd) ->
-    case buoy_node_socket:open_inherited(Fd, #{dup => false}) of
+    case adopt_fd(Fd) of
         {ok, Socket} ->
+            erlang:put(?SHARED(Socket), true),
             {Binding, Class, Kind} = case socket:info(Socket) of
                 #{domain := local} -> {<<"pipe_wrap">>, <<"Pipe">>, pipe};
                 #{type := dgram} -> {<<"udp_wrap">>, <<"UDP">>, udp};
@@ -187,12 +265,6 @@ pending_handle(Fd) ->
             buoy_node_socket:adopt(Constructor, Kind, Socket);
         {error, _} ->
             undefined
-    end.
-
-close_fd(Fd) ->
-    case buoy_node_socket:open_inherited(Fd, #{dup => false}) of
-        {ok, Socket} -> socket:close(Socket);
-        _ -> ok
     end.
 
 write(Socket, Monitor) ->
