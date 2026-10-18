@@ -55,7 +55,7 @@ binding() ->
         {<<"stopMessagePort">>, F(<<"stopMessagePort">>, 1, fun(_, Args) -> stop(A(1, Args)) end)},
         {<<"drainMessagePort">>, F(<<"drainMessagePort">>, 1, fun(_, Args) -> drain(A(1, Args)) end)},
         {<<"receiveMessageOnPort">>, F(<<"receiveMessageOnPort">>, 1, fun(_, Args) -> receive_message(A(1, Args)) end)},
-        {<<"moveMessagePortToContext">>, F(<<"moveMessagePortToContext">>, 2, fun(_, Args) -> move_to_context(A(1, Args)) end)},
+        {<<"moveMessagePortToContext">>, F(<<"moveMessagePortToContext">>, 0, fun(_, Args) -> move_to_context(A(1, Args)) end)},
         {<<"setDeserializerCreateObjectFunction">>, F(<<"setDeserializerCreateObjectFunction">>, 1, fun(_, Args) ->
             erlang:put(?CREATE, A(1, Args)),
             undefined

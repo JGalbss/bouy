@@ -468,7 +468,7 @@ intrinsics() -> [].
 globals() ->
     [{<<"globalThis">>, {'$o', 'globalThis'}}, {<<"undefined">>, undefined}]
     ++ ?METHODS(<<"globalThis">>, [<<"setTimeout">>, <<"setInterval">>, <<"clearTimeout">>, <<"clearInterval">>,
-                                   <<"queueMicrotask">>, <<"structuredClone">>])
+                                   <<"queueMicrotask">>, {<<"structuredClone">>, 2}])
     ++ [node_global(Name) || Name <- buoy_node:lazy_globals()].
 
 %% A global of Node, such as process: an accessor that runs Node's bootstrap
