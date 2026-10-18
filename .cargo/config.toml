@@ -1,5 +1,5 @@
 [env]
 # The SQLite of node:sqlite (crates/buoy-native/src/sqlite.rs) with the options of Node's
 # deps/sqlite/sqlite.gyp that the bundled build of libsqlite3-sys leaves out: the session
-# extension behind Session and applyChangeset, and the math functions.
-LIBSQLITE3_FLAGS = "-DSQLITE_ENABLE_SESSION -DSQLITE_ENABLE_PREUPDATE_HOOK -DSQLITE_ENABLE_MATH_FUNCTIONS -DSQLITE_DEFAULT_MEMSTATUS=0"
+# extension behind Session and applyChangeset, the math functions, RBU, and geopoly.
+LIBSQLITE3_FLAGS = "-DSQLITE_ENABLE_SESSION -DSQLITE_ENABLE_PREUPDATE_HOOK -DSQLITE_ENABLE_MATH_FUNCTIONS -DSQLITE_ENABLE_RBU -DSQLITE_ENABLE_GEOPOLY -DSQLITE_DEFAULT_MEMSTATUS=0"

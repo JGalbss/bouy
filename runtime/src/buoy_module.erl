@@ -549,7 +549,22 @@ builtin(Name) when is_binary(Name) -> buoy_node:require(Name);
 builtin(_) -> error.
 
 -spec no_builtin(term()) -> no_return().
+no_builtin(<<"node:", Id/binary>>) ->
+    no_builtin(Id);
+no_builtin(Name) when is_binary(Name) ->
+    %% A module of Node that a flag turned off, such as sqlite under --no-experimental-sqlite.
+    case buoy_node:is_public(Name) of
+        true ->
+            throw_coded('Error', <<"ERR_UNKNOWN_BUILTIN_MODULE">>,
+                        buoy_ref_string:concat([<<"No such built-in module: node:">>, Name]));
+        false ->
+            missing_builtin(Name)
+    end;
 no_builtin(Name) ->
+    missing_builtin(Name).
+
+-spec missing_builtin(term()) -> no_return().
+missing_builtin(Name) ->
     throw_coded('Error', <<"ERR_BUOY_BUILTIN">>,
                 buoy_ref_string:concat([<<"Buoy does not provide the Node built-in module 'node:">>, Name, <<"' yet">>])).
 

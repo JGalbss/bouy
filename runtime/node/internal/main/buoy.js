@@ -145,6 +145,15 @@ function loadEnvFiles() {
   }
 }
 
+function setupSQLite() {
+  if (getOptionValue('--no-experimental-sqlite')) {
+    return;
+  }
+
+  const { BuiltinModule } = require('internal/bootstrap/realm');
+  BuiltinModule.allowRequireByUsers('sqlite');
+}
+
 // A child that child_process.fork started talks to its parent on the
 // descriptor of NODE_CHANNEL_FD, as setupChildProcessIpcChannel does.
 function setupChildProcessIpcChannel() {
@@ -157,9 +166,9 @@ function setupChildProcessIpcChannel() {
   }
 }
 
-// Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 loadEnvFiles();
+setupSQLite();
 setupWebsocket();
 setupEventsource();
 initializeReport();

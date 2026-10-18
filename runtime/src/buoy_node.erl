@@ -56,13 +56,14 @@ require(Id) ->
     %% With --expose-internals, the internal ids load too (BuiltinModule.exposeInternals).
     Exposed = is_internal(Id) andalso lists:member(Id, ids())
         andalso lists:member(<<"--expose-internals">>, buoy_node_process:exec_argv()),
-    case is_public(Id) orelse Exposed of
+    BuiltinModule = buoy_heap:get(loader_exports(), <<"BuiltinModule">>),
+    %% An experimental module, such as sqlite, loads once pre-execution allowed it.
+    Allowed = is_public(Id) andalso call_method(BuiltinModule, <<"canBeRequiredByUsers">>, [Id]) =:= true,
+    case Allowed orelse Exposed of
         false ->
             error;
         true ->
-            Loader = loader_exports(),
-            Map = buoy_heap:get(buoy_heap:get(Loader, <<"BuiltinModule">>), <<"map">>),
-            Module = call_method(Map, <<"get">>, [Id]),
+            Module = call_method(buoy_heap:get(BuiltinModule, <<"map">>), <<"get">>, [Id]),
             {ok, call_method(Module, <<"compileForPublicLoader">>, [])}
     end.
 
