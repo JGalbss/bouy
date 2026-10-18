@@ -322,7 +322,8 @@ socket_call(This, Name, Args) ->
             end
     end.
 
-%% Http2Session::SendPendingData: every frame that is ready, in one write.
+%% Http2Session::SendPendingData: every frame that is ready, in one writev
+%% of one buffer for each piece that nghttp2 gave.
 send_pending(This) ->
     case session(This) of
         #{destroyed := true} ->
@@ -332,13 +333,12 @@ send_pending(This) ->
             1;
         _ ->
             update(This, fun(S) -> S#{write_scheduled => false, sending => true} end),
-            {Bytes, H} = buoy_h2:mem_send(h2(This)),
+            {Buffers, H} = buoy_h2:mem_send(h2(This)),
             put_h2(This, H),
-            Data = iolist_to_binary(Bytes),
-            case {maps:get(socket, session(This)), Data} of
+            case {maps:get(socket, session(This)), Buffers} of
                 {undefined, _} ->
                     clear_outgoing(This, ?UV_ECANCELED);
-                {_, <<>>} ->
+                {_, []} ->
                     clear_outgoing(This, 0);
                 {Handle, _} ->
                     update(This, fun(S) -> S#{write_in_progress => true, chunks_sent => maps:get(chunks_sent, S) + 1} end),
@@ -346,8 +346,9 @@ send_pending(This) ->
                     buoy_heap:set(Req, <<"oncomplete">>, buoy_node:fn(<<"oncomplete">>, 3, fun(_, Args) ->
                         after_write(This, to_int(buoy_node:arg(1, Args)))
                     end)),
-                    Write = buoy_heap:get(Handle, <<"writeBuffer">>),
-                    Status = buoy_heap:call(Write, Handle, [Req, buoy_node_encoding:new_buffer(Data)]),
+                    Write = buoy_heap:get(Handle, <<"writev">>),
+                    Chunks = buoy_heap:new_array([buoy_node_encoding:new_buffer(iolist_to_binary(B)) || B <- Buffers]),
+                    Status = buoy_heap:call(Write, Handle, [Req, Chunks, true]),
                     StreamState = buoy_heap:get(buoy_node:binding(<<"stream_wrap">>), <<"streamBaseState">>),
                     case {to_int(Status), trunc(buoy_heap:get(StreamState, 3))} of
                         {0, 1} -> ok;
@@ -918,8 +919,9 @@ read_data(This, Id, Max) ->
     end.
 
 %% Amount bytes off the front of the queue, and the requests that they end.
+%% The bytes stay one part per write, as OnSendData hands each on.
 take(Queue, 0, Acc, Done) ->
-    {iolist_to_binary(lists:reverse(Acc)), lists:reverse(Done), Queue};
+    {lists:reverse(Acc), lists:reverse(Done), Queue};
 take([{B, Req} | Rest], N, Acc, Done) when byte_size(B) =< N ->
     Done1 = case Req of undefined -> Done; _ -> [Req | Done] end,
     take(Rest, N - byte_size(B), [B | Acc], Done1);
@@ -927,7 +929,7 @@ take([{B, Req} | Rest], N, Acc, Done) ->
     <<Part:N/binary, Left/binary>> = B,
     take([{Left, Req} | Rest], 0, [Part | Acc], Done);
 take([], _, Acc, Done) ->
-    {iolist_to_binary(lists:reverse(Acc)), lists:reverse(Done), []}.
+    {lists:reverse(Acc), lists:reverse(Done), []}.
 
 %%% Http2Stream
 

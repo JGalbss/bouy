@@ -85,6 +85,10 @@
 -define(MAX_STREAM_ID, 16#7FFFFFFF).
 -define(UNLIMITED, 16#FFFFFFFF).
 
+-define(DEFAULT_WEIGHT, 16).
+-define(MAX_PADLEN, 256).
+-define(MAX_PAYLOADLEN, 16384).
+
 %% Headers categories of nghttp2_headers_category.
 -define(HCAT_REQUEST, 0).
 -define(HCAT_RESPONSE, 1).
@@ -962,6 +966,9 @@ submit_request(#h2{server = true} = H, _, _, _) ->
     {?ERR_PROTO, H};
 submit_request(#h2{next_stream_id = Id} = H, _, _, _) when Id > ?MAX_STREAM_ID ->
     {?ERR_STREAM_ID_NOT_AVAILABLE, H};
+submit_request(H, {0, ?DEFAULT_WEIGHT, false}, Fields, HasData) ->
+    %% nghttp2_priority_spec_check_default: the default spec sends no PRIORITY flag.
+    submit_request(H, none, Fields, HasData);
 submit_request(#h2{next_stream_id = Id} = H, Pri, Fields, HasData) ->
     S0 = new_stream(Id, initial, false, H),
     {Weight, Dep} = case Pri of
@@ -1125,6 +1132,9 @@ sendable(H) ->
 mem_send(H) ->
     send_loop(H, []).
 
+%% Each frame is one buffer, as each call of nghttp2_session_mem_send2
+%% gives one; a DATA frame is its header, its pad length, the parts of
+%% its body, and its padding, as Node's OnSendData copies them.
 send_loop(#h2{server = false, preface_sent = false} = H, Acc) ->
     send_loop(H#h2{preface_sent = true}, [?MAGIC | Acc]);
 send_loop(#h2{goaway_term = sent} = H, Acc) ->
@@ -1134,8 +1144,11 @@ send_loop(H, Acc) ->
         none ->
             {lists:reverse(Acc), H};
         {Item, H1} ->
-            {Bytes, H2} = send_item(Item, H1),
-            send_loop(H2, [Bytes | Acc])
+            case send_item(Item, H1) of
+                {[], H2} -> send_loop(H2, Acc);
+                {{buffers, Buffers}, H2} -> send_loop(H2, lists:reverse([B || B <- Buffers, B =/= <<>>], Acc));
+                {Bytes, H2} -> send_loop(H2, [Bytes | Acc])
+            end
     end.
 
 next_item(#h2{ob_urgent = [I | Rest]} = H) -> {I, H#h2{ob_urgent = Rest}};
@@ -1213,14 +1226,13 @@ bool(1) -> 1;
 bool(_) -> 0.
 
 send_headers(Id, request, _, _, _, #h2{goaway_recv = true} = H) ->
-    {Bytes, H1} = not_sent(#{type => ?HEADERS, flags => 0, stream_id => Id}, ?ERR_START_STREAM_NOT_ALLOWED, H),
-    {Bytes, close_stream(Id, ?REFUSED_STREAM, H1)};
+    headers_not_sent(Id, request, 0, ?ERR_START_STREAM_NOT_ALLOWED, H);
 send_headers(Id, Kind, Fields, EndStream, Pri, H) ->
     case find(Id, H) of
         none ->
-            not_sent(#{type => ?HEADERS, flags => 0, stream_id => Id}, ?ERR_STREAM_CLOSED, H);
+            headers_not_sent(Id, Kind, 0, ?ERR_STREAM_CLOSED, H);
         #stream{shut_wr = true} ->
-            not_sent(#{type => ?HEADERS, flags => 0, stream_id => Id}, ?ERR_STREAM_CLOSED, H);
+            headers_not_sent(Id, Kind, 0, ?ERR_STREAM_CLOSED, H);
         S ->
             {Block, H1} = encode(Fields, H),
             Flags0 = case EndStream of true -> ?FLAG_END_STREAM; false -> 0 end,
@@ -1231,7 +1243,7 @@ send_headers(Id, Kind, Fields, EndStream, Pri, H) ->
             Max = maps:get(max_send_header_block_length, H#h2.opts, 65536),
             case iolist_size(Block) > Max of
                 true ->
-                    not_sent(#{type => ?HEADERS, flags => Flags, stream_id => Id}, ?ERR_FRAME_SIZE_ERROR, H);
+                    headers_not_sent(Id, Kind, Flags, ?ERR_FRAME_SIZE_ERROR, H);
                 false ->
                     Bytes = header_frames(?HEADERS, Flags, Id, [PriBytes, Block], H1),
                     S1 = case Kind of
@@ -1257,16 +1269,47 @@ send_headers(Id, Kind, Fields, EndStream, Pri, H) ->
             end
     end.
 
+%% A request whose HEADERS cannot go out closes with REFUSED_STREAM, so the
+%% application may send it again (nghttp2_session_send's prep failure).
+headers_not_sent(Id, Kind, Flags, Lib, H) ->
+    {Bytes, H1} = not_sent(#{type => ?HEADERS, flags => Flags, stream_id => Id}, Lib, H),
+    case Kind of
+        request -> {Bytes, close_stream(Id, ?REFUSED_STREAM, H1)};
+        _ -> {Bytes, H1}
+    end.
+
 %% A header block, split into HEADERS (or PUSH_PROMISE) and CONTINUATION
 %% frames of the peer's maximum frame size.
-header_frames(Type, Flags, Id, Payload, #h2{remote = #{max_frame_size := Max}}) ->
+%% A HEADERS frame takes the padding of session_headers_add_pad in its
+%% first frame; PUSH_PROMISE takes none, as in nghttp2.
+header_frames(Type, Flags, Id, Payload, #h2{remote = #{max_frame_size := Max}} = H) ->
     Bin = iolist_to_binary(Payload),
-    case byte_size(Bin) =< Max of
+    Len = byte_size(Bin),
+    {Pre, Post, PadFlag} = case Type =:= ?HEADERS andalso padding(Len, ?MAX_PAYLOADLEN, H) of
+        P when is_integer(P), P > Len -> {<<(P - Len - 1)>>, binary:copy(<<0>>, P - Len - 1), ?FLAG_PADDED};
+        _ -> {<<>>, <<>>, 0}
+    end,
+    FirstMax = max(1, Max - byte_size(Pre) - byte_size(Post)),
+    case Len =< FirstMax of
         true ->
-            frame_bytes(Type, Flags bor ?FLAG_END_HEADERS, Id, Bin);
+            frame_bytes(Type, Flags bor PadFlag bor ?FLAG_END_HEADERS, Id, [Pre, Bin, Post]);
         false ->
-            <<First:Max/binary, Rest/binary>> = Bin,
-            [frame_bytes(Type, Flags, Id, First) | continuations(Rest, Id, Max)]
+            <<First:FirstMax/binary, Rest/binary>> = Bin,
+            [frame_bytes(Type, Flags bor PadFlag, Id, [Pre, First, Post]) | continuations(Rest, Id, Max)]
+    end.
+
+%% session_call_select_padding: the padded payload length that the
+%% callback picks, from Len up to Len plus NGHTTP2_MAX_PADLEN.
+padding(Len, Max, H) ->
+    Limit = min(Max, Len + ?MAX_PADLEN),
+    case Len >= Limit of
+        true ->
+            Len;
+        false ->
+            case cb({select_padding, Len, Limit}, H) of
+                {P, _} when is_integer(P), P >= Len, P =< Limit -> P;
+                _ -> Len
+            end
     end.
 
 continuations(Bin, Id, Max) when byte_size(Bin) =< Max ->
@@ -1308,12 +1351,14 @@ data_frame(Max, Id, Bytes, Eof, NoEndStream, H) ->
             Len = iolist_size(Bytes),
             EndStream = Eof andalso not NoEndStream,
             Flags = case EndStream of true -> ?FLAG_END_STREAM; false -> 0 end,
-            {Padded, PadFlags} = case cb({select_padding, Len, Max}, H) of
-                {Pad, _} when is_integer(Pad), Pad > Len, Pad =< Max ->
-                    {[<<(Pad - Len - 1)>>, Bytes, binary:copy(<<0>>, Pad - Len - 1)], ?FLAG_PADDED};
-                _ -> {Bytes, 0}
+            Parts = case Bytes of
+                B when is_binary(B) -> [B];
+                L -> L
             end,
-            FrameLen = iolist_size(Padded),
+            {Padded, PadFlags, FrameLen} = case padding(Len, Max, H) of
+                P when P > Len -> {[<<(P - Len - 1)>> | Parts] ++ [binary:copy(<<0>>, P - Len - 1)], ?FLAG_PADDED, P};
+                _ -> {Parts, 0, Len}
+            end,
             S1 = S#stream{remote_window = S#stream.remote_window - FrameLen,
                           shut_wr = S#stream.shut_wr orelse EndStream,
                           data = case Eof of true -> none; false -> active end},
@@ -1323,7 +1368,7 @@ data_frame(Max, Id, Bytes, Eof, NoEndStream, H) ->
                 false -> H1
             end,
             H3 = sent(#{type => ?DATA, flags => Flags, stream_id => Id, length => Len}, H2),
-            {frame_bytes(?DATA, Flags bor PadFlags, Id, Padded), close_if_shut(Id, H3)}
+            {{buffers, [<<FrameLen:24, ?DATA:8, (Flags bor PadFlags):8, 0:1, Id:31>> | Padded]}, close_if_shut(Id, H3)}
     end.
 
 sent(F, H) -> element(2, cb({frame_sent, F}, H)).
