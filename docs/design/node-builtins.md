@@ -61,7 +61,7 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 `buoy_node_loop` serves the bindings of `lib/internal/timers`, `lib/internal/process/task_queues`, and `lib/internal/process/promises`:
 
 - After each job: the microtasks, and the tick callback when `tickInfo` asks for it.
-- Timers: one Erlang `send_after` for the native timer of `lib/internal/timers`, ref'd or not.
+- Timers: one Erlang `send_after` for the native timer of `lib/internal/timers`, ref'd or not. Each turn of the loop starts with the timer when the clock has passed its deadline, before the poll, as libuv's `uv__run_timers` does, so a late message does not let the next immediates run first.
 - Immediates: after each poll of the mailbox, while `immediateInfo` counts any.
 - Rejections: the hook of `buoy_jobs` calls the callback of `setPromiseRejectCallback`.
 - Uncaught exceptions: `process._fatalException` decides. An error that no handler takes prints its stack and `Node.js v25.9.0`, and the program exits with `process.exitCode`, or 1.
