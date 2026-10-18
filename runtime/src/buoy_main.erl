@@ -3,7 +3,7 @@
 %% Boots a compiled program (section 1 of docs/design/beam-runtime.md).
 %%
 %% The CLI starts one VM with
-%%   erl +Bd -noshell -noinput -mode minimal -boot no_dot_erlang -pa <runtime ebin>
+%%   erl +Bd -noshell -noinput -mode minimal -boot <runtime>/buoy -pa <runtime ebin>
 %%       -eval 'buoy_main:start()' -extra <build dir> <entry module> <entry path> <module,...> [args...]
 %% start/0 compiles each changed module of <build dir>/src into <build dir>/ebin,
 %% starts the buoy application, runs the top-level code of the entry module, and halts.
