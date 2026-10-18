@@ -441,7 +441,7 @@ list_state(List) ->
 join_list(This, #{connections := List}, Sets) when List =/= undefined ->
     L = list_state(List),
     buoy_heap:private_put(List, ?LIST, lists:foldl(fun(Set, Acc) ->
-        Acc#{Set := maps:get(Set, Acc) -- [This] ++ [This]}
+        Acc#{Set := (maps:get(Set, Acc) -- [This]) ++ [This]}
     end, L, Sets));
 join_list(_, _, _) ->
     ok.
