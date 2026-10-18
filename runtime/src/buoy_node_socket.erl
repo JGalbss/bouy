@@ -238,15 +238,16 @@ data(Handle, Data) ->
     State = stream_state(),
     buoy_heap:set(State, ?K_READ_BYTES, byte_size(Chunk)),
     buoy_heap:set(State, ?K_OFFSET, 0),
-    Arg = case S of
+    case S of
         #{user_buffer := none} ->
             Fresh = buoy_ref_buffer:allocate(byte_size(Chunk)),
             buoy_ref_buffer:write(Fresh, 0, Chunk),
-            Fresh;
+            onread(Handle, Fresh);
         _ ->
-            undefined
-    end,
-    onread(Handle, Arg).
+            %% onread returns the next buffer of a generator (CustomBufferJSListener).
+            Next = onread(Handle, undefined),
+            buoy_heap:is_object(Next) andalso save(Handle, (state(Handle))#{user_buffer := Next})
+    end.
 
 %% The end of the stream (UV_EOF) or a read error: reading stops, as
 %% uv__stream_eof stops it.

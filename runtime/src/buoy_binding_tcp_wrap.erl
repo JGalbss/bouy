@@ -30,7 +30,7 @@ binding() ->
         {<<"getpeername">>, fun(This, Args) -> buoy_node_socket:peername(This, A(1, Args)) end},
         {<<"setNoDelay">>, fun(This, Args) -> buoy_node_socket:setopt(This, {tcp, nodelay}, buoy_ref:truthy(A(1, Args))) end},
         {<<"setKeepAlive">>, fun(This, Args) -> buoy_node_socket:setopt(This, {socket, keepalive}, buoy_ref:truthy(A(1, Args))) end},
-        {<<"setTypeOfService">>, fun(This, Args) -> buoy_node_socket:setopt(This, {ip, tos}, int(A(1, Args))) end},
+        {<<"setTypeOfService">>, fun(This, Args) -> set_type_of_service(This, int(A(1, Args))) end},
         {<<"getTypeOfService">>, fun(This, _) -> type_of_service(This) end},
         {<<"reset">>, fun(This, Args) -> buoy_node_socket:reset(This, A(1, Args)) end},
         {<<"setSimultaneousAccepts">>, fun(_, _) -> undefined end}],
@@ -83,13 +83,26 @@ connect(Handle, Req, Family, Address, Port) ->
         error -> buoy_node_socket:errno(einval)
     end.
 
+%% setTypeOfService(tos): IP_TOS, or IPV6_TCLASS on a socket that refuses
+%% it, as TCPWrap::SetTypeOfService tries both.
+set_type_of_service(Handle, Tos) ->
+    case buoy_node_socket:setopt(Handle, {ip, tos}, Tos) of
+        0 -> 0;
+        Errno ->
+            case buoy_node_socket:setopt(Handle, {ipv6, tclass}, Tos) of
+                0 -> 0;
+                _ -> Errno
+            end
+    end.
+
 type_of_service(Handle) ->
     case buoy_node_socket:find(Handle) of
         {ok, #{socket := Socket}} when Socket =/= none ->
-            case socket:getopt(Socket, {ip, tos}) of
-                {ok, Tos} when is_integer(Tos) -> Tos;
-                {ok, _} -> 0;
-                {error, Reason} -> buoy_node_socket:errno(Reason)
+            case {socket:getopt(Socket, {ip, tos}), socket:getopt(Socket, {ipv6, tclass})} of
+                {{ok, Tos}, _} when is_integer(Tos) -> Tos;
+                {_, {ok, Class}} when is_integer(Class) -> Class;
+                {{error, Reason}, _} -> buoy_node_socket:errno(Reason);
+                _ -> 0
             end;
         _ ->
             0
