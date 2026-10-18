@@ -321,3 +321,19 @@ fn the_committed_test262_files_agree() {
         );
     }
 }
+
+/// A run that times out stops the processes that it started, which would keep its pipes
+/// open: the wait ends at the deadline, not when the last of them exits.
+#[test]
+fn a_timed_out_run_stops_the_processes_that_it_started() {
+    let started = std::time::Instant::now();
+    let mut command = std::process::Command::new("sh");
+    command.args(["-c", "sleep 30 & sleep 30"]);
+    let run = bouy_suites::run(&mut command, std::time::Duration::from_secs(1));
+    assert!(run.timed_out);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(15),
+        "the run waited {:?}",
+        started.elapsed()
+    );
+}

@@ -123,13 +123,21 @@ pub fn run(command: &mut Command, deadline: Duration) -> Run {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap_or_else(|error| panic!("cannot run {command:?}: {error}"));
-    let pid = child.id().to_string();
+    let pid = child.id();
     let (finished, waited) = mpsc::channel();
     thread::spawn(move || finished.send(child.wait_with_output()));
     let (output, timed_out) = if let Ok(output) = waited.recv_timeout(deadline) {
         (output, false)
     } else {
-        let _ = Command::new("kill").args(["-KILL", &pid]).status();
+        // The processes that the program started would keep its pipes open, and the
+        // wait alive: they end first, before they lose their parent.
+        let mut doomed = descendants(pid);
+        doomed.push(pid);
+        let _ = Command::new("kill")
+            .arg("-KILL")
+            .args(doomed.iter().map(u32::to_string))
+            .stderr(Stdio::null())
+            .status();
         (waited.recv().expect("the waiting thread sends"), true)
     };
     if let Some((_, Some(directory))) = command.get_envs().find(|(name, _)| *name == "TMPDIR") {
@@ -139,6 +147,29 @@ pub fn run(command: &mut Command, deadline: Duration) -> Run {
         output: output.unwrap_or_else(|error| panic!("cannot wait for {command:?}: {error}")),
         timed_out,
     }
+}
+
+/// The processes under `pid`, from `ps`.
+fn descendants(pid: u32) -> Vec<u32> {
+    let Ok(output) = Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output() else {
+        return Vec::new();
+    };
+    let pairs: Vec<(u32, u32)> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace().map(str::parse::<u32>);
+            Some((fields.next()?.ok()?, fields.next()?.ok()?))
+        })
+        .collect();
+    let mut found = Vec::new();
+    let mut frontier = vec![pid];
+    while let Some(parent) = frontier.pop() {
+        for &(child, _) in pairs.iter().filter(|(_, ppid)| *ppid == parent) {
+            found.push(child);
+            frontier.push(child);
+        }
+    }
+    found
 }
 
 /// The lines that differ, as `-` (node) and `+` (bouy).
