@@ -5,16 +5,20 @@
 
 -include("buoy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, call_constructor/3, error_to_string/1]).
+-export([intrinsics/0, globals/0, method/4, call_constructor/3, error_to_string/1, get_stack/2, set_stack/2]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 
 -define(NATIVE, [<<"EvalError">>, <<"RangeError">>, <<"ReferenceError">>, <<"SyntaxError">>, <<"TypeError">>, <<"URIError">>]).
 -define(NAMES, [<<"Error">>, <<"AggregateError">>, <<"SuppressedError">> | ?NATIVE]).
+-define(STACK, {'#', ?MODULE, <<"stack">>}).
+-define(FRAMES, <<"\n    at <anonymous>">>).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
     Subclasses = [<<"DataCloneError">>, <<"AggregateError">>, <<"SuppressedError">> | ?NATIVE],
+    buoy_ref_realm:builtin(<<"Error stack get">>, <<>>, 0, fun ?MODULE:get_stack/2),
+    buoy_ref_realm:builtin(<<"Error stack set">>, <<>>, 1, fun ?MODULE:set_stack/2),
     [{'Error.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Error.prototype">>, [{<<"toString">>, 0}]) ++ [{<<"name">>, <<"Error">>}, {<<"message">>, <<>>}, {<<"constructor">>, constructor(<<"Error">>)}], none)}]
     ++ [{prototype_id(N), record(object, {'$o', 'Error.prototype'}, [{<<"name">>, N}, {<<"message">>, <<>>}, {<<"constructor">>, constructor(N)}], none)} || N <- Subclasses]
     ++ [{{builtin, <<"Error">>}, ctor_record(<<"Error">>, 1, {'$o', 'Error.prototype'}, ?METHODS(<<"Error">>, [{<<"captureStackTrace">>, 2}, {<<"isError">>, 1}]) ++ [{<<"stackTraceLimit">>, 10, 7}], fun(NT, Args) -> construct(<<"Error">>, NT, Args) end)}]
@@ -50,9 +54,45 @@ method(<<"Error">>, <<"isError">>, _This, Args) ->
 method(<<"Error">>, <<"captureStackTrace">>, _This, Args) ->
     O = arg(1, Args),
     ?IS_OBJECT(O) orelse buoy_ref:type_error(<<"Invalid argument">>),
-    Header = try error_to_string(O) catch error:{'$throw', _} -> <<"Error">> end,
-    buoy_heap:define(O, <<"stack">>, #{value => buoy_ref_string:concat(Header, <<"\n    at <anonymous>">>), writable => true, enumerable => false, configurable => true}),
+    lazy_stack(O),
     undefined.
+
+%% V8's stack: an accessor that formats the header at its first read, so a
+%% name or message that the code sets after the construction, as Node's
+%% errors and DOMException do, reaches it. The value then stays.
+lazy_stack(O) ->
+    buoy_heap:private_put(O, ?STACK, pending),
+    buoy_heap:define(O, <<"stack">>, #{get => buoy_ref_realm:builtin(<<"Error stack get">>, fun ?MODULE:get_stack/2),
+                                       set => buoy_ref_realm:builtin(<<"Error stack set">>, fun ?MODULE:set_stack/2),
+                                       enumerable => false, configurable => true}).
+
+-spec get_stack(term(), list()) -> term().
+get_stack(This, _Args) ->
+    case holder(This) of
+        {ok, Holder, pending} ->
+            Header = try error_to_string(Holder) catch error:{'$throw', _} -> <<"Error">> end,
+            Stack = buoy_ref_string:concat(Header, ?FRAMES),
+            buoy_heap:private_put(Holder, ?STACK, {value, Stack}),
+            Stack;
+        {ok, _, {value, Stack}} ->
+            Stack;
+        error ->
+            undefined
+    end.
+
+-spec set_stack(term(), list()) -> undefined.
+set_stack(This, Args) ->
+    ?IS_OBJECT(This) andalso buoy_heap:private_put(This, ?STACK, {value, arg(1, Args)}),
+    undefined.
+
+%% The object of the prototype chain of This that holds the stack.
+holder(O) when ?IS_OBJECT(O) ->
+    case buoy_heap:private_find(O, ?STACK) of
+        {ok, State} -> {ok, O, State};
+        error -> holder(buoy_heap:prototype_of(O))
+    end;
+holder(_) ->
+    error.
 
 %% The error constructors: OrdinaryCreateFromConstructor, the message, the
 %% cause, and the errors of an AggregateError or the error and suppressed
@@ -65,21 +105,11 @@ construct(Name, NewTarget, Args) ->
         _ -> {arg(1, Args), arg(2, Args)}
     end,
     E = buoy_heap:error_object(Proto, <<>>, <<>>),
-    Message = case MessageArg of
-        undefined ->
-            buoy_heap:delete(E, <<"message">>),
-            undefined;
-        M ->
-            Text = buoy_ref:to_string(M),
-            buoy_heap:set(E, <<"message">>, Text),
-            Text
+    case MessageArg of
+        undefined -> buoy_heap:delete(E, <<"message">>);
+        M -> buoy_heap:set(E, <<"message">>, buoy_ref:to_string(M))
     end,
-    Header = case Message of
-        undefined -> Name;
-        <<>> -> Name;
-        _ -> buoy_ref_string:concat([Name, <<": ">>, Message])
-    end,
-    buoy_heap:set(E, <<"stack">>, buoy_ref_string:concat(Header, <<"\n    at <anonymous>">>)),
+    lazy_stack(E),
     case ?IS_OBJECT(OptionsArg) andalso buoy_heap:has(OptionsArg, <<"cause">>) of
         true -> hidden(E, <<"cause">>, buoy_ref:get(OptionsArg, <<"cause">>));
         false -> ok
