@@ -299,9 +299,9 @@ write_array_buffer(This, #{transfers := Transfers} = S, V) ->
                 data_clone_error(This, <<"An ArrayBuffer is detached and could not be cloned.">>),
             {_, Length, Max} = buoy_heap:slots(V),
             Bytes = buoy_ref_buffer:read(V, 0, Length),
-            case Max of
-                none -> append(S, [<<"B">>, varint(Length), Bytes]);
-                _ -> append(S, [<<"~">>, varint(Length), varint(Max), Bytes])
+            case is_integer(Max) of
+                false -> append(S, [<<"B">>, varint(Length), Bytes]);
+                true -> append(S, [<<"~">>, varint(Length), varint(Max), Bytes])
             end
     end.
 
@@ -311,7 +311,7 @@ write_view(_This, S, V) ->
     {Kind, Buffer, Offset, Length} = view_slots(V),
     ByteLength = buoy_node_encoding:view_length(V),
     {_, _, Max} = buoy_heap:slots(Buffer),
-    Flags = (case Length of auto -> 1; _ -> 0 end) bor (case Max of none -> 0; _ -> 2 end),
+    Flags = (case Length of auto -> 1; _ -> 0 end) bor (case is_integer(Max) of false -> 0; true -> 2 end),
     append(S, [<<"V">>, subtag(Kind), varint(Offset), varint(ByteLength), varint(Flags)]).
 
 subtag(int8) -> <<"b">>;

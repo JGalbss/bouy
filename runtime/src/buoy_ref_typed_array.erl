@@ -104,7 +104,7 @@ length_of({Kind, Buffer, Offset, Length}) ->
 is_fixed_length(O) ->
     {_Kind, Buffer, _Offset, Length} = slots(O),
     Length =/= auto andalso
-        (buoy_heap:class_of(Buffer) =:= shared_array_buffer orelse element(3, buoy_heap:slots(Buffer)) =:= none).
+        (buoy_heap:class_of(Buffer) =:= shared_array_buffer orelse not buoy_ref_buffer:is_resizable(Buffer)).
 
 %% The length of an array iterator's typed array: a TypeError when it is
 %% out of bounds.
@@ -117,8 +117,13 @@ iterated_length(O) ->
 
 %% ValidateTypedArray: the slots and the length of a typed array that is
 %% in bounds.
-validate(O, Name) ->
+validate(O, Name) -> validate(O, Name, read).
+
+%% ValidateTypedArray with its access mode: a method that writes fails on an
+%% immutable buffer before it checks the bounds.
+validate(O, Name, Access) ->
     is_typed_array(O) orelse type_error(<<"this is not a typed array.">>),
+    Access =:= write andalso buoy_ref_buffer:require_mutable(element(2, slots(O))),
     Slots = slots(O),
     case length_of(Slots) of
         out_of_bounds -> type_error(<<"Cannot perform %TypedArray%.prototype.", Name/binary, " on a detached ArrayBuffer">>);
@@ -169,7 +174,14 @@ element_set(O, N, V) ->
     Slots = slots(O),
     case valid_index(Slots, N) of
         invalid -> ok;
-        I -> write_element(Slots, I, Value)
+        I -> write_unless_immutable(Slots, I, Value)
+    end.
+
+%% An element of an immutable buffer keeps its value.
+write_unless_immutable({_, Buffer, _, _} = Slots, I, Value) ->
+    case buoy_ref_buffer:is_immutable(Buffer) of
+        true -> ok;
+        false -> write_element(Slots, I, Value)
     end.
 
 to_element(Kind, V) ->
@@ -306,7 +318,7 @@ from_buffer(Kind, Proto, Buffer, OffsetArg, LengthArg) ->
     end,
     buoy_ref_buffer:is_detached(Buffer) andalso type_error(<<"Cannot perform Construct on a detached ArrayBuffer">>),
     BufferLength = buoy_ref_buffer:byte_length(Buffer),
-    Fixed = element(3, buoy_heap:slots(Buffer)) =:= none,
+    Fixed = not buoy_ref_buffer:is_resizable(Buffer),
     Length = case NewLength of
         undefined when not Fixed ->
             Offset > BufferLength andalso buoy_heap:throw_error('RangeError', <<"Start offset is outside the bounds of the buffer">>),
@@ -366,7 +378,12 @@ buoy_ref_buffer_species(O, Default) ->
 %% TypedArrayCreateFromConstructor.
 create_from_constructor(C, Args, Name) ->
     New = buoy_ref:construct(C, Args),
-    {_, Length} = validate(New, Name),
+    %% Each caller but subarray writes into the new array.
+    Access = case Name of
+        <<"subarray">> -> read;
+        _ -> write
+    end,
+    {_, Length} = validate(New, Name, Access),
     case Args of
         [N] when is_integer(N) -> Length >= N orelse type_error(<<"The species constructor made a typed array that is too short">>);
         _ -> ok
@@ -401,6 +418,7 @@ base64(<<"toHex">>, This, _Args) ->
     list_to_binary([io_lib:format("~2.16.0b", [B]) || <<B>> <= array_bytes(This)]);
 base64(<<"setFromBase64">>, This, Args) ->
     uint8(This),
+    buoy_ref_buffer:require_mutable(element(2, slots(This))),
     S = string_arg(arg(1, Args)),
     Options = options(arg(2, Args)),
     Alphabet = alphabet(Options),
@@ -412,6 +430,7 @@ base64(<<"setFromBase64">>, This, Args) ->
     read_written(Read, length(Bytes));
 base64(<<"setFromHex">>, This, Args) ->
     uint8(This),
+    buoy_ref_buffer:require_mutable(element(2, slots(This))),
     S = string_arg(arg(1, Args)),
     Length = in_bounds_length(This),
     {Read, Bytes, Error} = from_hex(buoy_ref_string:units(S), Length),
@@ -649,13 +668,19 @@ method(<<"TypedArray.prototype">>, <<"[Symbol.toStringTag]">>, This, _) ->
     end;
 method(<<"TypedArray.prototype">>, <<"set">>, This, Args) ->
     is_typed_array(This) orelse type_error(<<"this is not a typed array.">>),
+    buoy_ref_buffer:require_mutable(element(2, slots(This))),
     set(This, arg(1, Args), arg(2, Args));
 method(<<"TypedArray.prototype">>, <<"subarray">>, This, Args) ->
     is_typed_array(This) orelse type_error(<<"this is not a typed array.">>),
     subarray(This, arg(1, Args), arg(2, Args));
 method(<<"TypedArray.prototype">>, Name, This, Args) ->
-    {Slots, Length} = validate(This, Name),
+    {Slots, Length} = validate(This, Name, access(Name)),
     proto(Name, This, Slots, Length, Args).
+
+%% The access mode of ValidateTypedArray for a method: the methods that
+%% write into their receiver need a mutable buffer.
+access(Name) when Name =:= <<"copyWithin">>; Name =:= <<"fill">>; Name =:= <<"reverse">>; Name =:= <<"sort">> -> write;
+access(_Name) -> read.
 
 iterator_method_of(V) when ?IS_OBJECT(V) -> iterator_method(V);
 iterator_method_of(V) when ?IS_STRING(V) -> buoy_ref:get(V, ?SYM(iterator));

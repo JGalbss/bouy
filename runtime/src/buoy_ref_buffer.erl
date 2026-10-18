@@ -10,14 +10,15 @@
 %%
 %% The slots of an ArrayBuffer are {Data, ByteLength, MaxByteLength}: Data
 %% is the atomics array or detached, and MaxByteLength is none for a fixed
-%% length. A SharedArrayBuffer has the class shared_array_buffer and the
+%% length and immutable for an immutable buffer (the immutable-arraybuffer
+%% proposal), which has a fixed length too and refuses every write. A SharedArrayBuffer has the class shared_array_buffer and the
 %% same slots.
 -module(buoy_ref_buffer).
 
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3]).
--export([allocate/1, allocate/2, byte_length/1, is_detached/1, is_buffer/1, read/3, write/3, copy/5, copy_forward/5, detach/1]).
+-export([allocate/1, allocate/2, freeze/1, byte_length/1, is_detached/1, is_immutable/1, require_mutable/1, is_resizable/1, is_buffer/1, read/3, write/3, copy/5, copy_forward/5, detach/1]).
 -export([element_size/1, decode/2, encode/2, is_big_int_kind/1, kinds/0, kind_name/1, to_index/1, species_constructor/2]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
@@ -29,8 +30,9 @@
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
-    [{'ArrayBuffer.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"ArrayBuffer.prototype">>, [{<<"slice">>, 2}, {<<"resize">>, 1}, {<<"transfer">>, 0}, {<<"transferToFixedLength">>, 0}])
-         ++ [getter(<<"ArrayBuffer.prototype">>, G) || G <- [<<"byteLength">>, <<"maxByteLength">>, <<"resizable">>, <<"detached">>]]
+    [{'ArrayBuffer.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"ArrayBuffer.prototype">>, [{<<"slice">>, 2}, {<<"resize">>, 1}, {<<"transfer">>, 0}, {<<"transferToFixedLength">>, 0},
+                                                                                 {<<"transferToImmutable">>, 0}, {<<"sliceToImmutable">>, 2}])
+         ++ [getter(<<"ArrayBuffer.prototype">>, G) || G <- [<<"byteLength">>, <<"maxByteLength">>, <<"resizable">>, <<"detached">>, <<"immutable">>]]
          ++ [{<<"constructor">>, constructor(<<"ArrayBuffer">>)}, {?SYM(toStringTag), <<"ArrayBuffer">>, 4}], none)},
      {'SharedArrayBuffer.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"SharedArrayBuffer.prototype">>, [{<<"slice">>, 2}, {<<"grow">>, 1}])
          ++ [getter(<<"SharedArrayBuffer.prototype">>, G) || G <- [<<"byteLength">>, <<"maxByteLength">>, <<"growable">>]]
@@ -103,6 +105,23 @@ byte_length(Buffer) ->
 -spec is_detached(term()) -> boolean().
 is_detached(Buffer) -> element(1, buoy_heap:slots(Buffer)) =:= detached.
 
+%% IsImmutableBuffer.
+-spec is_immutable(term()) -> boolean().
+is_immutable(Buffer) -> element(3, buoy_heap:slots(Buffer)) =:= immutable.
+
+%% A TypeError for a write to an immutable buffer, which the methods that
+%% write check before they read their arguments.
+-spec require_mutable(term()) -> ok.
+require_mutable(Buffer) ->
+    case is_immutable(Buffer) of
+        true -> buoy_ref:type_error(<<"Cannot perform this operation on an immutable ArrayBuffer">>);
+        false -> ok
+    end.
+
+%% Whether the buffer has a maximum byte length, so its length can change.
+-spec is_resizable(term()) -> boolean().
+is_resizable(Buffer) -> is_integer(element(3, buoy_heap:slots(Buffer))).
+
 -spec detach(term()) -> ok.
 detach(Buffer) ->
     {_, _, Max} = buoy_heap:slots(Buffer),
@@ -128,7 +147,10 @@ read_words(Ref, Index, Last, Acc) -> read_words(Ref, Index + 1, Last, <<Acc/bina
 %% Writes Bytes at Offset.
 -spec write(term(), non_neg_integer(), binary()) -> ok.
 write(Buffer, Offset, Bytes) ->
-    {Ref, _, _} = buoy_heap:slots(Buffer),
+    {Ref, _, Max} = buoy_heap:slots(Buffer),
+    %% Each method checks immutability where its algorithm says; this guard
+    %% keeps a path that misses the check from writing.
+    Max =:= immutable andalso require_mutable(Buffer),
     write_bytes(Ref, Offset, Bytes).
 
 write_bytes(_Ref, _Offset, <<>>) -> ok;
@@ -388,14 +410,15 @@ buffer_proto(<<"byteLength">>, B, _) -> byte_length(B);
 buffer_proto(<<"maxByteLength">>, B, _) ->
     case buoy_heap:slots(B) of
         {detached, _, _} -> 0;
-        {_, Length, none} -> Length;
-        {_, _, Max} -> Max
+        {_, _, Max} when is_integer(Max) -> Max;
+        {_, Length, _} -> Length
     end;
-buffer_proto(<<"resizable">>, B, _) -> element(3, buoy_heap:slots(B)) =/= none;
+buffer_proto(<<"resizable">>, B, _) -> is_resizable(B);
 buffer_proto(<<"detached">>, B, _) -> is_detached(B);
+buffer_proto(<<"immutable">>, B, _) -> is_immutable(B);
 buffer_proto(<<"resize">>, B, Args) ->
     {_, _, Max} = buoy_heap:slots(B),
-    Max =:= none andalso buoy_ref:type_error(<<"Method ArrayBuffer.prototype.resize called on incompatible receiver">>),
+    is_integer(Max) orelse buoy_ref:type_error(<<"Method ArrayBuffer.prototype.resize called on incompatible receiver">>),
     NewLength = to_index(arg(1, Args)),
     is_detached(B) andalso detached_error(),
     NewLength > Max andalso buoy_heap:throw_error('RangeError', <<"ArrayBuffer.prototype.resize: Invalid length parameter">>),
@@ -413,6 +436,7 @@ buffer_proto(<<"slice">>, B, Args) ->
     New = buoy_ref:construct(C, [NewLength]),
     (?IS_OBJECT(New) andalso buoy_heap:class_of(New) =:= array_buffer) orelse buoy_ref:type_error(<<"The species constructor did not make an ArrayBuffer">>),
     is_detached(New) andalso detached_error(),
+    require_mutable(New),
     New =:= B andalso buoy_ref:type_error(<<"The species constructor returned the same ArrayBuffer">>),
     byte_length(New) < NewLength andalso buoy_ref:type_error(<<"The species constructor made a buffer that is too small">>),
     is_detached(B) andalso detached_error(),
@@ -421,7 +445,34 @@ buffer_proto(<<"slice">>, B, Args) ->
     Count > 0 andalso copy(B, First, New, 0, Count),
     New;
 buffer_proto(<<"transfer">>, B, Args) -> transfer(B, arg(1, Args), preserve);
-buffer_proto(<<"transferToFixedLength">>, B, Args) -> transfer(B, arg(1, Args), fixed).
+buffer_proto(<<"transferToFixedLength">>, B, Args) -> transfer(B, arg(1, Args), fixed);
+buffer_proto(<<"transferToImmutable">>, B, Args) -> transfer(B, arg(1, Args), immutable);
+%% ArrayBuffer.prototype.sliceToImmutable: the bounds resolve against the
+%% length before the arguments convert, and the copy needs the end of the
+%% range to be in the buffer after they did.
+buffer_proto(<<"sliceToImmutable">>, B, Args) ->
+    is_detached(B) andalso detached_error(),
+    Len = byte_length(B),
+    First = relative(arg(1, Args), Len, 0),
+    Final = relative(arg(2, Args), Len, Len),
+    NewLength = max(Final - First, 0),
+    is_detached(B) andalso detached_error(),
+    byte_length(B) < Final andalso buoy_heap:throw_error('RangeError', <<"The ArrayBuffer is too short for the slice">>),
+    immutable_copy(B, First, NewLength, NewLength).
+
+%% AllocateImmutableArrayBuffer of %ArrayBuffer%: Length bytes, the first
+%% Count of them copied from From at Offset.
+immutable_copy(From, Offset, Length, Count) ->
+    New = allocate(Length, none),
+    Count > 0 andalso write(New, 0, read(From, Offset, Count)),
+    freeze(New),
+    New.
+
+%% Makes a fixed-length buffer immutable, once its bytes are in place.
+-spec freeze(term()) -> ok.
+freeze(Buffer) ->
+    {Data, Length, none} = buoy_heap:slots(Buffer),
+    buoy_heap:set_slots(Buffer, {Data, Length, immutable}).
 
 %% ArrayBufferCopyAndDetach.
 transfer(B, LengthArg, Mode) ->
@@ -430,15 +481,22 @@ transfer(B, LengthArg, Mode) ->
         _ -> to_index(LengthArg)
     end,
     is_detached(B) andalso detached_error(),
+    require_mutable(B),
     {Ref, Old, Max} = buoy_heap:slots(B),
-    NewMax = case Mode of
-        preserve -> Max;
-        fixed -> none
-    end,
-    NewMax =/= none andalso NewLength > NewMax andalso buoy_heap:throw_error('RangeError', <<"Invalid array buffer length">>),
-    New = allocate(NewLength, NewMax),
     Count = min(NewLength, Old),
-    Count > 0 andalso write(New, 0, read_bytes(Ref, 0, Count)),
+    New = case Mode of
+        immutable ->
+            immutable_copy(B, 0, NewLength, Count);
+        _ ->
+            NewMax = case Mode of
+                preserve -> Max;
+                fixed -> none
+            end,
+            NewMax =/= none andalso NewLength > NewMax andalso buoy_heap:throw_error('RangeError', <<"Invalid array buffer length">>),
+            Copy = allocate(NewLength, NewMax),
+            Count > 0 andalso write(Copy, 0, read_bytes(Ref, 0, Count)),
+            Copy
+    end,
     detach(B),
     New.
 
@@ -504,7 +562,7 @@ construct_view(NewTarget, Args) ->
     is_detached(Buffer) andalso detached_error(),
     BufferLength = byte_length(Buffer),
     Offset > BufferLength andalso buoy_heap:throw_error('RangeError', <<"Start offset is outside the bounds of the buffer">>),
-    Tracking = element(3, buoy_heap:slots(Buffer)) =/= none andalso arg(3, Args) =:= undefined,
+    Tracking = is_resizable(Buffer) andalso arg(3, Args) =:= undefined,
     ViewLength = case arg(3, Args) of
         undefined when Tracking -> auto;
         undefined -> BufferLength - Offset;
@@ -561,6 +619,7 @@ view_proto(<<"get", Type/binary>>, V, Args) ->
     Bytes = read(Buffer, Offset + Index, Size),
     decode(Kind, order(Bytes, Little));
 view_proto(<<"set", Type/binary>>, V, Args) ->
+    require_mutable(element(1, buoy_heap:slots(V))),
     Kind = view_kind(Type),
     Index = to_index(arg(1, Args)),
     Value = case is_big_int_kind(Kind) of
