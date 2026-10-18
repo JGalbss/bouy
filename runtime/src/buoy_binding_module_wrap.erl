@@ -14,6 +14,7 @@
 -define(WRAPPED, {'#', ?MODULE, <<"module">>}).
 -define(SOURCE_OBJECT, {'#', ?MODULE, <<"source">>}).
 -define(SOURCE_TEXT, {'#', ?MODULE, <<"text">>}).
+-define(REALM, {'#', ?MODULE, <<"realm">>}).
 
 -spec binding() -> term().
 binding() ->
@@ -74,6 +75,7 @@ new(This, Args) ->
         false -> new_source_text(This, Url, Realm, Third, buoy_node:arg(6, Args))
     end,
     buoy_heap:private_put(This, ?WRAPPED, M),
+    buoy_heap:private_put(This, ?REALM, Realm),
     erlang:put({'$buoy_module_wrap', M}, This),
     buoy_heap:set(This, <<"url">>, Url),
     undefined.
@@ -164,12 +166,20 @@ instantiate(This) ->
 %% timeout of -1 runs without a deadline.
 evaluate(This, Timeout) ->
     M = wrapped(This),
+    %% A context with a microtask queue of its own runs its microtasks after
+    %% the evaluation, as microtaskMode 'afterEvaluate' asks.
+    {ok, Realm} = buoy_heap:private_find(This, ?REALM),
+    Evaluate = fun() ->
+        P = buoy_module:evaluate(M),
+        (buoy_ref_realm:realm_fun(Realm, fun(_, _) -> buoy_jobs:checkpoint(Realm) end))(undefined, undefined),
+        P
+    end,
     case is_number(Timeout) andalso Timeout >= 0 of
         false ->
-            buoy_module:evaluate(M);
+            Evaluate();
         true ->
             Ms = trunc(Timeout),
-            case buoy_ref_eval:run_until(Ms, fun() -> buoy_module:evaluate(M) end) of
+            case buoy_ref_eval:run_until(Ms, Evaluate) of
                 {ok, P} -> P;
                 timeout -> buoy_node:throw_code('Error', <<"ERR_SCRIPT_EXECUTION_TIMEOUT">>,
                                                 iolist_to_binary(["Script execution timed out after ", integer_to_binary(Ms), "ms"]))

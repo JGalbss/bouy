@@ -51,7 +51,7 @@ binding() ->
     end), writable => true, enumerable => true, configurable => true}),
     buoy_node:object([
         {<<"ContextifyScript">>, Script},
-        {<<"makeContext">>, F(<<"makeContext">>, 0, fun(_, Args) -> make_context(A(1, Args), A(7, Args)) end)},
+        {<<"makeContext">>, F(<<"makeContext">>, 0, fun(_, Args) -> make_context(A(1, Args), A(6, Args), A(7, Args)) end)},
         {<<"compileFunction">>, F(<<"compileFunction">>, 0, fun(_, Args) -> compile_function(Args) end)},
         {<<"constants">>, Constants},
         {<<"startSigintWatchdog">>, F(<<"startSigintWatchdog">>, 0, fun(_, _) -> undefined end)},
@@ -93,9 +93,10 @@ private() -> buoy_node:private_symbol(<<"contextify_context_private_symbol">>).
 %% makeContext(contextObject, ...): a new realm whose global proxy intercepts
 %% the sandbox, or the global object of a new realm for
 %% vm.constants.DONT_CONTEXTIFY.
-make_context(Sandbox, Option) ->
+make_context(Sandbox, OwnQueue, Option) ->
     Global = buoy_ref_realm:create(),
     Realm = erlang:get('$buoy_realms'),
+    OwnQueue =:= true andalso buoy_jobs:own_queue(Realm),
     [buoy_heap:delete_property(Global, K) || K <- buoy_heap:own_keys(Global), is_binary(K), not lists:member(K, ?V8_GLOBALS)],
     Context = case buoy_heap:is_object(Sandbox) of
         true ->
@@ -184,8 +185,17 @@ run_in_context(This, Context, Timeout) ->
             end
     end.
 
+%% A context with a microtask queue of its own runs its microtasks after the
+%% script, as microtaskMode 'afterEvaluate' asks.
 run(Module, null) -> Module:'$body'();
-run(Module, Context) -> (buoy_ref_realm:realm_fun(realm_of(Context), fun(_, _) -> Module:'$body'() end))(undefined, undefined).
+run(Module, Context) ->
+    Realm = realm_of(Context),
+    Run = fun(_, _) ->
+        Value = Module:'$body'(),
+        buoy_jobs:checkpoint(Realm),
+        Value
+    end,
+    (buoy_ref_realm:realm_fun(Realm, Run))(undefined, undefined).
 
 realm_of(Context) -> buoy_heap:get(Context, private()).
 

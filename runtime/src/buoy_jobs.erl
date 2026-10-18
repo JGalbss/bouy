@@ -14,7 +14,7 @@
 
 -export([new_promise/0, new_promise/1, capability/0, promise_resolve/1, perform_then/4, is_promise/1]).
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
--export([await/3, async_call/1, enqueue/1, drain/0]).
+-export([await/3, async_call/1, enqueue/1, drain/0, own_queue/1, checkpoint/1]).
 -export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1, quiet_capability/0]).
 -export([set_timer/4, clear_timer/1]).
 -export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
@@ -42,6 +42,10 @@
 -define(HOOKS, '$buoy_promise_hooks').
 %% The promise of the async function that runs, while promise hooks are set.
 -define(OUTER, '$buoy_async_outer').
+%% The microtask queue of a realm that has one of its own, and whether any
+%% realm has.
+-define(REALM_QUEUE(Realm), {'$buoy_realm_microtasks', Realm}).
+-define(OWN_QUEUES, '$buoy_own_microtask_queues').
 
 %%% Microtasks
 %%
@@ -58,6 +62,48 @@ push(Entry) ->
         {In, Out} -> erlang:put(?QUEUE, {[Entry | In], Out})
     end,
     ok.
+
+%% A context of node:vm with microtaskMode 'afterEvaluate' has a microtask
+%% queue of its own, which runs only at its checkpoints, after a script or
+%% a module of the context runs. A job goes to the queue of the realm of
+%% its function, as V8 queues it in the microtask queue of the function's
+%% context.
+-spec own_queue(pos_integer()) -> ok.
+own_queue(Realm) ->
+    erlang:put(?OWN_QUEUES, true),
+    erlang:put(?REALM_QUEUE(Realm), {[], []}),
+    ok.
+
+push(Realm, Entry) ->
+    case erlang:get(?REALM_QUEUE(Realm)) of
+        {In, Out} -> erlang:put(?REALM_QUEUE(Realm), {[Entry | In], Out}), ok;
+        undefined -> push(Entry)
+    end.
+
+%% The realm whose queue takes the job of a function: none unless some
+%% context has a queue of its own.
+job_realm(F) ->
+    case erlang:get(?OWN_QUEUES) of
+        true -> buoy_ref_realm:function_realm(F);
+        undefined -> 0
+    end.
+
+%% PerformCheckpoint of the queue of Realm: its jobs run until it is empty.
+-spec checkpoint(non_neg_integer()) -> ok.
+checkpoint(Realm) ->
+    case erlang:get(?REALM_QUEUE(Realm)) of
+        {In, [{Context, Job} | Out]} ->
+            erlang:put(?REALM_QUEUE(Realm), {In, Out}),
+            erlang:put(?CONTEXT, Context),
+            Job(),
+            erlang:put(?CONTEXT, undefined),
+            checkpoint(Realm);
+        {[_ | _] = In, []} ->
+            erlang:put(?REALM_QUEUE(Realm), {[], lists:reverse(In)}),
+            checkpoint(Realm);
+        _ ->
+            ok
+    end.
 
 %% Runs microtasks until the queue is empty. A job that a job queues runs in
 %% the same drain.
@@ -155,7 +201,7 @@ resolve_promise(P, V) ->
             try buoy_heap:get(V, <<"then">>) of
                 Then ->
                     case buoy_heap:is_callable(Then) of
-                        true -> enqueue(fun() -> thenable_job(P, V, Then) end);
+                        true -> push(job_realm(Then), {erlang:get(?CONTEXT), fun() -> thenable_job(P, V, Then) end});
                         false -> fulfill(P, V)
                     end
             catch
@@ -201,11 +247,35 @@ reject_promise(P, Reason) ->
     trigger(Reject, Reason).
 
 trigger(Reactions, Argument) ->
-    lists:foreach(fun(Reaction) -> push(reaction(Reaction, Argument)) end, lists:reverse(Reactions)).
+    lists:foreach(fun(Reaction) -> push_reaction(Reaction, Argument) end, lists:reverse(Reactions)).
+
+%% A reaction job goes to the queue of the realm of its handler, or of the
+%% realm that registered an Erlang handler (realm_context/1).
+push_reaction({_, _, {'$f', _, _} = Handler, _} = Reaction, Argument) ->
+    push(job_realm(Handler), reaction(Reaction, Argument));
+push_reaction({_, _, _, {'$realm', Realm, _}} = Reaction, Argument) ->
+    push(Realm, reaction(Reaction, Argument));
+push_reaction(Reaction, Argument) ->
+    push(reaction(Reaction, Argument)).
 
 %% The queue entry of a reaction: the job, with the context of its `then`.
+reaction({_, _, _, {'$realm', _, Context}} = Reaction, Argument) ->
+    {Context, fun() -> reaction_job(Reaction, Argument) end};
 reaction({_, _, _, Context} = Reaction, Argument) ->
     {Context, fun() -> reaction_job(Reaction, Argument) end}.
+
+%% The context of a reaction, with the realm that registers it when that
+%% realm has a queue of its own.
+realm_context() ->
+    Context = erlang:get(?CONTEXT),
+    case erlang:get(?OWN_QUEUES) =:= true andalso buoy_heap:realm() of
+        false -> Context;
+        Realm ->
+            case erlang:get(?REALM_QUEUE(Realm)) of
+                undefined -> Context;
+                _ -> {'$realm', Realm, Context}
+            end
+    end.
 
 %% PromiseReactionJob. An await that runs while promise hooks are set has a
 %% throwaway promise for the hooks, as V8 makes one.
@@ -247,7 +317,7 @@ invoke(F, Argument) -> buoy_heap:call(F, undefined, [Argument]).
 
 -spec perform_then(term(), term(), term(), undefined | tuple()) -> ok.
 perform_then(P, OnFulfilled, OnRejected, Capability) ->
-    Context = erlang:get(?CONTEXT),
+    Context = realm_context(),
     FulfillReaction = {fulfill, Capability, handler(OnFulfilled), Context},
     RejectReaction = {reject, Capability, handler(OnRejected), Context},
     case buoy_heap:slots(P) of
@@ -255,11 +325,11 @@ perform_then(P, OnFulfilled, OnRejected, Capability) ->
             buoy_heap:set_slots(P, {pending, [FulfillReaction | Fulfill], [RejectReaction | Reject], true});
         {fulfilled, V, _} ->
             buoy_heap:set_slots(P, {fulfilled, V, true}),
-            push(reaction(FulfillReaction, V));
+            push_reaction(FulfillReaction, V);
         {rejected, R, Handled} ->
             Handled orelse untrack(P),
             buoy_heap:set_slots(P, {rejected, R, true}),
-            push(reaction(RejectReaction, R))
+            push_reaction(RejectReaction, R)
     end,
     ok.
 
