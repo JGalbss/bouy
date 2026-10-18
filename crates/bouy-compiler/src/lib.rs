@@ -134,6 +134,49 @@ pub fn compile_source(entry: &Path, text: String) -> Result<Project, Vec<Diagnos
     compile_reference_text(entry, &root, false, Some(text))
 }
 
+/// What a running program loads at run time: a specifier that its static graph did not
+/// reach, such as `require(path.join(dir, name))`.
+#[derive(Debug)]
+pub enum Loaded {
+    /// The file, and the program that has it as the entry, named relative to the root of
+    /// the running program, so a module it shares with that program has the same name.
+    Program(PathBuf, Project),
+    /// A built-in module of Node.
+    Builtin(String),
+}
+
+/// Resolves `specifier` from the module file `importer` as `require` (or `import`) does
+/// and compiles the target with the reference semantics, in the project of the running
+/// program whose entry is `main`. The error is Node's code and message.
+pub fn compile_loaded(
+    main: &Path,
+    importer: &Path,
+    specifier: &str,
+    require: bool,
+) -> Result<Loaded, (String, String)> {
+    let mode = if require {
+        resolve::Mode::Require
+    } else {
+        resolve::Mode::Import
+    };
+    match resolve::Resolver::default().resolve(specifier, importer, mode) {
+        Ok(resolve::Target::Builtin(name)) => Ok(Loaded::Builtin(name)),
+        Ok(resolve::Target::File(path)) => {
+            let root = project_root(main);
+            let root = root.canonicalize().unwrap_or(root);
+            compile_reference(&path, &root, false)
+                .map(|project| Loaded::Program(path, project))
+                .map_err(|diagnostics| {
+                    let message = diagnostics
+                        .first()
+                        .map_or_else(String::new, |d| d.message.clone());
+                    ("ERR_BOUY_COMPILE".to_owned(), message)
+                })
+        }
+        Err(failure) => Err((failure.code.to_owned(), failure.message)),
+    }
+}
+
 fn compile_reference(entry: &Path, root: &Path, script: bool) -> Result<Project, Vec<Diagnostic>> {
     compile_reference_text(entry, root, script, None)
 }

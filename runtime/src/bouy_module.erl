@@ -698,13 +698,35 @@ runtime_target(From, Specifier, Mode) ->
             end,
             case [{C, maps:get(bouy_ref_string:from_utf8(C), Graph)} || C <- Candidates, is_map_key(bouy_ref_string:from_utf8(C), Graph)] of
                 [{C, Module} | _] -> {bouy_ref_string:from_utf8(C), Module};
-                [] -> none
+                [] -> load_at_run_time(From, Path, Mode)
             end;
         false ->
             case is_builtin(Specifier) of
                 true -> {builtin, case Specifier of <<"node:", R/binary>> -> R; _ -> Specifier end};
-                false -> none
+                false -> load_at_run_time(From, Path, Mode)
             end
+    end.
+
+%% A specifier that the static graph did not reach, such as
+%% require(path.join(dir, name)): the compiler of the VM resolves it as Node
+%% does and compiles the target's program, whose modules join the graph.
+load_at_run_time(From, Specifier, Mode) ->
+    case os:getenv("BOUY_COMPILER") =/= false andalso erlang:get(?ENTRY) of
+        Entry when is_atom(Entry), Entry =/= undefined ->
+            Main = bouy_ref_string:to_utf8(info(Entry, path)),
+            Importer = bouy_ref_string:to_utf8(info(From, path)),
+            case bouy_ref_eval:load_module(Main, Importer, Specifier, Mode) of
+                {builtin, Name} ->
+                    {builtin, Name};
+                {program, Path, Module, Added} ->
+                    Graph = case erlang:get(?GRAPH) of undefined -> #{}; G -> G end,
+                    erlang:put(?GRAPH, maps:merge(maps:from_list(Added), Graph)),
+                    {bouy_ref_string:from_utf8(Path), Module};
+                {error, Code, Message} ->
+                    {error, Code, bouy_ref_string:from_utf8(Message)}
+            end;
+        _ ->
+            none
     end.
 
 relative(<<"./", _/binary>>) -> true;

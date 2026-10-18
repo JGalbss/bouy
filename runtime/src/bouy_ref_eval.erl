@@ -14,7 +14,7 @@
 
 -include("bouy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4]).
 
 -import(bouy_ref, [type_error/1]).
 
@@ -311,6 +311,14 @@ start_compiler() ->
 
 serve(Port) ->
     receive
+        {raw, From, Ref, Request} ->
+            true = port_command(Port, Request),
+            Answer = receive
+                {Port, {data, Data}} -> Data;
+                {Port, {exit_status, Status}} -> exit({compiler_exit, Status})
+            end,
+            From ! {Ref, {answer, Answer}},
+            serve(Port);
         {compile, From, Ref, {Key, Module}, Request} ->
             true = port_command(Port, Request),
             Answer = receive
@@ -324,6 +332,68 @@ serve(Port) ->
         {Port, {exit_status, Status}} ->
             exit({compiler_exit, Status})
     end.
+
+%% A module that a running program loads at run time (bouy_module): the
+%% compiler resolves Specifier from the file Importer and compiles the target's
+%% program in the project of Main. The modules that the VM does not hold yet
+%% load here. The result is {program, Path, Module, Graph}, {builtin, Name},
+%% or {error, Code, Message}.
+-spec load_module(binary(), binary(), binary(), require | import) -> term().
+load_module(Main, Importer, Specifier, Mode) ->
+    Server = compiler(),
+    Ref = erlang:monitor(process, Server),
+    Server ! {raw, self(), Ref, iolist_to_binary(["@load\n", Main, "\n", Importer, "\n", Specifier, "\n",
+                                                   atom_to_list(Mode), "\n\n"])},
+    Answer = receive
+        {Ref, {answer, A}} -> erlang:demonitor(Ref, [flush]), A;
+        {'DOWN', Ref, process, _, Reason} -> exit({compiler_down, Reason})
+    end,
+    case Answer of
+        <<0, "builtin\n", Name/binary>> ->
+            {builtin, Name};
+        <<0, "program\n", Rest/binary>> ->
+            [Path, Modules] = binary:split(Rest, <<"\n">>),
+            Loaded = load_modules(Modules, []),
+            [{Entry, _} | _] = Loaded,
+            {program, Path, Entry, Entry:'$graph'()};
+        <<2, Diagnostic/binary>> ->
+            case binary:split(Diagnostic, <<"\t">>) of
+                [Code, Message] -> {error, Code, Message};
+                [Message] -> {error, <<"MODULE_NOT_FOUND">>, Message}
+            end;
+        <<_, Output/binary>> ->
+            {error, <<"ERR_BOUY_COMPILE">>, Output}
+    end.
+
+load_modules(<<>>, Acc) ->
+    lists:reverse(Acc);
+load_modules(Text, Acc) ->
+    [Name, Path, Size, Rest] = split3(Text),
+    Length = binary_to_integer(Size),
+    <<Erlang:Length/binary, More/binary>> = Rest,
+    Module = binary_to_atom(Name),
+    case code:is_loaded(Module) of
+        false -> {module, Module} = compile_loaded(Module, Erlang);
+        _ -> ok
+    end,
+    load_modules(More, [{Module, Path} | Acc]).
+
+split3(Text) ->
+    [Name, R1] = binary:split(Text, <<"\n">>),
+    [Path, R2] = binary:split(R1, <<"\n">>),
+    [Size, Rest] = binary:split(R2, <<"\n">>),
+    [Name, Path, Size, Rest].
+
+%% A module of a loaded program compiles in this process, without the
+%% optimizing passes, as eval code does.
+compile_loaded(Module, Erlang) ->
+    {ok, Tokens, _} = erl_scan:string(unicode:characters_to_list(Erlang)),
+    Forms = [Form || FormTokens <- split_forms(Tokens, [], []), {ok, Form} <- [erl_parse:parse_form(FormTokens)]],
+    Options = [binary, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process, no_ssa_opt,
+               no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt, no_fun_opt,
+               no_module_opt, no_line_info],
+    {ok, Module, Binary} = compile:forms(Forms, Options),
+    code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary).
 
 %% The compiler reports a diagnostic as <ErrorName>\t<message>.
 -spec report(binary()) -> no_return().

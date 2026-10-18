@@ -269,12 +269,16 @@ fn serve_eval() -> ExitCode {
         let frame = String::from_utf8_lossy(&frame);
         let (header, text) = frame.split_once("\n\n").unwrap_or((&frame, ""));
         let arguments = std::iter::once("compile-eval").chain(header.split('\n'));
-        let answer = match Served::try_parse_from(arguments) {
-            Ok(Served { request }) => match request.compile(text) {
-                Ok(erlang) => [&[0], erlang.as_bytes()].concat(),
-                Err(diagnostic) => [&[DIAGNOSTICS], diagnostic.as_bytes()].concat(),
-            },
-            Err(error) => [&[1], error.to_string().as_bytes()].concat(),
+        let answer = if let Some(request) = header.strip_prefix("@load\n") {
+            load_answer(request)
+        } else {
+            match Served::try_parse_from(arguments) {
+                Ok(Served { request }) => match request.compile(text) {
+                    Ok(erlang) => [&[0], erlang.as_bytes()].concat(),
+                    Err(diagnostic) => [&[DIAGNOSTICS], diagnostic.as_bytes()].concat(),
+                },
+                Err(error) => [&[1], error.to_string().as_bytes()].concat(),
+            }
         };
         let Ok(size) = u32::try_from(answer.len()) else {
             return fail("an eval module is larger than 4 GB");
@@ -285,6 +289,49 @@ fn serve_eval() -> ExitCode {
         {
             return ExitCode::SUCCESS;
         }
+    }
+}
+
+/// The answer to `@load`, a module that a running program loads at run time. The request
+/// is the entry of the program, the importer, the specifier, and `require` or `import`,
+/// one on each line. The answer is status 0 with `builtin` and the name, or `program` and
+/// the path of the target, then each module as its name, its path, and the byte length of
+/// its Erlang source, one on each line, then the source; or status 2 with
+/// `<code>\t<message>`.
+fn load_answer(request: &str) -> Vec<u8> {
+    let mut lines = request.split('\n');
+    let (Some(main), Some(importer), Some(specifier), Some(mode)) =
+        (lines.next(), lines.next(), lines.next(), lines.next())
+    else {
+        return [&[1], b"a load request has four lines".as_slice()].concat();
+    };
+    match bouy_compiler::compile_loaded(
+        Path::new(main),
+        Path::new(importer),
+        specifier,
+        mode == "require",
+    ) {
+        Ok(bouy_compiler::Loaded::Builtin(name)) => {
+            [&[0], format!("builtin\n{name}").as_bytes()].concat()
+        }
+        Ok(bouy_compiler::Loaded::Program(path, project)) => {
+            let mut answer = vec![0];
+            answer.extend_from_slice(format!("program\n{}\n", path.display()).as_bytes());
+            for module in &project.modules {
+                answer.extend_from_slice(
+                    format!(
+                        "{}\n{}\n{}\n",
+                        module.name,
+                        module.path.display(),
+                        module.erlang.len()
+                    )
+                    .as_bytes(),
+                );
+                answer.extend_from_slice(module.erlang.as_bytes());
+            }
+            answer
+        }
+        Err((code, message)) => [&[DIAGNOSTICS], format!("{code}\t{message}").as_bytes()].concat(),
     }
 }
 
