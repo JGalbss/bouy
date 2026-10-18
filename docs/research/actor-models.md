@@ -1,6 +1,6 @@
 # Actor models: semantic lessons for Buoy
 
-> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/buoy/tree/90529d8), the last commit with the Node runtime.
 
 Track: actor-models. Date: 2026-10-16.
 

@@ -1,6 +1,6 @@
 # Measurements: BEAM and QuickJS comparison points
 
-> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
+> Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/buoy/tree/90529d8), the last commit with the Node runtime.
 
 This note measures BEAM processes and QuickJS-wasm runtimes on the Buoy development machine. It also measures Node 25 actors inside one isolate with the same three benchmarks, in the same Linux VM. The architecture decision record uses these numbers for criterion 4 (Startup time and memory per actor) and criterion 5 (Message throughput and latency).
 

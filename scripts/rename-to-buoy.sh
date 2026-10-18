@@ -7,8 +7,8 @@
 # It skips the vendored upstream files (tests/node/test and runtime/vendor), because the rule
 # checks hash them against upstream, and it skips binary files and this script. Untracked
 # files, such as node_modules, target, and _build, stay as they are, except the ignored .bouy
-# build directories, which it deletes because the new name is .buoy. The links to
-# github.com/JGalbss/bouy stay until the GitHub repository has the new name.
+# build directories, which it deletes because the new name is .buoy. GitHub redirects the old
+# links to github.com/JGalbss/bouy, and the script points them at JGalbss/buoy.
 #
 # A second run changes nothing, so the script can run again on any branch.
 #
@@ -61,7 +61,7 @@ done
 migration=$(git grep -lI -e bouy -e Bouy -e BOUY -- tests/migration/before || true)
 
 git grep -lzI -e bouy -e Bouy -e BOUY -- "$@" |
-    xargs -0 perl -pi -e 's/Bouy/Buoy/g; s/BOUY/BUOY/g; s{(?<!JGalbss/)bouy}{buoy}g'
+    xargs -0 perl -pi -e 's/Bouy/Buoy/g; s/BOUY/BUOY/g; s/bouy/buoy/g'
 
 # The rule check of crates/buoy-suites/tests/rules.rs hashes the migration fixture, so a
 # renamed fixture file needs a new hash. This is the command of that rule.
