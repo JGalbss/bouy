@@ -20,8 +20,9 @@
 %%   listening, connecting, writing, or shutting down.
 -module(buoy_node_socket).
 
--export([methods/1, create/2, adopt/3, find/1, event/1]).
--export([bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
+-export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, later/1, event/1]).
+-export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
+-export_type([kind/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
@@ -30,7 +31,7 @@
 -define(K_ASYNC, 3).
 -define(UV_EOF, -4095).
 
--type kind() :: tcp | pipe.
+-type kind() :: tcp | pipe | udp.
 
 %%% The handle
 
@@ -60,12 +61,14 @@ find(Handle) ->
         false -> error
     end.
 
+-spec state(term()) -> map().
 state(Handle) ->
     {ok, S} = find(Handle),
     S.
 
 %% Saves the state and refs or unrefs the loop when the handle's hold on it
 %% changed.
+-spec save(term(), map()) -> ok.
 save(Handle, New) ->
     Old = state(Handle),
     case {holds(Old), holds(New)} of
@@ -91,6 +94,7 @@ new_async_id() ->
     Id.
 
 %% Runs Fun as a later callback of the loop.
+-spec later(fun(() -> term())) -> ok.
 later(Fun) -> buoy_node_stream:call(self(), Fun).
 
 %%% The methods
@@ -112,19 +116,27 @@ methods(Proto) ->
         {<<"readStart">>, fun(This, _) -> read_start(This) end},
         {<<"readStop">>, fun(This, _) -> save(This, (state(This))#{reading := false}), 0 end},
         {<<"shutdown">>, fun(This, Args) -> shutdown(This, A(1, Args)) end},
-        {<<"close">>, fun(This, Args) -> close(This, A(1, Args)) end},
-        {<<"ref">>, fun(This, _) -> save(This, (state(This))#{refed := true}), undefined end},
-        {<<"unref">>, fun(This, _) -> save(This, (state(This))#{refed := false}), undefined end},
-        {<<"hasRef">>, fun(This, _) -> #{refed := R, closed := C} = state(This), R andalso not C end},
-        {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This)) end},
         {<<"useUserBuffer">>, fun(This, Args) -> save(This, (state(This))#{user_buffer := A(1, Args)}), undefined end},
         {<<"setBlocking">>, fun(_, _) -> 0 end}],
     [define(Proto, Name, value, Fun) || {Name, Fun} <- Methods],
     Getters = [{<<"bytesRead">>, fun(This, _) -> maps:get(read, state(This)) end},
                {<<"bytesWritten">>, fun(This, _) -> maps:get(written, state(This)) end},
-               {<<"fd">>, fun(This, _) -> fd(state(This)) end},
                {<<"writeQueueSize">>, fun(This, _) -> maps:get(queued, state(This)) end}],
     [define(Proto, Name, get, Fun) || {Name, Fun} <- Getters],
+    handle_methods(Proto).
+
+%% Defines the methods of HandleWrap on Proto, and the fd getter.
+-spec handle_methods(term()) -> ok.
+handle_methods(Proto) ->
+    A = fun buoy_node:arg/2,
+    Methods = [
+        {<<"close">>, fun(This, Args) -> close(This, A(1, Args)) end},
+        {<<"ref">>, fun(This, _) -> save(This, (state(This))#{refed := true}), undefined end},
+        {<<"unref">>, fun(This, _) -> save(This, (state(This))#{refed := false}), undefined end},
+        {<<"hasRef">>, fun(This, _) -> #{refed := R, closed := C} = state(This), R andalso not C end},
+        {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This)) end}],
+    [define(Proto, Name, value, Fun) || {Name, Fun} <- Methods],
+    define(Proto, <<"fd">>, get, fun(This, _) -> fd(state(This)) end),
     ok.
 
 define(Proto, Name, Kind, Fun) ->
@@ -162,13 +174,23 @@ read_start(Handle) ->
     0.
 
 %% Reads in a later callback, unless a read waits for the socket already.
+-spec kick(term()) -> ok.
 kick(Handle) ->
     case state(Handle) of
         #{rsel := none, kicked := false, socket := Socket} = S when Socket =/= none ->
             save(Handle, S#{kicked := true}),
-            later(fun() -> save(Handle, (state(Handle))#{kicked := false}), read(Handle) end);
+            later(fun() -> save(Handle, (state(Handle))#{kicked := false}), readable(Handle) end);
         _ ->
             ok
+    end.
+
+%% The socket may have data: a datagram socket receives, a listener
+%% accepts, and a stream reads.
+readable(Handle) ->
+    case state(Handle) of
+        #{kind := udp} -> buoy_binding_udp_wrap:receive_ready(Handle);
+        #{listening := true} -> accept(Handle);
+        _ -> read(Handle)
     end.
 
 %% One read while the handle reads: data, the end, or an error goes to
@@ -400,12 +422,19 @@ reset(Handle, Callback) ->
 %%% Connect, bind, listen, and accept
 
 %% The socket of the handle, opened in Domain when it has none yet.
+-spec ensure(term(), socket:domain()) -> {ok, socket:socket()} | {error, integer()}.
 ensure(Handle, Domain) ->
     case state(Handle) of
         #{socket := none, kind := Kind} ->
-            Protocol = case Kind of tcp -> tcp; pipe -> default end,
-            case socket:open(Domain, stream, Protocol) of
+            {Type, Protocol} = case Kind of
+                tcp -> {stream, tcp};
+                pipe -> {stream, default};
+                udp -> {dgram, udp}
+            end,
+            case socket:open(Domain, Type, Protocol) of
                 {ok, Socket} ->
+                    %% A datagram arrives whole: room for the largest one.
+                    Kind =:= udp andalso socket:setopt(Socket, {otp, rcvbuf}, 65536),
                     attach(Handle, Socket),
                     {ok, Socket};
                 {error, Reason} ->
@@ -574,8 +603,7 @@ event({'$socket', Socket, select, Ref}) ->
             ok;
         Handle ->
             case state(Handle) of
-                #{rsel := Ref, listening := true} = S -> save(Handle, S#{rsel := none}), accept(Handle);
-                #{rsel := Ref} = S -> save(Handle, S#{rsel := none}), read(Handle);
+                #{rsel := Ref} = S -> save(Handle, S#{rsel := none}), readable(Handle);
                 #{wsel := Ref, connect := Req} = S when Req =/= none ->
                     save(Handle, S#{wsel := none}),
                     Status = case socket:connect(Socket) of
@@ -583,6 +611,7 @@ event({'$socket', Socket, select, Ref}) ->
                         {error, Reason} -> errno(Reason)
                     end,
                     connected(Handle, Req, Status);
+                #{wsel := Ref, kind := udp} = S -> save(Handle, S#{wsel := none}), buoy_binding_udp_wrap:send_ready(Handle);
                 #{wsel := Ref} = S -> save(Handle, S#{wsel := none}), flush(Handle);
                 _ -> ok
             end
