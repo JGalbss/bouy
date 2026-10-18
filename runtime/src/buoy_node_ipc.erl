@@ -60,6 +60,7 @@ open(Handle, Fd) ->
         {Channel, opened} ->
             erlang:demonitor(Monitor, [flush]),
             root(Handle, Channel),
+            buoy_node_stream:set_fd(Handle, Fd),
             ok;
         {'DOWN', Monitor, process, Channel, _} ->
             error
@@ -113,6 +114,10 @@ accept(Listen, Path, Monitor, Realm, Handle) ->
     case socket:accept(Listen, nowait) of
         {ok, Socket} ->
             stop_listening(Listen, Path),
+            case socket:getopt(Socket, {otp, fd}) of
+                {ok, Fd} -> call(Realm, fun() -> buoy_node_stream:set_fd(Handle, Fd) end);
+                _ -> ok
+            end,
             connected(Socket, Realm, Handle);
         {select, {select_info, _, Ref}} ->
             receive

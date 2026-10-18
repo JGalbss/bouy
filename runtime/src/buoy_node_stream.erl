@@ -11,7 +11,7 @@
 %% writable side.
 -module(buoy_node_stream).
 
--export([methods/1, attach/2, deliver/2, call/2, written/3, forward/2, pass/2]).
+-export([methods/1, attach/2, set_fd/2, deliver/2, call/2, written/3, forward/2, pass/2]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
@@ -47,7 +47,7 @@ methods(Proto) ->
     [buoy_heap:define(Proto, Name, #{get => F(<<"get ", Name/binary>>, 0, Get), enumerable => true, configurable => true})
      || {Name, Get} <- [{<<"bytesRead">>, fun(This, _) -> maps:get(read, state(This), 0) end},
                         {<<"bytesWritten">>, fun(This, _) -> maps:get(written, state(This), 0) end},
-                        {<<"fd">>, fun(_, _) -> -1 end},
+                        {<<"fd">>, fun(This, _) -> maps:get(fd, state(This), -1) end},
                         {<<"writeQueueSize">>, fun(_, _) -> 0 end}]],
     ok.
 
@@ -57,6 +57,11 @@ attach(Handle, Channel) ->
     Id = erlang:unique_integer([positive]),
     update(Handle, fun(S) -> S#{channel => Channel, reading => false, pending => [], eof => false,
                                 read => 0, written => 0, async_id => Id, closed => false} end).
+
+%% The descriptor that the handle's fd reports, as uv_fileno.
+-spec set_fd(term(), integer()) -> ok.
+set_fd(Handle, Fd) ->
+    update(Handle, fun(S) -> S#{fd => Fd} end).
 
 state(Handle) ->
     case buoy_heap:is_object(Handle) andalso buoy_heap:private_find(Handle, ?STATE) of
