@@ -51,7 +51,7 @@
 -export([to_key/1, key_to_value/1]).
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
--export([clone_out/1, clone_in/1]).
+-export([clone_out/1, clone_in/1, clone_out/2, clone_in/2]).
 -export([private_find/2, private_put/3, set_failed/2]).
 
 -export_type([value/0, key/0, property/0]).
@@ -63,6 +63,7 @@
 
 -define(NEXT, '$buoy_next').
 -define(STATS, '$buoy_gc').
+-define(CLONE_HOOK, '$buoy_clone_hook').
 -define(WORDS_PER_ID, 16).
 -define(MIN_HEAP_WORDS, 4096).
 -define(WRITABLE, 1).
@@ -1623,16 +1624,43 @@ clone_out(Value) ->
     {Term, _} = out(Value, #{}),
     Term.
 
+%% clone_out with the host objects of an embedder, such as the MessagePorts
+%% and the JS transferables of Node's postMessage: Hook(Object) returns none
+%% for an ordinary object, or {host, Tag, Data}, whose Data clones with the
+%% rest of the value and reaches the Hook of clone_in/2 as {Tag, Clone}.
+-spec clone_out(value(), fun((value()) -> none | {host, term(), value()})) -> term().
+clone_out(Value, Hook) ->
+    Old = erlang:put(?CLONE_HOOK, Hook),
+    try clone_out(Value)
+    after restore_hook(Old)
+    end.
+
+-spec clone_in(term(), fun(({term(), value()}) -> value())) -> value().
+clone_in(Term, Hook) ->
+    Old = erlang:put(?CLONE_HOOK, Hook),
+    try clone_in(Term)
+    after restore_hook(Old)
+    end.
+
+restore_hook(undefined) -> erlang:erase(?CLONE_HOOK);
+restore_hook(Old) -> erlang:put(?CLONE_HOOK, Old).
+
 out({'$o', Id} = O, Seen) ->
     case Seen of
         #{Id := N} ->
             {{'$back', N}, Seen};
         _ ->
             N = map_size(Seen),
-            out_record(record_of(O), O, N, Seen#{Id => N})
+            case host_out(O) of
+                none ->
+                    out_record(record_of(O), O, N, Seen#{Id => N});
+                {host, Tag, Data} ->
+                    {DataTerm, Seen1} = out(Data, Seen#{Id => N}),
+                    {{'$host', N, Tag, DataTerm}, Seen1}
+            end
     end;
-out({'$f', _, _}, _Seen) ->
-    throw_error('DataCloneError', <<"function could not be cloned.">>);
+out({'$f', _, _} = F, _Seen) ->
+    throw_error('DataCloneError', text([buoy_ref:to_string(F), <<" could not be cloned.">>]));
 out({'$sym', _, _} = S, _Seen) ->
     throw_error('DataCloneError', text([key_text(S), <<" could not be cloned.">>]));
 out(V, Seen) ->
@@ -1678,6 +1706,12 @@ out_record({object, _, _, _, _, _}, O, N, Seen) ->
 out_record({Class, _, _, _, _, _}, _O, _N, _Seen) ->
     throw_error('DataCloneError', <<"#<", (atom_to_binary(Class))/binary, "> could not be cloned.">>).
 
+host_out(O) ->
+    case erlang:get(?CLONE_HOOK) of
+        undefined -> none;
+        Hook -> Hook(O)
+    end.
+
 value_text(undefined) -> <<>>;
 value_text(V) -> buoy_ref:to_string(V).
 
@@ -1702,6 +1736,10 @@ clone_in(Term) ->
 
 in({'$back', N}, Made) ->
     {maps:get(N, Made), Made};
+in({'$host', N, Tag, DataTerm}, Made) ->
+    {Data, Made1} = in(DataTerm, Made),
+    O = (erlang:get(?CLONE_HOOK))({Tag, Data}),
+    {O, Made1#{N => O}};
 in({'$object', N, Pairs}, Made) ->
     O = new_object(?OBJECT_PROTO),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) -> {V1, M1} = in(V, M), {{K, V1}, M1} end, Made#{N => O}, Pairs),
