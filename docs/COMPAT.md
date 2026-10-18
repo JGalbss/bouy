@@ -12,6 +12,7 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | node | node | v25.9.0 | 1,950 | 4,419 | 44.1% | 1,876 | 10 | 25d078a | `tests/node/expectations.txt` |
 | node api surface | node-surface | v25.9.0 | 3,450 | 4,460 | 77.4% | 1,010 | 0 | 25d078a | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
+| top npm packages | ecosystem | Node 25.9.0 | 774 | 1,000 | 77.4% | 135 | 15 | 7964efd | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/equivalence.rs` |
 | corpora | equivalence/ai | Node 25.9.0 | 7 | 7 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/ai.rs` |
@@ -1351,7 +1352,964 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Top npm packages
 
-Not measured yet. Phase 3 of section 11 of [testing.md](design/testing.md) builds this suite.
+Top npm packages: 774 of 1,000 match Node. `scripts/ecosystem.sh` generates a program for each package that imports it and prints the shape of its exports, and `tests/ecosystem/packages.json` gives the reason of each skip.
+
+ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expectations.txt`.
+
+### Outcomes
+
+| Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| every test | 1,000 | 774 | 77.4% | 0 | 0 | 76 | 0 | 81 | 54 | 0 | 15 |
+
+### By package
+
+<details><summary>924 groups</summary>
+
+| Package | exports.cjs | exports.mjs |
+| --- | --- | --- |
+| `@adobe/css-tools` | pass | pass |
+| `@ai-sdk/provider` | pass | pass |
+| `@alloc/quick-lru` | pass |  |
+| `@asamuzakjp/css-color` | timeout | timeout |
+| `@aws-sdk/core` | timeout | timeout |
+| `@aws-sdk/credential-provider-env` | fail | fail |
+| `@aws-sdk/credential-provider-http` | fail | fail |
+| `@aws-sdk/credential-provider-ini` | fail | fail |
+| `@aws-sdk/credential-provider-login` | fail | fail |
+| `@aws-sdk/credential-provider-node` | fail | fail |
+| `@aws-sdk/credential-provider-process` | fail | fail |
+| `@aws-sdk/credential-provider-sso` | fail | fail |
+| `@aws-sdk/credential-provider-web-identity` | fail | fail |
+| `@aws-sdk/signature-v4-multi-region` | fail | fail |
+| `@aws-sdk/token-providers` | fail | fail |
+| `@aws-sdk/types` | pass | pass |
+| `@aws-sdk/xml-builder` | pass | pass |
+| `@aws/lambda-invoke-store` | pass | pass |
+| `@babel/code-frame` | pass |  |
+| `@babel/core` | timeout |  |
+| `@babel/generator` | timeout |  |
+| `@babel/helper-annotate-as-pure` | timeout |  |
+| `@babel/helper-compilation-targets` | crash |  |
+| `@babel/helper-create-class-features-plugin` | timeout |  |
+| `@babel/helper-member-expression-to-functions` | crash |  |
+| `@babel/helper-module-imports` | crash |  |
+| `@babel/helper-module-transforms` | timeout |  |
+| `@babel/helper-optimise-call-expression` | crash |  |
+| `@babel/helper-plugin-utils` | pass |  |
+| `@babel/helper-replace-supers` | timeout |  |
+| `@babel/helper-skip-transparent-expression-wrappers` | crash |  |
+| `@babel/helper-string-parser` | pass |  |
+| `@babel/helper-validator-identifier` | pass |  |
+| `@babel/helper-validator-option` | pass |  |
+| `@babel/helpers` | timeout |  |
+| `@babel/parser` | timeout |  |
+| `@babel/plugin-syntax-import-attributes` | pass |  |
+| `@babel/plugin-syntax-jsx` | pass |  |
+| `@babel/plugin-syntax-typescript` | pass |  |
+| `@babel/plugin-transform-modules-commonjs` | timeout |  |
+| `@babel/plugin-transform-react-jsx-self` | timeout |  |
+| `@babel/plugin-transform-react-jsx-source` | timeout |  |
+| `@babel/template` | timeout |  |
+| `@babel/traverse` | timeout |  |
+| `@babel/types` | crash |  |
+| `@bcoe/v8-coverage` | pass |  |
+| `@colors/colors` | pass |  |
+| `@cspotcode/source-map-support` | pass |  |
+| `@csstools/color-helpers` |  | pass |
+| `@csstools/css-calc` |  | pass |
+| `@csstools/css-color-parser` |  | pass |
+| `@csstools/css-parser-algorithms` |  | pass |
+| `@csstools/css-tokenizer` |  | pass |
+| `@emnapi/core` | pass | pass |
+| `@emnapi/runtime` | pass | pass |
+| `@emnapi/wasi-threads` | pass | pass |
+| `@eslint-community/eslint-utils` | pass | pass |
+| `@eslint-community/regexpp` | pass | pass |
+| `@eslint/config-array` | pass | pass |
+| `@eslint/config-helpers` | pass | pass |
+| `@eslint/eslintrc` | pass | pass |
+| `@eslint/js` | pass |  |
+| `@eslint/object-schema` | pass | pass |
+| `@eslint/plugin-kit` | pass | pass |
+| `@floating-ui/core` | pass | pass |
+| `@floating-ui/dom` | pass | pass |
+| `@floating-ui/react-dom` | pass | pass |
+| `@floating-ui/utils` | pass | pass |
+| `@grpc/grpc-js` | fail |  |
+| `@grpc/proto-loader` | pass |  |
+| `@hono/node-server` | fail | pass |
+| `@humanfs/core` |  | pass |
+| `@humanfs/node` |  | pass |
+| `@humanwhocodes/module-importer` | pass | fail |
+| `@humanwhocodes/retry` | pass | pass |
+| `@img/colour` | pass |  |
+| `@inquirer/core` | pass | pass |
+| `@inquirer/figures` | pass | pass |
+| `@inquirer/type` |  | pass |
+| `@isaacs/cliui` | pass | pass |
+| `@istanbuljs/schema` | pass |  |
+| `@jest/schemas` | pass | pass |
+| `@jest/transform` | timeout |  |
+| `@jest/types` | pass |  |
+| `@jridgewell/gen-mapping` | pass | pass |
+| `@jridgewell/remapping` | pass | pass |
+| `@jridgewell/resolve-uri` | pass | pass |
+| `@jridgewell/source-map` | pass | pass |
+| `@jridgewell/sourcemap-codec` | pass | pass |
+| `@jridgewell/trace-mapping` | pass | pass |
+| `@napi-rs/wasm-runtime` | fail | fail |
+| `@next/env` | fail |  |
+| `@nodelib/fs.scandir` | pass |  |
+| `@nodelib/fs.stat` | pass |  |
+| `@nodelib/fs.walk` | pass |  |
+| `@opentelemetry/api` | pass | pass |
+| `@opentelemetry/api-logs` | pass | pass |
+| `@opentelemetry/core` | fail | fail |
+| `@opentelemetry/instrumentation` | pass | pass |
+| `@opentelemetry/resources` | fail | fail |
+| `@opentelemetry/sdk-logs` | fail | fail |
+| `@opentelemetry/sdk-metrics` | fail | fail |
+| `@opentelemetry/sdk-trace-base` | fail | fail |
+| `@opentelemetry/semantic-conventions` | pass | pass |
+| `@pkgjs/parseargs` | pass |  |
+| `@playwright/test` | timeout | timeout |
+| `@protobufjs/aspromise` | pass |  |
+| `@protobufjs/base64` | pass |  |
+| `@protobufjs/codegen` | pass |  |
+| `@protobufjs/eventemitter` | pass |  |
+| `@protobufjs/fetch` | pass |  |
+| `@protobufjs/float` | pass |  |
+| `@protobufjs/path` | pass |  |
+| `@protobufjs/pool` | pass |  |
+| `@protobufjs/utf8` | pass |  |
+| `@radix-ui/number` | pass | pass |
+| `@radix-ui/primitive` | pass | pass |
+| `@radix-ui/react-arrow` | pass | pass |
+| `@radix-ui/react-collection` | pass | pass |
+| `@radix-ui/react-compose-refs` | pass | pass |
+| `@radix-ui/react-context` | pass | pass |
+| `@radix-ui/react-dialog` | pass | pass |
+| `@radix-ui/react-direction` | pass | pass |
+| `@radix-ui/react-dismissable-layer` | pass | pass |
+| `@radix-ui/react-dropdown-menu` | pass | pass |
+| `@radix-ui/react-focus-guards` | pass | pass |
+| `@radix-ui/react-focus-scope` | pass | pass |
+| `@radix-ui/react-id` | pass | pass |
+| `@radix-ui/react-label` | pass | pass |
+| `@radix-ui/react-menu` | pass | pass |
+| `@radix-ui/react-popover` | pass | pass |
+| `@radix-ui/react-popper` | pass | pass |
+| `@radix-ui/react-portal` | pass | pass |
+| `@radix-ui/react-presence` | pass | pass |
+| `@radix-ui/react-primitive` | pass | pass |
+| `@radix-ui/react-roving-focus` | pass | pass |
+| `@radix-ui/react-select` | pass | pass |
+| `@radix-ui/react-separator` | pass | pass |
+| `@radix-ui/react-slot` | pass | pass |
+| `@radix-ui/react-tabs` | pass | pass |
+| `@radix-ui/react-tooltip` | pass | pass |
+| `@radix-ui/react-use-callback-ref` | pass | pass |
+| `@radix-ui/react-use-controllable-state` | pass | pass |
+| `@radix-ui/react-use-effect-event` | pass | pass |
+| `@radix-ui/react-use-is-hydrated` | pass | pass |
+| `@radix-ui/react-use-layout-effect` | pass | pass |
+| `@radix-ui/react-use-previous` | pass | pass |
+| `@radix-ui/react-use-rect` | pass | pass |
+| `@radix-ui/react-use-size` | pass | pass |
+| `@radix-ui/react-visually-hidden` | pass | pass |
+| `@radix-ui/rect` | pass | pass |
+| `@rolldown/pluginutils` |  | pass |
+| `@rollup/pluginutils` | pass | pass |
+| `@sentry/core` | timeout | timeout |
+| `@sinclair/typebox` | pass |  |
+| `@sindresorhus/is` |  | fail |
+| `@sinonjs/fake-timers` | fail |  |
+| `@smithy/core` | fail | fail |
+| `@smithy/credential-provider-imds` | fail | fail |
+| `@smithy/fetch-http-handler` | fail | fail |
+| `@smithy/is-array-buffer` | pass | pass |
+| `@smithy/node-http-handler` | fail | fail |
+| `@smithy/signature-v4` | fail | fail |
+| `@smithy/types` | pass | pass |
+| `@smithy/util-buffer-from` | pass | pass |
+| `@smithy/util-utf8` | pass | pass |
+| `@standard-schema/spec` | pass | pass |
+| `@swc/helpers` | pass | pass |
+| `@tailwindcss/node` | timeout | timeout |
+| `@tailwindcss/oxide` | fail |  |
+| `@tanstack/query-core` | pass | pass |
+| `@tanstack/react-query` | pass | pass |
+| `@testing-library/dom` | pass | pass |
+| `@testing-library/react` | timeout | timeout |
+| `@testing-library/user-event` | pass | pass |
+| `@tybys/wasm-util` | fail | fail |
+| `@typescript-eslint/eslint-plugin` | timeout |  |
+| `@typescript-eslint/parser` | timeout |  |
+| `@typescript-eslint/project-service` | timeout |  |
+| `@typescript-eslint/scope-manager` | pass |  |
+| `@typescript-eslint/tsconfig-utils` | pass |  |
+| `@typescript-eslint/type-utils` | timeout |  |
+| `@typescript-eslint/types` | pass |  |
+| `@typescript-eslint/typescript-estree` | timeout |  |
+| `@typescript-eslint/utils` | timeout |  |
+| `@typescript-eslint/visitor-keys` | pass |  |
+| `@ungap/structured-clone` |  | pass |
+| `@vitejs/plugin-react` |  | timeout |
+| `@vitest/expect` |  | pass |
+| `@vitest/mocker` |  | pass |
+| `@vitest/pretty-format` |  | pass |
+| `@vitest/runner` |  | pass |
+| `@vitest/snapshot` |  | pass |
+| `@vitest/spy` |  | pass |
+| `@vitest/utils` |  | pass |
+| `@xmldom/xmldom` | pass |  |
+| `abbrev` | pass |  |
+| `abort-controller` | pass |  |
+| `accepts` | pass |  |
+| `acorn` | pass | pass |
+| `acorn-jsx` | pass |  |
+| `acorn-walk` | pass | pass |
+| `agent-base` | fail |  |
+| `ajv` | pass |  |
+| `ajv-formats` | pass |  |
+| `ajv-keywords` | pass |  |
+| `ansi-colors` | pass |  |
+| `ansi-escapes` | pass |  |
+| `ansi-regex` | pass |  |
+| `ansi-styles` | pass |  |
+| `any-promise` | pass |  |
+| `anymatch` | pass |  |
+| `archiver-utils` | pass |  |
+| `arg` | pass |  |
+| `argparse` | pass |  |
+| `aria-hidden` | pass | pass |
+| `aria-query` | pass |  |
+| `array-buffer-byte-length` | pass |  |
+| `array-flatten` | pass |  |
+| `array-includes` | pass |  |
+| `array.prototype.flat` | pass |  |
+| `array.prototype.flatmap` | pass |  |
+| `array.prototype.tosorted` | pass |  |
+| `arraybuffer.prototype.slice` | pass |  |
+| `assertion-error` |  | pass |
+| `ast-types` | pass |  |
+| `async` | pass | pass |
+| `async-function` | pass | pass |
+| `asynckit` | pass |  |
+| `autoprefixer` | crash |  |
+| `available-typed-arrays` | pass |  |
+| `axe-core` | timeout |  |
+| `axios` | fail | fail |
+| `axobject-query` | pass |  |
+| `babel-plugin-polyfill-corejs3` | timeout | timeout |
+| `bail` |  | pass |
+| `balanced-match` | pass |  |
+| `base64-js` | pass |  |
+| `baseline-browser-mapping` | pass | pass |
+| `bidi-js` | pass | pass |
+| `bignumber.js` | pass | pass |
+| `binary-extensions` | pass |  |
+| `bl` | pass |  |
+| `bluebird` | pass |  |
+| `bn.js` | pass |  |
+| `body-parser` | fail |  |
+| `boolbase` | pass |  |
+| `bowser` | pass | pass |
+| `brace-expansion` | pass |  |
+| `braces` | pass |  |
+| `browserslist` | crash |  |
+| `buffer` | fail |  |
+| `buffer-crc32` | pass |  |
+| `buffer-from` | pass |  |
+| `bundle-name` |  | pass |
+| `bytes` | pass |  |
+| `call-bind` | pass |  |
+| `call-bind-apply-helpers` | pass |  |
+| `call-bound` | pass |  |
+| `callsites` | pass |  |
+| `camelcase` | pass |  |
+| `caniuse-lite` | crash |  |
+| `ccount` |  | pass |
+| `chai` |  | pass |
+| `chalk` | pass |  |
+| `character-entities` |  | pass |
+| `character-entities-legacy` |  | pass |
+| `chardet` | pass |  |
+| `chokidar` | pass |  |
+| `chownr` | pass | pass |
+| `ci-info` | pass |  |
+| `cjs-module-lexer` | pass | pass |
+| `class-variance-authority` | pass | pass |
+| `cli-cursor` |  | pass |
+| `cli-spinners` | pass |  |
+| `cli-width` | pass |  |
+| `client-only` | pass |  |
+| `cliui` | pass | pass |
+| `clone` | pass |  |
+| `clsx` | pass | pass |
+| `color-convert` | pass |  |
+| `color-name` | pass |  |
+| `colorette` | pass | pass |
+| `combined-stream` | pass |  |
+| `comma-separated-tokens` |  | pass |
+| `commander` |  | pass |
+| `concat-map` | pass |  |
+| `confbox` |  | crash |
+| `content-disposition` | pass |  |
+| `content-type` | pass |  |
+| `convert-source-map` | pass |  |
+| `cookie` | pass |  |
+| `cookie-signature` | fail |  |
+| `core-js` | fail |  |
+| `core-util-is` | pass |  |
+| `cors` | pass |  |
+| `cosmiconfig` | timeout |  |
+| `cross-spawn` | pass |  |
+| `css-select` | pass | pass |
+| `css-tree` | pass | pass |
+| `css-what` | pass | pass |
+| `css.escape` | pass |  |
+| `cssesc` | pass |  |
+| `cssstyle` | pass |  |
+| `d3-array` |  | pass |
+| `d3-color` |  | pass |
+| `d3-ease` |  | pass |
+| `d3-format` |  | pass |
+| `d3-interpolate` |  | pass |
+| `d3-path` |  | pass |
+| `d3-scale` |  | pass |
+| `d3-shape` |  | pass |
+| `d3-time` |  | pass |
+| `d3-time-format` |  | pass |
+| `d3-timer` |  | pass |
+| `data-uri-to-buffer` |  | pass |
+| `data-urls` | fail |  |
+| `data-view-buffer` | pass |  |
+| `data-view-byte-length` | pass |  |
+| `data-view-byte-offset` | pass |  |
+| `date-fns` | pass | pass |
+| `dayjs` | pass |  |
+| `debug` | pass |  |
+| `decamelize` | pass |  |
+| `decimal.js` | pass | pass |
+| `decode-named-character-reference` |  | pass |
+| `dedent` | pass | pass |
+| `deep-is` | pass |  |
+| `deepmerge` | pass |  |
+| `default-browser` |  | pass |
+| `default-browser-id` |  | pass |
+| `define-data-property` | pass |  |
+| `define-lazy-prop` |  | pass |
+| `define-properties` | pass |  |
+| `delayed-stream` | pass |  |
+| `depd` | pass |  |
+| `dequal` | pass | pass |
+| `destroy` | pass |  |
+| `detect-libc` | pass |  |
+| `detect-node-es` | pass | pass |
+| `devlop` |  | pass |
+| `diff` | pass | pass |
+| `doctrine` | pass |  |
+| `dom-accessibility-api` | pass | pass |
+| `dom-serializer` | pass | pass |
+| `domelementtype` | pass | pass |
+| `domhandler` | pass | pass |
+| `dompurify` | pass | pass |
+| `domutils` | pass | pass |
+| `dot-prop` | pass |  |
+| `dotenv` | fail |  |
+| `eastasianwidth` | pass |  |
+| `ecdsa-sig-formatter` | pass |  |
+| `ee-first` | pass |  |
+| `effect` |  | timeout |
+| `electron-to-chromium` | crash |  |
+| `emoji-regex` | pass |  |
+| `encodeurl` | pass |  |
+| `end-of-stream` | pass |  |
+| `enhanced-resolve` | pass |  |
+| `entities` | pass | pass |
+| `env-paths` | pass |  |
+| `error-ex` | pass |  |
+| `es-abstract` | timeout |  |
+| `es-define-property` | pass |  |
+| `es-errors` | pass |  |
+| `es-iterator-helpers` | pass |  |
+| `es-module-lexer` | fail | fail |
+| `es-object-atoms` | pass |  |
+| `es-set-tostringtag` | pass |  |
+| `es-shim-unscopables` | pass |  |
+| `es-to-primitive` | pass |  |
+| `es-toolkit` | pass | pass |
+| `esbuild` | fail |  |
+| `escalade` | pass | pass |
+| `escape-html` | pass |  |
+| `escape-string-regexp` | pass |  |
+| `escodegen` | pass |  |
+| `eslint` | timeout |  |
+| `eslint-config-prettier` | pass |  |
+| `eslint-import-resolver-node` | pass |  |
+| `eslint-plugin-import` | timeout |  |
+| `eslint-plugin-react` | pass |  |
+| `eslint-plugin-react-hooks` | timeout |  |
+| `eslint-scope` | pass | pass |
+| `eslint-visitor-keys` | pass | pass |
+| `espree` | pass | pass |
+| `esprima` | pass |  |
+| `esquery` | pass | pass |
+| `esrecurse` | pass |  |
+| `estraverse` | pass |  |
+| `estree-walker` |  | pass |
+| `esutils` | pass |  |
+| `etag` | fail |  |
+| `event-target-shim` | pass |  |
+| `eventemitter3` | pass | pass |
+| `events` | pass |  |
+| `eventsource` | pass | pass |
+| `eventsource-parser` | pass | pass |
+| `execa` | pass |  |
+| `expect` | pass | pass |
+| `expect-type` | pass |  |
+| `express` | fail |  |
+| `express-rate-limit` | fail | pass |
+| `extend` | pass |  |
+| `extend-shallow` | pass |  |
+| `fast-check` | timeout | pass |
+| `fast-deep-equal` | pass |  |
+| `fast-glob` | pass |  |
+| `fast-json-stable-stringify` | pass |  |
+| `fast-levenshtein` | pass |  |
+| `fast-uri` | pass |  |
+| `fast-xml-parser` | pass | pass |
+| `fastq` | pass |  |
+| `fdir` | pass | pass |
+| `fetch-blob` |  | pass |
+| `fflate` | pass | fail |
+| `figures` |  | pass |
+| `file-entry-cache` | fail |  |
+| `file-type` |  | pass |
+| `fill-range` | pass |  |
+| `finalhandler` | pass |  |
+| `find-up` | pass |  |
+| `flat-cache` | pass |  |
+| `flatted` |  | pass |
+| `follow-redirects` | fail |  |
+| `for-each` | pass |  |
+| `foreground-child` | pass | pass |
+| `form-data` | fail |  |
+| `formdata-polyfill` |  | pass |
+| `forwarded` | pass |  |
+| `fraction.js` | pass | pass |
+| `fresh` | pass |  |
+| `fs-extra` | pass | fail |
+| `fs.realpath` | pass |  |
+| `function-bind` | pass |  |
+| `function.prototype.name` | pass |  |
+| `functions-have-names` | pass |  |
+| `gaxios` | fail | pass |
+| `gcp-metadata` | fail |  |
+| `generator-function` | pass | pass |
+| `gensync` | pass |  |
+| `get-caller-file` | pass |  |
+| `get-east-asian-width` |  | pass |
+| `get-intrinsic` | pass |  |
+| `get-nonce` | pass | pass |
+| `get-proto` | pass |  |
+| `get-stream` | pass |  |
+| `get-symbol-description` | pass |  |
+| `get-tsconfig` | pass | pass |
+| `glob` | pass |  |
+| `glob-parent` | pass |  |
+| `globals` | pass |  |
+| `globalthis` | pass |  |
+| `globby` | pass |  |
+| `google-auth-library` | fail |  |
+| `google-logging-utils` | pass |  |
+| `gopd` | pass |  |
+| `graceful-fs` | pass |  |
+| `has-bigints` | pass |  |
+| `has-flag` | pass |  |
+| `has-property-descriptors` | pass |  |
+| `has-proto` | pass |  |
+| `has-symbols` | pass |  |
+| `has-tostringtag` | pass |  |
+| `hasown` | pass |  |
+| `hermes-estree` | pass |  |
+| `hermes-parser` | pass |  |
+| `hono` | pass | pass |
+| `hosted-git-info` | pass |  |
+| `html-encoding-sniffer` | fail |  |
+| `html-escaper` | pass | pass |
+| `htmlparser2` | pass | pass |
+| `http-errors` | fail |  |
+| `http-proxy-agent` | fail |  |
+| `https-proxy-agent` | fail |  |
+| `human-signals` | pass |  |
+| `iconv-lite` | pass |  |
+| `ieee754` | pass |  |
+| `ignore` | pass |  |
+| `immer` | pass | pass |
+| `import-fresh` | pass |  |
+| `import-in-the-middle` | pass |  |
+| `imurmurhash` | pass |  |
+| `indent-string` | pass |  |
+| `inflight` | pass |  |
+| `inherits` | pass |  |
+| `ini` | pass |  |
+| `internal-slot` | pass |  |
+| `internmap` |  | pass |
+| `ip-address` | pass |  |
+| `ipaddr.js` | pass |  |
+| `is-alphabetical` |  | pass |
+| `is-alphanumerical` |  | pass |
+| `is-array-buffer` | pass |  |
+| `is-arrayish` | pass |  |
+| `is-async-function` | pass |  |
+| `is-bigint` | pass |  |
+| `is-binary-path` | pass |  |
+| `is-boolean-object` | pass |  |
+| `is-callable` | pass |  |
+| `is-core-module` | pass |  |
+| `is-data-view` | pass |  |
+| `is-date-object` | pass |  |
+| `is-decimal` |  | pass |
+| `is-docker` |  | pass |
+| `is-extglob` | pass |  |
+| `is-finalizationregistry` | pass |  |
+| `is-fullwidth-code-point` | pass |  |
+| `is-generator-function` | pass |  |
+| `is-glob` | pass |  |
+| `is-inside-container` |  | pass |
+| `is-interactive` | pass |  |
+| `is-map` | pass |  |
+| `is-negative-zero` | pass |  |
+| `is-number` | pass |  |
+| `is-number-object` | pass |  |
+| `is-obj` | pass |  |
+| `is-path-inside` | pass |  |
+| `is-plain-obj` |  | pass |
+| `is-plain-object` | pass |  |
+| `is-potential-custom-element-name` | pass |  |
+| `is-promise` | pass | pass |
+| `is-regex` | pass |  |
+| `is-set` | pass |  |
+| `is-shared-array-buffer` | pass |  |
+| `is-stream` | pass |  |
+| `is-string` | pass |  |
+| `is-symbol` | pass |  |
+| `is-typed-array` | pass |  |
+| `is-unicode-supported` |  | pass |
+| `is-weakmap` | pass |  |
+| `is-weakref` | pass |  |
+| `is-weakset` | pass |  |
+| `is-wsl` |  | pass |
+| `isarray` | pass |  |
+| `isexe` | pass |  |
+| `istanbul-lib-coverage` | pass |  |
+| `istanbul-lib-instrument` | crash |  |
+| `istanbul-lib-report` | pass |  |
+| `istanbul-lib-source-maps` | pass |  |
+| `istanbul-reports` | pass |  |
+| `jackspeak` | pass | pass |
+| `jest-diff` | pass | pass |
+| `jest-haste-map` | pass |  |
+| `jest-matcher-utils` | pass | pass |
+| `jest-message-util` | pass | pass |
+| `jest-mock` | pass | pass |
+| `jest-regex-util` | pass | pass |
+| `jest-util` | pass | pass |
+| `jest-validate` | pass |  |
+| `jest-worker` | pass |  |
+| `jiti` | crash | crash |
+| `jose` |  | pass |
+| `js-tokens` | pass |  |
+| `js-yaml` | pass | pass |
+| `jsdom` | timeout |  |
+| `jsesc` | pass |  |
+| `json-bigint` | pass |  |
+| `json-buffer` | pass |  |
+| `json-parse-even-better-errors` | pass |  |
+| `json-schema` | pass |  |
+| `json-schema-traverse` | pass |  |
+| `json-schema-typed` |  | pass |
+| `json-stable-stringify-without-jsonify` | pass |  |
+| `json5` | pass | pass |
+| `jsonc-parser` | pass | pass |
+| `jsonfile` | pass |  |
+| `jsonwebtoken` | fail |  |
+| `jsx-ast-utils` | pass |  |
+| `jwa` | fail |  |
+| `jws` | fail |  |
+| `keyv` | pass |  |
+| `kind-of` | pass |  |
+| `kleur` | pass |  |
+| `leven` | pass |  |
+| `levn` | pass |  |
+| `lie` | pass |  |
+| `lightningcss` | fail | fail |
+| `lilconfig` | pass |  |
+| `lines-and-columns` | pass |  |
+| `locate-path` | pass |  |
+| `lodash` | crash |  |
+| `lodash.camelcase` | pass |  |
+| `lodash.isboolean` | pass |  |
+| `lodash.isplainobject` | pass |  |
+| `lodash.merge` | pass |  |
+| `log-symbols` | pass |  |
+| `long` | pass | pass |
+| `loose-envify` | pass |  |
+| `lru-cache` | pass | pass |
+| `lucide-react` | timeout | timeout |
+| `lz-string` | pass |  |
+| `magic-string` | pass | pass |
+| `make-dir` | pass |  |
+| `marked` |  | pass |
+| `mdast-util-from-markdown` |  | pass |
+| `mdast-util-to-hast` |  | pass |
+| `mdast-util-to-markdown` |  | pass |
+| `mdast-util-to-string` |  | pass |
+| `mdn-data` | pass |  |
+| `media-typer` | pass |  |
+| `merge-descriptors` | pass |  |
+| `merge-stream` | pass |  |
+| `merge2` | pass |  |
+| `methods` | pass |  |
+| `micromark` |  | pass |
+| `micromark-core-commonmark` |  | pass |
+| `micromark-factory-destination` |  | pass |
+| `micromark-factory-label` |  | pass |
+| `micromark-factory-space` |  | pass |
+| `micromark-factory-title` |  | pass |
+| `micromark-factory-whitespace` |  | pass |
+| `micromark-util-character` |  | pass |
+| `micromark-util-chunked` |  | pass |
+| `micromark-util-classify-character` |  | pass |
+| `micromark-util-combine-extensions` |  | pass |
+| `micromark-util-decode-numeric-character-reference` |  | pass |
+| `micromark-util-decode-string` |  | pass |
+| `micromark-util-encode` |  | pass |
+| `micromark-util-html-tag-name` |  | pass |
+| `micromark-util-normalize-identifier` |  | pass |
+| `micromark-util-resolve-all` |  | pass |
+| `micromark-util-sanitize-uri` |  | pass |
+| `micromark-util-subtokenize` |  | pass |
+| `micromark-util-symbol` |  | pass |
+| `micromark-util-types` |  | pass |
+| `micromatch` | pass |  |
+| `mime` | pass |  |
+| `mime-db` | pass |  |
+| `mime-types` | pass |  |
+| `mimic-fn` | pass |  |
+| `mimic-response` | pass |  |
+| `min-indent` | pass |  |
+| `minimatch` | pass |  |
+| `minimist` | pass |  |
+| `minipass` | pass | pass |
+| `minizlib` | pass | pass |
+| `mkdirp` | pass |  |
+| `ms` | pass |  |
+| `msgpackr` | pass | pass |
+| `msgpackr-extract` | fail |  |
+| `mute-stream` | pass |  |
+| `nanoid` | fail | pass |
+| `napi-postinstall` | fail |  |
+| `natural-compare` | pass |  |
+| `negotiator` | pass |  |
+| `neo-async` | pass |  |
+| `next` | timeout |  |
+| `node-addon-api` | pass |  |
+| `node-domexception` | pass |  |
+| `node-fetch` | fail | fail |
+| `node-gyp-build-optional-packages` | pass |  |
+| `nopt` | pass |  |
+| `normalize-package-data` | pass |  |
+| `normalize-path` | pass |  |
+| `npm-run-path` | pass |  |
+| `nth-check` | pass | pass |
+| `object-assign` | pass |  |
+| `object-hash` | fail |  |
+| `object-inspect` | pass |  |
+| `object-keys` | pass |  |
+| `object.assign` | pass |  |
+| `object.entries` | pass |  |
+| `object.fromentries` | pass |  |
+| `object.values` | pass |  |
+| `obug` |  | pass |
+| `on-finished` | pass |  |
+| `once` | pass |  |
+| `onetime` | pass |  |
+| `open` | pass |  |
+| `optionator` | pass |  |
+| `ora` | pass |  |
+| `own-keys` | pass |  |
+| `oxc-parser` |  | timeout |
+| `p-limit` | pass |  |
+| `p-locate` | pass |  |
+| `p-map` |  | pass |
+| `p-try` | pass |  |
+| `package-json-from-dist` | pass | pass |
+| `pako` | pass |  |
+| `parent-module` | pass |  |
+| `parse-entities` |  | pass |
+| `parse-json` | pass |  |
+| `parse5` | pass | pass |
+| `parseurl` | pass |  |
+| `path-exists` | pass |  |
+| `path-is-absolute` | pass |  |
+| `path-key` | pass |  |
+| `path-parse` | pass |  |
+| `path-scurry` | pass | pass |
+| `path-to-regexp` | pass |  |
+| `path-type` | pass |  |
+| `pathe` | pass | pass |
+| `pg` | fail | fail |
+| `pg-cloudflare` | pass | pass |
+| `pg-connection-string` | pass | pass |
+| `pg-int8` | pass |  |
+| `pg-pool` | pass | pass |
+| `pg-protocol` | pass | pass |
+| `pg-types` | pass |  |
+| `pgpass` | pass |  |
+| `picocolors` | pass |  |
+| `picomatch` | pass |  |
+| `pify` | pass |  |
+| `pino-abstract-transport` | pass |  |
+| `pirates` | pass |  |
+| `pkce-challenge` | fail | fail |
+| `pkg-dir` | pass |  |
+| `pkg-types` | pass | pass |
+| `playwright` | timeout | timeout |
+| `playwright-core` | timeout | timeout |
+| `pngjs` | pass |  |
+| `possible-typed-array-names` | pass |  |
+| `postcss` | pass | pass |
+| `postcss-selector-parser` | pass |  |
+| `postcss-value-parser` | pass |  |
+| `postgres-array` | pass |  |
+| `postgres-bytea` | pass |  |
+| `postgres-date` | pass |  |
+| `postgres-interval` | pass |  |
+| `prelude-ls` | pass |  |
+| `prettier` | timeout | timeout |
+| `pretty-format` | pass |  |
+| `proc-log` | pass |  |
+| `process` | fail |  |
+| `process-nextick-args` | fail |  |
+| `process-warning` | pass |  |
+| `progress` | pass |  |
+| `prompts` | pass |  |
+| `prop-types` | pass |  |
+| `property-information` |  | pass |
+| `protobufjs` | pass |  |
+| `proxy-addr` | pass |  |
+| `proxy-from-env` | pass | pass |
+| `pump` | pass |  |
+| `punycode` | pass | pass |
+| `qs` | pass |  |
+| `queue-microtask` | fail |  |
+| `range-parser` | pass |  |
+| `raw-body` | fail |  |
+| `react` | pass |  |
+| `react-dom` | pass |  |
+| `react-is` | pass |  |
+| `react-refresh` | pass |  |
+| `react-remove-scroll` | pass | pass |
+| `react-remove-scroll-bar` | pass | pass |
+| `react-style-singleton` | pass | pass |
+| `readable-stream` | pass |  |
+| `readdirp` | pass |  |
+| `real-require` | pass |  |
+| `recharts` | timeout | timeout |
+| `redent` | pass |  |
+| `reflect.getprototypeof` | pass |  |
+| `regenerator-runtime` | pass |  |
+| `regexp.prototype.flags` | pass |  |
+| `remark-parse` |  | pass |
+| `require-directory` | pass |  |
+| `require-from-string` | pass |  |
+| `require-in-the-middle` | pass |  |
+| `reselect` | pass | pass |
+| `resolve` | pass |  |
+| `resolve-from` | pass |  |
+| `resolve-pkg-maps` | pass | pass |
+| `restore-cursor` |  | pass |
+| `retry` | pass |  |
+| `reusify` | pass |  |
+| `rimraf` | pass |  |
+| `rolldown` |  | fail |
+| `rollup` | timeout | timeout |
+| `router` | fail |  |
+| `run-applescript` |  | pass |
+| `run-parallel` | pass |  |
+| `rxjs` | pass | pass |
+| `safe-array-concat` | pass |  |
+| `safe-buffer` | fail |  |
+| `safe-push-apply` | pass |  |
+| `safe-regex-test` | pass |  |
+| `safe-stable-stringify` | pass | pass |
+| `safer-buffer` | fail |  |
+| `sax` | pass |  |
+| `saxes` | pass |  |
+| `scheduler` | pass |  |
+| `schema-utils` | pass |  |
+| `semver` | pass |  |
+| `send` | fail |  |
+| `serve-static` | fail |  |
+| `set-cookie-parser` | pass |  |
+| `set-function-length` | pass |  |
+| `set-function-name` | pass |  |
+| `set-proto` | pass |  |
+| `setimmediate` | pass |  |
+| `setprototypeof` | pass |  |
+| `sharp` | fail | fail |
+| `shebang-command` | pass |  |
+| `shebang-regex` | pass |  |
+| `shell-quote` | pass |  |
+| `side-channel` | pass |  |
+| `side-channel-list` | pass |  |
+| `side-channel-map` | pass |  |
+| `side-channel-weakmap` | pass |  |
+| `siginfo` | pass |  |
+| `signal-exit` | pass | pass |
+| `sisteransi` | pass |  |
+| `slash` | pass |  |
+| `slice-ansi` | pass |  |
+| `socks` | pass |  |
+| `source-map` | pass |  |
+| `source-map-js` | pass |  |
+| `source-map-support` | pass |  |
+| `space-separated-tokens` |  | pass |
+| `split2` | pass |  |
+| `sprintf-js` | pass |  |
+| `statuses` | pass |  |
+| `std-env` |  | fail |
+| `stop-iteration-iterator` | pass |  |
+| `string-width` | pass |  |
+| `string.prototype.matchall` | pass |  |
+| `string.prototype.trim` | pass |  |
+| `string.prototype.trimend` | pass |  |
+| `string.prototype.trimstart` | pass |  |
+| `string_decoder` | pass |  |
+| `strip-ansi` | pass |  |
+| `strip-bom` | pass |  |
+| `strip-final-newline` | pass |  |
+| `strip-indent` | pass |  |
+| `strip-json-comments` | pass |  |
+| `strnum` |  | pass |
+| `styled-jsx` | pass |  |
+| `supports-color` | pass |  |
+| `supports-preserve-symlinks-flag` | pass |  |
+| `symbol-tree` | pass |  |
+| `tailwind-merge` | pass | pass |
+| `tailwindcss` | timeout | timeout |
+| `tapable` | pass |  |
+| `tar` | fail | timeout |
+| `tar-fs` | pass |  |
+| `tar-stream` | pass |  |
+| `terser` | timeout | timeout |
+| `test-exclude` | pass |  |
+| `tiny-invariant` | pass | pass |
+| `tinybench` | pass | pass |
+| `tinyexec` |  | pass |
+| `tinyglobby` | pass | pass |
+| `tinyrainbow` |  | pass |
+| `tldts` | pass | pass |
+| `tldts-core` | pass | pass |
+| `tmp` | fail |  |
+| `to-regex-range` | pass |  |
+| `toidentifier` | pass |  |
+| `tough-cookie` | pass | pass |
+| `tr46` | pass |  |
+| `trough` |  | pass |
+| `ts-api-utils` | timeout | timeout |
+| `tsconfig-paths` | pass |  |
+| `tslib` | pass | pass |
+| `tsx` | timeout | timeout |
+| `type-check` | pass |  |
+| `type-detect` | pass |  |
+| `type-is` | pass |  |
+| `typed-array-buffer` | pass |  |
+| `typed-array-byte-length` | pass |  |
+| `typed-array-byte-offset` | pass |  |
+| `typed-array-length` | pass |  |
+| `typescript` | timeout |  |
+| `typescript-eslint` | timeout |  |
+| `unbox-primitive` | pass |  |
+| `undici` | timeout |  |
+| `unicorn-magic` |  | pass |
+| `unified` |  | pass |
+| `unist-util-is` |  | pass |
+| `unist-util-position` |  | pass |
+| `unist-util-stringify-position` |  | pass |
+| `unist-util-visit` |  | pass |
+| `unist-util-visit-parents` |  | pass |
+| `universalify` | pass |  |
+| `unpipe` | pass |  |
+| `unplugin` |  | pass |
+| `unrs-resolver` | fail |  |
+| `update-browserslist-db` | crash |  |
+| `uri-js` | pass |  |
+| `use-callback-ref` | pass | pass |
+| `use-sidecar` | pass | pass |
+| `use-sync-external-store` | pass |  |
+| `util-deprecate` | pass |  |
+| `utils-merge` | pass |  |
+| `uuid` |  | pass |
+| `vary` | pass |  |
+| `vfile` |  | pass |
+| `vfile-message` |  | pass |
+| `vite` |  | timeout |
+| `w3c-xmlserializer` | pass |  |
+| `web-streams-polyfill` | pass | pass |
+| `webidl-conversions` | pass |  |
+| `webpack-sources` | pass |  |
+| `whatwg-encoding` | pass |  |
+| `whatwg-mimetype` | pass |  |
+| `whatwg-url` | pass |  |
+| `which` | pass |  |
+| `which-boxed-primitive` | pass |  |
+| `which-builtin-type` | pass |  |
+| `which-collection` | pass |  |
+| `which-typed-array` | pass |  |
+| `why-is-node-running` | pass |  |
+| `word-wrap` | pass |  |
+| `wrap-ansi` | pass |  |
+| `wrappy` | pass |  |
+| `write-file-atomic` | pass |  |
+| `ws` | fail | fail |
+| `wsl-utils` |  | pass |
+| `xml-name-validator` | pass |  |
+| `xmlbuilder` | pass |  |
+| `xmlchars` | pass |  |
+| `xtend` | pass |  |
+| `y18n` | pass | pass |
+| `yallist` | pass |  |
+| `yaml` | pass |  |
+| `yargs` | pass | pass |
+| `yargs-parser` | pass | pass |
+| `yocto-queue` | pass |  |
+| `zod` | pass | timeout |
+| `zod-to-json-schema` | pass | pass |
+| `zustand` | pass | pass |
+| `zwitch` |  | pass |
+
+</details>
+
+### By skip reason
+
+| skip reason | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Node cannot load it | 24 | 0 | 0.0% | 0 | 0 | 24 | 0 | 0 | 0 | 0 | 0 |
+| Node exits with status 1 after it loads the package | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| a platform binary | 14 | 0 | 0.0% | 0 | 0 | 14 | 0 | 0 | 0 | 0 | 0 |
+| only types | 37 | 0 | 0.0% | 0 | 0 | 37 | 0 | 0 | 0 | 0 | 0 |
+
+### Blockers
+
+A blocker is a diagnostic code, a built-in that throws a late rejection, or a harness file that does not compile. The table counts the tests that each one blocks and the tests where it is the only blocker, and it sorts by the second count.
+
+| Blocker | Tests blocked | Only blocker |
+| --- | --- | --- |
 
 ## Node native bindings
 
