@@ -25,3 +25,6 @@ const pending = import("./modules/locale-en.ts").then(() => order.push("import")
 Promise.resolve().then(() => order.push("microtask"));
 await pending;
 console.log("order", order.join(","));
+// import() in eval code resolves from the module that called eval.
+const viaEval = await eval('import("./modules/lazy.ts")');
+console.log("eval import", viaEval === lazy);

@@ -495,16 +495,21 @@ impl<'a> Lowerer<'a, '_> {
             Some(oxc::ast::ast::ImportPhase::Defer) => "defer",
             None => "evaluation",
         };
+        let referrer = self.referrer();
         self.bind(Expr::call(
             "buoy_module",
             "dynamic_import",
-            vec![
-                Expr::atom(self.module.clone()),
-                specifier,
-                options,
-                Expr::atom(phase),
-            ],
+            vec![referrer, specifier, options, Expr::atom(phase)],
         ))
+    }
+
+    /// The module that an `import()` resolves from (GetActiveScriptOrModule): this one, or
+    /// for eval code the script or module of the code that called eval.
+    pub fn referrer(&self) -> Expr {
+        if self.eval.is_some() {
+            return Expr::var(super::module::EVAL_REFERRER);
+        }
+        Expr::atom(self.module.clone())
     }
 
     /// `import.meta`

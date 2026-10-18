@@ -13,6 +13,11 @@ use super::function::{Callee, FnBody, UsesNewTarget, kind_of, length_of};
 use super::literal::literal;
 use crate::erlang::{Clause, Expr, Function};
 
+/// The variable of `'__eval__'/3` that tells one evaluation of eval code from another.
+pub const EVAL_SITE: &str = "EvalSite";
+/// The variable of `'__eval__'/3` that holds the module that called the eval.
+pub const EVAL_REFERRER: &str = "EvalReferrer";
+
 /// The declarations of a statement at module level, export or not.
 pub fn declaration<'r, 'a>(statement: &'r Statement<'a>) -> Option<&'r Declaration<'a>> {
     match statement {
@@ -638,6 +643,24 @@ impl<'a> Lowerer<'a, '_> {
             .map(|(_, cell)| Expr::Tuple(vec![Expr::var("_"), Expr::var(cell.clone())]))
             .collect();
         code.push(Expr::matches(Expr::List(cells), Expr::var("Scope")));
+        // Each eval is a new parse, so its tagged templates are new sites, although the
+        // VM compiles the same source text once (GetTemplateObject).
+        code.push(Expr::matches(
+            Expr::var(EVAL_SITE),
+            Expr::call("erlang", "unique_integer", vec![]),
+        ));
+        code.push(Expr::matches(
+            Expr::var(EVAL_REFERRER),
+            Expr::call(
+                "maps",
+                "get",
+                vec![
+                    Expr::atom("referrer"),
+                    Expr::var("Context"),
+                    Expr::atom(self.module.clone()),
+                ],
+            ),
+        ));
         code.extend(self.eval_context_frame());
         code.extend(self.eval_declarations(body));
         let completion = self.fresh("Completion");

@@ -58,10 +58,14 @@ impl<'a> Lowerer<'a, '_> {
                 )
             })
             .collect();
-        let site = Expr::Tuple(vec![
+        let mut site = vec![
             Expr::atom(self.module.clone()),
             Expr::Integer(i64::from(tagged.quasi.span.start)),
-        ]);
+        ];
+        if self.eval.is_some() {
+            site.push(Expr::var(super::module::EVAL_SITE));
+        }
+        let site = Expr::Tuple(site);
         let callee = strip(&tagged.tag);
         let member = callee
             .as_member_expression()
