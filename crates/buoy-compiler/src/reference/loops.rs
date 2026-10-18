@@ -10,7 +10,7 @@ use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
 use super::context::{
-    Cont, FinallyFrame, Lowerer, Target, TargetKind, block, boolean_case, throw_value,
+    Cont, FinallyFrame, Kind, Lowerer, Target, TargetKind, block, boolean_case, throw_value,
 };
 use crate::erlang::{Clause, Expr};
 
@@ -28,6 +28,31 @@ impl<'a> Lowerer<'a, '_> {
             }),
             initial,
         )
+    }
+
+    /// The loop call. In a sync function, each iteration starts at a safepoint that may
+    /// collect what the loop allocated (`buoy_heap:safepoint/2`): there the back edge is a
+    /// tail call and nothing suspends, so the carried values are the only young roots.
+    fn looped(
+        &mut self,
+        name: String,
+        params: Vec<Expr>,
+        mut body: Vec<Expr>,
+        initial: Vec<Expr>,
+    ) -> Vec<Expr> {
+        if !matches!(self.frame.kind, Kind::Sync) {
+            return vec![Self::loop_call(name, params, body, initial)];
+        }
+        let entry = Expr::var(self.fresh("Entry"));
+        let roots = Expr::List(params.clone());
+        body.insert(
+            0,
+            Expr::call("buoy_heap", "safepoint", vec![entry.clone(), roots]),
+        );
+        vec![
+            Expr::matches(entry, Expr::call("buoy_heap", "allocated", vec![])),
+            Self::loop_call(name, params, body, initial),
+        ]
     }
 
     pub fn while_statement(
@@ -64,7 +89,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.targets.pop();
         let body = self.seal(body);
         self.frame.env = saved_env;
-        vec![Self::loop_call(fun, params, body, initial)]
+        self.looped(fun, params, body, initial)
     }
 
     pub fn do_while_statement(
@@ -97,7 +122,7 @@ impl<'a> Lowerer<'a, '_> {
         let body = self.arm(&statement.body, &again);
         self.frame.targets.pop();
         self.frame.env = saved_env;
-        vec![Self::loop_call(fun, params, body, initial)]
+        self.looped(fun, params, body, initial)
     }
 
     pub fn for_statement(&mut self, statement: &'a ForStatement<'a>, k: &Cont<'a>) -> Vec<Expr> {
@@ -187,7 +212,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.targets.pop();
         let body = self.seal(body);
         self.frame.env = saved_env;
-        code.push(Self::loop_call(fun, params, body, initial));
+        code.extend(self.looped(fun, params, body, initial));
         code
     }
 
@@ -346,7 +371,7 @@ impl<'a> Lowerer<'a, '_> {
             code.extend(self.close_funs(each, &initial_state, funs, dispatch));
         }
         self.frame.env = saved_env;
-        code.push(Self::loop_call(fun, params, body, initial));
+        code.extend(self.looped(fun, params, body, initial));
         code
     }
 

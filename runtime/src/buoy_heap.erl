@@ -66,7 +66,7 @@
 -export([symbol/1, symbol_for/1, well_known/1]).
 -export([to_key/1, key_to_value/1]).
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
--export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
+-export([gc/1, gc_stats/0, heap_size/0, allocated/0, safepoint/2, collect_young/2]).
 -export([clone_out/1, clone_in/1]).
 -export([private_find/2, private_put/3, set_failed/2]).
 -export([literal_shaped/2, add_field/3, get_slot/3, set_slot/4, method/2, record/1]).
@@ -81,6 +81,10 @@
 -define(NEXT, '$buoy_next').
 -define(STATS, '$buoy_gc').
 -define(WORDS_PER_ID, 16).
+%% The fewest ids a loop hands out before its safepoint collects, as ?GC_MIN of buoy_jobs.
+-define(YOUNG_MIN, 20000).
+%% The cache of collect_young/2.
+-define(YOUNG, '$buoy_young').
 -define(MIN_HEAP_WORDS, 4096).
 -define(WRITABLE, 1).
 -define(ENUMERABLE, 2).
@@ -1691,13 +1695,19 @@ throw_error(Name, Message) ->
 -spec gc([term()]) -> #{live := non_neg_integer(), freed := non_neg_integer(), us := non_neg_integer()}.
 gc(Roots) ->
     Start = erlang:monotonic_time(microsecond),
+    _ = erlang:erase(?YOUNG),
     {Ids, Others} = lists:partition(fun erlang:is_integer/1, erlang:get_keys()),
-    {Live0, Chunks0, Weak0} = mark([erlang:get(K) || K <- Others] ++ Roots, #{}, 0, []),
+    {Live0, Chunks0, Weak0} = mark([erlang:get(K) || K <- Others] ++ Roots, #{}, 0, [], 0),
     {Live, Chunks, Weak} = ephemerons(Live0, Chunks0, Weak0),
     clear_weak(Weak, Chunks),
     Freed = sweep(Ids, Chunks, 0),
+    collected(Start, Live, Freed, 1).
+
+%% Records a collection of the ids from Floor on that left Live entries, and
+%% sizes the process heap.
+collected(Start, Live, Freed, Floor) ->
     Us = erlang:monotonic_time(microsecond) - Start,
-    Stats = #{live => Live, freed => Freed, us => Us},
+    Stats = #{live => Live, freed => Freed, us => Us, floor => Floor},
     {Runs, Total, Max} = case erlang:get(?STATS) of
         undefined -> {0, 0, 0};
         #{runs := R, total_us := T, max_us := M} -> {R, T, M}
@@ -1705,6 +1715,121 @@ gc(Roots) ->
     erlang:put(?STATS, Stats#{runs => Runs + 1, total_us => Total + Us, max_us => max(Max, Us), at => allocated()}),
     size_heap(Live),
     Stats.
+
+%% A loop of a sync function calls this at the top of each iteration, with
+%% the id count at the loop's entry and the values that the iteration
+%% carries. A long job runs no collection between jobs, so without it a loop
+%% that makes garbage grows the heap until the job ends. The trigger is the
+%% one of the jobs loop: the ids handed out since the last collection reach
+%% twice the live count then, so the cost stays in proportion to allocation.
+%% The loop itself must have handed out as many: an inner loop that started
+%% late would keep the garbage of the outer loop as older ids. An outer loop
+%% also collects when the last collection, of an inner loop, kept that many
+%% of its ids as older ones.
+-spec safepoint(non_neg_integer(), [term()]) -> ok.
+safepoint(Entry, Roots) ->
+    case erlang:get(?NEXT) of
+        Next when is_integer(Next), Next - Entry > ?YOUNG_MIN -> safepoint(Entry, Next, Roots);
+        _ -> ok
+    end.
+
+safepoint(Entry, Next, Roots) ->
+    #{at := At, live := Live} = Stats = gc_stats(),
+    Threshold = max(?YOUNG_MIN, 2 * Live),
+    Kept = maps:get(floor, Stats, 1) - Entry - 1,
+    case Next - Entry > Threshold andalso (Next - At > Threshold orelse Kept > Threshold) of
+        true ->
+            _ = collect_young(Entry, Roots),
+            ok;
+        false ->
+            ok
+    end.
+
+%% Frees the ids above Entry, the id count at the entry of a loop, that
+%% nothing reaches. The back edge of a loop is a tail call, so at the top of
+%% an iteration no frame of an earlier iteration is left, and every frame
+%% below the loop was made before Entry. Erlang terms cannot change, so a
+%% term made before Entry cannot name a younger id: only Roots, the pdict
+%% entries that are not ids, and the records of older ids can. Every older id
+%% stays. Weak containers hold their contents strongly here, so a WeakRef
+%% target lives to the end of the job (ECMA-262 ClearKeptObjects), and the
+%% collection between jobs clears them.
+%%
+%% An older record is a root only when it names a young id. ?YOUNG keeps, for
+%% each older id, its record and the largest id that the record names, so a
+%% record that has not changed since the last collection costs one lookup.
+%% JSC and V8 remember the old objects that point into the young generation
+%% with a write barrier; a barrier would cost every write here, and a
+%% comparison with the remembered record finds the written ones instead.
+-spec collect_young(non_neg_integer(), [term()]) -> map().
+collect_young(Entry, Roots) ->
+    Start = erlang:monotonic_time(microsecond),
+    Floor = Entry + 1,
+    Known = case erlang:erase(?YOUNG) of
+        undefined -> #{};
+        K -> K
+    end,
+    {Young, Old, OldTerms, Others} = split_ids(erlang:get_keys(), Floor, Known, [], [], Roots, []),
+    Terms = [erlang:get(Key) || Key <- Others] ++ OldTerms,
+    {Live0, Chunks0, Weak} = mark(Terms, #{}, 0, [], Floor),
+    {Live, Chunks} = mark_weak_strongly(Weak, Live0, Chunks0, Floor),
+    Freed = sweep(Young, Chunks, 0),
+    erlang:put(?YOUNG, maps:from_list(Old)),
+    collected(Start, length(Old) + Live, Freed, Floor).
+
+%% {the young ids, {Id, {Record, the largest id it names}} for each older id,
+%% the terms of the older records that name a young id, the other keys}.
+split_ids([], _Floor, _Known, Young, Old, Terms, Others) ->
+    {Young, Old, Terms, Others};
+split_ids([Id | Rest], Floor, Known, Young, Old, Terms, Others) when is_integer(Id), Id >= Floor ->
+    split_ids(Rest, Floor, Known, [Id | Young], Old, Terms, Others);
+split_ids([Id | Rest], Floor, Known, Young, Old, Terms, Others) when is_integer(Id) ->
+    R = erlang:get(Id),
+    Max = case Known of
+        #{Id := {Known1, M}} when Known1 =:= R -> M;
+        _ -> largest_id(entry_terms(R), 0)
+    end,
+    Terms1 = case Max >= Floor of
+        true -> entry_terms(R) ++ Terms;
+        false -> Terms
+    end,
+    split_ids(Rest, Floor, Known, Young, [{Id, {R, Max}} | Old], Terms1, Others);
+split_ids([Key | Rest], Floor, Known, Young, Old, Terms, Others) ->
+    split_ids(Rest, Floor, Known, Young, Old, Terms, [Key | Others]).
+
+%% The terms of an entry that can name an id: a shaped record without its
+%% shape, which holds keys only, and any other entry, a record or the value
+%% of a cell, whole.
+entry_terms(R) when ?is_shaped(R) ->
+    [_ | Values] = tuple_to_list(R),
+    Values;
+entry_terms(R) ->
+    [R].
+
+%% The largest id that a term names, without entering the entries of ids.
+largest_id([], Max) ->
+    Max;
+largest_id([{Tag, Id} | Rest], Max) when (Tag =:= '$o' orelse Tag =:= '$c'), is_integer(Id) ->
+    largest_id(Rest, max(Id, Max));
+largest_id([{'$f', Id, Fun} | Rest], Max) when is_integer(Id) ->
+    largest_id([Fun | Rest], max(Id, Max));
+largest_id([T | Rest], Max) when is_tuple(T) ->
+    largest_id(tuple_to_list(T) ++ Rest, Max);
+largest_id([[H | T] | Rest], Max) ->
+    largest_id([H, T | Rest], Max);
+largest_id([M | Rest], Max) when is_map(M) ->
+    largest_id(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Max);
+largest_id([F | Rest], Max) when is_function(F) ->
+    {env, Env} = erlang:fun_info(F, env),
+    largest_id(Env ++ Rest, Max);
+largest_id([_ | Rest], Max) ->
+    largest_id(Rest, Max).
+
+mark_weak_strongly([], Live, Chunks, _Floor) ->
+    {Live, Chunks};
+mark_weak_strongly(Weak, Live, Chunks, Floor) ->
+    {Live1, Chunks1, Weak1} = mark([erlang:get(Id) || Id <- lists:usort(Weak)], Chunks, Live, [], Floor),
+    mark_weak_strongly(Weak1, Live1, Chunks1, Floor).
 
 -spec gc_stats() -> map().
 gc_stats() ->
@@ -1749,43 +1874,53 @@ is_marked(Id, Chunks) ->
     end.
 
 %% Weak collects the ids of the weak containers that marking reaches: their
-%% keys and targets are not marked through them (ephemerons/3).
-mark([], Chunks, Live, Weak) ->
+%% keys and targets are not marked through them (ephemerons/3). Ids below
+%% Floor are older than the loop that collects (collect_young/2): their
+%% records are roots already, so marking does not enter them, but it still
+%% enters the fun of an old function once.
+mark([], Chunks, Live, Weak, _Floor) ->
     {Live, Chunks, Weak};
-mark([{'$o', Id} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
+mark([{'$o', Id} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id), Id >= Floor ->
     case first_mark(Id, Chunks) of
         {true, Chunks1} ->
             {Terms, Weak1} = record_terms(erlang:get(Id), Id, Rest, Weak),
-            mark(Terms, Chunks1, Live + 1, Weak1);
+            mark(Terms, Chunks1, Live + 1, Weak1, Floor);
         {false, Chunks1} ->
-            mark(Rest, Chunks1, Live, Weak)
+            mark(Rest, Chunks1, Live, Weak, Floor)
     end;
-mark([{'$f', Id, Fun} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
+mark([{'$f', Id, Fun} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id), Id >= Floor ->
     case first_mark(Id, Chunks) of
         {true, Chunks1} ->
             {Terms, Weak1} = record_terms(erlang:get(Id), Id, [Fun | Rest], Weak),
-            mark(Terms, Chunks1, Live + 1, Weak1);
+            mark(Terms, Chunks1, Live + 1, Weak1, Floor);
         {false, Chunks1} ->
-            mark(Rest, Chunks1, Live, Weak)
+            mark(Rest, Chunks1, Live, Weak, Floor)
     end;
-mark([{'$f', _, Fun} | Rest], Chunks, Live, Weak) ->
-    mark([Fun | Rest], Chunks, Live, Weak);
-mark([{'$c', Id} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
+mark([{'$f', Id, Fun} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id) ->
     case first_mark(Id, Chunks) of
-        {true, Chunks1} -> mark([erlang:get(Id) | Rest], Chunks1, Live + 1, Weak);
-        {false, Chunks1} -> mark(Rest, Chunks1, Live, Weak)
+        {true, Chunks1} -> mark([Fun | Rest], Chunks1, Live, Weak, Floor);
+        {false, Chunks1} -> mark(Rest, Chunks1, Live, Weak, Floor)
     end;
-mark([T | Rest], Chunks, Live, Weak) when is_tuple(T) ->
-    mark(tuple_to_list(T) ++ Rest, Chunks, Live, Weak);
-mark([[H | T] | Rest], Chunks, Live, Weak) ->
-    mark([H, T | Rest], Chunks, Live, Weak);
-mark([M | Rest], Chunks, Live, Weak) when is_map(M) ->
-    mark(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Chunks, Live, Weak);
-mark([F | Rest], Chunks, Live, Weak) when is_function(F) ->
+mark([{'$f', _, Fun} | Rest], Chunks, Live, Weak, Floor) ->
+    mark([Fun | Rest], Chunks, Live, Weak, Floor);
+mark([{'$c', Id} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id), Id >= Floor ->
+    case first_mark(Id, Chunks) of
+        {true, Chunks1} -> mark([erlang:get(Id) | Rest], Chunks1, Live + 1, Weak, Floor);
+        {false, Chunks1} -> mark(Rest, Chunks1, Live, Weak, Floor)
+    end;
+mark([{Tag, Id} | Rest], Chunks, Live, Weak, Floor) when (Tag =:= '$o' orelse Tag =:= '$c'), is_integer(Id) ->
+    mark(Rest, Chunks, Live, Weak, Floor);
+mark([T | Rest], Chunks, Live, Weak, Floor) when is_tuple(T) ->
+    mark(tuple_to_list(T) ++ Rest, Chunks, Live, Weak, Floor);
+mark([[H | T] | Rest], Chunks, Live, Weak, Floor) ->
+    mark([H, T | Rest], Chunks, Live, Weak, Floor);
+mark([M | Rest], Chunks, Live, Weak, Floor) when is_map(M) ->
+    mark(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Chunks, Live, Weak, Floor);
+mark([F | Rest], Chunks, Live, Weak, Floor) when is_function(F) ->
     {env, Env} = erlang:fun_info(F, env),
-    mark(Env ++ Rest, Chunks, Live, Weak);
-mark([_ | Rest], Chunks, Live, Weak) ->
-    mark(Rest, Chunks, Live, Weak).
+    mark(Env ++ Rest, Chunks, Live, Weak, Floor);
+mark([_ | Rest], Chunks, Live, Weak, Floor) ->
+    mark(Rest, Chunks, Live, Weak, Floor).
 
 %% The terms of a record that can hold references: the prototype, the
 %% values, and the slots. Keys and attributes hold none. A weak container
@@ -1810,7 +1945,7 @@ record_terms(_, _Id, Rest, Weak) ->
 ephemerons(Live, Chunks, Weak) ->
     Values = [V || Id <- Weak, {weakmap, _, _, _, _, Entries} <- [erlang:get(Id)],
                    K := V <- Entries, live_key(K, Chunks)],
-    case mark(Values, Chunks, Live, Weak) of
+    case mark(Values, Chunks, Live, Weak, 0) of
         {Live, Chunks1, Weak} -> {Live, Chunks1, Weak};
         {Live1, Chunks1, Weak1} -> ephemerons(Live1, Chunks1, Weak1)
     end.

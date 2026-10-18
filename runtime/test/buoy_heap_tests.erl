@@ -199,6 +199,69 @@ gc_traces_fun_env_test() ->
                   ?assertEqual({0, 7}, buoy_heap:call(buoy_heap:get(Holder, <<"f">>), undefined, []))
           end).
 
+%% collect_young/2 frees the ids made after the entry of a loop that nothing
+%% reaches, and keeps every older id, reachable or not.
+young_collection_keeps_older_ids_test() ->
+    realm(fun() ->
+                  Holder = buoy_heap:new_object(?P),
+                  OldGarbage = buoy_heap:new_object(?P),
+                  Cell = buoy_heap:cell(undefined),
+                  Entry = buoy_heap:allocated(),
+                  Carried = buoy_heap:object(?P, [{<<"child">>, buoy_heap:new_object(?P)}]),
+                  buoy_heap:set(Holder, <<"young">>, buoy_heap:new_object(?P)),
+                  buoy_heap:cell_set(Cell, buoy_heap:new_object(?P)),
+                  [buoy_heap:new_object(?P) || _ <- lists:seq(1, 50)],
+                  #{freed := Freed} = buoy_heap:collect_young(Entry, [Carried]),
+                  ?assertEqual(50, Freed),
+                  ?assertEqual(object, buoy_heap:class_of(OldGarbage)),
+                  ?assertEqual(object, buoy_heap:class_of(buoy_heap:get(Carried, <<"child">>))),
+                  ?assertEqual(object, buoy_heap:class_of(buoy_heap:get(Holder, <<"young">>))),
+                  ?assertEqual(object, buoy_heap:class_of(buoy_heap:cell_get(Cell)))
+          end).
+
+%% An older record that a later write points at a young id is a root again,
+%% though the cache of the first collection found no young id in it.
+young_collection_sees_written_records_test() ->
+    realm(fun() ->
+                  Holder = buoy_heap:new_object(?P),
+                  Entry = buoy_heap:allocated(),
+                  ?assertMatch(#{freed := 0}, buoy_heap:collect_young(Entry, [])),
+                  Young = buoy_heap:new_object(?P),
+                  buoy_heap:set(Holder, <<"y">>, Young),
+                  buoy_heap:new_object(?P),
+                  ?assertMatch(#{freed := 1}, buoy_heap:collect_young(Entry, [])),
+                  ?assertEqual(Young, buoy_heap:get(Holder, <<"y">>)),
+                  ?assertEqual(object, buoy_heap:class_of(Young)),
+                  buoy_heap:set(Holder, <<"y">>, undefined),
+                  ?assertMatch(#{freed := 1}, buoy_heap:collect_young(Entry, []))
+          end).
+
+%% Inside a job, a weak container keeps what it holds: the collection between
+%% jobs clears it.
+young_collection_keeps_weak_targets_test() ->
+    realm(fun() ->
+                  Entry = buoy_heap:allocated(),
+                  Target = buoy_heap:new_object(?P),
+                  Ref = buoy_heap:new_exotic(weak_ref, ?P, Target),
+                  ?assertMatch(#{freed := 0}, buoy_heap:collect_young(Entry, [Ref])),
+                  ?assertEqual(Target, buoy_heap:slots(Ref)),
+                  ?assertEqual(object, buoy_heap:class_of(Target)),
+                  buoy_heap:gc([Ref]),
+                  ?assertEqual(undefined, buoy_heap:slots(Ref))
+          end).
+
+%% The safepoint collects only after the loop has handed out enough ids.
+safepoint_waits_for_allocation_test() ->
+    realm(fun() ->
+                  Entry = buoy_heap:allocated(),
+                  [buoy_heap:new_object(?P) || _ <- lists:seq(1, 100)],
+                  ok = buoy_heap:safepoint(Entry, []),
+                  ?assertEqual(100, buoy_heap:heap_size()),
+                  [buoy_heap:new_object(?P) || _ <- lists:seq(1, 20000)],
+                  ok = buoy_heap:safepoint(Entry, []),
+                  ?assertEqual(0, buoy_heap:heap_size())
+          end).
+
 gc_roots_in_pdict_test() ->
     realm(fun() ->
                   O = buoy_heap:new_object(?P),
