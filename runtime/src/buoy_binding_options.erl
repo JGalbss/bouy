@@ -87,8 +87,15 @@ expand([A | Rest], Expansions) ->
         {{ok, Targets}, [<<C, _/binary>> = Value | More]} when C =/= $- ->
             lists:append([maps:get(T, Expansions, [T]) || T <- Targets]) ++ [Value | expand(More, Expansions)];
         _ ->
-            case maps:find(Name, Expansions) of
-                {ok, Expanded} when Expanded =/= [Name] -> expand(Expanded ++ Rest, Expansions);
+            case {maps:find(Name, Expansions), Name} of
+                {{ok, Expanded}, _} when Expanded =/= [Name] -> expand(Expanded ++ Rest, Expansions);
+                {error, <<"--no-", Positive/binary>>} ->
+                    %% The negation of an alias negates its option:
+                    %% --no-experimental-strip-types is --no-strip-types.
+                    case maps:find(<<"--", Positive/binary>>, Expansions) of
+                        {ok, [<<"--", Target/binary>>]} -> expand([<<"--no-", Target/binary>> | Rest], Expansions);
+                        _ -> [A | expand(Rest, Expansions)]
+                    end;
                 _ -> [A | expand(Rest, Expansions)]
             end
     end.
