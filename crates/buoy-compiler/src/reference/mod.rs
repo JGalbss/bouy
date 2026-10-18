@@ -249,7 +249,7 @@ pub fn lower_eval(
     }
     if function {
         let complete = with_js_program(&path, &source, |program, _| {
-            is_one_function(program, source.len())
+            is_one_function(program)
         })?;
         if !complete {
             let reporter = Reporter::new(&path, &source);
@@ -342,7 +342,7 @@ fn declared_var_names(
 
 /// Whether the program is one parenthesized function expression that ends where the source
 /// does, before its closing parenthesis.
-fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool {
+fn is_one_function(program: &oxc::ast::ast::Program<'_>) -> bool {
     use oxc::ast::ast::{Expression, Statement};
     let [Statement::ExpressionStatement(statement)] = program.body.as_slice() else {
         return false;
@@ -351,7 +351,7 @@ fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool 
         return false;
     };
     matches!(&inner.expression, Expression::FunctionExpression(function)
-        if function.span.end as usize + 1 == length)
+        if function.span.end as usize + 1 == program.source_text.len())
 }
 
 fn lower(

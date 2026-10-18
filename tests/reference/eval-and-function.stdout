@@ -8,3 +8,4 @@ SyntaxError SyntaxError
 8 function named(x) { return x * 2; } | function anonymous(a\n) {\nreturn a\n}
 [ 6, 'undefined', 61 ]
 undefined 1
+[ [ 'ReferenceError', 1 ], 'ReferenceError', 'SyntaxError' ]

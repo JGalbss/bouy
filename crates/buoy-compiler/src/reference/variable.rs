@@ -10,6 +10,16 @@ use crate::erlang::Expr;
 
 impl<'a> Lowerer<'a, '_> {
     pub fn identifier(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        if ident.name == crate::call_targets::SENTINEL {
+            return self.bind(Expr::call(
+                "buoy_heap",
+                "throw_error",
+                vec![
+                    Expr::atom("ReferenceError"),
+                    Expr::js_string(crate::call_targets::MESSAGE),
+                ],
+            ));
+        }
         let objects = self.with_objects(ident);
         if !objects.is_empty() {
             return self.with_read(ident, &objects);

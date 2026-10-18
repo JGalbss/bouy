@@ -10,6 +10,7 @@ use oxc::semantic::{Semantic, SemanticBuilder};
 use oxc::span::SourceType;
 
 use crate::Goal;
+use crate::call_targets;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 
 /// The source type that `path` parses with under `goal`.
@@ -98,47 +99,92 @@ fn parse_filtered<R>(
     allowed: &dyn Fn(&Program<'_>, &str, usize) -> bool,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
-    let allocator = Allocator::default();
+    // Annex B: a call as the target of an assignment in sloppy code throws a
+    // ReferenceError when it runs. Each pass rewrites the calls that oxc reported, which
+    // reports one such target at a time, into member targets whose key throws, as V8 does
+    // (RewriteInvalidReferenceExpression); the errors of the source stand otherwise.
+    let mut rewritten: Option<String> = None;
+    let mut errors = Vec::new();
+    for _ in 0..=MAX_CALL_TARGETS {
+        let text = rewritten.as_deref().unwrap_or(source);
+        let next = {
+            let allocator = Allocator::default();
+            let parsed = parse_allowing(&allocator, text, source_type, allowed);
+            if !parsed.fatal_error && !parsed.diagnostics.has_errors() {
+                return match (analyze(&parsed.program, allowed), rewritten.is_some()) {
+                    (Ok(built), false) => Ok(use_program(&parsed.program, &built.semantic)),
+                    (Ok(built), true) if call_targets::are_sloppy(&built.semantic) => {
+                        Ok(use_program(&parsed.program, &built.semantic))
+                    }
+                    (Err(diagnostics), false) => {
+                        Err(syntax_errors(path, source, &diagnostics, effect_hint))
+                    }
+                    _ => Err(errors),
+                };
+            }
+            if rewritten.is_none() {
+                errors = syntax_errors(path, source, &parsed.diagnostics, effect_hint);
+            }
+            call_targets::rewrite(text, &parsed.diagnostics)
+                .filter(|_| call_targets::is_free(source))
+        };
+        match next {
+            Some(next) => rewritten = Some(next),
+            None => return Err(errors),
+        }
+    }
+    Err(errors)
+}
+
+/// The most call targets that the parser rewrites in one source.
+const MAX_CALL_TARGETS: usize = 64;
+
+/// Parses `source` and drops each error that `allowed` permits.
+fn parse_allowing<'a>(
+    allocator: &'a Allocator,
+    source: &'a str,
+    source_type: SourceType,
+    allowed: &dyn Fn(&Program<'_>, &str, usize) -> bool,
+) -> oxc::parser::ParserReturn<'a> {
     // Parsing each regular expression pattern reports its early errors as syntax errors.
     let options = ParseOptions {
         parse_regular_expression: true,
         ..ParseOptions::default()
     };
-    let mut parsed = Parser::new(&allocator, source, source_type)
+    let mut parsed = Parser::new(allocator, source, source_type)
         .with_options(options)
         .parse();
     let program = &parsed.program;
-    let keep = |error: &oxc::diagnostics::OxcDiagnostic| {
-        let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
-        !allowed(program, &error.message, offset)
-    };
     let kept: Vec<_> = parsed
         .diagnostics
         .iter()
-        .filter(|error| keep(error))
+        .filter(|error| {
+            let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
+            !allowed(program, &error.message, offset)
+        })
         .cloned()
         .collect();
     parsed.diagnostics = kept.into();
-    if parsed.fatal_error || parsed.diagnostics.has_errors() {
-        return Err(syntax_errors(
-            path,
-            source,
-            &parsed.diagnostics,
-            effect_hint,
-        ));
-    }
+    parsed
+}
+
+/// The semantic analysis of `program`, or its errors that `allowed` does not permit.
+fn analyze<'a>(
+    program: &'a Program<'a>,
+    allowed: &dyn Fn(&Program<'_>, &str, usize) -> bool,
+) -> Result<oxc::semantic::SemanticBuilderReturn<'a>, Diagnostics> {
     let mut built = SemanticBuilder::new()
         .with_build_nodes(true)
         .with_check_syntax_error(true)
-        .build(&parsed.program);
+        .build(program);
     built.diagnostics.retain(|error| {
         let offset = error.labels.first().map_or(0, LabeledSpan::offset) as usize;
-        !allowed(&parsed.program, &error.message, offset)
+        !allowed(program, &error.message, offset)
     });
     if built.diagnostics.has_errors() {
-        return Err(syntax_errors(path, source, &built.diagnostics, effect_hint));
+        return Err(std::mem::take(&mut built.diagnostics));
     }
-    Ok(use_program(&parsed.program, &built.semantic))
+    Ok(built)
 }
 
 /// Parses `source` without semantic analysis and hands the program and whether it has
