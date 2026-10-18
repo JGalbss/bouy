@@ -63,14 +63,40 @@ intrinsics() ->
     ++ class(<<"Tag">>, [], [], [])
     ++ class(<<"Exception">>, [{<<"getArg">>, 2}, {<<"is">>, 1}], [], [])
     ++ class(<<"Suspending">>, [], [], [])
-    ++ lists:append([error_class(N) || N <- ?ERRORS]).
+    ++ lists:append([error_class(N) || N <- ?ERRORS])
+    ++ abstract_module_source().
+
+%% %AbstractModuleSource% of the source phase imports proposal, the parent of
+%% WebAssembly.Module.prototype: its Symbol.toStringTag getter names the class
+%% of a module source.
+abstract_module_source() ->
+    Get = buoy_ref_realm:builtin(<<"get AbstractModuleSource.prototype[Symbol.toStringTag]">>,
+                                 <<"get [Symbol.toStringTag]">>, 0,
+                                 fun(This, _) ->
+                                     case ?IS_OBJECT(This) andalso buoy_heap:class_of(This) of
+                                         wasm_module -> <<"WebAssembly.Module">>;
+                                         _ -> undefined
+                                     end
+                                 end),
+    Constructor = {'$f', {builtin, <<"AbstractModuleSource">>},
+                   fun(_, _) -> buoy_ref:type_error(<<"Abstract class AbstractModuleSource not directly constructable">>) end},
+    Proto = record(object, ?OBJECT_PROTO,
+                   [{<<"constructor">>, Constructor}, {?SYM(toStringTag), {'$accessor', Get, undefined}, 4}], none),
+    [{'AbstractModuleSource.prototype', Proto},
+     {{builtin, <<"AbstractModuleSource">>},
+      ctor_record(<<"AbstractModuleSource">>, 0, {'$o', 'AbstractModuleSource.prototype'}, [],
+                  fun(_, _) -> buoy_ref:type_error(<<"Abstract class AbstractModuleSource not directly constructable">>) end)}].
 
 operations(Owner, Names) -> [{K, V, ?OPERATION} || {K, V} <- ?METHODS(Owner, Names)].
 
 %% The prototype and the constructor of the interface Name.
 class(Name, Operations, Attributes, Statics) ->
     Owner = <<"WebAssembly.", Name/binary, ".prototype">>,
-    Proto = record(object, ?OBJECT_PROTO,
+    Parent = case Name of
+        <<"Module">> -> {'$o', 'AbstractModuleSource.prototype'};
+        _ -> ?OBJECT_PROTO
+    end,
+    Proto = record(object, Parent,
                    [{<<"constructor">>, constructor(Name)}]
                    ++ operations(Owner, Operations)
                    ++ [attribute(Owner, A) || A <- Attributes]
@@ -142,8 +168,10 @@ throw(Kind, Message) ->
 %%% The constructors
 
 construct(<<"Module">>, NT, Args) ->
-    Bytes = buffer_source(arg(1, Args), <<"WebAssembly.Module()">>, 0),
-    module_object(compile(Bytes, <<"WebAssembly.Module()">>), Bytes, buoy_ref_realm:proto_for(NT, proto_id(<<"Module">>)));
+    Context = <<"WebAssembly.Module()">>,
+    Bytes = buffer_source(arg(1, Args), Context, 0),
+    Builtins = compile_options(arg(2, Args), Context),
+    module_object(compile(Bytes, Context), Bytes, Builtins, buoy_ref_realm:proto_for(NT, proto_id(<<"Module">>)));
 construct(<<"Instance">>, NT, Args) ->
     Module = arg(1, Args),
     is_class(Module, wasm_module) orelse buoy_ref:type_error(<<"WebAssembly.Instance(): Argument 0 must be a WebAssembly.Module">>),
@@ -263,7 +291,100 @@ limit(Descriptor, Name, Context, Max, Default) ->
 
 %%% The objects of the externs
 
-module_object(Module, Bytes, Proto) -> buoy_heap:new_exotic(wasm_module, Proto, {Module, Bytes}).
+module_object(Module, Bytes, Builtins, Proto) -> buoy_heap:new_exotic(wasm_module, Proto, {Module, Bytes, Builtins}).
+
+%% WebAssemblyCompileOptions of the JS String Builtins proposal: the builtin
+%% sets, of which V8 knows js-string, and the module name of the imported
+%% string constants.
+compile_options(undefined, _Context) ->
+    #{};
+compile_options(Options, Context) ->
+    ?IS_OBJECT(Options) orelse buoy_ref:type_error(<<Context/binary, ": Argument 1 must be an object">>),
+    Sets = case buoy_ref:get(Options, <<"builtins">>) of
+        undefined -> [];
+        List when ?IS_OBJECT(List) -> [buoy_ref:to_string(V) || V <- buoy_heap:array_items(List)];
+        _ -> buoy_ref:type_error(<<Context/binary, ": builtins must be a sequence">>)
+    end,
+    lists:all(fun(Set) -> Set =:= <<"js-string">> end, Sets) orelse
+        throw(<<"CompileError">>, <<Context/binary, ": unknown builtin set">>),
+    Constants = case buoy_ref:get(Options, <<"importedStringConstants">>) of
+        undefined -> none;
+        Name -> buoy_ref_string:to_utf8(buoy_ref:to_string(Name))
+    end,
+    #{js_string => lists:member(<<"js-string">>, Sets), constants => Constants}.
+
+%% Whether the builtins of a module provide the import Module Name.
+is_builtin_import(Builtins, Module, Name, Type) ->
+    case Module of
+        <<"wasm:js-string">> -> maps:get(js_string, Builtins, false) andalso js_string(Name) =/= none;
+        _ -> maps:get(constants, Builtins, none) =:= Module andalso element(1, Type) =:= global
+    end.
+
+%% The builtins of wasm:js-string that need no GC array.
+js_string(Name) ->
+    Cast = fun(V) ->
+        ?IS_STRING(V) orelse throw(<<"RuntimeError">>, <<"illegal cast">>),
+        V
+    end,
+    Index = fun(V) -> buoy_ref_number:to_uint32(buoy_ref:to_number(V)) end,
+    Unit = fun(S, I) ->
+        I < buoy_ref_string:length_of(S) orelse throw(<<"RuntimeError">>, <<"string offset out of bounds">>),
+        buoy_ref_string:unit_at(S, I)
+    end,
+    Builtin = fun(Length, Fun) -> buoy_heap:function(fun(_, Args) -> Fun(pad(Args, Length)) end, Name, Length, #{}) end,
+    case Name of
+        <<"cast">> -> Builtin(1, fun([V]) -> Cast(V) end);
+        <<"test">> -> Builtin(1, fun([V]) -> case ?IS_STRING(V) of true -> 1; false -> 0 end end);
+        <<"fromCharCode">> -> Builtin(1, fun([C]) -> buoy_ref_string:from_units([Index(C) band 16#FFFF]) end);
+        <<"fromCodePoint">> ->
+            Builtin(1, fun([C]) ->
+                           P = Index(C),
+                           P =< 16#10FFFF orelse throw(<<"RuntimeError">>, <<"invalid code point">>),
+                           buoy_ref_string:from_code_points([P])
+                       end);
+        <<"charCodeAt">> -> Builtin(2, fun([S, I]) -> Unit(Cast(S), Index(I)) end);
+        <<"codePointAt">> ->
+            Builtin(2, fun([S, I]) ->
+                           Text = Cast(S),
+                           At = Index(I),
+                           High = Unit(Text, At),
+                           Low = case At + 1 < buoy_ref_string:length_of(Text) of
+                               true -> buoy_ref_string:unit_at(Text, At + 1);
+                               false -> none
+                           end,
+                           case {High, Low} of
+                               {H, L} when H >= 16#D800, H =< 16#DBFF, is_integer(L), L >= 16#DC00, L =< 16#DFFF ->
+                                   16#10000 + ((H - 16#D800) bsl 10) + (L - 16#DC00);
+                               _ -> High
+                           end
+                       end);
+        <<"length">> -> Builtin(1, fun([S]) -> buoy_ref_string:length_of(Cast(S)) end);
+        <<"concat">> -> Builtin(2, fun([A, B]) -> buoy_ref_string:concat(Cast(A), Cast(B)) end);
+        <<"substring">> ->
+            Builtin(3, fun([S, Start, End]) ->
+                           Text = Cast(S),
+                           Length = buoy_ref_string:length_of(Text),
+                           {From, To} = {min(Index(Start), Length), min(Index(End), Length)},
+                           case From > To of
+                               true -> <<>>;
+                               false -> buoy_ref_string:slice(Text, From, To)
+                           end
+                       end);
+        <<"equals">> ->
+            Builtin(2, fun([A, B]) ->
+                           [V =:= null orelse Cast(V) || V <- [A, B]],
+                           case A =:= B of true -> 1; false -> 0 end
+                       end);
+        <<"compare">> ->
+            Builtin(2, fun([A, B]) ->
+                           case buoy_ref_string:compare(Cast(A), Cast(B)) of
+                               lt -> -1;
+                               eq -> 0;
+                               gt -> 1
+                           end
+                       end);
+        _ -> none
+    end.
 
 memory_object({memory, H, _Min, _Max, Shared, _Is64}, Proto) ->
     remember(H, fun() -> buoy_heap:new_exotic(wasm_memory, Proto, {H, Shared, none}) end).
@@ -335,13 +456,16 @@ func_handle(_) -> none.
 %%% Instantiation
 
 instance(Module, Imports, Proto, Context) ->
-    {Res, Bytes} = buoy_heap:slots(Module),
+    {Res, Bytes, Builtins} = buoy_heap:slots(Module),
     Types = buoy_native:wasm_imports(Res),
     Types =/= [] andalso not ?IS_OBJECT(Imports) andalso
         buoy_ref:type_error(<<Context/binary, ": Imports argument must be present and must be an object">>),
     Imports =:= undefined orelse ?IS_OBJECT(Imports) orelse
         buoy_ref:type_error(<<Context/binary, ": Argument 1 must be an object">>),
-    Resolved = [import(Context, I, M, N, T, Imports) || {I, {M, N, T}} <- lists:enumerate(0, Types)],
+    Resolved = [case is_builtin_import(Builtins, M, N, T) of
+                    true -> builtin_import(Context, I, M, N, T);
+                    false -> import(Context, I, M, N, T, Imports)
+                end || {I, {M, N, T}} <- lists:enumerate(0, Types)],
     Exports = reply(command({instantiate, Res, Resolved}), Context),
     Indexes = func_indexes(Bytes),
     Object = buoy_heap:new_object(null),
@@ -350,6 +474,14 @@ instance(Module, Imports, Proto, Context) ->
      || {Name, Type} <- Exports],
     buoy_heap:prevent_extensions(Object),
     buoy_heap:new_exotic(wasm_instance, Proto, Object).
+
+%% An import that the builtins provide: a function of wasm:js-string, or a
+%% string constant, whose value is the name of the import.
+builtin_import(Context, I, <<"wasm:js-string">>, Name, Type) ->
+    Namespace = buoy_heap:object(?OBJECT_PROTO, [{buoy_ref_string:from_utf8(Name), js_string(Name)}]),
+    import(Context, I, <<"wasm:js-string">>, Name, Type, buoy_heap:object(?OBJECT_PROTO, [{<<"wasm:js-string">>, Namespace}]));
+builtin_import(_Context, _I, _Module, Name, {global, _, ValType, _}) ->
+    {value, to_wasm(ValType, buoy_ref_string:from_utf8(Name))}.
 
 %% The value for import #I, Module Name of type Type, of the import object.
 import(Context, I, Module, Name, Type, Imports) ->
@@ -674,7 +806,8 @@ method(<<"WebAssembly">>, <<"validate">>, _This, Args) ->
     buoy_native:wasm_validate(buffer_source(arg(1, Args), <<"WebAssembly.validate()">>, 0));
 method(<<"WebAssembly">>, <<"compile">>, _This, Args) ->
     later(fun() -> Bytes = buffer_source(arg(1, Args), <<"WebAssembly.compile()">>, 0),
-                   fun() -> new_module(Bytes, <<"WebAssembly.compile()">>) end
+                   Builtins = compile_options(arg(2, Args), <<"WebAssembly.compile()">>),
+                   fun() -> new_module(Bytes, Builtins, <<"WebAssembly.compile()">>) end
           end);
 method(<<"WebAssembly">>, <<"instantiate">>, _This, Args) ->
     Context = <<"WebAssembly.instantiate()">>,
@@ -715,16 +848,17 @@ method(<<"WebAssembly">>, <<"promising">>, _This, Args) ->
            end,
     buoy_heap:function(Call, <<>>, length(Params), #{});
 method(<<"WebAssembly.Module">>, <<"imports">>, _This, Args) ->
-    {Res, _} = module_arg(arg(1, Args), <<"WebAssembly.Module.imports()">>),
+    {Res, _, Builtins} = module_arg(arg(1, Args), <<"WebAssembly.Module.imports()">>),
+    %% The imports that the builtins provide are not imports of the module.
     buoy_heap:new_array([buoy_heap:object(?OBJECT_PROTO, [{<<"module">>, buoy_ref_string:from_utf8(M)}, {<<"name">>, buoy_ref_string:from_utf8(N)}, {<<"kind">>, kind(T)}])
-                         || {M, N, T} <- buoy_native:wasm_imports(Res)]);
+                         || {M, N, T} <- buoy_native:wasm_imports(Res), not is_builtin_import(Builtins, M, N, T)]);
 method(<<"WebAssembly.Module">>, <<"exports">>, _This, Args) ->
-    {Res, _} = module_arg(arg(1, Args), <<"WebAssembly.Module.exports()">>),
+    {Res, _, _} = module_arg(arg(1, Args), <<"WebAssembly.Module.exports()">>),
     buoy_heap:new_array([buoy_heap:object(?OBJECT_PROTO, [{<<"name">>, buoy_ref_string:from_utf8(N)}, {<<"kind">>, kind(T)}])
                          || {N, T} <- buoy_native:wasm_exports(Res)]);
 method(<<"WebAssembly.Module">>, <<"customSections">>, _This, Args) ->
     Context = <<"WebAssembly.Module.customSections()">>,
-    {_, Bytes} = module_arg(arg(1, Args), Context),
+    {_, Bytes, _} = module_arg(arg(1, Args), Context),
     arg(2, Args) =:= undefined andalso buoy_ref:type_error(<<Context/binary, ": Argument 1 is required">>),
     Name = buoy_ref_string:to_utf8(buoy_ref:to_string(arg(2, Args))),
     buoy_heap:new_array([new_buffer(Data) || {N, Data} <- custom_sections(Bytes), N =:= Name]);
@@ -812,7 +946,10 @@ module_arg(M, Context) ->
     buoy_heap:slots(M).
 
 new_module(Bytes, Context) ->
-    module_object(compile(Bytes, Context), Bytes, intrinsic(<<"Module">>)).
+    new_module(Bytes, #{}, Context).
+
+new_module(Bytes, Builtins, Context) ->
+    module_object(compile(Bytes, Context), Bytes, Builtins, intrinsic(<<"Module">>)).
 
 %% A promise of the value of the fun that Start returns. Start runs now,
 %% so the bytes of a buffer are copied at the call, and its fun runs as a

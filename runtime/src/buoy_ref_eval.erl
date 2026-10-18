@@ -355,7 +355,13 @@ load_module(Main, Importer, Specifier, Mode) ->
             [Path, Modules] = binary:split(Rest, <<"\n">>),
             Loaded = load_modules(Modules, []),
             [{Entry, _} | _] = Loaded,
-            {program, Path, Entry, Entry:'$graph'()};
+            %% A module that the static graph already loaded is not its program's entry,
+            %% so it has no '$graph'/0; its modules are loaded already.
+            Graph = case erlang:function_exported(Entry, '$graph', 0) of
+                true -> Entry:'$graph'();
+                false -> []
+            end,
+            {program, Path, Entry, Graph};
         <<2, Diagnostic/binary>> ->
             case binary:split(Diagnostic, <<"\t">>) of
                 [Code, Message] -> {error, Code, Message};

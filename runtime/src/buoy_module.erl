@@ -6,7 +6,9 @@
 %% A compiled module exports the functions that
 %% crates/buoy-compiler/src/reference/linking.rs lists: '$module'/0,
 %% '$namespace'/0, '$resolve'/2, '$export'/1, and by format '$body'/0 (ESM),
-%% '$cjs'/0 (CommonJS), or '$json'/0 (JSON). A realm keeps its record of
+%% '$cjs'/0 (CommonJS), '$json'/0 (JSON), or '$wasm'/0 and '$body'/0
+%% (WebAssembly, a cyclic module record as in the ESM integration of
+%% WebAssembly, which Node's wasm translator follows). A realm keeps its record of
 %% each module in its process dictionary, so each module has one instance per
 %% realm, and a CommonJS module one entry in the realm's require.cache.
 -module(buoy_module).
@@ -19,6 +21,7 @@
 -export([dynamic_import/4, meta/1, require/2]).
 -export([define_namespace/3, broken/1]).
 -export([deferred_namespace/1, ensure_deferred/1]).
+-export([wasm_body/1, wasm_export/2, source_phase/1]).
 
 -define(RECORD(M), {'$buoy_module', M}).
 -define(NAMESPACE(M), {'$buoy_namespace', M}).
@@ -30,6 +33,9 @@
 -define(CACHE, '$buoy_require_cache').
 -define(MAIN_MODULE, '$buoy_main_module').
 -define(ACTOR, '$buoy_actor_realm').
+-define(WASM_SOURCE(M), {'$buoy_wasm_source', M}).
+-define(WASM_INSTANCE(M), {'$buoy_wasm_instance', M}).
+-define(WASM_EXPORTS(M), {'$buoy_wasm_exports', M}).
 -define(WRITABLE, 1).
 -define(ENUMERABLE, 2).
 
@@ -99,8 +105,15 @@ info(M, Key) -> maps:get(Key, get(M, info)).
 
 kind(M) -> info(M, kind).
 
-%% The modules that M imports, without the phase: `{defer, R}` is an import defer.
-requests(M) -> [unphase(R) || R <- info(M, requests)].
+%% Whether M is a cyclic module record: an ES module or a WebAssembly module.
+is_cyclic(M) -> lists:member(kind(M), [esm, wasm]).
+
+%% The modules that M imports, without the phase: `{defer, R}` is an import
+%% defer. An `import source` links and evaluates nothing.
+requests(M) -> [unphase(R) || R <- info(M, requests), not is_source(R)].
+
+is_source({source, _}) -> true;
+is_source(_) -> false.
 
 unphase({defer, R}) -> R;
 unphase(R) -> R.
@@ -119,7 +132,12 @@ link_graph(M, Marked) ->
         new ->
             set(M, status, linking),
             Marked1 = lists:foldl(fun(R, Acc) -> link_graph(R, Acc) end, [M | Marked], requests(M)),
-            case info(M, error) of
+            Sources = [R || {source, R} <- info(M, requests), kind(R) =/= wasm],
+            Error0 = case {info(M, error), Sources} of
+                {none, [R | _]} -> {<<"SyntaxError">>, undefined, no_source_message(R)};
+                {E0, _} -> E0
+            end,
+            case Error0 of
                 none ->
                     Marked1;
                 Error ->
@@ -191,9 +209,9 @@ inner_evaluate(M, Index) ->
         evaluating ->
             Index;
         _ ->
-            case kind(M) of
-                esm -> inner_evaluate_esm(M, Index);
-                _ -> evaluate_foreign(M), Index
+            case is_cyclic(M) of
+                true -> inner_evaluate_esm(M, Index);
+                false -> evaluate_foreign(M), Index
             end
     end.
 
@@ -236,6 +254,7 @@ inner_evaluate_esm(M, Index) ->
 %% only the modules with top-level await that it reaches.
 evaluation_requests(M) ->
     lists:foldl(fun({defer, R}, Acc) -> add_new(gather_async(R, []), Acc);
+                   ({source, _}, Acc) -> Acc;
                    (R, Acc) -> add_new([R], Acc)
                 end, [], info(M, requests)).
 
@@ -252,7 +271,7 @@ gather_async(M, Found, Seen) ->
             {Found, Seen};
         false ->
             Seen1 = [M | Seen],
-            case kind(M) =:= esm andalso get(M, status) of
+            case is_cyclic(M) andalso get(M, status) of
                 S when S =:= evaluating; S =:= evaluated; S =:= evaluating_async; S =:= false ->
                     {Found, Seen1};
                 _ ->
@@ -268,8 +287,8 @@ gather_async(M, Found, Seen) ->
 
 required(M, R, Index) ->
     Index1 = inner_evaluate(R, Index),
-    case kind(R) of
-        esm ->
+    case is_cyclic(R) of
+        true ->
             Required = case get(R, status) of
                 evaluating ->
                     set(M, ancestor, min(get(M, ancestor), get(R, ancestor))),
@@ -288,7 +307,7 @@ required(M, R, Index) ->
                 _ ->
                     ok
             end;
-        _ ->
+        false ->
             ok
     end,
     Index1.
@@ -638,8 +657,6 @@ dynamic_import(From, Specifier, Options, Phase) ->
     try
         Text = buoy_ref:to_string(Specifier),
         check_options(Options),
-        Phase =:= source andalso
-            buoy_heap:throw_error('SyntaxError', buoy_ref_string:concat([<<"Source phase import object is not defined for module '">>, Text, <<"'">>])),
         Target = case target(From, Text, import) of
             {_Path, Module} when is_atom(Module), Module =/= none -> Module;
             {builtin, Name} -> {builtin, Name};
@@ -650,6 +667,9 @@ dynamic_import(From, Specifier, Options, Phase) ->
         Loaded = case {Phase, Target} of
             {defer, {builtin, _}} -> Target;
             {defer, _} -> {defer, Target};
+            {source, {builtin, Builtin}} ->
+                buoy_heap:throw_error('SyntaxError', buoy_ref_string:concat([<<"Source phase import object is not defined for module 'node:">>, Builtin, <<"'">>]));
+            {source, _} -> {source, Target};
             _ -> Target
         end,
         buoy_jobs:enqueue(fun() -> load_dynamic(Loaded, Resolve, Reject) end)
@@ -664,6 +684,8 @@ load_dynamic(Target, Resolve, Reject) ->
         case Target of
             {builtin, B} ->
                 Resolve(builtin_namespace(B));
+            {source, M} ->
+                Resolve(source_phase(M));
             {defer, M} ->
                 link_graph(M),
                 Evaluation = buoy_jobs:all([evaluate(D) || D <- gather_async(M, [])]),
@@ -757,6 +779,162 @@ normalize(Path) ->
                            (Part, Acc) -> [Part | Acc]
                         end, [], binary:split(Path, <<"/">>, [global])),
     iolist_to_binary([[<<"/">>, P] || P <- lists:reverse(Parts)]).
+
+%%% WebAssembly modules
+
+%% The source object of M: its WebAssembly.Module, one per realm, so that every
+%% `import source` of M and its instance share it. A JavaScript module has none.
+-spec source_phase(module()) -> term().
+source_phase(M) ->
+    case erlang:get(?WASM_SOURCE(M)) of
+        undefined ->
+            kind(M) =:= wasm orelse
+                buoy_heap:throw_error('SyntaxError', no_source_message(M)),
+            WebAssembly = buoy_ref_realm:global(<<"WebAssembly">>),
+            Constructor = buoy_heap:get(WebAssembly, <<"Module">>),
+            Bytes = M:'$wasm'(),
+            Buffer = buoy_ref_buffer:allocate(byte_size(Bytes)),
+            buoy_ref_buffer:write(Buffer, 0, Bytes),
+            %% The options of Node's wasm translator.
+            Options = buoy_heap:object(?OBJECT_PROTO, [
+                {<<"builtins">>, buoy_heap:new_array([<<"js-string">>])},
+                {<<"importedStringConstants">>, <<"wasm:js/string-constants">>}]),
+            Module = try buoy_heap:construct(Constructor, [Buffer, Options], Constructor)
+                     catch error:{'$throw', E} -> erlang:error({'$throw', with_path(E, M)})
+                     end,
+            erlang:put(?WASM_SOURCE(M), Module),
+            Module;
+        Module ->
+            Module
+    end.
+
+no_source_message(M) ->
+    buoy_ref_string:concat([<<"Source phase import object is not defined for module '">>, file_url(info(M, path)), <<"'">>]).
+
+%% errPath(url) + ': ' + the message, as the translator prefixes a CompileError.
+with_path(E, M) ->
+    case buoy_heap:is_object(E) of
+        true ->
+            Message = buoy_ref:to_string(buoy_heap:get(E, <<"message">>)),
+            Prefixed = buoy_ref_string:concat([info(M, path), <<": ">>, Message]),
+            buoy_heap:set(E, <<"message">>, Prefixed),
+            %% V8 formats the stack when it is first read, so its header shows the new message.
+            case buoy_heap:get(E, <<"stack">>) of
+                Stack when ?IS_STRING(Stack), Message =/= <<>> ->
+                    [Old, New, Text] = [buoy_ref_string:to_utf8(S) || S <- [Message, Prefixed, Stack]],
+                    buoy_heap:set(E, <<"stack">>, buoy_ref_string:from_utf8(binary:replace(Text, Old, New)));
+                _ ->
+                    ok
+            end,
+            E;
+        false ->
+            E
+    end.
+
+%% Node's wasm translator: the import and export names that the ESM
+%% integration reserves throw a LinkError, the imports of the instance are the
+%% namespaces of the modules that they name, with the globals of a WebAssembly
+%% instance unwrapped, and each export keeps the value of its global.
+-spec wasm_body(module()) -> undefined.
+wasm_body(M) ->
+    Module = source_phase(M),
+    WebAssembly = buoy_ref_realm:global(<<"WebAssembly">>),
+    Constructor = buoy_heap:get(WebAssembly, <<"Module">>),
+    Url = file_url(info(M, path)),
+    Describe = fun(Fn) ->
+        [{buoy_heap:get(D, <<"module">>), buoy_heap:get(D, <<"name">>), buoy_heap:get(D, <<"kind">>)}
+         || D <- buoy_heap:array_items(buoy_heap:call(buoy_heap:get(Constructor, Fn), Constructor, [Module]))]
+    end,
+    Imports = [{Mod, Name, Kind} || {Mod, Name, Kind} <- Describe(<<"imports">>), not is_string_builtin(Mod)],
+    LinkError = fun(Parts) ->
+        Class = buoy_heap:get(WebAssembly, <<"LinkError">>),
+        erlang:error({'$throw', buoy_heap:construct(Class, [buoy_ref_string:concat(Parts)], Class)})
+    end,
+    lists:foreach(fun({Mod, Name, _}) ->
+        starts_with(Mod, <<"wasm-js:">>) andalso
+            LinkError([<<"Invalid Wasm import \"">>, Mod, <<"\" in ">>, Url]),
+        (starts_with(Name, <<"wasm:">>) orelse starts_with(Name, <<"wasm-js:">>)) andalso
+            LinkError([<<"Invalid Wasm import name \"">>, Mod, <<"\" in ">>, Url])
+    end, Imports),
+    Exports = [{Name, Kind} || {_, Name, Kind} <- [{undefined, buoy_heap:get(D, <<"name">>), buoy_heap:get(D, <<"kind">>)}
+                                                    || D <- buoy_heap:array_items(buoy_heap:call(buoy_heap:get(Constructor, <<"exports">>), Constructor, [Module]))]],
+    lists:foreach(fun({Name, _}) ->
+        (starts_with(Name, <<"wasm:">>) orelse starts_with(Name, <<"wasm-js:">>)) andalso
+            LinkError([<<"Invalid Wasm export name \"">>, Name, <<"\" in ">>, Url])
+    end, Exports),
+    experimental_warning(<<"Importing WebAssembly module instances">>),
+    Modules = lists:usort([Mod || {Mod, _, _} <- Imports]),
+    ImportObject = buoy_heap:object(?OBJECT_PROTO,
+                                    [{Mod, import_namespace(M, Mod, [Name || {Mod1, Name, <<"global">>} <- Imports, Mod1 =:= Mod])}
+                                     || Mod <- Modules]),
+    Instance = buoy_heap:construct(buoy_heap:get(WebAssembly, <<"Instance">>), [Module, ImportObject],
+                                   buoy_heap:get(WebAssembly, <<"Instance">>)),
+    InstanceExports = buoy_heap:get(Instance, <<"exports">>),
+    erlang:put(?WASM_INSTANCE(M), InstanceExports),
+    Snapshot = lists:foldl(
+        fun({Name, Kind}, Acc) ->
+            Value = buoy_heap:get(InstanceExports, Name),
+            case Kind of
+                <<"global">> ->
+                    %% A v128 global has no JavaScript value: its binding stays undefined.
+                    try Acc#{Name => buoy_heap:get(Value, <<"value">>)}
+                    catch error:{'$throw', _} -> Acc
+                    end;
+                _ ->
+                    Acc#{Name => Value}
+            end
+        end, #{}, Exports),
+    erlang:put(?WASM_EXPORTS(M), Snapshot),
+    undefined.
+
+%% The value of an export of a WebAssembly module, or the error of a binding
+%% that its instance did not initialize yet.
+-spec wasm_export(module(), term()) -> term().
+wasm_export(M, Key) ->
+    case erlang:get(?WASM_EXPORTS(M)) of
+        undefined -> uninitialized(Key, fun() -> undefined end);
+        Snapshot -> maps:get(Key, Snapshot, undefined)
+    end.
+
+%% The namespace that an import of module Mod of the WebAssembly module M
+%% reads. The globals that a WebAssembly instance exports stay
+%% WebAssembly.Global objects, as the ESM integration links them.
+import_namespace(M, Mod, Globals) ->
+    case target(M, Mod, import) of
+        {builtin, Name} ->
+            builtin_namespace(Name);
+        {_Path, Target} when is_atom(Target), Target =/= none ->
+            Namespace = namespace(Target),
+            case kind(Target) =:= wasm andalso erlang:get(?WASM_INSTANCE(Target)) of
+                Exports when Exports =/= false, Exports =/= undefined ->
+                    Wrapped = buoy_heap:object(null, [{K, buoy_heap:get(Namespace, K)}
+                                                      || K <- buoy_heap:enumerable_keys(Namespace), ?IS_STRING(K)]),
+                    [buoy_heap:set(Wrapped, G, buoy_heap:get(Exports, G)) || G <- Globals],
+                    Wrapped;
+                _ ->
+                    Namespace
+            end;
+        {error, Code, Message} ->
+            throw_coded('Error', Code, Message);
+        _ ->
+            throw_coded('Error', <<"ERR_MODULE_NOT_FOUND">>,
+                        buoy_ref_string:concat([<<"Cannot find module '">>, Mod, <<"' imported from ">>, info(M, path)]))
+    end.
+
+is_string_builtin(Mod) -> Mod =:= <<"wasm:js-string">> orelse Mod =:= <<"wasm:js/string-constants">>.
+
+starts_with(Text, Prefix) when is_binary(Text) ->
+    binary:longest_common_prefix([Text, Prefix]) =:= byte_size(Prefix);
+starts_with(_, _) ->
+    false.
+
+%% emitExperimentalWarning of internal/util.
+experimental_warning(Feature) ->
+    buoy_node:ensure(),
+    {_, Require} = buoy_node:loaders(),
+    Util = buoy_heap:call(Require, undefined, [<<"internal/util">>]),
+    _ = buoy_heap:call(buoy_heap:get(Util, <<"emitExperimentalWarning">>), Util, [Feature]),
+    ok.
 
 %%% import.meta
 

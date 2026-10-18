@@ -86,6 +86,12 @@ pub fn lower_unit(
             functions: linking.json_functions(),
         }));
     }
+    if module.kind == Kind::Wasm {
+        return Ok(erlang::print_module(&erlang::Module {
+            name: module.name.clone(),
+            functions: linking.wasm_functions(),
+        }));
+    }
     lower(linking, None, &[])
 }
 
@@ -273,6 +279,7 @@ fn lower_one_script(
             path,
             name: name.to_owned(),
             source,
+            bytes: Vec::new(),
             kind: Kind::Esm,
             record: graph::Record::default(),
             requests: Vec::new(),

@@ -11,6 +11,8 @@ pub enum Expr {
     Float(f64),
     /// A UTF-8 binary literal.
     Binary(String),
+    /// A binary literal of raw bytes, such as a WebAssembly module.
+    Bytes(Vec<u8>),
     /// A JavaScript string of the reference engine, as UTF-16 code units. It prints as a
     /// one-byte binary when every unit is at most 0xFF, else as `{'$u16', Binary}` with two
     /// bytes per unit (contract, "Reference semantics").
@@ -165,6 +167,7 @@ impl Expr {
             | Self::Integer(_)
             | Self::Float(_)
             | Self::Binary(_)
+            | Self::Bytes(_)
             | Self::JsString(_)
             | Self::FunRef { .. } => true,
             Self::Tuple(items) | Self::List(items) => items.iter().all(Self::is_trivial),
@@ -317,6 +320,7 @@ impl Printer {
             }
             Expr::Float(value) => self.out.push_str(&float(*value)),
             Expr::Binary(text) => self.out.push_str(&binary(text)),
+            Expr::Bytes(bytes) => self.out.push_str(&raw_binary(bytes)),
             Expr::JsString(units) => self.out.push_str(&js_string(units)),
             Expr::Tuple(items) => self.elements("{", items, "}"),
             Expr::List(items) => self.elements("[", items, "]"),
@@ -603,6 +607,27 @@ pub fn atom(name: &str) -> String {
     }
     quoted.push('\'');
     quoted
+}
+
+/// `<<"...">>` of raw bytes: a string literal reads each character as one byte, so the
+/// printable ASCII stays and every other byte is a three-digit octal escape.
+fn raw_binary(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2 + 6);
+    out.push_str("<<\"");
+    for &byte in bytes {
+        match byte {
+            b'"' | b'\\' => {
+                out.push('\\');
+                out.push(char::from(byte));
+            }
+            b' '..=b'~' => out.push(char::from(byte)),
+            _ => {
+                let _ = write!(out, "\\{byte:03o}");
+            }
+        }
+    }
+    out.push_str("\">>");
+    out
 }
 
 fn binary(text: &str) -> String {
