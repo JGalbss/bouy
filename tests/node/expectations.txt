@@ -447,10 +447,10 @@ parallel/test-child-process-http-socket-leak.js skip
 parallel/test-child-process-internal.js pass
 parallel/test-child-process-ipc-next-tick.js pass
 parallel/test-child-process-ipc.js pass
-parallel/test-child-process-kill.js timeout
+parallel/test-child-process-kill.js pass
 parallel/test-child-process-net-reuseport.js pass
 parallel/test-child-process-no-deprecation.js pass
-parallel/test-child-process-pipe-dataflow.js fail
+parallel/test-child-process-pipe-dataflow.js timeout
 parallel/test-child-process-promisified.js fail
 parallel/test-child-process-prototype-tampering.mjs pass
 parallel/test-child-process-recv-handle.js fail
@@ -459,7 +459,7 @@ parallel/test-child-process-send-after-close.js pass
 parallel/test-child-process-send-cb.js pass
 parallel/test-child-process-send-keep-open.js fail
 parallel/test-child-process-send-returns-boolean.js fail
-parallel/test-child-process-send-type-error.js timeout
+parallel/test-child-process-send-type-error.js pass
 parallel/test-child-process-send-utf8.js pass
 parallel/test-child-process-server-close.js fail
 parallel/test-child-process-set-blocking.js pass
@@ -1321,7 +1321,7 @@ parallel/test-fs-promises-file-handle-read.js pass
 parallel/test-fs-promises-file-handle-readFile.js pass
 parallel/test-fs-promises-file-handle-readLines.mjs pass
 parallel/test-fs-promises-file-handle-stat.js pass
-parallel/test-fs-promises-file-handle-stream.js fail
+parallel/test-fs-promises-file-handle-stream.js pass
 parallel/test-fs-promises-file-handle-sync.js pass
 parallel/test-fs-promises-file-handle-truncate.js pass
 parallel/test-fs-promises-file-handle-write.js pass
@@ -1466,7 +1466,7 @@ parallel/test-fs-watch-recursive-linux-parallel-remove.js pass
 parallel/test-fs-watch-recursive-promise.js pass
 parallel/test-fs-watch-recursive-symlink.js pass
 parallel/test-fs-watch-recursive-sync-write.js pass
-parallel/test-fs-watch-recursive-update-file.js timeout
+parallel/test-fs-watch-recursive-update-file.js pass
 parallel/test-fs-watch-recursive-validate.js pass
 parallel/test-fs-watch-recursive-watch-file.js pass
 parallel/test-fs-watch-ref-unref.js pass
@@ -1502,7 +1502,7 @@ parallel/test-fs-write-stream-file-handle-2.js pass
 parallel/test-fs-write-stream-file-handle.js pass
 parallel/test-fs-write-stream-flush.js pass
 parallel/test-fs-write-stream-fs.js pass
-parallel/test-fs-write-stream-patch-open.js timeout
+parallel/test-fs-write-stream-patch-open.js pass
 parallel/test-fs-write-stream-throw-type-error.js pass
 parallel/test-fs-write-stream.js pass
 parallel/test-fs-write-sync-optional-params.js pass
@@ -3732,7 +3732,7 @@ parallel/test-trace-env.js fail
 parallel/test-trace-events-all.js pass
 parallel/test-trace-events-api-worker-disabled.js fail
 parallel/test-trace-events-api.js skip
-parallel/test-trace-events-async-hooks-dynamic.js fail
+parallel/test-trace-events-async-hooks-dynamic.js pass
 parallel/test-trace-events-async-hooks-worker.js fail
 parallel/test-trace-events-async-hooks.js pass
 parallel/test-trace-events-binding.js pass
@@ -3741,7 +3741,7 @@ parallel/test-trace-events-category-used.js pass
 parallel/test-trace-events-console.js fail
 parallel/test-trace-events-dynamic-enable-workers-disabled.js pass
 parallel/test-trace-events-dynamic-enable.js skip
-parallel/test-trace-events-environment.js fail
+parallel/test-trace-events-environment.js pass
 parallel/test-trace-events-file-pattern.js pass
 parallel/test-trace-events-fs-async.js fail
 parallel/test-trace-events-fs-sync.js fail
