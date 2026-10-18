@@ -286,6 +286,8 @@ dispatch(Port, Limit) ->
     case state(Port) of
         #{state := open, queue := [close | _]} ->
             close(Port);
+        #{state := closing, queue := [close | _]} ->
+            ok;
         #{state := Open, started := true, queue := [Message | Rest]} = S when Open =:= open; Open =:= closing ->
             save(Port, S#{queue := Rest}),
             try emit(Port, Message)
