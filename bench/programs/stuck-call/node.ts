@@ -4,7 +4,7 @@
 // AbortSignal.timeout(20), passes it to the tool, and races the call against it. The tool,
 // like many third-party clients, ignores the signal, and nothing else can stop it: the
 // agent gets a TimeoutError, and the tool keeps its timer and its buffer. No
-// worker_threads. The calls and the measurements are those of the Bouy program.
+// worker_threads. The calls and the measurements are those of the Buoy program.
 import { Actor, sleep } from "../node-actor.ts";
 
 const AGENTS = 100;

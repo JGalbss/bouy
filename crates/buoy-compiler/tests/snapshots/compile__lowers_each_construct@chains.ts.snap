@@ -1,0 +1,88 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/chains.ts
+---
+-module(buoy@chains).
+-export(['__init__'/0, chains/1, orphaned/1, caught/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+chains(Args) ->
+    Groups@1 = buoy_rt:arg(1, Args),
+    Word@1 = buoy_rt:arg(2, Args),
+    Counts@1 = buoy_map:new([]),
+    {T@1, Counts@2} = buoy_rt:mutate(Counts@1, <<"set">>, [<<"a">>, 1]),
+    {_, Counts@3} = buoy_rt:mutate(Counts@2, <<"set">>, [<<"b">>, 2]),
+    T@3 = buoy_rt:get(Word@1, 0),
+    T@4 = buoy_rt:call_method(Groups@1, <<"get">>, [T@3]),
+    {T@5, T@6} = buoy_rt:mutate(T@4, <<"push">>, [Word@1]),
+    Groups@2 = erlang:element(2, buoy_rt:mutate(Groups@1, <<"set">>, [T@3, T@6])),
+    T@7 = buoy_rt:call_method(Groups@2, <<"get">>, [Word@1]),
+    {_, {Groups@4}} = case T@7 of
+        null -> {undefined, {Groups@2}};
+        undefined -> {undefined, {Groups@2}};
+        T@10 ->
+            {T@8, T@9} = buoy_rt:mutate(T@7, <<"push">>, [Word@1]),
+            Groups@3 = erlang:element(2, buoy_rt:mutate(Groups@2, <<"set">>, [Word@1, T@9])),
+            {T@8, {Groups@3}}
+    end,
+    Buckets@1 = #{},
+    T@12 = buoy_rt:get(Buckets@1, Word@1),
+    Buckets@2 = buoy_rt:set(Buckets@1, Word@1, case T@12 of
+        T@13 when T@13 =:= null; T@13 =:= undefined -> [];
+        _ -> T@12
+    end),
+    T@14 = buoy_rt:get(Buckets@2, Word@1),
+    {T@15, T@16} = buoy_rt:mutate(T@14, <<"push">>, [1]),
+    Buckets@3 = buoy_rt:set(Buckets@2, Word@1, T@16),
+    Target@1 = #{<<"a">> => 1},
+    T@17 = buoy_object:assign([Target@1, #{<<"b">> => 2}]),
+    {_, Target@2} = {T@17, T@17},
+    Ys@1 = [1],
+    {_, Ys@2} = buoy_rt:mutate(Ys@1, <<"push">>, [2]),
+    buoy_rt:add(
+        buoy_rt:add(buoy_rt:get(Counts@3, <<"size">>), buoy_rt:get(Ys@2, <<"length">>)),
+        buoy_rt:get(Target@2, <<"a">>)
+    ).
+
+orphaned(Args) ->
+    O@1 = #{<<"k">> => 1},
+    O@2 = #{<<"k">> => 100},
+    buoy_rt:set(O@1, <<"k">>, 5),
+    buoy_rt:get(O@2, <<"k">>).
+
+caught(Args) ->
+    Tokens@1 = buoy_rt:arg(1, Args),
+    Pos@1 = 0,
+    Sum@1 = 0,
+    T@1 = erlang:make_ref(),
+    erlang:put(T@1, {Pos@1, Sum@1}),
+    T@5 = try
+        Loop@1 = fun Loop@1({Pos@2, Sum@2}) ->
+            case buoy_rt:lt(Pos@2, buoy_rt:get(Tokens@1, <<"length">>)) of
+                true ->
+                    T@2 = buoy_rt:to_number(Pos@2),
+                    Pos@3 = buoy_rt:add(T@2, 1),
+                    erlang:put(T@1, {Pos@3, Sum@2}),
+                    Sum@3 = buoy_rt:add(Sum@2, buoy_json:parse([buoy_rt:get(Tokens@1, T@2)])),
+                    erlang:put(T@1, {Pos@3, Sum@3}),
+                    Loop@1({Pos@3, Sum@3});
+                false -> {break, {Pos@2, Sum@2}}
+            end
+        end,
+        {break, {Pos@4, Sum@4}} = Loop@1({Pos@1, Sum@1}),
+        erlang:put(T@1, {Pos@4, Sum@4}),
+        {next, {Pos@4, Sum@4}}
+    catch
+        error:T@3:T@4 ->
+            {Pos@5, Sum@5} = erlang:get(T@1),
+            {return, Pos@5}
+    after
+        erlang:erase(T@1)
+    end,
+    case T@5 of
+        {next, {Pos@6, Sum@6}} -> Sum@6;
+        {return, T@6} -> T@6
+    end.

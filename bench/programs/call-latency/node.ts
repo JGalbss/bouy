@@ -1,6 +1,6 @@
 // Call latency, plain Node: 100,000 sequential calls to one mailbox actor from
 // node-actor.ts, each awaited before the next. No worker_threads. performance.now() gives
-// the percentiles of single calls, which the Bouy program cannot measure.
+// the percentiles of single calls, which the Buoy program cannot measure.
 import { Actor, percentile } from "../node-actor.ts";
 
 const CALLS = 100000;

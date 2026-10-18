@@ -1,5 +1,5 @@
 // The request that reaches the server: a model whose name ends in "echo" answers with the
-// request body and headers, so this program compares what Node and Bouy send.
+// request body and headers, so this program compares what Node and Buoy send.
 import { generateText, jsonSchema, tool } from "ai";
 import { createOpenAI, openai } from "@ai-sdk/openai";
 import { show } from "./lib/show.ts";

@@ -1,0 +1,105 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/classes.ts
+---
+-module(buoy@classes).
+-export(['__init__'/0, 'Account#new'/1, 'Account#deposit'/2, 'Account##log'/2, 'Account#balance'/2, 'Account#labels'/2, 'Account##label'/2, 'Account#dispatch'/3, 'Overdrawn#new'/1, 'Plain#new'/1, 'Missing#new'/1, open/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+'Account#new'(Args) ->
+    Owner@1 = buoy_rt:arg(1, Args),
+    This = #{'#balance' => 0, <<"owner">> => undefined, <<"history">> => []},
+    This@1 = buoy_rt:set(This, <<"owner">>, Owner@1),
+    This@1.
+
+'Account#deposit'(This, Args) ->
+    Amount@1 = buoy_rt:arg(1, Args),
+    T@1 = maps:get('#balance', This, undefined),
+    This@1 = maps:put('#balance', buoy_rt:add(T@1, Amount@1), This),
+    {_, This@2} = 'Account##log'(This@1, [Amount@1]),
+    {maps:get('#balance', This@2, undefined), This@2}.
+
+'Account##log'(This, Args) ->
+    Amount@1 = buoy_rt:arg(1, Args),
+    T@1 = buoy_rt:get(This, <<"history">>),
+    {T@2, T@3} = buoy_rt:mutate(T@1, <<"push">>, [Amount@1]),
+    This@1 = buoy_rt:set(This, <<"history">>, T@3),
+    {undefined, This@1}.
+
+'Account#balance'(This, Args) -> {maps:get('#balance', This, undefined), This}.
+
+'Account#labels'(This, Args) ->
+    {
+        buoy_rt:call_method(buoy_rt:get(This, <<"history">>), <<"map">>, [fun(Args@1) ->
+            Amount@1 = buoy_rt:arg(1, Args@1),
+            erlang:element(1, 'Account##label'(This, [Amount@1]))
+        end]),
+        This
+    }.
+
+'Account##label'(This, Args) ->
+    Amount@1 = buoy_rt:arg(1, Args),
+    {buoy_rt:concat([buoy_rt:get(This, <<"owner">>), <<":">>, Amount@1]), This}.
+
+'Account#dispatch'(<<"deposit">>, This, Args) -> 'Account#deposit'(This, Args);
+'Account#dispatch'(<<"balance">>, This, Args) -> 'Account#balance'(This, Args);
+'Account#dispatch'(<<"labels">>, This, Args) -> 'Account#labels'(This, Args);
+'Account#dispatch'(Method, _This, _Args) ->
+    buoy_error:throw(
+        <<"TypeError">>,
+        buoy_rt:concat([<<"Account.">>, Method, <<" is not a function">>])
+    ).
+
+'Overdrawn#new'(Args) ->
+    Needed@1 = buoy_rt:arg(1, Args),
+    This@1 = buoy_error:new(
+        [{'$class', buoy@classes, <<"Overdrawn">>}, {'$class', buoy_error, <<"Error">>}],
+        buoy_rt:concat([<<"needs ">>, Needed@1, <<" more">>]),
+        #{}
+    ),
+    This@2 = buoy_rt:set(This@1, <<"name">>, <<"Overdrawn">>),
+    This@3 = buoy_rt:set(This@2, <<"needed">>, Needed@1),
+    This@3.
+
+'Plain#new'(Args) ->
+    This@1 = buoy_error:new(
+        [{'$class', buoy@classes, <<"Plain">>}, {'$class', buoy_error, <<"Error">>}],
+        case buoy_rt:arg(1, Args) of
+            undefined -> <<>>;
+            T@1 -> buoy_rt:to_string(T@1)
+        end,
+        case buoy_rt:arg(2, Args) of
+            T@2 when erlang:is_map(T@2) andalso erlang:is_map_key(<<"cause">>, T@2) -> #{<<"cause">> => maps:get(<<"cause">>, T@2)};
+            _ -> #{}
+        end
+    ),
+    This@1.
+
+'Missing#new'(Args) ->
+    T@1 = case buoy_rt:arg(1, Args) of
+        undefined -> #{};
+        T@2 -> T@2
+    end,
+    This@1 = buoy_error:new(
+        [{'$class', buoy@classes, <<"Missing">>}, {'$class', buoy_error, <<"Error">>}],
+        case buoy_rt:get(T@1, <<"message">>) of
+            undefined -> <<>>;
+            T@3 -> buoy_rt:to_string(T@3)
+        end,
+        buoy_rt:set(T@1, <<"_tag">>, <<"Missing">>)
+    ),
+    This@1.
+
+open(Args) ->
+    Owner@1 = buoy_rt:arg(1, Args),
+    Ref@1 = buoy:spawn([{'$class', buoy@classes, <<"Account">>}, #{<<"args">> => [Owner@1]}]),
+    buoy_rt:call_method(Ref@1, <<"add">>, [1]),
+    [
+        Ref@1,
+        'Overdrawn#new'([5]),
+        'Plain#new'([<<"x">>]),
+        'Missing#new'([#{<<"id">> => <<"1">>}])
+    ].

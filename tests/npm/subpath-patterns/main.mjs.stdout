@@ -1,4 +1,4 @@
 root alpha beta gamma
-@bouytest/patterns/features/internal/secret throws ERR_PACKAGE_PATH_NOT_EXPORTED
-@bouytest/patterns/utils/gamma throws ERR_PACKAGE_PATH_NOT_EXPORTED
-@bouytest/patterns/src/index.js throws ERR_PACKAGE_PATH_NOT_EXPORTED
+@buoytest/patterns/features/internal/secret throws ERR_PACKAGE_PATH_NOT_EXPORTED
+@buoytest/patterns/utils/gamma throws ERR_PACKAGE_PATH_NOT_EXPORTED
+@buoytest/patterns/src/index.js throws ERR_PACKAGE_PATH_NOT_EXPORTED

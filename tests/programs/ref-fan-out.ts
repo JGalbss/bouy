@@ -1,4 +1,4 @@
-import { spawn, type Ref } from "bouy";
+import { spawn, type Ref } from "buoy";
 
 class Inventory {
   #stock = new Map<string, number>();

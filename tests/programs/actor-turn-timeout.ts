@@ -1,4 +1,4 @@
-import { child, inspect, spawn, supervise } from "bouy";
+import { child, inspect, spawn, supervise } from "buoy";
 
 class Looper {
   #turns = 0;

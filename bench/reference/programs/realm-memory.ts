@@ -1,6 +1,6 @@
 // The memory of an actor with an empty realm: spawn 10,000 actors of an empty class.
-// Reference semantics only: heapStats and vmMemory are prototype probes of "bouy".
-import { heapStats, spawn, vmMemory } from "bouy";
+// Reference semantics only: heapStats and vmMemory are prototype probes of "buoy".
+import { heapStats, spawn, vmMemory } from "buoy";
 
 class Empty {
   stats(): unknown {

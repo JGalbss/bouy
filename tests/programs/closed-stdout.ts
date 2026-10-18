@@ -1,5 +1,5 @@
 // An actor prints far more lines than a reader that stops after the first one takes.
-import { spawn } from "bouy";
+import { spawn } from "buoy";
 
 class Printer {
   print(n: number): number {

@@ -1,0 +1,7 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+assertion_line: 111
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy206-nested-yield.ts
+---
+buoy206-nested-yield.ts:5:5: BUOY206: `yield*` runs an Effect only directly in a generator function; a nested function cannot yield, so make it return an Effect, such as `Effect.gen(function* () { ... })`, and `yield*` that

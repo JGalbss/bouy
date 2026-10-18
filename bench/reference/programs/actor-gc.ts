@@ -1,7 +1,7 @@
 // A long-running actor: 50,000 turns, each allocating garbage and replacing one of 1,000
 // live entries. The realm collects between turns; the heap must stay bounded.
-// Reference semantics only: heapStats is a prototype probe of "bouy".
-import { heapStats, spawn } from "bouy";
+// Reference semantics only: heapStats is a prototype probe of "buoy".
+import { heapStats, spawn } from "buoy";
 
 class Cache {
   entries = new Map<number, { key: number; payload: number[] }>();

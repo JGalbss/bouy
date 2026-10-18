@@ -1,0 +1,8 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy205-stale-this.ts
+---
+buoy205-stale-this.ts:3:27: BUOY205: this closure reads `this`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument
+buoy205-stale-this.ts:12:25: BUOY205: this closure reads `this`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument
+buoy205-stale-this.ts:18:36: BUOY205: `this.inc` changes `this`, so it cannot be a value: a function value keeps a copy of `this` and would lose the change; call `this.inc(...)` instead

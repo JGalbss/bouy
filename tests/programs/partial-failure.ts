@@ -1,4 +1,4 @@
-import { sleep, spawn } from "bouy";
+import { sleep, spawn } from "buoy";
 
 class Checker {
   check(url: string, delay: number): string {

@@ -1,5 +1,5 @@
 // Actors get copies of arguments and results; each actor has its own state.
-import { spawn } from "bouy";
+import { spawn } from "buoy";
 
 class Store {
   items: string[];

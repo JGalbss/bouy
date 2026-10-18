@@ -6,8 +6,8 @@
 
 This record makes two decisions:
 
-1. Bouy compiles TypeScript to Erlang and runs it on BEAM, with no Node, no V8, and no global JavaScript event loop. This decision is already built. The record states its context and its evidence (section 2).
-2. Inside each actor, JavaScript gets reference semantics: mutable objects with identity, on a heap that belongs to one BEAM process. Today Bouy gives value semantics. The owner chose reference semantics. Section 3 records the evidence and the cost, and section 6 is the plan.
+1. Buoy compiles TypeScript to Erlang and runs it on BEAM, with no Node, no V8, and no global JavaScript event loop. This decision is already built. The record states its context and its evidence (section 2).
+2. Inside each actor, JavaScript gets reference semantics: mutable objects with identity, on a heap that belongs to one BEAM process. Today Buoy gives value semantics. The owner chose reference semantics. Section 3 records the evidence and the cost, and section 6 is the plan.
 
 This record replaces the "now" and "target" decisions of [ADR 0001](0001-execution-architecture.md), which chose Node. [ADR 0002](0002-language-and-runtime-split.md) is already superseded. When Phase 3 of section 6 ends, sections 3, 6, 7, 10, 12, 13, and 14 of [the contract](../design/beam-runtime.md) change in the same commit. [migration-plan.md](../design/migration-plan.md) already defers to this record.
 
@@ -28,20 +28,20 @@ Every number in this record comes from one of the sources below, and each senten
 | Key | Source                                   | Where                                                                                                                                                             | Conditions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | --- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | E1  | The benchmark run of today's runtime     | `bench/results/2026-10-16-apple-m5-pro.json`                                                                                                                      | Commit `cabaaa9-dirty`, OTP 29.1.1, Node v25.9.0, Apple M5 Pro, 5 runs, 1-minute load average 10.29 to 14.32 (median 10.85). This record quotes medians. Commit `e5f6b88` later cut several of these costs, but no results file records its numbers, so this record does not quote them.                                                                                                                                                                                                                                              |
-| E2  | The package census, 2026-10-16           | The report is [npm-package-census.md](../research/npm-package-census.md). The analyzer and raw output were scratch files and are not kept.                        | oxc 0.154 static analysis, and V8 block coverage under Node 25.9, of effect 4.0.5, zod 4.6.7, ai 7.0.142, @ai-sdk/openai 4.0.95, their dependencies, and `tests/migration/before`. Path codes: G is `Effect.gen` with `runPromise`. T is the Effect code of `tests/migration/before/src/reports/report-service.ts`. S is a Schema decode. A is `generateText` with one tool against `runtime/test/bouy_fake_openai.erl`. Z and J are a zod parse with and without its JIT. Le, Ls, and Lz only import effect, effect/Schema, and zod. |
+| E2  | The package census, 2026-10-16           | The report is [npm-package-census.md](../research/npm-package-census.md). The analyzer and raw output were scratch files and are not kept.                        | oxc 0.154 static analysis, and V8 block coverage under Node 25.9, of effect 4.0.5, zod 4.6.7, ai 7.0.142, @ai-sdk/openai 4.0.95, their dependencies, and `tests/migration/before`. Path codes: G is `Effect.gen` with `runPromise`. T is the Effect code of `tests/migration/before/src/reports/report-service.ts`. S is a Schema decode. A is `generateText` with one tool against `runtime/test/buoy_fake_openai.erl`. Z and J are a zod parse with and without its JIT. Le, Ls, and Lz only import effect, effect/Schema, and zod. |
 | E3  | The reference-semantics prototype report | Commits `a45dc64`, `29b426a`, and `4180144` on the branch `worktree-wf_e7ab31de-84b-2`. Scripts: `bench/reference/run.sh heap` and `bench/reference/programs.sh`. | The load average stayed between 17 and 73 during the session, so every time is an upper bound. The programs ran under the debug CLI, and they time themselves, so compile time is not counted. No file in `bench/results` records these runs yet (Phase 0).                                                                                                                                                                                                                                                                           |
-| E4  | The usage studies                        | [migration-plan.md §17](../design/migration-plan.md#17-sources). The data is in `/tmp/bouy-scan/` and `/tmp/effect-oracle/`.                                      | The TypeScript study: 37 repos (16 agent apps and SDKs, 8 Effect apps, 13 Node services), 41,693 production `.ts` files, 5.87M lines. The Effect study: 646 files from 500 repos that import `effect`.                                                                                                                                                                                                                                                                                                                                |
+| E4  | The usage studies                        | [migration-plan.md §17](../design/migration-plan.md#17-sources). The data is in `/tmp/buoy-scan/` and `/tmp/effect-oracle/`.                                      | The TypeScript study: 37 repos (16 agent apps and SDKs, 8 Effect apps, 13 Node services), 41,693 production `.ts` files, 5.87M lines. The Effect study: 646 files from 500 repos that import `effect`.                                                                                                                                                                                                                                                                                                                                |
 
 ## 2. Decision 1: compile TypeScript to Erlang and run it on BEAM
 
 ### 2.1 Context
 
-ADR 0001 chose option C: compiled TypeScript on Node or Bun, with many actors in one isolate and a later pool of worker threads. It scored option A, "TypeScript to BEAM bytecode", 1 for compatibility, because Bouy would have to rebuild JavaScript semantics. The owner then set the runtime: "ideally no js event loop at all we abandon for a new runtime", then "no node v8 deps". Commit `c5486a9` removed the Node runtime.
+ADR 0001 chose option C: compiled TypeScript on Node or Bun, with many actors in one isolate and a later pool of worker threads. It scored option A, "TypeScript to BEAM bytecode", 1 for compatibility, because Buoy would have to rebuild JavaScript semantics. The owner then set the runtime: "ideally no js event loop at all we abandon for a new runtime", then "no node v8 deps". Commit `c5486a9` removed the Node runtime.
 
 The BEAM implementation, by commit:
 
 - `9de1942`: the OTP runtime. JavaScript values are Erlang terms. Each actor is a `gen_server` with a supervisor, a bounded mailbox, and call-cycle detection.
-- `e1e3fc7` and `c257dd2`: the Rust compiler from TypeScript to Erlang source, and `bouy run` on one VM.
+- `e1e3fc7` and `c257dd2`: the Rust compiler from TypeScript to Erlang source, and `buoy run` on one VM.
 - `31648e7` and `6e5ad5b`: subsets of effect 4.0.5, ai 7.0.142, and @ai-sdk/openai 4.0.95, written again in Erlang and checked against the output of the real packages on Node.
 - `8b58da7`: the benchmark harness that produced E1.
 - `e5f6b88`: cheaper spawns, calls, restarts, fan-out, and startup.
@@ -54,9 +54,9 @@ The BEAM implementation, by commit:
 
 ### 2.3 Evidence
 
-E1 runs each suite as a Bouy program and as the closest plain Node program. The Node actors are objects with a queue on one event loop, and a Node message passes by reference ([bench/README.md](../../bench/README.md)).
+E1 runs each suite as a Buoy program and as the closest plain Node program. The Node actors are objects with a queue on one event loop, and a Node message passes by reference ([bench/README.md](../../bench/README.md)).
 
-| Suite (E1)                                                                | Metric                            | Bouy           | Node               |
+| Suite (E1)                                                                | Metric                            | Buoy           | Node               |
 | ------------------------------------------------------------------------- | --------------------------------- | -------------- | ------------------ |
 | `fairness`: 8 actors run CPU-bound loops for 2 s, and the main code pings | ping p99 and maximum              | 1.0 ms, 1.0 ms | 2,000 ms, 2,000 ms |
 | `fairness`                                                                | pings in the 2 s window           | 994            | 1                  |
@@ -67,11 +67,11 @@ E1 runs each suite as a Bouy program and as the closest plain Node program. The 
 | `payload`: one 990-byte object per message                                | messages per second               | 480,769        | 13,097,290         |
 | `startup`                                                                 | wall time                         | 199.7 ms       | 100.6 ms           |
 
-The fairness rows are the reason for BEAM. With eight CPU-bound actors running, the worst ping took 1.0 ms on Bouy in the median run and 2.0 ms in the worst run. The single Node loop let one ping through in 2 s. Every other row costs Bouy time or memory against plain Node objects, which have no isolation, no preemption, and no supervision.
+The fairness rows are the reason for BEAM. With eight CPU-bound actors running, the worst ping took 1.0 ms on Buoy in the median run and 2.0 ms in the worst run. The single Node loop let one ping through in 2 s. Every other row costs Buoy time or memory against plain Node objects, which have no isolation, no preemption, and no supervision.
 
 ### 2.4 Decision
 
-Bouy compiles TypeScript to Erlang and runs it on one BEAM VM. The product has no Node, V8, or Bun dependency, and no global event loop. Each actor is a BEAM process. Node runs only as the test oracle and as the benchmark baseline ([AGENTS.md](../../AGENTS.md)).
+Buoy compiles TypeScript to Erlang and runs it on one BEAM VM. The product has no Node, V8, or Bun dependency, and no global event loop. Each actor is a BEAM process. Node runs only as the test oracle and as the benchmark baseline ([AGENTS.md](../../AGENTS.md)).
 
 ## 3. Decision 2: value semantics or reference semantics per actor
 
@@ -82,18 +82,18 @@ Today every value is an immutable Erlang term ([contract §3](../design/beam-run
 - An object is a map, and an array is a list. A mutation rebinds the variable that holds the value (§6).
 - `let` compiles to single-assignment versions, and loops compile to recursive funs (§12).
 - `await` blocks the process, and no promise queue exists (§7).
-- A closure copies the values that it captures, so a closure that writes a captured variable is error BOUY205. Getters, `arguments`, `var`, inheritance other than errors, regular expressions, and timers are BOUY206 or BOUY207 (§10).
+- A closure copies the values that it captures, so a closure that writes a captured variable is error BUOY205. Getters, `arguments`, `var`, inheritance other than errors, regular expressions, and timers are BUOY206 or BUOY207 (§10).
 - `effect`, `ai`, and `@ai-sdk/openai` compile to Erlang modules that implement subsets of those packages (§13, §14).
 
 Value semantics isolates actors by construction. No value changes in place, so a message cannot share mutable state.
 
 ### 3.2 Options
 
-**V. Value semantics (today).** Bouy keeps the subset and grows it. The compiler rejects each construct that it cannot lower and names a rewrite. Bouy implements each library again in Erlang. migration-plan.md is this plan.
+**V. Value semantics (today).** Buoy keeps the subset and grows it. The compiler rejects each construct that it cannot lower and names a rewrite. Buoy implements each library again in Erlang. migration-plan.md is this plan.
 
 **H. Two semantics.** User code keeps value semantics, and code in `node_modules` gets reference semantics. Each call across the line converts its arguments and its result.
 
-**R. Reference semantics per actor.** Bouy becomes a JavaScript engine built on BEAM:
+**R. Reference semantics per actor.** Buoy becomes a JavaScript engine built on BEAM:
 
 - One BEAM process is one JavaScript realm. Its heap holds mutable objects with identity, prototypes, getters and setters, and symbols.
 - A local variable that a closure writes lives in a heap cell. Other locals stay Erlang variables.
@@ -104,9 +104,9 @@ Value semantics isolates actors by construction. No value changes in place, so a
 
 E3 built R behind a flag:
 
-- `bouy_heap` keeps the objects of a realm in the process dictionary under integer ids. Built-in objects live in `persistent_term`, and every realm shares them.
-- `bouy_jobs` orders promise jobs as V8 does. The turns of one actor never interleave, even across `await`.
-- `bouy run --semantics reference` compiles one module that imports only from "bouy".
+- `buoy_heap` keeps the objects of a realm in the process dictionary under integer ids. Built-in objects live in `persistent_term`, and every realm shares them.
+- `buoy_jobs` orders promise jobs as V8 does. The turns of one actor never interleave, even across `await`.
+- `buoy run --semantics reference` compiles one module that imports only from "buoy".
 
 ### 3.3 Comparison
 
@@ -120,7 +120,7 @@ E3 built R behind a flag:
 | Risk and remaining work | Low for each feature, but no path to requirement 2 of goal.md                                                       | Both lowerings, and a boundary whose meaning nobody has defined | About 4 to 6 engineer-months to pass effect's own tests at a usable speed (E3). The ai stack and the Node built-ins have no estimate. |
 | Debuggability           | Actor state is Erlang maps. An error prints without stack frames (contract §3).                                     | Both models                                                     | Actor state is a heap of integer ids. Continuation-passing code has no JavaScript call stack (E2 §7).                                 |
 
-**Existing code and npm.** E2 §8 counts the constructs in the four packages that BOUY205, BOUY206, and BOUY207 reject. The counts are 879 closure writes to captured variables, 669 uses of `this` outside class methods, 342 regular expression literals, 243 uses of `globalThis`, and 220 getters and setters. The list continues with 200 uses of `arguments`, 183 `extends` clauses, 102 static members, 5 async generators, and 4 `for await` loops. So the value compiler cannot load any of the four packages.
+**Existing code and npm.** E2 §8 counts the constructs in the four packages that BUOY205, BUOY206, and BUOY207 reject. The counts are 879 closure writes to captured variables, 669 uses of `this` outside class methods, 342 regular expression literals, 243 uses of `globalThis`, and 220 getters and setters. The list continues with 200 uses of `arguments`, 183 `extends` clauses, 102 static members, 5 async generators, and 4 `for await` loops. So the value compiler cannot load any of the four packages.
 
 Application code has the same shapes (E4). Classes with `new` appear in 34 of the 37 repos (11,156 sites), inheritance from program classes in 32 (3,435 classes), static members in 30, getters and setters in 29, and regular expressions in 36. Closures that change captured state appear in 35, and promises, `new Promise`, or timers in 34 to 36. Aliasing shapes that value semantics changes without an error appear in 17 to 36 of the 37 repos. 11 probe programs that today's compiler accepts print different output from Node 25.9.0. [testing.md](../design/testing.md) names such silent divergence as the worst failure. H keeps it in user code.
 
@@ -160,7 +160,7 @@ Under R, the real package runs. E2 lists what each path adds. Path G needs gener
 | Build 1M objects with `Array.from`, then sum        | 812–1,860 ms (median 951) | 179–218 ms                         | 56–225 ms  |
 | 1M method calls that change `this`, inside an actor | 108–126 ms                | 85–94 ms                           | 1–2 ms     |
 | 1M calls through a 2-level prototype chain          | 94–107 ms                 | no inheritance                     | 4 ms       |
-| 1M increments of a captured counter                 | 28–37 ms                  | BOUY205                            | 1–2 ms     |
+| 1M increments of a captured counter                 | 28–37 ms                  | BUOY205                            | 1–2 ms     |
 | The same loop with a pure function                  | 6–7 ms                    | 8–9 ms                             | 1 ms       |
 
 R is faster than V on some rows and slower on others. V's largest lead is `Array.from` (179–218 ms against 812–1,860 ms). R's largest lead is `push`, because V copies the whole list on each push. Against Node, the pure-function loop takes 6 to 9 times as long on either semantics, and R's push, method, prototype, and counter loops take 14 to 126 times as long. These ratios are quotients of the E3 table. In E3's words, every property read is "a hash lookup, then a tuple, then a map", and loops over 1M objects cost 300 to 500 ns per item.
@@ -194,11 +194,11 @@ The total is about 4 to 6 engineer-months to pass effect's own test suite at a u
 
 E3 adds one risk from the compiler: leaving a `try` that holds an `await` needs a hand-back to the caller, so a loop inside such a `try` grows the stack until its next `await`.
 
-**Debuggability.** No option has a JavaScript debugger on BEAM (ADR 0001 §3). Under V, `observer` and `sys:get_state/1` show actor state as Erlang maps, and an error prints without stack frames (contract §3). Under R, actor state is a set of integer ids in the process dictionary, so a person needs a heap printer to read it. E3's `bouy_ref_console` already walks the heap for `console.log`. Continuation-passing code has no JavaScript call stack (E2 §7). An `undefined` stack is cheap, and effect accepts it. An accurate stack needs a shadow stack, which adds a cost to every call.
+**Debuggability.** No option has a JavaScript debugger on BEAM (ADR 0001 §3). Under V, `observer` and `sys:get_state/1` show actor state as Erlang maps, and an error prints without stack frames (contract §3). Under R, actor state is a set of integer ids in the process dictionary, so a person needs a heap printer to read it. E3's `buoy_ref_console` already walks the heap for `console.log`. Continuation-passing code has no JavaScript call stack (E2 §7). An `undefined` stack is cheap, and effect accepts it. An accurate stack needs a shadow stack, which adds a cost to every call.
 
 ### 3.4 Decision
 
-Bouy adopts R: reference semantics, with one JavaScript realm in each BEAM process.
+Buoy adopts R: reference semantics, with one JavaScript realm in each BEAM process.
 
 R wins on the evidence:
 
@@ -228,7 +228,7 @@ What R costs:
 | The turns of one actor never interleave           | Yes: `await` blocks the process                          | Yes, also across `await` (`tests/reference/actor-turns.ts`) | Yes                                                   |
 | A loop in one actor cannot starve the others      | Yes: fairness p99 1.0 ms (E1)                            | Expected, because the code is Erlang. Unmeasured.           | The fairness suite under R stays at or below E1's p99 |
 | Package code yields                               | No package code runs                                     | Yes, it compiles to Erlang too                              | Yes                                                   |
-| The collector cannot stall other actors           | BEAM collects each process on its own                    | Expected: `bouy_heap` is Erlang code. Unmeasured.           | Measured under load                                   |
+| The collector cannot stall other actors           | BEAM collects each process on its own                    | Expected: `buoy_heap` is Erlang code. Unmeasured.           | Measured under load                                   |
 | A fault restarts only its actor                   | Yes (`tests/programs`)                                   | Untested                                                    | Yes, with a new realm                                 |
 | Class instances keep their class across actors    | Errors only: an error keeps its class list (contract §3) | No: plain data only                                         | The clone format of Phase 3 decides                   |
 | `Promise.all` runs its elements in parallel       | Yes: one process each (contract §7)                      | No: one job queue                                           | No; parallel work uses actors                         |
@@ -238,14 +238,14 @@ What R costs:
 
 Easy:
 
-- Existing TypeScript and npm packages run unchanged as the engine grows. Each package's own tests become Bouy tests (testing.md §5.8).
-- One implementation of effect and ai exists: the packages. The Erlang modules `bouy_effect`, `bouy_schedule`, `bouy_schema`, `bouy_effect_console`, `bouy_duration`, `bouy_ai`, and `bouy_ai_openai` go away in Phases 2 and 3.
+- Existing TypeScript and npm packages run unchanged as the engine grows. Each package's own tests become Buoy tests (testing.md §5.8).
+- One implementation of effect and ai exists: the packages. The Erlang modules `buoy_effect`, `buoy_schedule`, `buoy_schema`, `buoy_effect_console`, `buoy_duration`, `buoy_ai`, and `buoy_ai_openai` go away in Phases 2 and 3.
 - The compiler front end, the CLI, the actor runtime, supervision, mailboxes, and the benchmark harness stay.
-- Diagnostics BOUY205 to BOUY207 shrink to the features that Bouy has not built yet, as goal.md requirement 6 asks.
+- Diagnostics BUOY205 to BUOY207 shrink to the features that Buoy has not built yet, as goal.md requirement 6 asks.
 
 Hard:
 
-- Bouy owns ECMAScript conformance. Each new edition is Bouy's work (ADR 0001 §3).
+- Buoy owns ECMAScript conformance. Each new edition is Buoy's work (ADR 0001 §3).
 - The contract changes at sections 3, 6, 7, 10, 12, 13, and 14 when the default changes (Phase 3). Until then, two lowerings exist, and CI runs both.
 - Phases 2 to 4 of migration-plan.md stop. They guard value semantics, which R replaces. Its Phase 1 diagnostics stay useful for the features that are not built yet.
 - The census and the usage studies live in `/tmp`. Phase 0 moves them into the repository before a later document cites them.
@@ -260,7 +260,7 @@ The documentation must state:
 
 ## 6. Plan
 
-**Reference project: Bun.** The owner: "good probs ref project is bun". Bun already runs npm on a runtime that is not Node. So each phase first reads how Bun builds the same thing (oven-sh/bun: `src/js/node/` and `src/js/internal/` for the built-ins, `test/` for the tiers, the docs for the CLI) and follows it, unless BEAM forces a difference that the phase records. For the built-ins, Bouy prefers to run MIT-licensed JavaScript, from Node's own `lib/` at the pinned tag or from Bun's `src/js`, on top of native bindings written in Erlang. Node's tests check Node's exact error codes and messages, and Node's own `lib/` produces them.
+**Reference project: Bun.** The owner: "good probs ref project is bun". Bun already runs npm on a runtime that is not Node. So each phase first reads how Bun builds the same thing (oven-sh/bun: `src/js/node/` and `src/js/internal/` for the built-ins, `test/` for the tiers, the docs for the CLI) and follows it, unless BEAM forces a difference that the phase records. For the built-ins, Buoy prefers to run MIT-licensed JavaScript, from Node's own `lib/` at the pinned tag or from Bun's `src/js`, on top of native bindings written in Erlang. Node's tests check Node's exact error codes and messages, and Node's own `lib/` produces them.
 
 Three numbers measure each phase. [testing.md](../design/testing.md) defines each one:
 
@@ -286,7 +286,7 @@ Phase 2 ends with an estimate for Phases 3 and 4, and Phase 4 ends with one for 
 
 | #   | Concern                     | Existing test or benchmark                                                                                                             | To add                                                                                      |
 | --- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 1   | JavaScript semantics        | `tests/reference` (27 programs) and `crates/bouy-cli/tests/reference.rs`; `runtime/test/bouy_heap_tests.erl` and `bouy_jobs_tests.erl` | test262, and every program of `tests/conformance` under R                                   |
+| 1   | JavaScript semantics        | `tests/reference` (27 programs) and `crates/buoy-cli/tests/reference.rs`; `runtime/test/buoy_heap_tests.erl` and `buoy_jobs_tests.erl` | test262, and every program of `tests/conformance` under R                                   |
 | 2   | Fault isolation             | `tests/programs`, under V                                                                                                              | The same programs under R. A restarted actor has a new realm.                               |
 | 3   | State isolation             | `tests/reference/actor-state.ts`                                                                                                       | A sender changes an object after the send, and the receiver keeps the old copy.             |
 | 4   | Preemption                  | The `fairness` suite, under V (E1)                                                                                                     | The `fairness` suite under R. A ping during a collection of 1M objects in another actor.    |

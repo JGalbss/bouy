@@ -1,4 +1,4 @@
-# The Node built-ins that crates/bouy-cli/build.rs compiles into the runtime, one id per
+# The Node built-ins that crates/buoy-cli/build.rs compiles into the runtime, one id per
 # line, as Node's `lib/` names them. The code of an id is runtime/node/<id>.js when that file
 # exists, else runtime/vendor/node/lib/<id>.js. docs/design/node-builtins.md is the manual.
 _http_agent
@@ -147,7 +147,7 @@ internal/js_stream_socket
 internal/legacy/processbinding
 internal/linkedlist
 internal/locks
-internal/main/bouy
+internal/main/buoy
 internal/main/check_syntax
 internal/main/embedding
 internal/main/eval_stdin

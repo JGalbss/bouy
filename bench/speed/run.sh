@@ -12,7 +12,7 @@
 #   SPEED_JS      the JavaScript baselines as name=path pairs, such as
 #                 "bun=$(command -v bun) node=/opt/homebrew/bin/node". The product never
 #                 runs on them (AGENTS.md); they are the baselines of goal.md requirement 11.
-#   BOUY_ENGINE   optional: the bouy CLI built from the engine branch. Its programs have no
+#   BUOY_ENGINE   optional: the buoy CLI built from the engine branch. Its programs have no
 #                 process.argv yet, so the script writes a copy of each kernel with smaller
 #                 sizes, and the report scales the time to the same unit of work.
 #   ROUNDS        rounds of the single mode, 5 by default
@@ -28,7 +28,7 @@ set -eu
 mode=${1:?usage: run.sh single|multicore|preempt <results.jsonl>}
 out=${2:?usage: run.sh single|multicore|preempt <results.jsonl>}
 here=$(cd "$(dirname "$0")" && pwd)
-build=${TMPDIR:-/tmp}/bouy-speed-build
+build=${TMPDIR:-/tmp}/buoy-speed-build
 rounds=${ROUNDS:-5}
 erl=${ERL:-erl}
 erlc=${ERLC:-erlc}
@@ -37,11 +37,11 @@ cores=$(getconf _NPROCESSORS_ONLN)
 mkdir -p "$build/ebin" "$build/engine"
 "$erlc" -o "$build/ebin" "$here"/erlang/*.erl
 cargo build --quiet --release --manifest-path "$here/native/Cargo.toml" --target-dir "$build/target"
-for library in "$build"/target/release/libbouy_speed_native.dylib "$build"/target/release/libbouy_speed_native.so; do
+for library in "$build"/target/release/libbuoy_speed_native.dylib "$build"/target/release/libbuoy_speed_native.so; do
     if [ -f "$library" ]; then cp "$library" "$build/speed_native.so"; fi
 done
 export SPEED_NATIVE_LIB="$build/speed_native"
-export BOUY_MAX_MEMORY=4G
+export BUOY_MAX_MEMORY=4G
 
 load() { uptime | sed 's/.*load averages*: *//; s/,* .*//'; }
 
@@ -103,9 +103,9 @@ single() {
                 record native "$round" vm -run speed_native main "$kernel" 3 5
                 ;;
             esac
-            if [ -n "${BOUY_ENGINE:-}" ]; then
+            if [ -n "${BUOY_ENGINE:-}" ]; then
                 engine_copy "$kernel"
-                record engine "$round" "$BOUY_ENGINE" run --semantics reference "$build/engine/$kernel.ts"
+                record engine "$round" "$BUOY_ENGINE" run --semantics reference "$build/engine/$kernel.ts"
             fi
         done
     done

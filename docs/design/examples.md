@@ -28,7 +28,7 @@ Each example says what BEAM does better than the Node event loop.
 
 **Let it crash: an outcome keeps state, a crash restarts the actor** (starter)
 
-A Stock actor counts apples and writes each change to a Journal actor. A request to reserve 5 apples when 1 is left returns OutOfStock, a Data.TaggedEnum value, and Stock keeps its count. A restock of -1 is a bug, so the method throws. The caller's promise rejects with ActorFailed, Bouy restarts Stock under the same ref with a new instance, and the new instance replays the journal, so the next restock answers 2 and not 1. Why BEAM: the throw ends one process, and the runtime rebuilds it under the same ref. In Node the throw only rejects one promise: the shared object keeps whatever state the method reached, and nothing rebuilds it.
+A Stock actor counts apples and writes each change to a Journal actor. A request to reserve 5 apples when 1 is left returns OutOfStock, a Data.TaggedEnum value, and Stock keeps its count. A restock of -1 is a bug, so the method throws. The caller's promise rejects with ActorFailed, Buoy restarts Stock under the same ref with a new instance, and the new instance replays the journal, so the next restock answers 2 and not 1. Why BEAM: the throw ends one process, and the runtime rebuilds it under the same ref. In Node the throw only rejects one promise: the shared object keeps whatever state the method reached, and nothing rebuilds it.
 
 Shows:
 
@@ -41,7 +41,7 @@ Shows:
 
 Needs from the engine:
 
-- Ref calls as promises: a call sends a copy of the arguments and returns a promise of a copy of the reply, and replies from other actors arrive while a turn awaits (spike: bouy_jobs actor_call; not in main)
+- Ref calls as promises: a call sends a copy of the arguments and returns a promise of a copy of the reply, and replies from other actors arrive while a turn awaits (spike: buoy_jobs actor_call; not in main)
 - A turn lasts until the method's promise settles, and the next call waits (spike)
 - A throw or a rejected method promise crashes the actor: ActorFailed to the caller, one stderr line, and a restart under the same ref with the original arguments (subset runtime; port to the new engine)
 - Message copies keep a ref as a ref and turn a Data.TaggedEnum value into a plain object with _tag (planned)
@@ -64,10 +64,10 @@ Sketch:
 
 ```ts
 // An outcome keeps an actor's state. A thrown error crashes the actor, and
-// Bouy restarts it under the same ref with a new instance. The new instance
+// Buoy restarts it under the same ref with a new instance. The new instance
 // replays a journal, so the restart loses no stock.
 import { Console, Data, Effect } from "effect";
-import { inspect, spawn, type Ref } from "bouy";
+import { inspect, spawn, type Ref } from "buoy";
 
 type Reservation = Data.TaggedEnum<{
   Reserved: { readonly left: number };
@@ -171,7 +171,7 @@ restock 1: 2 left
 Journal: running, restarts 0
 Stock: running, restarts 1
 stderr:
-bouy: Stock stock crashed: RangeError: restock needs a positive amount, got -1
+buoy: Stock stock crashed: RangeError: restock needs a positive amount, got -1
 exit status: 0
 ```
 
@@ -179,7 +179,7 @@ exit status: 0
 
 **Adopt one class: unchanged Node code becomes an actor** (starter)
 
-SessionStore is Node code as many services have it: it extends EventEmitter, parses session ids with a regex with named groups, has a getter, and sweeps old sessions with setInterval. It has a bug: a malformed id makes the sweep emit "error" with no listener, so emit() throws inside a timer callback. The one change for Bouy is spawn(SessionStore) in place of new SessionStore(). The bug now crashes one actor, which restarts under the same ref with an empty store, and the program goes on. Why BEAM: in Node an error in a timer callback ends the process and every request in it, so the same program with new SessionStore() stops after "sessions after the bad id: 4" with exit status 1. An actor crashes alone and comes back under the same ref.
+SessionStore is Node code as many services have it: it extends EventEmitter, parses session ids with a regex with named groups, has a getter, and sweeps old sessions with setInterval. It has a bug: a malformed id makes the sweep emit "error" with no listener, so emit() throws inside a timer callback. The one change for Buoy is spawn(SessionStore) in place of new SessionStore(). The bug now crashes one actor, which restarts under the same ref with an empty store, and the program goes on. Why BEAM: in Node an error in a timer callback ends the process and every request in it, so the same program with new SessionStore() stops after "sessions after the bad id: 4" with exit status 1. An actor crashes alone and comes back under the same ref.
 
 Shows:
 
@@ -187,7 +187,7 @@ Shows:
 - Adopting an actor is a one-line change: spawn(Class, { args }) in place of new Class(...)
 - An uncaught error in an actor's timer callback crashes that actor alone
 - A restart loses the in-memory state: the store comes back empty, and let-it-crash shows the replay fix
-- sessions.ts imports nothing from bouy
+- sessions.ts imports nothing from buoy
 
 Needs from the engine:
 
@@ -217,7 +217,7 @@ Sketch:
 // bug crashes one actor, which restarts under the same ref, and the program
 // goes on.
 import { Console, Effect } from "effect";
-import { inspect, spawn } from "bouy";
+import { inspect, spawn } from "buoy";
 import { SessionStore } from "./sessions.ts";
 
 const program = Effect.gen(function* () {
@@ -242,8 +242,8 @@ const program = Effect.gen(function* () {
 await Effect.runPromise(program);
 
 // ===== examples/adopt-one-class/sessions.ts =====
-// A session store written for Node, as many services have one. Bouy runs this
-// file unchanged: it imports nothing from bouy.
+// A session store written for Node, as many services have one. Buoy runs this
+// file unchanged: it imports nothing from buoy.
 import { EventEmitter } from "node:events";
 
 const SESSION_ID = /^(?<user>[a-z]+)-(?<n>\d+)$/;
@@ -294,7 +294,7 @@ sessions after the bad id: 4
 sessions after the restart: 0
 sessions: running, restarts 1
 stderr:
-bouy: SessionStore sessions crashed: Error: bad session id: Bad Id!
+buoy: SessionStore sessions crashed: Error: bad session id: Bad Id!
 exit status: 0
 ```
 
@@ -320,7 +320,7 @@ Needs from the engine:
 - A rejected method promise crashes the actor and rejects the caller with ActorFailed, whose String() the AI SDK puts in the tool-error part (subset semantics; port)
 - Module bindings per actor: each Translator's process sets up model and the ai module state that it uses (new rule)
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Request 1 (manager): step 1 calls spanish and french with "Good morning" and italian with ""; step 2 is text. Each translator request has no tools, so the server answers "Hello! System: Translate into <language>. You said: <text>". Request 2: step 1 calls italian with "Good night".
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Request 1 (manager): step 1 calls spanish and french with "Good morning" and italian with ""; step 2 is text. Each translator request has no tools, so the server answers "Hello! System: Translate into <language>. You said: <text>". Request 2: step 1 calls italian with "Good night".
 
 // examples/translation-desk/script.ts
 // The fake OpenAI server of the tests reads `CALLS <steps>` at the end of the
@@ -361,7 +361,7 @@ Sketch:
 // processes, the Italian crash fails one tool call, and the supervisor
 // restarts that translator alone.
 import { Console, Effect, Schema } from "effect";
-import { child, inspect, supervise, type Ref } from "bouy";
+import { child, inspect, supervise, type Ref } from "buoy";
 import { generateText, isStepCount, tool, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { firstRequest, secondRequest } from "./script.ts";
@@ -441,7 +441,7 @@ Translator spanish: restarts 0
 Translator french: restarts 0
 Translator italian: restarts 1
 stderr:
-bouy: Translator italian crashed: Error: nothing to translate
+buoy: Translator italian crashed: Error: nothing to translate
 exit status: 0
 ```
 
@@ -487,7 +487,7 @@ Sketch:
 // is an actor. The BEAM scheduler preempts the endless loop, and the finalizer
 // of the request stops that actor in the middle of the loop.
 import { Console, Data, Effect } from "effect";
-import { inspect, spawn, stop } from "bouy";
+import { inspect, spawn, stop } from "buoy";
 
 class JobCrashed extends Data.TaggedError("JobCrashed")<{ readonly n: number }> {}
 
@@ -574,7 +574,7 @@ sum(100000) = 5000050000
 heartbeat: never late by 250 ms
 still running: heartbeat
 stderr:
-bouy: SumJob sum 13 crashed: Error: unlucky input
+buoy: SumJob sum 13 crashed: Error: unlucky input
 exit status: 0
 ```
 
@@ -596,11 +596,11 @@ Needs from the engine:
 
 - Preemption inside a long synchronous tool call, also inside array methods such as filter and includes (spike for loops; the builtins must stay preemptible)
 - Output.object of the real ai package with an Effect Schema (planned)
-- Fake OpenAI server: a step that is a string is the text answer (new: a 10-line change to runtime/test/bouy_fake_openai.erl, checked on a copy)
+- Fake OpenAI server: a step that is a string is the text answer (new: a 10-line change to runtime/test/buoy_fake_openai.erl, checked on a copy)
 - supervise, child, ActorFailed, and a restart after a crash (subset runtime; port)
 - An error crosses an actor boundary as a copy with its name and message, so the crash line prints AI_NoObjectGeneratedError (new rule for messages)
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Three concurrent reviewer requests with Output.object. Security and performance call read_diff in step 1 and answer a JSON report in step 2; performance reports severity "critical", which the schema rejects, so the AI SDK throws AI_NoObjectGeneratedError. Maintainability calls complexity in step 1 and answers its report in step 2.
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Three concurrent reviewer requests with Output.object. Security and performance call read_diff in step 1 and answer a JSON report in step 2; performance reports severity "critical", which the schema rejects, so the AI SDK throws AI_NoObjectGeneratedError. Maintainability calls complexity in step 1 and answers its report in step 2.
 
 // examples/code-review-panel/script.ts
 // The fake OpenAI server of the tests reads `CALLS <steps>` at the end of the
@@ -644,7 +644,7 @@ Sketch:
 // while the scan runs. Each section settles on its own, so one unreadable
 // report does not sink the panel.
 import { Console, Effect, Schema } from "effect";
-import { child, supervise, type Ref } from "bouy";
+import { child, supervise, type Ref } from "buoy";
 import { generateText, isStepCount, Output, tool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { diff, scripted, scripts } from "./script.ts";
@@ -751,7 +751,7 @@ performance: unreadable report
 security: high, the SQL query is built from request input
 security and performance finished while the scan ran
 stderr:
-bouy: Reviewer performance crashed: AI_NoObjectGeneratedError: No object generated: response did not match schema.
+buoy: Reviewer performance crashed: AI_NoObjectGeneratedError: No object generated: response did not match schema.
 exit status: 0
 ```
 
@@ -774,7 +774,7 @@ Needs from the engine:
 
 - Bounded mailboxes with backpressure and reject (subset runtime; port)
 - cast(ref).method() returns a promise: it resolves when the mailbox takes the message, waits while a backpressure mailbox is full, and rejects with MailboxFull for a full reject mailbox (new: the subset's cast was synchronous)
-- ActorFailed, ActorStopped, and MailboxFull exported from bouy as classes, so instanceof works in the caller (new)
+- ActorFailed, ActorStopped, and MailboxFull exported from buoy as classes, so instanceof works in the caller (new)
 - inspect() mailbox lengths that count the waiting messages, not the one in progress (subset runtime; port)
 - node:timers/promises (planned: item 3.10)
 
@@ -794,10 +794,10 @@ Sketch:
 ```ts
 // Fred Hebert, "Queues Don't Fix Overload": under too much load, a system must
 // block the producer (backpressure) or drop work (load shedding). A deep queue
-// only hides the overload until memory runs out. In Bouy, the mailbox option
+// only hides the overload until memory runs out. In Buoy, the mailbox option
 // of an actor makes the choice.
 import { Console, Effect } from "effect";
-import { cast, inspect, MailboxFull, spawn, stop, type Mailbox, type Ref } from "bouy";
+import { cast, inspect, MailboxFull, spawn, stop, type Mailbox, type Ref } from "buoy";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const policies: ReadonlyArray<readonly [string, Mailbox]> = [
@@ -896,7 +896,7 @@ Sketch:
 // react with the three supervision strategies of OTP. supervise() starts the
 // children in the order of the object, which rest-for-one depends on.
 import { Console, Effect } from "effect";
-import { child, inspect, supervise, type Strategy } from "bouy";
+import { child, inspect, supervise, type Strategy } from "buoy";
 
 class Musician {
   readonly #role: string;
@@ -968,15 +968,15 @@ jerk manager: one-for-all, restart budget 1
   drum: stopped, restarts 1
   keytar: stopped, restarts 1
 stderr:
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
-bouy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
+buoy: Musician drum crashed: Error: the drum played a false note
 exit status: 0
 ```
 
@@ -1000,7 +1000,7 @@ Needs from the engine:
 - Cheap module setup per actor: a new actor that imports ai makes its first model call well within the 500 ms hedge delay (new performance requirement; measure it in bench/)
 - fetch on BEAM (planned: item 3.8)
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Each question script makes step 1 call lookup_stock and step 2 answer with text. latencyMs makes the primary's toaster lookup wait 2000 ms; every other lookup waits 20 ms.
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Each question script makes step 1 call lookup_stock and step 2 answer with text. latencyMs makes the primary's toaster lookup wait 2000 ms; every other lookup waits 20 ms.
 
 // examples/hedged-answer/script.ts
 // The fake OpenAI server of the tests reads `CALLS <steps>` at the end of the
@@ -1043,7 +1043,7 @@ Sketch:
 // Each agent is an actor. Effect.race interrupts the loser, its finalizer
 // stops the loser's actor, and with it the slow tool that was still waiting.
 import { Console, Effect, Schema } from "effect";
-import { spawn, stop } from "bouy";
+import { spawn, stop } from "buoy";
 import { generateText, isStepCount, tool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -1151,7 +1151,7 @@ Needs from the engine:
 - Output.object with an Effect Schema, and the fake server's string steps (planned; the server change is new)
 - A Data.TaggedError yielded in Effect.fn as a typed failure (planned with the real effect package)
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Per turn, two concurrent requests. The guardrail request calls lookup_customer in step 1 and answers a JSON verdict in step 2 (allowed in turn 1, not allowed in turn 2). The agent request calls lookup_order in step 1 and issue_refund in step 2.
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". Per turn, two concurrent requests. The guardrail request calls lookup_customer in step 1 and answers a JSON verdict in step 2 (allowed in turn 1, not allowed in turn 2). The agent request calls lookup_order in step 1 and issue_refund in step 2.
 
 // examples/guardrail-tripwire/script.ts
 // The fake OpenAI server of the tests reads `CALLS <steps>` at the end of the
@@ -1199,7 +1199,7 @@ Sketch:
 // stops the agent's actor in the middle of its refund tool. The tool needs no
 // AbortSignal: its process ends, so it never reaches the ledger.
 import { Console, Data, Effect, Schema } from "effect";
-import { spawn, stop, type Ref } from "bouy";
+import { spawn, stop, type Ref } from "buoy";
 import { generateText, isStepCount, Output, tool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -1353,7 +1353,7 @@ Needs from the engine:
 - effect Array.groupBy, Schema.Literals, Schedule.exponential, and Schedule.spaced (planned with the real effect package)
 - Fake server string steps (new)
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). Every request to model fake-500 gets HTTP 500 with retry-after-ms: 0, an APICallError with isRetryable true. Every request to gpt-4o-mini answers its ticket's JSON route in step 1.
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). Every request to model fake-500 gets HTTP 500 with retry-after-ms: 0, an APICallError with isRetryable true. Every request to gpt-4o-mini answers its ticket's JSON route in step 1.
 
 // examples/ticket-lanes/script.ts
 // The fake OpenAI server of the tests reads `CALLS <steps>` at the end of the
@@ -1389,7 +1389,7 @@ Sketch:
 // Effect owns the retry policy: two retries on the primary model, then a
 // fallback model.
 import { Array as Arr, Console, Data, Effect, Schedule, Schema } from "effect";
-import { cast, MailboxFull, spawn, type Ref } from "bouy";
+import { cast, MailboxFull, spawn, type Ref } from "buoy";
 import { APICallError, generateText, Output } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { tenants } from "./script.ts";
@@ -1544,7 +1544,7 @@ Needs from the engine:
 - A closure that changes a captured array: save_note pushes to saved (spike: heap cells)
 - Effect 4's UnknownError from Effect.tryPromise without catch (planned with the real effect package)
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". The plan request answers a JSON plan with four subtopics in step 1. Each research request calls search in step 1 and save_note in step 2. searchSources has no entry for "hot code loading", so that search waits 2 s, and the 500 ms deadline stops the researcher before step 2.
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". The plan request answers a JSON plan with four subtopics in step 1. Each research request calls search in step 1 and save_note in step 2. searchSources has no entry for "hot code loading", so that search waits 2 s, and the 500 ms deadline stops the researcher before step 2.
 
 // examples/research-lead/script.ts
 import { setTimeout as sleep } from "node:timers/promises";
@@ -1617,7 +1617,7 @@ Sketch:
 // process with the search that still waits in it. The lead reports a gap on
 // time, and the slow source never adds a late note.
 import { Console, Effect, Schema } from "effect";
-import { spawn, stop, type Ref } from "bouy";
+import { spawn, stop, type Ref } from "buoy";
 import { generateText, isStepCount, Output, tool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { planScript, question, researchScripts, scripted, searchSources } from "./script.ts";
@@ -1763,13 +1763,13 @@ Shows:
 
 Needs from the engine:
 
-- Turns that span awaits never interleave: the second send() to one session waits for the first (spike: bouy_jobs queues calls while a turn is busy)
+- Turns that span awaits never interleave: the second send() to one session waits for the first (spike: buoy_jobs queues calls while a turn is busy)
 - ToolLoopAgent, hasToolCall, isStepCount, and responseMessages of the real ai package, built inside each Session actor (planned)
 - supervise, and a crash inside a tool's actor call that becomes a tool-error (subset runtime; port)
 - Programs of several modules whose actor classes live in an imported module (subset runtime; port)
 - Planned, not needed: streamText for streaming the replies, which also needs a server-sent-events mode in the fake server
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". One script covers every agent that answers a message, because the server counts steps from the last user message: anaSeat makes triage call transfer_to_seat_booking and then seat booking call change_seat; benBag goes through transfer_to_baggage to find_bag; anaNoFlight calls change_seat without a flight; benThanks and both Carol messages have no script, so the server greets with the agent's instructions.
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". One script covers every agent that answers a message, because the server counts steps from the last user message: anaSeat makes triage call transfer_to_seat_booking and then seat booking call change_seat; benBag goes through transfer_to_baggage to find_bag; anaNoFlight calls change_seat without a flight; benThanks and both Carol messages have no script, so the server greets with the agent's instructions.
 
 // examples/support-desk/script.ts
 // The fake OpenAI server of the tests reads `CALLS <steps>` at the end of the
@@ -1818,7 +1818,7 @@ Sketch:
 // conversation never interleave. A crash in the bookings backend fails one
 // tool call and restarts that backend, and every conversation goes on.
 import { Console, Effect } from "effect";
-import { child, inspect, spawn, supervise, type Ref } from "bouy";
+import { child, inspect, spawn, supervise, type Ref } from "buoy";
 import type { ModelMessage } from "ai";
 import { Baggage, Bookings, openDesk, transfers, type AgentName, type Desk } from "./airline.ts";
 import { messages } from "./script.ts";
@@ -1900,7 +1900,7 @@ await Effect.runPromise(program);
 // ===== examples/support-desk/airline.ts =====
 // The agents of the desk, and the backends that their tools call.
 import { Schema } from "effect";
-import type { Ref } from "bouy";
+import type { Ref } from "buoy";
 import { hasToolCall, isStepCount, tool, ToolLoopAgent, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 
@@ -1988,7 +1988,7 @@ carol: 2 turns, 4 messages
 bookings: restarts 1
 baggage: restarts 0
 stderr:
-bouy: Bookings bookings crashed: Error: the booking has no flight number
+buoy: Bookings bookings crashed: Error: the booking has no flight number
 exit status: 0
 ```
 
@@ -2014,7 +2014,7 @@ Needs from the engine:
 - Effect.repeat with until, Schedule.spaced, and Effect.timeout (planned with the real effect package)
 - The program ends when the main code ends: the helpers and the stopped archive's timer do not hold the VM (new rule)
 
-LLM: Fake OpenAI server runtime/test/bouy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". The lead request runs four tool steps: create_subagents with three helper tasks, wait_for_messages for 2 messages within 500 ms, get_status, and kill_subagents for archive. The pricing and reviews tasks have no script, so their helpers answer at once; the archive task scripts a call of read_archive, which waits 60 seconds.
+LLM: Fake OpenAI server runtime/test/buoy_fake_openai.erl, with OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 and OPENAI_API_KEY=sk-fake-key. Every request goes to openai.chat(model). The server reads `CALLS <steps>` at the end of the last user message and answers step k of the turn with entry k: an array of tool calls, or a string that is the text answer (the string step is new). After the last entry it answers with text: "Results: <tool> -> <output>, ..." or "Hello! System: <system>. You said: <prompt>". The lead request runs four tool steps: create_subagents with three helper tasks, wait_for_messages for 2 messages within 500 ms, get_status, and kill_subagents for archive. The pricing and reviews tasks have no script, so their helpers answer at once; the archive task scripts a call of read_archive, which waits 60 seconds.
 
 // examples/subagent-team/script.ts
 import { setTimeout as sleep } from "node:timers/promises";
@@ -2065,7 +2065,7 @@ Sketch:
 // Each helper is an actor, inspect() is the status table, and stop() ends a
 // helper in the middle of its slow tool.
 import { Console, Effect, Schedule, Schema } from "effect";
-import { inspect, spawn, stop, type Ref } from "bouy";
+import { inspect, spawn, stop, type Ref } from "buoy";
 import { generateText, isStepCount, tool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { leadPrompt, readArchive } from "./script.ts";
@@ -2200,19 +2200,19 @@ exit status: 0
 
 ## Outline of examples/README.md
 
-# Bouy examples (outline of examples/README.md)
+# Buoy examples (outline of examples/README.md)
 
-Thirteen programs in reading order. Each one is ordinary TypeScript with Effect 4. It imports the real `effect`, `ai`, and `@ai-sdk/openai` packages from node_modules, and it uses the `bouy` actor API where an actor adds something. Each README row names one thing that BEAM does and the Node event loop does not.
+Thirteen programs in reading order. Each one is ordinary TypeScript with Effect 4. It imports the real `effect`, `ai`, and `@ai-sdk/openai` packages from node_modules, and it uses the `buoy` actor API where an actor adds something. Each README row names one thing that BEAM does and the Node event loop does not.
 
 ## 1. Run an example
 
-1. Build the CLI: `cargo build --release -p bouy-cli`. The binary is `target/release/bouy`.
+1. Build the CLI: `cargo build --release -p buoy-cli`. The binary is `target/release/buoy`.
 2. Install the packages: `pnpm install`. `examples/package.json` joins the workspace and pins effect 4.0.5, ai 7.0.142, and @ai-sdk/openai 4.0.95.
-3. Run an example without a model: `bouy run examples/let-it-crash/main.ts`.
+3. Run an example without a model: `buoy run examples/let-it-crash/main.ts`.
 4. Start the fake OpenAI server in its own terminal. It prints its port and serves until its stdin closes (Ctrl-D):
-   - `erlc -o /tmp/fake-openai runtime/test/bouy_fake_openai.erl`
-   - `erl -noshell -pa /tmp/fake-openai -eval 'bouy_fake_openai:main()' -extra stdin`
-5. In another terminal: `export OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 OPENAI_API_KEY=sk-fake-key`, then `bouy run examples/translation-desk/main.ts`.
+   - `erlc -o /tmp/fake-openai runtime/test/buoy_fake_openai.erl`
+   - `erl -noshell -pa /tmp/fake-openai -eval 'buoy_fake_openai:main()' -extra stdin`
+5. In another terminal: `export OPENAI_BASE_URL=http://127.0.0.1:<port>/v1 OPENAI_API_KEY=sk-fake-key`, then `buoy run examples/translation-desk/main.ts`.
 6. Compare the output with `examples/<slug>/expected.stdout` and `expected.stderr`.
 
 A real model: point the two variables at any OpenAI-compatible endpoint. The model then picks its own tool calls and answers, so the transcript differs. The `CALLS [...]` text that each `script.ts` appends to a prompt is a script for the fake server only. A step in it is an array of tool calls, or a string that the model answers with, such as the JSON that `Output.object` reads. Without a script, the fake model answers "Results: <tool> -> <output>" or "Hello! System: <instructions>. You said: <prompt>", so the expected output shows the tool results and the instructions that each agent received.
@@ -2221,7 +2221,7 @@ A real model: point the two variables at any OpenAI-compatible endpoint. The mod
 
 | #   | Example            | Level        | Teaches                                                                                 | Why BEAM                                                                                          |
 | --- | ------------------ | ------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 1   | let-it-crash       | starter      | spawn, ref calls as promises, outcomes as data, crash and restart, journal replay       | A throw ends one process, and Bouy rebuilds it under the same ref.                                |
+| 1   | let-it-crash       | starter      | spawn, ref calls as promises, outcomes as data, crash and restart, journal replay       | A throw ends one process, and Buoy rebuilds it under the same ref.                                |
 | 2   | adopt-one-class    | starter      | unchanged Node code in an actor, a crash in a timer callback                            | An error in a timer callback ends a Node process; an actor crashes alone.                         |
 | 3   | translation-desk   | starter      | tools backed by supervised actors, Effect Schema tool inputs, a tool-error from a crash | Each tool call works in its own process, so one crash fails one call and restarts one translator. |
 | 4   | runaway-job        | intermediate | an actor as an Effect resource, Effect.timeout, stop()                                  | The scheduler preempts a spinning process, and stop() ends it in the middle of its loop.          |
@@ -2257,7 +2257,7 @@ Before example 1, point the reader at the Counter in the repository README.
 - Mailbox capacity counts the messages that wait, not the one in progress, so an idle encoder with capacity 4 takes 5 jobs (overload).
 - A program ends when its main code ends. Its actors and their timers end with it.
 - A timing claim prints a fixed line when its bound holds, so the expected output stays the same on a slow machine.
-- State lives in memory. A restart of the VM loses it; Temporal and Restate write a journal to disk, and Bouy does not.
+- State lives in memory. A restart of the VM loses it; Temporal and Restate write a journal to disk, and Buoy does not.
 
 ## 5. Credits
 
@@ -2265,10 +2265,10 @@ One list per example with the links of its `inspiredBy` field: the OpenAI Agents
 
 ## 6. Notes for the implementer (not README text)
 
-- Harness: add `crates/bouy-cli/tests/examples.rs`. Move `server()` from `ai.rs` into `tests/common` and reuse it. Run every `examples/*/main.ts` with `bouy run` from the repository root, one at a time, with `OPENAI_BASE_URL` and `OPENAI_API_KEY` set. Compare stdout with `expected.stdout`, stderr with `expected.stderr` (a missing file means empty), and the exit status with 0. A second test fails when an example has no `expected.stdout`.
-- Fake server change, checked on a copy: in `script/1` of `runtime/test/bouy_fake_openai.erl`, replace the `maps:is_key(<<"tools">>, Request) andalso Step < length(Steps)` case with `case Step < length(Steps) andalso lists:nth(Step + 1, Steps) of Text when is_binary(Text) -> {text, Text}; Calls when is_list(Calls) -> {calls, Step, Calls} when the request has tools, else {text, reply(...)}; false -> {text, reply(Messages, User, Turn)} end`. Update the fake-server paragraph of contract section 14 in the same commit.
+- Harness: add `crates/buoy-cli/tests/examples.rs`. Move `server()` from `ai.rs` into `tests/common` and reuse it. Run every `examples/*/main.ts` with `buoy run` from the repository root, one at a time, with `OPENAI_BASE_URL` and `OPENAI_API_KEY` set. Compare stdout with `expected.stdout`, stderr with `expected.stderr` (a missing file means empty), and the exit status with 0. A second test fails when an example has no `expected.stdout`.
+- Fake server change, checked on a copy: in `script/1` of `runtime/test/buoy_fake_openai.erl`, replace the `maps:is_key(<<"tools">>, Request) andalso Step < length(Steps)` case with `case Step < length(Steps) andalso lists:nth(Step + 1, Steps) of Text when is_binary(Text) -> {text, Text}; Calls when is_list(Calls) -> {calls, Step, Calls} when the request has tools, else {text, reply(...)}; false -> {text, reply(Messages, User, Turn)} end`. Update the fake-server paragraph of contract section 14 in the same commit.
 - Contract section 8 changes with these examples: a ref call returns a promise; `cast(ref).m()` returns a promise that waits on a full backpressure mailbox and rejects with MailboxFull on a full reject mailbox; `spawn` accepts any class; an uncaught error in an actor's timer callback crashes the actor; `ActorFailed`, `ActorStopped`, and `MailboxFull` are exported classes; a program ends with its main code; module bindings are per actor; `schedule`, `cancelSchedule`, `sleep`, `withTimeout`, and `self` are no longer needed by any example.
-- Types: ship a `bouy` declaration file. `Ref<T>` maps each method to `(...args) => Promise<Awaited<R>>` and hides fields and getters; `cast(ref)` maps each method to `Promise<void>`; it declares `spawn`, `stop`, `inspect`, `supervise`, `child`, the three error classes with `_tag`, and the types `Mailbox`, `Restart`, `Strategy`, `ActorInfo`. The draft is `/tmp/bouy-examples-v2/node_modules/bouy/index.d.ts`.
-- Checked on 2026-10-16: the 13 examples (23 files, formatted with oxfmt, printWidth 100) in `/tmp/bouy-examples-v2/<slug>/` pass `tsc --noEmit` in strict mode with TypeScript 6.0.3 and 7.0.2, against the real type definitions of effect 4.0.5, ai 7.0.142, @ai-sdk/openai 4.0.95, and @types/node 26.6.5. Each one also ran on Node 25.9.0 with a Node shim of the bouy API (`/tmp/bouy-examples-v2/node_modules/bouy/index.js`, run through `run.sh <slug>`) against a copy of the fake server with string steps, and printed the expected output, except two: code-review-panel prints "the scan held up the others", and runaway-job hangs in sum(-1). Those are the Node behaviors that the examples contrast. With `BOUY_SHIM_NODE=1`, stop() lets running code go on as a cancelled Node promise does: hedged-answer then prints "primary: lookup_stock finished" late, guardrail-tripwire prints "ledger: A1043 40, B2001 90", and research-lead prints "notes stored: 4". A plain-object copy of support-desk answers both of Carol's messages with her second one. Nothing ran on Bouy, because the engine is being rebuilt. Freeze the expected files from a Bouy run once the engine runs them, and record these Node contrasts as tests before a document quotes them.
-- Removed from the subset-era design: `schedule()`, `self()`, and `sleep()` from bouy (setInterval and node:timers/promises replace them); the Outbox and Hub actors (a Ledger and a plain Team object replace them); the warm-up call; numbered child keys; the report tool without execute (Output.object replaces it); Schema.is for isRetryable (APICallError.isInstance replaces it); actor methods that return Effects (a typed Effect failure loses its type in a promise, so expected outcomes are data); the BOUY205 and BOUY206 workarounds. New: adopt-one-class, from goal requirement 6.
+- Types: ship a `buoy` declaration file. `Ref<T>` maps each method to `(...args) => Promise<Awaited<R>>` and hides fields and getters; `cast(ref)` maps each method to `Promise<void>`; it declares `spawn`, `stop`, `inspect`, `supervise`, `child`, the three error classes with `_tag`, and the types `Mailbox`, `Restart`, `Strategy`, `ActorInfo`. The draft is `/tmp/buoy-examples-v2/node_modules/buoy/index.d.ts`.
+- Checked on 2026-10-16: the 13 examples (23 files, formatted with oxfmt, printWidth 100) in `/tmp/buoy-examples-v2/<slug>/` pass `tsc --noEmit` in strict mode with TypeScript 6.0.3 and 7.0.2, against the real type definitions of effect 4.0.5, ai 7.0.142, @ai-sdk/openai 4.0.95, and @types/node 26.6.5. Each one also ran on Node 25.9.0 with a Node shim of the buoy API (`/tmp/buoy-examples-v2/node_modules/buoy/index.js`, run through `run.sh <slug>`) against a copy of the fake server with string steps, and printed the expected output, except two: code-review-panel prints "the scan held up the others", and runaway-job hangs in sum(-1). Those are the Node behaviors that the examples contrast. With `BUOY_SHIM_NODE=1`, stop() lets running code go on as a cancelled Node promise does: hedged-answer then prints "primary: lookup_stock finished" late, guardrail-tripwire prints "ledger: A1043 40, B2001 90", and research-lead prints "notes stored: 4". A plain-object copy of support-desk answers both of Carol's messages with her second one. Nothing ran on Buoy, because the engine is being rebuilt. Freeze the expected files from a Buoy run once the engine runs them, and record these Node contrasts as tests before a document quotes them.
+- Removed from the subset-era design: `schedule()`, `self()`, and `sleep()` from buoy (setInterval and node:timers/promises replace them); the Outbox and Hub actors (a Ledger and a plain Team object replace them); the warm-up call; numbered child keys; the report tool without execute (Output.object replaces it); Schema.is for isRetryable (APICallError.isInstance replaces it); actor methods that return Effects (a typed Effect failure loses its type in a promise, so expected outcomes are data); the BUOY205 and BUOY206 workarounds. New: adopt-one-class, from goal requirement 6.
 - Lint: keep `"examples/**"` in the oxlint `ignorePatterns` next to `"tests/**"`, as compiler inputs, because the guardrails rules reject the comments that teaching code needs. oxfmt still formats the examples.

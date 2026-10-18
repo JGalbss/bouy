@@ -1,6 +1,6 @@
 // Cast throughput, isolated Node: 1,000,000 casts to one mailbox actor that runs on its
 // own worker thread, from node-shards.ts, then one call that waits until the actor has
-// taken them all. postMessage copies each cast with the structured clone, as Bouy copies a
+// taken them all. postMessage copies each cast with the structured clone, as Buoy copies a
 // message. The message queue of the worker is unbounded.
 import { isMainThread } from "node:worker_threads";
 import { Shards, serveShard } from "../node-shards.ts";

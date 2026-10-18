@@ -1,7 +1,7 @@
 {
-  "name": "@bouy/runtime",
+  "name": "@buoy/runtime",
   "private": true,
-  "description": "The Bouy OTP runtime. rebar3 builds and tests it; turbo only orders and caches the tasks.",
+  "description": "The Buoy OTP runtime. rebar3 builds and tests it; turbo only orders and caches the tasks.",
   "scripts": {
     "build": "rebar3 compile",
     "test": "rebar3 eunit",

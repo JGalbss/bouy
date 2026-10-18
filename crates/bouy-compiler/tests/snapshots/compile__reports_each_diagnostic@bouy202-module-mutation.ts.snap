@@ -1,7 +1,0 @@
----
-source: crates/bouy-compiler/tests/compile.rs
-expression: render(&diagnostics)
-input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy202-module-mutation.ts
----
-bouy202-module-mutation.ts:5:3: BOUY202: module-level `cache` cannot change after initialization; keep changing state in a function or an actor
-bouy202-module-mutation.ts:8:1: BOUY202: module-level `seen` cannot change after initialization; keep changing state in a function or an actor

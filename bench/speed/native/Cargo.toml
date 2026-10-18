@@ -1,9 +1,9 @@
 # The native tier of the speed spike: NBody and Richards in Rust, called from Erlang as NIFs
 # that run in time slices. Hand-written Rust stands in for what a Cranelift backend would
-# emit from the typed TypeScript. This crate is its own workspace, so the Bouy workspace,
+# emit from the typed TypeScript. This crate is its own workspace, so the Buoy workspace,
 # whose lints deny unsafe code, does not build it.
 [package]
-name = "bouy-speed-native"
+name = "buoy-speed-native"
 version = "0.0.0"
 edition = "2024"
 publish = false

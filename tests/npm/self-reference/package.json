@@ -1,5 +1,5 @@
 {
-  "name": "@bouytest/self",
+  "name": "@buoytest/self",
   "private": true,
   "exports": {
     ".": "./index.mjs",

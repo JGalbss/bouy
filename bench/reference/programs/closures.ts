@@ -1,5 +1,5 @@
 // 1,000,000 calls of a closure that increments a captured counter. Value semantics
-// rejects this program (BOUY205); closures-value.ts is its closest legal form.
+// rejects this program (BUOY205); closures-value.ts is its closest legal form.
 function counter() {
   let count = 0;
   return {

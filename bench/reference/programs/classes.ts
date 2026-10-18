@@ -1,6 +1,6 @@
 // Method calls through a two-level prototype chain on 1,000 instances of a derived class,
 // 1,000,000 calls in all. Value semantics has no class inheritance, so this one runs under
-// node and `bouy run --semantics reference` only.
+// node and `buoy run --semantics reference` only.
 class Figure {
   area(): number {
     return 0;

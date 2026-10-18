@@ -1,0 +1,7 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy205-closure-reads-later.ts
+---
+buoy205-closure-reads-later.ts:3:22: BUOY205: this closure reads `value`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument
+buoy205-closure-reads-later.ts:12:24: BUOY205: this closure reads `i`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument

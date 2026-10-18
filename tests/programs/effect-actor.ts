@@ -1,5 +1,5 @@
 import { Data, Effect } from "effect";
-import { inspect, spawn } from "bouy";
+import { inspect, spawn } from "buoy";
 
 class InsufficientFunds extends Data.TaggedError("InsufficientFunds")<{
   readonly balance: number;

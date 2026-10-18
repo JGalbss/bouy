@@ -28,7 +28,7 @@ console.log(
 );
 
 const pipeline = pipe(
-  Effect.succeed("bouy"),
+  Effect.succeed("buoy"),
   Effect.map((name) => name.toUpperCase()),
   Effect.flatMap((name) => Effect.succeed(`${name}!`)),
   Effect.andThen((text) => Effect.succeed(text.length)),

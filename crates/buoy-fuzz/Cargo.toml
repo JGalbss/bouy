@@ -1,0 +1,21 @@
+[package]
+name = "buoy-fuzz"
+description = "The differential fuzz campaign: generates seeded programs, runs them on Node and on Buoy, and keeps each silent mismatch as a minimized case in tests/fuzz."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "buoy-fuzz"
+path = "src/main.rs"
+
+[dependencies]
+buoy-compiler.workspace = true
+buoy-suites = { path = "../buoy-suites" }
+clap = { workspace = true, features = ["env"] }
+
+[lints]
+workspace = true

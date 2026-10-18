@@ -1,15 +1,15 @@
-# Actor models: semantic lessons for Bouy
+# Actor models: semantic lessons for Buoy
 
 > Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
 
 Track: actor-models. Date: 2026-10-16.
 
-This note surveys actor systems and their programming models. It picks no engine. It states the semantics that any Bouy engine must implement, and it gives the evidence for each choice. The last section, "Recommended semantics for Bouy", is the contract that the engine tracks can test against.
+This note surveys actor systems and their programming models. It picks no engine. It states the semantics that any Buoy engine must implement, and it gives the evidence for each choice. The last section, "Recommended semantics for Buoy", is the contract that the engine tracks can test against.
 
 ## Evidence rules
 
 - **Source** marks an external fact. A link follows it. Dates and versions appear where the source gives them.
-- **Measured** marks a behavior observed on this machine: Apple M5 Pro, macOS (Darwin 25.6.0), Node v25.9.0, and Docker 29.4 (OrbStack Linux VM) for Erlang. Appendix A holds each script and its command. The scripts live outside the repository, in `/tmp/bouy-actor-research/`, so the appendix reproduces them in full.
+- **Measured** marks a behavior observed on this machine: Apple M5 Pro, macOS (Darwin 25.6.0), Node v25.9.0, and Docker 29.4 (OrbStack Linux VM) for Erlang. Appendix A holds each script and its command. The scripts live outside the repository, in `/tmp/buoy-actor-research/`, so the appendix reproduces them in full.
 - **Unverified** marks a claim I could not check. Each one names the check that would settle it.
 
 This note contains no performance numbers. Defaults quoted from documentation, such as timeouts and capacities, are configuration facts. The local checks test semantics. They are not benchmarks.
@@ -143,7 +143,7 @@ Each subsection lists the semantic choices and their tradeoff.
 
 ### Effect 4: fibers, queues, and cluster entities
 
-Effect 4.0 shipped on 2026-09-30 ([release post](https://effect.website/blog/releases/effect/40)). npm lists `effect` 4.0.5 as `latest` on 2026-10-16. The repository's `AGENTS.md` makes Effect 4 the house style for Bouy's TypeScript source.
+Effect 4.0 shipped on 2026-09-30 ([release post](https://effect.website/blog/releases/effect/40)). npm lists `effect` 4.0.5 as `latest` on 2026-10-16. The repository's `AGENTS.md` makes Effect 4 the house style for Buoy's TypeScript source.
 
 - Child fibers "will be terminated either when they end naturally, or when their parent fiber is terminated". `forkDaemon` detaches, and `forkScoped` and `forkIn` bind to a scope. `Fiber.interrupt` "waits until the fiber has fully terminated" ([fibers](https://effect.website/docs/concurrency/fibers/)). In a race, the losing effect "will be interrupted" ([basic concurrency](https://effect.website/docs/concurrency/basic-concurrency/)).
 - Expected errors are typed failures. Defects from `Effect.die` represent "unrecoverable defects", and "There is no sensible way to recover from defects" ([unexpected errors](https://effect.website/docs/error-management/unexpected-errors/)).
@@ -200,16 +200,16 @@ Tradeoff across the three: replay makes long workflows durable and constrains th
 
 | Check                       | Command                                                  | Result                                                                                                                                                                                                                                                                                                                                                                                            |
 | --------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A.1 Turn semantics in Node  | `node /tmp/bouy-actor-research/node/semantics.mjs`       | A plain object with async methods lost an update (two increments gave 1). A turn-based mailbox gave 2. A user→room→user callback deadlocked until the 300 ms deadline cancelled the queued callback. Call-chain reentrancy through `AsyncLocalStorage` completed the same cycle. Aborting the caller aborted the request in progress through its `AbortSignal` and removed the queued one.        |
+| A.1 Turn semantics in Node  | `node /tmp/buoy-actor-research/node/semantics.mjs`       | A plain object with async methods lost an update (two increments gave 1). A turn-based mailbox gave 2. A user→room→user callback deadlocked until the 300 ms deadline cancelled the queued callback. Call-chain reentrancy through `AsyncLocalStorage` completed the same cycle. Aborting the caller aborted the request in progress through its `AbortSignal` and removed the queued one.        |
 | A.2 Erlang restart identity | see Appendix A.2                                         | OTP 29: new pid after restart; 3 queued messages lost; a send to the old pid returned normally.                                                                                                                                                                                                                                                                                                   |
-| A.3 Isolation in Node       | `node /tmp/bouy-actor-research/node/isolation.mjs`       | A worker with `maxOldGenerationSizeMb: 32` hit `ERR_WORKER_OUT_OF_MEMORY` and exited alone. `worker.terminate()` stopped a worker stuck in `for (;;) {}`. In the main isolate, a timer error created inside `run("planner", …)` reached `uncaughtException` with the store `planner`. A floating promise rejected inside `run("critic", …)` reached `unhandledRejection` with the store `critic`. |
-| A.4 `ai` abort              | `node /tmp/bouy-actor-research/node/ai-abort.mjs`        | `ai@7.0.142` `streamText` passed the caller's signal to the model's `doStream`, and the signal was aborted. The `textStream` loop then ended without an exception. `textStream` is a `ReadableStream`.                                                                                                                                                                                            |
-| A.5 `ai` backpressure       | `node /tmp/bouy-actor-research/node/ai-backpressure.mjs` | With 200 chunks available and a slow reader, the mock model stream had been pulled 18 times after the first read, then once more per read. The SDK propagates demand with a bounded read-ahead.                                                                                                                                                                                                   |
-| A.6 Freeze and clone limits | `node /tmp/bouy-actor-research/node/checks.mjs`          | `Object.freeze` is shallow. A frozen `Date` still changed through `setTime`, and a frozen `Map` still accepted `set`. Freezing a non-empty `Uint8Array` threw `TypeError`. `structuredClone` threw `DataCloneError` for a function and a symbol, and it turned a class instance into a plain object without its private field. An async generator advanced only on `next()`.                      |
+| A.3 Isolation in Node       | `node /tmp/buoy-actor-research/node/isolation.mjs`       | A worker with `maxOldGenerationSizeMb: 32` hit `ERR_WORKER_OUT_OF_MEMORY` and exited alone. `worker.terminate()` stopped a worker stuck in `for (;;) {}`. In the main isolate, a timer error created inside `run("planner", …)` reached `uncaughtException` with the store `planner`. A floating promise rejected inside `run("critic", …)` reached `unhandledRejection` with the store `critic`. |
+| A.4 `ai` abort              | `node /tmp/buoy-actor-research/node/ai-abort.mjs`        | `ai@7.0.142` `streamText` passed the caller's signal to the model's `doStream`, and the signal was aborted. The `textStream` loop then ended without an exception. `textStream` is a `ReadableStream`.                                                                                                                                                                                            |
+| A.5 `ai` backpressure       | `node /tmp/buoy-actor-research/node/ai-backpressure.mjs` | With 200 chunks available and a slow reader, the mock model stream had been pulled 18 times after the first read, then once more per read. The SDK propagates demand with a bounded read-ahead.                                                                                                                                                                                                   |
+| A.6 Freeze and clone limits | `node /tmp/buoy-actor-research/node/checks.mjs`          | `Object.freeze` is shallow. A frozen `Date` still changed through `setTime`, and a frozen `Map` still accepted `set`. Freezing a non-empty `Uint8Array` threw `TypeError`. `structuredClone` threw `DataCloneError` for a function and a symbol, and it turned a class instance into a plain object without its private field. An async generator advanced only on `next()`.                      |
 
 The repository's lint preset sets `"typescript/no-floating-promises": "error"` (`tools/oxlint/guardrails/preset.ts`, line 112). Q5 depends on that rule.
 
-## Bouy design questions
+## Buoy design questions
 
 ### Q1. Reentrant at await, turn-based, or call-chain reentrant
 
@@ -302,7 +302,7 @@ The repository's lint preset sets `"typescript/no-floating-promises": "error"` (
 4. Retries void the guarantee unless messages carry sequence numbers. The durable mode must add them, as in Akka reliable delivery. Ray documents the same break under retries.
 5. `interleave` methods start in arrival order and can finish in any order.
 
-**Evidence.** Per-pair FIFO is cheap whenever one ordered channel connects two actors. Causal order is cheap on one machine (Pony) and too expensive for distribution (Plyukhin and Agha). Orleans dropped even FIFO because of per-pair state across a cluster. Bouy only promises FIFO where a channel already exists.
+**Evidence.** Per-pair FIFO is cheap whenever one ordered channel connects two actors. Causal order is cheap on one machine (Pony) and too expensive for distribution (Plyukhin and Agha). Orleans dropped even FIFO because of per-pair state across a cluster. Buoy only promises FIFO where a channel already exists.
 
 **Unverified.** That messages on one Node `MessagePort` between two workers arrive in send order. A test that sends numbered messages between two workers would settle it.
 
@@ -326,7 +326,7 @@ The repository's lint preset sets `"typescript/no-floating-promises": "error"` (
 6. Control messages bypass the bound.
 7. A benchmark in `bench/` sets the default capacity. Effect cluster's 4096 is one reference point.
 
-**Evidence.** Unbounded queues hide overload until memory is exhausted: "You're making failures more rare, but you're making their magnitude worse" ([Queues Don't Fix Overload, 2014-11-19](https://ferd.ca/queues-don-t-fix-overload.html)). Effect, Pony, and Akka Streams show backpressure inside one runtime. In JavaScript, backpressure holds only if callers await `send`. The repository's lint preset already turns an ignored promise into an error, and Bouy should ship the same rule for user code. `dropOldest` suits progress and state-sync messages, where only the latest value matters.
+**Evidence.** Unbounded queues hide overload until memory is exhausted: "You're making failures more rare, but you're making their magnitude worse" ([Queues Don't Fix Overload, 2014-11-19](https://ferd.ca/queues-don-t-fix-overload.html)). Effect, Pony, and Akka Streams show backpressure inside one runtime. In JavaScript, backpressure holds only if callers await `send`. The repository's lint preset already turns an ignored promise into an error, and Buoy should ship the same rule for user code. `dropOldest` suits progress and state-sync messages, where only the latest value matters.
 
 **Risk.** Backpressure can deadlock a cycle of full mailboxes. A sender that waits on a full mailbox is a wait-for edge, so the Q1 cycle detector must include these edges.
 
@@ -341,7 +341,7 @@ The repository's lint preset sets `"typescript/no-floating-promises": "error"` (
 
 **Recommendation.**
 
-1. Every `ask` carries a cancellation signal and a deadline. Inside Bouy they are an `AbortSignal`, so npm code accepts them.
+1. Every `ask` carries a cancellation signal and a deadline. Inside Buoy they are an `AbortSignal`, so npm code accepts them.
 2. Cancellation is structured. A turn owns the asks it starts. Cancelling the turn cancels its outstanding asks, recursively, across actors.
 3. A cancelled request still in a mailbox is removed and never starts (Orleans).
 4. A request in progress sees cancellation cooperatively, at `await` points and through its signal. The runtime never interrupts synchronous code.
@@ -351,7 +351,7 @@ The repository's lint preset sets `"typescript/no-floating-promises": "error"` (
 8. Cleanup code can shield itself from cancellation, like a Temporal `nonCancellable` scope.
 9. `Cancelled` is a typed outcome, separate from failure.
 
-**Evidence.** A.1, case 5, shows queued removal and cooperative abort with a 38-line actor class. A.4 shows that `ai@7.0.142` passes the caller's signal to the model call. After the abort, the `textStream` loop ended without an exception. Bouy's wrappers must check `signal.aborted` and report `Cancelled`, or an aborted generation looks like a short success.
+**Evidence.** A.1, case 5, shows queued removal and cooperative abort with a 38-line actor class. A.4 shows that `ai@7.0.142` passes the caller's signal to the model call. After the abort, the `textStream` loop ended without an exception. Buoy's wrappers must check `signal.aborted` and report `Cancelled`, or an aborted generation looks like a short success.
 
 ### Q7. Marking values that may cross an actor boundary
 
@@ -365,16 +365,16 @@ TypeScript cannot prove immutability. `readonly` only means "the property itself
 
 **Recommendation.**
 
-1. The Bouy checker requires a `Sendable` type for every actor method parameter, result, stream element, and message.
+1. The Buoy checker requires a `Sendable` type for every actor method parameter, result, stream element, and message.
 2. `Sendable` covers structured-cloneable data, `ActorRef<P>`, and `Transfer<T>`. It excludes functions, class instances, promises, symbols, and objects with accessors or private fields.
 3. The runtime copies on send in every placement, so a send never creates an alias. This matches Erlang and Orleans, and it keeps options C and D1 identical.
 4. `Frozen<T>` is the zero-copy path. It accepts plain objects, arrays, and primitives only. The runtime freezes the value at every level on send and passes it by reference inside one isolate. Orleans `[Immutable]` is the precedent.
 5. `Transfer<T>` moves an `ArrayBuffer` or a Web stream. The sender's binding becomes unusable, as with Node transfer lists and Workers RPC streams. The checker flags later use of a transferred binding in the same function, a narrow form of Swift's `sending`.
-6. The checker flags module-level mutable state in actor code, following SE-0412 for Swift globals. npm module state remains per isolate. Bouy documents this limit, following Durable Objects.
+6. The checker flags module-level mutable state in actor code, following SE-0412 for Swift globals. npm module state remains per isolate. Buoy documents this limit, following Durable Objects.
 
-**Evidence.** Swift needed `Sendable` plus region analysis (SE-0414, SE-0430) before any non-`Sendable` value could cross a boundary. Pony needed six reference capabilities for the same goal. Bouy's checker would need region analysis to match Swift. Until it has one, a copy is the safe default and `Frozen<T>` is the narrow exception. The cost of copying large messages, such as a conversation history, belongs in `bench/`.
+**Evidence.** Swift needed `Sendable` plus region analysis (SE-0414, SE-0430) before any non-`Sendable` value could cross a boundary. Pony needed six reference capabilities for the same goal. Buoy's checker would need region analysis to match Swift. Until it has one, a copy is the safe default and `Frozen<T>` is the narrow exception. The cost of copying large messages, such as a conversation history, belongs in `bench/`.
 
-Closures never cross. Workers RPC turns a function into a stub that calls back to the sender, and stub lifetimes then need explicit disposal with `using`. Bouy v1 sends an `ActorRef` instead, so a callback becomes a message to an actor.
+Closures never cross. Workers RPC turns a function into a stub that calls back to the sender, and stub lifetimes then need explicit disposal with `using`. Buoy v1 sends an `ActorRef` instead, so a callback becomes a message to an actor.
 
 ### Q8. Streaming results across a boundary with backpressure
 
@@ -395,13 +395,13 @@ Closures never cross. Workers RPC turns a function into a stub that calls back t
 6. A stream has one consumer and one use, like Akka's "single-shot" `SinkRef`. Fan-out goes through a topic actor with an explicit overflow policy, usually `dropOldest` for progress updates.
 7. Byte streams cross isolates by transfer.
 
-**Evidence.** Async generators advance only on `next()` (A.6), so demand-driven pulling needs no extra protocol inside one isolate. A.5 shows that `ai@7.0.142` keeps model pulls bounded under a slow reader. A demand-driven Bouy stream on top of it therefore keeps the provider stream bounded too. Ray's eager generators show the failure mode of a stream without demand.
+**Evidence.** Async generators advance only on `next()` (A.6), so demand-driven pulling needs no extra protocol inside one isolate. A.5 shows that `ai@7.0.142` keeps model pulls bounded under a slow reader. A demand-driven Buoy stream on top of it therefore keeps the provider stream bounded too. Ray's eager generators show the failure mode of a stream without demand.
 
 **Unverified.** Whether an Orleans `IAsyncEnumerable` holds the grain's turn between batches. The Orleans source for `IAsyncEnumerableGrainExtension` would settle it.
 
 ## Scores for options C and D1
 
-Scale: 1 to 5, where 5 is best for Bouy. For "Implementation complexity", 5 means the least complex. This track scores only criteria 2, 3, 7, 8, and 9, and only where actor-system evidence supports a score. Option C hosts many lightweight actors in one isolate of Node, Deno, or Bun. Option D1 is a Node host with a pool of worker-thread schedulers, each hosting many lightweight actors.
+Scale: 1 to 5, where 5 is best for Buoy. For "Implementation complexity", 5 means the least complex. This track scores only criteria 2, 3, 7, 8, and 9, and only where actor-system evidence supports a score. Option C hosts many lightweight actors in one isolate of Node, Deno, or Bun. Option D1 is a Node host with a pool of worker-thread schedulers, each hosting many lightweight actors.
 
 | Option | Criterion                             | Score | Rationale                                                                                                                                                                                                                              | Evidence                                                                                                                                           |
 | ------ | ------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -421,7 +421,7 @@ Scale: 1 to 5, where 5 is best for Bouy. For "Implementation complexity", 5 mean
 The requirement reads "long-running and eventually durable". The systems above suggest these rules.
 
 1. Two durability styles exist. Code replay (Temporal workflows, Inngest steps) requires code between journaled steps that tolerates replay. State checkpoints with journaled side effects (Orleans `WriteStateAsync`, Durable Objects storage with output gates, Effect cluster persisted messages) leave ordinary code free.
-2. The checkpoint style fits Bouy actors. Turns are already serial, and a turn's end is a natural commit point.
+2. The checkpoint style fits Buoy actors. Turns are already serial, and a turn's end is a natural commit point.
 3. Output gates matter most. A turn's replies and outgoing messages wait until its state write is durable. Without the gate, a crash after a reply and before the write leaves a reply about state that no longer exists ([Durable Objects blog](https://blog.cloudflare.com/durable-objects-easy-fast-correct-choose-three/)).
 4. LLM and tool calls are slow and nondeterministic. A durable actor journals their results, so recovery never repeats them. Inngest returns "saved step results", and Temporal puts "LLM/AI invocations" in activities.
 5. Timers split into volatile timers and durable reminders (Orleans, Dapr).
@@ -441,10 +441,10 @@ The requirement reads "long-running and eventually durable". The systems above s
 
 Run each Node script with `node <path>` on Node v25.9.0. The `ai` checks import `ai@7.0.142` from this repository's `node_modules/.pnpm` store by absolute path. Change `aiRoot` for another checkout.
 
-### A.1 Turn semantics (`/tmp/bouy-actor-research/node/semantics.mjs`)
+### A.1 Turn semantics (`/tmp/buoy-actor-research/node/semantics.mjs`)
 
 ```js
-// Semantics check for Bouy research (docs/research/actor-models.md). Not a benchmark.
+// Semantics check for Buoy research (docs/research/actor-models.md). Not a benchmark.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -582,15 +582,15 @@ Output:
 node v25.9.0
 ```
 
-### A.2 Erlang restart identity (`/tmp/bouy-actor-research/erlang/restart_demo.erl`)
+### A.2 Erlang restart identity (`/tmp/buoy-actor-research/erlang/restart_demo.erl`)
 
 Command:
 
 ```sh
-mkdir -p /tmp/bouy-actor-research/erlang/build
+mkdir -p /tmp/buoy-actor-research/erlang/build
 docker run --rm \
-  -v /tmp/bouy-actor-research/erlang/restart_demo.erl:/src/restart_demo.erl:ro \
-  -v /tmp/bouy-actor-research/erlang/build:/build \
+  -v /tmp/buoy-actor-research/erlang/restart_demo.erl:/src/restart_demo.erl:ro \
+  -v /tmp/buoy-actor-research/erlang/build:/build \
   erlang:29.1.2 sh -c 'cd /build && erlc /src/restart_demo.erl && erl -noshell -pa /build -s restart_demo main'
 ```
 
@@ -653,7 +653,7 @@ old_pid_alive=false send_to_old_pid_returned_normally=true
 otp_release=29
 ```
 
-### A.3 Isolation (`/tmp/bouy-actor-research/node/isolation.mjs`)
+### A.3 Isolation (`/tmp/buoy-actor-research/node/isolation.mjs`)
 
 ```js
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -705,11 +705,11 @@ stray error from actor=planner: tool callback failed
 node v25.9.0
 ```
 
-### A.4 `ai` abort propagation (`/tmp/bouy-actor-research/node/ai-abort.mjs`)
+### A.4 `ai` abort propagation (`/tmp/buoy-actor-research/node/ai-abort.mjs`)
 
 ```js
 const aiRoot =
-  "/Users/joshgalbreath/Code/bouy/node_modules/.pnpm/ai@7.0.142_zod@4.6.7/node_modules/ai";
+  "/Users/joshgalbreath/Code/buoy/node_modules/.pnpm/ai@7.0.142_zod@4.6.7/node_modules/ai";
 const { streamText } = await import(`${aiRoot}/dist/index.js`);
 const { MockLanguageModelV4 } = await import(`${aiRoot}/dist/test/index.js`);
 
@@ -764,11 +764,11 @@ textStream is a ReadableStream: true
 node v25.9.0
 ```
 
-### A.5 `ai` backpressure (`/tmp/bouy-actor-research/node/ai-backpressure.mjs`)
+### A.5 `ai` backpressure (`/tmp/buoy-actor-research/node/ai-backpressure.mjs`)
 
 ```js
 const aiRoot =
-  "/Users/joshgalbreath/Code/bouy/node_modules/.pnpm/ai@7.0.142_zod@4.6.7/node_modules/ai";
+  "/Users/joshgalbreath/Code/buoy/node_modules/.pnpm/ai@7.0.142_zod@4.6.7/node_modules/ai";
 const { streamText } = await import(`${aiRoot}/dist/index.js`);
 const { MockLanguageModelV4 } = await import(`${aiRoot}/dist/test/index.js`);
 
@@ -825,7 +825,7 @@ consumer read 3 chunk(s); model stream pulled 20 of 200
 node v25.9.0
 ```
 
-### A.6 Freeze, clone, and generator checks (`/tmp/bouy-actor-research/node/checks.mjs`)
+### A.6 Freeze, clone, and generator checks (`/tmp/buoy-actor-research/node/checks.mjs`)
 
 ```js
 const d = Object.freeze(new Date(0));
@@ -894,7 +894,7 @@ structuredClone symbol -> DataCloneError
 async generator produced 2 values after 2 next() calls and a 50 ms wait
 ```
 
-## Recommended semantics for Bouy
+## Recommended semantics for Buoy
 
 These rules hold in every placement. No rule depends on whether two actors sit in one isolate, except that npm module state and memory limits are per isolate.
 

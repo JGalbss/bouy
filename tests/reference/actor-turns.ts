@@ -1,5 +1,5 @@
 // An actor's method mutates this and awaits a timer; another call waits its turn.
-import { spawn } from "bouy";
+import { spawn } from "buoy";
 
 class Account {
   balance = 0;

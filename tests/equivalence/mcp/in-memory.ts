@@ -6,7 +6,7 @@ import { exercise } from "./lib/exercise.ts";
 
 const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 const server = createServer();
-const client = new Client({ name: "bouy-test-client", version: "1.0.0" });
+const client = new Client({ name: "buoy-test-client", version: "1.0.0" });
 await server.connect(serverTransport);
 await client.connect(clientTransport);
 await exercise(client);

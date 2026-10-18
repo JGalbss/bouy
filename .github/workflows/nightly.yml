@@ -25,11 +25,11 @@ jobs:
           otp-version: "29"
           rebar3-version: "3.27"
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: cargo build --release -p bouy-cli -p bouy-suites
+      - run: cargo build --release -p buoy-cli -p buoy-suites
       - name: Run Node's tests
         run: |
           status=0
-          target/release/bouy-suites node --select all > "$RUNNER_TEMP/node.txt" 2>&1 || status=$?
+          target/release/buoy-suites node --select all > "$RUNNER_TEMP/node.txt" 2>&1 || status=$?
           cat "$RUNNER_TEMP/node.txt"
           {
             echo "## Node's tests"
@@ -46,7 +46,7 @@ jobs:
           path: target/suites/node
 
   # Runs every benchmark on one fixed runner type. The cache keeps the last two results of
-  # each host, which bouy-bench names after the CPU model. `bouy-bench compare` checks the
+  # each host, which buoy-bench names after the CPU model. `buoy-bench compare` checks the
   # previous result and this one against the result before both. A metric past its limit in
   # both fails the job, and the last step opens an issue. A metric past its limit in this
   # run only gets a warning.
@@ -63,28 +63,28 @@ jobs:
           otp-version: "29"
           rebar3-version: "3.27"
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      # Node and Bun run the baseline programs of bench/programs only. Bouy runs on BEAM.
+      # Node and Bun run the baseline programs of bench/programs only. Buoy runs on BEAM.
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
-      - run: cargo build --release -p bouy-cli -p bouy-bench
+      - run: cargo build --release -p buoy-cli -p buoy-bench
       - name: Run the benchmarks
-        run: target/release/bouy-bench --runs 5 --bouy target/release/bouy --out "$RUNNER_TEMP/bench"
+        run: target/release/buoy-bench --runs 5 --buoy target/release/buoy --out "$RUNNER_TEMP/bench"
       - name: Name the host
         id: host
         run: echo "name=$(jq -r .host.name "$RUNNER_TEMP"/bench/*.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         with:
-          path: ~/.cache/bouy/bench-nightly
+          path: ~/.cache/buoy/bench-nightly
           key: bench-nightly-${{ steps.host.outputs.name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: bench-nightly-${{ steps.host.outputs.name }}-
       - name: Compare with the limits
         id: compare
         run: |
-          history="$HOME/.cache/bouy/bench-nightly"
+          history="$HOME/.cache/buoy/bench-nightly"
           files=()
           for name in older last; do
             if [ -f "$history/$name.json" ]; then files+=("$history/$name.json"); fi
@@ -94,7 +94,7 @@ jobs:
             exit 0
           fi
           status=0
-          target/release/bouy-bench compare "${files[@]}" "$RUNNER_TEMP"/bench/*.json > "$RUNNER_TEMP/compare.md" 2>&1 || status=$?
+          target/release/buoy-bench compare "${files[@]}" "$RUNNER_TEMP"/bench/*.json > "$RUNNER_TEMP/compare.md" 2>&1 || status=$?
           cat "$RUNNER_TEMP/compare.md" | tee -a "$GITHUB_STEP_SUMMARY"
           if grep -q "past once: a warning" "$RUNNER_TEMP/compare.md"; then
             echo "::warning title=Benchmarks::A metric is past its limit in this run only. The job summary lists it."
@@ -103,14 +103,14 @@ jobs:
       - name: Keep this result for the next nights
         if: success() || steps.compare.outcome == 'failure'
         run: |
-          history="$HOME/.cache/bouy/bench-nightly"
+          history="$HOME/.cache/buoy/bench-nightly"
           mkdir -p "$history"
           if [ -f "$history/last.json" ]; then mv "$history/last.json" "$history/older.json"; fi
           cp "$RUNNER_TEMP"/bench/*.json "$history/last.json"
       - uses: actions/cache/save@v4
         if: success() || steps.compare.outcome == 'failure'
         with:
-          path: ~/.cache/bouy/bench-nightly
+          path: ~/.cache/buoy/bench-nightly
           key: bench-nightly-${{ steps.host.outputs.name }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v4
         if: always()

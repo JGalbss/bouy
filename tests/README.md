@@ -7,37 +7,37 @@
 | Command                                                                  | Runs                                                                                                                                            |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm check`                                                             | Every check of a pull request.                                                                                                                  |
-| `cargo test -p bouy-cli --test conformance`                              | One corpus. The other test files are `equivalence`, `ai`, `ecosystem`, `node_surface`, `programs`, `migration`, `fuzz`, `bench`, and `harness`. |
-| `BOUY_TEST_FILTER=arrays cargo test -p bouy-cli --test conformance`      | Only the corpus programs whose path contains `arrays`.                                                                                          |
-| `BOUY_BIN=<path> cargo test -p bouy-cli`                                 | The tests against another `bouy` binary.                                                                                                        |
-| `BOUY_TEST_TIMEOUT=60000 cargo test -p bouy-cli`                         | The tests with a deadline of 60 s for each run. The default is 20 s.                                                                            |
-| `cargo test -p bouy-suites --test rules`                                 | The rule checks of the test layout.                                                                                                             |
-| `cargo build --release -p bouy-cli`                                      | The `bouy` that `bouy-suites` runs. Build it before a suite, or set `BOUY_BIN`.                                                                 |
-| `cargo run --release -p bouy-suites -- test262`                          | test262, compared with `tests/test262/expectations.txt`. The first run fetches it into the cache.                                               |
-| `cargo run --release -p bouy-suites -- test262 --filter built-ins/Array` | Only the test262 ids that contain `built-ins/Array`.                                                                                            |
-| `cargo run --release -p bouy-suites -- test262 --update`                 | Every test262 id, then rewrites `expectations.txt` and `summary.json` in `tests/test262`.                                                       |
-| `cargo run --release -p bouy-suites -- node`                             | Node's own tests of `tests/node/test`, compared with `tests/node/expectations.txt`. `--select pr` runs the selection of a pull request.         |
-| `cargo run --release -p bouy-suites -- node --filter parallel/test-fs-`  | Only the Node test files whose path contains `parallel/test-fs-`.                                                                               |
-| `cargo run --release -p bouy-suites -- node --update`                    | Every Node test file, then rewrites `expectations.txt` and `summary.json` in `tests/node`.                                                      |
-| `cargo run --release -p bouy-suites -- node-surface`                     | Probes each entry of `tests/node/surface.json` on Bouy, compared with `tests/node/surface/expectations.txt`. `--update` rewrites it.            |
+| `cargo test -p buoy-cli --test conformance`                              | One corpus. The other test files are `equivalence`, `ai`, `ecosystem`, `node_surface`, `programs`, `migration`, `fuzz`, `bench`, and `harness`. |
+| `BUOY_TEST_FILTER=arrays cargo test -p buoy-cli --test conformance`      | Only the corpus programs whose path contains `arrays`.                                                                                          |
+| `BUOY_BIN=<path> cargo test -p buoy-cli`                                 | The tests against another `buoy` binary.                                                                                                        |
+| `BUOY_TEST_TIMEOUT=60000 cargo test -p buoy-cli`                         | The tests with a deadline of 60 s for each run. The default is 20 s.                                                                            |
+| `cargo test -p buoy-suites --test rules`                                 | The rule checks of the test layout.                                                                                                             |
+| `cargo build --release -p buoy-cli`                                      | The `buoy` that `buoy-suites` runs. Build it before a suite, or set `BUOY_BIN`.                                                                 |
+| `cargo run --release -p buoy-suites -- test262`                          | test262, compared with `tests/test262/expectations.txt`. The first run fetches it into the cache.                                               |
+| `cargo run --release -p buoy-suites -- test262 --filter built-ins/Array` | Only the test262 ids that contain `built-ins/Array`.                                                                                            |
+| `cargo run --release -p buoy-suites -- test262 --update`                 | Every test262 id, then rewrites `expectations.txt` and `summary.json` in `tests/test262`.                                                       |
+| `cargo run --release -p buoy-suites -- node`                             | Node's own tests of `tests/node/test`, compared with `tests/node/expectations.txt`. `--select pr` runs the selection of a pull request.         |
+| `cargo run --release -p buoy-suites -- node --filter parallel/test-fs-`  | Only the Node test files whose path contains `parallel/test-fs-`.                                                                               |
+| `cargo run --release -p buoy-suites -- node --update`                    | Every Node test file, then rewrites `expectations.txt` and `summary.json` in `tests/node`.                                                      |
+| `cargo run --release -p buoy-suites -- node-surface`                     | Probes each entry of `tests/node/surface.json` on Buoy, compared with `tests/node/surface/expectations.txt`. `--update` rewrites it.            |
 | `scripts/node-surface.sh`                                                | Writes `tests/node/surface.json` with the pinned node and Node's `doc/api/all.json`. When the pin moves.                                        |
 | `scripts/vendor-node-tests.sh`                                           | Copies Node's tests at the tag of `.node-version` into `tests/node/test`, and writes `suite.sha256`. When the pin moves.                        |
-| `cargo run --release -p bouy-suites -- packages`                         | `tests/npm`, `tests/packages`, and the scenario areas of `tests/equivalence`, compared with their expectation files.                            |
-| `cargo run --release -p bouy-suites -- packages --update`                | Every program of those corpora, then rewrites each `expectations.txt` and `tests/packages/summary.json`.                                        |
+| `cargo run --release -p buoy-suites -- packages`                         | `tests/npm`, `tests/packages`, and the scenario areas of `tests/equivalence`, compared with their expectation files.                            |
+| `cargo run --release -p buoy-suites -- packages --update`                | Every program of those corpora, then rewrites each `expectations.txt` and `tests/packages/summary.json`.                                        |
 | `scripts/rank-packages.sh`                                               | Writes `tests/packages/ranking.json` from the npm APIs. Each quarter.                                                                           |
 | `scripts/package-exports.sh`                                             | Writes `package.json`, `exports.mjs`, and `exports.cjs` of each AI-tier directory of `tests/packages`. Then `pnpm install`.                     |
-| `cargo run --release -p bouy-fuzz -- campaign --count 200`               | The fuzz campaign: seeds 0 to 199 of each generator, on Node and on Bouy. It writes a case for each new mismatch to `tests/fuzz`.               |
+| `cargo run --release -p buoy-fuzz -- campaign --count 200`               | The fuzz campaign: seeds 0 to 199 of each generator, on Node and on Buoy. It writes a case for each new mismatch to `tests/fuzz`.               |
 | `pnpm compat`                                                            | Writes `docs/COMPAT.md` and `docs/compat.json` from the summaries. `--check` only compares.                                                     |
 
-Each run of a program has the environment of `bouy_env` in `crates/bouy-suites/src/lib.rs`: `TZ=Etc/UTC`, `LANG=C.UTF-8`, `NO_COLOR=1`, `CI=1`, and a fresh `TMPDIR`. The other host variables are gone, except the ones that locate the runtime and Erlang. `tests/shim/node` comes first on `PATH`, so a test that starts node fails with `a test tried to run node`. `BOUY_MAX_MEMORY=1G` halts a test VM past 1 GiB, and a runner starts at most 8 VMs at once. A run past the deadline is killed and fails.
+Each run of a program has the environment of `buoy_env` in `crates/buoy-suites/src/lib.rs`: `TZ=Etc/UTC`, `LANG=C.UTF-8`, `NO_COLOR=1`, `CI=1`, and a fresh `TMPDIR`. The other host variables are gone, except the ones that locate the runtime and Erlang. `tests/shim/node` comes first on `PATH`, so a test that starts node fails with `a test tried to run node`. `BUOY_MAX_MEMORY=1G` halts a test VM past 1 GiB, and a runner starts at most 8 VMs at once. A run past the deadline is killed and fails.
 
 ## The oracle
 
-Node is the oracle, and no test runs it. `scripts/freeze-expectations.sh <directory>` records what Node prints for each program, and the tests compare `bouy run` with that record.
+Node is the oracle, and no test runs it. `scripts/freeze-expectations.sh <directory>` records what Node prints for each program, and the tests compare `buoy run` with that record.
 
 - The script runs only the Node release in `.node-version`, and it refuses another release.
-- The script runs each program twice, in the environment of `bouy_env`, and it refuses a program whose two runs differ.
-- Only the freeze script, `scripts/node-surface.sh`, `crates/bouy-bench`, and `crates/bouy-fuzz` start node. `crates/bouy-suites/tests/rules.rs` checks it.
+- The script runs each program twice, in the environment of `buoy_env`, and it refuses a program whose two runs differ.
+- Only the freeze script, `scripts/node-surface.sh`, `crates/buoy-bench`, and `crates/buoy-fuzz` start node. `crates/buoy-suites/tests/rules.rs` checks it.
 
 ## Outcomes
 
@@ -45,13 +45,13 @@ Node is the oracle, and no test runs it. `scripts/freeze-expectations.sh <direct
 | --------------- | ------------------------------------------------------------------------------------- |
 | `pass`          | The result equals the Node result, or the upstream test's own check passes.           |
 | `rejected`      | The compiler reported a diagnostic.                                                   |
-| `late`          | The run threw a `TypeError` with the code `ERR_BOUY_UNSUPPORTED`.                     |
-| `skip`          | The test can never apply to Bouy, and `config.json` gives the reason.                 |
-| `never`         | Bouy will never have the entry, and `tests/node/never.txt` gives the reviewed reason. |
+| `late`          | The run threw a `TypeError` with the code `ERR_BUOY_UNSUPPORTED`.                     |
+| `skip`          | The test can never apply to Buoy, and `config.json` gives the reason.                 |
+| `never`         | Buoy will never have the entry, and `tests/node/never.txt` gives the reviewed reason. |
 | `fail`          | The program ran, and the result differs from Node. This is a silent divergence.       |
 | `timeout`       | The deadline passed.                                                                  |
 | `harness_error` | A harness file compiled and then threw, so the test never started.                    |
-| `crash`         | A Bouy bug: a compiler panic, generated Erlang that does not compile, or a VM crash.  |
+| `crash`         | A Buoy bug: a compiler panic, generated Erlang that does not compile, or a VM crash.  |
 
 `rejected`, `late`, and `skip` are loud: the user sees them. `fail`, `timeout`, and `harness_error` are silent. A corpus with an `expectations.txt`, such as `tests/migration`, holds one line for each program: its id and its outcome. A run with another outcome fails.
 
@@ -65,7 +65,7 @@ Node is the oracle, and no test runs it. `scripts/freeze-expectations.sh <direct
 | A package misbehaves                        | `tests/packages/<name>@<major>/main.mjs`, or a new program in that directory  |
 | Module resolution                           | `tests/npm/<case>`                                                            |
 | An actor, supervision, or CLI behavior      | `tests/programs` with a test in `programs.rs`, or `tests/cli`                 |
-| A compiler crash or wrong Erlang            | a fixture in `crates/bouy-compiler/tests/fixtures`, and a conformance program |
+| A compiler crash or wrong Erlang            | a fixture in `crates/buoy-compiler/tests/fixtures`, and a conformance program |
 | A runtime function                          | `runtime/test/<module>_tests.erl`                                             |
 | It worked before, then broke, with an issue | `tests/regressions/<issue>.ts`                                                |
 | A fuzz finding                              | `tests/fuzz/<generator>/<seed>.ts`, written by the campaign                   |
@@ -81,9 +81,9 @@ Section 11 of the design builds `tests/divergence`, `tests/unit`, and `tests/cli
 
 1. Write the smallest program or test that shows the bug. The table above gives its place.
 2. Record the oracle: `scripts/freeze-expectations.sh <directory>`.
-3. Prove that the test fails without the fix: `BOUY_BIN=<bouy built from the base> cargo test -p bouy-cli --test <corpus>`. A test that passes on the base proves nothing.
+3. Prove that the test fails without the fix: `BUOY_BIN=<buoy built from the base> cargo test -p buoy-cli --test <corpus>`. A test that passes on the base proves nothing.
 4. Fix the cause, then run `pnpm check`.
-5. When the fix changes the outcomes of an upstream suite, run `cargo run --release -p bouy-suites -- <suite> --update`, then `pnpm compat`. Commit the expectation and summary files with `docs/COMPAT.md` and `docs/compat.json`.
+5. When the fix changes the outcomes of an upstream suite, run `cargo run --release -p buoy-suites -- <suite> --update`, then `pnpm compat`. Commit the expectation and summary files with `docs/COMPAT.md` and `docs/compat.json`.
 6. Commit the test and the fix together, as `fix(<scope>): <summary>`.
 
 Rules for a test:

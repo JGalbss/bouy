@@ -7,7 +7,7 @@
 # names, a global that Node adds to the globals of a bare V8 context, `console`, or a name of
 # the CommonJS module scope: `require`, `module`, `exports`, `__dirname`, and `__filename`.
 # Each group has its own node process, an ES module or, for the module scope, a CommonJS
-# module, as its probe in `bouy-suites node-surface` has. So a module that patches another,
+# module, as its probe in `buoy-suites node-surface` has. So a module that patches another,
 # as `domain` patches EventEmitter, changes no other group.
 #
 # The walk records every own member of the group value, every static member and every
@@ -26,7 +26,7 @@
 # script fetches into the cache. A name starts with its group, `node:<module>` for a
 # module, and goes on with `.<key>`, `["<key>"]`, or `[Symbol.<name>]` for each key.
 #
-# Then run `cargo run --release -p bouy-suites -- node-surface --update` and `pnpm compat`.
+# Then run `cargo run --release -p buoy-suites -- node-surface --update` and `pnpm compat`.
 #
 # Usage: scripts/node-surface.sh
 
@@ -41,7 +41,7 @@ if [ "$found" != "$pinned" ]; then
 fi
 
 docs_url="https://nodejs.org/dist/$pinned/docs/api/all.json"
-cache="${XDG_CACHE_HOME:-$HOME/.cache}/bouy/node-docs-$pinned"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/buoy/node-docs-$pinned"
 docs="$cache/all.json"
 if [ ! -f "$docs" ]; then
     mkdir -p "$cache"

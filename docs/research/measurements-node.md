@@ -34,7 +34,7 @@ Run all experiments from the repository root:
 node bench/evidence/run.ts
 ```
 
-The runner parses the script output with `zod`, a dependency of the `@bouy/bench` package. It takes about 2 minutes on this machine and overwrites the results file. The file is plain `JSON.stringify` output, so run `pnpm format` before you commit a new copy. Each script also runs alone and prints one JSON object. Each section gives the command for its script.
+The runner parses the script output with `zod`, a dependency of the `@buoy/bench` package. It takes about 2 minutes on this machine and overwrites the results file. The file is plain `JSON.stringify` output, so run `pnpm format` before you commit a new copy. Each script also runs alone and prints one JSON object. Each section gives the command for its script.
 
 ## E1. Spawn cost and memory per unit
 

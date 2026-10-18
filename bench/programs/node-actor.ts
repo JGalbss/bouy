@@ -1,8 +1,8 @@
-// The Node baseline for a Bouy actor: an object with a mailbox queue that runs one
+// The Node baseline for a Buoy actor: an object with a mailbox queue that runs one
 // message at a time on the event loop and answers each call with a promise. A send never
 // runs the receiver inline, because the mailbox drains in a microtask. A method that
 // throws rejects its caller and logs one line to stderr, and the actor builds a fresh
-// state, as a Bouy supervisor restarts a crashed actor. The queue is unbounded.
+// state, as a Buoy supervisor restarts a crashed actor. The queue is unbounded.
 
 type Job = {
   method: string;

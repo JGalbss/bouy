@@ -1,4 +1,4 @@
-import { inspect, sleep, spawn, stop, withTimeout } from "bouy";
+import { inspect, sleep, spawn, stop, withTimeout } from "buoy";
 
 class Worker {
   work(ms: number): string {

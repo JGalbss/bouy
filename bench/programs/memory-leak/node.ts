@@ -8,7 +8,7 @@
 // program stops as a container memory limit would stop it, and reports the process lost.
 // Every call has a timeout of 100 ms. A process-wide --max-old-space-size would override
 // the limit of each worker, so the harness runs this program without it. The pings and
-// the measurements are those of the Bouy program.
+// the measurements are those of the Buoy program.
 import { isMainThread } from "node:worker_threads";
 import { percentile, sleep } from "../node-actor.ts";
 import { Shards, serveShard } from "../node-shards.ts";

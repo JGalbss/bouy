@@ -1,6 +1,6 @@
 # Migration test: the "before" codebase
 
-This directory is a small research assistant service, written the way Node and TypeScript agent apps are written today, before any port to Bouy. It is the input of the migration test: a coding agent ports it to Bouy, and the port must print `expected.stdout`.
+This directory is a small research assistant service, written the way Node and TypeScript agent apps are written today, before any port to Buoy. It is the input of the migration test: a coding agent ports it to Buoy, and the port must print `expected.stdout`.
 
 ## What the app does
 
@@ -39,7 +39,7 @@ The scenario exercises these paths:
 
 ## Run it with Node
 
-The program needs the Node release of `.node-version` at the repository root and the fake OpenAI server of `runtime/test/bouy_fake_openai.erl`. It uses enums, namespaces, and parameter properties, which Node's type stripping rejects, so run Node with `--experimental-transform-types`. Node prints an `ExperimentalWarning` to stderr. The warning is not part of the output.
+The program needs the Node release of `.node-version` at the repository root and the fake OpenAI server of `runtime/test/buoy_fake_openai.erl`. It uses enums, namespaces, and parameter properties, which Node's type stripping rejects, so run Node with `--experimental-transform-types`. Node prints an `ExperimentalWarning` to stderr. The warning is not part of the output.
 
 The program imports `ai@7.0.142`, `@ai-sdk/openai@4.0.95`, and `effect@4.0.5`. Node finds them in `tests/node_modules`, because it looks for `node_modules` in each parent directory. Run `pnpm install` at the repository root first. Do not install packages in this directory.
 

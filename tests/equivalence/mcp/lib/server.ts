@@ -3,7 +3,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { z } from "zod";
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "bouy-test-server", version: "1.0.0" });
+  const server = new McpServer({ name: "buoy-test-server", version: "1.0.0" });
   server.registerTool(
     "add",
     {

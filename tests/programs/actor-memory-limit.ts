@@ -1,4 +1,4 @@
-import { inspect, spawn } from "bouy";
+import { inspect, spawn } from "buoy";
 
 class Hoarder {
   #chunks: string[] = [];

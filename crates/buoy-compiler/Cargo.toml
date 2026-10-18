@@ -1,0 +1,18 @@
+[package]
+name = "buoy-compiler"
+description = "Compiles a TypeScript subset into Erlang source for the Buoy OTP runtime."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+oxc = { version = "0.154", features = ["semantic", "ast_visit"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+insta = { version = "1", features = ["glob"] }
+
+[lints]
+workspace = true

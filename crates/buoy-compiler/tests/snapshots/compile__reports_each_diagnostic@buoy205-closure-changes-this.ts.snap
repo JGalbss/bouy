@@ -1,0 +1,6 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy205-closure-changes-this.ts
+---
+buoy205-closure-changes-this.ts:5:7: BUOY205: a closure cannot change `this`, which belongs to an enclosing function; return the new value from the closure instead

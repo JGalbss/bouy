@@ -1,0 +1,62 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/libraries.ts
+---
+-module(buoy@libraries).
+-export(['__init__'/0, globals/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+globals(Args) ->
+    Text@1 = buoy_rt:arg(1, Args),
+    buoy_console:log([
+        buoy_math:max([1, 2]),
+        buoy_math:'$member'(<<"PI">>),
+        buoy_json:stringify([#{<<"a">> => 1}])
+    ]),
+    Parsed@1 = buoy_number:parseInt([Text@1, 10]),
+    buoy:sleep([1]),
+    All@1 = buoy_task:all([fun() -> buoy_task:resolve([1]) end, fun() -> buoy_task:resolve([2]) end]),
+    Mapped@1 = buoy_task:map(
+        [1, 2],
+        fun(Args@1) ->
+            X@1 = buoy_rt:arg(1, Args@1),
+            buoy_rt:mul(X@1, 2)
+        end,
+        1
+    ),
+    Settled@1 = buoy_task:map_settled(
+        [1, 2],
+        fun(Args@2) ->
+            X@2 = buoy_rt:arg(1, Args@2),
+            buoy_rt:mul(X@2, 2)
+        end,
+        1
+    ),
+    First@1 = buoy_task:map_race(
+        [1, 2],
+        fun(Args@3) ->
+            X@3 = buoy_rt:arg(1, Args@3),
+            X@3
+        end,
+        1
+    ),
+    [
+        Parsed@1,
+        buoy_number:'$isNaN'([Parsed@1]),
+        buoy_string:'$call'([Parsed@1]),
+        buoy_number:'$call'([Text@1]),
+        buoy_rt:truthy(Text@1),
+        buoy_rt:call_method([1, 2], <<"map">>, [{'$namespace', buoy_string}]),
+        buoy_rt:env(<<"HOME">>),
+        buoy_rt:argv(),
+        buoy_object:keys([#{<<"a">> => 1}]),
+        buoy_map:new([]),
+        buoy_error:'Error#new'([<<"e">>]),
+        All@1,
+        Mapped@1,
+        Settled@1,
+        First@1
+    ].

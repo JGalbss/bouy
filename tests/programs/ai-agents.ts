@@ -1,7 +1,7 @@
 // Agents on actors: tools whose execute calls an actor, an actor that calls generateText,
-// three agents at once, and an actor crash inside a tool. crates/bouy-cli/tests/ai.rs runs
+// three agents at once, and an actor crash inside a tool. crates/buoy-cli/tests/ai.rs runs
 // it against the fake OpenAI server of runtime/test.
-import { spawn, type Ref } from "bouy";
+import { spawn, type Ref } from "buoy";
 import { generateText, jsonSchema, stepCountIs, streamText, tool } from "ai";
 import { createOpenAI, openai } from "@ai-sdk/openai";
 
@@ -32,7 +32,7 @@ class Agent {
     const ledger: Ref<Ledger> = this.ledger;
     const entry = city.length > 0 ? `${this.name} visits ${city}` : "";
     const result = await generateText({
-      // The bare call: Chat Completions in Bouy (contract section 14).
+      // The bare call: Chat Completions in Buoy (contract section 14).
       model: openai("gpt-4o-mini"),
       prompt: `Visit. CALLS [[{"name":"record","input":{"entry":"${entry}"}}]]`,
       tools: {

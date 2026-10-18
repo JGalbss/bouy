@@ -20,7 +20,7 @@ const http = createHttpServer((request, response) => {
 await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
 const { port } = http.address() as AddressInfo;
 
-const client = new Client({ name: "bouy-test-client", version: "1.0.0" });
+const client = new Client({ name: "buoy-test-client", version: "1.0.0" });
 await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
 await exercise(client);
 await client.close();

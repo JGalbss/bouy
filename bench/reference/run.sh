@@ -6,7 +6,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 suite=$1
 runs=${2:-3}
-ebin="$root/runtime/_build/default/lib/bouy/ebin"
+ebin="$root/runtime/_build/default/lib/buoy/ebin"
 out=$(mktemp -d)
 (cd "$root/runtime" && rebar3 compile >/dev/null)
 erlc -o "$out" "$here/${suite}_bench.erl"

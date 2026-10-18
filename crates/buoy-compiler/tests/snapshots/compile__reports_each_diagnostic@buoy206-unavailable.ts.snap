@@ -1,0 +1,17 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy206-unavailable.ts
+---
+buoy206-unavailable.ts:2:3: BUOY206: `console.table` is not available in Buoy
+buoy206-unavailable.ts:3:15: BUOY206: `Object.own_entries` is not available in Buoy
+buoy206-unavailable.ts:9:3: BUOY206: this call changes a value that no variable holds, so the change is lost; store the value in a variable or a property first
+buoy206-unavailable.ts:10:3: BUOY206: this call changes a value that no variable holds, so the change is lost; store the value in a variable or a property first
+buoy206-unavailable.ts:15:3: BUOY206: `undeclaredName` is not declared; declare it with `let` or `const`
+buoy206-unavailable.ts:16:3: BUOY206: `console` is a global of Buoy and cannot change
+buoy206-unavailable.ts:20:8: BUOY206: `var` is not supported; use `let` or `const`
+buoy206-unavailable.ts:23:3: BUOY206: a mutating method after an optional link is supported only as `place?.method(...)`; check for null with an if statement
+buoy206-unavailable.ts:24:12: BUOY206: `__proto__` in an object literal sets a prototype, and Buoy objects have no prototype chain; copy the properties with a spread instead
+buoy206-unavailable.ts:28:8: BUOY206: class inheritance is supported only for error classes: extends Error, TypeError, RangeError, or SyntaxError, or Data.TaggedError("Tag") or Data.Error with `Data` from "effect"
+buoy206-unavailable.ts:29:8: BUOY206: class inheritance is supported only for error classes: extends Error, TypeError, RangeError, or SyntaxError, or Data.TaggedError("Tag") or Data.Error with `Data` from "effect"
+buoy206-unavailable.ts:31:1: BUOY206: `export default` is supported only on a named function or class declaration; declare the value with a name and export that

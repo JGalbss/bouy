@@ -1,0 +1,7 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy201-unknown-package.ts
+---
+buoy201-unknown-package.ts:1:23: BUOY201: cannot import "lodash": import a relative module (./file.ts) or one of the libraries buoy, effect, ai, and @ai-sdk/openai
+buoy201-unknown-package.ts:2:10: BUOY201: "effect" has no export "Layer" that Buoy provides; section 11 of docs/design/beam-runtime.md lists the supported names

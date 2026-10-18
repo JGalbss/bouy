@@ -1,5 +1,5 @@
 {
-  "name": "@bouy/tests",
+  "name": "@buoy/tests",
   "private": true,
   "description": "Packages of the tests. Node runs the test programs with them to record the expected output, and the reference engine loads them from node_modules.",
   "type": "module",

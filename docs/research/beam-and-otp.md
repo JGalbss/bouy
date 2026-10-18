@@ -4,7 +4,7 @@
 
 Track: beam. Date: 2026-10-16.
 
-This note describes the BEAM and OTP mechanisms that Bouy wants to imitate. It then evaluates option A (TypeScript compiled to BEAM bytecode with a JavaScript compatibility layer) and option D3 (a BEAM host that runs JavaScript in NIFs or ports). Part 4 scores both options on the nine criteria. It also scores option C on the criteria where BEAM evidence applies. The last section lists the OTP semantics Bouy should copy and the parts that a JavaScript engine cannot copy.
+This note describes the BEAM and OTP mechanisms that Buoy wants to imitate. It then evaluates option A (TypeScript compiled to BEAM bytecode with a JavaScript compatibility layer) and option D3 (a BEAM host that runs JavaScript in NIFs or ports). Part 4 scores both options on the nine criteria. It also scores option C on the criteria where BEAM evidence applies. The last section lists the OTP semantics Buoy should copy and the parts that a JavaScript engine cannot copy.
 
 ## Evidence rules
 
@@ -20,9 +20,9 @@ This note describes the BEAM and OTP mechanisms that Bouy wants to imitate. It t
 | Elixir image   | `elixir:latest` = Elixir 1.20.4 on OTP 29 (ERTS 17.1.1), Debian 13                                                                                       |
 | Node in Docker | Node v25.9.0, copied from `node:25-trixie` into the Erlang image (A.7)                                                                                   |
 | QuickBEAM      | 0.11.3 from Hex, precompiled `aarch64-linux-gnu` NIF                                                                                                     |
-| npm packages   | zod 4.6.7 and ai 7.0.142, installed in `/tmp/bouy-beam-bench/compat` (outside the repository), bundled with esbuild 0.28.2                               |
+| npm packages   | zod 4.6.7 and ai 7.0.142, installed in `/tmp/buoy-beam-bench/compat` (outside the repository), bundled with esbuild 0.28.2                               |
 
-- The scripts live in `/tmp/bouy-beam-bench/`. This track may write only this file, so Appendix A reproduces every script in full. `AGENTS.md` asks for benchmarks in `bench/` with recorded output. Moving these scripts to `bench/evidence/` is an open follow-up.
+- The scripts live in `/tmp/buoy-beam-bench/`. This track may write only this file, so Appendix A reproduces every script in full. `AGENTS.md` asks for benchmarks in `bench/` with recorded output. Moving these scripts to `bench/evidence/` is an open follow-up.
 - Other agents ran benchmarks on the same host during these runs. The one-minute load average was 15 to 17 on 18 cores when I checked it during the last runs of A.7 and A.8. Each table gives the range across runs, so the noise is visible.
 - Latency samples move in steps of about 42 ns. [measurements-beam-quickjs.md](measurements-beam-quickjs.md) reports the same 41.67 ns step.
 - My BEAM spawn, memory, and round-trip numbers agree with [measurements-beam-quickjs.md](measurements-beam-quickjs.md), which used separate scripts.
@@ -350,7 +350,7 @@ Scale: 5 is the best that the evidence supports among the options in this note. 
 
 ### Option A
 
-- **TypeScript and npm compatibility, 1.** Bouy would reimplement JavaScript semantics (2.1) and web APIs, and Node-API addons could never load. The one running JavaScript-on-BEAM interpreter fails on zod (2.4).
+- **TypeScript and npm compatibility, 1.** Buoy would reimplement JavaScript semantics (2.1) and web APIs, and Node-API addons could never load. The one running JavaScript-on-BEAM interpreter fails on zod (2.4).
 - **Runtime isolation and fault tolerance, 5.** Each actor is a BEAM process with its own heap, a heap limit with kill, links, monitors, and supervisors (1.2, 1.7, 1.8). No native engine shares the VM.
 - **Scheduling fairness, 5.** Compiled code counts reductions at every call, so preemption needs no extra work (1.3). The emulated heap adds function calls, and each of them counts too.
 - **Startup time and memory per actor, 3.** A process costs 2,632 bytes and about 1 µs (1.1). Unverified: the mutable module state of loaded npm packages must exist in each actor's heap. A prototype that loads zod and ai into one actor would measure it.
@@ -358,7 +358,7 @@ Scale: 5 is the best that the evidence supports among the options in this note. 
 - **I/O and streaming performance, 2.** BEAM sockets and files are mature, but stream code from npm runs on the emulated heap. That code cost 13 to 16 times V8 when compiled by hand, and 112 to 155 times native QuickJS when interpreted (2.2).
 - **Implementation complexity, 1.** The work is a JavaScript engine written as a compiler: semantics, a collector, web APIs, and Node APIs. The JavaScript-on-BEAM projects in 2.4 are bounded or stalled, and Fable's target for a mutating language is alpha.
 - **Debuggability and tooling, 2.** BEAM tools see processes and support `perf` (1.12). JavaScript stack traces, breakpoints, and source maps over BEAM code would all be new work. TypeScript editors and `tsc` still work.
-- **Long-term extensibility, 2.** OTP brings distribution, hot code loading, and supervision. Each ECMAScript edition and each new web API is Bouy's work. npm code also uses V8 hooks such as `Error.captureStackTrace` (zod) and `Error.prepareStackTrace` (provider-utils).
+- **Long-term extensibility, 2.** OTP brings distribution, hot code loading, and supervision. Each ECMAScript edition and each new web API is Buoy's work. npm code also uses V8 hooks such as `Error.captureStackTrace` (zod) and `Error.prepareStackTrace` (provider-utils).
 
 ### Option D3, QuickJS in NIF threads (QuickBEAM design)
 
@@ -391,7 +391,7 @@ Scale: 5 is the best that the evidence supports among the options in this note. 
 - **Startup time and memory per actor, 5.** An async-function actor uses 752 bytes of V8 heap and spawns in 0.4 µs to 0.5 µs, against 2,632 bytes and 1.2 µs to 1.5 µs for a BEAM process ([measurements-beam-quickjs.md](measurements-beam-quickjs.md)).
 - **Message throughput and latency, 5.** An in-isolate round trip passes a reference in 0.11 µs to 0.16 µs, against 0.5 µs for BEAM ([measurements-beam-quickjs.md](measurements-beam-quickjs.md)). The isolate passes a reference without a copy. BEAM copies the message, which is the price of its isolation.
 
-## Implications for Bouy
+## Implications for Buoy
 
 ### Semantics to copy from OTP
 
@@ -399,7 +399,7 @@ Scale: 5 is the best that the evidence supports among the options in this note. 
 2. **Supervision.** Offer `one_for_one` (default), `one_for_all`, `rest_for_one`, and a dynamic `simple_one_for_one` form. Use `intensity` 1 and `period` 5 s as defaults, and document that nested supervisors multiply their intensities (1.8).
 3. **Restart types.** Copy `permanent` (default), `transient` (restart unless the reason is `normal`, `shutdown`, or `{shutdown, _}`), and `temporary`. Copy `significant` children with `auto_shutdown` (1.8).
 4. **Shutdown.** Stop children in reverse start order. Give a worker 5,000 ms to stop before a kill, and give a supervisor unlimited time (1.8).
-5. **Call timeouts.** Default to 5,000 ms. Fail the caller with a typed timeout, and drop late replies as process aliases do. OTP does not tell the callee, so Bouy should also pass an `AbortSignal` to the callee, because the AI SDK accepts one (1.9, 2.3).
+5. **Call timeouts.** Default to 5,000 ms. Fail the caller with a typed timeout, and drop late replies as process aliases do. OTP does not tell the callee, so Buoy should also pass an `AbortSignal` to the callee, because the AI SDK accepts one (1.9, 2.3).
 6. **Replies.** Correlate a reply with an identifier created before the send. Do not offer pattern-based selective receive, which scans the whole mailbox at about 2.6 ns per skipped message (1.6).
 7. **Failure signals.** Copy one-way monitors with an immediate `noproc` result, and two-way links with an opt-in trap. Copy an untrappable kill (1.7).
 8. **Memory limits.** Give each actor a memory limit that kills it when exceeded, as `max_heap_size` does (1.2).
@@ -410,13 +410,13 @@ Scale: 5 is the best that the evidence supports among the options in this note. 
 
 ### What a JavaScript engine cannot copy
 
-1. **Preemption inside a job.** ECMAScript runs each job to completion within an agent (2.1). V8 interrupts cannot run other JavaScript in the isolate, and QuickJS can only abort (3.2). Bouy can switch actors only at points that its compiler inserts. A long `JSON.parse`, a regular expression, or a synchronous native addon call cannot be preempted.
-2. **Per-actor garbage collection.** One isolate has one heap and one collector. An actor's memory limit inside an isolate needs a separate isolate or accounting by Bouy. BEAM gets both from per-process heaps (1.2).
-3. **Isolation by copying.** BEAM copies each message into the receiver's heap, and its terms cannot change after they are built (1.2). In one isolate, a message passes a reference to a mutable object, so Bouy must copy or freeze values at the boundary.
+1. **Preemption inside a job.** ECMAScript runs each job to completion within an agent (2.1). V8 interrupts cannot run other JavaScript in the isolate, and QuickJS can only abort (3.2). Buoy can switch actors only at points that its compiler inserts. A long `JSON.parse`, a regular expression, or a synchronous native addon call cannot be preempted.
+2. **Per-actor garbage collection.** One isolate has one heap and one collector. An actor's memory limit inside an isolate needs a separate isolate or accounting by Buoy. BEAM gets both from per-process heaps (1.2).
+3. **Isolation by copying.** BEAM copies each message into the receiver's heap, and its terms cannot change after they are built (1.2). In one isolate, a message passes a reference to a mutable object, so Buoy must copy or freeze values at the boundary.
 4. **Kill at any point.** `exit_signal(Pid, kill)` ends a BEAM process wherever it runs and frees its heap (1.7). In a shared isolate, a watchdog can only end the current execution with `TerminateExecution` (3.2). The actor's objects stay in the shared heap until the collector finds them unreachable. Inference: any module state that the actor was changing stays half-written.
-5. **Two code versions per module.** BEAM keeps current and old code, and a qualified call moves a process forward (1.11). Inference: a loaded JavaScript module instance has no in-place replacement, and closures keep their old code. Bouy can change behavior by restarting an actor with a new version.
-6. **Location-transparent pids.** BEAM sends to a remote pid with the same syntax (1.10). Bouy must build its own transport and its own rules for failure across machines.
-7. **Engines inside a BEAM host.** If Bouy embeds an engine in a BEAM host anyway (option D3), it must never run JavaScript on a normal scheduler (1.4). A native fault there still ends the whole VM.
+5. **Two code versions per module.** BEAM keeps current and old code, and a qualified call moves a process forward (1.11). Inference: a loaded JavaScript module instance has no in-place replacement, and closures keep their old code. Buoy can change behavior by restarting an actor with a new version.
+6. **Location-transparent pids.** BEAM sends to a remote pid with the same syntax (1.10). Buoy must build its own transport and its own rules for failure across machines.
+7. **Engines inside a BEAM host.** If Buoy embeds an engine in a BEAM host anyway (option D3), it must never run JavaScript on a normal scheduler (1.4). A native fault there still ends the whole VM.
 
 ## Unverified points
 
@@ -505,7 +505,7 @@ Prior art:
 - MquickjsEx: https://elixirforum.com/t/mquickjsex-embed-javascript-in-elixir-without-node-js/73798
 - Rustler: https://github.com/rusterlium/rustler
 
-Other Bouy research notes:
+Other Buoy research notes:
 
 - [measurements-beam-quickjs.md](measurements-beam-quickjs.md)
 - [measurements-node.md](measurements-node.md)
@@ -513,18 +513,18 @@ Other Bouy research notes:
 
 ## Appendix A: scripts and commands
 
-All scripts live in `/tmp/bouy-beam-bench/`, outside the repository. Each command ran from the host shell. `erlang:latest` resolved to OTP 29.1.2 and `elixir:latest` to Elixir 1.20.4 on OTP 29 on 2026-10-16.
+All scripts live in `/tmp/buoy-beam-bench/`, outside the repository. Each command ran from the host shell. `erlang:latest` resolved to OTP 29.1.2 and `elixir:latest` to Elixir 1.20.4 on OTP 29 on 2026-10-16.
 
 ### A.1 Spawn cost and memory per process
 
 Command, for N in 10000, 100000, and 1000000, MODE in `plain` and `hibernate`, three times each:
 
 ```sh
-docker run --rm -v /tmp/bouy-beam-bench/erlang:/w -w /w erlang:latest \
+docker run --rm -v /tmp/buoy-beam-bench/erlang:/w -w /w erlang:latest \
   sh -c "erlc bb_spawn.erl && erl +P 4000000 -noshell -s bb_spawn main $N $MODE"
 ```
 
-`/tmp/bouy-beam-bench/erlang/bb_spawn.erl`
+`/tmp/buoy-beam-bench/erlang/bb_spawn.erl`
 
 ```erlang
 %% Spawn cost and memory per idle process. Run one size per fresh VM.
@@ -575,13 +575,13 @@ settle(Target) ->
 Commands, three times each:
 
 ```sh
-docker run --rm -v /tmp/bouy-beam-bench/erlang:/w -w /w erlang:latest sh -c 'erlc bb_msg.erl && \
+docker run --rm -v /tmp/buoy-beam-bench/erlang:/w -w /w erlang:latest sh -c 'erlc bb_msg.erl && \
   erl +S 1 -noshell -s bb_msg main pingpong; erl +S 1 -noshell -s bb_msg main gen_call; \
   erl -noshell -s bb_msg main pingpong; erl -noshell -s bb_msg main gen_call; \
   erl -noshell -s bb_msg main throughput; erl -noshell -s bb_msg main throughput_off_heap'
 ```
 
-`/tmp/bouy-beam-bench/erlang/bb_msg.erl`
+`/tmp/buoy-beam-bench/erlang/bb_msg.erl`
 
 ```erlang
 %% Message latency, gen_server call latency, and throughput.
@@ -685,11 +685,11 @@ sink(K, Parent) -> receive _ -> sink(K - 1, Parent) end.
 Command, three times:
 
 ```sh
-docker run --rm -v /tmp/bouy-beam-bench/erlang:/w -w /w erlang:latest sh -c 'erlc bb_sched.erl && \
+docker run --rm -v /tmp/buoy-beam-bench/erlang:/w -w /w erlang:latest sh -c 'erlc bb_sched.erl && \
   erl +S 1 -noshell -s bb_sched main slice; erl +S 1 -noshell -s bb_sched main latency'
 ```
 
-`/tmp/bouy-beam-bench/erlang/bb_sched.erl`
+`/tmp/buoy-beam-bench/erlang/bb_sched.erl`
 
 ```erlang
 %% Reduction-based preemption: reductions and wall time per slice, and
@@ -761,7 +761,7 @@ pong() ->
 Command. The `latency` run was repeated three times. An earlier version of `work/1` had no `erlang:yield()`. That run held the scheduler for more than 300 s, and I stopped its container with `docker kill`.
 
 ```sh
-docker run --rm -v /tmp/bouy-beam-bench/nif:/w -w /w erlang:latest sh -c '\
+docker run --rm -v /tmp/buoy-beam-bench/nif:/w -w /w erlang:latest sh -c '\
   gcc -O2 -fPIC -shared -I/usr/local/lib/erlang/usr/include -o bb_nif.so bb_nif.c && erlc bb_nif.erl && \
   erl -noshell -s bb_nif main reductions && \
   erl +S 1 +SDcpu 1 -noshell -s bb_nif main latency; \
@@ -769,7 +769,7 @@ docker run --rm -v /tmp/bouy-beam-bench/nif:/w -w /w erlang:latest sh -c '\
   erl -noshell -s bb_nif main port_crash; echo "vm_exit_code=$?"'
 ```
 
-`/tmp/bouy-beam-bench/nif/bb_nif.c`
+`/tmp/buoy-beam-bench/nif/bb_nif.c`
 
 ```c
 /* Busy-wait NIFs: one on a normal scheduler, one on a dirty CPU scheduler, and one that crashes. */
@@ -806,7 +806,7 @@ static ErlNifFunc funcs[] = {
 ERL_NIF_INIT(bb_nif, funcs, NULL, NULL, NULL, NULL)
 ```
 
-`/tmp/bouy-beam-bench/nif/bb_nif.erl`
+`/tmp/buoy-beam-bench/nif/bb_nif.erl`
 
 ```erlang
 %% Effect of a long NIF on message latency when the NIF runs on a normal vs a dirty scheduler.
@@ -887,11 +887,11 @@ pong() ->
 Command:
 
 ```sh
-docker run --rm -v /tmp/bouy-beam-bench/recv:/w -w /w erlang:latest sh -c \
+docker run --rm -v /tmp/buoy-beam-bench/recv:/w -w /w erlang:latest sh -c \
   'erlc +recv_opt_info bb_recv.erl; for r in 1 2 3; do erl -noshell -s bb_recv main run; done'
 ```
 
-`/tmp/bouy-beam-bench/recv/bb_recv.erl`
+`/tmp/buoy-beam-bench/recv/bb_recv.erl`
 
 ```erlang
 %% Selective receive cost with K unmatched messages in the queue, with and without the reference optimization.
@@ -937,11 +937,11 @@ flush() -> receive _ -> flush() after 0 -> ok end.
 Commands, three times each. The first prints supervisor reports. The second turns logging off.
 
 ```sh
-docker run --rm -v /tmp/bouy-beam-bench/sup:/w -w /w erlang:latest sh -c 'erlc bb_sup.erl && erl -noshell -s bb_sup main run'
-docker run --rm -v /tmp/bouy-beam-bench/sup:/w -w /w erlang:latest sh -c 'erl -noshell -kernel logger_level none -s bb_sup main run'
+docker run --rm -v /tmp/buoy-beam-bench/sup:/w -w /w erlang:latest sh -c 'erlc bb_sup.erl && erl -noshell -s bb_sup main run'
+docker run --rm -v /tmp/buoy-beam-bench/sup:/w -w /w erlang:latest sh -c 'erl -noshell -kernel logger_level none -s bb_sup main run'
 ```
 
-`/tmp/bouy-beam-bench/sup/bb_sup.erl`
+`/tmp/buoy-beam-bench/sup/bb_sup.erl`
 
 ```erlang
 %% Time from a child crash to its replacement being registered, under a one_for_one supervisor.
@@ -994,12 +994,12 @@ worker_init(Parent) ->
 Commands. The `node` run was repeated once more.
 
 ```sh
-cd /tmp/bouy-beam-bench/docker && docker build -q -t bouy-bench-erlang-node -f Dockerfile.erlang-node .
-docker run --rm -v /tmp/bouy-beam-bench/port:/w -w /w bouy-bench-erlang-node sh -c \
+cd /tmp/buoy-beam-bench/docker && docker build -q -t buoy-bench-erlang-node -f Dockerfile.erlang-node .
+docker run --rm -v /tmp/buoy-beam-bench/port:/w -w /w buoy-bench-erlang-node sh -c \
   'erlc bb_port.erl && erl -noshell -s bb_port main cat && erl -noshell -s bb_port main node'
 ```
 
-`/tmp/bouy-beam-bench/docker/Dockerfile.erlang-node`
+`/tmp/buoy-beam-bench/docker/Dockerfile.erlang-node`
 
 ```dockerfile
 FROM node:25-trixie AS node
@@ -1008,7 +1008,7 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/lib/aarch64-linux-gnu/libatomic.so.1* /usr/lib/aarch64-linux-gnu/
 ```
 
-`/tmp/bouy-beam-bench/port/echo.mjs`
+`/tmp/buoy-beam-bench/port/echo.mjs`
 
 ```javascript
 // Echo server for an Erlang port opened with {packet, 4}: each frame is a 4-byte big-endian length plus payload.
@@ -1030,7 +1030,7 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => process.exit(0));
 ```
 
-`/tmp/bouy-beam-bench/port/bb_port.erl`
+`/tmp/buoy-beam-bench/port/bb_port.erl`
 
 ```erlang
 %% Erlang port to an external OS process: startup time, memory, round-trip latency, and throughput.
@@ -1113,11 +1113,11 @@ receive_n(Port, K) -> receive {Port, {data, _}} -> receive_n(Port, K - 1) end.
 Command. It ran once with `for r in 1 2 3` and later twice with a single pass, for 5 container runs.
 
 ```sh
-docker run --rm -v /tmp/bouy-beam-bench/heap:/w -w /w bouy-bench-erlang-node sh -c 'erlc bb_heap.erl && \
+docker run --rm -v /tmp/buoy-beam-bench/heap:/w -w /w buoy-bench-erlang-node sh -c 'erlc bb_heap.erl && \
   for r in 1 2 3; do erl -noshell -s bb_heap main run; node mutate.mjs jit; node --jitless mutate.mjs jitless; done'
 ```
 
-`/tmp/bouy-beam-bench/heap/bb_heap.erl`
+`/tmp/buoy-beam-bench/heap/bb_heap.erl`
 
 ```erlang
 %% Cost of JavaScript-style mutation when hand-compiled to Erlang.
@@ -1199,7 +1199,7 @@ ets_loop(_, _, T, _) ->
     Hits + Total.
 ```
 
-`/tmp/bouy-beam-bench/heap/mutate.mjs`
+`/tmp/buoy-beam-bench/heap/mutate.mjs`
 
 ```javascript
 // Same workload in JavaScript, run by V8 (Node) for reference.
@@ -1236,18 +1236,18 @@ console.log(
 
 ```sh
 QB='docker run --rm -e MIX_HOME=/cache/mix -e HEX_HOME=/cache/hex -e MIX_INSTALL_DIR=/cache/installs
-  -v /tmp/bouy-beam-bench/quickbeam:/b -v /tmp/bouy-beam-bench/compat:/work:ro
-  -v /tmp/bouy-beam-bench/quickbeam/cache:/cache -w /b elixir:latest'
+  -v /tmp/buoy-beam-bench/quickbeam:/b -v /tmp/buoy-beam-bench/compat:/work:ro
+  -v /tmp/buoy-beam-bench/quickbeam/cache:/cache -w /b elixir:latest'
 for s in runtimes contexts latency fairness compat vm; do $QB sh -c "elixir bench.exs $s"; done
 $QB sh -c "elixir diag.exs"
 docker run --rm --memory 6g -e MIX_HOME=/cache/mix -e HEX_HOME=/cache/hex -e MIX_INSTALL_DIR=/cache/installs \
-  -v /tmp/bouy-beam-bench/quickbeam:/b -v /tmp/bouy-beam-bench/compat:/work:ro \
-  -v /tmp/bouy-beam-bench/quickbeam/cache:/cache -w /b elixir:latest sh -c "elixir vmcompat.exs"
+  -v /tmp/buoy-beam-bench/quickbeam:/b -v /tmp/buoy-beam-bench/compat:/work:ro \
+  -v /tmp/buoy-beam-bench/quickbeam/cache:/cache -w /b elixir:latest sh -c "elixir vmcompat.exs"
 ```
 
 `vmcompat.exs` first ran with `memory_limit: 2_000_000_000` and the keys `zodParseTransform`, `zodSafeParse`, and `aiGenerateText`. All three returned `{:error, {:limit_exceeded, :memory_bytes, 2000000000}}` after 0.5 s to 0.9 s. The version below raised the limit and kept one key.
 
-`/tmp/bouy-beam-bench/quickbeam/bench.exs`
+`/tmp/buoy-beam-bench/quickbeam/bench.exs`
 
 ```elixir
 # QuickBEAM (QuickJS-NG in a NIF) measurements for option D3, plus its BEAM-hosted JS interpreter.
@@ -1436,7 +1436,7 @@ case section do
 end
 ```
 
-`/tmp/bouy-beam-bench/quickbeam/diag.exs`
+`/tmp/buoy-beam-bench/quickbeam/diag.exs`
 
 ```elixir
 Mix.install([{:quickbeam, "0.11.3"}])
@@ -1458,7 +1458,7 @@ for {label, code} <- probes do
 end
 ```
 
-`/tmp/bouy-beam-bench/quickbeam/vmcompat.exs`
+`/tmp/buoy-beam-bench/quickbeam/vmcompat.exs`
 
 ```elixir
 # Does QuickBEAM's BEAM-hosted interpreter (QuickBEAM.VM) run the zod / ai probe bundle?
@@ -1484,16 +1484,16 @@ IO.puts("beam_total_memory_mb=#{div(:erlang.memory(:total), 1_000_000)}")
 Setup and commands:
 
 ```sh
-cd /tmp/bouy-beam-bench/compat && npm init -y && npm pkg set type=module
+cd /tmp/buoy-beam-bench/compat && npm init -y && npm pkg set type=module
 npm install --no-audit --no-fund zod@4.6.7 ai@7.0.142 esbuild@latest   # esbuild resolved to 0.28.2
 npx esbuild compat.ts --bundle --format=iife --platform=browser --target=es2023 --outfile=compat.bundle.js
 node run-node.mjs ./compat.ts && node run-node.mjs ./compat.bundle.js
-node /tmp/bouy-beam-bench/feature-scan.mjs /Users/joshgalbreath/Code/bouy/node_modules/.pnpm
+node /tmp/buoy-beam-bench/feature-scan.mjs /Users/joshgalbreath/Code/buoy/node_modules/.pnpm
 ```
 
 The feature scan reads the package builds from the repository's pnpm store, read-only. The probe uses the scratch install.
 
-`/tmp/bouy-beam-bench/compat/compat.ts`
+`/tmp/buoy-beam-bench/compat/compat.ts`
 
 ```typescript
 // npm compatibility probe: zod 4.6.7 and ai 7.0.142 with a mock model (no network).
@@ -1674,7 +1674,7 @@ scope.runOne = runOne;
 scope.checkNames = Object.keys(checks);
 ```
 
-`/tmp/bouy-beam-bench/compat/run-node.mjs`
+`/tmp/buoy-beam-bench/compat/run-node.mjs`
 
 ```javascript
 await import(process.argv[2] ?? "./compat.ts");
@@ -1687,7 +1687,7 @@ for (const key of globalThis.checkNames) {
 console.log(`node ${process.version}: ${passed}/${globalThis.checkNames.length} passed`);
 ```
 
-`/tmp/bouy-beam-bench/feature-scan.mjs`
+`/tmp/buoy-beam-bench/feature-scan.mjs`
 
 ```javascript
 // Counts occurrences of JS features and host APIs in installed npm package builds.

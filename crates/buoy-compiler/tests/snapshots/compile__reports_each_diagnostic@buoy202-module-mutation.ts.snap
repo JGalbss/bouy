@@ -1,0 +1,7 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy202-module-mutation.ts
+---
+buoy202-module-mutation.ts:5:3: BUOY202: module-level `cache` cannot change after initialization; keep changing state in a function or an actor
+buoy202-module-mutation.ts:8:1: BUOY202: module-level `seen` cannot change after initialization; keep changing state in a function or an actor

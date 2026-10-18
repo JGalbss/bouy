@@ -18,7 +18,7 @@ jobs:
           otp-version: "29"
           rebar3-version: "3.27"
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      # pnpm and Node run only the dev tools (turbo, oxfmt, oxlint). Bouy itself runs on BEAM.
+      # pnpm and Node run only the dev tools (turbo, oxfmt, oxlint). Buoy itself runs on BEAM.
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -45,9 +45,9 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: actions/cache@v4
         with:
-          path: ~/.cache/bouy/test262-*
+          path: ~/.cache/buoy/test262-*
           key: test262-${{ hashFiles('tests/test262/config.json') }}
-      - run: cargo build --release -p bouy-cli -p bouy-suites
+      - run: cargo build --release -p buoy-cli -p buoy-suites
       - name: Run test262
         env:
           EVENT: ${{ github.event_name }}
@@ -61,7 +61,7 @@ jobs:
           git show "$base:tests/test262/expectations.txt" > "$RUNNER_TEMP/base.txt" 2>/dev/null || rm -f "$RUNNER_TEMP/base.txt"
           accept=""
           if [ "$ACCEPT" = "true" ]; then accept="--accept-regressions"; fi
-          target/release/bouy-suites test262 --select "$select" --base "$RUNNER_TEMP/base.txt" $accept
+          target/release/buoy-suites test262 --select "$select" --base "$RUNNER_TEMP/base.txt" $accept
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -83,7 +83,7 @@ jobs:
           git show "$base:tests/node/expectations.txt" > "$RUNNER_TEMP/node-base.txt" 2>/dev/null || rm -f "$RUNNER_TEMP/node-base.txt"
           accept=""
           if [ "$ACCEPT" = "true" ]; then accept="--accept-regressions"; fi
-          target/release/bouy-suites node --select "$select" --base "$RUNNER_TEMP/node-base.txt" $accept
+          target/release/buoy-suites node --select "$select" --base "$RUNNER_TEMP/node-base.txt" $accept
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -97,7 +97,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/comment"
           {
-            echo "<!-- bouy-suites -->"
+            echo "<!-- buoy-suites -->"
             echo "## Upstream suites"
             echo
             cat target/suites/*/comment.md 2>/dev/null || echo "The suites wrote no report. The log of the suites job says why."

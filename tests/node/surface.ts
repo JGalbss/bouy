@@ -1,5 +1,5 @@
 // The probe of the API surface manifest, section 5.7.1 of docs/design/testing.md.
-// `bouy-suites node-surface` writes one program for each group of tests/node/surface.json, a
+// `buoy-suites node-surface` writes one program for each group of tests/node/surface.json, a
 // module such as `node:fs` or a global such as `Buffer`. The program calls `probe` with the
 // value of the group and its entries, and `probe` prints one line per entry: the name and
 // the shape that scripts/node-surface.sh records. A member of the group value is read, so a

@@ -1,9 +1,9 @@
-# Speed ceiling: how fast Bouy can get against Bun
+# Speed ceiling: how fast Buoy can get against Bun
 
-Requirement 11 of [goal.md](../goal.md) says that Bouy must be faster than Bun, through type-directed compilation, native built-ins, a native tier that yields to the BEAM scheduler, and all cores. This note measures how fast each compilation strategy runs eight single-thread kernels, and how fast N copies run on N cores. It compares four tiers with Node and Bun:
+Requirement 11 of [goal.md](../goal.md) says that Buoy must be faster than Bun, through type-directed compilation, native built-ins, a native tier that yields to the BEAM scheduler, and all cores. This note measures how fast each compilation strategy runs eight single-thread kernels, and how fast N copies run on N cores. It compares four tiers with Node and Bun:
 
 1. today's engine;
-2. the best typed Erlang that Bouy could emit;
+2. the best typed Erlang that Buoy could emit;
 3. native built-ins in Rust;
 4. a native tier in Rust that runs in time slices inside the BEAM scheduler.
 
@@ -17,7 +17,7 @@ Every number below comes from [`bench/speed/results/2026-10-17-apple-m5-pro.json
 - **Native built-ins close the library gaps.** The Rust regular expression built-in runs at Bun's speed (1.01). The Rust JSON built-in is 1.9 times as slow as Bun, against 8.9 times for OTP's `json` module.
 - **On 18 cores, the native tier gives 2.4 to 2.8 times the throughput of Bun with 18 worker threads.** Typed Erlang gives 0.07 to 0.13 times Bun's throughput, because each copy runs at its single-thread speed.
 
-So the strategy that gets Bouy past Bun is native code for hot typed functions and for the built-ins, in time slices, on every core. Typed Erlang is the fallback for typed code, and the engine runs everything else.
+So the strategy that gets Buoy past Bun is native code for hot typed functions and for the built-ins, in time slices, on every core. Typed Erlang is the fallback for typed code, and the engine runs everything else.
 
 ## Setup
 
@@ -28,22 +28,22 @@ So the strategy that gets Bouy past Bun is native code for hot typed functions a
 | Bun    | 1.3.14                                                                                                         |
 | Node   | 25.9.0 (V8 14.1.146.11-node.25), the release of `.node-version`                                                |
 | Rust   | 1.98.0, from `rust-toolchain.toml`. The NIF crate builds with `opt-level = 3`, LTO, and one codegen unit.      |
-| Engine | Branch `engine` at `38d7857`, built with `cargo build --release -p bouy-cli`, run with `--semantics reference` |
+| Engine | Branch `engine` at `38d7857`, built with `cargo build --release -p buoy-cli`, run with `--semantics reference` |
 
 ## How to reproduce
 
 ```sh
 export PATH="$HOME/.cargo/bin:$PATH"
-git worktree add --detach /tmp/engine engine && (cd /tmp/engine && cargo build --release -p bouy-cli)
+git worktree add --detach /tmp/engine engine && (cd /tmp/engine && cargo build --release -p buoy-cli)
 export SPEED_JS="bun=$(command -v bun) node=/opt/homebrew/bin/node"
-export BOUY_ENGINE=/tmp/engine/target/release/bouy
+export BUOY_ENGINE=/tmp/engine/target/release/buoy
 out=bench/speed/results/$(date +%F)-apple-m5-pro.jsonl
 bench/speed/run.sh single "$out"
 bench/speed/run.sh preempt "$out"
 bench/speed/run.sh multicore "$out"
 ```
 
-`run.sh` compiles the Erlang modules and the NIF crate into `$TMPDIR/bouy-speed-build`. It gives every VM `+hmax` of 4 GiB and runs one VM at a time.
+`run.sh` compiles the Erlang modules and the NIF crate into `$TMPDIR/buoy-speed-build`. It gives every VM `+hmax` of 4 GiB and runs one VM at a time.
 
 ## Method
 
@@ -66,8 +66,8 @@ Each kernel is one TypeScript file in [`bench/speed/kernels`](../../bench/speed/
 
 | Tier            | What runs                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Current engine  | The kernel compiled by the engine branch. An object is a record in the process dictionary with a map from property names to values. A property read is `bouy_ref:get(Object, <<"name">>)`: a dictionary read, a map lookup, and a prototype walk on a miss. A method call looks up the name and calls a fun with an argument list. Each operator calls a runtime function that dispatches on the JavaScript type. |
-| Typed Erlang    | Hand-written Erlang in [`bench/speed/erlang`](../../bench/speed/erlang) that stands for the best code that Bouy could emit from the types and the whole program. The header of each module lists the facts that it assumes.                                                                                                                                                                                       |
+| Current engine  | The kernel compiled by the engine branch. An object is a record in the process dictionary with a map from property names to values. A property read is `buoy_ref:get(Object, <<"name">>)`: a dictionary read, a map lookup, and a prototype walk on a miss. A method call looks up the name and calls a fun with an argument list. Each operator calls a runtime function that dispatches on the JavaScript type. |
+| Typed Erlang    | Hand-written Erlang in [`bench/speed/erlang`](../../bench/speed/erlang) that stands for the best code that Buoy could emit from the types and the whole program. The header of each module lists the facts that it assumes.                                                                                                                                                                                       |
 | Native built-in | Rust NIFs for JSON and regular expressions in [`bench/speed/native`](../../bench/speed/native). They run on a dirty CPU scheduler, except the test of one line, which is short.                                                                                                                                                                                                                                   |
 | Native tier     | Hand-written Rust in the same crate that stands for what a Cranelift backend would emit from typed code. A NIF runs a chunk of work, reports its time with `enif_consume_timeslice`, and yields with `enif_schedule_nif` after about 0.2 ms of work.                                                                                                                                                              |
 
@@ -299,7 +299,7 @@ Across cores, the same techniques win: the native tier had 2.4 to 2.8 times Bun'
 
 Phase 5 of [ADR 0003](../adr/0003-run-typescript-on-beam.md) plans shapes with slot tuples and inline caches, which is step 3 below. These measurements support that work and add the other steps. The estimates are those of this note, except the ADR's own.
 
-1. **Move this suite into `crates/bouy-bench`.** Add the kernels as single-thread suites with Bun and Node baselines and thresholds, so every later step shows its gain. AGENTS.md lets only `crates/bouy-bench`, `crates/bouy-fuzz`, and `scripts/freeze-expectations.sh` start node. `run.sh` starts the baselines that `SPEED_JS` names, node among them, so the move also ends that exception. About 1 week.
+1. **Move this suite into `crates/buoy-bench`.** Add the kernels as single-thread suites with Bun and Node baselines and thresholds, so every later step shows its gain. AGENTS.md lets only `crates/buoy-bench`, `crates/buoy-fuzz`, and `scripts/freeze-expectations.sh` start node. `run.sh` starts the baselines that `SPEED_JS` names, node among them, so the move also ends that exception. About 1 week.
 2. **Rust built-ins for JSON and RegExp.** They help untyped npm code at once, they need no compiler work, and they cut the largest library gaps from 8.9 and 10 times Bun to 1.9 and 1.0. About 6 to 9 weeks for both, with full semantics.
 3. **Shapes with slot tuples, direct calls, and inline caches** (Phase 5 as planned). The typed heap rows bound the gain: 7.9 times on Richards and 21 times on DeltaBlue over today's engine. 1 to 3 months (E3 of the ADR).
 4. **A typed IR with escape analysis and scalar replacement.** It gives typed code the typed Erlang rows: a further 2.3 times on Richards and 1.6 times on NBody. The native tier needs the same IR. About 2 months.

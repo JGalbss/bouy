@@ -1,0 +1,8 @@
+{application, buoy, [
+    {description, "The OTP runtime for actor programs that Buoy compiles from TypeScript"},
+    {vsn, "0.1.0"},
+    {registered, [buoy_root_sup, buoy_keeper, buoy_groups]},
+    {applications, [kernel, stdlib, compiler]},
+    {mod, {buoy_app, []}},
+    {env, []}
+]}.

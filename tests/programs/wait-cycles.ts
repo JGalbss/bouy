@@ -1,4 +1,4 @@
-import { cast, sleep, spawn, stop, withTimeout, type Ref } from "bouy";
+import { cast, sleep, spawn, stop, withTimeout, type Ref } from "buoy";
 
 // Turns that wait on each other at once, through calls, backpressure casts,
 // or a restart, end without a deadlock: a call throws CallCycle, and a cast

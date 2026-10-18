@@ -8,7 +8,7 @@
   },
   "tools": {
     "commit": "f76d8b3-dirty",
-    "bouy": "bouy 0.1.0",
+    "buoy": "buoy 0.1.0",
     "otp": "29.1.1 (erts 17.1)",
     "node": "v24.2.0",
     "bun": "1.3.14"
@@ -24,7 +24,7 @@
       "name": "call-latency",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "max_ms": {
@@ -338,7 +338,7 @@
       "name": "cast-throughput",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "casts_per_s": {
@@ -562,7 +562,7 @@
       "name": "compute",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "fib_ms": {
@@ -786,7 +786,7 @@
       "name": "crash-isolation",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "agents_answering": {
@@ -1100,7 +1100,7 @@
       "name": "crash-recovery",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "cycle_us": {
@@ -1384,7 +1384,7 @@
       "name": "fairness",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "max_ms": {
@@ -1698,7 +1698,7 @@
       "name": "fan-out",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "calls_per_s": {
@@ -1952,7 +1952,7 @@
       "name": "memory-leak",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "agents_lost": {
@@ -2436,7 +2436,7 @@
       "name": "payload",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "messages_per_s": {
@@ -2690,7 +2690,7 @@
       "name": "runaway-loop",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "failed_requests": {
@@ -3094,7 +3094,7 @@
       "name": "spawn",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "actors": {
@@ -3363,7 +3363,7 @@
       "name": "startup",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "peak_rss_mib": {
@@ -3572,7 +3572,7 @@
       "name": "stuck-call",
       "programs": [
         {
-          "runtime": "bouy",
+          "runtime": "buoy",
           "failed": 0,
           "summary": {
             "calls_ms": {

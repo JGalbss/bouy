@@ -8,7 +8,7 @@
     "node_modules/",
     "pnpm-lock.yaml",
     "tools/oxlint/guardrails/anti-slop/",
-    ".bouy/",
+    ".buoy/",
     ".claude/",
     "runtime/vendor/",
     "runtime/node/",

@@ -6,7 +6,7 @@ import * as spec from "@standard-schema/spec";
 const positive = {
   "~standard": {
     version: 1,
-    vendor: "bouy-test",
+    vendor: "buoy-test",
     validate: (value) =>
       typeof value === "number" && value > 0
         ? { value }

@@ -1,5 +1,5 @@
-import transpiled, { helper } from "@bouytest/transpiled";
-import * as namespace from "@bouytest/transpiled";
+import transpiled, { helper } from "@buoytest/transpiled";
+import * as namespace from "@buoytest/transpiled";
 
 console.log(`default import: ${typeof transpiled}`);
 console.log(`default import .default: ${transpiled.default()}`);

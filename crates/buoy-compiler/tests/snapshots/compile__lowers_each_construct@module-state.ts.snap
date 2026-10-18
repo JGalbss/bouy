@@ -1,0 +1,32 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/module-state.ts
+---
+-module(buoy@module_state).
+-export(['__init__'/0, useState/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() ->
+    buoy_main:import(buoy@imported),
+    TABLE@1 = buoy_map:new([[[<<"a">>, 1]]]),
+    persistent_term:put({buoy@module_state, <<"TABLE">>}, TABLE@1),
+    DERIVED@1 = buoy_rt:mul(
+        buoy_rt:get(<<"hello">>, <<"length">>),
+        persistent_term:get({buoy@imported, <<"LIMIT">>})
+    ),
+    persistent_term:put({buoy@module_state, <<"DERIVED">>}, DERIVED@1),
+    persistent_term:put({buoy@module_state, <<"EXPORTED">>}, 42),
+    buoy_console:log([<<"hello">>, DERIVED@1]),
+    ok.
+
+useState(Args) ->
+    [
+        <<"hello">>,
+        buoy_rt:call_method(persistent_term:get({buoy@module_state, <<"TABLE">>}), <<"get">>, [<<"a">>]),
+        persistent_term:get({buoy@module_state, <<"DERIVED">>}),
+        buoy@imported:helper([1]),
+        buoy@imported:helper([2]),
+        persistent_term:get({buoy@imported, <<"LIMIT">>}),
+        {'$class', buoy@imported, <<"Shape">>}
+    ].

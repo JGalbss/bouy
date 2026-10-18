@@ -2,7 +2,7 @@
 
 > Paths under `packages/`, `e2e/`, `examples/`, and `bench/` refer to commit [`90529d8`](https://github.com/JGalbss/bouy/tree/90529d8), the last commit with the Node runtime.
 
-This note measures BEAM processes and QuickJS-wasm runtimes on the Bouy development machine. It also measures Node 25 actors inside one isolate with the same three benchmarks, in the same Linux VM. The architecture decision record uses these numbers for criterion 4 (Startup time and memory per actor) and criterion 5 (Message throughput and latency).
+This note measures BEAM processes and QuickJS-wasm runtimes on the Buoy development machine. It also measures Node 25 actors inside one isolate with the same three benchmarks, in the same Linux VM. The architecture decision record uses these numbers for criterion 4 (Startup time and memory per actor) and criterion 5 (Message throughput and latency).
 
 Every number below comes from `bench/evidence/results/beam-quickjs-2026-10-16-m5pro.json`. The `summary` object in that file holds the medians, minimums, and maximums. The `raw` object holds every run. The script `bench/evidence/beam/run-all.sh` produced the file on 2026-10-16 between 14:00:54Z and 14:04:07Z.
 
@@ -27,7 +27,7 @@ Other workloads ran on the host during the measurement. The host load average wa
 
 ```sh
 # One-time scratch install outside the repository. quickjs-emscripten is not a repo dependency.
-mkdir -p /tmp/bouy-qjs && cd /tmp/bouy-qjs && npm init -y && npm install quickjs-emscripten@0.32.0
+mkdir -p /tmp/buoy-qjs && cd /tmp/buoy-qjs && npm init -y && npm install quickjs-emscripten@0.32.0
 
 # From the repository root: runs every batch below, then writes the results file.
 sh bench/evidence/beam/run-all.sh bench/evidence/results/beam-quickjs-2026-10-16-m5pro.json
@@ -40,12 +40,12 @@ sh bench/evidence/beam/run-all.sh bench/evidence/results/beam-quickjs-2026-10-16
 | BEAM                      | `docker run --rm -v "$PWD/bench/evidence/beam:/bench:ro" erlang:29.1.2 sh /bench/run-beam.sh`                             |
 | Node in Docker            | `docker run --rm -v "$PWD/bench/evidence/beam:/bench:ro" node:25.9.0 sh /bench/run-node.sh`                               |
 | Node native               | `sh bench/evidence/beam/run-node.sh`                                                                                      |
-| QuickJS-wasm native       | `node --expose-gc /tmp/bouy-qjs/measure-quickjs.mjs 1000 100 1000000`                                                     |
-| QuickJS-wasm in Docker    | `docker run --rm -v /private/tmp/bouy-qjs:/qjs:ro node:25.9.0 node --expose-gc /qjs/measure-quickjs.mjs 1000 100 1000000` |
+| QuickJS-wasm native       | `node --expose-gc /tmp/buoy-qjs/measure-quickjs.mjs 1000 100 1000000`                                                     |
+| QuickJS-wasm in Docker    | `docker run --rm -v /private/tmp/buoy-qjs:/qjs:ro node:25.9.0 node --expose-gc /qjs/measure-quickjs.mjs 1000 100 1000000` |
 | fib(27) in V8             | `node bench/evidence/quickjs/fib.js` and `node --jitless bench/evidence/quickjs/fib.js`, native and in `node:25.9.0`      |
 | fib(27) in native QuickJS | `docker run --rm -v "$PWD/bench/evidence/quickjs:/q:ro" alpine:3.22 sh -c 'apk add --no-cache quickjs && qjs /q/fib.js'`  |
 
-`run-all.sh` copies `measure-quickjs.mjs` and `fib.js` into `/tmp/bouy-qjs` first. `measure-quickjs.mjs` is plain JavaScript because `tsc` cannot resolve `quickjs-emscripten` inside the repository. `bench/evidence/beam/summarize.jq` computes the `summary` object from the raw runs.
+`run-all.sh` copies `measure-quickjs.mjs` and `fib.js` into `/tmp/buoy-qjs` first. `measure-quickjs.mjs` is plain JavaScript because `tsc` cannot resolve `quickjs-emscripten` inside the repository. `bench/evidence/beam/summarize.jq` computes the `summary` object from the raw runs.
 
 ## Method
 

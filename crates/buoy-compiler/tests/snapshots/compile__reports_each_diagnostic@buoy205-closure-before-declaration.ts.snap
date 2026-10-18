@@ -1,0 +1,9 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy205-closure-before-declaration.ts
+---
+buoy205-closure-before-declaration.ts:2:30: BUOY205: this closure reads `x`, which is declared after the closure is created; an Erlang fun copies the values it captures, so declare `x` before the closure
+buoy205-closure-before-declaration.ts:8:58: BUOY205: this closure reads `api`, which its own declaration assigns after the closure is created; an Erlang fun copies the values it captures, so create the closure from values that exist first
+buoy205-closure-before-declaration.ts:13:17: BUOY205: `describe` reads `base`, which is declared after this first use of `describe`; declare `base` before it
+buoy205-closure-before-declaration.ts:24:10: BUOY205: a closure cannot change `state`, which belongs to an enclosing function; return the new value from the closure instead

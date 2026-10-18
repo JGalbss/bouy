@@ -1,7 +1,7 @@
 // Actor state through `finally`, method values, `this[name](...)`, fluent methods,
 // `Object.assign(this, ...)`, Map entries of fields, private fields, and an overloaded
 // constructor.
-import { child, spawn, supervise } from "bouy";
+import { child, spawn, supervise } from "buoy";
 
 class Counter {
   #n = 0;

@@ -2,6 +2,6 @@
 import { getEncoding } from "js-tiktoken";
 
 const encoding = getEncoding("cl100k_base");
-const tokens = encoding.encode("hello world, from Bouy");
+const tokens = encoding.encode("hello world, from Buoy");
 console.log(tokens.join(" "), tokens.length);
 console.log(encoding.decode(tokens));

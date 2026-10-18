@@ -8,7 +8,7 @@ import {
   spawn,
   withTimeout,
   type Ref,
-} from "bouy";
+} from "buoy";
 
 // Timers: a delay beyond 2^32 ms is valid, cancelSchedule() returns after the
 // timer stops, a full mailbox skips a tick whatever its overflow, and a timer

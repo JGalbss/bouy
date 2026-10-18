@@ -1,0 +1,6 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy202-module-let.ts
+---
+buoy202-module-let.ts:1:1: BUOY202: a module-level `let` is shared mutable state; use `const`, or keep the state in a function or an actor

@@ -48,7 +48,7 @@ function compress(text: string): string {
 }
 
 function main(): void {
-  console.log(isPalindrome("A man, a plan, a canal: Panama"), isPalindrome("bouy"));
+  console.log(isPalindrome("A man, a plan, a canal: Panama"), isPalindrome("buoy"));
   console.log(caesar("hello, world", 3), caesar(caesar("abc xyz", 5), -5));
   console.log(reverseWords("actors run on the beam"));
   console.log(

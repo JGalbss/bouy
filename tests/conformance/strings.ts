@@ -8,7 +8,7 @@ function main(): void {
   console.log("  padded  ".trim() + "|", "ab".repeat(3));
   console.log("5".padStart(3, "0"), "x".padEnd(4, "-") + "|");
   console.log(s.charAt(4), s[7], s.at(-1));
-  console.log(s.replace("World", "Bouy"), "a-b-c".replaceAll("-", "+"));
+  console.log(s.replace("World", "Buoy"), "a-b-c".replaceAll("-", "+"));
   console.log("comma,separated,values".split(","));
   console.log(s.charCodeAt(0), String.fromCharCode(72, 105));
   const parts: string[] = [];

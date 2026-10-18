@@ -1,0 +1,50 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/places.ts
+---
+-module(buoy@places).
+-export(['__init__'/0, writes/1, maps/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+writes(Args) ->
+    Input@1 = buoy_rt:arg(1, Args),
+    Key@1 = buoy_rt:arg(2, Args),
+    Data@1 = Input@1,
+    Data@2 = buoy_rt:set(Data@1, <<"count">>, 1),
+    T@1 = buoy_rt:get(Data@2, <<"count">>),
+    Data@3 = buoy_rt:set(Data@2, <<"count">>, buoy_rt:add(T@1, 2)),
+    T@2 = buoy_rt:get(Data@3, <<"count">>),
+    T@3 = buoy_rt:sub(T@2, -1),
+    Data@4 = buoy_rt:set(Data@3, <<"count">>, T@3),
+    T@4 = buoy_rt:get(Data@4, <<"nested">>),
+    T@5 = buoy_rt:get(T@4, <<"a">>),
+    T@6 = buoy_rt:get(T@5, <<"b">>),
+    Data@5 = buoy_rt:set(Data@4, <<"nested">>, buoy_rt:set(T@4, <<"a">>, buoy_rt:set(T@5, <<"b">>, buoy_rt:mul(T@6, 3)))),
+    T@7 = buoy_rt:get(Data@5, <<"tags">>),
+    {T@8, T@9} = buoy_rt:mutate(T@7, <<"push">>, [<<"x">>]),
+    Data@6 = buoy_rt:set(Data@5, <<"tags">>, T@9),
+    T@10 = buoy_rt:get(Data@6, <<"tags">>),
+    Data@7 = buoy_rt:set(Data@6, <<"tags">>, buoy_rt:set(T@10, 0, Key@1)),
+    T@11 = buoy_rt:get(Data@7, <<"nested">>),
+    Data@8 = buoy_rt:set(Data@7, <<"nested">>, buoy_rt:delete(T@11, <<"a">>)),
+    Items@1 = [3, 1, 2],
+    {_, Items@2} = buoy_rt:mutate(Items@1, <<"sort">>, [fun(Args@1) ->
+        A@1 = buoy_rt:arg(1, Args@1),
+        B@1 = buoy_rt:arg(2, Args@1),
+        buoy_rt:sub(A@1, B@1)
+    end]),
+    {T@13, Items@3} = buoy_rt:mutate(Items@2, <<"pop">>, []),
+    Last@1 = T@13,
+    Copy@1 = buoy_rt:call_method(buoy_rt:array([{'$spread', Items@3}]), <<"reverse">>, []),
+    [Data@8, Items@3, Last@1, Copy@1].
+
+maps(Args) ->
+    Seen@1 = buoy_map:new([]),
+    {_, Seen@2} = buoy_rt:mutate(Seen@1, <<"set">>, [<<"a">>, 1]),
+    Set@1 = buoy_set:new([]),
+    {_, Set@2} = buoy_rt:mutate(Set@1, <<"add">>, [1]),
+    {_, Set@3} = buoy_rt:mutate(Set@2, <<"delete">>, [1]),
+    [Seen@2, Set@3].

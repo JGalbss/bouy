@@ -1,4 +1,4 @@
-import { cast, inspect, sleep, spawn, type Ref } from "bouy";
+import { cast, inspect, sleep, spawn, type Ref } from "buoy";
 
 // Many senders at once cannot pass the capacity of a mailbox together: a
 // reject mailbox takes exactly its capacity, and a backpressure mailbox holds

@@ -1,4 +1,4 @@
-import { child, inspect, supervise } from "bouy";
+import { child, inspect, supervise } from "buoy";
 
 class Worker {
   #count = 0;

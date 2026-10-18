@@ -27,7 +27,7 @@ const tools = {
       type: "object",
       properties: { word: { type: "string" } },
     }),
-    // The only tool of its step, so its line prints at the same place in Node and Bouy.
+    // The only tool of its step, so its line prints at the same place in Node and Buoy.
     execute: async ({ word }, { toolCallId, messages }) => {
       console.log("shout", toolCallId, "after", messages.length, "messages");
       return word.toUpperCase();

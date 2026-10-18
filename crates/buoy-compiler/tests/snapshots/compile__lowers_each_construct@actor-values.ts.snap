@@ -1,0 +1,73 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/actor-values.ts
+---
+-module(buoy@actor_values).
+-export(['__init__'/0, 'Builder#new'/1, 'Builder#add'/2, 'Builder#label'/2, 'Builder#build'/2, 'Builder#dispatch'/3]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+'Builder#new'(Args) ->
+    Init@1 = buoy_rt:arg(1, Args),
+    This = #{<<"parts">> => [], '#secret' => <<"pin">>, '#subs' => buoy_map:new([])},
+    T@1 = buoy_object:assign([This, Init@1]),
+    {_, This@1} = {T@1, T@1},
+    This@1.
+
+'Builder#add'(This, Args) ->
+    Part@1 = buoy_rt:arg(1, Args),
+    T@1 = buoy_rt:get(This, <<"parts">>),
+    {T@2, T@3} = buoy_rt:mutate(T@1, <<"push">>, [Part@1]),
+    This@1 = buoy_rt:set(This, <<"parts">>, T@3),
+    {This@1, This@1}.
+
+'Builder#label'(This, Args) ->
+    N@1 = buoy_rt:arg(1, Args),
+    {buoy_rt:concat([<<"#">>, N@1]), This}.
+
+'Builder#build'(This, Args) ->
+    Op@1 = buoy_rt:arg(1, Args),
+    {_, This@1} = 'Builder#add'(This, [<<"a">>]),
+    {_, This@2} = 'Builder#add'(This@1, [<<"b">>]),
+    T@3 = maps:get('#subs', This@2, undefined),
+    T@4 = buoy_rt:call_method(T@3, <<"get">>, [<<"topic">>]),
+    {_, {This@4}} = case T@4 of
+        null -> {undefined, {This@2}};
+        undefined -> {undefined, {This@2}};
+        T@7 ->
+            {T@5, T@6} = buoy_rt:mutate(T@4, <<"push">>, [1]),
+            This@3 = maps:put(
+                '#subs',
+                erlang:element(2, buoy_rt:mutate(T@3, <<"set">>, [<<"topic">>, T@6])),
+                This@2
+            ),
+            {T@5, {This@3}}
+    end,
+    Labels@1 = buoy_rt:call_method(
+        [1, 2],
+        <<"map">>,
+        [fun(Args@1) -> erlang:element(1, 'Builder#label'(This@4, Args@1)) end]
+    ),
+    T@9 = buoy_rt:to_string(Op@1),
+    {_, This@5} = 'Builder#dispatch'(T@9, This@4, [<<"c">>]),
+    {
+        buoy_rt:concat([
+            maps:get('#secret', This@5, undefined),
+            <<":">>,
+            buoy_rt:call_method(Labels@1, <<"join">>, [<<",">>]),
+            <<":">>,
+            buoy_rt:call_method(buoy_rt:get(This@5, <<"parts">>), <<"join">>, [<<",">>])
+        ]),
+        This@5
+    }.
+
+'Builder#dispatch'(<<"add">>, This, Args) -> 'Builder#add'(This, Args);
+'Builder#dispatch'(<<"label">>, This, Args) -> 'Builder#label'(This, Args);
+'Builder#dispatch'(<<"build">>, This, Args) -> 'Builder#build'(This, Args);
+'Builder#dispatch'(Method, _This, _Args) ->
+    buoy_error:throw(
+        <<"TypeError">>,
+        buoy_rt:concat([<<"Builder.">>, Method, <<" is not a function">>])
+    ).

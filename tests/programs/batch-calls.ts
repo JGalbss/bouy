@@ -1,4 +1,4 @@
-import { self, spawn } from "bouy";
+import { self, spawn } from "buoy";
 
 class Counter {
   #count = 0;

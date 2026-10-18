@@ -1,0 +1,22 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+assertion_line: 111
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy206-unsupported-syntax.ts
+---
+buoy206-unsupported-syntax.ts:1:1: BUOY206: enums are not supported; use a union of string literals
+buoy206-unsupported-syntax.ts:6:3: BUOY206: static class members are not supported; use a module-level const
+buoy206-unsupported-syntax.ts:7:3: BUOY206: getters and setters are not supported; use a method
+buoy206-unsupported-syntax.ts:12:8: BUOY206: class inheritance is supported only for error classes: extends Error, TypeError, RangeError, or SyntaxError, or Data.TaggedError("Tag") or Data.Error with `Data` from "effect"
+buoy206-unsupported-syntax.ts:15:3: BUOY206: `yield` without `*` is not supported: a generator function is the body of an Effect, and `yield* effect` runs an Effect
+buoy206-unsupported-syntax.ts:18:8: BUOY206: async generators are not supported; a generator function is the body of an Effect, so drop `async` and run asynchronous work with `yield*`
+buoy206-unsupported-syntax.ts:23:8: BUOY206: a generator method is not supported; return `Effect.gen(function* () { ... })` from a plain method
+buoy206-unsupported-syntax.ts:27:3: BUOY206: `var` is not supported; use `let` or `const`
+buoy206-unsupported-syntax.ts:28:3: BUOY206: labeled statements are not supported; move the loop into a function and return from it
+buoy206-unsupported-syntax.ts:31:14: BUOY206: regular expressions are not supported yet
+buoy206-unsupported-syntax.ts:35:3: BUOY206: `.then()` chains are not supported; use `await` and try/catch
+buoy206-unsupported-syntax.ts:36:3: BUOY206: `new Promise` is not supported; call the async function and await it
+buoy206-unsupported-syntax.ts:42:5: BUOY206: `switch` fall-through between non-empty cases is not supported; end the case with `break` or `return`
+buoy206-unsupported-syntax.ts:48:14: BUOY206: `arguments` is not supported; use a rest parameter
+buoy206-unsupported-syntax.ts:53:1: BUOY206: `import x = require(...)` is not supported; use an import declaration
+buoy206-unsupported-syntax.ts:56:3: BUOY206: decorators are not supported

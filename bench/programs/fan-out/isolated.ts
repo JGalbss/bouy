@@ -2,7 +2,7 @@
 // Promise.all, ten calls per actor, in 10 rounds. A worker thread for each actor does not
 // fit in memory, so a pool of worker threads from node-shards.ts, one for each core up to
 // 8, hosts a shard of the actors each. postMessage copies each call and each reply with
-// the structured clone, as Bouy copies a message. The actors of one shard share a thread.
+// the structured clone, as Buoy copies a message. The actors of one shard share a thread.
 import { availableParallelism } from "node:os";
 import { isMainThread } from "node:worker_threads";
 import { Shards, serveShard } from "../node-shards.ts";

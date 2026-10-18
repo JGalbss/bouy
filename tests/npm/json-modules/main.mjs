@@ -1,5 +1,5 @@
 import local from "./data.json" with { type: "json" };
-import packaged from "@bouytest/json-data/data.json" with { type: "json" };
+import packaged from "@buoytest/json-data/data.json" with { type: "json" };
 
 console.log(`${local.name}: ${local.items.join(",")}`);
 console.log(`${packaged.source}: ${packaged.count}`);

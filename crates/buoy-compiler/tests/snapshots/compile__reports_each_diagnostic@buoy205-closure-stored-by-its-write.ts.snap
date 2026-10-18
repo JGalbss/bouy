@@ -1,0 +1,8 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy205-closure-stored-by-its-write.ts
+---
+buoy205-closure-stored-by-its-write.ts:3:51: BUOY205: this closure reads `fact`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument
+buoy205-closure-stored-by-its-write.ts:10:37: BUOY205: this closure reads `commands`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument
+buoy205-closure-stored-by-its-write.ts:16:46: BUOY205: this closure reads `table`, which changes after the closure is created or in a loop around it; the closure would keep the old value, so pass the value in as an argument

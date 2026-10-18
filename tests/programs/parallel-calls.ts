@@ -1,4 +1,4 @@
-import { sleep, spawn } from "bouy";
+import { sleep, spawn } from "buoy";
 
 class Sleeper {
   nap(ms: number): number {

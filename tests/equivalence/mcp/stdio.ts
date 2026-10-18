@@ -9,7 +9,7 @@ const transport = new StdioClientTransport({
   args: [fileURLToPath(new URL("./stdio-server-fixture.ts", import.meta.url))],
   stderr: "ignore",
 });
-const client = new Client({ name: "bouy-test-client", version: "1.0.0" });
+const client = new Client({ name: "buoy-test-client", version: "1.0.0" });
 await client.connect(transport);
 await exercise(client);
 await client.close();

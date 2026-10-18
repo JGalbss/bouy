@@ -1,4 +1,4 @@
-import { cast, sleep, spawn } from "bouy";
+import { cast, sleep, spawn } from "buoy";
 
 class Slow {
   work(ms: number): void {

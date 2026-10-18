@@ -1,0 +1,9 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: render(&diagnostics)
+input_file: crates/buoy-compiler/tests/fixtures/diagnostics/buoy207-host-api.ts
+---
+buoy207-host-api.ts:1:1: BUOY207: `setTimeout` is not available in Buoy; use sleep or schedule from "buoy" for timers
+buoy207-host-api.ts:2:13: BUOY207: `globalThis` is not available in Buoy; import the value or pass it as an argument
+buoy207-host-api.ts:3:1: BUOY207: `process.exit` is not available in Buoy; read process.env.NAME or process.argv, and throw an error to exit with status 1
+buoy207-host-api.ts:4:13: BUOY207: `process.cwd` is not available in Buoy; read process.env.NAME or process.argv, and throw an error to exit with status 1

@@ -1,10 +1,10 @@
 #!/bin/sh
 # Vendors Node's own built-in JavaScript, `lib/` of nodejs/node at the tag of `.node-version`,
 # into runtime/vendor/node/lib, with Node's MIT LICENSE, and the bundled dependencies that lib/
-# requires as internal/deps/<path> into runtime/vendor/node/deps, each with its license. crates/bouy-cli/build.rs compiles
+# requires as internal/deps/<path> into runtime/vendor/node/deps, each with its license. crates/buoy-cli/build.rs compiles
 # the ids of runtime/node/builtins.txt from there into the runtime (docs/design/node-builtins.md).
 #
-# The files stay byte-identical: Bouy's own version of an id goes into runtime/node/<id>.js,
+# The files stay byte-identical: Buoy's own version of an id goes into runtime/node/<id>.js,
 # which build.rs takes in place of the vendored file. The script writes
 # runtime/vendor/node/lib.sha256, one `shasum -a 256` line for each file, and the tag and the
 # commit on its first line.

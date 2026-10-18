@@ -5,7 +5,7 @@ node_modules/
 !/tests/node/test/**/node_modules/
 target/
 .turbo/
-.bouy/
+.buoy/
 runtime/_build/
 *.log
 .DS_Store

@@ -1,7 +1,7 @@
 {
-  "name": "bouy-workspace",
+  "name": "buoy-workspace",
   "private": true,
-  "description": "Bouy: a compiler from TypeScript to Erlang, and an OTP runtime that makes actors the execution primitive for AI agents.",
+  "description": "Buoy: a compiler from TypeScript to Erlang, and an OTP runtime that makes actors the execution primitive for AI agents.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "lint": "oxlint --type-aware && cargo clippy --workspace --all-targets -- -D warnings && turbo run lint",
     "format": "oxfmt --write . && cargo fmt --all",
     "format:check": "oxfmt --check . && cargo fmt --all --check",
-    "compat": "cargo run -q -p bouy-suites -- compat",
+    "compat": "cargo run -q -p buoy-suites -- compat",
     "check": "pnpm format:check && pnpm lint && pnpm test && pnpm compat --check"
   },
   "devDependencies": {

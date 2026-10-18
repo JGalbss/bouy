@@ -1,4 +1,4 @@
-import { cast, child, inspect, self, sleep, spawn, stop, supervise, type Ref } from "bouy";
+import { cast, child, inspect, self, sleep, spawn, stop, supervise, type Ref } from "buoy";
 
 // The life of actors: the actors that a constructor starts stop with it,
 // stopped actors do not pile up, inspect() shows a restart until its

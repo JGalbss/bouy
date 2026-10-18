@@ -1,0 +1,26 @@
+[package]
+name = "buoy-cli"
+description = "The buoy command: compiles a TypeScript program to Erlang and runs it on one BEAM VM."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "buoy"
+path = "src/main.rs"
+
+[dependencies]
+buoy-compiler.workspace = true
+clap.workspace = true
+
+# build.rs compiles the vendored Temporal polyfill into a runtime module.
+[build-dependencies]
+buoy-compiler.workspace = true
+
+[dev-dependencies]
+buoy-suites = { path = "../buoy-suites" }
+
+[lints]
+workspace = true

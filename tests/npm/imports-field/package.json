@@ -1,10 +1,10 @@
 {
-  "name": "@bouytest/imports-case",
+  "name": "@buoytest/imports-case",
   "private": true,
   "imports": {
     "#config": "./config.mjs",
     "#lib/*": "./lib/*.mjs",
-    "#dependency": "@bouytest/imported",
+    "#dependency": "@buoytest/imported",
     "#conditional": {
       "import": "./lib/conditional-import.mjs",
       "require": "./lib/conditional-require.cjs"

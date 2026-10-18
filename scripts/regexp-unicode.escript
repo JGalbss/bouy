@@ -1,5 +1,5 @@
 #!/usr/bin/env escript
-%% Writes runtime/src/bouy_regexp_unicode.erl, the Unicode data of the RegExp engine,
+%% Writes runtime/src/buoy_regexp_unicode.erl, the Unicode data of the RegExp engine,
 %% from the files of the Unicode Character Database.
 %%
 %% Usage: scripts/regexp-unicode.escript <ucd-dir> <output.erl>
@@ -243,7 +243,7 @@ header(Version) ->
      "%% points. scf/1 is simple case folding, upper/1 the Canonicalize of a BMP pattern,\n"
      "%% and scf_classes/0 and upper_classes/0 list each value that several code points\n"
      "%% map to, with those code points.\n"
-     "-module(bouy_regexp_unicode).\n\n"
+     "-module(buoy_regexp_unicode).\n\n"
      "-export([version/0, binary_property/1, general_category/1, script/1, ranges/1, strings/1]).\n"
      "-export([scf/1, upper/1, scf_classes/0, upper_classes/0]).\n\n"
      "-spec version() -> string().\n"

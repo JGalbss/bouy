@@ -42,7 +42,7 @@ jobs:
             exit 0
           fi
           id=$(gh api --paginate "repos/$REPO/issues/$number/comments" \
-            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- bouy-suites -->"))) | .id' | head -n 1)
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- buoy-suites -->"))) | .id' | head -n 1)
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$DIR/body.md" > /dev/null
           else

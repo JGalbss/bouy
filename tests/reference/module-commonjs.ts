@@ -9,7 +9,7 @@ import report from "./modules/requires-esm.cjs";
 import data from "./modules/data.json" with { type: "json" };
 import * as babel from "./modules/babel-reexport.cjs";
 
-console.log(greet("bouy"), kind, helper);
+console.log(greet("buoy"), kind, helper);
 console.log(legacy.self, legacy.file, legacy.dir, legacy.loaded);
 console.log(Object.keys(legacyNamespace));
 console.log(legacyNamespace.default === legacy, legacyNamespace["module.exports"] === legacy);

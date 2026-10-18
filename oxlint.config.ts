@@ -8,13 +8,13 @@ export default defineConfig({
   ignorePatterns: [
     ...(preset.ignorePatterns ?? []),
     "dist/**",
-    ".bouy/**",
+    ".buoy/**",
     ".claude/**",
     "target/**",
     "**/fixtures/**",
     // Compiler inputs: these programs exercise every construct the compiler lowers.
     "tests/**",
-    // Benchmark programs: Bouy compiler inputs and the plain Node baselines that they
+    // Benchmark programs: Buoy compiler inputs and the plain Node baselines that they
     // measure against, which await in loops on purpose to time one call at a time.
     "bench/programs/**",
     // The same kind of programs for the reference-semantics prototype: compiler inputs and
@@ -22,7 +22,7 @@ export default defineConfig({
     "bench/reference/**",
     // Third-party JavaScript that build.rs compiles into the runtime, kept as published.
     "runtime/vendor/**",
-    // Bouy's own versions of Node's lib/ files, in the style of Node's lib, which build.rs
+    // Buoy's own versions of Node's lib/ files, in the style of Node's lib, which build.rs
     // compiles into the runtime next to the vendored ones (docs/design/node-builtins.md).
     "runtime/node/**",
     // Speed kernels: idiomatic TypeScript ports of Octane and other benchmarks, compiled by

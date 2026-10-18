@@ -8,7 +8,7 @@ This note is the "engines" track of the architecture decision. It evaluates thre
 - **D1**: a Node host runs a pool of worker-thread schedulers. Each worker runs many lightweight actors (M:N).
 - **D2**: a Rust host embeds several V8 isolates and uses them as schedulers.
 
-The note covers V8 isolates and contexts, Cloudflare Workers and workerd, Node.js, isolated-vm, ShadowRealm, Deno, Bun, and JavaScriptCore. It ends with scores on the nine criteria and a section named "Implications for Bouy".
+The note covers V8 isolates and contexts, Cloudflare Workers and workerd, Node.js, isolated-vm, ShadowRealm, Deno, Bun, and JavaScriptCore. It ends with scores on the nine criteria and a section named "Implications for Buoy".
 
 Date: 2026-10-16. Machine: Apple M5 Pro, 18 cores, 64 GiB of memory, macOS 26.6.1 (Darwin 25.6.0).
 
@@ -26,7 +26,7 @@ Date: 2026-10-16. Machine: Apple M5 Pro, 18 cores, 64 GiB of memory, macOS 26.6.
 - **Load.** Other agents ran benchmarks and builds on this machine at the same time. The 1-minute load average was between 15.8 and 42.8 on 18 cores during the batch. Treat times as upper bounds. Memory numbers moved less between runs.
 - **Binaries.** `node` means the official Node v25.9.0 binary from `nodejs.org` (V8 14.1.146.11-node.25), checked against `SHASUMS256.txt`. The Homebrew Node v25.9.0 on this machine reports `node_use_node_snapshot=false` and `node_shared=true` in `process.config.variables`; the official build reports `node_use_node_snapshot=true`. Other runtimes: Node v24.2.0 (official build through nvm, V8 13.6.233.10), Bun 1.3.11, and the rusty_v8 crate `v8` 150.4.0 (V8 15.0.245.2-rusty).
 - **Docker.** Docker 29.4 ran Deno 2.9.7, Bun 1.4.3, and Node 25.9.0 in a Linux arm64 virtual machine with 18 vCPUs and 16 GiB. Compare Docker rows only with other Docker rows.
-- **Quoted numbers** name their source and date. The sources did not state hardware unless the text says so. The scripts live outside `bench/` because this track may edit only this file, and `AGENTS.md` asks that performance claims cite `bench/` outputs. Moving Appendix A into `bench/evidence/` closes that gap. The section "Implications for Bouy" at the end lists the design consequences.
+- **Quoted numbers** name their source and date. The sources did not state hardware unless the text says so. The scripts live outside `bench/` because this track may edit only this file, and `AGENTS.md` asks that performance claims cite `bench/` outputs. Moving Appendix A into `bench/evidence/` closes that gap. The section "Implications for Buoy" at the end lists the design consequences.
 
 ## 1. V8 isolates, contexts, and isolate groups
 
@@ -148,7 +148,7 @@ L1 with an `Atomics.add` call in its body stopped normally on Node (`terminate-c
 - Input gate: "While a storage operation is executing, no events shall be delivered to the object except for storage completion events."
 - Output gate: "any new outgoing network messages will be held back until the write has completed." If the write fails, the messages "will be discarded and replaced with errors".
 
-The gates give an actor turn atomicity across `await` without locks. Bouy can copy this rule for actor state that persists.
+The gates give an actor turn atomicity across `await` without locks. Buoy can copy this rule for actor state that persists.
 
 ## 3. Node.js
 
@@ -216,7 +216,7 @@ A mailbox queue must not use `Array.prototype.shift()`. On Node 25.9.0, draining
 
 - `module.registerHooks()` adds synchronous hooks that run "in the same thread and the same realm where the modules are loaded". It is "Stability: 1.2 - Release candidate" ([module](https://nodejs.org/docs/latest-v25.x/api/module.html)).
 - `module.register()`, the asynchronous off-thread variant, is deprecated since v25.9.0.
-- Synchronous hooks "are not inherited into child worker threads by default". A file preloaded with `--import` or `--require` registers them in workers too. A D1 scheduler pool must preload the Bouy loader in every worker.
+- Synchronous hooks "are not inherited into child worker threads by default". A file preloaded with `--import` or `--require` registers them in workers too. A D1 scheduler pool must preload the Buoy loader in every worker.
 - Bun does not implement `registerHooks`, and its `module.register` is a no-op ([Bun Node.js compatibility](https://bun.com/docs/runtime/nodejs-compat)).
 
 ### 3.6 Uncaught exceptions and rejections
@@ -241,7 +241,7 @@ The Node warning refers to shared state. In a single-isolate actor runtime, an e
 | `resourceLimits` heap cap                            | Whole worker                      | 34–169 ms to `ERR_WORKER_OUT_OF_MEMORY`; Gap 1 applies                                                |
 | `vm` `timeout`                                       | One synchronous call in a context | 51.2 ms for a 50 ms limit; 105 µs extra per call for the watchdog thread; async work escapes          |
 | Inspector `Runtime.terminateExecution` from a worker | Main thread JavaScript            | Aborts Node inside timer callbacks; drops microtasks (Gaps 2 and 3)                                   |
-| Compiler-inserted yield or budget checks             | Compiled Bouy code only           | Not measured here; [measurements-node.md](measurements-node.md) E5 measured 0.57 to 0.91 ns per check |
+| Compiler-inserted yield or budget checks             | Compiled Buoy code only           | Not measured here; [measurements-node.md](measurements-node.md) E5 measured 0.57 to 0.91 ns per check |
 
 Node offers no supported way to stop one runaway actor on the main thread and keep the other actors.
 
@@ -343,11 +343,11 @@ A worker that loads the agent packages costs about 23.7 MiB. With one worker per
 | Rust host on rusty_v8 (D2) | `RequestInterrupt` can run host code at the next check, about 14.3 µs here      | `TerminateExecution` from any thread; CPU-time timers as in Workers; Gap 1 applies |
 | JavaScriptCore embedder    | No                                                                              | `JSContextGroupSetExecutionTimeLimit` (private API)                                |
 
-No engine preempts one actor inside a shared isolate. Fair scheduling inside an isolate must come from yield points that the Bouy compiler inserts. Engine termination stays a backstop that removes a whole isolate or worker, and a process boundary must back it up because of Gap 1.
+No engine preempts one actor inside a shared isolate. Fair scheduling inside an isolate must come from yield points that the Buoy compiler inserts. Engine termination stays a backstop that removes a whole isolate or worker, and a process boundary must back it up because of Gap 1.
 
 ## 10. Scores
 
-Scale: 5 is best for Bouy. Evidence names the section or script.
+Scale: 5 is best for Buoy. Evidence names the section or script.
 
 | Criterion                             | C   | D1  | D2  |
 | ------------------------------------- | --- | --- | --- |
@@ -375,7 +375,7 @@ Scale: 5 is best for Bouy. Evidence names the section or script.
 
 ## Appendix A. Scripts
 
-The scripts lived in `/tmp/bouy-engines/scripts`. `run-all.sh` produced every table value written as "median (range)". The packages `zod` 4.6.7, `ai` 7.0.142, and `@ai-sdk/openai` 4.0.95 were installed with `npm install --ignore-scripts` into `/tmp/bouy-engines/npm-deps`, outside the repository. The Rust probe in `/tmp/bouy-engines/rusty` was built with `cargo build --release` (Rust 1.88.0).
+The scripts lived in `/tmp/buoy-engines/scripts`. `run-all.sh` produced every table value written as "median (range)". The packages `zod` 4.6.7, `ai` 7.0.142, and `@ai-sdk/openai` 4.0.95 were installed with `npm install --ignore-scripts` into `/tmp/buoy-engines/npm-deps`, outside the repository. The Rust probe in `/tmp/buoy-engines/rusty` was built with `cargo build --release` (Rust 1.88.0).
 
 ### Shared helpers
 
@@ -456,12 +456,12 @@ export const spawn = (behavior) => {
 #!/bin/zsh
 # Usage: zsh run-all.sh > ../results/final.jsonl
 # Runs every measurement 3 times and prefixes each result with the 1-minute load average.
-NODE=/tmp/bouy-engines/dl-node/node-v25.9.0-darwin-arm64/bin/node
+NODE=/tmp/buoy-engines/dl-node/node-v25.9.0-darwin-arm64/bin/node
 BREW=/opt/homebrew/bin/node
 NODE24=$HOME/.nvm/versions/node/v24.2.0/bin/node
-RUSTY=/tmp/bouy-engines/rusty/target/release/isolate-cost
-RUSTYPC=/tmp/bouy-engines/rusty/target-ptrcomp/release/isolate-cost
-cd /tmp/bouy-engines/scripts
+RUSTY=/tmp/buoy-engines/rusty/target/release/isolate-cost
+RUSTYPC=/tmp/buoy-engines/rusty/target-ptrcomp/release/isolate-cost
+cd /tmp/buoy-engines/scripts
 run() { local label=$1; shift; local load=$(sysctl -n vm.loadavg | awk '{print $2}'); local out=$(perl -e 'alarm shift; exec @ARGV' 300 "$@" 2>&1 | tr '\n' ' '); echo "{\"label\":\"$label\",\"load1\":$load,\"out\":$(printf '%s' "$out" | python3 -I -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}"; }
 for rep in 1 2 3; do
   run worker-node-official $NODE --expose-gc worker-cost.mjs 50
@@ -493,9 +493,9 @@ for rep in 1 2 3; do
   run rusty-interrupt $RUSTY interrupt
   run rusty-ptrcomp-isolates $RUSTYPC isolates 200
   run rusty-ptrcomp-contexts $RUSTYPC contexts 1000
-  run ivm-node24 env IVM_PATH=/tmp/bouy-engines/dl-ivm24/node_modules/isolated-vm $NODE24 --no-node-snapshot --expose-gc ivm-cost.mjs 200
-  run docker-deno-worker docker run --rm -v /tmp/bouy-engines/scripts:/scripts:ro denoland/deno:2.9.7 run --allow-read --v8-flags=--expose-gc /scripts/deno-worker-cost.ts 50
-  run docker-node-worker docker run --rm -v /tmp/bouy-engines/scripts:/scripts:ro node:25.9.0-bookworm-slim node --expose-gc /scripts/worker-cost.mjs 50
+  run ivm-node24 env IVM_PATH=/tmp/buoy-engines/dl-ivm24/node_modules/isolated-vm $NODE24 --no-node-snapshot --expose-gc ivm-cost.mjs 200
+  run docker-deno-worker docker run --rm -v /tmp/buoy-engines/scripts:/scripts:ro denoland/deno:2.9.7 run --allow-read --v8-flags=--expose-gc /scripts/deno-worker-cost.ts 50
+  run docker-node-worker docker run --rm -v /tmp/buoy-engines/scripts:/scripts:ro node:25.9.0-bookworm-slim node --expose-gc /scripts/worker-cost.mjs 50
 done
 ```
 
@@ -789,7 +789,7 @@ export const zodRegistryIsShared = () =>
 // Usage: node --experimental-shadow-realm npm-in-realm.mjs | bun npm-in-realm.mjs
 // Runs the agent turn inside a ShadowRealm, and checks whether the realm shares zod's registry.
 import { runtime } from "./lib.mjs";
-await import("/tmp/bouy-engines/npm-deps/node_modules/zod/index.js"); // host realm creates its zod registry
+await import("/tmp/buoy-engines/npm-deps/node_modules/zod/index.js"); // host realm creates its zod registry
 const realm = new ShadowRealm();
 let shadow;
 try {
@@ -1597,7 +1597,7 @@ setTimeout(function allocate() {
 // Usage: node shared-state.mjs | bun shared-state.mjs
 // Shows what two actors in one realm share: built-in prototypes and npm module singletons.
 import vm from "node:vm";
-import { z } from "/tmp/bouy-engines/npm-deps/node_modules/zod/index.js";
+import { z } from "/tmp/buoy-engines/npm-deps/node_modules/zod/index.js";
 import { runtime } from "./lib.mjs";
 
 const actorA = () => {
@@ -1705,17 +1705,17 @@ console.log(JSON.stringify({ runtime: runtime(), pollution, turn }));
 
 ```js
 // One agent turn with zod, ai, and @ai-sdk/openai, using a mock model so no network is needed.
-import { z } from "/tmp/bouy-engines/npm-deps/node_modules/zod/index.js";
+import { z } from "/tmp/buoy-engines/npm-deps/node_modules/zod/index.js";
 import {
   generateText,
   streamText,
   Output,
-} from "/tmp/bouy-engines/npm-deps/node_modules/ai/dist/index.js";
+} from "/tmp/buoy-engines/npm-deps/node_modules/ai/dist/index.js";
 import {
   MockLanguageModelV4,
   convertArrayToReadableStream,
-} from "/tmp/bouy-engines/npm-deps/node_modules/ai/dist/test/index.js";
-import { createOpenAI } from "/tmp/bouy-engines/npm-deps/node_modules/@ai-sdk/openai/dist/index.js";
+} from "/tmp/buoy-engines/npm-deps/node_modules/ai/dist/test/index.js";
+import { createOpenAI } from "/tmp/buoy-engines/npm-deps/node_modules/@ai-sdk/openai/dist/index.js";
 
 const usage = {
   inputTokens: { total: 3, noCache: 3, cacheRead: undefined, cacheWrite: undefined },
@@ -1913,7 +1913,7 @@ self.onmessage = (event: MessageEvent<{ kind: string; counter: SharedArrayBuffer
 import { createRequire } from "node:module";
 import { collectGarbage, summarize, runtime, mib } from "./lib.mjs";
 const ivm = createRequire(import.meta.url)(
-  process.env.IVM_PATH ?? "/tmp/bouy-engines/dl-ivm/node_modules/isolated-vm",
+  process.env.IVM_PATH ?? "/tmp/buoy-engines/dl-ivm/node_modules/isolated-vm",
 );
 const count = Number(process.argv[2] ?? 200);
 
@@ -2172,14 +2172,14 @@ fn main() {
 }
 ```
 
-## Implications for Bouy
+## Implications for Buoy
 
 ### Decide now
 
 1. **Make the actor a light object in a shared isolate.** Per-actor isolates or workers cost 1 to 24 MiB each, against under 1 KiB for a light actor (8.3). Agent swarms of thousands of actors fit only the light model.
 2. **Make the worker the failure domain, as a BEAM node.** Group actors into a pool of worker-thread schedulers (D1). Set `resourceLimits` on each worker. A supervisor in the main thread restarts a worker that dies, then restarts its actors from their specs. Do not resume a worker after a fault that may have touched module state (3.6).
 3. **Never use engine termination to kill one actor in a shared isolate.** Termination drops the microtasks of every actor (Gap 2), and on Node's main thread it can abort the process (Gap 3). Kill and restart the whole worker instead.
-4. **Insert yield points in the compiler.** No host preempts one actor in a shared isolate (9). Bouy must count reductions at loop back edges and calls in compiled code, and yield when the budget runs out. Code in npm packages has no such points, so a watchdog must detect a worker that stops answering and terminate it.
+4. **Insert yield points in the compiler.** No host preempts one actor in a shared isolate (9). Buoy must count reductions at loop back edges and calls in compiled code, and yield when the budget runs out. Code in npm packages has no such points, so a watchdog must detect a worker that stops answering and terminate it.
 5. **Keep a process-level backstop.** Gap 1 lets a short loop ignore `worker.terminate()` and the worker heap limit, and Bun 1.3.11 and Deno 2.9.7 do not stop spinning workers at all. Run schedulers in a child process that a parent can kill with a signal, as Cloudflare runs cordons (2). File the Gap 1 scripts as a V8 bug.
 
 ### Build into the runtime

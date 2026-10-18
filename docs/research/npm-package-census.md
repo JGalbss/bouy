@@ -1,10 +1,10 @@
 # Census: what the real npm packages need from a JavaScript engine
 
-Recorded 2026-10-16 by the reference-semantics spike (ADR 0003, evidence E2). It covers effect 4.0.5, ai 7.0.142, @ai-sdk/openai 4.0.95 and their dependencies, zod 4.6.7, and `tests/migration/before`. The analyzer, probes, and raw outputs lived in `/tmp/bouy-census` on the machine that ran the spike and are not kept; this note keeps the report.
+Recorded 2026-10-16 by the reference-semantics spike (ADR 0003, evidence E2). It covers effect 4.0.5, ai 7.0.142, @ai-sdk/openai 4.0.95 and their dependencies, zod 4.6.7, and `tests/migration/before`. The analyzer, probes, and raw outputs lived in `/tmp/buoy-census` on the machine that ran the spike and are not kept; this note keeps the report.
 
 **Bottom line:** the real packages need a nearly complete ES2022 engine plus a small web surface. Nothing they use is impossible on BEAM. The biggest cost is state per realm. After tree-shaking, a realm that can run `generateText` still holds 15.6K objects and 10.9K closures once its modules load (V8 heap snapshot). If one actor is one realm, every actor pays that cost when it spawns.
 
-Everything is in `/tmp/bouy-census`. The repo is unchanged.
+Everything is in `/tmp/buoy-census`. The repo is unchanged.
 
 - **Analyzer:** `analyzer/` is a Rust tool on oxc 0.154, built with `cargo build --offline` and the 1.98 toolchain. Binary: `analyzer/target/release/census`.
 - **Probes:** `paths/*.mjs`. Coverage data is in `cov/` and tree-shaken bundles are in `bundles/`.
@@ -33,7 +33,7 @@ Codes in the "ran on" columns refer to library code only, not to the probe code:
 - `G`: `Effect.gen` + `runPromise`.
 - `T`: the Effect code of `tests/migration/before/src/reports/report-service.ts`, as plain JavaScript (services, layers, retry, timeout, Schema, tagged errors).
 - `S`: `Schema.decodeUnknownSync` on a Struct.
-- `A`: `generateText` with one `jsonSchema` tool, `openai.chat(...)` and `stepCountIs(3)`, against `runtime/test/bouy_fake_openai.erl` (2 HTTP calls).
+- `A`: `generateText` with one `jsonSchema` tool, `openai.chat(...)` and `stepCountIs(3)`, against `runtime/test/buoy_fake_openai.erl` (2 HTTP calls).
 - `Z` / `J`: a zod object parse with the JIT / with `jitless`.
 
 ### 2. Size and what runs
@@ -294,7 +294,7 @@ Promises created by package code on each path:
 
 1. `new Function` appears only in zod. A constructor that throws costs only zod's JIT speed.
 2. Node built-ins appear only in @vercel/oidc's Node build. Choose the `browser` export condition.
-3. When `process.release.name === "node"`, provider-utils switches to undici, `module.createRequire` and `Error.prepareStackTrace` CallSites. Bouy must not report `"node"`.
+3. When `process.release.name === "node"`, provider-utils switches to undici, `module.createRequire` and `Error.prepareStackTrace` CallSites. Buoy must not report `"node"`.
 4. ai's browser-only APIs serve realtime voice only.
 
 **Expensive, most costly first**
@@ -313,7 +313,7 @@ Promises created by package code on each path:
 5. **Regex.**
    - PCRE2 covers the syntax used: 1 lookbehind, 1 backreference, 3 `\p{…}`, lazy quantifiers, lookahead, and flags g i m s u. There are no `y`, `d` or `v` flags and no named groups.
    - Match indices and `lastIndex` count UTF-16 units.
-   - 29 patterns are strings compiled at run time, so Bouy needs a run-time translator.
+   - 29 patterns are strings compiled at run time, so Buoy needs a run-time translator.
 6. **Stack traces.** Code lowered to continuation-passing closures has no JS call stack.
    - An `undefined` stack is cheap, and effect accepts it.
    - An accurate stack needs a shadow stack, which adds cost to every call.
@@ -324,7 +324,7 @@ Promises created by package code on each path:
 
 ### 8. Gap from the current subset
 
-The four packages use, in total, constructs that BOUY205, BOUY206 and BOUY207 reject:
+The four packages use, in total, constructs that BUOY205, BUOY206 and BUOY207 reject:
 
 | construct                            |  uses |
 | ------------------------------------ | ----: |

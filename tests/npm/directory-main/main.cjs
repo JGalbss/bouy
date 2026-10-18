@@ -1,2 +1,2 @@
-console.log(require("@bouytest/directory").from);
-console.log(require("@bouytest/trailing-slash").from);
+console.log(require("@buoytest/directory").from);
+console.log(require("@buoytest/trailing-slash").from);

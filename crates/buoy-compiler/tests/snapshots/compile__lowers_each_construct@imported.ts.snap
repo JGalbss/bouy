@@ -1,0 +1,31 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/imported.ts
+---
+-module(buoy@imported).
+-export(['__init__'/0, helper/1, 'Shape#new'/1, 'Shape#pure'/0, 'Shape#area'/2, 'Shape#dispatch'/3]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() ->
+    persistent_term:put({buoy@imported, <<"LIMIT">>}, 10),
+    ok.
+
+helper(Args) ->
+    N@1 = buoy_rt:arg(1, Args),
+    buoy_rt:add(N@1, 10).
+
+'Shape#new'(Args) ->
+    This = #{},
+    This.
+
+'Shape#pure'() -> true.
+
+'Shape#area'(This, Args) -> {0, This}.
+
+'Shape#dispatch'(<<"area">>, This, Args) -> 'Shape#area'(This, Args);
+'Shape#dispatch'(Method, _This, _Args) ->
+    buoy_error:throw(
+        <<"TypeError">>,
+        buoy_rt:concat([<<"Shape.">>, Method, <<" is not a function">>])
+    ).

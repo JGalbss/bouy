@@ -1,7 +1,7 @@
 // Payloads, isolated Node: 100,000 casts of one 1 KB object to one mailbox actor that runs
 // on its own worker thread, from node-shards.ts, then one call that waits until the actor
 // has taken them all. postMessage copies the object with the structured clone for each
-// cast, as Bouy copies a message.
+// cast, as Buoy copies a message.
 import { isMainThread } from "node:worker_threads";
 import { Shards, serveShard } from "../node-shards.ts";
 

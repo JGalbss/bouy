@@ -6,7 +6,7 @@
 // after an uncaught exception, which would stop all 100 agents, so this program is the
 // kinder case. The throw leaves the call of agent 0 unsettled, so its mailbox stops. A
 // call that times out makes the supervisor replace that agent with a fresh actor. No
-// worker_threads. The pings and the measurements are those of the Bouy program, and a
+// worker_threads. The pings and the measurements are those of the Buoy program, and a
 // spare agent faults once first, as there.
 import { Actor, sleep } from "../node-actor.ts";
 

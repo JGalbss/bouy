@@ -1,18 +1,18 @@
 #!/bin/sh
 # Freezes the Node oracle for a directory of test programs. For each `<name>.ts`, it runs
 # `node <name>.ts`, writes the stdout to `<name>.stdout`, and writes the exit status to
-# `<name>.status` when the status is not 0. The tests compare `bouy run` with these files,
+# `<name>.status` when the status is not 0. The tests compare `buoy run` with these files,
 # so this script is the only test step that runs node.
 #
 # The script refuses a node other than the release in `.node-version`. It runs each program
-# twice, in the environment of `bouy_env` in crates/bouy-suites/src/lib.rs, and it
+# twice, in the environment of `buoy_env` in crates/buoy-suites/src/lib.rs, and it
 # exits when the two runs differ, so a program that depends on time or order cannot enter
 # a corpus.
 #
 # The programs of tests/equivalence and tests/migration call model APIs. For those
-# directories, the script starts the fake server of runtime/test/bouy_fake_openai.erl and
+# directories, the script starts the fake server of runtime/test/buoy_fake_openai.erl and
 # points the programs at it with OPENAI_BASE_URL, OPENAI_API_KEY, ANTHROPIC_BASE_URL, and
-# ANTHROPIC_API_KEY, as the Rust tests do for Bouy. A `<name>-fixture.ts` file is a file
+# ANTHROPIC_API_KEY, as the Rust tests do for Buoy. A `<name>-fixture.ts` file is a file
 # that a program starts, so it gets no output. For tests/migration, it runs
 # before/src/main.ts, as the README of the fixture describes, and writes
 # before/expected.stdout.
@@ -23,8 +23,8 @@
 # `exports.cjs.stdout`, because two programs of a directory share a stem. One case or
 # package directory, such as tests/packages/zod@4, freezes only its programs.
 #
-# The programs of tests/reference run under `bouy run --semantics reference`. Their actor
-# programs import "bouy", which the script points at the Node shim in tests/reference/shim.
+# The programs of tests/reference run under `buoy run --semantics reference`. Their actor
+# programs import "buoy", which the script points at the Node shim in tests/reference/shim.
 # A program that names Temporal runs with the polyfill of runtime/vendor/temporal-polyfill.
 #
 # Usage: scripts/freeze-expectations.sh tests/conformance
@@ -52,9 +52,9 @@ server_env=
 
 case "${1%/}" in
 *equivalence/* | *migration)
-    erlc -o "$work" "$root/runtime/test/bouy_fake_openai.erl"
+    erlc -o "$work" "$root/runtime/test/buoy_fake_openai.erl"
     # The server halts when this shell ends, so an interrupted run leaves no server behind.
-    erl -noshell -pa "$work" -eval 'bouy_fake_openai:main()' -extra "$$" >"$work/port" &
+    erl -noshell -pa "$work" -eval 'buoy_fake_openai:main()' -extra "$$" >"$work/port" &
     server=$!
     tries=0
     until grep -q '^[0-9][0-9]*$' "$work/port" 2>/dev/null; do
@@ -70,15 +70,15 @@ case "${1%/}" in
     server_env="$server_env ANTHROPIC_BASE_URL=http://127.0.0.1:$port ANTHROPIC_API_KEY=sk-fake-key"
     ;;
 *reference)
-    # The actor programs import "bouy"; Node reads the shim of tests/reference/shim.
+    # The actor programs import "buoy"; Node reads the shim of tests/reference/shim.
     shim="${1%/}/node_modules"
     mkdir -p "$shim"
-    ln -sfn ../shim/bouy "$shim/bouy"
+    ln -sfn ../shim/buoy "$shim/buoy"
     ;;
 esac
 
-# Node 25.9 has no Temporal. A program that names it runs with the polyfill that Bouy
-# compiles into its runtime, so Node checks how Bouy runs that code. The polyfill installs
+# Node 25.9 has no Temporal. A program that names it runs with the polyfill that Buoy
+# compiles into its runtime, so Node checks how Buoy runs that code. The polyfill installs
 # nothing when Node has Temporal.
 temporal="$root/runtime/vendor/temporal-polyfill/global.js"
 

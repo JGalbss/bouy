@@ -4,7 +4,7 @@
 // Agent 0 enters a loop that never ends inside its turn, which stops its worker and so
 // the 24 other agents of that worker. Every call has a timeout of 100 ms. The supervisor
 // pings agent 0; the timeout makes it start a new worker for the shard and terminate()
-// the stuck one. The pings and the measurements are those of the Bouy program.
+// the stuck one. The pings and the measurements are those of the Buoy program.
 import { isMainThread } from "node:worker_threads";
 import { percentile, sleep } from "../node-actor.ts";
 import { Shards, serveShard } from "../node-shards.ts";

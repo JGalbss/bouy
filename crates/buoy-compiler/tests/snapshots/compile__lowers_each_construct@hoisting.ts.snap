@@ -1,0 +1,81 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/hoisting.ts
+---
+-module(buoy@hoisting).
+-export(['__init__'/0, parity/1, report/1, factorial/1, make/1, '$construct'/2]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+parity(Args) ->
+    N@1 = buoy_rt:arg(1, Args),
+    Group@1 = fun Group@1() ->
+        {
+            fun(Args@1) ->
+                {IsEven@1, IsOdd@1} = Group@1(),
+                K@1 = buoy_rt:arg(1, Args@1),
+                case buoy_rt:strict_eq(K@1, 0) of
+                    true -> true;
+                    false -> buoy_rt:call(IsOdd@1, [buoy_rt:sub(K@1, 1)])
+                end
+            end,
+            fun(Args@2) ->
+                {IsEven@2, IsOdd@2} = Group@1(),
+                K@2 = buoy_rt:arg(1, Args@2),
+                case buoy_rt:strict_eq(K@2, 0) of
+                    true -> false;
+                    false -> buoy_rt:call(IsEven@2, [buoy_rt:sub(K@2, 1)])
+                end
+            end
+        }
+    end,
+    {IsEven@3, IsOdd@3} = Group@1(),
+    case buoy_rt:truthy(buoy_rt:call(IsEven@3, [N@1])) of
+        true -> <<"even">>;
+        false -> <<"odd">>
+    end.
+
+report(Args) ->
+    Items@1 = buoy_rt:arg(1, Args),
+    Total@1 = 0,
+    Loop@1 = fun
+        Loop@1([Item@1 | Rest@1], {Total@2}) ->
+            Total@3 = buoy_rt:add(Total@2, Item@1),
+            Loop@1(Rest@1, {Total@3});
+        Loop@1([], T@1) -> {break, T@1}
+    end,
+    {break, {Total@4}} = Loop@1(buoy_rt:to_list(Items@1), {Total@1}),
+    Describe@1 = fun Describe@1(Args@1) -> buoy_rt:concat([<<"total ">>, Total@4]) end,
+    buoy_rt:call(Describe@1, []).
+
+factorial(Args) ->
+    K@1 = buoy_rt:arg(1, Args),
+    case buoy_rt:le(K@1, 1) of
+        true -> 1;
+        false -> buoy_rt:mul(K@1, factorial([buoy_rt:sub(K@1, 1)]))
+    end.
+
+make(Args) ->
+    E@1 = buoy_rt:arg(1, Args),
+    '$construct'(E@1, [<<"made">>]).
+
+'$construct'({'$class', Module, Name}, Args) ->
+    case erlang:function_exported(
+        Module,
+        erlang:binary_to_atom(erlang:iolist_to_binary([Name, <<"#dispatch">>]), utf8),
+        3
+    ) of
+        true ->
+            buoy_error:throw(<<"TypeError">>, buoy_rt:concat([<<"`new ">>, Name, <<"` creates an actor; use spawn() from \"buoy\"">>]));
+        false ->
+            erlang:apply(
+                Module,
+                erlang:binary_to_atom(erlang:iolist_to_binary([Name, <<"#new">>]), utf8),
+                [Args]
+            )
+    end;
+'$construct'({'$namespace', Module}, Args) -> erlang:apply(Module, new, [Args]);
+'$construct'(Other, _Args) ->
+    buoy_error:throw(<<"TypeError">>, buoy_rt:concat([Other, <<" is not a constructor">>])).

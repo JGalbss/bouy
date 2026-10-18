@@ -28,7 +28,7 @@ const tools = {
   }),
 };
 
-// Bouy keeps module-level values constant, so the history lives in a function.
+// Buoy keeps module-level values constant, so the history lives in a function.
 async function converse(): Promise<void> {
   const messages: ModelMessage[] = [{ role: "user", content: "Tell me about Lima" }];
   for (const city of ["Lima", "Oslo"]) {

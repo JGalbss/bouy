@@ -1,6 +1,6 @@
 // An actor whose class another module exports: its realm reads the class and the
 // module state of that module.
-import { spawn } from "bouy";
+import { spawn } from "buoy";
 import { Counter } from "./modules/actor-counter.ts";
 
 const one = spawn(Counter, { args: [1] });

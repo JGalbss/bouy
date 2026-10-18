@@ -1,4 +1,4 @@
-import { cast, spawn } from "bouy";
+import { cast, spawn } from "buoy";
 
 class Spinner {
   spin(ms: number): number {

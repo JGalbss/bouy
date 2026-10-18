@@ -1,4 +1,4 @@
-/** JSON with sorted object keys, so that Node and Bouy print objects alike (section 3). */
+/** JSON with sorted object keys, so that Node and Buoy print objects alike (section 3). */
 export function show(value: unknown): string {
   return JSON.stringify(sorted(value));
 }

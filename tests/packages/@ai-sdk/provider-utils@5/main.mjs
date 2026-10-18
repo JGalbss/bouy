@@ -20,7 +20,7 @@ console.log(JSON.stringify(jsonSchema({ type: "object" }).jsonSchema));
 try {
   loadApiKey({
     apiKey: undefined,
-    environmentVariableName: "BOUY_TEST_MISSING_KEY",
+    environmentVariableName: "BUOY_TEST_MISSING_KEY",
     description: "Test",
   });
 } catch (error) {

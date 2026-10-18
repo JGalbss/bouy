@@ -1,6 +1,6 @@
 // Call latency, isolated Node: 100,000 sequential calls to one mailbox actor that runs on
 // its own worker thread, from node-shards.ts, each awaited before the next. postMessage
-// copies each call and each reply with the structured clone, as Bouy copies a message.
+// copies each call and each reply with the structured clone, as Buoy copies a message.
 // performance.now() gives the percentiles of single calls.
 import { isMainThread } from "node:worker_threads";
 import { percentile } from "../node-actor.ts";

@@ -1,0 +1,94 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+assertion_line: 44
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/effects.ts
+---
+-module(buoy@effects).
+-export(['__init__'/0, 'NotFound#new'/1, steps/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() ->
+    User@1 = buoy_schema:'Struct'([#{<<"name">> => buoy_schema:'$member'(<<"String">>)}]),
+    persistent_term:put({buoy@effects, <<"User">>}, User@1),
+    Find@1 = buoy_rt:call(buoy_effect:fn([<<"find">>]), [fun(Args@1) ->
+        buoy_effect:generator(fun() ->
+            Id@1 = buoy_rt:arg(1, Args@1),
+            case buoy_rt:gt(Id@1, 9) of
+                true ->
+                    buoy_effect:bind('NotFound#new'([#{<<"id">> => Id@1}])),
+                    ok;
+                false -> ok
+            end,
+            buoy_rt:call(
+                buoy_schema:decodeUnknownSync([User@1]),
+                [#{<<"name">> => buoy_rt:concat([<<"user ">>, Id@1])}]
+            )
+        end)
+    end]),
+    persistent_term:put({buoy@effects, <<"find">>}, Find@1),
+    Program@1 = buoy_effect:gen([fun(Args@2) ->
+        buoy_effect:generator(fun() ->
+            Total@1 = buoy_effect:bind(buoy_effect:gen([fun(Args@3) -> steps([[1, 2]]) end])),
+            buoy_effect:bind(buoy_effect:pipe([
+                buoy_effect:succeed([Total@1]),
+                buoy_effect:map([fun(Args@4) ->
+                    N@1 = buoy_rt:arg(1, Args@4),
+                    buoy_rt:mul(N@1, 2)
+                end]),
+                buoy_effect:zip([buoy_effect:'$member'(<<"void">>)])
+            ]))
+        end)
+    end]),
+    persistent_term:put({buoy@effects, <<"program">>}, Program@1),
+    ok.
+
+'NotFound#new'(Args) ->
+    T@1 = case buoy_rt:arg(1, Args) of
+        undefined -> #{};
+        T@2 -> T@2
+    end,
+    This@1 = buoy_error:new(
+        [{'$class', buoy@effects, <<"NotFound">>}, {'$class', buoy_error, <<"Error">>}],
+        case buoy_rt:get(T@1, <<"message">>) of
+            undefined -> <<>>;
+            T@3 -> buoy_rt:to_string(T@3)
+        end,
+        buoy_rt:set(T@1, <<"_tag">>, <<"NotFound">>)
+    ),
+    This@1.
+
+steps(Args) ->
+    buoy_effect:generator(fun() ->
+        Ids@1 = buoy_rt:arg(1, Args),
+        Total@1 = 0,
+        Loop@1 = fun
+            Loop@1([Id@1 | Rest@1], {Total@2}) ->
+                T@1 = erlang:make_ref(),
+                erlang:put(T@1, {Total@2}),
+                T@7 = try
+                    {done, begin
+                        User@1 = buoy_effect:bind(buoy_rt:call(persistent_term:get({buoy@effects, <<"find">>}), [Id@1])),
+                        Total@3 = buoy_rt:add(Total@2, buoy_rt:get(buoy_rt:get(User@1, <<"name">>), <<"length">>)),
+                        erlang:put(T@1, {Total@3}),
+                        {Total@3}
+                    end}
+                catch
+                    throw:T@5:T@6 ->
+                        erlang:erase(T@1),
+                        erlang:raise(throw, T@5, T@6);
+                    T@2:T@3:T@4 -> {raised, T@2, T@3, T@4}
+                end,
+                {Total@4} = erlang:get(T@1),
+                erlang:erase(T@1),
+                buoy_effect:bind(buoy_effect_console:log([<<"visited">>, Id@1])),
+                case T@7 of
+                    {raised, T@8, T@9, T@10} -> erlang:raise(T@8, T@9, T@10);
+                    _ -> ok
+                end,
+                Loop@1(Rest@1, {Total@4});
+            Loop@1([], T@11) -> {break, T@11}
+        end,
+        {break, {Total@5}} = Loop@1(buoy_rt:to_list(Ids@1), {Total@1}),
+        Total@5
+    end).

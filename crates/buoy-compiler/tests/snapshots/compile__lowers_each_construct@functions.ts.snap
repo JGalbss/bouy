@@ -1,0 +1,58 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/functions.ts
+---
+-module(buoy@functions).
+-export(['__init__'/0, defaults/1, closures/1, arrow/1, recursive/1, callsValues/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+defaults(Args) ->
+    A@1 = buoy_rt:arg(1, Args),
+    B@1 = case buoy_rt:arg(2, Args) of
+        undefined -> buoy_rt:mul(A@1, 2);
+        T@1 -> T@1
+    end,
+    Rest@1 = buoy_rt:rest(3, Args),
+    buoy_rt:add(buoy_rt:add(A@1, B@1), buoy_rt:get(Rest@1, <<"length">>)).
+
+closures(Args) ->
+    Factor@1 = buoy_rt:arg(1, Args),
+    Scale@1 = fun Scale@1(Args@1) ->
+        X@1 = buoy_rt:arg(1, Args@1),
+        buoy_rt:mul(X@1, Factor@1)
+    end,
+    Offset@1 = fun Offset@1(Args@2) ->
+        X@2 = buoy_rt:arg(1, Args@2),
+        buoy_rt:add(X@2, 1)
+    end,
+    fun(Args@3) ->
+        X@3 = buoy_rt:arg(1, Args@3),
+        buoy_rt:call(Offset@1, [buoy_rt:call(Scale@1, [X@3])])
+    end.
+
+arrow(Args) ->
+    X@1 = buoy_rt:arg(1, Args),
+    buoy_rt:add(X@1, 1).
+
+recursive(Args) ->
+    N@1 = buoy_rt:arg(1, Args),
+    Fact@1 = fun Fact@1(Args@1) ->
+        K@1 = buoy_rt:arg(1, Args@1),
+        case buoy_rt:le(K@1, 1) of
+            true -> 1;
+            false -> buoy_rt:mul(K@1, buoy_rt:call(Fact@1, [buoy_rt:sub(K@1, 1)]))
+        end
+    end,
+    buoy_rt:call(Fact@1, [N@1]).
+
+callsValues(Args) ->
+    F@1 = buoy_rt:arg(1, Args),
+    Xs@1 = buoy_rt:arg(2, Args),
+    buoy_rt:call_method(
+        buoy_rt:call_method(buoy_rt:call_method(Xs@1, <<"map">>, [F@1]), <<"map">>, [fun arrow/1]),
+        <<"concat">>,
+        [[buoy_rt:call(F@1, [1]), arrow([2]), defaults([1])]]
+    ).

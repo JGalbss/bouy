@@ -6,14 +6,14 @@
 #
 # It writes tests/node/suite.sha256, one `shasum -a 256` line for each upstream file, and
 # records the tag and the commit in tests/node/config.json. The rule check of
-# crates/bouy-suites/tests/rules.rs hashes each vendored file against suite.sha256, so a test
-# file stays byte-identical. Bouy edits only files of tests/node/test/common, each with a
-# `// Bouy:` comment and a line in tests/node/edited.txt. A new vendor run overwrites those
+# crates/buoy-suites/tests/rules.rs hashes each vendored file against suite.sha256, so a test
+# file stays byte-identical. Buoy edits only files of tests/node/test/common, each with a
+# `// Buoy:` comment and a line in tests/node/edited.txt. A new vendor run overwrites those
 # edits; the script names the files of edited.txt, and `git diff` shows the edits to apply
 # again.
 #
 # This script runs no node. Then run
-# `cargo run --release -p bouy-suites -- node --update` and `pnpm compat`.
+# `cargo run --release -p buoy-suites -- node --update` and `pnpm compat`.
 #
 # Usage: scripts/vendor-node-tests.sh
 
@@ -56,6 +56,6 @@ cp "$work/config.json" "$config"
 echo "$0: vendored $(wc -l <"$node_dir/suite.sha256" | tr -d ' ') files of nodejs/node $tag ($commit)" >&2
 edited=$(grep -v '^#' "$node_dir/edited.txt" | grep -v '^$' | cut -d' ' -f1 || true)
 if [ -n "$edited" ]; then
-    echo "$0: apply the Bouy edits of these files again; git diff shows them:" >&2
+    echo "$0: apply the Buoy edits of these files again; git diff shows them:" >&2
     echo "$edited" >&2
 fi

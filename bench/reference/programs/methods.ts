@@ -1,7 +1,7 @@
 // 1,000,000 calls of a method that mutates `this`, inside one actor turn.
-// Runs under node (with the shim of tests/reference/shim), `bouy run`, and
-// `bouy run --semantics reference`.
-import { spawn } from "bouy";
+// Runs under node (with the shim of tests/reference/shim), `buoy run`, and
+// `buoy run --semantics reference`.
+import { spawn } from "buoy";
 
 class Sim {
   total = 0;

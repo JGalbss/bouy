@@ -1,0 +1,92 @@
+---
+source: crates/buoy-compiler/tests/compile.rs
+expression: lower(path)
+input_file: crates/buoy-compiler/tests/fixtures/exceptions.ts
+---
+-module(buoy@exceptions).
+-export(['__init__'/0, caught/1, returnsFromTry/1, countsBeforeThrow/1, finallyRebinds/1]).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).
+
+'__init__'() -> ok.
+
+caught(Args) ->
+    N@1 = buoy_rt:arg(1, Args),
+    Result@1 = <<"none">>,
+    T@1 = erlang:make_ref(),
+    erlang:put(T@1, {Result@1}),
+    {Result@5} = try
+        case buoy_rt:lt(N@1, 0) of
+            true -> erlang:error({'$throw', buoy_error:'RangeError#new'([<<"negative">>])});
+            false -> ok
+        end,
+        Result@2 = <<"ok">>,
+        erlang:put(T@1, {Result@2}),
+        {Result@2}
+    catch
+        error:T@2:T@3 ->
+            {Result@3} = erlang:get(T@1),
+            E@1 = buoy_rt:caught(T@2, T@3),
+            Result@4 = buoy_rt:get(E@1, <<"message">>),
+            erlang:put(T@1, {Result@4}),
+            {Result@4}
+    after
+        buoy_console:log([<<"done">>]),
+        erlang:erase(T@1)
+    end,
+    Result@5.
+
+returnsFromTry(Args) ->
+    N@1 = buoy_rt:arg(1, Args),
+    T@3 = try
+        case buoy_rt:gt(N@1, 0) of
+            true -> {return, N@1};
+            false -> {next, {}}
+        end
+    catch
+        error:T@1:T@2 -> {return, -1}
+    end,
+    case T@3 of
+        {next, {}} -> 0;
+        {return, T@4} -> T@4
+    end.
+
+countsBeforeThrow(Args) ->
+    Count@1 = 0,
+    T@1 = erlang:make_ref(),
+    erlang:put(T@1, {Count@1}),
+    {Count@5} = try
+        Count@2 = buoy_rt:sub(Count@1, -1),
+        erlang:put(T@1, {Count@2}),
+        erlang:error({'$throw', buoy_error:'Error#new'([<<"stop">>])})
+    catch
+        error:T@2:T@3 ->
+            {Count@3} = erlang:get(T@1),
+            Count@4 = buoy_rt:add(Count@3, 10),
+            erlang:put(T@1, {Count@4}),
+            {Count@4}
+    after
+        erlang:erase(T@1)
+    end,
+    Count@5.
+
+finallyRebinds(Args) ->
+    Log@1 = [],
+    T@1 = erlang:make_ref(),
+    erlang:put(T@1, {Log@1}),
+    T@6 = try
+        {done, begin
+            {_, Log@2} = buoy_rt:mutate(Log@1, <<"push">>, [<<"body">>]),
+            erlang:put(T@1, {Log@2}),
+            {Log@2}
+        end}
+    catch
+        T@3:T@4:T@5 -> {raised, T@3, T@4, T@5}
+    end,
+    {Log@3} = erlang:get(T@1),
+    erlang:erase(T@1),
+    {_, Log@4} = buoy_rt:mutate(Log@3, <<"push">>, [<<"finally">>]),
+    case T@6 of
+        {raised, T@8, T@9, T@10} -> erlang:raise(T@8, T@9, T@10);
+        _ -> ok
+    end,
+    Log@4.

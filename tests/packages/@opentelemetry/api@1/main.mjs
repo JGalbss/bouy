@@ -2,7 +2,7 @@
 // a no-op and context still flows.
 import { ROOT_CONTEXT, context, createContextKey, trace } from "@opentelemetry/api";
 
-const tracer = trace.getTracer("bouy-test", "1.0.0");
+const tracer = trace.getTracer("buoy-test", "1.0.0");
 const span = tracer.startSpan("work");
 console.log(span.isRecording(), JSON.stringify(span.spanContext()));
 span.setAttribute("key", "value").end();

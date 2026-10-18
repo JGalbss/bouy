@@ -1,5 +1,5 @@
-# Written by `bouy-fuzz campaign`: one line for each case in tests/fuzz/<generator>/.
-# crates/bouy-cli/tests/fuzz.rs fails when a case gives another outcome, and writes the
+# Written by `buoy-fuzz campaign`: one line for each case in tests/fuzz/<generator>/.
+# crates/buoy-cli/tests/fuzz.rs fails when a case gives another outcome, and writes the
 # lines of its run to target/suites/fuzz/expectations.txt. docs/design/testing.md 5.10.
 json/0.ts fail
 json/1.ts fail

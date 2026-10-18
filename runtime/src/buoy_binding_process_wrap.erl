@@ -1,0 +1,358 @@
+%% internalBinding('process_wrap') (src/process_wrap.cc): Process, the handle
+%% of a child process that child_process.spawn starts. A manager process
+%% owns the child: bash connects a loopback socket for each piped stdin and
+%% stderr (/dev/tcp), wires the stdio, and execs the file. The port reads
+%% stdout from fd 4 (nouse_stdio) and reports the exit. A socket never
+%% blocks the child when the VM is gone, and it half-closes, so the end of
+%% stdin reaches the child while its output still flows. Each stdio pipe is
+%% a Pipe of pipe_wrap that buoy_node_stream drives; IPC channels are not
+%% supported yet.
+-module(buoy_binding_process_wrap).
+
+-export([binding/0]).
+
+-define(STATE, {'#', ?MODULE, <<"state">>}).
+
+-spec binding() -> term().
+binding() ->
+    Process = buoy_node:constructor(<<"Process">>, 0, fun(_, _) -> undefined end),
+    Proto = buoy_heap:get(Process, <<"prototype">>),
+    F = fun buoy_node:fn/3,
+    A = fun buoy_node:arg/2,
+    Methods = [{<<"spawn">>, fun(This, Args) -> spawn_child(This, A(1, Args)) end},
+               {<<"kill">>, fun(This, Args) -> kill(This, A(1, Args)) end},
+               {<<"close">>, fun(This, Args) -> close(This, A(1, Args)) end},
+               {<<"ref">>, fun(This, _) -> set_ref(This, true) end},
+               {<<"unref">>, fun(This, _) -> set_ref(This, false) end},
+               {<<"hasRef">>, fun(This, _) -> maps:get(refed, state(This), false) end},
+               {<<"getAsyncId">>, fun(_, _) -> erlang:unique_integer([positive]) end}],
+    [buoy_heap:define(Proto, Name, #{value => F(Name, 0, Fun), writable => true, enumerable => true, configurable => true})
+     || {Name, Fun} <- Methods],
+    buoy_node:object([{<<"Process">>, Process}]).
+
+state(This) ->
+    case buoy_heap:private_find(This, ?STATE) of
+        {ok, S} -> S;
+        error -> #{refed => false, exited => true}
+    end.
+
+save(This, S) -> buoy_heap:private_put(This, ?STATE, S).
+
+get(O, Key) -> buoy_heap:get(O, Key).
+
+text(V) -> unicode:characters_to_list(buoy_ref_string:to_utf8(buoy_ref:to_string(V))).
+
+items(undefined) -> [];
+items(null) -> [];
+items(A) -> buoy_heap:array_items(A).
+
+%% spawn(options): 0, or the negative errno of a spawn that fails.
+spawn_child(This, Options) ->
+    File = text(get(Options, <<"file">>)),
+    Args = case [text(A) || A <- items(get(Options, <<"args">>))] of
+        [_Argv0 | Rest] -> Rest;
+        [] -> []
+    end,
+    Env = [buoy_binding_spawn_sync:split_pair(text(P)) || P <- items(get(Options, <<"envPairs">>))],
+    Cwd = case get(Options, <<"cwd">>) of
+        V when V =:= undefined; V =:= null -> element(2, file:get_cwd());
+        V -> text(V)
+    end,
+    Stdio = [stdio(S) || S <- items(get(Options, <<"stdio">>))] ++ lists:duplicate(3, ignore),
+    case {filelib:is_dir(Cwd), buoy_binding_spawn_sync:executable(File, Cwd, Env)} of
+        {true, {ok, Path}} -> start(This, Path, Args, Cwd, Env, Stdio);
+        {false, _} -> -2;
+        _ -> -2
+    end.
+
+stdio(S) ->
+    case buoy_ref_string:to_utf8(buoy_ref:to_string(get(S, <<"type">>))) of
+        <<"pipe">> -> {pipe, get(S, <<"handle">>)};
+        <<"overlapped">> -> {pipe, get(S, <<"handle">>)};
+        <<"inherit">> -> inherit;
+        <<"fd">> ->
+            case get(S, <<"fd">>) of
+                Fd when Fd =:= 0; Fd =:= 1; Fd =:= 2 -> {fd, Fd};
+                _ -> ignore
+            end;
+        _ -> ignore
+    end.
+
+start(This, Path, Args, Cwd, Env, [In, Out, Err | More]) ->
+    ok = start_inet_db(),
+    {ok, Listen} = gen_tcp:listen(0, [binary, {ip, loopback}, {active, false}, {reuseaddr, true}, {backlog, 8}]),
+    {ok, ListenPort} = inet:port(Listen),
+    %% A pipe past stderr, such as the IPC channel of fork, is a socket at its
+    %% index in the child (NODE_CHANNEL_FD); it connects at fd 10 + index first.
+    Realm0 = self(),
+    Extras = [{Index, Handle, spawn(fun() -> ipc_channel(Realm0, Handle) end)}
+              || {Index, {pipe, Handle}} <- lists:enumerate(3, More)],
+    Piped = [Name || {Name, {pipe, _}} <- [{stdin, In}, {stderr, Err}]] ++ [{extra, I} || {I, _, _} <- Extras],
+    Tcp = "<>/dev/tcp/127.0.0.1/" ++ integer_to_list(ListenPort) ++ " || exit 127; ",
+    %% Each piped stream connects in this order, so the accepts know which is which.
+    Connect = lists:append(["exec " ++ integer_to_list(fd_of(Name)) ++ Tcp || Name <- Piped]),
+    Redirects = redirect(0, In) ++ redirect(1, Out) ++ redirect(2, Err),
+    Moves = lists:append([" " ++ integer_to_list(I) ++ ">&" ++ integer_to_list(10 + I) ++ " " ++ integer_to_list(10 + I) ++ ">&-"
+                          || {I, _, _} <- Extras]),
+    Script = Connect ++ "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&- 5<&- 6<&-" ++ Moves,
+    Unset = [{K, false} || K <- [element(1, buoy_binding_spawn_sync:split_pair(P)) || P <- os:getenv()],
+                           not lists:keymember(K, 1, Env)],
+    Realm = self(),
+    Handles = #{stdin => pipe_handle(In), stdout => pipe_handle(Out), stderr => pipe_handle(Err)},
+    {Manager, Monitor} = spawn_monitor(fun() ->
+        Port = open_port({spawn_executable, "/bin/bash"},
+                         [nouse_stdio, binary, exit_status, {cd, Cwd}, {env, Unset ++ Env}, {args, ["-c", Script, Path | Args]}]),
+        OsPid = case erlang:port_info(Port, os_pid) of {os_pid, P} -> P; _ -> 0 end,
+        Realm ! {self(), started, OsPid},
+        Sockets = accept(Listen, Piped),
+        gen_tcp:close(Listen),
+        [give_socket(maps:get({extra, I}, Sockets, none), Channel) || {I, _, Channel} <- Extras],
+        Writer = case maps:get(stdin, Sockets, none) of
+            none -> none;
+            Stdin -> spawn_link(fun() -> write_loop(Stdin) end)
+        end,
+        case maps:get(stderr, Sockets, none) of
+            none -> ok;
+            Socket -> inet:setopts(Socket, [{active, true}])
+        end,
+        Waiting = case maps:is_key(stderr, Sockets) of true -> [exit, stderr]; false -> [exit] end,
+        manage(#{port => Port, realm => Realm, this => This, handles => Handles, writer => Writer,
+                 stderr => maps:get(stderr, Sockets, none), waiting => Waiting})
+    end),
+    ok = gen_tcp:controlling_process(Listen, Manager),
+    receive
+        {Manager, started, OsPid} ->
+            erlang:demonitor(Monitor, [flush]),
+            started(This, Manager, OsPid, Handles, Extras);
+        {'DOWN', Monitor, process, Manager, _} ->
+            -2
+    end.
+
+%% The CLI boots the kernel with `-mode minimal`, which leaves out inet_db,
+%% the configuration that gen_tcp reads; it joins the kernel supervisor here,
+%% as buoy_ai_openai starts it for httpc.
+start_inet_db() ->
+    case whereis(inet_db) of
+        undefined ->
+            Spec = #{id => inet_db, start => {inet_db, start_link, []}, restart => permanent, shutdown => 2000},
+            case supervisor:start_child(kernel_sup, Spec) of
+                {ok, _} -> ok;
+                {error, {already_started, _}} -> ok
+            end;
+        _ ->
+            ok
+    end.
+
+fd_of(stdin) -> 5;
+fd_of(stderr) -> 6;
+fd_of({extra, Index}) -> 10 + Index.
+
+%% The channel of an extra pipe, such as fork's IPC channel: a process that
+%% reads and writes the socket for the handle once the manager hands it over;
+%% writes wait in its mailbox until then.
+ipc_channel(Realm, Handle) ->
+    receive
+        {socket, none} ->
+            deliver(Realm, Handle, eof);
+        {socket, Socket} ->
+            ok = inet:setopts(Socket, [{active, true}]),
+            socket_loop(Socket, Realm, Handle)
+    end.
+
+give_socket(none, Channel) ->
+    Channel ! {socket, none};
+give_socket(Socket, Channel) ->
+    ok = gen_tcp:controlling_process(Socket, Channel),
+    Channel ! {socket, Socket}.
+
+socket_loop(Socket, Realm, Handle) ->
+    receive
+        {tcp, Socket, Data} ->
+            deliver(Realm, Handle, Data),
+            socket_loop(Socket, Realm, Handle);
+        {tcp_closed, Socket} ->
+            deliver(Realm, Handle, eof),
+            Self = self(),
+            buoy_node_stream:call(Realm, fun() -> erlang:erase({?MODULE, root, Self}) end);
+        {write, Bytes, From, Ref} ->
+            report(From, Ref, gen_tcp:send(Socket, Bytes)),
+            socket_loop(Socket, Realm, Handle);
+        shutdown ->
+            _ = gen_tcp:shutdown(Socket, write),
+            socket_loop(Socket, Realm, Handle);
+        close ->
+            gen_tcp:close(Socket),
+            Self = self(),
+            buoy_node_stream:call(Realm, fun() -> erlang:erase({?MODULE, root, Self}) end)
+    end.
+
+%% The connections of the piped streams, in their order; a child that fails
+%% before it connects leaves the rest out.
+accept(_Listen, []) -> #{};
+accept(Listen, [Name | Rest]) ->
+    case gen_tcp:accept(Listen, 10000) of
+        {ok, Socket} -> (accept(Listen, Rest))#{Name => Socket};
+        _ -> #{}
+    end.
+
+started(This, Manager, OsPid, Handles, Extras) ->
+    [begin
+         erlang:put({?MODULE, root, Channel}, Handle),
+         buoy_node_stream:attach(Handle, Channel)
+     end || {_, Handle, Channel} <- Extras],
+    %% The handles stay roots of the heap until the manager has sent its last
+    %% callback, which may still name them.
+    erlang:put({?MODULE, root, Manager}, {This, Handles}),
+    [buoy_node_stream:attach(H, Manager) || H <- maps:values(Handles), H =/= none],
+    buoy_heap:set(This, <<"pid">>, OsPid),
+    save(This, #{manager => Manager, pid => OsPid, refed => false, exited => false}),
+    set_ref(This, true),
+    0.
+
+pipe_handle({pipe, Handle}) -> Handle;
+pipe_handle(_) -> none.
+
+redirect(0, {pipe, _}) -> " <&5";
+redirect(0, inherit) -> "";
+redirect(0, {fd, 0}) -> "";
+redirect(0, _) -> " </dev/null";
+redirect(1, {pipe, _}) -> " >&4";
+redirect(1, inherit) -> "";
+redirect(1, {fd, 1}) -> "";
+redirect(1, {fd, 2}) -> " >&2";
+redirect(1, _) -> " >/dev/null";
+redirect(2, {pipe, _}) -> " 2>&6";
+redirect(2, inherit) -> "";
+redirect(2, {fd, 2}) -> "";
+redirect(2, {fd, 1}) -> " 2>&1";
+redirect(2, _) -> " 2>/dev/null".
+
+%% The manager: stdout and the exit from the port, stderr from its socket,
+%% writes and the end of stdin to the writer, and every callback of the realm
+%% in '$buoy_node_call', in order. It ends once the child exited and stderr
+%% ended, and its last callback drops the roots of the handles.
+manage(#{waiting := []} = M) ->
+    #{realm := Realm, writer := Writer} = M,
+    Manager = self(),
+    buoy_node_stream:call(Realm, fun() -> erlang:erase({?MODULE, root, Manager}) end),
+    drain(Writer);
+manage(#{port := Port, realm := Realm, handles := Handles, writer := Writer, stderr := Stderr} = M) ->
+    receive
+        {Port, {data, Data}} ->
+            deliver(Realm, maps:get(stdout, Handles), Data),
+            manage(M);
+        {Port, {exit_status, Status}} ->
+            deliver(Realm, maps:get(stdout, Handles), eof),
+            {Code, Signal} = case Status of
+                S when S > 128 -> {null, S - 128};
+                S -> {S, 0}
+            end,
+            This = maps:get(this, M),
+            buoy_node_stream:call(Realm, fun() -> exited(This, Code, Signal) end),
+            manage(M#{waiting := lists:delete(exit, maps:get(waiting, M))});
+        {tcp, Stderr, Data} ->
+            deliver(Realm, maps:get(stderr, Handles), Data),
+            manage(M);
+        {tcp_closed, Stderr} ->
+            deliver(Realm, maps:get(stderr, Handles), eof),
+            manage(M#{waiting := lists:delete(stderr, maps:get(waiting, M))});
+        {write, _, _, _} = Write when is_pid(Writer) ->
+            Writer ! Write,
+            manage(M);
+        {write, _, From, Ref} ->
+            report(From, Ref, {error, epipe}),
+            manage(M);
+        shutdown when is_pid(Writer) ->
+            Writer ! shutdown,
+            manage(M);
+        {kill, Signal} ->
+            case erlang:port_info(Port, os_pid) of
+                {os_pid, OsPid} -> _ = os:cmd("kill -" ++ integer_to_list(Signal) ++ " " ++ integer_to_list(OsPid));
+                _ -> ok
+            end,
+            manage(M);
+        _ ->
+            manage(M)
+    end.
+
+drain(Writer) when is_pid(Writer) -> Writer ! shutdown, ok;
+drain(_) -> ok.
+
+deliver(_Realm, none, _Item) -> ok;
+deliver(Realm, Handle, Item) -> buoy_node_stream:call(Realm, fun() -> buoy_node_stream:deliver(Handle, Item) end).
+
+%% The writer of stdin: a send that fills the socket's buffer waits here, not
+%% in the manager. Shutdown half-closes, so the child reads the end.
+write_loop(Socket) ->
+    receive
+        {write, Bytes, From, Ref} ->
+            case gen_tcp:send(Socket, Bytes) of
+                ok -> report(From, Ref, ok), write_loop(Socket);
+                Error -> report(From, Ref, Error), gen_tcp:close(Socket), write_closed(Socket)
+            end;
+        shutdown ->
+            _ = gen_tcp:shutdown(Socket, write),
+            write_loop_closed(Socket)
+    end.
+
+write_loop_closed(Socket) ->
+    receive
+        {write, _, From, Ref} -> report(From, Ref, {error, epipe}), write_loop_closed(Socket);
+        _ -> write_loop_closed(Socket)
+    after 60000 ->
+        gen_tcp:close(Socket)
+    end.
+
+%% A writer whose socket failed answers each later write with EPIPE.
+write_closed(Socket) ->
+    write_loop_closed(Socket).
+
+%% Reports a write of the realm's request Ref: 0, or EPIPE when it failed.
+report(Realm, Ref, ok) ->
+    buoy_node_stream:call(Realm, fun() -> buoy_node_stream:written(Ref, 0, ok) end);
+report(Realm, Ref, _Error) ->
+    buoy_node_stream:call(Realm, fun() -> buoy_node_stream:written(Ref, -32, ok) end).
+
+%% ProcessWrap::OnExit: onexit(exitCode, signal name or '').
+exited(This, Code, Signal) ->
+    S = state(This),
+    save(This, S#{exited => true}),
+    set_ref(This, false),
+    Name = case Signal of
+        0 -> <<>>;
+        N -> case buoy_binding_spawn_sync:signal_name(N) of null -> <<>>; Found -> Found end
+    end,
+    Onexit = buoy_heap:get(This, <<"onexit">>),
+    ExitCode = case Code of null -> null; _ -> Code end,
+    buoy_heap:is_callable(Onexit) andalso buoy_heap:call(Onexit, This, [ExitCode, Name]),
+    undefined.
+
+%% kill(signal): 0, or ESRCH once the child has exited.
+kill(This, Signal) ->
+    case state(This) of
+        #{exited := false, manager := Manager} ->
+            Manager ! {kill, trunc(buoy_ref:to_number(Signal))},
+            0;
+        _ ->
+            -3
+    end.
+
+close(This, Callback) ->
+    set_ref(This, false),
+    save(This, (state(This))#{closed => true}),
+    buoy_heap:is_callable(Callback) andalso
+        buoy_node_loop:defer(fun() -> buoy_heap:call(Callback, This, []) end),
+    undefined.
+
+set_ref(This, Refed) ->
+    S = state(This),
+    Old = maps:get(refed, S, false),
+    Live = not maps:get(exited, S, true),
+    New = Refed andalso Live,
+    case {Old, New} of
+        {false, true} -> buoy_node_loop:ref_handle();
+        {true, false} -> buoy_node_loop:unref_handle();
+        _ -> ok
+    end,
+    save(This, S#{refed => New}),
+    undefined.

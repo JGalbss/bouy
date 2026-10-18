@@ -9,7 +9,7 @@ This note collects evidence for two options in the architecture decision:
 - **Option B.** TypeScript compiles to an intermediate representation (IR). A custom Rust actor runtime runs it, with or without an embedded JS engine (V8 through rusty_v8, QuickJS through rquickjs).
 - **Option D4.** Wasm components act as Lunatic-style processes. Each actor is a Wasm instance that runs JS compiled to Wasm (StarlingMonkey through ComponentizeJS, or QuickJS through Javy).
 
-Section 8 scores both options on the nine shared criteria. The last section lists the implications for Bouy.
+Section 8 scores both options on the nine shared criteria. The last section lists the implications for Buoy.
 
 ## Summary
 
@@ -68,7 +68,7 @@ Program `native_actors` (Appendix A). Three runs each.
 | Measurement                                                 | Result per item            | Command                                              |
 | ----------------------------------------------------------- | -------------------------- | ---------------------------------------------------- |
 | Spawn an idle task with an unbounded mpsc mailbox           | 127 to 138 ns, 1,112 B RSS | `native_actors tokio-idle 1000000`                   |
-| Ping-pong round trip, current-thread runtime, no drivers    | 65 to 90 ns                | `BOUY_RT=nodrv native_actors tokio-pingpong 1000000` |
+| Ping-pong round trip, current-thread runtime, no drivers    | 65 to 90 ns                | `BUOY_RT=nodrv native_actors tokio-pingpong 1000000` |
 | Ping-pong round trip, current-thread runtime, I/O and timer | 477 to 1,798 ns            | `native_actors tokio-pingpong 1000000`               |
 | Ping-pong round trip, multi-thread runtime                  | 109 to 126 ns              | `native_actors tokio-pingpong-mt 1000000`            |
 
@@ -91,11 +91,11 @@ Measured with `native_actors` (three runs each):
 | Measurement                                    | Result per item            | Command                                               |
 | ---------------------------------------------- | -------------------------- | ----------------------------------------------------- |
 | Spawn an idle ractor actor                     | 669 to 849 ns, 7,644 B RSS | `native_actors ractor-idle 100000`                    |
-| ractor ping-pong, current-thread, no drivers   | 384 to 523 ns              | `BOUY_RT=nodrv native_actors ractor-pingpong 1000000` |
+| ractor ping-pong, current-thread, no drivers   | 384 to 523 ns              | `BUOY_RT=nodrv native_actors ractor-pingpong 1000000` |
 | ractor ping-pong, current-thread, with drivers | 815 to 1,003 ns            | `native_actors ractor-pingpong 1000000`               |
 | ractor ping-pong, multi-thread                 | 406 to 459 ns              | `native_actors ractor-pingpong-mt 1000000`            |
 
-These frameworks host Rust actors. They do not run JS. For Bouy they are design references: the ractor mailbox priorities, its supervision events, and the kameo and ractor-supervisor restart strategies map directly onto OTP concepts. A Rust host for JS actors can reuse their structure. It cannot reuse their actor trait, because a JS actor's state lives in a JS heap.
+These frameworks host Rust actors. They do not run JS. For Buoy they are design references: the ractor mailbox priorities, its supervision events, and the kameo and ractor-supervisor restart strategies map directly onto OTP concepts. A Rust host for JS actors can reuse their structure. It cannot reuse their actor trait, because a JS actor's state lives in a JS heap.
 
 ## 3. WebAssembly process models
 
@@ -104,7 +104,7 @@ These frameworks host Rust actors. They do not run JS. For Bouy they are design 
 - Lunatic describes itself as "an Erlang-inspired runtime for WebAssembly". The README promises preemptive scheduling on a work-stealing executor, per-process heaps and syscalls, and fair scheduling even for infinite loops ([README](https://github.com/lunatic-solutions/lunatic)).
 - Preemption uses Wasmtime fuel. Each store yields to the async executor after every 100,000 units of fuel (`out_of_fuel_async_yield(..., UNIT_OF_COMPUTE_IN_INSTRUCTIONS)` with the constant 100,000 in [`runtimes/wasmtime.rs` and `config.rs`](https://github.com/lunatic-solutions/lunatic/blob/28a2f387ebf6a64ce4b87e2638812e2c032d5049/crates/lunatic-process/src/runtimes/wasmtime.rs)).
 - Messages are byte buffers plus host resources, copied between processes. Links deliver `LinkDied` signals ([`message.rs`](https://github.com/lunatic-solutions/lunatic/blob/28a2f387ebf6a64ce4b87e2638812e2c032d5049/crates/lunatic-process/src/message.rs)). Supervision lives in the guest library (`supervisor.rs` in [rust-lib](https://github.com/lunatic-solutions/rust-lib)), whose last push was 2024-03-18.
-- Status on 2026-10-16: last release v0.13.2 on 2023-05-03, last commit on 2025-03-29 ("Fix build with rust 1.80"), dependency on Wasmtime 8 (GitHub API; `Cargo.toml` at commit `28a2f387`). Lunatic is useful to Bouy as a design reference only.
+- Status on 2026-10-16: last release v0.13.2 on 2023-05-03, last commit on 2025-03-29 ("Fix build with rust 1.80"), dependency on Wasmtime 8 (GitHub API; `Cargo.toml` at commit `28a2f387`). Lunatic is useful to Buoy as a design reference only.
 - Lunatic publishes no per-process memory or spawn numbers that I could find. Section 3.3 measures the same model directly on Wasmtime 49.
 
 ### 3.2 Wasmtime fuel and epoch interruption
@@ -139,7 +139,7 @@ Measured with `wasm_actors` (Appendix A), three runs each. An "idle actor" is a 
 | -------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------- |
 | Instantiate and suspend an idle actor, on-demand allocator           | 10.4 to 12.8 µs, 23.6 KiB RSS       | `wasm_actors idle 10000`                     |
 | Same, pooling allocator                                              | 5.2 to 6.0 µs, 23.6 KiB RSS         | `wasm_actors idle-pool 10000`                |
-| Ping-pong between two Wasm actors through host channels, i64 payload | 646 to 699 ns per round trip        | `BOUY_RT=nodrv wasm_actors pingpong 1000000` |
+| Ping-pong between two Wasm actors through host channels, i64 payload | 646 to 699 ns per round trip        | `BUOY_RT=nodrv wasm_actors pingpong 1000000` |
 | Same, current-thread runtime with drivers                            | 924 to 1,175 ns per round trip      | `wasm_actors pingpong 1000000`               |
 | Javy 9.1.0 static module (QuickJS-ng) instantiate and run `_start`   | 46.1 to 53.4 µs, 233 to 234 KiB RSS | `wasm_actors javy-idle 2000 js`              |
 
@@ -164,7 +164,7 @@ Measured with `wasm_actors` (Appendix A), three runs each. An "idle actor" is a 
 - Its Web builtins include fetch, streams, text encoding, timers, crypto, URL, Blob, FormData, structured clone, `AbortController`, and `performance` ([`builtins/web`](https://github.com/bytecodealliance/StarlingMonkey/tree/main/builtins/web)).
 - It has no `Intl`. A test component returned `typeof Intl` as `"undefined"`, and `new RegExp("\\p{L}", "u")` threw `SyntaxError: invalid property name in regular expression` (`component_probe run js/intl-component.wasm`). Issue [#45 "Intl support"](https://github.com/bytecodealliance/StarlingMonkey/issues/45) has been open since 2024-05-09. Its last update (2025-02-28) says the work waits on a SpiderMonkey rebase.
 - ComponentizeJS turns an ES module and a WIT world into a component. Its [README](https://github.com/bytecodealliance/ComponentizeJS) calls the project "experimental" and gives "around 8MB" as the embedding size. My idle component was 11,988,034 bytes.
-- jco 1.39.0 adds three things relevant to Bouy: a `--bundle` mode built on Rolldown, adapter files for 43 Node built-in modules ([`src/node-builtins`](https://github.com/bytecodealliance/jco/tree/jco-v1.39.0/packages/jco/src/node-builtins), which I did not test beyond the probes), and a plugin that rewrites regular expressions the engines cannot parse ([`engine-compat.ts`](https://github.com/bytecodealliance/jco/blob/jco-v1.39.0/packages/jco/src/engine-compat.ts), wired up in [`cmd/componentize.ts`](https://github.com/bytecodealliance/jco/blob/jco-v1.39.0/packages/jco/src/cmd/componentize.ts)). It also offers a QuickJS backend (`--backend quickjs`, componentize-qjs 0.4.5, per `jco componentize --help` and the package dependencies).
+- jco 1.39.0 adds three things relevant to Buoy: a `--bundle` mode built on Rolldown, adapter files for 43 Node built-in modules ([`src/node-builtins`](https://github.com/bytecodealliance/jco/tree/jco-v1.39.0/packages/jco/src/node-builtins), which I did not test beyond the probes), and a plugin that rewrites regular expressions the engines cannot parse ([`engine-compat.ts`](https://github.com/bytecodealliance/jco/blob/jco-v1.39.0/packages/jco/src/engine-compat.ts), wired up in [`cmd/componentize.ts`](https://github.com/bytecodealliance/jco/blob/jco-v1.39.0/packages/jco/src/cmd/componentize.ts)). It also offers a QuickJS backend (`--backend quickjs`, componentize-qjs 0.4.5, per `jco componentize --help` and the package dependencies).
 - StarlingMonkey ships an experimental VS Code debugger. Its README says it "will break in surprising and not always enjoyable ways" and requires the `--enable-script-debugging` runtime flag ([debugger README](https://github.com/bytecodealliance/StarlingMonkey/tree/main/debugger/vscode-dap-extension)).
 
 Measured with `component_probe` (Appendix A). Components built with `jco componentize` 1.39.0 and componentize-js 0.23.0.
@@ -205,7 +205,7 @@ Three probes, bundled with `bun build --target=browser --format=esm` (Appendix A
 | jco `--backend quickjs --bundle`                                         | Builds; imports `jco:node/*` interfaces that plain Wasmtime does not provide | Fail at pre-initialization: `platform` adapter                                                                                | Fail: same error                                   |
 | Porffor 0.0.0-alpha.17 (AOT to C, clang)                                 | Pass                                                                         | Fail: compiles, then exits with code 139 (SIGSEGV), with and without `--event-loop`                                           | Fail: compiles, then exits with code 139 (SIGSEGV) |
 
-Commands: `js_probe quickjs <bundle>`, `js_probe javy <module.wasm>`, `bouy-boa-bench probe <bundle>`, `component_probe run <component.wasm>`, `llrt <bundle>`, and `npx porf --module <bundle>`. Appendix A lists the build commands.
+Commands: `js_probe quickjs <bundle>`, `js_probe javy <module.wasm>`, `buoy-boa-bench probe <bundle>`, `component_probe run <component.wasm>`, `llrt <bundle>`, and `npx porf --module <bundle>`. Appendix A lists the build commands.
 
 The failures have four causes: missing Web platform APIs (`TransformStream`, `Response`), engine build options (`Intl` and Unicode property escapes), pre-initialization rules (no host calls while Wizer snapshots the heap), and a compiler crash (Porffor). zod avoids all four and passed everywhere.
 
@@ -219,12 +219,12 @@ The failures have four causes: missing Web platform APIs (`TransformStream`, `Re
 - The crate exposes the V8 inspector (`src/inspector.rs`), which Deno uses for Chrome DevTools debugging.
 - Deno's own Node layer passes "over 75% of Node's own test suite" as of Deno 2.8, and supports Node-API addons with `--allow-ffi` ([Deno docs, updated 2026-07-30](https://docs.deno.com/runtime/fundamentals/node/)). That layer is the size of the work a V8-based option B has to reuse or rebuild.
 
-Measured with `bouy-v8-bench` (Appendix A), three runs each. Each actor evaluates the same 1-line actor script.
+Measured with `buoy-v8-bench` (Appendix A), three runs each. Each actor evaluates the same 1-line actor script.
 
 | Measurement                               | Result per actor                      | Command                       |
 | ----------------------------------------- | ------------------------------------- | ----------------------------- |
-| New isolate plus context per actor        | 365 to 416 µs, 1,095 to 1,096 KiB RSS | `bouy-v8-bench isolates 200`  |
-| New context per actor in a shared isolate | 135 to 144 µs, 199 to 200 KiB RSS     | `bouy-v8-bench contexts 2000` |
+| New isolate plus context per actor        | 365 to 416 µs, 1,095 to 1,096 KiB RSS | `buoy-v8-bench isolates 200`  |
+| New context per actor in a shared isolate | 135 to 144 µs, 199 to 200 KiB RSS     | `buoy-v8-bench contexts 2000` |
 
 ### 5.2 QuickJS-ng through rquickjs
 
@@ -272,7 +272,7 @@ Limits of the prototype:
 ### 5.4 Boa
 
 - Boa is a JS engine written in Rust. v0.22 (2026-08-28) reports 95.60% on Test262. It enables Temporal by default, adds a polymorphic inline cache, and starts a move from `boa_runtime` to `boa_wintertc` for Web APIs ([release notes](https://github.com/boa-dev/boa/releases/tag/v0.22)).
-- Measured with `bouy-boa-bench` (Appendix A): `fib(27)` took 68.8 ms and the JSON workload 378.0 ms (median of 5). A context per actor cost 263 to 272 µs (one run had a 1,550 µs outlier) and 336 KiB RSS (`bouy-boa-bench contexts 2000`).
+- Measured with `buoy-boa-bench` (Appendix A): `fib(27)` took 68.8 ms and the JSON workload 378.0 ms (median of 5). A context per actor cost 263 to 272 µs (one run had a 1,550 µs outlier) and 336 KiB RSS (`buoy-boa-bench contexts 2000`).
 - Boa is the slowest engine measured here, at 4.7 times QuickJS-ng on `fib(27)`. It is the only one without C or C++ code.
 
 ### 5.5 AWS LLRT
@@ -295,7 +295,7 @@ Two workloads: recursive `fib(27)` and 20,000 `JSON.stringify` plus `JSON.parse`
 | QuickJS in Wasm (Javy 9.1.0, Wasmtime 49.0.3) | 24.9      | 101.4                | `wasm_interrupt js noop`       |
 | StarlingMonkey in Wasm, interpreter           | 46.7      | 31.8                 | `component_probe repeat ...`   |
 | StarlingMonkey in Wasm, weval AOT             | 29.0      | 38.1                 | `component_probe repeat ...`   |
-| Boa 0.22.0, native                            | 68.8      | 378.0                | `bouy-boa-bench workloads`     |
+| Boa 0.22.0, native                            | 68.8      | 378.0                | `buoy-boa-bench workloads`     |
 | Porffor alpha 17, AOT to C                    | 1         | not run              | `npx porf fib.js`              |
 
 - The Javy rows include instantiation (about 50 µs). Javy 9.1.0 embeds an older QuickJS-ng than rquickjs 0.14.0, so the native and Wasm QuickJS rows are not the same engine version.
@@ -333,7 +333,7 @@ Conclusion: a native compiler alone does not deliver npm compatibility. Each pro
 
 ## 8. Scores for B and D4
 
-Scale: 1 is poor for Bouy and 5 is strong. B is scored as its most viable variant: a Rust host on Tokio with one QuickJS-ng runtime per actor and coroutine preemption. D4 is scored as Wasmtime with one component instance per actor running StarlingMonkey, because StarlingMonkey is the only JS-in-Wasm engine here that ran the AI SDK. The notes say where B with V8, B without an engine, or D4 with Javy would score differently.
+Scale: 1 is poor for Buoy and 5 is strong. B is scored as its most viable variant: a Rust host on Tokio with one QuickJS-ng runtime per actor and coroutine preemption. D4 is scored as Wasmtime with one component instance per actor running StarlingMonkey, because StarlingMonkey is the only JS-in-Wasm engine here that ran the AI SDK. The notes say where B with V8, B without an engine, or D4 with Javy would score differently.
 
 | Criterion                             | B   | D4  |
 | ------------------------------------- | --- | --- |
@@ -360,11 +360,11 @@ Scale: 1 is poor for Bouy and 5 is strong. B is scored as its most viable varian
 
 **I/O and streaming performance.** B: 4. I/O runs natively on Tokio, and LLRT runs `streamText` with Rust stream modules. JS-side parsing runs at interpreter speed: 2.6 times V8 on the JSON workload. D4: 3. `wasi:http` and WASI 0.2 streams work, and StarlingMonkey ran the JSON workload within 22% of V8 with JIT. Every byte crosses the sandbox boundary as a copy. JS guests do not yet use WASI 0.3 async.
 
-**Implementation complexity.** B: 2. Bouy would build the scheduler, coroutine preemption, mailboxes, supervision, structured clone between runtimes, Web and Node APIs (partly from `llrt_modules`), module loading, and debugging. D4: 2. Wasmtime supplies isolation and preemption. Bouy would still build the actor host interface in WIT, supervision, message codecs, and a build pipeline on an experimental toolchain (ComponentizeJS, Wizer, weval) with known gaps (no `Intl`, pre-initialization limits).
+**Implementation complexity.** B: 2. Buoy would build the scheduler, coroutine preemption, mailboxes, supervision, structured clone between runtimes, Web and Node APIs (partly from `llrt_modules`), module loading, and debugging. D4: 2. Wasmtime supplies isolation and preemption. Buoy would still build the actor host interface in WIT, supervision, message codecs, and a build pipeline on an experimental toolchain (ComponentizeJS, Wizer, weval) with known gaps (no `Intl`, pre-initialization limits).
 
 **Debuggability and tooling.** B: 2. I found no maintained debugger for QuickJS-ng. Host-side Rust tooling such as [tokio-console](https://github.com/tokio-rs/console) helps. B with V8 would score 4 through the V8 inspector. D4: 2. StarlingMonkey's VS Code debugger is labelled experimental. Native profilers see the engine's Wasm functions. I did not check whether any tool maps them back to JS functions.
 
-**Long-term extensibility.** B: 4. Bouy would own the scheduler, the per-actor heap, and the distribution protocol. The engine sits behind a host API, so QuickJS-ng, V8, or Boa can be swapped. The ceiling is interpreter speed unless V8 is used. D4: 4. The component model gives language-neutral actor interfaces, capability security, and WASI 0.3 async. Progress depends on the JS-in-Wasm toolchains, which still lack `Intl`, JIT-level speed, and JS async bindings.
+**Long-term extensibility.** B: 4. Buoy would own the scheduler, the per-actor heap, and the distribution protocol. The engine sits behind a host API, so QuickJS-ng, V8, or Boa can be swapped. The ceiling is interpreter speed unless V8 is used. D4: 4. The component model gives language-neutral actor interfaces, capability security, and WASI 0.3 async. Progress depends on the JS-in-Wasm toolchains, which still lack `Intl`, JIT-level speed, and JS async bindings.
 
 ## 9. Unverified items
 
@@ -438,11 +438,11 @@ The measurement commands appear next to each table in the body of this note. Raw
 
 ### A.2 Cargo manifests
 
-`bouy-rust-wasm-bench/Cargo.toml`
+`buoy-rust-wasm-bench/Cargo.toml`
 
 ```toml
 [package]
-name = "bouy-rust-wasm-bench"
+name = "buoy-rust-wasm-bench"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -467,11 +467,11 @@ corosensei = "0.3"
 debug = false
 ```
 
-`bouy-v8-bench/Cargo.toml`
+`buoy-v8-bench/Cargo.toml`
 
 ```toml
 [package]
-name = "bouy-v8-bench"
+name = "buoy-v8-bench"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -483,11 +483,11 @@ v8 = "152"
 debug = false
 ```
 
-`bouy-boa-bench/Cargo.toml`
+`buoy-boa-bench/Cargo.toml`
 
 ```toml
 [package]
-name = "bouy-boa-bench"
+name = "buoy-boa-bench"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -881,8 +881,8 @@ fn main() {
     let mode = args.get(1).map(String::as_str).unwrap_or("idle").to_string();
     let n: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(10_000);
     let js_dir = args.get(3).cloned().unwrap_or_else(|| "js".to_string());
-    // BOUY_RT=nodrv builds the current-thread runtime without the I/O and timer drivers.
-    let rt = match std::env::var("BOUY_RT").as_deref() {
+    // BUOY_RT=nodrv builds the current-thread runtime without the I/O and timer drivers.
+    let rt = match std::env::var("BUOY_RT").as_deref() {
         Ok("nodrv") => tokio::runtime::Builder::new_current_thread().build().unwrap(),
         _ => tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap(),
     };
@@ -1039,7 +1039,7 @@ fn main() {
     let rt = match mode.as_str() {
         "tokio-pingpong-mt" | "ractor-pingpong-mt" => tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap(),
         "tokio-pingpong-nodrv" => tokio::runtime::Builder::new_current_thread().build().unwrap(),
-        _ if std::env::var("BOUY_RT").as_deref() == Ok("nodrv") => tokio::runtime::Builder::new_current_thread().build().unwrap(),
+        _ if std::env::var("BUOY_RT").as_deref() == Ok("nodrv") => tokio::runtime::Builder::new_current_thread().build().unwrap(),
         _ => tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap(),
     };
     rt.block_on(async {
@@ -1535,7 +1535,7 @@ fn main() {
 }
 ```
 
-`bouy-v8-bench/src/main.rs`
+`buoy-v8-bench/src/main.rs`
 
 ```rust
 // Costs of embedding V8 through rusty_v8 (the `v8` crate Deno uses): one isolate per actor,
@@ -1618,7 +1618,7 @@ fn main() {
 }
 ```
 
-`bouy-boa-bench/src/main.rs`
+`buoy-boa-bench/src/main.rs`
 
 ```rust
 // Costs of embedding Boa (pure-Rust JS engine): workload speed, context per actor, zod probe.
@@ -1777,7 +1777,7 @@ globalThis.onMessage(1);
 `js/probe.wit`
 
 ```wit
-package bouy:probe;
+package buoy:probe;
 
 world probe {
   export run: func() -> string;
@@ -2161,7 +2161,7 @@ quickjs_runtime_per_actor,n=10000,create_us=54.2,rss_kib_per_actor=174.0,quickjs
 quickjs_context_per_actor,n=10000,create_us=89.4,rss_kib_per_actor=56.3
 quickjs_rust_to_js_call,n=1000000,ns_per_call=41
 
-# extra tokio ping-pong runs: BOUY_RT=nodrv tokio-pingpong, then default tokio-pingpong (three pairs)
+# extra tokio ping-pong runs: BUOY_RT=nodrv tokio-pingpong, then default tokio-pingpong (three pairs)
 tokio_pingpong,round_trips=1000000,ns_per_round_trip=79
 tokio_pingpong,round_trips=1000000,ns_per_round_trip=1798
 tokio_pingpong,round_trips=1000000,ns_per_round_trip=86
@@ -2175,7 +2175,7 @@ wasm_idle_actors,pool=true,n=10000,spawn_us_per_actor=5.19,rss_kib_per_actor=23.
 wasm_pingpong,round_trips=1000000,ns_per_round_trip=924
 javy_quickjs_instances,n=1000,instantiate_and_start_us=46.1,rss_kib_per_instance=233.0,linear_memory_kib=1408,rss_total_mib=328.4
 
-# bouy-v8-bench isolates 200 / contexts 2000 (first isolate run panicked at drop after printing; drop order fixed)
+# buoy-v8-bench isolates 200 / contexts 2000 (first isolate run panicked at drop after printing; drop order fixed)
 v8_isolate_per_actor,n=200,create_us=389,rss_kib_per_actor=1095
 v8_isolate_per_actor,n=200,create_us=365,rss_kib_per_actor=1096
 v8_context_per_actor,n=2000,create_us=144,rss_kib_per_actor=199
@@ -2184,7 +2184,7 @@ v8_context_per_actor,n=2000,create_us=135,rss_kib_per_actor=199
 v8_isolate_per_actor,n=200,create_us=392,rss_kib_per_actor=1096
 v8_context_per_actor,n=2000,create_us=144,rss_kib_per_actor=200
 
-# bouy-boa-bench workloads / contexts 2000 (three runs) / probe
+# buoy-boa-bench workloads / contexts 2000 (three runs) / probe
 boa_workload,fib27,median_ms=68.8,min_ms=66.7
 boa_workload,json20k,median_ms=378.0,min_ms=356.8
 boa_context_per_actor,n=2000,create_us=272,rss_kib_per_actor=336
@@ -2242,11 +2242,11 @@ porffor ai, rerun --event-loop: exit=139
 porffor openai, rerun default: exit=139
 ```
 
-## Implications for Bouy
+## Implications for Buoy
 
-1. **Drop B without an embedded engine.** No ahead-of-time compiler here runs the AI SDK. The projects that run real npm code natively each add a runtime layer for Web or Node APIs: hermes-node for Static Hermes and a server runtime for Porffor (Section 6). A Bouy compiler can still emit faster code for typed actor modules later. It cannot replace a JS engine for `node_modules`.
+1. **Drop B without an embedded engine.** No ahead-of-time compiler here runs the AI SDK. The projects that run real npm code natively each add a runtime layer for Web or Node APIs: hermes-node for Static Hermes and a server runtime for Porffor (Section 6). A Buoy compiler can still emit faster code for typed actor modules later. It cannot replace a JS engine for `node_modules`.
 2. **Keep Tokio for I/O and timers, and add preemption in the engine.** Tokio's budget counts I/O readiness and cannot stop a JS loop. JS preemption must come from the engine: the QuickJS-ng interrupt handler with a coroutine per actor, or Wasmtime epochs. Model the time slice on BEAM reductions: the QuickJS prototype gave 84 to 93 µs slices and Lunatic used 100,000 units of fuel.
-3. **If Bouy builds its own Rust runtime (option B), start from QuickJS-ng through rquickjs.** A preemptible actor costs 190.2 KiB and 54 to 60 µs, the lowest JS cost measured here except shared-runtime contexts. Reuse `llrt_modules` for Web APIs, because LLRT on the same engine passed all three probes. Keep the engine behind a small host interface, so V8 can serve CPU-heavy actors where JIT speed matters (1.3 ms against 14.5 ms on `fib(27)`).
+3. **If Buoy builds its own Rust runtime (option B), start from QuickJS-ng through rquickjs.** A preemptible actor costs 190.2 KiB and 54 to 60 µs, the lowest JS cost measured here except shared-runtime contexts. Reuse `llrt_modules` for Web APIs, because LLRT on the same engine passed all three probes. Keep the engine behind a small host interface, so V8 can serve CPU-heavy actors where JIT speed matters (1.3 ms against 14.5 ms on `fib(27)`).
 4. **Use D4 where isolation matters more than density.** A StarlingMonkey actor costs 1.6 MiB, but a trap or runaway loop stays inside its instance and epochs can stop it at any loop. That fits sandboxed tool execution and model-generated code. It does not fit the default actor at 10,000 actors per node.
 5. **Define the actor protocol once, independent of the host.** Write spawn, send, receive, link, monitor, and exit as one interface, shaped so it maps to WIT. The same actor code can then run in-process (option B or C) or in a Wasm sandbox (D4). Placement becomes a deployment choice.
 6. **Copy messages, as the BEAM does.** Every isolated design measured here (QuickJS runtimes, V8 isolates, Wasm instances) has separate heaps. Define messages as structured-clone data, validate them with zod at the actor boundary, and give large binaries a host-owned, reference-counted buffer, the analogue of BEAM refc binaries. Measure serialization cost before fixing the message format (Section 9).

@@ -2732,17 +2732,17 @@
       },
       "blockers": [
         {
-          "blocker": "BOUY206",
+          "blocker": "BUOY206",
           "files": 48753,
           "only": 371
         },
         {
-          "blocker": "BOUY200",
+          "blocker": "BUOY200",
           "files": 14,
           "only": 6
         },
         {
-          "blocker": "BOUY201",
+          "blocker": "BUOY201",
           "files": 109,
           "only": 2
         },
@@ -2757,7 +2757,7 @@
           "only": 0
         },
         {
-          "blocker": "BOUY202",
+          "blocker": "BUOY202",
           "files": 29498,
           "only": 0
         },
@@ -2782,12 +2782,12 @@
           "only": 0
         },
         {
-          "blocker": "BOUY203",
+          "blocker": "BUOY203",
           "files": 1772,
           "only": 0
         },
         {
-          "blocker": "BOUY205",
+          "blocker": "BUOY205",
           "files": 1155,
           "only": 0
         },
@@ -2812,7 +2812,7 @@
           "only": 0
         },
         {
-          "blocker": "BOUY207",
+          "blocker": "BUOY207",
           "files": 230,
           "only": 0
         },
@@ -4654,12 +4654,12 @@
       },
       "blockers": [
         {
-          "blocker": "BOUY201",
+          "blocker": "BUOY201",
           "files": 196,
           "only": 196
         },
         {
-          "blocker": "BOUY206",
+          "blocker": "BUOY206",
           "files": 99,
           "only": 99
         }
@@ -4670,7 +4670,7 @@
       "suite": "conformance",
       "suite_version": "Node 25.9.0",
       "updated": null,
-      "test": "crates/bouy-cli/tests/conformance.rs",
+      "test": "crates/buoy-cli/tests/conformance.rs",
       "total": 72,
       "outcomes": {
         "pass": 72,
@@ -4691,7 +4691,7 @@
       "suite": "equivalence/effect",
       "suite_version": "Node 25.9.0",
       "updated": null,
-      "test": "crates/bouy-cli/tests/equivalence.rs",
+      "test": "crates/buoy-cli/tests/equivalence.rs",
       "total": 23,
       "outcomes": {
         "pass": 23,
@@ -4712,7 +4712,7 @@
       "suite": "equivalence/ai",
       "suite_version": "Node 25.9.0",
       "updated": null,
-      "test": "crates/bouy-cli/tests/ai.rs",
+      "test": "crates/buoy-cli/tests/ai.rs",
       "total": 7,
       "outcomes": {
         "pass": 7,
@@ -4733,7 +4733,7 @@
       "suite": "programs",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/programs.rs",
+      "test": "crates/buoy-cli/tests/programs.rs",
       "total": 35,
       "outcomes": {
         "pass": 35,
@@ -4754,7 +4754,7 @@
       "suite": "npm",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/ecosystem.rs",
+      "test": "crates/buoy-cli/tests/ecosystem.rs",
       "total": 19,
       "outcomes": {
         "pass": 0,
@@ -4775,7 +4775,7 @@
       "suite": "equivalence/ai-zod",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/ecosystem.rs",
+      "test": "crates/buoy-cli/tests/ecosystem.rs",
       "total": 4,
       "outcomes": {
         "pass": 0,
@@ -4796,7 +4796,7 @@
       "suite": "equivalence/anthropic",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/ecosystem.rs",
+      "test": "crates/buoy-cli/tests/ecosystem.rs",
       "total": 2,
       "outcomes": {
         "pass": 0,
@@ -4817,7 +4817,7 @@
       "suite": "equivalence/mcp",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/ecosystem.rs",
+      "test": "crates/buoy-cli/tests/ecosystem.rs",
       "total": 3,
       "outcomes": {
         "pass": 0,
@@ -4838,7 +4838,7 @@
       "suite": "equivalence/openai",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/ecosystem.rs",
+      "test": "crates/buoy-cli/tests/ecosystem.rs",
       "total": 4,
       "outcomes": {
         "pass": 0,
@@ -4859,7 +4859,7 @@
       "suite": "fuzz",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/fuzz.rs",
+      "test": "crates/buoy-cli/tests/fuzz.rs",
       "total": 36,
       "outcomes": {
         "pass": 0,
@@ -4880,7 +4880,7 @@
       "suite": "migration",
       "suite_version": null,
       "updated": null,
-      "test": "crates/bouy-cli/tests/migration.rs",
+      "test": "crates/buoy-cli/tests/migration.rs",
       "total": 1,
       "outcomes": {
         "pass": 0,

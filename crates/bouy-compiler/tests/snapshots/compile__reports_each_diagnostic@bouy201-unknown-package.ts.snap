@@ -1,7 +1,0 @@
----
-source: crates/bouy-compiler/tests/compile.rs
-expression: render(&diagnostics)
-input_file: crates/bouy-compiler/tests/fixtures/diagnostics/bouy201-unknown-package.ts
----
-bouy201-unknown-package.ts:1:23: BOUY201: cannot import "lodash": import a relative module (./file.ts) or one of the libraries bouy, effect, ai, and @ai-sdk/openai
-bouy201-unknown-package.ts:2:10: BOUY201: "effect" has no export "Layer" that Bouy provides; section 11 of docs/design/beam-runtime.md lists the supported names

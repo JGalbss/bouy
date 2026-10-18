@@ -6,7 +6,7 @@ import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { InMemoryStore } from "@langchain/core/stores";
 
 const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 24, chunkOverlap: 0 });
-const text = "Bouy runs TypeScript on BEAM. Each actor has its own heap.\n\nActors restart alone.";
+const text = "Buoy runs TypeScript on BEAM. Each actor has its own heap.\n\nActors restart alone.";
 const chunks = await splitter.splitText(text);
 console.log(JSON.stringify(chunks));
 

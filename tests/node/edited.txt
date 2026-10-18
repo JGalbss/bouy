@@ -1,2 +1,2 @@
-# The files of tests/node/test that Bouy edits, each with its reason: `<path> <reason>`.
-# Only files of common/ may change, and each change carries a `// Bouy:` comment.
+# The files of tests/node/test that Buoy edits, each with its reason: `<path> <reason>`.
+# Only files of common/ may change, and each change carries a `// Buoy:` comment.

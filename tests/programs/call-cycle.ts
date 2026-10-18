@@ -1,4 +1,4 @@
-import { spawn } from "bouy";
+import { spawn } from "buoy";
 
 class Client {
   #server: any;
