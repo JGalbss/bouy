@@ -24,21 +24,22 @@ Requirement 7 of [goal.md](../goal.md): "test262 covers the language. Node's own
 
 ## 2. Today
 
-| Tier               | Location                                          | Runner                                 | Size                  |
-| ------------------ | ------------------------------------------------- | -------------------------------------- | --------------------- |
-| Compiler snapshots | `crates/buoy-compiler/tests/{fixtures,snapshots}` | insta, plus an `erlc` check            | 34 snapshots          |
-| Runtime unit tests | `runtime/test/*_tests.erl`                        | EUnit through rebar3                   | 24 modules            |
-| Conformance        | `tests/conformance`                               | `crates/buoy-cli/tests/conformance.rs` | 72 programs           |
-| Equivalence        | `tests/equivalence/{effect,ai}`                   | `equivalence.rs`, `ai.rs`              | 23 Effect, 7 AI       |
-| Actor invariants   | `tests/programs`                                  | `crates/buoy-cli/tests/programs.rs`    | 31 tests              |
-| Benchmarks         | `bench/programs`                                  | `crates/buoy-bench`                    | 13 suites             |
-| Migration fixture  | `tests/migration/before`                          | `crates/buoy-cli/tests/migration.rs`   | one app of 22 modules |
-| test262            | `tests/test262`, fetched into the cache           | `buoy-suites test262`                  | 53,616 files          |
-| Fuzz replay        | `tests/fuzz`                                      | `crates/buoy-cli/tests/fuzz.rs`        | 36 cases              |
-| Node's own tests   | `tests/node`, vendored at v25.9.0                 | `buoy-suites node`                     | 4,419 files           |
-| Resolution cases   | `tests/npm`                                       | `buoy-suites packages`, `ecosystem.rs` | 12 cases, 19 programs |
-| Package programs   | `tests/packages`                                  | `buoy-suites packages`, `ecosystem.rs` | 99 directories        |
-| AI-stack scenarios | `tests/equivalence/{ai-zod,openai,anthropic,mcp}` | `buoy-suites packages`, `ecosystem.rs` | 13 programs           |
+| Tier               | Location                                          | Runner                                 | Size                         |
+| ------------------ | ------------------------------------------------- | -------------------------------------- | ---------------------------- |
+| Compiler snapshots | `crates/buoy-compiler/tests/{fixtures,snapshots}` | insta, plus an `erlc` check            | 34 snapshots                 |
+| Runtime unit tests | `runtime/test/*_tests.erl`                        | EUnit through rebar3                   | 24 modules                   |
+| Conformance        | `tests/conformance`                               | `crates/buoy-cli/tests/conformance.rs` | 72 programs                  |
+| Equivalence        | `tests/equivalence/{effect,ai}`                   | `equivalence.rs`, `ai.rs`              | 23 Effect, 7 AI              |
+| Actor invariants   | `tests/programs`                                  | `crates/buoy-cli/tests/programs.rs`    | 31 tests                     |
+| Benchmarks         | `bench/programs`                                  | `crates/buoy-bench`                    | 13 suites                    |
+| Migration fixture  | `tests/migration/before`                          | `crates/buoy-cli/tests/migration.rs`   | one app of 22 modules        |
+| test262            | `tests/test262`, fetched into the cache           | `buoy-suites test262`                  | 53,616 files                 |
+| Fuzz replay        | `tests/fuzz`                                      | `crates/buoy-cli/tests/fuzz.rs`        | 36 cases                     |
+| Node's own tests   | `tests/node`, vendored at v25.9.0                 | `buoy-suites node`                     | 4,419 files                  |
+| Resolution cases   | `tests/npm`                                       | `buoy-suites packages`, `ecosystem.rs` | 12 cases, 19 programs        |
+| Package programs   | `tests/packages`                                  | `buoy-suites packages`, `ecosystem.rs` | 99 directories               |
+| AI-stack scenarios | `tests/equivalence/{ai-zod,openai,anthropic,mcp}` | `buoy-suites packages`, `ecosystem.rs` | 13 programs                  |
+| Top npm packages   | `tests/ecosystem`, generated                      | `buoy-suites ecosystem`                | 924 packages, 1,169 programs |
 
 Phase 0 of section 11 closed two gaps: `compare()` had no time limit, and the freeze script ran the `node` that `PATH` found. The gaps that the rest of this design closes:
 
@@ -412,6 +413,14 @@ The owner's bar: "we need complete coverage of node and like a verifiable way to
 
 **e. Applications: `tests/apps/<app>/`, later.** Whole applications whose stdout and HTTP responses come from one Node run. The migration fixture (section 5.12) is the first one.
 
+**f. Top npm packages: `tests/ecosystem/`.** A generated tier, with no file written by hand and no step that names a package. `scripts/ecosystem.sh` writes it:
+
+- **Selection.** `ranking.json` comes from `scripts/rank-packages.sh` with the top 1,000. A package whose latest version names `os` or `cpu`, or whose entry points name only type declarations, gets no program, and `packages.json` records why.
+- **Install.** `package.json` pins each other package of rank 1 to 1,000 at the highest release of its most downloaded major. `pnpm-workspace.yaml` makes the directory a workspace of its own, so a `pnpm install` of the repository never installs it. `pnpm-lock.yaml` is committed, and `node_modules` is not: `scripts/ecosystem.sh install` installs the locked packages. pnpm runs no install script of a dependency.
+- **Programs.** `<name>/exports.cjs` requires the package when its installed `package.json` has a CommonJS entry, and `<name>/exports.mjs` imports it when it has an ES module entry. Each one prints the shape of what it loads with `describe.cjs` or `describe.mjs`: each key, sorted, with its type, two levels deep, at most 100 keys for each object; the length of a function; and the members of a class prototype. The only calls are the `is*` predicates of the first level, on nine fixed values. Bun's `test/exports/generate-exports.mjs` records the built-in modules the same way.
+- **Oracle.** The freeze script runs each program twice on Node. A package leaves the tier, with its reason in `packages.json`, when Node cannot load it, when two runs differ, or when Node does not exit within 120 s.
+- **Runner.** `buoy-suites ecosystem` runs each program as `buoy <program>`, the node form of the CLI, because a Node project runs its packages that way, with a deadline of 120 s: the first run of a package compiles all of it. `expectations.txt` holds the outcome of each program. `summary.json` counts packages: a package passes when each of its programs passes, and an excluded package is a `skip` under the kind of its reason. `pnpm check` does not run the tier, because it needs the install.
+
 ### 5.9 Actor and BEAM invariants
 
 `tests/programs` stays as it is. The contract defines each expected output, so Node plays no part. Each invariant of the definition of done has a test:
@@ -474,11 +483,13 @@ New tests:
 3. **Node.** One row per module: passing files over files at the tag, and the skips by reason.
 4. **Web.** One row per WPT area: subtests and files.
 5. **Packages.** One row per `<name>@<major>`: the exports program, the main program, the scenario programs, and the package suite (Buoy passes over Node passes). Today the row holds the outcome of each program file of the directory, from the `program` group of `tests/packages/summary.json`. The scenario areas are rows of the corpora table, and the package suites come with phase 11.
-6. **Buoy corpora.** Program counts, which pass by rule, the open count of the divergence register, the open fuzz cases, and the outcome of the migration fixture.
+6. **Top npm packages.** The packages of `tests/ecosystem` that match Node over the 1,000 ranked packages, the outcome of each program, and the skips by reason.
+7. **Node native bindings.** For each `internalBinding` of Node, the members that `src/` of Node sets, from `tests/node/bindings.json`, and the members that the module of the binding implements.
+8. **Buoy corpora.** Program counts, which pass by rule, the open count of the divergence register, the open fuzz cases, and the outcome of the migration fixture.
 
 A section whose suite does not exist yet says so and names the phase that builds it. A group table with more than 20 rows is collapsed.
 
-`docs/compat.json` holds the same data, as `{"tiers": [...]}`. Each tier uses one shape. `test` names the file that holds the evidence. A corpus has the tier `corpora`, no `updated` commit, because `pnpm check` runs it on each commit, and no groups. The `suite_version` of a corpus that Node froze names the Node release.
+`docs/compat.json` holds the same data, as `{"tiers": [...], "bindings": [...]}`. Each tier uses one shape. `test` names the file that holds the evidence. A corpus has the tier `corpora`, no `updated` commit, because `pnpm check` runs it on each commit, and no groups. The `suite_version` of a corpus that Node froze names the Node release.
 
 ```json
 {
