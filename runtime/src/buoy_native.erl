@@ -7,6 +7,11 @@
 %% It also holds WebAssembly on Wasmtime for buoy_ref_wasm: a compiled
 %% module, and a store for each process, which runs a command in slices of
 %% about a millisecond (crates/buoy-native/src/wasm.rs).
+%%
+%% And it holds the SQLite of node:sqlite (crates/buoy-native/src/sqlite.rs):
+%% each connection runs on a thread of its own, which replies to a command
+%% with {buoy_sqlite, Reference, Reply} and sends {buoy_sqlite_call,
+%% Reference, Call} for each call of JavaScript that waits for an answer.
 -module(buoy_native).
 
 -on_load(load/0).
@@ -16,12 +21,15 @@
 
 -export([wasm_store/1, wasm_compile/1, wasm_validate/1, wasm_imports/1, wasm_exports/1, wasm_command/2, wasm_poll/1]).
 
--export_type([stream/0, failure/0, wasm_module/0, wasm_store/0]).
+-export([sqlite_connection/0, sqlite_command/3, sqlite_answer/2]).
+
+-export_type([stream/0, failure/0, wasm_module/0, wasm_store/0, sqlite_connection/0]).
 
 -type stream() :: reference().
 -type failure() :: {binary(), integer(), binary()}.
 -type wasm_module() :: reference().
 -type wasm_store() :: reference().
+-type sqlite_connection() :: reference().
 
 %% A runtime without the library, such as the build of rebar3, still loads
 %% the module; its functions then fail with nif_not_loaded.
@@ -90,3 +98,16 @@ wasm_command(_Store, _Command) -> erlang:nif_error(nif_not_loaded).
 %% Runs the command in flight for one more slice.
 -spec wasm_poll(wasm_store()) -> term().
 wasm_poll(_Store) -> erlang:nif_error(nif_not_loaded).
+
+%% A new connection thread with no database open.
+-spec sqlite_connection() -> sqlite_connection().
+sqlite_connection() -> erlang:nif_error(nif_not_loaded).
+
+%% Sends a command to the thread, which replies to the caller; false when the
+%% thread is gone.
+-spec sqlite_command(sqlite_connection(), reference(), atom() | tuple()) -> boolean().
+sqlite_command(_Connection, _Reference, _Command) -> erlang:nif_error(nif_not_loaded).
+
+%% The answer to the call that the thread waits on.
+-spec sqlite_answer(sqlite_connection(), term()) -> boolean().
+sqlite_answer(_Connection, _Answer) -> erlang:nif_error(nif_not_loaded).

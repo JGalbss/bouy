@@ -1,6 +1,6 @@
 [package]
 name = "buoy-native"
-description = "The NIF library of the runtime: the zlib, brotli, and zstd codecs of Node's zlib module, and WebAssembly on Wasmtime."
+description = "The NIF library of the runtime: the zlib, brotli, and zstd codecs of Node's zlib module, WebAssembly on Wasmtime, and the SQLite of node:sqlite."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,6 +41,10 @@ wasmtime = { version = "49.0.3", default-features = false, features = [
   "std",
   "threads",
 ] }
+
+# SQLite 3.53, built from the amalgamation; .cargo/config.toml adds the options of Node's
+# deps/sqlite that libsqlite3-sys does not set, such as the session extension.
+libsqlite3-sys = { version = "=0.38.2", features = ["bundled"] }
 
 [lints]
 workspace = true
