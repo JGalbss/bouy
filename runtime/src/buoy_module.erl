@@ -841,6 +841,23 @@ runtime_target(From, Specifier, Mode) ->
 %% require(path.join(dir, name)): the compiler of the VM resolves it as Node
 %% does and compiles the target's program, whose modules join the graph.
 load_at_run_time(From, Specifier, Mode) ->
+    %% The resolution of a specifier from a module holds for the run, as
+    %% Node's loader caches it: an import of a file that the program has
+    %% since deleted still finds the module.
+    Key = {'$buoy_runtime_target', From, Specifier, Mode},
+    case erlang:get(Key) of
+        undefined ->
+            Found = compile_at_run_time(From, Specifier, Mode),
+            case Found of
+                {_, Module} when is_atom(Module) -> erlang:put(Key, Found);
+                _ -> ok
+            end,
+            Found;
+        Found ->
+            Found
+    end.
+
+compile_at_run_time(From, Specifier, Mode) ->
     case os:getenv("BUOY_COMPILER") =/= false andalso erlang:get(?ENTRY) of
         Entry when is_atom(Entry), Entry =/= undefined ->
             Main = buoy_ref_string:to_utf8(info(Entry, path)),
