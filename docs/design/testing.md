@@ -139,7 +139,7 @@ The report lists regressions first, then the newly silent ids, then the stale li
 - `config.json` lists flaky ids, each with a reason. A flaky id gets up to three attempts, and one pass is enough.
 - No other id gets a retry. On BEAM a test that flakes under load usually shows a scheduler or ordering bug, and a retry would hide it.
 - A `crash` never gets a retry, and the runner attaches the slogan of `erl_crash.dump` to the report.
-- Not built yet. Until the batch runner of phase 8, each execution runs alone in its own VM, so `config.json` has no `flaky` list and no id gets a rerun.
+- Built for Node's tests only: `buoy-suites node` reruns each unexpected file once, alone, after the batch, because a file that starts child VMs can time out when the other jobs load the machine. The `batch-sensitive` mark is not built yet. Until the batch runner of phase 8, each other execution runs alone in its own VM, so `config.json` has no `flaky` list and no other id gets a rerun.
 
 ### 3.5 Skips
 

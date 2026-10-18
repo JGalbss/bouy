@@ -528,13 +528,27 @@ fn execute_selected<'a>(
         scratch,
         deadline: Duration::from_millis(config.timeout_ms),
     };
-    let execute = |&(serial, test): &(usize, &'a Test)| {
-        execute(test, serial, &context).map(|execution| (test, execution))
+    let start = |&(serial, test): &(usize, &'a Test)| {
+        execute(test, serial, &context).map(|execution| (serial, test, execution))
     };
-    let mut ran = crate::parallel(&concurrent, options.jobs, execute);
-    ran.extend(crate::parallel(&sequential, 1, execute));
+    let mut ran = crate::parallel(&concurrent, options.jobs, start);
+    ran.extend(crate::parallel(&sequential, 1, start));
+    // Section 3.4: a file whose outcome its line does not expect runs once more, alone,
+    // because the load of the batch can time it out. The rerun decides. A crash gets none.
+    let ran = ran
+        .into_iter()
+        .map(|result| {
+            let (serial, test, execution) = result?;
+            if expected.get(&test.id) == Some(&Entry::Same(execution.outcome))
+                || matches!(execution.outcome, Outcome::Crash | Outcome::Skip)
+            {
+                return Ok((test, execution));
+            }
+            execute(test, serial, &context).map(|rerun| (test, rerun))
+        })
+        .collect();
     let _ = fs::remove_dir_all(&context.scratch);
-    ran.into_iter().collect()
+    ran
 }
 
 /// A skip costs no run, so every selection takes the skipped files, and a change to the
