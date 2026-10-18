@@ -73,7 +73,7 @@ override_file(Args) ->
         ok -> ok;
         {error, Reason} -> std_error(Reason, <<"unlink">>, Dest)
     end,
-    case copy_file(Src, Dest, false) of
+    case copy_file(Src, Dest) of
         ok -> ok;
         {error, R} when Mode =:= 0 -> std_error(R, <<"cp">>, Dest);
         {error, R} -> buoy_binding_fs:uv_error(R, <<"cp">>, Src, Dest)
@@ -125,7 +125,7 @@ copy_regular(Entry, Target, Dest, #{force := Force, error_on_exist := ErrorOnExi
             cp_error(<<"ERR_FS_CP_EEXIST">>,
                      [<<"[ERR_FS_CP_EEXIST]: Target already exists: cp returned EEXIST (">>, Target, <<" already exists)">>]);
         _ ->
-            case copy_file(Entry, Target, false) of
+            case copy_file(Entry, Target) of
                 ok -> ok;
                 {error, Reason} -> std_error(Reason, <<"cp">>, Dest)
             end,
@@ -170,12 +170,12 @@ copy_symlink(Entry, Target, Src, Dest, #{dereference := Dereference, force := Fo
     end.
 
 %% Copies the bytes and the mode of a file, as std::filesystem::copy_file.
-copy_file(Src, Dest, Exclusive) ->
+copy_file(Src, Dest) ->
     case file:open(Src, [raw, binary, read]) of
         {ok, From} ->
             try
                 {ok, #file_info{mode = Mode}} = prim_file:read_handle_info(From),
-                case file:open(Dest, [raw, binary, write | [exclusive || Exclusive]]) of
+                case file:open(Dest, [raw, binary, write]) of
                     {ok, To} ->
                         Copied = file:copy(From, To),
                         file:close(To),

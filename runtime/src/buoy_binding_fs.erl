@@ -26,6 +26,7 @@
 
 -define(FDS, '$buoy_node_fds').
 -define(STATE, {?MODULE, state}).
+-define(FD_SLOT, {'#', ?MODULE, <<"fd">>}).
 -define(STAT_FIELDS, 18).
 %% The open flags of darwin, as the constants binding reports them.
 -define(O_WRONLY, 1).
@@ -413,7 +414,7 @@ close(Args) ->
 %% promise; closeSync() and releaseFD() act now.
 file_handle_class() ->
     Class = buoy_node:constructor(<<"FileHandle">>, 0, fun(This, Args) ->
-        buoy_heap:private_put(This, {?MODULE, fd}, int(buoy_node:arg(1, Args))),
+        buoy_heap:private_put(This, ?FD_SLOT, int(buoy_node:arg(1, Args))),
         undefined
     end),
     Proto = buoy_heap:get(Class, <<"prototype">>),
@@ -431,16 +432,16 @@ file_handle_class() ->
 open_file_handle(Args) ->
     Fd = open(Args),
     Handle = buoy_node:object(erlang:get({?MODULE, file_handle_proto}), []),
-    buoy_heap:private_put(Handle, {?MODULE, fd}, Fd),
+    buoy_heap:private_put(Handle, ?FD_SLOT, Fd),
     Handle.
 
 %% The descriptor of a FileHandle, -1 once closed; Next replaces it.
 handle_fd(This, Next) ->
-    Fd = case buoy_heap:private_find(This, {?MODULE, fd}) of
+    Fd = case buoy_heap:private_find(This, ?FD_SLOT) of
         {ok, F} -> F;
         error -> -1
     end,
-    Next =:= keep orelse buoy_heap:private_put(This, {?MODULE, fd}, Next),
+    Next =:= keep orelse buoy_heap:private_put(This, ?FD_SLOT, Next),
     Fd.
 
 handle_close(This) ->
@@ -877,6 +878,7 @@ rm_retry(Path, Recursive, Retries, Delay, Attempt) ->
             rm_error(Reason, Path)
     end.
 
+-spec rm_error(atom(), binary()) -> no_return().
 rm_error(Reason, Path) when Reason =:= eperm; Reason =:= enotempty; Reason =:= enotdir; Reason =:= eacces ->
     errno_exception(Reason, <<"rm">>, <<(strerror(Reason))/binary, ": ", Path/binary>>, Path);
 rm_error(Reason, Path) ->

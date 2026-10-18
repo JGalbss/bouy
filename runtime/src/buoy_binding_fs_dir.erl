@@ -6,7 +6,7 @@
 
 -export([binding/0]).
 
--define(STATE, {?MODULE, state}).
+-define(STATE, {'#', ?MODULE, <<"state">>}).
 
 -spec binding() -> term().
 binding() ->

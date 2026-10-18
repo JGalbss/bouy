@@ -10,7 +10,7 @@
 
 -export([class/0]).
 
--define(STATE, {?MODULE, state}).
+-define(STATE, {'#', ?MODULE, <<"state">>}).
 
 -spec class() -> term().
 class() ->

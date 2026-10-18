@@ -16,7 +16,7 @@
 
 -export([binding/0]).
 
--define(STATE, {?MODULE, state}).
+-define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(INTERVAL, 100).
 
 -spec binding() -> term().
