@@ -80,7 +80,7 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 
 - Buoy has no OpenSSL, Intl, or inspector yet: `process.versions` has no `openssl`, and `process.config` sets no `v8_enable_i18n_support`, so the tests that need them skip.
 - The `constants` and `uv` bindings hold the tables of darwin and of Linux, as the oracle recorded them, and another OS gets darwin's.
-- Stack traces of errors are `at <buoy>`: the engine has no JavaScript call stack yet.
+- The engine has no JavaScript call stack yet. The `stack` of an error formats on its first read, as in V8: Node's `prepareStackTraceCallback`, else `Error.prepareStackTrace`, gets one CallSite of an anonymous frame, so a stack reads `Error [CODE]: message\n    at <anonymous>`. A test that matches real frames fails.
 - The engine has no call stack limit, so deep recursion grows the process until `BUOY_MAX_MEMORY` stops the VM, where V8 throws `RangeError: Maximum call stack size exceeded`. `assert.deepStrictEqual` of a cyclic value relies on that error to switch to its cycle check.
 - Child processes start through `/bin/bash`, which connects their piped stdin, stdout, stderr, and extra pipes as loopback sockets (`/dev/tcp`). Handles cannot pass over an IPC channel yet, and `process.execve` cannot replace the VM.
 - `process.title` keeps the value that a program sets, but the OS process keeps its name. Signals that OTP cannot catch, such as SIGINT, reach `process.on` only when the program sends them to itself.
