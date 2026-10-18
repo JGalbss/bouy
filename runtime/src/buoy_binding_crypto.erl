@@ -21,7 +21,8 @@ binding() ->
         ++ buoy_crypto_keccak:members()
         ++ buoy_crypto_argon2:members()
         ++ buoy_crypto_kem:members()
-        ++ buoy_crypto_roots:members(),
+        ++ buoy_crypto_roots:members()
+        ++ buoy_crypto_context:members(),
     Names = [Name || {Name, _} <- Members],
     Missing = [{Name, missing(Name)} || Name <- node_members(), not lists:member(Name, Names)],
     buoy_node:object(Members ++ Missing).
