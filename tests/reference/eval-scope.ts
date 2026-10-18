@@ -34,6 +34,10 @@ const scopes = {
   ),
   lexicalStays: sloppy("function () { eval('let l = 1; var m = l + 1'); return [typeof l, m]; }"),
   withObject: sloppy("function () { var o = { p: 'from with' }; with (o) { return eval('p'); } }"),
+  // The update of a loop around a `with` is outside its object.
+  withInLoop: sloppy(
+    "function () { var env = { i: 'shadow' }; var seen = []; for (let i = 0; i < 2; i++) { with (env) { seen.push(i); } } return seen; }",
+  ),
   thisValue: sloppy("function () { return eval('this') === globalThis; }"),
   callThis: sloppy(
     "function () { eval('function me() { return this; }'); return me() === globalThis; }",
