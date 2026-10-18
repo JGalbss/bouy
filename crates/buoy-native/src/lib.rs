@@ -5,11 +5,13 @@
 //! ports the matching context class of Node's `src/node_zlib.cc`. A write runs on a dirty
 //! CPU scheduler, as Node runs it on the libuv thread pool, so a slow compression never
 //! blocks a scheduler of the actors. Allocations, libzstd's too, go through `enif_alloc`,
-//! so `BUOY_MAX_MEMORY` counts them.
+//! so `BUOY_MAX_MEMORY` counts them. It also derives the Argon2 of `internalBinding('crypto')`,
+//! which OTP's crypto lacks, on a dirty CPU scheduler.
 
 // The NIF glue, which the tests leave out, is the caller of most of the codecs.
 #![cfg_attr(test, allow(dead_code))]
 
+pub mod argon2;
 mod brotli;
 // The NIF glue links against the VM's `enif_*` symbols, which a test binary lacks.
 #[cfg(not(test))]

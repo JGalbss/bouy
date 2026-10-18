@@ -2,13 +2,15 @@
 %% runtime's .beam files as buoy_native.so. It holds the codecs of
 %% internalBinding('zlib'): each stream is a resource that owns one zlib,
 %% brotli, or zstd context (src/node_zlib.cc of Node). A failure is
-%% {Message, Errno, Code}, the arguments of a handle's onerror.
+%% {Message, Errno, Code}, the arguments of a handle's onerror. It also
+%% derives Argon2 for internalBinding('crypto').
 -module(buoy_native).
 
 -on_load(load/0).
 
 -export([zlib_open/6, brotli_open/2, zstd_open/3]).
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
+-export([argon2/9]).
 
 -export_type([stream/0, failure/0]).
 
@@ -53,3 +55,13 @@ stream_reset(_Stream) -> erlang:nif_error(nif_not_loaded).
 
 -spec stream_close(stream()) -> true.
 stream_close(_Stream) -> erlang:nif_error(nif_not_loaded).
+
+%% Argon2 of type 0 (d), 1 (i), or 2 (id), version 0x13, of the message,
+%% nonce, secret, and associated data, with Lanes lanes, a tag of TagLen
+%% bytes, Memory KiB, and Passes passes: the tag, or error for parameters
+%% that Argon2 rejects. It allocates Memory KiB, and a failed allocation
+%% aborts the VM, so the caller checks that the memory fits first.
+-spec argon2(0..2, binary(), binary(), binary(), binary(), pos_integer(), pos_integer(), pos_integer(),
+             pos_integer()) -> binary() | error.
+argon2(_Type, _Message, _Nonce, _Secret, _AssociatedData, _Lanes, _TagLen, _Memory, _Passes) ->
+    erlang:nif_error(nif_not_loaded).

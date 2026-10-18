@@ -1,5 +1,5 @@
 //! The NIFs of `buoy_native.erl`: one resource for each handle of
-//! `internalBinding('zlib')`, and the calls of Node's `CompressionStream` on it.
+//! `internalBinding('zlib')`, the calls of Node's `CompressionStream` on it, and Argon2.
 
 // rustler decodes each argument of a NIF by value.
 #![allow(clippy::needless_pass_by_value)]
@@ -8,7 +8,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use rustler::{Binary, Env, Error, NifResult, OwnedBinary, ResourceArc};
 
-use crate::{Failure, brotli, zlib, zstd};
+use crate::{Failure, argon2, brotli, zlib, zstd};
 
 /// The context of one handle of `internalBinding('zlib')`.
 #[derive(Debug)]
@@ -206,6 +206,37 @@ fn stream_reset(stream: ResourceArc<Stream>) -> NifResult<Outcome> {
 fn stream_close(stream: ResourceArc<Stream>) -> NifResult<bool> {
     *stream.codec()? = Codec::Closed;
     Ok(true)
+}
+
+/// The tag of `Argon2Traits::DeriveBits`, or `error` for parameters that Argon2 rejects.
+/// The caller checks that the memory fits, because an allocation that fails aborts.
+#[rustler::nif(schedule = "DirtyCpu")]
+#[allow(clippy::too_many_arguments)]
+fn argon2<'a>(
+    env: Env<'a>,
+    variant: u32,
+    message: Binary,
+    nonce: Binary,
+    secret: Binary,
+    associated_data: Binary,
+    lanes: u32,
+    tag_length: u32,
+    memory: u32,
+    passes: u32,
+) -> NifResult<Binary<'a>> {
+    let tag = argon2::derive(&argon2::Params {
+        variant,
+        message: message.as_slice(),
+        nonce: nonce.as_slice(),
+        secret: secret.as_slice(),
+        associated_data: associated_data.as_slice(),
+        lanes,
+        tag_length,
+        memory,
+        passes,
+    })
+    .ok_or(Error::Atom("error"))?;
+    Ok(OwnedBinary::from_slice(&tag).release(env))
 }
 
 #[allow(unsafe_code)]

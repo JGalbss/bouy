@@ -1,6 +1,6 @@
 [package]
 name = "buoy-native"
-description = "The NIF library of the runtime: the zlib, brotli, and zstd codecs of Node's zlib module."
+description = "The NIF library of the runtime: the zlib, brotli, and zstd codecs of Node's zlib module, and Argon2."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,6 +28,9 @@ brotli-decompressor = { version = "~6.0", default-features = false, features = [
 # libzstd 1.5.7, the reference library that Node bundles: no Rust encoder has its levels.
 # experimental gives ZSTD_customMem, so libzstd allocates through enif_alloc.
 zstd-sys = { version = "2.1.1", default-features = false, features = ["experimental"] }
+# Argon2 of RFC 9106 for crypto.argon2, the crate that Bun derives it with. OpenSSL's
+# Argon2 is not in OTP's crypto. Without crossbeam-utils, one thread fills the lanes.
+rust-argon2 = { version = "=3.0.0", default-features = false }
 
 [lints]
 workspace = true

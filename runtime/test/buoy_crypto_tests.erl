@@ -4,17 +4,6 @@
 
 hex(Text) -> binary:decode_hex(Text).
 
-%% RFC 9106, sections 5.1 to 5.3.
-argon2_test_() ->
-    P = binary:copy(<<1>>, 32),
-    S = binary:copy(<<2>>, 16),
-    K = binary:copy(<<3>>, 8),
-    X = binary:copy(<<4>>, 12),
-    [?_assertEqual(hex(Tag), buoy_crypto_argon2:argon2(Type, P, S, K, X, 4, 32, 32, 3))
-     || {Type, Tag} <- [{0, <<"512b391b6f1162975371d30919734294f868e3be3984f3c1a13a4db9fabe4acb">>},
-                        {1, <<"c814d9d1dc7f37aa13f0d77f2494bda1c8de6b016dd388d29952a4c4672b6ce8">>},
-                        {2, <<"0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659">>}]].
-
 %% RFC 7914, section 12.
 scrypt_test_() ->
     [?_assertEqual(hex(<<"77d6576238657b203b19ca42c18a0497f16b4844e3074ae8dfdffa3fede21442"

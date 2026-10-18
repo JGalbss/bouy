@@ -81,7 +81,7 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 ## 6. Limits
 
 - Buoy has no Intl or inspector yet: `process.config` sets no `v8_enable_i18n_support`, so the tests that need them skip.
-- `internalBinding('crypto')` runs on OTP's `crypto`, which links OpenSSL, and `process.versions.openssl` names that OpenSSL. Erlang code fills what the NIF lacks: the ASN.1 key codecs, streaming AEAD, X.509, Argon2, TurboSHAKE, KangarooTwelve, KMAC, keys from ML-DSA and ML-KEM seeds, and Ed448 and ML-DSA signatures with a context. Argon2 and the Keccak functions run in Erlang, not in native code. SLH-DSA with a context, `secureHeapUsed`, `--openssl-config`, and FIPS providers do not work.
+- `internalBinding('crypto')` runs on OTP's `crypto`, which links OpenSSL, and `process.versions.openssl` names that OpenSSL. Erlang code fills what the NIF lacks: the ASN.1 key codecs, streaming AEAD, X.509, TurboSHAKE, KangarooTwelve, KMAC, keys from ML-DSA and ML-KEM seeds, and Ed448 and ML-DSA signatures with a context. The Keccak functions run in Erlang, not in native code. Argon2 runs in the NIF of `crates/buoy-native`, with the rust-argon2 crate that Bun uses. SLH-DSA with a context, `secureHeapUsed`, `--openssl-config`, and FIPS providers do not work.
 - The `constants` and `uv` bindings hold the tables of darwin and of Linux, as the oracle recorded them, and another OS gets darwin's.
 - Stack traces of errors are `at <buoy>`: the engine has no JavaScript call stack yet.
 - The engine has no call stack limit, so deep recursion grows the process until `BUOY_MAX_MEMORY` stops the VM, where V8 throws `RangeError: Maximum call stack size exceeded`. `assert.deepStrictEqual` of a cyclic value relies on that error to switch to its cycle check.
