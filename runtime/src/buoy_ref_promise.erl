@@ -20,7 +20,7 @@
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
     [{'Promise.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Promise.prototype">>, [{<<"then">>, 2}, {<<"catch">>, 1}, {<<"finally">>, 1}]) ++ [{<<"constructor">>, constructor()}, {?SYM(toStringTag), <<"Promise">>, 4}], none)},
-     {{builtin, <<"Promise">>}, ctor_record(<<"Promise">>, 1, {'$o', 'Promise.prototype'}, ?METHODS(<<"Promise">>, [{<<"resolve">>, 1}, {<<"reject">>, 1}, {<<"all">>, 1}, {<<"allSettled">>, 1}, {<<"race">>, 1}, {<<"any">>, 1}, {<<"withResolvers">>, 0}, {<<"try">>, 1}]) ++ [{?SYM(species), species_getter(), 4}], fun construct/2)}].
+     {{builtin, <<"Promise">>}, ctor_record(<<"Promise">>, 1, {'$o', 'Promise.prototype'}, ?METHODS(<<"Promise">>, [{<<"resolve">>, 1}, {<<"reject">>, 1}, {<<"all">>, 1}, {<<"allSettled">>, 1}, {<<"race">>, 1}, {<<"any">>, 1}, {<<"withResolvers">>, 0}, {<<"try">>, 1}, {<<"allKeyed">>, 1}, {<<"allSettledKeyed">>, 1}]) ++ [{?SYM(species), species_getter(), 4}], fun construct/2)}].
 
 %% get Promise[Symbol.species]: this.
 species_getter() ->
@@ -148,7 +148,54 @@ promise_static(<<"try">>, C, Args) ->
 promise_static(<<"all">>, C, Args) -> combinator(C, arg(1, Args), fun all/2);
 promise_static(<<"allSettled">>, C, Args) -> combinator(C, arg(1, Args), fun all_settled/2);
 promise_static(<<"any">>, C, Args) -> combinator(C, arg(1, Args), fun any/2);
-promise_static(<<"race">>, C, Args) -> combinator(C, arg(1, Args), fun race/2).
+promise_static(<<"race">>, C, Args) -> combinator(C, arg(1, Args), fun race/2);
+promise_static(<<"allKeyed">>, C, Args) -> keyed(C, arg(1, Args), fun all/2);
+promise_static(<<"allSettledKeyed">>, C, Args) -> keyed(C, arg(1, Args), fun all_settled/2).
+
+%% Promise.allKeyed and Promise.allSettledKeyed (the await-dictionary
+%% proposal): the combinator of all or allSettled over the own enumerable
+%% properties of an object, whose result is an object with the same keys and
+%% a null prototype. Perform finishes with the values in key order, so the
+%% capability that it gets resolves with the object of the keys instead.
+keyed(C, Promises, Perform) ->
+    {P, Resolve, Reject} = new_capability(C),
+    try
+        ResolveMethod = buoy_ref:get(C, <<"resolve">>),
+        buoy_heap:is_callable(ResolveMethod) orelse type_error(<<"Promise resolve is not a function">>),
+        ?IS_OBJECT(Promises) orelse type_error(<<"Promise keyed combinators take an object">>),
+        Keys = buoy_heap:cell([]),
+        Each = fun(Element) ->
+                       keyed_each(Promises, buoy_heap:own_keys(Promises), fun(V) -> buoy_ref:call(ResolveMethod, C, [V]) end,
+                                  fun(Index, Key, Next) ->
+                                          buoy_heap:cell_set(Keys, [Key | buoy_heap:cell_get(Keys)]),
+                                          Element(Index, Next)
+                                  end, 0)
+               end,
+        ResolveObject = fun(Array) ->
+                                Result = buoy_heap:new_object(null),
+                                Values = buoy_heap:array_items(Array),
+                                [buoy_heap:define(Result, K, #{value => V, writable => true, enumerable => true, configurable => true})
+                                 || {K, V} <- lists:zip(lists:reverse(buoy_heap:cell_get(Keys)), Values)],
+                                invoke(Resolve, Result)
+                        end,
+        Perform(Each, {P, ResolveObject, Reject})
+    catch
+        error:Reason:Stack -> invoke(Reject, buoy_ref:caught(Reason, Stack))
+    end,
+    P.
+
+%% The loop of the keyed combinators over the own keys of O: a key whose own
+%% property is enumerable gets the next index. Returns the count.
+keyed_each(_O, [], _Resolve, _Element, Index) ->
+    Index;
+keyed_each(O, [K | Rest], Resolve, Element, Index) ->
+    case buoy_heap:is_enumerable(buoy_heap:get_own(O, K)) of
+        true ->
+            Element(Index, K, Resolve(buoy_ref:get(O, K))),
+            keyed_each(O, Rest, Resolve, Element, Index + 1);
+        false ->
+            keyed_each(O, Rest, Resolve, Element, Index)
+    end.
 
 %%% all, allSettled, any, and race
 
