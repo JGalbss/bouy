@@ -930,9 +930,11 @@ require(M, Specifier) ->
                                                 fun() -> require_traced(M, Specifier) end).
 
 require_traced(M, Specifier) ->
-    %% --expose-internals lets require load the internal ids of Node's lib.
+    %% --expose-internals lets require load the internal ids of Node's lib,
+    %% with or without node:, as BuiltinModule.normalizeRequirableId reads them.
+    Id = case Specifier of <<"node:", Rest/binary>> -> Rest; _ -> Specifier end,
     Internal = lists:member(<<"--expose-internals">>, buoy_node_process:exec_argv())
-        andalso lists:member(Specifier, buoy_node:ids()),
+        andalso lists:member(Id, buoy_node:ids()),
     case target(M, Specifier, require) of
         {builtin, Name} ->
             builtin_exports(Name);

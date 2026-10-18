@@ -75,7 +75,7 @@ stdio(S) ->
         <<"fd">> ->
             case get(S, <<"fd">>) of
                 Fd when Fd =:= 0; Fd =:= 1; Fd =:= 2 -> {fd, Fd};
-                _ -> ignore
+                Fd -> buoy_binding_fs:inherited_file(Fd)
             end;
         _ -> ignore
     end.
@@ -222,16 +222,19 @@ pipe_handle(_) -> none.
 redirect(0, {pipe, _}) -> " <&5";
 redirect(0, inherit) -> "";
 redirect(0, {fd, 0}) -> "";
+redirect(0, {file, Path}) -> " <" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(0, _) -> " </dev/null";
 redirect(1, {pipe, _}) -> " >&7";
 redirect(1, inherit) -> "";
 redirect(1, {fd, 1}) -> "";
 redirect(1, {fd, 2}) -> " >&2";
+redirect(1, {file, Path}) -> " >>" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(1, _) -> " >/dev/null";
 redirect(2, {pipe, _}) -> " 2>&6";
 redirect(2, inherit) -> "";
 redirect(2, {fd, 2}) -> "";
 redirect(2, {fd, 1}) -> " 2>&1";
+redirect(2, {file, Path}) -> " 2>>" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(2, _) -> " 2>/dev/null".
 
 %% The manager: the exit from the port, stdout and stderr from their sockets,
