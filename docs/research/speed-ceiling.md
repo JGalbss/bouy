@@ -321,6 +321,19 @@ Branch `node-perf-builtins` built step 2 into the runtime as `crates/buoy-nif` (
 
 The built-ins gave 6.3 times on json and 10.7 times on regex. Strings and mapset did not change beyond the noise: what their kernels spend goes to the method calls and the property reads around the built-ins, which step 3 addresses, not to the built-ins themselves.
 
+Two later commits of the branch changed the code under these kernels. A Map or a Set keeps its insertion order in a log of `{Seq, Key}` instead of a `gb_tree`, and a double becomes text through one call of `float_to_binary/2`. The same file holds 3 more rounds at commit `eb75625a`, at a load average of 200 to 452. Medians in ms per unit:
+
+| Kernel  | Engine | Bun 1.3.14 | Engine ÷ Bun |
+| ------- | -----: | ---------: | -----------: |
+| json    |   64.0 |        6.7 |          9.6 |
+| regex   |  179.3 |       14.3 |         12.5 |
+| strings |  970.1 |      134.4 |          7.2 |
+| mapset  | 1036.3 |       88.7 |         11.7 |
+
+Bun's own medians moved by up to 8 times between the two sets of rounds, so only the ratios inside one set compare.
+
+The `gc` mode of `run.sh` measures a cost that grows with the length of a job. It runs each kernel on the engine with [`bench/speed/erlang/gc_share.erl`](../../bench/speed/erlang/gc_share.erl), which traces BEAM's collections of the realm process. In the same file, these collections take 9 to 22 percent of the wall time with 3 timed runs, and 13 to 44 percent with 12 timed runs. The heap of the process grows with the runs: from 26.6 to 79.5 million words for strings. The collector of the engine, `buoy_heap:gc/1`, runs only between jobs. So every object of one synchronous job stays in the process dictionary until the job ends, and each major collection of BEAM copies it. JavaScriptCore collects while a program allocates, and it finds the roots on the native stack with a conservative scan. BEAM cannot read the terms of a process stack: a backtrace prints a fun without its environment. So a collection inside a job needs roots that the compiler makes explicit, or the native heap of step 5.
+
 ## Limits of this spike
 
 - The machine was shared. The load average was 14.8 to 53.7 on 18 cores, so the absolute times are higher and noisier than on an idle machine. The tiers of a kernel ran in turn in each round, so the load reached all of them.
