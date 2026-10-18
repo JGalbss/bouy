@@ -50,3 +50,15 @@ for (const w of words) {
 }
 for (const key in { p: 1, q: 2 }) joined += key;
 console.log(joined);
+
+// for...in skips a key that the loop body deletes before the loop reaches it.
+const table: Record<string, number> = Object.create(null);
+table.aa = 1;
+table.ba = 2;
+table.ca = 3;
+let visited = "";
+for (const key in table) {
+  delete table.ba;
+  visited += key + table[key];
+}
+console.log(visited);

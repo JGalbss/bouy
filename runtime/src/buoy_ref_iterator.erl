@@ -7,7 +7,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4]).
--export([iterate/1, step/1, to_list/1, take/2, rest_list/1, for_in_keys/1]).
+-export([iterate/1, step/1, to_list/1, take/2, rest_list/1, for_in/1]).
 -export([get_iterator/1, close/1, close_state/1, close_quietly/1]).
 -export([async_next/1, async_step/1, async_close/3, async_close_quietly/2]).
 -export([require_coercible/1, finish/1, pattern_cell/1, next_value/1, rest_value/1, abort/1, finish_cell/1]).
@@ -163,6 +163,12 @@ step({array, O, I}) ->
     end;
 step({list, [V | Rest]}) -> {value, V, {list, Rest}};
 step({list, []}) -> done;
+step({for_in, [{O, K} | Rest]}) ->
+    case still_enumerable(O, K) of
+        true -> {value, buoy_heap:key_to_value(K), {for_in, Rest}};
+        false -> step({for_in, Rest})
+    end;
+step({for_in, []}) -> done;
 step({generator, G} = State) ->
     case buoy_ref_generator:resume(G, {next, undefined}) of
         {yield, V} -> {value, V, State};
@@ -322,17 +328,27 @@ finish_cell(Cell) -> finish(buoy_heap:cell_get(Cell)).
 rest_list(done) -> buoy_heap:new_array([]);
 rest_list(State) -> buoy_heap:new_array(drain(State, [])).
 
-%% for...in: the enumerable string keys of the object and its prototypes,
-%% each once, own keys first.
--spec for_in_keys(term()) -> [binary()].
-for_in_keys(V) when ?IS_OBJECT(V) -> [buoy_heap:key_to_value(K) || K <- chain_keys(V, [], [])];
-for_in_keys(S) when ?IS_STRING(S) -> [integer_to_binary(I) || I <- lists:seq(0, buoy_ref_string:length_of(S) - 1)];
-for_in_keys(_) -> [].
+%% The iteration state of for...in: the enumerable string keys of the object
+%% and its prototypes, each once, own keys first, each with its object, so
+%% that step/1 skips a key that is gone or no longer enumerable when the loop
+%% reaches it (EnumerateObjectProperties).
+-spec for_in(term()) -> term().
+for_in(V) when ?IS_OBJECT(V) -> {for_in, chain_keys(V, [], [])};
+for_in(S) when ?IS_STRING(S) -> {list, [integer_to_binary(I) || I <- lists:seq(0, buoy_ref_string:length_of(S) - 1)]};
+for_in(_) -> {list, []}.
 
 chain_keys(null, _Seen, Acc) ->
     lists:reverse(Acc);
 chain_keys(O, Seen, Acc) ->
     Own = [K || K <- buoy_heap:own_keys(O), is_integer(K) orelse ?IS_STRING(K)],
     Enumerable = buoy_heap:enumerable_keys(O),
-    New = [K || K <- Enumerable, not lists:member(K, Seen)],
+    New = [{O, K} || K <- Enumerable, not lists:member(K, Seen)],
     chain_keys(buoy_heap:prototype_of(O), Own ++ Seen, lists:reverse(New) ++ Acc).
+
+%% A proxy or a namespace answered for its keys already: a second
+%% [[GetOwnProperty]] would run a trap or read a binding again.
+still_enumerable(O, K) ->
+    case buoy_heap:class_of(O) of
+        Class when Class =:= proxy; Class =:= namespace; Class =:= deferred_namespace -> true;
+        _ -> buoy_heap:is_enumerable(buoy_heap:get_own(O, K))
+    end.

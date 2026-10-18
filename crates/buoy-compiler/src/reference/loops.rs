@@ -229,10 +229,7 @@ impl<'a> Lowerer<'a, '_> {
         let head = self.head_bindings(&statement.left, statement.right.span());
         let right = self.expr(&statement.right);
         self.end_head_bindings(head);
-        let state = Expr::Tuple(vec![
-            Expr::atom("list"),
-            Expr::call("buoy_ref_iterator", "for_in_keys", vec![right]),
-        ]);
+        let state = Expr::call("buoy_ref_iterator", "for_in", vec![right]);
         self.each(
             &statement.left,
             &statement.body,
