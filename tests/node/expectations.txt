@@ -2844,7 +2844,7 @@ parallel/test-promise-unhandled-warn.js pass
 parallel/test-promises-unhandled-proxy-rejections.js pass
 parallel/test-promises-unhandled-rejections.js pass
 parallel/test-promises-unhandled-symbol-rejections.js pass
-parallel/test-promises-warning-on-unhandled-rejection.js fail
+parallel/test-promises-warning-on-unhandled-rejection.js pass
 parallel/test-punycode.js pass
 parallel/test-querystring-escape.js pass
 parallel/test-querystring-maxKeys-non-finite.js pass
