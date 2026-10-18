@@ -107,15 +107,43 @@ set_key(This, Key, Passphrase) ->
                                         'EncryptedPrivateKeyInfo'])],
     case Entries of
         [] -> buoy_crypto:throw_openssl(decoder_unsupported);
-        [Entry | _] -> update(This, fun(S) -> S#{keys := maps:get(keys, S) ++ [decode_key(Entry, Pass)]} end)
+        [Entry | _] ->
+            Decoded = decode_key(Entry, Pass),
+            %% SSL_CTX_use_PrivateKey checks the key against the certificate.
+            case maps:get(chains, state(This)) of
+                [] -> ok;
+                Chains ->
+                    [Leaf | _] = lists:last(Chains),
+                    key_matches(Leaf, Decoded) orelse
+                        erlang:error({'$throw', ssl_error_value(16#74, <<"key values mismatch">>, x509)})
+            end,
+            update(This, fun(S) -> S#{keys := maps:get(keys, S) ++ [Decoded]} end)
     end,
     undefined.
+
+%% Whether the private key Key holds the public key of the certificate.
+key_matches(Cert, {Type, Der}) ->
+    try
+        Private = public_key:der_decode(Type, Der),
+        #'OTPCertificate'{tbsCertificate = #'OTPTBSCertificate'{subjectPublicKeyInfo = Spki}} = public_key:pkix_decode_cert(Cert, otp),
+        #'OTPSubjectPublicKeyInfo'{subjectPublicKey = Public} = Spki,
+        case {Private, Public} of
+            {#'RSAPrivateKey'{modulus = N, publicExponent = E}, #'RSAPublicKey'{modulus = N, publicExponent = E}} -> true;
+            {#'RSAPrivateKey'{}, _} -> false;
+            {#'ECPrivateKey'{publicKey = Point}, #'ECPoint'{point = Point}} -> true;
+            {#'ECPrivateKey'{}, _} -> false;
+            _ -> true
+        end
+    catch
+        _:_ -> true
+    end.
 
 %% The key option of ssl: {Type, Der} of a key that is not encrypted.
 decode_key({Type, Der, not_encrypted}, _) when Type =/= 'EncryptedPrivateKeyInfo' ->
     {Type, Der};
 decode_key(_, none) ->
-    buoy_crypto:throw_openssl(interrupted_or_cancelled);
+    %% SecureContext's password callback gives an empty passphrase.
+    buoy_crypto:throw_openssl(bad_decrypt);
 decode_key(Entry, Pass) ->
     try public_key:pem_entry_decode(Entry, Pass) of
         Record -> {element(1, Record), public_key:der_encode(element(1, Record), Record)}
@@ -340,13 +368,24 @@ options(Context, Role) ->
         {<<>>, <<>>} -> [];
         {List, Suites} ->
             Twelve = case List of <<>> -> []; _ -> suites(List, 'tlsv1.2') end,
-            Thirteen = case Suites of <<>> -> ssl:cipher_suites(default, 'tlsv1.3'); _ -> suites(Suites, 'tlsv1.3') end,
+            %% ssl's lists for TLS 1.3 hold the TLS 1.2 suites too; the
+            %% TLS 1.3 ones agree on no key exchange (any).
+            Thirteen = [C || #{key_exchange := any} = C <- case Suites of
+                                                               <<>> -> ssl:cipher_suites(default, 'tlsv1.3');
+                                                               _ -> suites(Suites, 'tlsv1.3')
+                                                           end],
             [{ciphers, Thirteen ++ Twelve}]
     end,
-    [{versions, Versions}]
+    %% A server with no certificate can only offer anonymous suites, which
+    %% ssl requires to start; a client that offers none of them meets no
+    %% shared cipher, as with OpenSSL.
+    NoCert = Role =:= server andalso CertsKeys =:= [],
+    Anonymous = [{ciphers, ssl:cipher_suites(anonymous, 'tlsv1.2')} || NoCert],
+    [{versions, case NoCert of true -> Versions -- ['tlsv1.3']; false -> Versions end}]
+        ++ Anonymous
         ++ [{certs_keys, CertsKeys} || CertsKeys =/= []]
         ++ [{cacerts, cacerts(S)}]
-        ++ Ciphers
+        ++ [C || C <- Ciphers, not NoCert]
         ++ [{eccs, Curves} || Curves <- [maps:get(curves, S)], Curves =/= auto]
         ++ [{dh, Dh} || Dh <- [maps:get(dh, S)], is_binary(Dh), Role =:= server]
         ++ [{partial_chain, fun(Chain) -> partial(Chain, cacerts(S)) end} || maps:get(partial_chain, S)].
@@ -407,7 +446,7 @@ ssl_error_value(Number, Text, Lib) ->
     Message = ssl_error(Number, Text, Lib),
     {LibName, Prefix} = case Lib of
         ssl -> {<<"SSL routines">>, <<"SSL_">>};
-        x509 -> {<<"x509 certificate routines">>, <<"X509_">>}
+        x509 -> {<<"x509 certificate routines">>, <<"OSSL_X509_">>}
     end,
     E = buoy_heap:error_object('Error', Message, <<"Error: ", Message/binary>>),
     Code = <<"ERR_", Prefix/binary, (string:uppercase(binary:replace(Text, <<" ">>, <<"_">>, [global])))/binary>>,

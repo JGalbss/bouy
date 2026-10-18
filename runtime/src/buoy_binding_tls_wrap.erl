@@ -363,7 +363,7 @@ verification(Errors, Chain) ->
 
 connection_info(Ssl, Errors, Chain) ->
     Items = case ssl:connection_information(Ssl, [protocol, selected_cipher_suite, sni_hostname, session_resumption,
-                                                  selected_group, session_id, session_data]) of
+                                                  selected_group, ecc, session_id, session_data]) of
         {ok, I} -> maps:from_list(I);
         _ -> #{}
     end,
@@ -796,26 +796,55 @@ cipher(This) ->
     end.
 
 %% SSL_CIPHER_get_version: the version that introduced the suite.
-cipher_version(#{mac := aead}) -> <<"TLSv1.2">>;
-cipher_version(#{prf := sha256}) -> <<"TLSv1.2">>;
-cipher_version(#{prf := sha384}) -> <<"TLSv1.2">>;
-cipher_version(_) -> <<"TLSv1">>.
+cipher_version(#{mac := Mac, prf := Prf, key_exchange := Kex}) ->
+    case lists:member(Mac, [aead, sha256, sha384]) orelse lists:member(Prf, [sha256, sha384]) of
+        true -> <<"TLSv1.2">>;
+        false ->
+            case lists:member(Kex, [ecdhe_rsa, ecdhe_ecdsa, ecdh_rsa, ecdh_ecdsa, ecdh_anon, ecdhe_psk]) of
+                true -> <<"TLSv1.0">>;
+                false -> <<"SSLv3">>
+            end
+    end.
 
+%% getEphemeralKeyInfo(): null on a server; on a client, the type, name,
+%% and size of the key exchange's group, and {} for an RSA key exchange.
 ephemeral_key(This) ->
     case state(This) of
-        #{server := false, info := #{items := #{selected_group := Group}}} ->
-            {Name, Size} = case Group of
-                x25519 -> {<<"X25519">>, 253};
-                x448 -> {<<"X448">>, 448};
-                secp256r1 -> {<<"prime256v1">>, 256};
-                secp384r1 -> {<<"secp384r1">>, 384};
-                secp521r1 -> {<<"secp521r1">>, 521};
-                Other -> {atom_to_binary(Other), 0}
+        #{server := true} -> null;
+        #{info := #{items := #{selected_cipher_suite := #{key_exchange := Kex}} = Items}} ->
+            Group = case Items of
+                #{selected_group := G} when G =/= undefined -> G;
+                #{ecc := {named_curve, Curve}} -> curve_name(Curve);
+                _ -> undefined
             end,
-            buoy_node:object([{<<"type">>, <<"ECDH">>}, {<<"name">>, Name}, {<<"size">>, Size}]);
-        _ ->
-            buoy_node:object([])
+            case {Kex, group(Group)} of
+                {rsa, _} -> buoy_node:object([]);
+                {_, {dh, Size}} -> buoy_node:object([{<<"type">>, <<"DH">>}, {<<"size">>, Size}]);
+                {_, {ecdh, Name, Size}} -> buoy_node:object([{<<"type">>, <<"ECDH">>}, {<<"name">>, Name}, {<<"size">>, Size}]);
+                _ -> buoy_node:object([])
+            end;
+        _ -> buoy_node:object([])
     end.
+
+curve_name(Curve) when is_atom(Curve) -> Curve;
+curve_name(Oid) ->
+    try pubkey_cert_records:namedCurves(Oid)
+    catch _:_ -> undefined
+    end.
+
+group(x25519) -> {ecdh, <<"X25519">>, 253};
+group(x448) -> {ecdh, <<"X448">>, 448};
+group(secp256r1) -> {ecdh, <<"prime256v1">>, 256};
+group(secp384r1) -> {ecdh, <<"secp384r1">>, 384};
+group(secp521r1) -> {ecdh, <<"secp521r1">>, 521};
+group(secp256k1) -> {ecdh, <<"secp256k1">>, 256};
+group(ffdhe2048) -> {dh, 2048};
+group(ffdhe3072) -> {dh, 3072};
+group(ffdhe4096) -> {dh, 4096};
+group(ffdhe6144) -> {dh, 6144};
+group(ffdhe8192) -> {dh, 8192};
+group(Other) when is_atom(Other), Other =/= undefined -> {ecdh, atom_to_binary(Other), 0};
+group(_) -> none.
 
 %% getPeerCertificate(detailed): the legacy object of the peer's
 %% certificate; a detailed one links each issuer up to the root.
