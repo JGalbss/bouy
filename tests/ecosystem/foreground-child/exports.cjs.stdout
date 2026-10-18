@@ -1,0 +1,3 @@
+module.exports: object
+  foregroundChild: function/0
+  normalizeFgArgs: function/1

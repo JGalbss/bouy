@@ -1,0 +1,248 @@
+namespace: object Module
+  ArgumentOutOfRangeError: function/0
+  AsyncSubject: class/0 {_checkFinalizedStatuses, complete, next}
+  BehaviorSubject: class/1 {_subscribe, getValue, next, value}
+  ConnectableObservable: class/2 {_subscribe, _teardown, connect, getSubject, refCount}
+  EMPTY: object
+    _subscribe: function/1
+  EmptyError: function/0
+  NEVER: object
+    _subscribe: function/0
+  NotFoundError: function/1
+  Notification: class/3 {accept, do, observe, toObservable}
+    completeNotification: object
+    createComplete: function/0
+    createError: function/1
+    createNext: function/1
+  NotificationKind: object
+    COMPLETE: string
+    ERROR: string
+    NEXT: string
+  ObjectUnsubscribedError: function/0
+  Observable: class/1 {@@observable, _subscribe, _trySubscribe, forEach, lift, pipe, subscribe, toPromise}
+    create: function/1
+  ReplaySubject: class/3 {_subscribe, _trimBuffer, next}
+  Scheduler: class/2 {schedule}
+    now: function/0
+  SequenceError: function/1
+  Subject: class/0 {_checkFinalizedStatuses, _innerSubscribe, _subscribe, _throwIfClosed, _trySubscribe, asObservable, complete, error, lift, next, observed, unsubscribe}
+    create: function/2
+  Subscriber: class/1 {_complete, _error, _next, complete, error, next, unsubscribe}
+    create: function/3
+  Subscription: class/1 {_addParent, _hasParent, _removeParent, add, remove, unsubscribe}
+    EMPTY: object
+  TimeoutError: function/1
+  UnsubscriptionError: function/1
+  VirtualAction: class/3 {_execute, recycleAsyncId, requestAsyncId, schedule}
+    sortActions: function/2
+  VirtualTimeScheduler: class/2 {flush}
+    frameTimeFactor: number
+  __esModule: boolean
+  animationFrame: object
+    _active: boolean
+    actions: object Array
+    now: function/0
+    schedulerActionCtor: class/2 {recycleAsyncId, requestAsyncId}
+  animationFrameScheduler: object
+    _active: boolean
+    actions: object Array
+    now: function/0
+    schedulerActionCtor: class/2 {recycleAsyncId, requestAsyncId}
+  animationFrames: function/1
+  asap: object
+    _active: boolean
+    actions: object Array
+    now: function/0
+    schedulerActionCtor: class/2 {recycleAsyncId, requestAsyncId}
+  asapScheduler: object
+    _active: boolean
+    actions: object Array
+    now: function/0
+    schedulerActionCtor: class/2 {recycleAsyncId, requestAsyncId}
+  async: object
+    _active: boolean
+    actions: object Array
+    now: function/0
+    schedulerActionCtor: class/2 {_execute, execute, recycleAsyncId, requestAsyncId, schedule, unsubscribe}
+  asyncScheduler: object
+    _active: boolean
+    actions: object Array
+    now: function/0
+    schedulerActionCtor: class/2 {_execute, execute, recycleAsyncId, requestAsyncId, schedule, unsubscribe}
+  audit: function/1
+  auditTime: function/2
+  bindCallback: function/3
+  bindNodeCallback: function/3
+  buffer: function/1
+  bufferCount: function/2
+  bufferTime: function/1
+  bufferToggle: function/2
+  bufferWhen: function/1
+  catchError: function/1
+  combineAll: function/1
+  combineLatest: function/0
+  combineLatestAll: function/1
+  combineLatestWith: function/0
+  concat: function/0
+  concatAll: function/0
+  concatMap: function/2
+  concatMapTo: function/2
+  concatWith: function/0
+  config: object
+    Promise: undefined
+    onStoppedNotification: null
+    onUnhandledError: null
+    useDeprecatedNextContext: boolean
+    useDeprecatedSynchronousErrorHandling: boolean
+  connect: function/2
+  connectable: function/2
+  count: function/1
+  debounce: function/1
+  debounceTime: function/2
+  default: object
+    ArgumentOutOfRangeError: function/0
+    AsyncSubject: class/0 {_checkFinalizedStatuses, complete, next}
+    BehaviorSubject: class/1 {_subscribe, getValue, next, value}
+    ConnectableObservable: class/2 {_subscribe, _teardown, connect, getSubject, refCount}
+    EMPTY: object
+    EmptyError: function/0
+    NEVER: object
+    NotFoundError: function/1
+    Notification: class/3 {accept, do, observe, toObservable}
+    NotificationKind: object
+    ObjectUnsubscribedError: function/0
+    Observable: class/1 {@@observable, _subscribe, _trySubscribe, forEach, lift, pipe, subscribe, toPromise}
+    ReplaySubject: class/3 {_subscribe, _trimBuffer, next}
+    Scheduler: class/2 {schedule}
+    SequenceError: function/1
+    Subject: class/0 {_checkFinalizedStatuses, _innerSubscribe, _subscribe, _throwIfClosed, _trySubscribe, asObservable, complete, error, lift, next, observed, unsubscribe}
+    Subscriber: class/1 {_complete, _error, _next, complete, error, next, unsubscribe}
+    Subscription: class/1 {_addParent, _hasParent, _removeParent, add, remove, unsubscribe}
+    TimeoutError: function/1
+    UnsubscriptionError: function/1
+    VirtualAction: class/3 {_execute, recycleAsyncId, requestAsyncId, schedule}
+    VirtualTimeScheduler: class/2 {flush}
+    animationFrame: object
+    animationFrameScheduler: object
+    animationFrames: function/1
+    asap: object
+    asapScheduler: object
+    async: object
+    asyncScheduler: object
+    audit: function/1
+    auditTime: function/2
+    bindCallback: function/3
+    bindNodeCallback: function/3
+    buffer: function/1
+    bufferCount: function/2
+    bufferTime: function/1
+    bufferToggle: function/2
+    bufferWhen: function/1
+    catchError: function/1
+    combineAll: function/1
+    combineLatest: function/0
+    combineLatestAll: function/1
+    combineLatestWith: function/0
+    concat: function/0
+    concatAll: function/0
+    concatMap: function/2
+    concatMapTo: function/2
+    concatWith: function/0
+    config: object
+    connect: function/2
+    connectable: function/2
+    count: function/1
+    debounce: function/1
+    debounceTime: function/2
+    defaultIfEmpty: function/1
+    defer: function/1
+    delay: function/2
+    delayWhen: function/2
+    dematerialize: function/0
+    distinct: function/2
+    distinctUntilChanged: function/2
+    distinctUntilKeyChanged: function/2
+    elementAt: function/2
+    empty: function/1
+    endWith: function/0
+    every: function/2
+    exhaust: function/0
+    exhaustAll: function/0
+    exhaustMap: function/2
+    expand: function/3
+    filter: function/2
+    finalize: function/1
+    find: function/2
+    findIndex: function/2
+    first: function/2
+    firstValueFrom: function/2
+    flatMap: function/3
+    forkJoin: function/0
+    from: function/2
+    fromEvent: function/4
+    fromEventPattern: function/3
+    generate: function/5
+    groupBy: function/4
+    identity: function/1
+    ignoreElements: function/0
+    iif: function/3
+    interval: function/2
+    isEmpty: function/0
+    isObservable: function/1
+    last: function/2
+    lastValueFrom: function/2
+    map: function/2
+    mapTo: function/1
+    materialize: function/0
+    max: function/1
+    merge: function/0
+    mergeAll: function/1
+    mergeMap: function/3
+    mergeMapTo: function/3
+    mergeScan: function/3
+    ... 73 more keys
+  defaultIfEmpty: function/1
+  defer: function/1
+  delay: function/2
+  delayWhen: function/2
+  dematerialize: function/0
+  distinct: function/2
+  distinctUntilChanged: function/2
+  distinctUntilKeyChanged: function/2
+  elementAt: function/2
+  empty: function/1
+  endWith: function/0
+  every: function/2
+  exhaust: function/0
+  exhaustAll: function/0
+  exhaustMap: function/2
+  expand: function/3
+  filter: function/2
+  finalize: function/1
+  find: function/2
+  findIndex: function/2
+  first: function/2
+  firstValueFrom: function/2
+  flatMap: function/3
+  forkJoin: function/0
+  from: function/2
+  fromEvent: function/4
+  fromEventPattern: function/3
+  generate: function/5
+  groupBy: function/4
+  identity: function/1
+  ignoreElements: function/0
+  iif: function/3
+  interval: function/2
+  isEmpty: function/0 (function, function, function, function, function, function, function, function, function)
+  isObservable: function/1 (false, false, false, false, false, false, false, false, false)
+  last: function/2
+  lastValueFrom: function/2
+  map: function/2
+  mapTo: function/1
+  materialize: function/0
+  max: function/1
+  merge: function/0
+  mergeAll: function/1
+  mergeMap: function/3
+  ... 76 more keys

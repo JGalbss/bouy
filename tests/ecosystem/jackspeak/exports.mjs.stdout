@@ -1,0 +1,5 @@
+namespace: object Module
+  Jack: class/0 {addFields, applyDefaults, description, flag, flagList, heading, loadEnvDefaults, num, numList, opt, optList, parse, parseRaw, setConfigValues, toJSON, usage, usageMarkdown, validate, writeEnv}
+  isConfigOption: function/3
+  isConfigType: function/1 (false, false, false, false, false, false, false, false, false)
+  jack: function/0

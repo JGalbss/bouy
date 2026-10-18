@@ -1,0 +1,5 @@
+module.exports: function/3
+  command: function/2
+  commandSync: function/2
+  node: function/2
+  sync: function/3

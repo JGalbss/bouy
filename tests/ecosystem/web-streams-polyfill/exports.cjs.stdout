@@ -1,0 +1,15 @@
+module.exports: object
+  ByteLengthQueuingStrategy: class/1 {highWaterMark, size}
+  CountQueuingStrategy: class/1 {highWaterMark, size}
+  ReadableByteStreamController: class/0 {byobRequest, close, desiredSize, enqueue, error}
+  ReadableStream: class/2 {cancel, getReader, locked, pipeThrough, pipeTo, tee, values}
+    from: function/1
+  ReadableStreamBYOBReader: class/1 {cancel, closed, read, releaseLock}
+  ReadableStreamBYOBRequest: class/0 {respond, respondWithNewView, view}
+  ReadableStreamDefaultController: class/0 {close, desiredSize, enqueue, error}
+  ReadableStreamDefaultReader: class/1 {cancel, closed, read, releaseLock}
+  TransformStream: class/3 {readable, writable}
+  TransformStreamDefaultController: class/0 {desiredSize, enqueue, error, terminate}
+  WritableStream: class/2 {abort, close, getWriter, locked}
+  WritableStreamDefaultController: class/0 {abortReason, error, signal}
+  WritableStreamDefaultWriter: class/1 {abort, close, closed, desiredSize, ready, releaseLock, write}

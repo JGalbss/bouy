@@ -1,0 +1,148 @@
+module.exports: object
+  CallCredentials: function/0
+  Channel: class/3 {close, createCall, getChannelzRef, getConnectivityState, getTarget, watchConnectivityState}
+  ChannelCredentials: class/0 {compose}
+  Client: class/2 {checkMetadataAndOptions, checkOptionalUnaryResponseArguments, close, getChannel, makeBidiStreamRequest, makeClientStreamRequest, makeServerStreamRequest, makeUnaryRequest, waitForReady}
+  InterceptingCall: class/2 {cancelWithStatus, getAuthContext, getPeer, halfClose, processPendingHalfClose, processPendingMessage, sendMessage, sendMessageWithContext, start, startRead}
+  InterceptorConfigurationError: function/1
+  ListenerBuilder: class/0 {build, withOnReceiveMessage, withOnReceiveMetadata, withOnReceiveStatus}
+  Metadata: class/0 {add, clone, get, getMap, getOpaque, getOptions, merge, remove, set, setOpaque, setOptions, toHttp2Headers, toJSON}
+  RequesterBuilder: class/0 {build, withCancel, withHalfClose, withSendMessage, withStart}
+  ResponderBuilder: class/0 {build, withSendMessage, withSendMetadata, withSendStatus, withStart}
+  Server: class/1 {_channelzHandler, _channelzSessionHandler, _respondWithError, _retrieveHandler, _runHandlerForCall, _sessionHandler, _setupHandlers, _streamHandler, _verifyContentType, addHttp2Port, addProtoService, addService, bind, bindAddressList, bindAsync, bindManyPorts, bindOneAddress, bindPort, closeServer, closeSession, completeUnbind, createConnectionInjector, createHttp2Server, drain, enableIdleTimeout, experimentalCreateConnectionInjectorWithChannelzRef, experimentalRegisterListenerToChannelz, experimentalUnregisterListenerFromChannelz, forceShutdown, getChannelzInfo, getChannelzRef, getChannelzSessionInfo, keepaliveTrace, normalizePort, onIdleTimeout, onStreamClose, onStreamOpened, register, registerInjectorToChannelz, removeService, resolvePort, start, trace, tryShutdown, unbind, unregister}
+  ServerCredentials: class/2 {_addWatcher, _getConstructorOptions, _getInterceptors, _getSecureContextOptions, _isSecure, _removeWatcher, getWatcherCount, updateSecureContextOptions}
+  ServerInterceptingCall: class/2 {getAuthContext, getConnectionInfo, getDeadline, getHost, getMetricsRecorder, getPeer, processPendingMessage, processPendingStatus, sendMessage, sendMetadata, sendStatus, start, startRead}
+  ServerListenerBuilder: class/0 {build, withOnCancel, withOnReceiveHalfClose, withOnReceiveMessage, withOnReceiveMetadata}
+  ServerMetricRecorder: class/0 {addToServer, deleteApplicationUtilizationMetric, deleteCpuUtilizationMetric, deleteEpsMetric, deleteQpsMetric, deleteUtilizationMetric, putUtilizationMetric, setAllUtilizationMetrics, setApplicationUtilizationMetric, setCpuUtilizationMetric, setEpsMetric, setQpsMetric}
+  StatusBuilder: class/0 {build, withCode, withDetails, withMetadata}
+  addAdminServicesToServer: function/1
+  closeClient: function/1
+  compressionAlgorithms: object
+    0: string
+    1: string
+    2: string
+    deflate: number
+    gzip: number
+    identity: number
+  connectivityState: object
+    0: string
+    1: string
+    2: string
+    3: string
+    4: string
+    CONNECTING: number
+    IDLE: number
+    READY: number
+    SHUTDOWN: number
+    TRANSIENT_FAILURE: number
+  credentials: object
+    combineCallCredentials: function/1
+    combineChannelCredentials: function/1
+    createEmpty: function/0
+    createFromGoogleCredential: function/1
+    createFromMetadataGenerator: function/1
+    createFromSecureContext: function/2
+    createInsecure: function/0
+    createSsl: function/4
+  experimental: object
+    BackoffTimeout: class/2 {getEndTime, isRunning, ref, reset, runOnce, runTimer, stop, trace, traceEnabled, unref}
+    BaseFilter: class/0 {receiveMessage, receiveMetadata, receiveTrailers, sendMessage, sendMetadata}
+    BaseSubchannelWrapper: class/1 {addConnectivityStateListener, addDataWatcher, addHealthStateWatcher, destroy, getAddress, getCallCredentials, getChannel, getChannelzRef, getConnectivityState, getRealSubchannel, isHealthy, realSubchannelEquals, ref, removeConnectivityStateListener, removeHealthStateWatcher, setHealthy, startConnecting, throttleKeepalive, unref, updateHealthListeners}
+    CHANNEL_ARGS_CONFIG_SELECTOR_KEY: string
+    ChildLoadBalancerHandler: class/1 {configUpdateRequiresNewPolicyInstance, destroy, exitIdle, getTypeName, resetBackoff, updateAddressList}
+    EndpointMap: class/0 {clear, delete, deleteMissing, entries, get, getForSubchannelAddress, has, keys, set, size, values}
+    FileWatcherCertificateProvider: class/1 {addCaCertificateListener, addIdentityCertificateListener, maybeStartWatchingFiles, maybeStopWatchingFiles, removeCaCertificateListener, removeIdentityCertificateListener, updateCertificates}
+    FilterStackFactory: class/1 {clone, createFilter, push}
+    LeafLoadBalancer: class/4 {destroy, exitIdle, getConnectivityState, getEndpoint, getPicker, startConnecting, updateEndpoint}
+    PickResultType: object
+    QueuePicker: class/2 {pick}
+    SUBCHANNEL_ARGS_EXCLUDE_KEY_PREFIX: string
+    UnavailablePicker: class/1 {pick}
+    createCertificateProviderChannelCredentials: function/3
+    createCertificateProviderServerCredentials: function/3
+    createChildChannelControlHelper: function/2
+    createResolver: function/3
+    createServerCredentialsWithInterceptors: function/2
+    durationToMs: function/1
+    endpointHasAddress: function/2
+    endpointToString: function/1
+    isLoadBalancerNameRegistered: function/1
+    log: function/1
+    parseDuration: function/1
+    parseLoadBalancingConfig: function/1
+    registerAdminService: function/2
+    registerLoadBalancerType: function/3
+    registerResolver: function/2
+    selectLbConfigFromList: function/1
+    splitHostPort: function/1
+    statusOrFromError: function/1
+    statusOrFromValue: function/1
+    subchannelAddressToString: function/1
+    trace: function/3
+    uriToString: function/1
+  getChannelzHandlers: function/0
+  getChannelzServiceDefinition: function/0
+  getClientChannel: function/1
+  load: function/3
+  loadObject: function/2
+  loadPackageDefinition: function/1
+  logVerbosity: object
+    0: string
+    1: string
+    2: string
+    3: string
+    DEBUG: number
+    ERROR: number
+    INFO: number
+    NONE: number
+  makeClientConstructor: function/3
+  makeGenericClientConstructor: function/3
+  propagate: object
+    1: string
+    2: string
+    4: string
+    65535: string
+    8: string
+    CANCELLATION: number
+    CENSUS_STATS_CONTEXT: number
+    CENSUS_TRACING_CONTEXT: number
+    DEADLINE: number
+    DEFAULTS: number
+  setLogVerbosity: function/1
+  setLogger: function/1
+  status: object
+    0: string
+    1: string
+    10: string
+    11: string
+    12: string
+    13: string
+    14: string
+    15: string
+    16: string
+    2: string
+    3: string
+    4: string
+    5: string
+    6: string
+    7: string
+    8: string
+    9: string
+    ABORTED: number
+    ALREADY_EXISTS: number
+    CANCELLED: number
+    DATA_LOSS: number
+    DEADLINE_EXCEEDED: number
+    FAILED_PRECONDITION: number
+    INTERNAL: number
+    INVALID_ARGUMENT: number
+    NOT_FOUND: number
+    OK: number
+    OUT_OF_RANGE: number
+    PERMISSION_DENIED: number
+    RESOURCE_EXHAUSTED: number
+    UNAUTHENTICATED: number
+    UNAVAILABLE: number
+    UNIMPLEMENTED: number
+    UNKNOWN: number
+  waitForClientReady: function/3

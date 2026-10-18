@@ -1,0 +1,4 @@
+module.exports: object
+  FocusGuards: function/1
+  Root: function/1
+  useFocusGuards: function/0

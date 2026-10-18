@@ -1,0 +1,4 @@
+module.exports: object
+  byteLength: function/1
+  fromByteArray: function/1
+  toByteArray: function/1

@@ -1,0 +1,11 @@
+namespace: object Module
+  unified: function/0
+    Compiler: undefined
+    Parser: undefined
+    attachers: object Array
+    compiler: undefined
+    freezeIndex: number
+    frozen: boolean
+    namespace: object
+    parser: undefined
+    transformers: object

@@ -1,0 +1,7 @@
+module.exports: function/2
+  generateGlobTasks: function/2
+  gitignore: function/1
+    sync: function/1
+  hasMagic: function/2
+  stream: function/2
+  sync: function/2

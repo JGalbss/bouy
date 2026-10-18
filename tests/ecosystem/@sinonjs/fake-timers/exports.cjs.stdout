@@ -1,0 +1,16 @@
+module.exports: object
+  createClock: function/2
+  install: function/1
+  timers: object
+    Date: class/7 {getDate, getDay, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, getTime, getTimezoneOffset, getUTCDate, getUTCDay, getUTCFullYear, getUTCHours, getUTCMilliseconds, getUTCMinutes, getUTCMonth, getUTCSeconds, getYear, setDate, setFullYear, setHours, setMilliseconds, setMinutes, setMonth, setSeconds, setTime, setUTCDate, setUTCFullYear, setUTCHours, setUTCMilliseconds, setUTCMinutes, setUTCMonth, setUTCSeconds, setYear, toDateString, toGMTString, toISOString, toJSON, toLocaleDateString, toLocaleString, toLocaleTimeString, toString, toTimeString, toUTCString, valueOf}
+    clearImmediate: function/1
+    clearInterval: function/1
+    clearTimeout: function/1
+    hrtime: function/1
+    nextTick: function/1
+    performance: object Performance
+    queueMicrotask: boolean
+    setImmediate: function/1
+    setInterval: function/2
+    setTimeout: function/2
+  withGlobal: function/1

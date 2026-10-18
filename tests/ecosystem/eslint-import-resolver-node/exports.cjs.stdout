@@ -1,0 +1,3 @@
+module.exports: object
+  interfaceVersion: number
+  resolve: function/3

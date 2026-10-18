@@ -1,0 +1,4 @@
+module.exports: class/1 {toString, walk}
+  stringify: function/2
+  unit: function/1
+  walk: function/3

@@ -1,0 +1,9 @@
+namespace: object Module
+  DAY: number
+  HOUR: number
+  MINUTE: number
+  MemoryStore: class/1 {clearExpired, decrement, get, getClient, increment, init, resetAll, resetClient, resetKey, shutdown}
+  SECOND: number
+  default: function/1
+  ipKeyGenerator: function/1
+  rateLimit: function/1

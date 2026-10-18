@@ -1,0 +1,5 @@
+module.exports: function/1 (false, false, false, false, false, false, false, false, false)
+  duplex: function/1
+  readable: function/1
+  transform: function/1
+  writable: function/1

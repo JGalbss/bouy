@@ -1,0 +1,13 @@
+module.exports: function/3
+  _enoent: object
+    hookChildProcess: function/2
+    notFoundError: function/2
+    verifyENOENT: function/2
+    verifyENOENTSync: function/2
+  _parse: function/3
+  spawn: function/3
+    _enoent: object
+    _parse: function/3
+    spawn: function/3
+    sync: function/3
+  sync: function/3

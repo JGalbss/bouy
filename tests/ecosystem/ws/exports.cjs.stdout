@@ -1,0 +1,30 @@
+module.exports: class/3 {CLOSED, CLOSING, CONNECTING, OPEN, addEventListener, binaryType, bufferedAmount, close, emitClose, extensions, isPaused, onclose, onerror, onmessage, onopen, pause, ping, pong, protocol, readyState, removeEventListener, resume, send, setSocket, terminate, url}
+  CLOSED: number
+  CLOSING: number
+  CONNECTING: number
+  OPEN: number
+  PerMessageDeflate: class/1 {_compress, _decompress, accept, acceptAsClient, acceptAsServer, cleanup, compress, decompress, normalizeParams, offer}
+  Receiver: class/0 {_write, consume, controlMessage, createError, dataMessage, decompress, getData, getInfo, getMask, getPayloadLength16, getPayloadLength64, haveLength, startLoop}
+  Sender: class/3 {close, dequeue, dispatch, enqueue, getBlobData, ping, pong, send, sendFrame}
+  Server: class/2 {address, close, completeUpgrade, handleUpgrade, shouldHandle}
+  WebSocket: class/3 {CLOSED, CLOSING, CONNECTING, OPEN, addEventListener, binaryType, bufferedAmount, close, emitClose, extensions, isPaused, onclose, onerror, onmessage, onopen, pause, ping, pong, protocol, readyState, removeEventListener, resume, send, setSocket, terminate, url}
+    CLOSED: number
+    CLOSING: number
+    CONNECTING: number
+    OPEN: number
+    PerMessageDeflate: class/1 {_compress, _decompress, accept, acceptAsClient, acceptAsServer, cleanup, compress, decompress, normalizeParams, offer}
+    Receiver: class/0 {_write, consume, controlMessage, createError, dataMessage, decompress, getData, getInfo, getMask, getPayloadLength16, getPayloadLength64, haveLength, startLoop}
+    Sender: class/3 {close, dequeue, dispatch, enqueue, getBlobData, ping, pong, send, sendFrame}
+    Server: class/2 {address, close, completeUpgrade, handleUpgrade, shouldHandle}
+    WebSocket: class/3 {CLOSED, CLOSING, CONNECTING, OPEN, addEventListener, binaryType, bufferedAmount, close, emitClose, extensions, isPaused, onclose, onerror, onmessage, onopen, pause, ping, pong, protocol, readyState, removeEventListener, resume, send, setSocket, terminate, url}
+    WebSocketServer: class/2 {address, close, completeUpgrade, handleUpgrade, shouldHandle}
+    createWebSocketStream: function/2
+    extension: object
+    subprotocol: object
+  WebSocketServer: class/2 {address, close, completeUpgrade, handleUpgrade, shouldHandle}
+  createWebSocketStream: function/2
+  extension: object
+    format: function/1
+    parse: function/1
+  subprotocol: object
+    parse: function/1

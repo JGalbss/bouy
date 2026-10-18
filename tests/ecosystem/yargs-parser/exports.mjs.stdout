@@ -1,0 +1,6 @@
+namespace: object Module
+  default: function/2
+    camelCase: function/1
+    decamelize: function/2
+    detailed: function/2
+    looksLikeNumber: function/1

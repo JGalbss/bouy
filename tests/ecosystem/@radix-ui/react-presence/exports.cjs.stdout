@@ -1,0 +1,3 @@
+module.exports: object
+  Presence: function/1
+  Root: function/1

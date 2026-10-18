@@ -1,0 +1,13 @@
+module.exports: object
+  arrow: function/1
+  autoPlacement: function/1
+  computePosition: function/3
+  detectOverflow: function/2
+  flip: function/1
+  hide: function/1
+  inline: function/1
+  limitShift: function/1
+  offset: function/1
+  rectToClientRect: function/1
+  shift: function/1
+  size: function/1

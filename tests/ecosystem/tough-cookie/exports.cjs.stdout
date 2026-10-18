@@ -1,0 +1,27 @@
+module.exports: object
+  Cookie: class/0 {TTL, canonicalizedDomain, cdomain, clone, cookieString, expiryDate, expiryTime, isPersistent, setExpires, setMaxAge, toJSON, toString, validate}
+    cookiesCreated: number
+    sameSiteCanonical: object
+    sameSiteLevel: object
+    serializableProperties: object Array
+  CookieJar: class/2 {_cloneSync, _importCookies, _importCookiesSync, callSync, clone, cloneSync, getCookieString, getCookieStringSync, getCookies, getCookiesSync, getSetCookieStrings, getSetCookieStringsSync, removeAllCookies, removeAllCookiesSync, serialize, serializeSync, setCookie, setCookieSync, toJSON}
+  MemoryCookieStore: class/0 {findCookie, findCookies, getAllCookies, putCookie, removeAllCookies, removeCookie, removeCookies, updateCookie}
+  ParameterError: function/0
+  PrefixSecurityEnum: object
+    DISABLED: string
+    SILENT: string
+    STRICT: string
+  Store: class/0 {findCookie, findCookies, getAllCookies, putCookie, removeAllCookies, removeCookie, removeCookies, updateCookie}
+  canonicalDomain: function/1
+  cookieCompare: function/2
+  defaultPath: function/1
+  domainMatch: function/3
+  formatDate: function/1
+  fromJSON: function/1
+  getPublicSuffix: function/1
+  parse: function/2
+  parseDate: function/1
+  pathMatch: function/2
+  permuteDomain: function/2
+  permutePath: function/1
+  version: string

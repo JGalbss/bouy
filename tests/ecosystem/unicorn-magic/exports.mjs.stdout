@@ -1,0 +1,7 @@
+namespace: object Module
+  delay: function/0
+  execFile: function/2
+  execFileSync: function/1
+  rootDirectory: function/1
+  toPath: function/1
+  traversePathUp: function/1

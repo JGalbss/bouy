@@ -1,0 +1,2 @@
+namespace: object Module
+  VFile: class/1 {basename, dirname, extname, fail, info, message, path, stem, toString}

@@ -239,7 +239,7 @@ for name in $(cat "$tier/.names"); do
     jq -n --arg name "$name" --arg version "$version" --arg programs "$programs" \
         --arg dropped "$dropped" --arg reason "$reason" '
         def words: split(" ") | map(select(. != ""));
-        ($reason | gsub("(file://)?/[^ '"'"'\"]+"; "<path>") | .[0:200]) as $reason
+        ($reason | gsub("(?<lead>^|[ '"'"'\"(])(file://)?/[^ '"'"'\")]+"; "\(.lead)<path>") | .[0:200]) as $reason
         | {name: $name, version: $version}
         + if $programs == "" then {excluded: $reason}
           else {programs: ($programs | words)}

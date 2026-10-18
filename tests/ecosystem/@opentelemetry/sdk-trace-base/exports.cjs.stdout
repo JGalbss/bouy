@@ -1,0 +1,19 @@
+module.exports: object
+  AlwaysOffSampler: class/0 {shouldSample, toString}
+  AlwaysOnSampler: class/0 {shouldSample, toString}
+  BasicTracerProvider: function/0
+  BatchSpanProcessor: function/2
+  ConsoleSpanExporter: class/0 {_exportInfo, _sendSpans, export, forceFlush, shutdown}
+  InMemorySpanExporter: class/0 {export, forceFlush, getFinishedSpans, reset, shutdown}
+  NoopSpanProcessor: class/0 {forceFlush, onEnd, onStart, shutdown}
+  ParentBasedSampler: class/1 {shouldSample, toString}
+  RandomIdGenerator: function/0
+  SamplingDecision: object
+    0: string
+    1: string
+    2: string
+    NOT_RECORD: number
+    RECORD: number
+    RECORD_AND_SAMPLED: number
+  SimpleSpanProcessor: function/1
+  TraceIdRatioBasedSampler: class/0 {_accumulate, _normalize, shouldSample, toString}

@@ -1,0 +1,54 @@
+module.exports: object
+  Alias: class/1 {resolve, toJSON, toString}
+  CST: object
+    BOM: string
+    DOCUMENT: string
+    FLOW_END: string
+    SCALAR: string
+    createScalarToken: function/2
+    isCollection: function/1
+    isScalar: function/1
+    prettyToken: function/1
+    resolveAsScalar: function/1
+    setScalarValue: function/2
+    stringify: function/1
+    tokenType: function/1
+    visit: function/2
+  Composer: class/0 {compose, decorate, end, next, streamInfo}
+  Document: class/3 {add, addIn, clone, createAlias, createNode, createPair, delete, deleteIn, get, getIn, has, hasIn, set, setIn, setSchema, toJS, toJSON, toString}
+  Lexer: class/0 {atLineEnd, charAt, continueScalar, getLine, hasChars, lex, parseBlockScalar, parseBlockScalarHeader, parseBlockStart, parseDocument, parseFlowCollection, parseLineStart, parseNext, parsePlainScalar, parseQuotedScalar, parseStream, peek, pushCount, pushIndicators, pushNewline, pushSpaces, pushTag, pushToIndex, pushUntil, setNext}
+  LineCounter: function/0
+  Pair: class/1 {clone, toJSON, toString}
+  Parser: class/1 {atIndentedComment, blockMap, blockScalar, blockSequence, document, documentEnd, end, flowCollection, flowScalar, lineEnd, next, parse, peek, pop, scalar, sourceToken, startBlockValue, step, stream}
+  Scalar: class/1 {toJSON, toString}
+    BLOCK_FOLDED: string
+    BLOCK_LITERAL: string
+    PLAIN: string
+    QUOTE_DOUBLE: string
+    QUOTE_SINGLE: string
+  Schema: class/1 {clone}
+  YAMLError: function/4
+  YAMLMap: class/1 {add, delete, get, has, set, toJSON, toString}
+  YAMLParseError: function/3
+  YAMLSeq: class/1 {add, delete, get, has, set, toJSON, toString}
+  YAMLWarning: function/3
+  isAlias: function/1 (false, false, false, false, false, false, false, false, false)
+  isCollection: function/1 (false, false, false, false, false, false, false, false, false)
+  isDocument: function/1 (false, false, false, false, false, false, false, false, false)
+  isMap: function/1 (false, false, false, false, false, false, false, false, false)
+  isNode: function/1 (false, false, false, false, false, false, false, false, false)
+  isPair: function/1 (false, false, false, false, false, false, false, false, false)
+  isScalar: function/1 (false, false, false, false, false, false, false, false, false)
+  isSeq: function/1 (false, false, false, false, false, false, false, false, false)
+  parse: function/3
+  parseAllDocuments: function/1
+  parseDocument: function/1
+  stringify: function/3
+  visit: function/2
+    BREAK: symbol
+    REMOVE: symbol
+    SKIP: symbol
+  visitAsync: function/2
+    BREAK: symbol
+    REMOVE: symbol
+    SKIP: symbol

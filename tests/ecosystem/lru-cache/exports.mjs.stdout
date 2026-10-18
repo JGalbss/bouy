@@ -1,0 +1,2 @@
+namespace: object Module
+  LRUCache: class/1 {calculatedSize, clear, delete, dispose, disposeAfter, dump, entries, fetch, fetchMethod, find, forEach, forceFetch, get, getRemainingTTL, has, info, keys, load, max, maxSize, memo, memoMethod, onInsert, peek, perf, pop, purgeStale, rentries, rforEach, rkeys, rvalues, set, size, values}

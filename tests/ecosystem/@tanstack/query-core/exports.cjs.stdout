@@ -1,0 +1,49 @@
+module.exports: object Module
+  CancelledError: function/1
+  InfiniteQueryObserver: class/2 {bindMethods, createResult, fetchNextPage, fetchPreviousPage, getOptimisticResult, setOptions}
+  Mutation: class/1 {addObserver, continue, execute, meta, optionalRemove, removeObserver, setOptions}
+  MutationCache: class/0 {add, build, canRun, clear, find, findAll, getAll, notify, remove, resumePausedMutations, runNext}
+  MutationObserver: class/2 {bindMethods, getCurrentResult, mutate, onMutationUpdate, onSubscribe, onUnsubscribe, reset, setOptions}
+  QueriesObserver: class/3 {destroy, getCurrentResult, getObservers, getOptimisticResult, getQueries, onSubscribe, onUnsubscribe, setQueries}
+  Query: class/1 {addObserver, cancel, destroy, fetch, getObserversCount, invalidate, isActive, isDisabled, isFetched, isStale, isStaleByTime, isStatic, meta, onFocus, onOnline, optionalRemove, promise, queryType, removeObserver, reset, resetState, setData, setOptions, setState}
+  QueryCache: class/0 {add, build, clear, find, findAll, get, getAll, notify, onFocus, onOnline, remove}
+  QueryClient: class/0 {cancelQueries, clear, defaultMutationOptions, defaultQueryOptions, ensureInfiniteQueryData, ensureQueryData, fetchInfiniteQuery, fetchQuery, getDefaultOptions, getMutationCache, getMutationDefaults, getQueriesData, getQueryCache, getQueryData, getQueryDefaults, getQueryState, infiniteQuery, invalidateQueries, isFetching, isMutating, mount, prefetchInfiniteQuery, prefetchQuery, query, refetchQueries, removeQueries, resetQueries, resumePausedMutations, setDefaultOptions, setMutationDefaults, setQueriesData, setQueryData, setQueryDefaults, unmount}
+  QueryObserver: class/2 {bindMethods, createResult, destroy, fetch, fetchOptimistic, getCurrentQuery, getCurrentResult, getOptimisticResult, onQueryUpdate, onSubscribe, onUnsubscribe, refetch, setOptions, shouldFetchOnReconnect, shouldFetchOnWindowFocus, trackProp, trackResult, updateResult}
+  dataTagErrorSymbol: symbol
+  dataTagSymbol: symbol
+  defaultScheduler: function/1
+  defaultShouldDehydrateMutation: function/1
+  defaultShouldDehydrateQuery: function/1
+  dehydrate: function/1
+  dehydrateQuery: function/3
+  environmentManager: object
+    isServer: function/0
+    setIsServer: function/1
+  experimental_streamedQuery: function/1
+  focusManager: object
+    listeners: object Set
+    subscribe: function/1
+  hashKey: function/1
+  hydrate: function/3
+  isCancelledError: function/1 (false, false, false, false, false, false, false, false, false)
+  isServer: boolean
+  keepPreviousData: function/1
+  matchMutation: function/2
+  matchQuery: function/2
+  noop: function/0
+  notifyManager: object
+    batch: function/1
+    batchCalls: function/1
+    schedule: function/1
+    setBatchNotifyFunction: function/1
+    setNotifyFunction: function/1
+    setScheduler: function/1
+  onlineManager: object
+    listeners: object Set
+    subscribe: function/1
+  partialMatchKey: function/2
+  replaceEqualDeep: function/2
+  shouldThrowError: function/2
+  skipToken: symbol
+  timeoutManager: object
+  unsetMarker: symbol

@@ -1,0 +1,4 @@
+namespace: object Module
+  escapePathForRegex: function/1
+  escapeStrForRegex: function/1
+  replacePathSepForRegex: function/1

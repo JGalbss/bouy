@@ -1,0 +1,8 @@
+module.exports: object
+  PathError: function/2
+  TokenData: function/2
+  compile: function/1
+  match: function/1
+  parse: function/1
+  pathToRegexp: function/1
+  stringify: function/1
