@@ -71,4 +71,4 @@ const holder = {
   },
 };
 const maybe: typeof holder | undefined = holder;
-console.log((maybe?.read)(), (holder.read)?.(), (maybe?.read)?.());
+console.log((maybe?.read)(), holder.read?.(), maybe?.read?.());

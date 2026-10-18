@@ -8,22 +8,22 @@ This file is the plan for `Intl` (ECMA-402) on the reference engine. It records 
 - `process.config.variables.hasIntl` is false (`buoy_binding_config`), so the tests of Node that need Intl skip.
 - test262 `test/intl402` on the dev runner: 463 of 3382 tests pass, 439 of them in `Temporal`, which tests the ISO calendar too.
 
-| Directory     | Tests | Needs                                                                  |
-| ------------- | ----: | ---------------------------------------------------------------------- |
-| Temporal      |  2029 | non-ISO calendars, eras and month codes, time zone names              |
-| NumberFormat  |   251 | CLDR number patterns, numbering systems, currencies, units, plurals    |
-| DateTimeFormat |  245 | CLDR date patterns, calendars, time zones, `formatRange`              |
-| Locale        |   190 | BCP 47 canonicalization, likely subtags, locale info                   |
-| DurationFormat |  110 | unit and list patterns                                                 |
-| ListFormat    |    81 | list patterns                                                          |
-| RelativeTimeFormat | 80 | relative time patterns, plural rules                                  |
-| Segmenter     |    79 | grapheme, word, and sentence breaking                                  |
-| Intl, top level | 88 | `getCanonicalLocales`, `supportedValuesOf`, locale negotiation        |
-| Collator      |    65 | the Unicode Collation Algorithm with CLDR tailorings                   |
-| DisplayNames  |    57 | names of languages, regions, scripts, currencies, calendars            |
-| PluralRules   |    53 | CLDR plural rules                                                      |
-| String, Number, BigInt, Date, Array, TypedArray | 52 | the locale-sensitive methods |
-| FallbackSymbol |    2 | the legacy constructor behavior of NumberFormat and DateTimeFormat     |
+| Directory                                       | Tests | Needs                                                               |
+| ----------------------------------------------- | ----: | ------------------------------------------------------------------- |
+| Temporal                                        |  2029 | non-ISO calendars, eras and month codes, time zone names            |
+| NumberFormat                                    |   251 | CLDR number patterns, numbering systems, currencies, units, plurals |
+| DateTimeFormat                                  |   245 | CLDR date patterns, calendars, time zones, `formatRange`            |
+| Locale                                          |   190 | BCP 47 canonicalization, likely subtags, locale info                |
+| DurationFormat                                  |   110 | unit and list patterns                                              |
+| ListFormat                                      |    81 | list patterns                                                       |
+| RelativeTimeFormat                              |    80 | relative time patterns, plural rules                                |
+| Segmenter                                       |    79 | grapheme, word, and sentence breaking                               |
+| Intl, top level                                 |    88 | `getCanonicalLocales`, `supportedValuesOf`, locale negotiation      |
+| Collator                                        |    65 | the Unicode Collation Algorithm with CLDR tailorings                |
+| DisplayNames                                    |    57 | names of languages, regions, scripts, currencies, calendars         |
+| PluralRules                                     |    53 | CLDR plural rules                                                   |
+| String, Number, BigInt, Date, Array, TypedArray |    52 | the locale-sensitive methods                                        |
+| FallbackSymbol                                  |     2 | the legacy constructor behavior of NumberFormat and DateTimeFormat  |
 
 ## What Node and Bun do
 

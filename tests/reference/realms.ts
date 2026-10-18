@@ -20,4 +20,8 @@ console.log("callback realm", total, made.join(","));
 // instance of that realm's Iterator.
 const from = vm.runInContext("Iterator.from", context) as (iterator: Iterator<number>) => unknown;
 const values = [1, 2].values();
-console.log("foreign Iterator.from wraps", from(values) !== values, Iterator.from(values) === values);
+console.log(
+  "foreign Iterator.from wraps",
+  from(values) !== values,
+  Iterator.from(values) === values,
+);

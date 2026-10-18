@@ -234,4 +234,9 @@ const powExponent = {
     return 3;
   },
 };
-console.log("pow", Math.pow(powBase as unknown as number, powExponent as unknown as number), powOrder.join(","), (Math.pow as (x: number) => number)(2));
+console.log(
+  "pow",
+  Math.pow(powBase as unknown as number, powExponent as unknown as number),
+  powOrder.join(","),
+  (Math.pow as (x: number) => number)(2),
+);
