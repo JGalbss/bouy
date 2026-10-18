@@ -69,11 +69,11 @@ impl<'a> Lowerer<'a, '_> {
             let args = self.args(&call.arguments);
             return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
         }
-        // A call of the name `eval` is a direct eval also through a `with` object.
+        // A call of the name `eval` is a direct eval also through a `with` object, a
+        // parameter, or a variable, when the value is the intrinsic %eval%.
         if let Expression::Identifier(ident) = callee
             && ident.name == "eval"
             && !call.optional
-            && self.symbol_of(ident.reference_id.get()).is_none()
         {
             return self.direct_eval(ident, call);
         }
@@ -206,10 +206,10 @@ impl<'a> Lowerer<'a, '_> {
         call: &'a CallExpression<'a>,
     ) -> Expr {
         let objects = self.with_objects(ident);
-        let eval = if objects.is_empty() {
-            self.identifier_read(ident)
-        } else {
-            self.with_read(ident, &objects)
+        let eval = match self.symbol_of(ident.reference_id.get()) {
+            _ if !objects.is_empty() => self.with_read(ident, &objects),
+            Some(symbol) => self.read_symbol(symbol, ident.span),
+            None => self.identifier_read(ident),
         };
         let args = self.args(&call.arguments);
         let mode = Expr::atom(if self.frame.sloppy {
