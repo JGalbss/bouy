@@ -378,21 +378,21 @@ stringify(Value, Replacer, Space) ->
 
 %% The keys of an array replacer: strings, numbers, and their objects, each
 %% once.
+%% Each item converts before the next one is read: its toString may change
+%% the array.
 property_list(A) ->
-    Items = [buoy_ref:get(A, I) || I <- seq(0, buoy_ref_array:length_of(A) - 1)],
-    Keys = lists:filtermap(fun(V) ->
-                                   case V of
-                                       S when ?IS_STRING(S) -> {true, S};
-                                       N when ?IS_NUMBER(N) -> {true, buoy_ref:to_string(N)};
-                                       {'$o', _} = O ->
-                                           case buoy_heap:class_of(O) of
-                                               C when C =:= string; C =:= number -> {true, buoy_ref:to_string(O)};
-                                               _ -> false
-                                           end;
-                                       _ -> false
-                                   end
-                           end, Items),
+    Keys = lists:filtermap(fun(I) -> list_key(buoy_ref:get(A, I)) end,
+                           seq(0, buoy_ref_array:length_of(A) - 1)),
     unique([buoy_heap:to_key(K) || K <- Keys], []).
+
+list_key(S) when ?IS_STRING(S) -> {true, S};
+list_key(N) when ?IS_NUMBER(N) -> {true, buoy_ref:to_string(N)};
+list_key({'$o', _} = O) ->
+    case buoy_heap:class_of(O) of
+        C when C =:= string; C =:= number -> {true, buoy_ref:to_string(O)};
+        _ -> false
+    end;
+list_key(_) -> false.
 
 unique([], Acc) -> lists:reverse(Acc);
 unique([K | Rest], Acc) ->

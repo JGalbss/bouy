@@ -50,3 +50,12 @@ try {
 } catch (error) {
   console.log((error as Error).name);
 }
+// Each item of a replacer array converts before the next one is read.
+const growing: unknown[] = [0, , , ,];
+const zero = new Number(0);
+(zero as unknown as { toString: () => string }).toString = () => {
+  growing[1] = 1;
+  return "0";
+};
+growing[0] = zero;
+console.log(JSON.stringify({ 0: "hi", 1: "n-nao", 2: "away", 3: "bye" }, growing as (string | number)[]));
