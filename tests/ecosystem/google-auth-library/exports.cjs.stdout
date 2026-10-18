@@ -1,0 +1,95 @@
+module.exports: object
+  AuthClient: class/0 {addSharedMetadataHeaders, addUserProjectAndAuthHeaders, fetch, setCredentials}
+    DEFAULT_REQUEST_INTERCEPTOR: object
+    DEFAULT_RESPONSE_INTERCEPTOR: object
+    RequestLogIdSymbol: symbol
+    RequestMethodNameSymbol: symbol
+    log: function/1
+  AwsClient: class/1 {retrieveSubjectToken, validateEnvironmentId}
+    AWS_EC2_METADATA_IPV4_ADDRESS: string
+    AWS_EC2_METADATA_IPV6_ADDRESS: string
+  AwsRequestSigner: class/2 {getRequestOptions}
+  BaseExternalAccountClient: class/1 {getAccessToken, getImpersonatedAccessToken, getMetricsHeaderValue, getProjectId, getProjectNumber, getRequestHeaders, getScopesArray, getServiceAccountEmail, getTokenUrl, isExpired, refreshAccessTokenAsync, request, requestAsync, setCredentials}
+  ClientAuthentication: object
+    ClientSecretBasic: string
+    ClientSecretPost: string
+    None: string
+  CodeChallengeMethod: object
+    Plain: string
+    S256: string
+  Compute: class/0 {fetchIdToken, refreshTokenNoCache, wrapError}
+  DEFAULT_UNIVERSE: string
+  DownscopedClient: class/1 {getAccessToken, getRequestHeaders, isExpired, refreshAccessTokenAsync, request, requestAsync, setCredentials}
+  EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE: string
+  ExecutableError: function/2
+  ExternalAccountAuthorizedUserClient: class/1 {getAccessToken, getRequestHeaders, isExpired, refreshAccessTokenAsync, request, requestAsync}
+  ExternalAccountClient: function/0
+  GCPEnv: object
+    APP_ENGINE: string
+    CLOUD_FUNCTIONS: string
+    CLOUD_RUN: string
+    CLOUD_RUN_JOBS: string
+    COMPUTE_ENGINE: string
+    KUBERNETES_ENGINE: string
+    NONE: string
+  GDCH_SERVICE_ACCOUNT_TYPE: string
+  GdchClient: class/0 {base64UrlEncode, createAssertion, createWithGdchAudience, fromJSON, getCaAgent, refreshTokenNoCache, requestAsync, toJSON}
+  GoogleAuth: class/0 {_cacheClientFromJSON, _checkIsGCE, _getApplicationCredentialsFromFilePath, _isWindows, _tryGetApplicationCredentialsFromEnvironmentVariable, _tryGetApplicationCredentialsFromWellKnownFile, authorizeRequest, fetch, findAndCacheProjectId, fromAPIKey, fromImpersonatedJSON, fromJSON, fromStream, fromStreamAsync, getAccessToken, getAnyScopes, getApplicationDefault, getApplicationDefaultAsync, getClient, getCredentials, getCredentialsAsync, getDefaultServiceProjectId, getEnv, getExternalAccountClientProjectId, getFileProjectId, getGCEProjectId, getIdTokenClient, getProductionProjectId, getProjectId, getProjectIdAsync, getProjectIdOptional, getRequestHeaders, getUniverseDomain, getUniverseDomainFromMetadataServer, isGCE, request, setGapicJWTValues, sign, signBlob}
+  GoogleToken: class/1 {accessToken, expiresAt, getToken, googleTokenOptions, hasExpired, idToken, isTokenExpiring, refreshToken, revokeToken, tokenType}
+  IAMAuth: class/2 {getRequestHeaders}
+  IdTokenClient: class/1 {getIdTokenExpiryDate, getRequestMetadataAsync}
+  IdentityPoolClient: class/1 {retrieveSubjectToken}
+  Impersonated: class/0 {fetchIdToken, getTargetPrincipal, refreshToken, sign}
+  JWT: class/0 {authorize, authorizeAsync, createGToken, createScoped, fetchIdToken, fromAPIKey, fromJSON, fromStream, fromStreamAsync, getCredentials, getRequestMetadataAsync, hasAnyScopes, hasUserScopes, refreshTokenNoCache}
+  JWTAccess: class/4 {fromJSON, fromStream, fromStreamAsync, getCachedKey, getRequestHeaders}
+  LoginTicket: class/2 {getAttributes, getEnvelope, getPayload, getUserId}
+  OAuth2Client: class/0 {generateAuthUrl, generateCodeVerifier, generateCodeVerifierAsync, getAccessToken, getAccessTokenAsync, getFederatedSignonCerts, getFederatedSignonCertsAsync, getIapPublicKeys, getIapPublicKeysAsync, getRequestHeaders, getRequestMetadataAsync, getRevokeTokenURL, getToken, getTokenAsync, getTokenInfo, isTokenExpiring, processAndValidateRefreshHandler, refreshAccessToken, refreshAccessTokenAsync, refreshToken, refreshTokenNoCache, request, requestAsync, revokeCredentials, revokeCredentialsAsync, revokeToken, verifyIdToken, verifyIdTokenAsync, verifySignedJwtWithCerts, verifySignedJwtWithCertsAsync}
+    CLOCK_SKEW_SECS_: number
+    DEFAULT_MAX_TOKEN_LIFETIME_SECS_: number
+    GOOGLE_TOKEN_INFO_URL: string
+  PassThroughClient: class/0 {getAccessToken, getRequestHeaders, request}
+  PluggableAuthClient: class/1 {retrieveSubjectToken}
+  UserRefreshClient: class/5 {fetchIdToken, fromJSON, fromStream, fromStreamAsync, refreshTokenNoCache}
+  auth: object
+    _cachedProjectId: null
+    _findProjectIdPromise: undefined
+    apiKey: null
+    cachedCredential: null
+    checkIsGCE: undefined
+    clientOptions: object
+    defaultScopes: undefined
+    defaultServicePath: undefined
+    jsonContent: null
+    keyFilename: undefined
+    scopes: undefined
+    useJWTAccessWithScope: undefined
+  gaxios: object
+    Gaxios: class/1 {_defaultAdapter, _request, fetch, getMultipartRequest, getResponseData, getResponseDataFromContentType, request, validateStatus}
+    GaxiosError: function/4
+    GaxiosInterceptorManager: function/0
+    instance: object
+    request: function/1
+  gcpMetadata: object
+    BASE_PATH: string
+    GCE_LINUX_BIOS_PATHS: object
+    HEADERS: object
+    HEADER_NAME: string
+    HEADER_VALUE: string
+    HOST_ADDRESS: string
+    METADATA_SERVER_DETECTION: object
+    SECONDARY_HOST_ADDRESS: string
+    bulk: function/1
+    detectGCPResidency: function/0
+    gcpResidencyCache: null
+    getGCPResidency: function/0
+    instance: function/1
+    isAvailable: function/0
+    isGoogleCloudServerless: function/0
+    isGoogleComputeEngine: function/0
+    isGoogleComputeEngineLinux: function/0
+    isGoogleComputeEngineMACAddress: function/0
+    project: function/1
+    requestTimeout: function/0
+    resetIsAvailableCache: function/0
+    setGCPResidency: function/0
+    universe: function/1

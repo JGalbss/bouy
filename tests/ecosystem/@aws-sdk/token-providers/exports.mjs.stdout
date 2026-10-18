@@ -1,0 +1,15 @@
+namespace: object Module
+  default: object
+    fromEnvSigningName: function/0
+    fromSso: function/0
+    fromStatic: function/1
+    nodeProvider: function/0
+  fromEnvSigningName: function/0
+  fromSso: function/0
+  fromStatic: function/1
+  module.exports: object
+    fromEnvSigningName: function/0
+    fromSso: function/0
+    fromStatic: function/1
+    nodeProvider: function/0
+  nodeProvider: function/0

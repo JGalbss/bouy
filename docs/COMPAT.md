@@ -8,10 +8,11 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 2,012 | 4,419 | 45.5% | 1,814 | 10 | 270df41 | `tests/node/expectations.txt` |
+| language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
+| node | node | v25.9.0 | 1,964 | 4,419 | 44.4% | 1,860 | 12 | db60a3a | `tests/node/expectations.txt` |
 | node api surface | node-surface | v25.9.0 | 3,450 | 4,460 | 77.4% | 1,010 | 0 | 25d078a | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
+| top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/equivalence.rs` |
 | corpora | equivalence/ai | Node 25.9.0 | 7 | 7 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/ai.rs` |
@@ -28,34 +29,34 @@ The corpora have no update commit: `pnpm check` runs them on each commit.
 
 ## Language
 
-test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.txt`.
+test262 at d53ebc8, updated at e75ea79. Evidence: `tests/test262/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 53,616 | 4,320 | 8.1% | 49,251 | 0 | 44 | 0 | 0 | 0 | 0 | 1 |
-| kind: negative | 4,734 | 4,315 | 91.1% | 419 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| kind: positive | 48,882 | 5 | 0.0% | 48,832 | 0 | 44 | 0 | 0 | 0 | 0 | 1 |
+| every test | 53,616 | 4,678 | 8.7% | 48,894 | 0 | 44 | 0 | 0 | 0 | 0 | 0 |
+| kind: negative | 4,734 | 4,673 | 98.7% | 61 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| kind: positive | 48,882 | 5 | 0.0% | 48,833 | 0 | 44 | 0 | 0 | 0 | 0 | 0 |
 | subset: dynamic-code | 1,968 | 5 | 0.3% | 1,962 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| subset: npm | 40,232 | 3,978 | 9.9% | 36,216 | 0 | 37 | 0 | 0 | 0 | 0 | 1 |
+| subset: npm | 40,232 | 4,204 | 10.4% | 35,991 | 0 | 37 | 0 | 0 | 0 | 0 | 0 |
 
 ### By edition
 
 | edition | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es5 | 8,165 | 474 | 5.8% | 7,690 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| es6 | 19,522 | 1,746 | 8.9% | 17,776 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es5 | 8,165 | 474 | 5.8% | 7,691 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es6 | 19,522 | 1,775 | 9.1% | 17,747 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es7 | 130 | 14 | 10.8% | 116 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es8 | 1,049 | 137 | 13.1% | 911 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| es9 | 4,858 | 444 | 9.1% | 4,382 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
+| es9 | 4,858 | 640 | 13.2% | 4,186 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
 | es10 | 137 | 1 | 0.7% | 136 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es11 | 2,178 | 203 | 9.3% | 1,972 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
-| es12 | 922 | 75 | 8.1% | 843 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| es12 | 922 | 76 | 8.2% | 842 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
 | es13 | 5,544 | 891 | 16.1% | 4,653 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | es14 | 407 | 24 | 5.9% | 383 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es15 | 846 | 1 | 0.1% | 845 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| es16 | 1,288 | 8 | 0.6% | 1,276 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
+| es15 | 846 | 50 | 5.9% | 796 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| es16 | 1,288 | 91 | 7.1% | 1,193 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
 | es17 | 313 | 0 | 0.0% | 313 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | esnext | 8,257 | 302 | 3.7% | 7,955 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
@@ -230,7 +231,7 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | logical-assignment-operators | 108 | 12 | 11.1% | 93 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
 | new.target | 63 | 13 | 20.6% | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | nonextensible-applies-to-private | 4 | 0 | 0.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| numeric-separator-literal | 159 | 63 | 39.6% | 96 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| numeric-separator-literal | 159 | 64 | 40.3% | 95 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | object-rest | 358 | 7 | 2.0% | 351 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | object-spread | 135 | 24 | 17.8% | 111 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | optional-catch-binding | 5 | 1 | 20.0% | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -242,10 +243,10 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | regexp-duplicate-named-groups | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | regexp-lookbehind | 19 | 0 | 0.0% | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | regexp-match-indices | 31 | 0 | 0.0% | 31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-modifiers | 230 | 0 | 0.0% | 230 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-named-groups | 100 | 0 | 0.0% | 100 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-unicode-property-escapes | 681 | 0 | 0.0% | 681 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| regexp-v-flag | 187 | 1 | 0.5% | 186 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-modifiers | 230 | 83 | 36.1% | 147 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-named-groups | 100 | 54 | 54.0% | 46 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-unicode-property-escapes | 681 | 163 | 23.9% | 518 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| regexp-v-flag | 187 | 50 | 26.7% | 137 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | resizable-arraybuffer | 471 | 0 | 0.0% | 471 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | rest-parameters | 96 | 96 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | set-methods | 193 | 0 | 0.0% | 193 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -528,8 +529,8 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | built-ins/RegExp/lookBehind | 17 | 0 | 0.0% | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/match-indices | 14 | 0 | 0.0% | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/named-groups | 36 | 0 | 0.0% | 36 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/property-escapes | 613 | 0 | 0.0% | 613 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| built-ins/RegExp/prototype | 487 | 1 | 0.2% | 486 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/property-escapes | 613 | 163 | 26.6% | 450 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| built-ins/RegExp/prototype | 487 | 29 | 6.0% | 458 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/regexp-modifiers | 70 | 0 | 0.0% | 70 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExp/unicodeSets | 114 | 0 | 0.0% | 114 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | built-ins/RegExpStringIteratorPrototype | 2 | 0 | 0.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -780,7 +781,7 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | language/literals/boolean | 4 | 2 | 50.0% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/literals/null | 3 | 1 | 33.3% | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/literals/numeric | 157 | 56 | 35.7% | 101 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/literals/regexp | 240 | 21 | 8.8% | 219 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| language/literals/regexp | 240 | 188 | 78.3% | 52 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/literals/string | 73 | 35 | 47.9% | 38 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/module-code | 284 | 162 | 57.0% | 122 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/module-code/ambiguous-export-bindings | 10 | 2 | 20.0% | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -809,7 +810,7 @@ test262 at d53ebc8, updated at 7a9cb20. Evidence: `tests/test262/expectations.tx
 | language/statements/for-await-of | 1,234 | 92 | 7.5% | 1,142 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/for-in | 119 | 62 | 52.1% | 57 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/for-of | 751 | 94 | 12.5% | 657 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| language/statements/function | 451 | 60 | 13.3% | 390 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| language/statements/function | 451 | 60 | 13.3% | 391 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/generators | 266 | 32 | 12.0% | 234 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/if | 69 | 40 | 58.0% | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | language/statements/labeled | 24 | 14 | 58.3% | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -900,11 +901,11 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 | Blocker | Tests blocked | Only blocker |
 | --- | --- | --- |
-| `BUOY206` | 48,753 | 371 |
+| `BUOY206` | 48,395 | 13 |
 | `BUOY200` | 14 | 6 |
 | `BUOY201` | 109 | 2 |
-| `harness/assert.js` | 48,868 | 0 |
-| `harness/sta.js` | 48,868 | 0 |
+| `harness/assert.js` | 48,869 | 0 |
+| `harness/sta.js` | 48,869 | 0 |
 | `BUOY202` | 29,498 | 0 |
 | `harness/doneprintHandle.js` | 5,623 | 0 |
 | `harness/propertyHelper.js` | 5,241 | 0 |
@@ -950,15 +951,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at 270df41. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at db60a3a. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 2,012 | 45.5% | 0 | 0 | 583 | 0 | 1,693 | 121 | 0 | 10 |
+| every test | 4,419 | 1,964 | 44.4% | 0 | 0 | 583 | 0 | 1,798 | 62 | 0 | 12 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 2,012 | 49.4% | 0 | 0 | 240 | 0 | 1,693 | 121 | 0 | 10 |
+| kind: public | 4,076 | 1,964 | 48.2% | 0 | 0 | 240 | 0 | 1,798 | 62 | 0 | 12 |
 
 ### By module
 
@@ -969,49 +970,49 @@ node at v25.9.0, updated at 270df41. Evidence: `tests/node/expectations.txt`.
 | assert | 14 | 8 | 57.1% | 0 | 0 | 1 | 0 | 3 | 0 | 0 | 2 |
 | async_hooks | 56 | 15 | 26.8% | 0 | 0 | 11 | 0 | 30 | 0 | 0 | 0 |
 | buffer | 69 | 58 | 84.1% | 0 | 0 | 6 | 0 | 5 | 0 | 0 | 0 |
-| child_process | 114 | 68 | 59.6% | 0 | 0 | 7 | 0 | 24 | 15 | 0 | 0 |
-| cluster | 88 | 25 | 28.4% | 0 | 0 | 2 | 0 | 48 | 13 | 0 | 0 |
+| child_process | 114 | 72 | 63.2% | 0 | 0 | 7 | 0 | 25 | 10 | 0 | 0 |
+| cluster | 88 | 25 | 28.4% | 0 | 0 | 2 | 0 | 50 | 11 | 0 | 0 |
 | console | 22 | 17 | 77.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 3 |
 | constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | crypto | 161 | 152 | 94.4% | 0 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
-| dgram | 79 | 1 | 1.3% | 0 | 0 | 11 | 0 | 63 | 4 | 0 | 0 |
+| dgram | 79 | 5 | 6.3% | 0 | 0 | 11 | 0 | 63 | 0 | 0 | 0 |
 | diagnostics_channel | 56 | 40 | 71.4% | 0 | 0 | 3 | 0 | 11 | 2 | 0 | 0 |
 | dns | 29 | 0 | 0.0% | 0 | 0 | 10 | 0 | 19 | 0 | 0 | 0 |
-| domain | 50 | 25 | 50.0% | 0 | 0 | 2 | 0 | 20 | 3 | 0 | 0 |
+| domain | 50 | 27 | 54.0% | 0 | 0 | 2 | 0 | 21 | 0 | 0 | 0 |
 | events | 40 | 34 | 85.0% | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
-| fs | 343 | 99 | 28.9% | 0 | 0 | 20 | 0 | 218 | 6 | 0 | 0 |
-| http | 394 | 37 | 9.4% | 0 | 0 | 15 | 0 | 341 | 1 | 0 | 0 |
+| fs | 343 | 98 | 28.6% | 0 | 0 | 20 | 0 | 219 | 6 | 0 | 0 |
+| http | 394 | 37 | 9.4% | 0 | 0 | 15 | 0 | 342 | 0 | 0 | 0 |
 | http2 | 274 | 242 | 88.3% | 0 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
 | https | 65 | 63 | 96.9% | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
 | inspector | 114 | 0 | 0.0% | 0 | 0 | 114 | 0 | 0 | 0 | 0 | 0 |
-| module | 280 | 85 | 30.4% | 0 | 0 | 17 | 0 | 163 | 15 | 0 | 0 |
-| net | 162 | 19 | 11.7% | 0 | 0 | 10 | 0 | 128 | 5 | 0 | 0 |
+| module | 280 | 86 | 30.7% | 0 | 0 | 17 | 0 | 175 | 2 | 0 | 0 |
+| net | 162 | 19 | 11.7% | 0 | 0 | 10 | 0 | 131 | 2 | 0 | 0 |
 | os | 8 | 2 | 25.0% | 0 | 0 | 2 | 0 | 4 | 0 | 0 | 0 |
-| other | 616 | 217 | 35.2% | 0 | 0 | 178 | 0 | 206 | 13 | 0 | 2 |
+| other | 616 | 215 | 34.9% | 0 | 0 | 178 | 0 | 217 | 4 | 0 | 2 |
 | path | 17 | 17 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | perf_hooks | 27 | 15 | 55.6% | 0 | 0 | 3 | 0 | 7 | 1 | 0 | 1 |
-| process | 131 | 94 | 71.8% | 0 | 0 | 8 | 0 | 23 | 6 | 0 | 0 |
+| process | 131 | 94 | 71.8% | 0 | 0 | 8 | 0 | 24 | 5 | 0 | 0 |
 | punycode | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | querystring | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | quic | 9 | 6 | 66.7% | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
 | readline | 22 | 13 | 59.1% | 0 | 0 | 7 | 0 | 2 | 0 | 0 | 0 |
-| repl | 106 | 4 | 3.8% | 0 | 0 | 14 | 0 | 79 | 9 | 0 | 0 |
+| repl | 106 | 4 | 3.8% | 0 | 0 | 14 | 0 | 77 | 9 | 0 | 2 |
 | sea | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | sqlite | 18 | 16 | 88.9% | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
-| stream | 263 | 203 | 77.2% | 0 | 0 | 8 | 0 | 52 | 0 | 0 | 0 |
+| stream | 263 | 201 | 76.4% | 0 | 0 | 8 | 0 | 54 | 0 | 0 | 0 |
 | string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| test | 65 | 23 | 35.4% | 0 | 0 | 5 | 0 | 15 | 22 | 0 | 0 |
+| test | 65 | 27 | 41.5% | 0 | 0 | 5 | 0 | 27 | 6 | 0 | 0 |
 | timers | 60 | 42 | 70.0% | 0 | 0 | 12 | 0 | 6 | 0 | 0 | 0 |
 | tls | 220 | 204 | 92.7% | 0 | 0 | 15 | 0 | 0 | 1 | 0 | 0 |
-| trace_events | 29 | 5 | 17.2% | 0 | 0 | 3 | 0 | 21 | 0 | 0 | 0 |
+| trace_events | 29 | 4 | 13.8% | 0 | 0 | 3 | 0 | 22 | 0 | 0 | 0 |
 | tty | 3 | 2 | 66.7% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | url | 42 | 37 | 88.1% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 0 |
 | util | 30 | 13 | 43.3% | 0 | 0 | 10 | 0 | 6 | 0 | 0 | 1 |
 | v8 | 22 | 9 | 40.9% | 0 | 0 | 5 | 0 | 8 | 0 | 0 | 0 |
-| vm | 99 | 22 | 22.2% | 0 | 0 | 9 | 0 | 63 | 4 | 0 | 1 |
+| vm | 99 | 23 | 23.2% | 0 | 0 | 9 | 0 | 64 | 2 | 0 | 1 |
 | worker_threads | 148 | 11 | 7.4% | 0 | 0 | 12 | 0 | 124 | 1 | 0 | 0 |
-| zlib | 63 | 60 | 95.2% | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| zlib | 63 | 2 | 3.2% | 0 | 0 | 3 | 0 | 58 | 0 | 0 | 0 |
 
 </details>
 
@@ -1029,9 +1030,9 @@ node at v25.9.0, updated at 270df41. Evidence: `tests/node/expectations.txt`.
 
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es-module | 222 | 65 | 29.3% | 0 | 0 | 16 | 0 | 128 | 13 | 0 | 0 |
-| parallel | 4,079 | 1,908 | 46.8% | 0 | 0 | 545 | 0 | 1,515 | 101 | 0 | 10 |
-| sequential | 118 | 39 | 33.1% | 0 | 0 | 22 | 0 | 50 | 7 | 0 | 0 |
+| es-module | 222 | 66 | 29.7% | 0 | 0 | 16 | 0 | 139 | 1 | 0 | 0 |
+| parallel | 4,079 | 1,859 | 45.6% | 0 | 0 | 545 | 0 | 1,607 | 56 | 0 | 12 |
+| sequential | 118 | 39 | 33.1% | 0 | 0 | 22 | 0 | 52 | 5 | 0 | 0 |
 
 ### Blockers
 
@@ -1348,6 +1349,1048 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 | --- | --- | --- |
 | `BUOY201` | 196 | 196 |
 | `BUOY206` | 99 | 99 |
+
+## Top npm packages
+
+Top npm packages: 779 of 1,000 match Node. `scripts/ecosystem.sh` generates a program for each package that imports it and prints the shape of its exports, and `tests/ecosystem/packages.json` gives the reason of each skip.
+
+ecosystem at Node 25.9.0, updated at cc5c3a5. Evidence: `tests/ecosystem/expectations.txt`.
+
+### Outcomes
+
+| Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| every test | 1,000 | 779 | 77.9% | 0 | 0 | 76 | 0 | 86 | 28 | 0 | 31 |
+
+### By package
+
+<details><summary>924 groups</summary>
+
+| Package | exports.cjs | exports.mjs |
+| --- | --- | --- |
+| `@adobe/css-tools` | pass | pass |
+| `@ai-sdk/provider` | pass | pass |
+| `@alloc/quick-lru` | pass |  |
+| `@asamuzakjp/css-color` | pass | pass |
+| `@aws-sdk/core` | fail | fail |
+| `@aws-sdk/credential-provider-env` | fail | fail |
+| `@aws-sdk/credential-provider-http` | fail | fail |
+| `@aws-sdk/credential-provider-ini` | fail | fail |
+| `@aws-sdk/credential-provider-login` | fail | fail |
+| `@aws-sdk/credential-provider-node` | fail | fail |
+| `@aws-sdk/credential-provider-process` | fail | fail |
+| `@aws-sdk/credential-provider-sso` | fail | fail |
+| `@aws-sdk/credential-provider-web-identity` | fail | fail |
+| `@aws-sdk/signature-v4-multi-region` | fail | fail |
+| `@aws-sdk/token-providers` | fail | fail |
+| `@aws-sdk/types` | pass | pass |
+| `@aws-sdk/xml-builder` | pass | pass |
+| `@aws/lambda-invoke-store` | pass | pass |
+| `@babel/code-frame` | pass |  |
+| `@babel/core` | crash |  |
+| `@babel/generator` | crash |  |
+| `@babel/helper-annotate-as-pure` | crash |  |
+| `@babel/helper-compilation-targets` | crash |  |
+| `@babel/helper-create-class-features-plugin` | crash |  |
+| `@babel/helper-member-expression-to-functions` | crash |  |
+| `@babel/helper-module-imports` | crash |  |
+| `@babel/helper-module-transforms` | crash |  |
+| `@babel/helper-optimise-call-expression` | crash |  |
+| `@babel/helper-plugin-utils` | pass |  |
+| `@babel/helper-replace-supers` | crash |  |
+| `@babel/helper-skip-transparent-expression-wrappers` | crash |  |
+| `@babel/helper-string-parser` | pass |  |
+| `@babel/helper-validator-identifier` | pass |  |
+| `@babel/helper-validator-option` | pass |  |
+| `@babel/helpers` | crash |  |
+| `@babel/parser` | pass |  |
+| `@babel/plugin-syntax-import-attributes` | pass |  |
+| `@babel/plugin-syntax-jsx` | pass |  |
+| `@babel/plugin-syntax-typescript` | pass |  |
+| `@babel/plugin-transform-modules-commonjs` | crash |  |
+| `@babel/plugin-transform-react-jsx-self` | crash |  |
+| `@babel/plugin-transform-react-jsx-source` | crash |  |
+| `@babel/template` | crash |  |
+| `@babel/traverse` | crash |  |
+| `@babel/types` | crash |  |
+| `@bcoe/v8-coverage` | pass |  |
+| `@colors/colors` | pass |  |
+| `@cspotcode/source-map-support` | pass |  |
+| `@csstools/color-helpers` |  | pass |
+| `@csstools/css-calc` |  | pass |
+| `@csstools/css-color-parser` |  | pass |
+| `@csstools/css-parser-algorithms` |  | pass |
+| `@csstools/css-tokenizer` |  | pass |
+| `@emnapi/core` | pass | pass |
+| `@emnapi/runtime` | pass | pass |
+| `@emnapi/wasi-threads` | pass | pass |
+| `@eslint-community/eslint-utils` | pass | pass |
+| `@eslint-community/regexpp` | pass | pass |
+| `@eslint/config-array` | pass | pass |
+| `@eslint/config-helpers` | pass | pass |
+| `@eslint/eslintrc` | pass | pass |
+| `@eslint/js` | pass |  |
+| `@eslint/object-schema` | pass | pass |
+| `@eslint/plugin-kit` | pass | pass |
+| `@floating-ui/core` | pass | pass |
+| `@floating-ui/dom` | pass | pass |
+| `@floating-ui/react-dom` | pass | pass |
+| `@floating-ui/utils` | pass | pass |
+| `@grpc/grpc-js` | fail |  |
+| `@grpc/proto-loader` | pass |  |
+| `@hono/node-server` | fail | pass |
+| `@humanfs/core` |  | pass |
+| `@humanfs/node` |  | pass |
+| `@humanwhocodes/module-importer` | pass | fail |
+| `@humanwhocodes/retry` | pass | pass |
+| `@img/colour` | pass |  |
+| `@inquirer/core` | pass | pass |
+| `@inquirer/figures` | pass | pass |
+| `@inquirer/type` |  | pass |
+| `@isaacs/cliui` | pass | pass |
+| `@istanbuljs/schema` | pass |  |
+| `@jest/schemas` | pass | pass |
+| `@jest/transform` | crash |  |
+| `@jest/types` | pass |  |
+| `@jridgewell/gen-mapping` | pass | pass |
+| `@jridgewell/remapping` | pass | pass |
+| `@jridgewell/resolve-uri` | pass | pass |
+| `@jridgewell/source-map` | pass | pass |
+| `@jridgewell/sourcemap-codec` | pass | pass |
+| `@jridgewell/trace-mapping` | pass | pass |
+| `@napi-rs/wasm-runtime` | fail | fail |
+| `@next/env` | fail |  |
+| `@nodelib/fs.scandir` | pass |  |
+| `@nodelib/fs.stat` | pass |  |
+| `@nodelib/fs.walk` | pass |  |
+| `@opentelemetry/api` | pass | pass |
+| `@opentelemetry/api-logs` | pass | pass |
+| `@opentelemetry/core` | fail | fail |
+| `@opentelemetry/instrumentation` | pass | pass |
+| `@opentelemetry/resources` | fail | fail |
+| `@opentelemetry/sdk-logs` | fail | fail |
+| `@opentelemetry/sdk-metrics` | fail | fail |
+| `@opentelemetry/sdk-trace-base` | fail | fail |
+| `@opentelemetry/semantic-conventions` | pass | pass |
+| `@pkgjs/parseargs` | pass |  |
+| `@playwright/test` | timeout | timeout |
+| `@protobufjs/aspromise` | pass |  |
+| `@protobufjs/base64` | pass |  |
+| `@protobufjs/codegen` | pass |  |
+| `@protobufjs/eventemitter` | pass |  |
+| `@protobufjs/fetch` | pass |  |
+| `@protobufjs/float` | pass |  |
+| `@protobufjs/path` | pass |  |
+| `@protobufjs/pool` | pass |  |
+| `@protobufjs/utf8` | pass |  |
+| `@radix-ui/number` | pass | pass |
+| `@radix-ui/primitive` | pass | pass |
+| `@radix-ui/react-arrow` | pass | pass |
+| `@radix-ui/react-collection` | pass | pass |
+| `@radix-ui/react-compose-refs` | pass | pass |
+| `@radix-ui/react-context` | pass | pass |
+| `@radix-ui/react-dialog` | pass | pass |
+| `@radix-ui/react-direction` | pass | pass |
+| `@radix-ui/react-dismissable-layer` | pass | pass |
+| `@radix-ui/react-dropdown-menu` | pass | pass |
+| `@radix-ui/react-focus-guards` | pass | pass |
+| `@radix-ui/react-focus-scope` | pass | pass |
+| `@radix-ui/react-id` | pass | pass |
+| `@radix-ui/react-label` | pass | pass |
+| `@radix-ui/react-menu` | pass | pass |
+| `@radix-ui/react-popover` | pass | pass |
+| `@radix-ui/react-popper` | pass | pass |
+| `@radix-ui/react-portal` | pass | pass |
+| `@radix-ui/react-presence` | pass | pass |
+| `@radix-ui/react-primitive` | pass | pass |
+| `@radix-ui/react-roving-focus` | pass | pass |
+| `@radix-ui/react-select` | pass | pass |
+| `@radix-ui/react-separator` | pass | pass |
+| `@radix-ui/react-slot` | pass | pass |
+| `@radix-ui/react-tabs` | pass | pass |
+| `@radix-ui/react-tooltip` | pass | pass |
+| `@radix-ui/react-use-callback-ref` | pass | pass |
+| `@radix-ui/react-use-controllable-state` | pass | pass |
+| `@radix-ui/react-use-effect-event` | pass | pass |
+| `@radix-ui/react-use-is-hydrated` | pass | pass |
+| `@radix-ui/react-use-layout-effect` | pass | pass |
+| `@radix-ui/react-use-previous` | pass | pass |
+| `@radix-ui/react-use-rect` | pass | pass |
+| `@radix-ui/react-use-size` | pass | pass |
+| `@radix-ui/react-visually-hidden` | pass | pass |
+| `@radix-ui/rect` | pass | pass |
+| `@rolldown/pluginutils` |  | pass |
+| `@rollup/pluginutils` | pass | pass |
+| `@sentry/core` | fail | timeout |
+| `@sinclair/typebox` | pass |  |
+| `@sindresorhus/is` |  | fail |
+| `@sinonjs/fake-timers` | fail |  |
+| `@smithy/core` | fail | fail |
+| `@smithy/credential-provider-imds` | fail | fail |
+| `@smithy/fetch-http-handler` | fail | fail |
+| `@smithy/is-array-buffer` | pass | pass |
+| `@smithy/node-http-handler` | fail | fail |
+| `@smithy/signature-v4` | fail | fail |
+| `@smithy/types` | pass | pass |
+| `@smithy/util-buffer-from` | pass | pass |
+| `@smithy/util-utf8` | pass | pass |
+| `@standard-schema/spec` | pass | pass |
+| `@swc/helpers` | pass | pass |
+| `@tailwindcss/node` | timeout | timeout |
+| `@tailwindcss/oxide` | fail |  |
+| `@tanstack/query-core` | pass | pass |
+| `@tanstack/react-query` | pass | pass |
+| `@testing-library/dom` | pass | pass |
+| `@testing-library/react` | timeout | timeout |
+| `@testing-library/user-event` | pass | pass |
+| `@tybys/wasm-util` | fail | fail |
+| `@typescript-eslint/eslint-plugin` | timeout |  |
+| `@typescript-eslint/parser` | timeout |  |
+| `@typescript-eslint/project-service` | timeout |  |
+| `@typescript-eslint/scope-manager` | pass |  |
+| `@typescript-eslint/tsconfig-utils` | pass |  |
+| `@typescript-eslint/type-utils` | timeout |  |
+| `@typescript-eslint/types` | pass |  |
+| `@typescript-eslint/typescript-estree` | timeout |  |
+| `@typescript-eslint/utils` | timeout |  |
+| `@typescript-eslint/visitor-keys` | pass |  |
+| `@ungap/structured-clone` |  | pass |
+| `@vitejs/plugin-react` |  | fail |
+| `@vitest/expect` |  | pass |
+| `@vitest/mocker` |  | pass |
+| `@vitest/pretty-format` |  | pass |
+| `@vitest/runner` |  | pass |
+| `@vitest/snapshot` |  | pass |
+| `@vitest/spy` |  | pass |
+| `@vitest/utils` |  | pass |
+| `@xmldom/xmldom` | pass |  |
+| `abbrev` | pass |  |
+| `abort-controller` | pass |  |
+| `accepts` | pass |  |
+| `acorn` | pass | pass |
+| `acorn-jsx` | pass |  |
+| `acorn-walk` | pass | pass |
+| `agent-base` | fail |  |
+| `ajv` | pass |  |
+| `ajv-formats` | pass |  |
+| `ajv-keywords` | pass |  |
+| `ansi-colors` | pass |  |
+| `ansi-escapes` | pass |  |
+| `ansi-regex` | pass |  |
+| `ansi-styles` | pass |  |
+| `any-promise` | pass |  |
+| `anymatch` | pass |  |
+| `archiver-utils` | pass |  |
+| `arg` | pass |  |
+| `argparse` | pass |  |
+| `aria-hidden` | pass | pass |
+| `aria-query` | pass |  |
+| `array-buffer-byte-length` | pass |  |
+| `array-flatten` | pass |  |
+| `array-includes` | pass |  |
+| `array.prototype.flat` | pass |  |
+| `array.prototype.flatmap` | pass |  |
+| `array.prototype.tosorted` | pass |  |
+| `arraybuffer.prototype.slice` | pass |  |
+| `assertion-error` |  | pass |
+| `ast-types` | pass |  |
+| `async` | pass | pass |
+| `async-function` | pass | pass |
+| `asynckit` | pass |  |
+| `autoprefixer` | crash |  |
+| `available-typed-arrays` | pass |  |
+| `axe-core` | timeout |  |
+| `axios` | fail | fail |
+| `axobject-query` | pass |  |
+| `babel-plugin-polyfill-corejs3` | crash | crash |
+| `bail` |  | pass |
+| `balanced-match` | pass |  |
+| `base64-js` | pass |  |
+| `baseline-browser-mapping` | pass | pass |
+| `bidi-js` | pass | pass |
+| `bignumber.js` | pass | pass |
+| `binary-extensions` | pass |  |
+| `bl` | pass |  |
+| `bluebird` | pass |  |
+| `bn.js` | pass |  |
+| `body-parser` | fail |  |
+| `boolbase` | pass |  |
+| `bowser` | pass | pass |
+| `brace-expansion` | pass |  |
+| `braces` | pass |  |
+| `browserslist` | crash |  |
+| `buffer` | fail |  |
+| `buffer-crc32` | pass |  |
+| `buffer-from` | pass |  |
+| `bundle-name` |  | pass |
+| `bytes` | pass |  |
+| `call-bind` | pass |  |
+| `call-bind-apply-helpers` | pass |  |
+| `call-bound` | pass |  |
+| `callsites` | pass |  |
+| `camelcase` | pass |  |
+| `caniuse-lite` | crash |  |
+| `ccount` |  | pass |
+| `chai` |  | pass |
+| `chalk` | pass |  |
+| `character-entities` |  | pass |
+| `character-entities-legacy` |  | pass |
+| `chardet` | pass |  |
+| `chokidar` | pass |  |
+| `chownr` | pass | pass |
+| `ci-info` | pass |  |
+| `cjs-module-lexer` | pass | pass |
+| `class-variance-authority` | pass | pass |
+| `cli-cursor` |  | pass |
+| `cli-spinners` | pass |  |
+| `cli-width` | pass |  |
+| `client-only` | pass |  |
+| `cliui` | pass | pass |
+| `clone` | pass |  |
+| `clsx` | pass | pass |
+| `color-convert` | pass |  |
+| `color-name` | pass |  |
+| `colorette` | pass | pass |
+| `combined-stream` | pass |  |
+| `comma-separated-tokens` |  | pass |
+| `commander` |  | pass |
+| `concat-map` | pass |  |
+| `confbox` |  | crash |
+| `content-disposition` | pass |  |
+| `content-type` | pass |  |
+| `convert-source-map` | pass |  |
+| `cookie` | pass |  |
+| `cookie-signature` | fail |  |
+| `core-js` | fail |  |
+| `core-util-is` | pass |  |
+| `cors` | pass |  |
+| `cosmiconfig` | timeout |  |
+| `cross-spawn` | pass |  |
+| `css-select` | pass | pass |
+| `css-tree` | pass | pass |
+| `css-what` | pass | pass |
+| `css.escape` | pass |  |
+| `cssesc` | pass |  |
+| `cssstyle` | pass |  |
+| `d3-array` |  | pass |
+| `d3-color` |  | pass |
+| `d3-ease` |  | pass |
+| `d3-format` |  | pass |
+| `d3-interpolate` |  | pass |
+| `d3-path` |  | pass |
+| `d3-scale` |  | pass |
+| `d3-shape` |  | pass |
+| `d3-time` |  | pass |
+| `d3-time-format` |  | pass |
+| `d3-timer` |  | pass |
+| `data-uri-to-buffer` |  | pass |
+| `data-urls` | fail |  |
+| `data-view-buffer` | pass |  |
+| `data-view-byte-length` | pass |  |
+| `data-view-byte-offset` | pass |  |
+| `date-fns` | pass | pass |
+| `dayjs` | pass |  |
+| `debug` | pass |  |
+| `decamelize` | pass |  |
+| `decimal.js` | pass | pass |
+| `decode-named-character-reference` |  | pass |
+| `dedent` | pass | pass |
+| `deep-is` | pass |  |
+| `deepmerge` | pass |  |
+| `default-browser` |  | pass |
+| `default-browser-id` |  | pass |
+| `define-data-property` | pass |  |
+| `define-lazy-prop` |  | pass |
+| `define-properties` | pass |  |
+| `delayed-stream` | pass |  |
+| `depd` | pass |  |
+| `dequal` | pass | pass |
+| `destroy` | pass |  |
+| `detect-libc` | pass |  |
+| `detect-node-es` | pass | pass |
+| `devlop` |  | pass |
+| `diff` | pass | pass |
+| `doctrine` | pass |  |
+| `dom-accessibility-api` | pass | pass |
+| `dom-serializer` | pass | pass |
+| `domelementtype` | pass | pass |
+| `domhandler` | pass | pass |
+| `dompurify` | pass | pass |
+| `domutils` | pass | pass |
+| `dot-prop` | pass |  |
+| `dotenv` | fail |  |
+| `eastasianwidth` | pass |  |
+| `ecdsa-sig-formatter` | pass |  |
+| `ee-first` | pass |  |
+| `effect` |  | timeout |
+| `electron-to-chromium` | crash |  |
+| `emoji-regex` | pass |  |
+| `encodeurl` | pass |  |
+| `end-of-stream` | pass |  |
+| `enhanced-resolve` | pass |  |
+| `entities` | pass | pass |
+| `env-paths` | pass |  |
+| `error-ex` | pass |  |
+| `es-abstract` | pass |  |
+| `es-define-property` | pass |  |
+| `es-errors` | pass |  |
+| `es-iterator-helpers` | pass |  |
+| `es-module-lexer` | fail | fail |
+| `es-object-atoms` | pass |  |
+| `es-set-tostringtag` | pass |  |
+| `es-shim-unscopables` | pass |  |
+| `es-to-primitive` | pass |  |
+| `es-toolkit` | pass | pass |
+| `esbuild` | fail |  |
+| `escalade` | pass | pass |
+| `escape-html` | pass |  |
+| `escape-string-regexp` | pass |  |
+| `escodegen` | pass |  |
+| `eslint` | timeout |  |
+| `eslint-config-prettier` | pass |  |
+| `eslint-import-resolver-node` | pass |  |
+| `eslint-plugin-import` | timeout |  |
+| `eslint-plugin-react` | pass |  |
+| `eslint-plugin-react-hooks` | crash |  |
+| `eslint-scope` | pass | pass |
+| `eslint-visitor-keys` | pass | pass |
+| `espree` | pass | pass |
+| `esprima` | pass |  |
+| `esquery` | pass | pass |
+| `esrecurse` | pass |  |
+| `estraverse` | pass |  |
+| `estree-walker` |  | pass |
+| `esutils` | pass |  |
+| `etag` | fail |  |
+| `event-target-shim` | pass |  |
+| `eventemitter3` | pass | pass |
+| `events` | pass |  |
+| `eventsource` | pass | pass |
+| `eventsource-parser` | pass | pass |
+| `execa` | pass |  |
+| `expect` | pass | pass |
+| `expect-type` | pass |  |
+| `express` | fail |  |
+| `express-rate-limit` | fail | pass |
+| `extend` | pass |  |
+| `extend-shallow` | pass |  |
+| `fast-check` | timeout | pass |
+| `fast-deep-equal` | pass |  |
+| `fast-glob` | pass |  |
+| `fast-json-stable-stringify` | pass |  |
+| `fast-levenshtein` | pass |  |
+| `fast-uri` | pass |  |
+| `fast-xml-parser` | pass | pass |
+| `fastq` | pass |  |
+| `fdir` | pass | pass |
+| `fetch-blob` |  | pass |
+| `fflate` | pass | fail |
+| `figures` |  | pass |
+| `file-entry-cache` | fail |  |
+| `file-type` |  | pass |
+| `fill-range` | pass |  |
+| `finalhandler` | pass |  |
+| `find-up` | pass |  |
+| `flat-cache` | pass |  |
+| `flatted` |  | pass |
+| `follow-redirects` | fail |  |
+| `for-each` | pass |  |
+| `foreground-child` | pass | pass |
+| `form-data` | fail |  |
+| `formdata-polyfill` |  | pass |
+| `forwarded` | pass |  |
+| `fraction.js` | pass | pass |
+| `fresh` | pass |  |
+| `fs-extra` | pass | fail |
+| `fs.realpath` | pass |  |
+| `function-bind` | pass |  |
+| `function.prototype.name` | pass |  |
+| `functions-have-names` | pass |  |
+| `gaxios` | fail | pass |
+| `gcp-metadata` | fail |  |
+| `generator-function` | pass | pass |
+| `gensync` | pass |  |
+| `get-caller-file` | pass |  |
+| `get-east-asian-width` |  | pass |
+| `get-intrinsic` | pass |  |
+| `get-nonce` | pass | pass |
+| `get-proto` | pass |  |
+| `get-stream` | pass |  |
+| `get-symbol-description` | pass |  |
+| `get-tsconfig` | pass | pass |
+| `glob` | pass |  |
+| `glob-parent` | pass |  |
+| `globals` | pass |  |
+| `globalthis` | pass |  |
+| `globby` | pass |  |
+| `google-auth-library` | fail |  |
+| `google-logging-utils` | pass |  |
+| `gopd` | pass |  |
+| `graceful-fs` | pass |  |
+| `has-bigints` | pass |  |
+| `has-flag` | pass |  |
+| `has-property-descriptors` | pass |  |
+| `has-proto` | pass |  |
+| `has-symbols` | pass |  |
+| `has-tostringtag` | pass |  |
+| `hasown` | pass |  |
+| `hermes-estree` | pass |  |
+| `hermes-parser` | pass |  |
+| `hono` | pass | pass |
+| `hosted-git-info` | pass |  |
+| `html-encoding-sniffer` | fail |  |
+| `html-escaper` | pass | pass |
+| `htmlparser2` | pass | pass |
+| `http-errors` | fail |  |
+| `http-proxy-agent` | fail |  |
+| `https-proxy-agent` | fail |  |
+| `human-signals` | pass |  |
+| `iconv-lite` | pass |  |
+| `ieee754` | pass |  |
+| `ignore` | pass |  |
+| `immer` | pass | pass |
+| `import-fresh` | pass |  |
+| `import-in-the-middle` | pass |  |
+| `imurmurhash` | pass |  |
+| `indent-string` | pass |  |
+| `inflight` | pass |  |
+| `inherits` | pass |  |
+| `ini` | pass |  |
+| `internal-slot` | pass |  |
+| `internmap` |  | pass |
+| `ip-address` | pass |  |
+| `ipaddr.js` | pass |  |
+| `is-alphabetical` |  | pass |
+| `is-alphanumerical` |  | pass |
+| `is-array-buffer` | pass |  |
+| `is-arrayish` | pass |  |
+| `is-async-function` | pass |  |
+| `is-bigint` | pass |  |
+| `is-binary-path` | pass |  |
+| `is-boolean-object` | pass |  |
+| `is-callable` | pass |  |
+| `is-core-module` | pass |  |
+| `is-data-view` | pass |  |
+| `is-date-object` | pass |  |
+| `is-decimal` |  | pass |
+| `is-docker` |  | pass |
+| `is-extglob` | pass |  |
+| `is-finalizationregistry` | pass |  |
+| `is-fullwidth-code-point` | pass |  |
+| `is-generator-function` | pass |  |
+| `is-glob` | pass |  |
+| `is-inside-container` |  | pass |
+| `is-interactive` | pass |  |
+| `is-map` | pass |  |
+| `is-negative-zero` | pass |  |
+| `is-number` | pass |  |
+| `is-number-object` | pass |  |
+| `is-obj` | pass |  |
+| `is-path-inside` | pass |  |
+| `is-plain-obj` |  | pass |
+| `is-plain-object` | pass |  |
+| `is-potential-custom-element-name` | pass |  |
+| `is-promise` | pass | pass |
+| `is-regex` | pass |  |
+| `is-set` | pass |  |
+| `is-shared-array-buffer` | pass |  |
+| `is-stream` | pass |  |
+| `is-string` | pass |  |
+| `is-symbol` | pass |  |
+| `is-typed-array` | pass |  |
+| `is-unicode-supported` |  | pass |
+| `is-weakmap` | pass |  |
+| `is-weakref` | pass |  |
+| `is-weakset` | pass |  |
+| `is-wsl` |  | pass |
+| `isarray` | pass |  |
+| `isexe` | pass |  |
+| `istanbul-lib-coverage` | pass |  |
+| `istanbul-lib-instrument` | crash |  |
+| `istanbul-lib-report` | pass |  |
+| `istanbul-lib-source-maps` | pass |  |
+| `istanbul-reports` | pass |  |
+| `jackspeak` | pass | pass |
+| `jest-diff` | pass | pass |
+| `jest-haste-map` | pass |  |
+| `jest-matcher-utils` | pass | pass |
+| `jest-message-util` | pass | pass |
+| `jest-mock` | pass | pass |
+| `jest-regex-util` | pass | pass |
+| `jest-util` | pass | pass |
+| `jest-validate` | pass |  |
+| `jest-worker` | pass |  |
+| `jiti` | crash | crash |
+| `jose` |  | pass |
+| `js-tokens` | pass |  |
+| `js-yaml` | pass | pass |
+| `jsdom` | timeout |  |
+| `jsesc` | pass |  |
+| `json-bigint` | pass |  |
+| `json-buffer` | pass |  |
+| `json-parse-even-better-errors` | pass |  |
+| `json-schema` | pass |  |
+| `json-schema-traverse` | pass |  |
+| `json-schema-typed` |  | pass |
+| `json-stable-stringify-without-jsonify` | pass |  |
+| `json5` | pass | pass |
+| `jsonc-parser` | pass | pass |
+| `jsonfile` | pass |  |
+| `jsonwebtoken` | fail |  |
+| `jsx-ast-utils` | pass |  |
+| `jwa` | fail |  |
+| `jws` | fail |  |
+| `keyv` | pass |  |
+| `kind-of` | pass |  |
+| `kleur` | pass |  |
+| `leven` | pass |  |
+| `levn` | pass |  |
+| `lie` | pass |  |
+| `lightningcss` | fail | fail |
+| `lilconfig` | pass |  |
+| `lines-and-columns` | pass |  |
+| `locate-path` | pass |  |
+| `lodash` | crash |  |
+| `lodash.camelcase` | pass |  |
+| `lodash.isboolean` | pass |  |
+| `lodash.isplainobject` | pass |  |
+| `lodash.merge` | pass |  |
+| `log-symbols` | pass |  |
+| `long` | pass | pass |
+| `loose-envify` | pass |  |
+| `lru-cache` | pass | pass |
+| `lucide-react` | timeout | timeout |
+| `lz-string` | pass |  |
+| `magic-string` | pass | pass |
+| `make-dir` | pass |  |
+| `marked` |  | pass |
+| `mdast-util-from-markdown` |  | pass |
+| `mdast-util-to-hast` |  | pass |
+| `mdast-util-to-markdown` |  | pass |
+| `mdast-util-to-string` |  | pass |
+| `mdn-data` | pass |  |
+| `media-typer` | pass |  |
+| `merge-descriptors` | pass |  |
+| `merge-stream` | pass |  |
+| `merge2` | pass |  |
+| `methods` | pass |  |
+| `micromark` |  | pass |
+| `micromark-core-commonmark` |  | pass |
+| `micromark-factory-destination` |  | pass |
+| `micromark-factory-label` |  | pass |
+| `micromark-factory-space` |  | pass |
+| `micromark-factory-title` |  | pass |
+| `micromark-factory-whitespace` |  | pass |
+| `micromark-util-character` |  | pass |
+| `micromark-util-chunked` |  | pass |
+| `micromark-util-classify-character` |  | pass |
+| `micromark-util-combine-extensions` |  | pass |
+| `micromark-util-decode-numeric-character-reference` |  | pass |
+| `micromark-util-decode-string` |  | pass |
+| `micromark-util-encode` |  | pass |
+| `micromark-util-html-tag-name` |  | pass |
+| `micromark-util-normalize-identifier` |  | pass |
+| `micromark-util-resolve-all` |  | pass |
+| `micromark-util-sanitize-uri` |  | pass |
+| `micromark-util-subtokenize` |  | pass |
+| `micromark-util-symbol` |  | pass |
+| `micromark-util-types` |  | pass |
+| `micromatch` | pass |  |
+| `mime` | pass |  |
+| `mime-db` | pass |  |
+| `mime-types` | pass |  |
+| `mimic-fn` | pass |  |
+| `mimic-response` | pass |  |
+| `min-indent` | pass |  |
+| `minimatch` | pass |  |
+| `minimist` | pass |  |
+| `minipass` | pass | pass |
+| `minizlib` | pass | pass |
+| `mkdirp` | pass |  |
+| `ms` | pass |  |
+| `msgpackr` | pass | pass |
+| `msgpackr-extract` | fail |  |
+| `mute-stream` | pass |  |
+| `nanoid` | fail | pass |
+| `napi-postinstall` | fail |  |
+| `natural-compare` | pass |  |
+| `negotiator` | pass |  |
+| `neo-async` | pass |  |
+| `next` | timeout |  |
+| `node-addon-api` | pass |  |
+| `node-domexception` | pass |  |
+| `node-fetch` | fail | fail |
+| `node-gyp-build-optional-packages` | pass |  |
+| `nopt` | pass |  |
+| `normalize-package-data` | pass |  |
+| `normalize-path` | pass |  |
+| `npm-run-path` | pass |  |
+| `nth-check` | pass | pass |
+| `object-assign` | pass |  |
+| `object-hash` | fail |  |
+| `object-inspect` | pass |  |
+| `object-keys` | pass |  |
+| `object.assign` | pass |  |
+| `object.entries` | pass |  |
+| `object.fromentries` | pass |  |
+| `object.values` | pass |  |
+| `obug` |  | pass |
+| `on-finished` | pass |  |
+| `once` | pass |  |
+| `onetime` | pass |  |
+| `open` | pass |  |
+| `optionator` | pass |  |
+| `ora` | pass |  |
+| `own-keys` | pass |  |
+| `oxc-parser` |  | fail |
+| `p-limit` | pass |  |
+| `p-locate` | pass |  |
+| `p-map` |  | pass |
+| `p-try` | pass |  |
+| `package-json-from-dist` | pass | pass |
+| `pako` | pass |  |
+| `parent-module` | pass |  |
+| `parse-entities` |  | pass |
+| `parse-json` | pass |  |
+| `parse5` | pass | pass |
+| `parseurl` | pass |  |
+| `path-exists` | pass |  |
+| `path-is-absolute` | pass |  |
+| `path-key` | pass |  |
+| `path-parse` | pass |  |
+| `path-scurry` | pass | pass |
+| `path-to-regexp` | pass |  |
+| `path-type` | pass |  |
+| `pathe` | pass | pass |
+| `pg` | fail | fail |
+| `pg-cloudflare` | pass | pass |
+| `pg-connection-string` | pass | pass |
+| `pg-int8` | pass |  |
+| `pg-pool` | pass | pass |
+| `pg-protocol` | pass | pass |
+| `pg-types` | pass |  |
+| `pgpass` | pass |  |
+| `picocolors` | pass |  |
+| `picomatch` | pass |  |
+| `pify` | pass |  |
+| `pino-abstract-transport` | pass |  |
+| `pirates` | pass |  |
+| `pkce-challenge` | fail | fail |
+| `pkg-dir` | pass |  |
+| `pkg-types` | pass | pass |
+| `playwright` | timeout | timeout |
+| `playwright-core` | timeout | timeout |
+| `pngjs` | pass |  |
+| `possible-typed-array-names` | pass |  |
+| `postcss` | pass | pass |
+| `postcss-selector-parser` | pass |  |
+| `postcss-value-parser` | pass |  |
+| `postgres-array` | pass |  |
+| `postgres-bytea` | pass |  |
+| `postgres-date` | pass |  |
+| `postgres-interval` | pass |  |
+| `prelude-ls` | pass |  |
+| `prettier` | timeout | timeout |
+| `pretty-format` | pass |  |
+| `proc-log` | pass |  |
+| `process` | fail |  |
+| `process-nextick-args` | fail |  |
+| `process-warning` | pass |  |
+| `progress` | pass |  |
+| `prompts` | pass |  |
+| `prop-types` | pass |  |
+| `property-information` |  | pass |
+| `protobufjs` | pass |  |
+| `proxy-addr` | pass |  |
+| `proxy-from-env` | pass | pass |
+| `pump` | pass |  |
+| `punycode` | pass | pass |
+| `qs` | pass |  |
+| `queue-microtask` | fail |  |
+| `range-parser` | pass |  |
+| `raw-body` | fail |  |
+| `react` | pass |  |
+| `react-dom` | pass |  |
+| `react-is` | pass |  |
+| `react-refresh` | pass |  |
+| `react-remove-scroll` | pass | pass |
+| `react-remove-scroll-bar` | pass | pass |
+| `react-style-singleton` | pass | pass |
+| `readable-stream` | pass |  |
+| `readdirp` | pass |  |
+| `real-require` | pass |  |
+| `recharts` | pass | pass |
+| `redent` | pass |  |
+| `reflect.getprototypeof` | pass |  |
+| `regenerator-runtime` | pass |  |
+| `regexp.prototype.flags` | pass |  |
+| `remark-parse` |  | pass |
+| `require-directory` | pass |  |
+| `require-from-string` | pass |  |
+| `require-in-the-middle` | pass |  |
+| `reselect` | pass | pass |
+| `resolve` | pass |  |
+| `resolve-from` | pass |  |
+| `resolve-pkg-maps` | pass | pass |
+| `restore-cursor` |  | pass |
+| `retry` | pass |  |
+| `reusify` | pass |  |
+| `rimraf` | pass |  |
+| `rolldown` |  | fail |
+| `rollup` | timeout | crash |
+| `router` | fail |  |
+| `run-applescript` |  | pass |
+| `run-parallel` | pass |  |
+| `rxjs` | pass | pass |
+| `safe-array-concat` | pass |  |
+| `safe-buffer` | fail |  |
+| `safe-push-apply` | pass |  |
+| `safe-regex-test` | pass |  |
+| `safe-stable-stringify` | pass | pass |
+| `safer-buffer` | fail |  |
+| `sax` | pass |  |
+| `saxes` | pass |  |
+| `scheduler` | pass |  |
+| `schema-utils` | pass |  |
+| `semver` | pass |  |
+| `send` | fail |  |
+| `serve-static` | fail |  |
+| `set-cookie-parser` | pass |  |
+| `set-function-length` | pass |  |
+| `set-function-name` | pass |  |
+| `set-proto` | pass |  |
+| `setimmediate` | pass |  |
+| `setprototypeof` | pass |  |
+| `sharp` | fail | fail |
+| `shebang-command` | pass |  |
+| `shebang-regex` | pass |  |
+| `shell-quote` | pass |  |
+| `side-channel` | pass |  |
+| `side-channel-list` | pass |  |
+| `side-channel-map` | pass |  |
+| `side-channel-weakmap` | pass |  |
+| `siginfo` | pass |  |
+| `signal-exit` | pass | pass |
+| `sisteransi` | pass |  |
+| `slash` | pass |  |
+| `slice-ansi` | pass |  |
+| `socks` | pass |  |
+| `source-map` | pass |  |
+| `source-map-js` | pass |  |
+| `source-map-support` | pass |  |
+| `space-separated-tokens` |  | pass |
+| `split2` | pass |  |
+| `sprintf-js` | pass |  |
+| `statuses` | pass |  |
+| `std-env` |  | fail |
+| `stop-iteration-iterator` | pass |  |
+| `string-width` | pass |  |
+| `string.prototype.matchall` | pass |  |
+| `string.prototype.trim` | pass |  |
+| `string.prototype.trimend` | pass |  |
+| `string.prototype.trimstart` | pass |  |
+| `string_decoder` | pass |  |
+| `strip-ansi` | pass |  |
+| `strip-bom` | pass |  |
+| `strip-final-newline` | pass |  |
+| `strip-indent` | pass |  |
+| `strip-json-comments` | pass |  |
+| `strnum` |  | pass |
+| `styled-jsx` | pass |  |
+| `supports-color` | pass |  |
+| `supports-preserve-symlinks-flag` | pass |  |
+| `symbol-tree` | pass |  |
+| `tailwind-merge` | pass | pass |
+| `tailwindcss` | timeout | pass |
+| `tapable` | pass |  |
+| `tar` | fail | pass |
+| `tar-fs` | pass |  |
+| `tar-stream` | pass |  |
+| `terser` | timeout | pass |
+| `test-exclude` | pass |  |
+| `tiny-invariant` | pass | pass |
+| `tinybench` | pass | pass |
+| `tinyexec` |  | pass |
+| `tinyglobby` | pass | pass |
+| `tinyrainbow` |  | pass |
+| `tldts` | pass | pass |
+| `tldts-core` | pass | pass |
+| `tmp` | fail |  |
+| `to-regex-range` | pass |  |
+| `toidentifier` | pass |  |
+| `tough-cookie` | pass | pass |
+| `tr46` | pass |  |
+| `trough` |  | pass |
+| `ts-api-utils` | timeout | timeout |
+| `tsconfig-paths` | pass |  |
+| `tslib` | pass | pass |
+| `tsx` | timeout | timeout |
+| `type-check` | pass |  |
+| `type-detect` | pass |  |
+| `type-is` | pass |  |
+| `typed-array-buffer` | pass |  |
+| `typed-array-byte-length` | pass |  |
+| `typed-array-byte-offset` | pass |  |
+| `typed-array-length` | pass |  |
+| `typescript` | timeout |  |
+| `typescript-eslint` | timeout |  |
+| `unbox-primitive` | pass |  |
+| `undici` | fail |  |
+| `unicorn-magic` |  | pass |
+| `unified` |  | pass |
+| `unist-util-is` |  | pass |
+| `unist-util-position` |  | pass |
+| `unist-util-stringify-position` |  | pass |
+| `unist-util-visit` |  | pass |
+| `unist-util-visit-parents` |  | pass |
+| `universalify` | pass |  |
+| `unpipe` | pass |  |
+| `unplugin` |  | pass |
+| `unrs-resolver` | fail |  |
+| `update-browserslist-db` | crash |  |
+| `uri-js` | pass |  |
+| `use-callback-ref` | pass | pass |
+| `use-sidecar` | pass | pass |
+| `use-sync-external-store` | pass |  |
+| `util-deprecate` | pass |  |
+| `utils-merge` | pass |  |
+| `uuid` |  | pass |
+| `vary` | pass |  |
+| `vfile` |  | pass |
+| `vfile-message` |  | pass |
+| `vite` |  | timeout |
+| `w3c-xmlserializer` | pass |  |
+| `web-streams-polyfill` | pass | pass |
+| `webidl-conversions` | pass |  |
+| `webpack-sources` | pass |  |
+| `whatwg-encoding` | pass |  |
+| `whatwg-mimetype` | pass |  |
+| `whatwg-url` | pass |  |
+| `which` | pass |  |
+| `which-boxed-primitive` | pass |  |
+| `which-builtin-type` | pass |  |
+| `which-collection` | pass |  |
+| `which-typed-array` | pass |  |
+| `why-is-node-running` | pass |  |
+| `word-wrap` | pass |  |
+| `wrap-ansi` | pass |  |
+| `wrappy` | pass |  |
+| `write-file-atomic` | pass |  |
+| `ws` | fail | fail |
+| `wsl-utils` |  | pass |
+| `xml-name-validator` | pass |  |
+| `xmlbuilder` | pass |  |
+| `xmlchars` | pass |  |
+| `xtend` | pass |  |
+| `y18n` | pass | pass |
+| `yallist` | pass |  |
+| `yaml` | pass |  |
+| `yargs` | pass | pass |
+| `yargs-parser` | pass | pass |
+| `yocto-queue` | pass |  |
+| `zod` | pass | pass |
+| `zod-to-json-schema` | pass | pass |
+| `zustand` | pass | pass |
+| `zwitch` |  | pass |
+
+</details>
+
+### By skip reason
+
+| skip reason | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Node cannot load it | 24 | 0 | 0.0% | 0 | 0 | 24 | 0 | 0 | 0 | 0 | 0 |
+| Node exits with status 1 after it loads the package | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| a platform binary | 14 | 0 | 0.0% | 0 | 0 | 14 | 0 | 0 | 0 | 0 | 0 |
+| only types | 37 | 0 | 0.0% | 0 | 0 | 37 | 0 | 0 | 0 | 0 | 0 |
+
+### Blockers
+
+A blocker is a diagnostic code, a built-in that throws a late rejection, or a harness file that does not compile. The table counts the tests that each one blocks and the tests where it is the only blocker, and it sorts by the second count.
+
+| Blocker | Tests blocked | Only blocker |
+| --- | --- | --- |
+
+## Node native bindings
+
+Buoy implements 354 of the 895 members that src/ of Node sets on its 70 `internalBinding` objects (39.6%). `cargo run --release -p buoy-suites -- node-bindings` reads them from Node's source into `tests/node/bindings.json`. A member counts when the module of its binding names it and passes it to no stub helper, so a module that builds its names, such as the accessors of `report`, counts low. Each function and class that a binding lacks throws `ERR_BUOY_NOT_IMPLEMENTED` with its name.
+
+<details><summary>70 groups</summary>
+
+| Binding | Members | Implemented | Rate | Module | Build condition |
+| --- | --- | --- | --- | --- | --- |
+| `async_context_frame` | 2 | 2 | 100.0% | `runtime/src/buoy_binding_async_context_frame.erl` |  |
+| `async_wrap` | 16 | 16 | 100.0% | `runtime/src/buoy_binding_async_wrap.erl` |  |
+| `blob` | 6 | 0 | 0.0% | stub |  |
+| `block_list` | 4 | 0 | 0.0% | stub |  |
+| `buffer` | 35 | 35 | 100.0% | `runtime/src/buoy_binding_buffer.erl` |  |
+| `builtins` | 9 | 7 | 77.8% | `runtime/src/buoy_binding_builtins.erl` |  |
+| `cares_wrap` | 18 | 0 | 0.0% | stub |  |
+| `cjs_lexer` | 1 | 0 | 0.0% | stub |  |
+| `config` | 12 | 11 | 91.7% | `runtime/src/buoy_binding_config.erl` |  |
+| `constants` | 6 | 0 | 0.0% | `runtime/src/buoy_binding_constants.erl` |  |
+| `contextify` | 10 | 8 | 80.0% | `runtime/src/buoy_binding_contextify.erl` |  |
+| `credentials` | 14 | 14 | 100.0% | `runtime/src/buoy_binding_credentials.erl` |  |
+| `crypto` | 144 | 0 | 0.0% | stub | HAVE_OPENSSL |
+| `diagnostics_channel` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_diagnostics_channel.erl` |  |
+| `encoding_binding` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_encoding_binding.erl` |  |
+| `errors` | 9 | 9 | 100.0% | `runtime/src/buoy_binding_errors.erl` |  |
+| `fs` | 54 | 44 | 81.5% | `runtime/src/buoy_binding_fs.erl` |  |
+| `fs_dir` | 3 | 0 | 0.0% | stub |  |
+| `fs_event_wrap` | 1 | 0 | 0.0% | stub |  |
+| `heap_utils` | 3 | 0 | 0.0% | stub |  |
+| `http2` | 24 | 0 | 0.0% | stub |  |
+| `http_parser` | 4 | 0 | 0.0% | stub |  |
+| `icu` | 6 | 0 | 0.0% | stub | NODE_HAVE_I18N_SUPPORT |
+| `inspector` | 16 | 0 | 0.0% | stub |  |
+| `internal_only_v8` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_internal_only_v8.erl` |  |
+| `js_stream` | 1 | 0 | 0.0% | stub |  |
+| `js_udp_wrap` | 1 | 0 | 0.0% | stub |  |
+| `locks` | 5 | 0 | 0.0% | stub |  |
+| `messaging` | 11 | 6 | 54.5% | `runtime/src/buoy_binding_messaging.erl` |  |
+| `mksnapshot` | 7 | 5 | 71.4% | `runtime/src/buoy_binding_mksnapshot.erl` |  |
+| `module_wrap` | 14 | 12 | 85.7% | `runtime/src/buoy_binding_module_wrap.erl` |  |
+| `modules` | 13 | 0 | 0.0% | stub |  |
+| `options` | 8 | 8 | 100.0% | `runtime/src/buoy_binding_options.erl` |  |
+| `os` | 14 | 14 | 100.0% | `runtime/src/buoy_binding_os.erl` |  |
+| `performance` | 13 | 12 | 92.3% | `runtime/src/buoy_binding_performance.erl` |  |
+| `permission` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_permission.erl` |  |
+| `pipe_wrap` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_pipe_wrap.erl` |  |
+| `process_methods` | 29 | 26 | 89.7% | `runtime/src/buoy_binding_process_methods.erl` |  |
+| `process_wrap` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_process_wrap.erl` |  |
+| `profiler` | 5 | 0 | 0.0% | stub | HAVE_INSPECTOR |
+| `quic` | 135 | 0 | 0.0% | stub | HAVE_OPENSSL && OPENSSL_NO_QUIC != 1 |
+| `report` | 20 | 0 | 0.0% | `runtime/src/buoy_binding_report.erl` |  |
+| `sea` | 4 | 0 | 0.0% | stub |  |
+| `serdes` | 2 | 2 | 100.0% | `runtime/src/buoy_binding_serdes.erl` |  |
+| `signal_wrap` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_signal_wrap.erl` |  |
+| `spawn_sync` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_spawn_sync.erl` |  |
+| `sqlite` | 5 | 0 | 0.0% | stub | HAVE_SQLITE |
+| `stream_pipe` | 1 | 0 | 0.0% | stub |  |
+| `stream_wrap` | 7 | 7 | 100.0% | `runtime/src/buoy_binding_stream_wrap.erl` |  |
+| `string_decoder` | 10 | 10 | 100.0% | `runtime/src/buoy_binding_string_decoder.erl` |  |
+| `symbols` | 23 | 0 | 0.0% | `runtime/src/buoy_binding_symbols.erl` |  |
+| `task_queue` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_task_queue.erl` |  |
+| `tcp_wrap` | 3 | 0 | 0.0% | stub |  |
+| `timers` | 7 | 7 | 100.0% | `runtime/src/buoy_binding_timers.erl` |  |
+| `tls_wrap` | 3 | 0 | 0.0% | stub | HAVE_OPENSSL |
+| `trace_events` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_trace_events.erl` |  |
+| `tty_wrap` | 2 | 1 | 50.0% | `runtime/src/buoy_binding_tty_wrap.erl` |  |
+| `types` | 27 | 27 | 100.0% | `runtime/src/buoy_binding_types.erl` |  |
+| `udp_wrap` | 3 | 0 | 0.0% | stub |  |
+| `url` | 9 | 9 | 100.0% | `runtime/src/buoy_binding_url.erl` |  |
+| `url_pattern` | 1 | 0 | 0.0% | stub |  |
+| `util` | 18 | 18 | 100.0% | `runtime/src/buoy_binding_util.erl` |  |
+| `uv` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_uv.erl` |  |
+| `v8` | 40 | 0 | 0.0% | stub |  |
+| `wasi` | 1 | 0 | 0.0% | stub |  |
+| `wasm_web_api` | 1 | 0 | 0.0% | stub |  |
+| `watchdog` | 1 | 0 | 0.0% | stub |  |
+| `webstorage` | 2 | 0 | 0.0% | stub | HAVE_SQLITE |
+| `worker` | 13 | 12 | 92.3% | `runtime/src/buoy_binding_worker.erl` |  |
+| `zlib` | 7 | 0 | 0.0% | stub |  |
+
+</details>
 
 ## Buoy corpora
 

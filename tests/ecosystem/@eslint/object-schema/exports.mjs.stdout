@@ -1,0 +1,4 @@
+namespace: object Module
+  MergeStrategy: function/0
+  ObjectSchema: class/1 {hasKey, merge, validate}
+  ValidationStrategy: function/0

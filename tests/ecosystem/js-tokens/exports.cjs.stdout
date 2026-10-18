@@ -1,0 +1,3 @@
+module.exports: object
+  default: object RegExp
+  matchToToken: function/1

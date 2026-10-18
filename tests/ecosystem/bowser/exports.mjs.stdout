@@ -1,0 +1,8 @@
+namespace: object Module
+  bowser: undefined
+  default: function/0
+    getParser: function/3
+    parse: function/2
+  module.exports: function/0
+    getParser: function/3
+    parse: function/2

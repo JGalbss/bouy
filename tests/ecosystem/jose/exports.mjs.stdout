@@ -1,0 +1,56 @@
+namespace: object Module
+  CompactEncrypt: class/1 {encrypt, setContentEncryptionKey, setInitializationVector, setKeyManagementParameters, setProtectedHeader}
+  CompactSign: class/1 {setProtectedHeader, sign}
+  EmbeddedJWK: function/2
+  EncryptJWT: class/0 {encrypt, replicateAudienceAsHeader, replicateIssuerAsHeader, replicateSubjectAsHeader, setContentEncryptionKey, setInitializationVector, setKeyManagementParameters, setProtectedHeader}
+  FlattenedEncrypt: class/1 {encrypt, setAdditionalAuthenticatedData, setContentEncryptionKey, setInitializationVector, setKeyManagementParameters, setProtectedHeader, setSharedUnprotectedHeader, setUnprotectedHeader}
+  FlattenedSign: class/1 {setProtectedHeader, setUnprotectedHeader, sign}
+  GeneralEncrypt: class/1 {addRecipient, encrypt, setAdditionalAuthenticatedData, setProtectedHeader, setSharedUnprotectedHeader}
+  GeneralSign: class/1 {addSignature, sign}
+  SignJWT: class/0 {setProtectedHeader, sign}
+  UnsecuredJWT: class/0 {encode}
+  base64url: object Module
+    decode: function/1
+    encode: function/1
+  calculateJwkThumbprint: function/2
+  calculateJwkThumbprintUri: function/2
+  compactDecrypt: function/3
+  compactVerify: function/3
+  createLocalJWKSet: function/1
+  createRemoteJWKSet: function/2
+  cryptoRuntime: string
+  customFetch: symbol
+  decodeJwt: function/1
+  decodeProtectedHeader: function/1
+  errors: object Module
+    JOSEAlgNotAllowed: function/0
+    JOSEError: function/2
+    JOSENotSupported: function/0
+    JWEDecryptionFailed: function/0
+    JWEInvalid: function/0
+    JWKInvalid: function/0
+    JWKSInvalid: function/0
+    JWKSMultipleMatchingKeys: function/0
+    JWKSNoMatchingKey: function/0
+    JWKSTimeout: function/0
+    JWSInvalid: function/0
+    JWSSignatureVerificationFailed: function/0
+    JWTClaimValidationFailed: function/2
+    JWTExpired: function/2
+    JWTInvalid: function/0
+  exportJWK: function/1
+  exportPKCS8: function/1
+  exportSPKI: function/1
+  flattenedDecrypt: function/3
+  flattenedVerify: function/3
+  generalDecrypt: function/3
+  generalVerify: function/3
+  generateKeyPair: function/2
+  generateSecret: function/2
+  importJWK: function/3
+  importPKCS8: function/3
+  importSPKI: function/3
+  importX509: function/3
+  jwksCache: symbol
+  jwtDecrypt: function/3
+  jwtVerify: function/3

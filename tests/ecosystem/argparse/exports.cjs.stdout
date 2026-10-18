@@ -1,0 +1,19 @@
+module.exports: object
+  Action: class/0 {_getKwargs, _get_kwargs, call, formatUsage, format_usage}
+  ArgumentDefaultsHelpFormatter: class/0 {_getHelpString, _get_help_string}
+  ArgumentError: class/0 {str}
+  ArgumentParser: class/0 {_addAction, _add_action, _checkValue, _check_value, _getFormatter, _getKwargs, _getNargsPattern, _getOptionTuples, _getOptionalActions, _getPositionalActions, _getValue, _getValues, _get_formatter, _get_kwargs, _get_nargs_pattern, _get_option_tuples, _get_optional_actions, _get_positional_actions, _get_value, _get_values, _matchArgument, _matchArgumentsPartial, _match_argument, _match_arguments_partial, _parseKnownArgs, _parseOptional, _parse_known_args, _parse_optional, _printMessage, _print_message, _readArgsFromFiles, _read_args_from_files, addSubparsers, add_subparsers, convertArgLineToArgs, convert_arg_line_to_args, error, exit, formatHelp, formatUsage, format_help, format_usage, parseArgs, parseIntermixedArgs, parseKnownArgs, parseKnownIntermixedArgs, parse_args, parse_intermixed_args, parse_known_args, parse_known_intermixed_args, printHelp, printUsage, print_help, print_usage}
+  ArgumentTypeError: function/0
+  BooleanOptionalAction: class/0 {call, formatUsage, format_usage}
+  FileType: class/0 {call, toString}
+  HelpFormatter: class/0 {_Section, _addItem, _add_item, _dedent, _expandHelp, _expand_help, _fillText, _fill_text, _formatAction, _formatActionInvocation, _formatActionsUsage, _formatArgs, _formatText, _formatUsage, _format_action, _format_action_invocation, _format_actions_usage, _format_args, _format_text, _format_usage, _getDefaultMetavarForOptional, _getDefaultMetavarForPositional, _getHelpString, _get_default_metavar_for_optional, _get_default_metavar_for_positional, _get_help_string, _indent, _iterIndentedSubactions, _iter_indented_subactions, _joinParts, _join_parts, _metavarFormatter, _metavar_formatter, _splitLines, _split_lines, addArgument, addArguments, addText, addUsage, add_argument, add_arguments, add_text, add_usage, endSection, end_section, formatHelp, format_help, startSection, start_section}
+  MetavarTypeHelpFormatter: class/0 {_getDefaultMetavarForOptional, _getDefaultMetavarForPositional, _get_default_metavar_for_optional, _get_default_metavar_for_positional}
+  Namespace: function/0
+  ONE_OR_MORE: string
+  OPTIONAL: string
+  PARSER: string
+  REMAINDER: string
+  RawDescriptionHelpFormatter: class/0 {_fillText, _fill_text}
+  RawTextHelpFormatter: class/0 {_splitLines, _split_lines}
+  SUPPRESS: string
+  ZERO_OR_MORE: string

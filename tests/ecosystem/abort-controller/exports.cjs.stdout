@@ -1,0 +1,10 @@
+module.exports: class/0 {abort, signal}
+  AbortController: class/0 {abort, signal}
+    AbortController: class/0 {abort, signal}
+    AbortSignal: class/0 {aborted, onabort}
+    default: class/0 {abort, signal}
+  AbortSignal: class/0 {aborted, onabort}
+  default: class/0 {abort, signal}
+    AbortController: class/0 {abort, signal}
+    AbortSignal: class/0 {aborted, onabort}
+    default: class/0 {abort, signal}

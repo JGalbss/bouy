@@ -185,7 +185,15 @@ function setupChildProcessIpcChannel() {
   }
 }
 
+// The tracing of async_hooks when --trace-event-categories enables it.
+function setupTraceCategoryState() {
+  const { isTraceCategoryEnabled } = internalBinding('trace_events');
+  const { toggleTraceCategoryState } = require('internal/process/per_thread');
+  toggleTraceCategoryState(isTraceCategoryEnabled('node.async_hooks'));
+}
+
 patchProcessObject();
+setupTraceCategoryState();
 loadEnvFiles();
 setupSQLite();
 setupWebStorage();

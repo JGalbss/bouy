@@ -1,0 +1,2 @@
+module.exports: object
+  getProxyForUrl: function/1

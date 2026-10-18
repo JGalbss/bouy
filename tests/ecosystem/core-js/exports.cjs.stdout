@@ -1,0 +1,55 @@
+module.exports: object global
+  atob: function/1
+  btoa: function/1
+  clearImmediate: function/1
+  clearInterval: function/1
+  clearTimeout: function/1
+  crypto: object Crypto
+  fetch: function/1
+  global: object global
+    atob: function/1
+    btoa: function/1
+    clearImmediate: function/1
+    clearInterval: function/1
+    clearTimeout: function/1
+    crypto: object Crypto
+    fetch: function/1
+    global: object global
+    localStorage: object
+    navigator: object
+    performance: object Performance
+    queueMicrotask: function/1
+    self: object global
+    sessionStorage: object
+    setImmediate: function/1
+    setInterval: function/2
+    setTimeout: function/2
+    structuredClone: function/1
+  localStorage: object
+  navigator: object
+  performance: object Performance
+  queueMicrotask: function/1
+  self: object global
+    atob: function/1
+    btoa: function/1
+    clearImmediate: function/1
+    clearInterval: function/1
+    clearTimeout: function/1
+    crypto: object Crypto
+    fetch: function/1
+    global: object global
+    localStorage: object
+    navigator: object
+    performance: object Performance
+    queueMicrotask: function/1
+    self: object global
+    sessionStorage: object
+    setImmediate: function/1
+    setInterval: function/2
+    setTimeout: function/2
+    structuredClone: function/1
+  sessionStorage: object
+  setImmediate: function/1
+  setInterval: function/2
+  setTimeout: function/2
+  structuredClone: function/1

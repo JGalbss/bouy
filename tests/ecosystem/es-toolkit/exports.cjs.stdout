@@ -1,0 +1,102 @@
+module.exports: object Module
+  AbortError: function/0
+  Mutex: class/0 {acquire, isLocked, release}
+  Semaphore: class/1 {acquire, release}
+  TimeoutError: function/0
+  after: function/2
+  allKeyed: function/1
+  ary: function/2
+  assert: function/2
+  asyncNoop: function/0
+  at: function/2
+  attempt: function/1
+  attemptAsync: function/1
+  before: function/2
+  camelCase: function/1
+  capitalize: function/1
+  cartesianProduct: function/0
+  chunk: function/2
+  chunkBy: function/2
+  clamp: function/3
+  clone: function/1
+  cloneDeep: function/1
+  cloneDeepWith: function/2
+  combinations: function/2
+  compact: function/1
+  constantCase: function/1
+  countBy: function/2
+  curry: function/1
+  curryRight: function/1
+  debounce: function/2
+  deburr: function/1
+  dedent: function/1
+  deepFreeze: function/1
+  defer: function/1
+  deferAsync: function/1
+  delay: function/1
+  difference: function/2
+  differenceBy: function/3
+  differenceWith: function/3
+  drop: function/2
+  dropRight: function/2
+  dropRightWhile: function/2
+  dropWhile: function/2
+  escape: function/1
+  escapeRegExp: function/1
+  fill: function/2
+  filterAsync: function/3
+  findKey: function/2
+  flatMap: function/2
+  flatMapAsync: function/3
+  flatMapDeep: function/2
+  flatten: function/1
+  flattenDeep: function/1
+  flattenObject: function/1
+  flow: function/0
+  flowRight: function/0
+  forEachAsync: function/3
+  forEachRight: function/2
+  groupBy: function/2
+  head: function/1
+  identity: function/1
+  inRange: function/3
+  initial: function/1
+  intersection: function/2
+  intersectionBy: function/3
+  intersectionWith: function/3
+  invariant: function/2
+  invert: function/1
+  isArrayBuffer: function/1 (false, false, false, false, false, false, false, false, false)
+  isBlob: function/1 (false, false, false, false, false, false, false, false, false)
+  isBoolean: function/1 (false, false, false, false, false, false, false, false, true)
+  isBrowser: function/0 (false, false, false, false, false, false, false, false, false)
+  isBuffer: function/1 (false, false, false, false, false, false, false, false, false)
+  isDate: function/1 (false, false, false, false, false, false, false, false, false)
+  isEmptyObject: function/1 (false, false, false, false, false, false, false, true, false)
+  isEqual: function/2 (true, false, false, false, false, false, false, false, false)
+  isEqualWith: function/3
+  isError: function/1 (false, false, false, false, false, false, false, false, false)
+  isFile: function/1 (false, false, false, false, false, false, false, false, false)
+  isFunction: function/1 (false, false, false, false, false, false, false, false, false)
+  isIterable: function/1 (false, false, false, false, true, true, true, false, false)
+  isJSON: function/1 (false, false, false, false, false, false, false, false, false)
+  isJSONArray: function/1 (false, false, false, false, false, false, true, false, false)
+  isJSONObject: function/1 (false, false, false, false, false, false, false, true, false)
+  isJSONValue: function/1 (false, true, true, true, true, true, true, true, true)
+  isLength: function/1 (false, false, true, false, false, false, false, false, false)
+  isMap: function/1 (false, false, false, false, false, false, false, false, false)
+  isNil: function/1 (true, true, false, false, false, false, false, false, false)
+  isNode: function/0 (true, true, true, true, true, true, true, true, true)
+  isNotNil: function/1 (false, false, true, true, true, true, true, true, true)
+  isNull: function/1 (false, true, false, false, false, false, false, false, false)
+  isNumber: function/1 (false, false, true, true, false, false, false, false, false)
+  isPlainObject: function/1 (false, false, false, false, false, false, false, true, false)
+  isPrimitive: function/1 (true, true, true, true, true, true, false, false, true)
+  isPromise: function/1 (false, false, false, false, false, false, false, false, false)
+  isRegExp: function/1 (false, false, false, false, false, false, false, false, false)
+  isSet: function/1 (false, false, false, false, false, false, false, false, false)
+  isString: function/1 (false, false, false, false, true, true, false, false, false)
+  isSubset: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isSubsetWith: function/3
+  isSymbol: function/1 (false, false, false, false, false, false, false, false, false)
+  ... 99 more keys

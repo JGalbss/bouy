@@ -86,3 +86,48 @@ fn the_result_file_holds_the_facts_of_a_run() {
     }
     let _ = fs::remove_dir_all(&project);
 }
+
+/// A child process that outlives its parent writes no facts into the result file of the
+/// parent's run.
+#[test]
+fn the_result_file_holds_the_facts_of_its_own_vm() {
+    if !common::vm_available() {
+        return;
+    }
+    let project = Path::new(env!("CARGO_TARGET_TMPDIR")).join("result-file-child");
+    fs::create_dir_all(&project).expect("the target directory is writable");
+    let program = project.join("parent.cjs");
+    let result_file = project.join("parent.json");
+    fs::write(
+        &program,
+        "const { spawn } = require('child_process');\n\
+         const child = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(3), 200)'],\n\
+           { stdio: 'ignore', detached: true });\n\
+         child.unref();\n\
+         console.log(child.pid);\n",
+    )
+    .expect("the project is writable");
+    let _ = fs::remove_file(&result_file);
+    let mut command = common::buoy();
+    command.env("BUOY_RESULT_FILE", &result_file).arg(&program);
+    let run = common::run(&mut command, common::deadline());
+    let child = String::from_utf8_lossy(&run.output.stdout)
+        .trim()
+        .to_owned();
+    let started = std::time::Instant::now();
+    while Command::new("kill")
+        .args(["-0", &child])
+        .status()
+        .is_ok_and(|status| status.success())
+        && started.elapsed() < common::deadline()
+    {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let result = buoy_suites::RunResult::read(&result_file)
+        .unwrap_or_else(|| panic!("the parent wrote no result: {run:?}"));
+    let _ = fs::remove_dir_all(&project);
+    assert_eq!(
+        result.status, 0,
+        "the facts of the child replaced the parent's"
+    );
+}

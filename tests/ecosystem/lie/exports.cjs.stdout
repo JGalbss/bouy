@@ -1,0 +1,5 @@
+module.exports: class/1 {catch, finally, then}
+  all: function/1
+  race: function/1
+  reject: function/1
+  resolve: function/1

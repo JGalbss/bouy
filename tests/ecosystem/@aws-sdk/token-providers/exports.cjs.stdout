@@ -1,0 +1,5 @@
+module.exports: object
+  fromEnvSigningName: function/0
+  fromSso: function/0
+  fromStatic: function/1
+  nodeProvider: function/0

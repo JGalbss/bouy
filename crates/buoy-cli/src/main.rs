@@ -389,7 +389,8 @@ fn start_program(
     // `Bd`: Ctrl-C ends the VM, as it ends Node, instead of opening the BREAK menu. A
     // failure to boot leaves no erl_crash.dump in the working directory. `-mode minimal`
     // starts the kernel without distribution and the resolver, which buoy_ai_openai starts
-    // on its first request, and `no_dot_erlang` skips the `.erlang` files of the user.
+    // on its first request, and the boot script of the runtime, `no_dot_erlang` with
+    // SIGTERM at its default action, skips the `.erlang` files of the user.
     let mut vm = runtime.vm(&["Bd"]);
     vm.args([
         "-noshell",
@@ -397,7 +398,7 @@ fn start_program(
         "-mode",
         "minimal",
         "-boot",
-        "no_dot_erlang",
+        &runtime.boot,
         "-pa",
     ])
     .arg(&runtime.ebin)

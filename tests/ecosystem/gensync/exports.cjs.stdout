@@ -1,0 +1,3 @@
+module.exports: function/1
+  all: function/1
+  race: function/1

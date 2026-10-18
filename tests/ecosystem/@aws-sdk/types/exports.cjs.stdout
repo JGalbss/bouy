@@ -1,0 +1,14 @@
+module.exports: object
+  EndpointURLScheme: object
+    HTTP: string
+    HTTPS: string
+  HostAddressType: object
+    A: string
+    AAAA: string
+  HttpAuthLocation: object
+    HEADER: string
+    QUERY: string
+  RequestHandlerProtocol: object
+    HTTP_0_9: string
+    HTTP_1_0: string
+    TDS_8_0: string

@@ -23,7 +23,7 @@ build.rs compiles each id with the reference compiler into the runtime module `b
 
 ## 2. The bootstrap
 
-The first use of a built-in module, or of `process`, `Buffer`, `global`, `setImmediate`, or `clearImmediate`, runs the bootstrap in the realm. It runs the steps of Node's `node.cc`:
+The first use of a built-in module, or of `process`, `Buffer`, `global`, `setImmediate`, or `clearImmediate`, or the first call of `setTimeout` or `setInterval`, runs the bootstrap in the realm. It runs the steps of Node's `node.cc`:
 
 1. `internal/per_context/primordials`, `domexception`, and `messageport`, with the private and per-isolate symbols of `src/env_properties.h`.
 2. `internal/bootstrap/realm`, which defines `BuiltinModule` and hands `internalBinding` and `requireBuiltin` to the `builtins` binding.
@@ -36,6 +36,8 @@ A program that never uses Node pays nothing.
 
 `internalBinding(name)` returns `buoy_binding_<name>:binding()`, built once per realm. A name without such a module takes its entry of `buoy_node_stubs`: each function throws `ERR_BUOY_NOT_IMPLEMENTED` with the binding and the member, each class throws when constructed, each `set*` function does nothing, and each value is Node's. So Node's lib loads, and a program fails only where it calls missing native code. Read `src/<file>.cc` of Node for the semantics of a member.
 
+`tests/node/bindings.json` lists every binding and every member that `src/` of Node sets on it, and `cargo run --release -p buoy-suites -- node-bindings` writes it from Node's source at the tag of `.node-version`, with `runtime/src/buoy_node_manifest.erl`. `binding/1` gives each binding a stub for each function and class of the manifest that it lacks, so no member is silently missing. The "Node native bindings" section of `docs/COMPAT.md` counts the members of each binding that its module implements, which is the work list of the bindings.
+
 The helpers in `buoy_node`:
 
 - `fn(Name, Length, fun(This, Args) -> ... end)`, `constructor/3`, `object/1`, `object/2`, and `typed_array(Kind, Length)`.
@@ -43,7 +45,9 @@ The helpers in `buoy_node`:
 - `throw_code(Class, Code, Message)` for an error with Node's `code`, `arg/2`, `string/1`, `symbol/1`, and `from_json/1`.
 - `buoy_binding_fs:uv_error/3,4` throws Node's `uvException`, and `buoy_binding_uv:name/1` gives the name of an errno.
 - `buoy_node_encoding` converts strings and bytes, and reads and writes the bytes of a typed array.
-- `buoy_node_loop:defer(Fun)` runs a callback as a later macrotask, as libuv calls back from its thread pool, and `ref_handle/0` and `unref_handle/0` keep the loop alive for an open handle.
+- `buoy_node_loop:defer(Fun)` runs a callback as a later macrotask, as libuv calls back from its thread pool, with the async context frame of the call that deferred it, and `ref_handle/0` and `unref_handle/0` keep the loop alive for an open handle.
+- `buoy_binding_async_wrap:wrap(Resource, Provider)` makes a handle or request an AsyncWrap: an async id, the trigger id, the async context frame, and the init hooks. `make_callback(Resource, Callback, Args)` calls back as `MakeCallback` does, between the before and after hooks, and `emit_destroy(Resource)` queues the destroy hooks when the resource ends.
+- `buoy_trace` is the trace agent of the VM. `event/5`, `scope/3`, `complete/3`, and `instant/3` record an event of a category group, such as `node,node.fs,node.fs.sync`, while `--trace-event-categories` or an enabled `CategorySet` turns one of its categories on. The VM writes the events to `node_trace.${rotation}.log` before it halts.
 - A process of a binding runs a callback in the realm with `buoy_node_stream:call(Realm, Fun)`, the message `{'$buoy_node_call', Fun}`, which the loop runs as a job. A JavaScript value that only such a callback names must stay a root of the heap, in the process dictionary under a key that is no integer, until the callback has run.
 - `buoy_node_stream` gives a stream handle the StreamBase methods of `src/stream_base.cc` (`readStart`, `writeBuffer`, `shutdown`, `close`, and the others) over a channel process; `attach/2` binds a handle and `deliver/2` hands it data or `eof`. The pipes of `process_wrap` use it.
 - `buoy_node_url` is the WHATWG URL parser of ada, and `buoy_binding_spawn_sync` and `buoy_binding_process_wrap` start child processes through `/bin/sh`, which wires their stdio.
@@ -75,13 +79,14 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 ## 6. Limits
 
 - Buoy has no OpenSSL, Intl, or inspector yet: `process.versions` has no `openssl`, and `process.config` sets no `v8_enable_i18n_support`, so the tests that need them skip.
-- The constants of the `constants`, `uv`, and `os` bindings are darwin's, as the oracle recorded them.
+- The `constants` and `uv` bindings hold the tables of darwin and of Linux, as the oracle recorded them, and another OS gets darwin's.
 - Stack traces of errors are `at <buoy>`: the engine has no JavaScript call stack yet.
-- `async_context_frame` keeps one value per realm, which promise jobs do not carry yet.
 - The engine has no call stack limit, so deep recursion grows the process until `BUOY_MAX_MEMORY` stops the VM, where V8 throws `RangeError: Maximum call stack size exceeded`. `assert.deepStrictEqual` of a cyclic value relies on that error to switch to its cycle check.
-- Child processes start through `/bin/bash`, which connects their piped stdin, stderr, and extra pipes as loopback sockets (`/dev/tcp`). Handles cannot pass over an IPC channel yet, and `process.execve` cannot replace the VM.
+- Child processes start through `/bin/bash`, which connects their piped stdin, stdout, stderr, and extra pipes as loopback sockets (`/dev/tcp`). Handles cannot pass over an IPC channel yet, and `process.execve` cannot replace the VM.
 - `process.title` keeps the value that a program sets, but the OS process keeps its name. Signals that OTP cannot catch, such as SIGINT, reach `process.on` only when the program sends them to itself.
-- The `tcp_wrap`, `udp_wrap`, `tty_wrap` handle, `cares_wrap`, `url_pattern`, `worker`, and `webstorage` bindings are stubs: net, dgram, an interactive terminal, dns, URLPattern, worker_threads, and Web Storage, which needs SQLite, do not work yet.
+- The `tcp_wrap`, `udp_wrap`, `tty_wrap` handle, `cares_wrap`, `url_pattern`, and `worker` bindings are stubs: net, dgram, an interactive terminal, dns, URLPattern, and worker_threads do not work yet.
+- `sqlite` and `webstorage` run SQLite 3.53.2 on a thread for each connection (`crates/buoy-native/src/sqlite.rs`); a JavaScript call of SQLite, such as a user-defined function, reaches the realm as a message while the method waits.
 - `zlib` compresses with zlib-rs, brotli-rs, and libzstd 1.5.7. A deflate stream can differ in a few bytes from the one of Node's Chromium zlib, and stays valid. A brotli encoder with a dictionary uses the dictionary only within its window.
 - WebAssembly keeps one store for each process, so the memory of an instance lives until the process ends. A `WebAssembly.Exception` does not cross into WebAssembly yet, and an `anyref`, `exnref`, or `v128` value cannot cross into JavaScript.
+- The `fs` binding runs on prim_file, which keeps whole-second times and has no statfs and no call that changes a symlink itself: stats and `utimes` carry whole seconds, and `statfs`, `lchmod`, `lchown`, and `lutimes` run `df`, `chmod -h`, `chown -h`, and `touch -h`. `fs.watch` polls its path every 100 ms, and `fs.watchFile` polls at its interval, so a rewrite of a file with the same size within one second goes unseen. A child process that takes a descriptor of `fs.open` as its stdio opens the path again, so it shares no file offset with the parent.
 - `node:vm` contexts copy the sandbox's properties into the context's realm before a run and back after it, where V8 intercepts each access.

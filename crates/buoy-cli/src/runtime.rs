@@ -17,6 +17,8 @@ pub struct Runtime {
     pub ebin: PathBuf,
     /// The OTP release of `erl`, which the cache records when it builds the runtime.
     release: Option<Release>,
+    /// The boot script that the VM starts with (`write_boot`), without its `.boot` suffix.
+    pub boot: String,
 }
 
 /// The OTP release that `erl` starts: its root directory and its erts version, and the
@@ -106,6 +108,7 @@ pub fn locate() -> Result<Runtime, String> {
         return Ok(Runtime {
             ebin: directory,
             release: None,
+            boot: "no_dot_erlang".to_owned(),
         });
     }
     let cache = cache_root().ok_or("cannot find a cache directory: set HOME or XDG_CACHE_HOME")?;
@@ -125,8 +128,20 @@ pub fn locate() -> Result<Runtime, String> {
                 erl: real,
             })
         });
-    Ok(Runtime { ebin, release })
+    // A runtime that an older CLI built has no boot script of its own.
+    let boot = Some(directory.join(BOOT))
+        .filter(|boot| boot.with_extension("boot").is_file())
+        .and_then(|boot| boot.to_str().map(str::to_owned))
+        .unwrap_or_else(|| "no_dot_erlang".to_owned());
+    Ok(Runtime {
+        ebin,
+        release,
+        boot,
+    })
 }
+
+/// The boot script in a runtime directory, without its `.boot` suffix.
+const BOOT: &str = "buoy";
 
 /// The file in a runtime directory that holds the root directory of the OTP release and
 /// its erts version, one on each line.
@@ -284,7 +299,37 @@ fn compile(staging: &Path, objects: &Path) -> Result<(), String> {
         }
     }
     record_release(staging);
+    write_boot(&staging.join(BOOT).with_extension("boot"));
     Ok(())
+}
+
+/// Writes the `no_dot_erlang` boot script of the OTP release to `path`, with SIGTERM set to
+/// its default action once the kernel's modules load, before the kernel starts. ERTS hands
+/// SIGTERM to `erl_signal_server` from its start: it drops the signal while that server
+/// does not exist, and the kernel's handler calls `init:stop()`, which waits until the code
+/// of `-eval` returns. So a SIGTERM before `buoy_main` reset the action went unheard until
+/// the program ended. A native runtime such as Bun keeps the default action from `exec`
+/// on. A runtime without the file boots with `no_dot_erlang`.
+fn write_boot(path: &Path) {
+    let script = r#"{ok, Bin} = file:read_file(filename:join([code:root_dir(), "bin", "no_dot_erlang.boot"])),
+        {script, Id, Steps} = binary_to_term(Bin),
+        Loaded = {kernel_load_completed},
+        {Before, [Loaded | After]} = lists:splitwith(fun(Step) -> Step =/= Loaded end, Steps),
+        Signal = {apply, {os, set_signal, [sigterm, default]}},
+        ok = file:write_file(os:getenv("BUOY_BOOT"), term_to_binary({script, Id, Before ++ [Loaded, Signal | After]})),
+        halt()."#;
+    let _ = Command::new(erl())
+        .args([
+            "-noshell",
+            "-noinput",
+            "-boot",
+            "no_dot_erlang",
+            "-eval",
+            script,
+        ])
+        .env("BUOY_BOOT", path)
+        .env("ERL_CRASH_DUMP_SECONDS", "0")
+        .output();
 }
 
 fn has_extension(name: &str, extension: &str) -> bool {
@@ -359,6 +404,45 @@ fn installed_otp() -> OsString {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SIGTERM ends a VM that boots with the script of `write_boot` at once, even while the
+    /// code of `-eval` runs, where the kernel's handler waits for that code to return.
+    #[test]
+    fn sigterm_ends_a_vm_that_boots_with_the_runtime_script() {
+        let directory = env::temp_dir().join(format!("buoy-boot-{}", process::id()));
+        fs::create_dir_all(&directory).expect("the directory");
+        let boot = directory.join(BOOT);
+        write_boot(&boot.with_extension("boot"));
+        let mut vm = Command::new(erl())
+            .arg("-boot")
+            .arg(&boot)
+            .args([
+                "-noshell",
+                "-eval",
+                "io:format(\"ready~n\"), timer:sleep(10000), halt(1).",
+            ])
+            .stdout(process::Stdio::piped())
+            .spawn()
+            .expect("erl starts");
+        let mut ready = [0; 6];
+        std::io::Read::read_exact(vm.stdout.as_mut().expect("piped"), &mut ready)
+            .expect("the VM runs the code of -eval");
+        let started = std::time::Instant::now();
+        let _ = Command::new("kill")
+            .args(["-TERM", &vm.id().to_string()])
+            .status();
+        let status = vm.wait().expect("the VM exits");
+        let _ = fs::remove_dir_all(&directory);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "the VM ran {:?} after SIGTERM",
+            started.elapsed()
+        );
+        assert_eq!(
+            std::os::unix::process::ExitStatusExt::signal(&status),
+            Some(15)
+        );
+    }
 
     #[test]
     fn the_cache_ignores_an_empty_or_relative_xdg_cache_home() {

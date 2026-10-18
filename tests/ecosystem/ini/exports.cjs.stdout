@@ -1,0 +1,7 @@
+module.exports: object
+  decode: function/1
+  encode: function/2
+  parse: function/1
+  safe: function/1
+  stringify: function/2
+  unsafe: function/2

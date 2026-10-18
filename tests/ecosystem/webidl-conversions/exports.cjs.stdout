@@ -1,0 +1,20 @@
+module.exports: object
+  ByteString: function/2
+  DOMString: function/2
+  Date: function/2
+  RegExp: function/2
+  USVString: function/1
+  boolean: function/1
+  byte: function/2
+  double: function/1
+  float: function/1
+  long: function/2
+  long long: function/2
+  octet: function/2
+  short: function/2
+  unrestricted double: function/1
+  unrestricted float: function/1
+  unsigned long: function/2
+  unsigned long long: function/2
+  unsigned short: function/2
+  void: function/0

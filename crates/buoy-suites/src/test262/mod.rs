@@ -12,7 +12,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -257,73 +256,21 @@ fn is_selected(test: &Test, options: &Options, expected: Option<&Entry>) -> bool
     }
 }
 
-/// The test262 checkout at `commit`, in `$XDG_CACHE_HOME/buoy/test262-<commit>`. The first
-/// use fetches the commit by SHA into a partial directory and renames it, so the cache never
-/// holds a partial checkout.
+/// The test262 checkout at `commit`, in `$XDG_CACHE_HOME/buoy/test262-<commit>`.
 fn fetch(commit: &str) -> Result<PathBuf, String> {
-    let cache = env::var_os("XDG_CACHE_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
-        .ok_or("set HOME or XDG_CACHE_HOME for the test262 cache")?
-        .join("buoy");
-    let checkout = cache.join(format!("test262-{commit}"));
-    if checkout.join("test").is_dir() {
+    let (checkout, head) = crate::cached_checkout(
+        &format!("test262-{commit}"),
+        "https://github.com/tc39/test262.git",
+        commit,
+        &[],
+    )?;
+    if head == commit {
         return Ok(checkout);
     }
-    let partial = cache.join(format!("test262-{commit}.partial-{}", process::id()));
-    fs::create_dir_all(&partial).map_err(|error| format!("{}: {error}", partial.display()))?;
-    eprintln!("buoy-suites: fetching tc39/test262 at {commit}");
-    let git = |args: &[&str]| -> Result<String, String> {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(&partial)
-            .args(args)
-            .output()
-            .map_err(|error| format!("cannot run git: {error}"))?;
-        if output.status.success() {
-            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned());
-        }
-        Err(format!(
-            "git {}: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ))
-    };
-    let fetched = git(&["init", "-q"])
-        .and_then(|_| {
-            git(&[
-                "remote",
-                "add",
-                "origin",
-                "https://github.com/tc39/test262.git",
-            ])
-        })
-        .and_then(|_| git(&["fetch", "-q", "--depth", "1", "origin", commit]))
-        .and_then(|_| {
-            git(&[
-                "-c",
-                "advice.detachedHead=false",
-                "checkout",
-                "-q",
-                "FETCH_HEAD",
-            ])
-        })
-        .and_then(|_| git(&["rev-parse", "HEAD"]))
-        .and_then(|head| {
-            if head == commit {
-                return Ok(());
-            }
-            Err(format!("the fetch gave {head}, not {commit}"))
-        })
-        .and_then(|()| {
-            fs::rename(&partial, &checkout)
-                .map_err(|error| format!("{}: {error}", checkout.display()))
-        });
-    if fetched.is_err() {
-        let _ = fs::remove_dir_all(&partial);
-    }
-    fetched.map(|()| checkout)
+    Err(format!(
+        "{}: the checkout is at {head}, not {commit}",
+        checkout.display()
+    ))
 }
 
 #[cfg(test)]

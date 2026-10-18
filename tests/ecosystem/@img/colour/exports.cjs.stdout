@@ -1,0 +1,15 @@
+module.exports: class/2 {a, alpha, ansi16, ansi256, apple, array, b, black, blacken, blue, chroma, cmyk, contrast, cyan, darken, desaturate, fade, gray, grayscale, green, hcg, hex, hexa, hsl, hsv, hue, hwb, isDark, isLight, keyword, l, lab, lch, level, lighten, lightness, luminosity, magenta, mix, negate, object, oklab, oklch, opaquer, percentString, red, rgb, rgbNumber, rotate, round, saturate, saturationl, saturationv, string, toJSON, toString, unitArray, unitObject, value, wblack, white, whiten, x, xyz, y, yellow, z}
+  ansi16: function/0
+  ansi256: function/0
+  apple: function/0
+  cmyk: function/0
+  hcg: function/0
+  hsl: function/0
+  hsv: function/0
+  hwb: function/0
+  lab: function/0
+  lch: function/0
+  oklab: function/0
+  oklch: function/0
+  rgb: function/0
+  xyz: function/0

@@ -1,0 +1,2 @@
+module.exports: class/7 {_fill, browse, bugs, docs, file, getDefaultRepresentation, git, hash, https, path, shortcut, ssh, sshurl, tarball, toString}
+  fromUrl: function/2

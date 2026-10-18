@@ -1,0 +1,19 @@
+namespace: object Module
+  ImportType: object
+    1: string
+    2: string
+    3: string
+    4: string
+    5: string
+    6: string
+    7: string
+    Dynamic: number
+    DynamicDeferPhase: number
+    DynamicSourcePhase: number
+    ImportMeta: number
+    Static: number
+    StaticDeferPhase: number
+    StaticSourcePhase: number
+  init: object Promise
+  initSync: function/0
+  parse: function/1

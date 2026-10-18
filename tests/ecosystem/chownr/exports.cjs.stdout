@@ -1,0 +1,3 @@
+module.exports: object
+  chownr: function/4
+  chownrSync: function/3

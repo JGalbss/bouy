@@ -1,0 +1,10 @@
+namespace: object Module
+  __esModule: boolean
+  default: object
+    getNonce: function/0
+    setNonce: function/1
+  getNonce: function/0
+  module.exports: object
+    getNonce: function/0
+    setNonce: function/1
+  setNonce: function/1

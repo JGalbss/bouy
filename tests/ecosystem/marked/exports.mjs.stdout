@@ -1,0 +1,63 @@
+namespace: object Module
+  Hooks: class/1 {emStrongMask, postprocess, preprocess, processAllTokens, provideLexer, provideParser}
+    passThroughHooks: object Set
+    passThroughHooksRespectAsync: object Set
+  Lexer: class/1 {blockTokens, inline, inlineTokens, lex}
+  Marked: class/0 {lexer, onError, parseMarkdown, parser, setOptions, use, walkTokens}
+  Parser: class/1 {parse, parseInline}
+  Renderer: class/1 {blockquote, br, checkbox, code, codespan, def, del, em, heading, hr, html, image, link, list, listitem, paragraph, space, strong, table, tablecell, tablerow, text}
+  TextRenderer: class/0 {br, codespan, del, em, html, image, link, strong, text}
+  Tokenizer: class/1 {autolink, blockquote, br, code, codespan, def, del, emStrong, escape, fences, heading, hr, html, inlineText, lheading, link, list, paragraph, reflink, space, table, tag, text, url}
+  defaults: object
+    async: boolean
+    breaks: boolean
+    extensions: null
+    gfm: boolean
+    hooks: null
+    pedantic: boolean
+    renderer: null
+    silent: boolean
+    tokenizer: null
+    walkTokens: null
+  getDefaults: function/0
+  lexer: function/2
+  marked: function/2
+    Hooks: class/1 {emStrongMask, postprocess, preprocess, processAllTokens, provideLexer, provideParser}
+    Lexer: class/1 {blockTokens, inline, inlineTokens, lex}
+    Parser: class/1 {parse, parseInline}
+    Renderer: class/1 {blockquote, br, checkbox, code, codespan, def, del, em, heading, hr, html, image, link, list, listitem, paragraph, space, strong, table, tablecell, tablerow, text}
+    TextRenderer: class/0 {br, codespan, del, em, html, image, link, strong, text}
+    Tokenizer: class/1 {autolink, blockquote, br, code, codespan, def, del, emStrong, escape, fences, heading, hr, html, inlineText, lheading, link, list, paragraph, reflink, space, table, tag, text, url}
+    defaults: object
+    getDefaults: function/0
+    lexer: function/2
+    options: function/1
+    parse: function/2
+    parseInline: function/2
+    parser: function/2
+    setOptions: function/1
+    use: function/0
+    walkTokens: function/2
+  options: function/1
+  parse: function/2
+    Hooks: class/1 {emStrongMask, postprocess, preprocess, processAllTokens, provideLexer, provideParser}
+    Lexer: class/1 {blockTokens, inline, inlineTokens, lex}
+    Parser: class/1 {parse, parseInline}
+    Renderer: class/1 {blockquote, br, checkbox, code, codespan, def, del, em, heading, hr, html, image, link, list, listitem, paragraph, space, strong, table, tablecell, tablerow, text}
+    TextRenderer: class/0 {br, codespan, del, em, html, image, link, strong, text}
+    Tokenizer: class/1 {autolink, blockquote, br, code, codespan, def, del, emStrong, escape, fences, heading, hr, html, inlineText, lheading, link, list, paragraph, reflink, space, table, tag, text, url}
+    defaults: object
+    getDefaults: function/0
+    lexer: function/2
+    options: function/1
+    parse: function/2
+    parseInline: function/2
+    parser: function/2
+    setOptions: function/1
+    use: function/0
+    walkTokens: function/2
+  parseInline: function/2
+  parser: function/2
+  setOptions: function/1
+  use: function/0
+  walkTokens: function/2

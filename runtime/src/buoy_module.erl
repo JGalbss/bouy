@@ -173,7 +173,7 @@ evaluate(M0) ->
         {P, _, _} ->
             P;
         undefined ->
-            {P, Resolve, Reject} = Capability = buoy_jobs:capability(),
+            {P, Resolve, Reject} = Capability = buoy_jobs:quiet_capability(),
             %% require(esm) can evaluate a graph while another one evaluates.
             Outer = get_stack(),
             put_stack([]),
@@ -653,6 +653,11 @@ hoisted(Lazy) ->
 %% A source phase import fails: a JavaScript module has no source object.
 -spec dynamic_import(module(), term(), term(), evaluation | source | defer) -> term().
 dynamic_import(From, Specifier, Options, Phase) ->
+    %% Node's loader publishes import() to the tracing channel module.import.
+    buoy_binding_diagnostics_channel:trace_promise(<<"module.import">>, fun() -> [{<<"parentURL">>, file_url(info(From, path))}, {<<"url">>, Specifier}] end,
+                                                   fun() -> import_traced(From, Specifier, Options, Phase) end).
+
+import_traced(From, Specifier, Options, Phase) ->
     {P, Resolve, Reject} = buoy_jobs:capability(),
     try
         Text = buoy_ref:to_string(Specifier),
@@ -1113,9 +1118,16 @@ require(M, Specifier) ->
                                              buoy_ref_string:concat([<<"The \"id\" argument must be of type string. Received ">>, buoy_ref:describe(Specifier)])),
     Specifier =:= <<>> andalso throw_coded('TypeError', <<"ERR_INVALID_ARG_VALUE">>,
                                            <<"The argument 'id' must be a non-empty string. Received ''">>),
-    %% --expose-internals lets require load the internal ids of Node's lib.
+    %% Node's require publishes to the tracing channel module.require.
+    buoy_binding_diagnostics_channel:trace_sync(<<"module.require">>, fun() -> [{<<"parentFilename">>, info(M, path)}, {<<"id">>, Specifier}] end,
+                                                fun() -> require_traced(M, Specifier) end).
+
+require_traced(M, Specifier) ->
+    %% --expose-internals lets require load the internal ids of Node's lib,
+    %% with or without node:, as BuiltinModule.normalizeRequirableId reads them.
+    Id = case Specifier of <<"node:", Rest/binary>> -> Rest; _ -> Specifier end,
     Internal = lists:member(<<"--expose-internals">>, buoy_node_process:exec_argv())
-        andalso lists:member(Specifier, buoy_node:ids()),
+        andalso lists:member(Id, buoy_node:ids()),
     case target(M, Specifier, require) of
         {builtin, Name} ->
             builtin_exports(Name);

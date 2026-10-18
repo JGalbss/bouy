@@ -9,16 +9,18 @@ use std::time::Duration;
 use buoy_suites::outcome::Outcome;
 use buoy_suites::packages::{self, Options};
 
-/// A `buoy run` that rejects a program whose path holds `rejected`, and otherwise prints the
-/// program's text and exits with 0.
+/// A `buoy run`, or a `buoy` in the node form, that rejects a program whose path holds
+/// `rejected`, and otherwise prints the program's text and exits with 0.
 const FAKE_BUOY: &str = r#"#!/bin/sh
-case "$2" in
+program=$1
+[ "$1" != run ] || program=$2
+case "$program" in
 *rejected*)
     printf '{"status":2,"diagnostics":["BUOY201"]}' > "$BUOY_RESULT_FILE"
     exit 2
     ;;
 esac
-cat "$2"
+cat "$program"
 printf '{"status":0}' > "$BUOY_RESULT_FILE"
 "#;
 
@@ -161,5 +163,54 @@ fn a_program_without_output_and_an_output_without_program_stop_the_run() {
     assert!(
         packages::run(&filtered).is_err(),
         "an update runs every program"
+    );
+}
+
+#[test]
+fn the_ecosystem_counts_packages_and_skips_the_excluded_ones() {
+    let packages = r#"{"packages": [
+        {"rank": 1, "name": "good", "version": "1.0.0", "programs": ["exports.cjs", "exports.mjs"]},
+        {"rank": 2, "name": "@s/half", "version": "1.0.0", "programs": ["exports.cjs", "exports.mjs"]},
+        {"rank": 3, "name": "types", "version": "1.0.0", "excluded": "only types: no JavaScript entry"}
+    ]}"#;
+    let tree = FakeTree::new(
+        "ecosystem",
+        &[
+            ("tests/ecosystem/packages.json", packages),
+            ("tests/ecosystem/node_modules/good/index.js", ""),
+            ("tests/ecosystem/good/exports.cjs", "good\n"),
+            ("tests/ecosystem/good/exports.cjs.stdout", "good\n"),
+            ("tests/ecosystem/good/exports.mjs", "good\n"),
+            ("tests/ecosystem/good/exports.mjs.stdout", "good\n"),
+            ("tests/ecosystem/@s/half/exports.cjs", "same\n"),
+            ("tests/ecosystem/@s/half/exports.cjs.stdout", "same\n"),
+            ("tests/ecosystem/@s/half/exports.mjs", "printed\n"),
+            (
+                "tests/ecosystem/@s/half/exports.mjs.stdout",
+                "node printed this\n",
+            ),
+        ],
+    );
+    let report = packages::run_ecosystem(&tree.options(true)).expect("the update runs");
+    let summary = report
+        .summary
+        .expect("a run of every program has a summary");
+    assert_eq!(summary.total, 3);
+    let counts =
+        [Outcome::Pass, Outcome::Fail, Outcome::Skip].map(|outcome| summary.outcomes.get(outcome));
+    assert_eq!(counts, [1, 1, 1]);
+    assert_eq!(
+        summary.groups["skip reason"]["only types"].get(Outcome::Skip),
+        1
+    );
+    assert!(
+        tree.read("tests/ecosystem/expectations.txt")
+            .contains("@s/half/exports.mjs fail\n"),
+        "{}",
+        tree.read("tests/ecosystem/expectations.txt")
+    );
+    assert!(
+        tree.read("tests/ecosystem/summary.json")
+            .contains("\"suite\": \"ecosystem\"")
     );
 }

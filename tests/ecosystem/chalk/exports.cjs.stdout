@@ -1,0 +1,8 @@
+module.exports: function/0
+  Instance: function/1
+  constructor: function/0
+  stderr: function/0
+    Instance: function/1
+    constructor: function/0
+    supportsColor: boolean
+  supportsColor: boolean

@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 
 use crate::comparison::{self, Comparison, Origin, Selection};
-use crate::expectations::{self, Entry, Expectations};
+use crate::expectations::{self, Entry, Expectations, PLATFORM};
 use crate::outcome::{Facts, Outcome, RunResult, classify};
 use crate::summary::{self, Counts, Destination, Results, Summary, TestResult};
 use crate::{SKIP_REASONS, buoy_env};
@@ -416,11 +416,17 @@ pub fn run(options: &Options) -> Result<Report, String> {
     let tests = load_tests(&options.directory.join(SUITE_DIRECTORY), &config)?;
     durations_ms.insert("load".to_owned(), started.elapsed().as_millis());
 
-    let expected = expectations::read(&options.directory.join("expectations.txt"))?;
-    let base = match &options.base {
+    // A line whose outcome differs by platform names each one, and a run compares with
+    // the outcome of its own.
+    let recorded = expectations::read(&options.directory.join("expectations.txt"))?;
+    let expected = expectations::on_platform(&recorded, PLATFORM);
+    let base_recorded = match &options.base {
         Some(path) if path.is_file() => Some(expectations::read(path)?),
         _ => None,
     };
+    let base = base_recorded
+        .as_ref()
+        .map(|base| expectations::on_platform(base, PLATFORM));
     let started = Instant::now();
     let ran = execute_selected(options, &config, &tests, &expected)?;
     durations_ms.insert("execute".to_owned(), started.elapsed().as_millis());
@@ -438,11 +444,7 @@ pub fn run(options: &Options) -> Result<Report, String> {
         })
         .map(|(_, execution)| execution.report.clone())
         .collect();
-    let mut entries: Expectations = expected
-        .into_iter()
-        .filter(|(id, _)| ids.contains(id))
-        .collect();
-    entries.extend(run.clone());
+    let entries = record(recorded, &ids, &ran, options.update);
     let blocked: Vec<&Vec<String>> = ran
         .iter()
         .map(|(_, execution)| &execution.blockers)
@@ -458,7 +460,10 @@ pub fn run(options: &Options) -> Result<Report, String> {
         blockers: summary::blockers(blocked),
     }
     .updated_since(&options.directory.join("summary.json"));
-    let comment = comparison.comment(&summary.comment_heading(base.as_ref(), run.len()), 50);
+    let comment = comparison.comment(
+        &summary.comment_heading(base_recorded.as_ref(), run.len()),
+        50,
+    );
     let results = Results {
         date: crate::date(),
         host: format!("{}-{}", env::consts::OS, env::consts::ARCH),
@@ -498,6 +503,29 @@ pub fn run(options: &Options) -> Result<Report, String> {
     })
 }
 
+/// The lines of the files of the suite, with the outcome of each file that ran on this
+/// platform (`Entry::with_platform`).
+fn record(
+    recorded: Expectations,
+    ids: &BTreeSet<String>,
+    ran: &[(&Test, Execution)],
+    update: bool,
+) -> Expectations {
+    let mut entries: Expectations = recorded
+        .into_iter()
+        .filter(|(id, _)| ids.contains(id))
+        .collect();
+    for (test, execution) in ran {
+        let entry = entries
+            .get(&test.id)
+            .map_or(Entry::Same(execution.outcome), |line| {
+                line.with_platform(PLATFORM, execution.outcome, update)
+            });
+        entries.insert(test.id.clone(), entry);
+    }
+    entries
+}
+
 /// Runs the selected files, with the files of `sequential` one at a time after the others,
 /// and returns each with its execution.
 fn execute_selected<'a>(
@@ -518,13 +546,27 @@ fn execute_selected<'a>(
         scratch,
         deadline: Duration::from_millis(config.timeout_ms),
     };
-    let execute = |&(serial, test): &(usize, &'a Test)| {
-        execute(test, serial, &context).map(|execution| (test, execution))
+    let start = |&(serial, test): &(usize, &'a Test)| {
+        execute(test, serial, &context).map(|execution| (serial, test, execution))
     };
-    let mut ran = crate::parallel(&concurrent, options.jobs, execute);
-    ran.extend(crate::parallel(&sequential, 1, execute));
+    let mut ran = crate::parallel(&concurrent, options.jobs, start);
+    ran.extend(crate::parallel(&sequential, 1, start));
+    // Section 3.4: a file whose outcome its line does not expect runs once more, alone,
+    // because the load of the batch can time it out. The rerun decides. A crash gets none.
+    let ran = ran
+        .into_iter()
+        .map(|result| {
+            let (serial, test, execution) = result?;
+            if expected.get(&test.id) == Some(&Entry::Same(execution.outcome))
+                || matches!(execution.outcome, Outcome::Crash | Outcome::Skip)
+            {
+                return Ok((test, execution));
+            }
+            execute(test, serial, &context).map(|rerun| (test, rerun))
+        })
+        .collect();
     let _ = fs::remove_dir_all(&context.scratch);
-    ran.into_iter().collect()
+    ran
 }
 
 /// A skip costs no run, so every selection takes the skipped files, and a change to the

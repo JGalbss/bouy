@@ -1,0 +1,20 @@
+module.exports: object
+  Definition: function/6
+  PatternVisitor: class/3 {ArrayExpression, ArrayPattern, AssignmentExpression, AssignmentPattern, CallExpression, Identifier, MemberExpression, Property, RestElement, SpreadElement}
+  Reference: class/7 {isRead, isReadOnly, isReadWrite, isStatic, isWrite, isWriteOnly}
+    READ: number
+    RW: number
+    WRITE: number
+  Referencer: class/2 {ArrowFunctionExpression, AssignmentExpression, BlockStatement, BreakStatement, CallExpression, CatchClause, ClassDeclaration, ClassExpression, ContinueStatement, ExportAllDeclaration, ExportDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration, ExportSpecifier, ForInStatement, ForOfStatement, ForStatement, FunctionDeclaration, FunctionExpression, Identifier, ImportDeclaration, JSXAttribute, JSXElement, JSXExpressionContainer, JSXIdentifier, JSXMemberExpression, JSXNamespacedName, JSXOpeningElement, LabeledStatement, MemberExpression, MetaProperty, MethodDefinition, PrivateIdentifier, Program, Property, PropertyDefinition, StaticBlock, SwitchStatement, ThisExpression, UpdateExpression, VariableDeclaration, WithStatement, close, currentScope, popInnerMethodDefinition, pushInnerMethodDefinition, referencingDefaultValue, visitClass, visitExportDeclaration, visitForIn, visitFunction, visitPattern, visitProperty, visitVariableDeclaration}
+  Scope: class/5 {__addDeclaredVariablesOfNode, __close, __define, __defineGeneric, __delegateToUpperScope, __detectEval, __detectThis, __dynamicCloseRef, __globalCloseRef, __isClosed, __isValidResolution, __referencing, __resolve, __shouldStaticallyClose, __shouldStaticallyCloseForGlobal, __staticCloseRef, isArgumentsMaterialized, isStatic, isThisMaterialized, isUsedName, resolve}
+  ScopeManager: class/1 {__get, __ignoreEval, __isES6, __isJSXEnabled, __isOptimistic, __nestBlockScope, __nestCatchScope, __nestClassFieldInitializerScope, __nestClassScope, __nestClassStaticBlockScope, __nestForScope, __nestFunctionExpressionNameScope, __nestFunctionScope, __nestGlobalScope, __nestModuleScope, __nestScope, __nestSwitchScope, __nestWithScope, acquire, acquireAll, attach, detach, getDeclaredVariables, isGlobalReturn, isImpliedStrict, isModule, isStrictModeSupported, release}
+  Variable: function/2
+    CatchClause: string
+    ClassName: string
+    FunctionName: string
+    ImplicitGlobalVariable: string
+    ImportBinding: string
+    Parameter: string
+    Variable: string
+  analyze: function/2
+  version: string

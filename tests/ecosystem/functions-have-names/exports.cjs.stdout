@@ -1,0 +1,3 @@
+module.exports: function/0
+  boundFunctionsHaveNames: function/0
+  functionsHaveConfigurableNames: function/0

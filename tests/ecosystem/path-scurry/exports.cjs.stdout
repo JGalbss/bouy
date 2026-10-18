@@ -1,0 +1,12 @@
+module.exports: object
+  ChildrenCache: function/0
+  Path: class/1 {getRoot, getRootString, newChild}
+  PathBase: class/1 {atime, atimeMs, birthtime, birthtimeMs, blksize, blocks, calledReaddir, canReaddir, canReadlink, child, children, childrenCache, ctime, ctimeMs, depth, dev, fullpath, fullpathPosix, getType, gid, ino, isBlockDevice, isCharacterDevice, isDirectory, isENOENT, isFIFO, isFile, isNamed, isSocket, isSymbolicLink, isType, isUnknown, lstat, lstatCached, lstatSync, mode, mtime, mtimeMs, nlink, parentPath, path, rdev, readdir, readdirCB, readdirCached, readdirSync, readlink, readlinkCached, readlinkSync, realpath, realpathCached, realpathSync, relative, relativePosix, resolve, shouldWalk, size, uid}
+  PathPosix: class/1 {getRoot, getRootString, newChild}
+  PathScurry: function/0
+  PathScurryBase: class/0 {basename, chdir, childrenCache, depth, dirname, iterate, iterateSync, lstat, lstatSync, readdir, readdirSync, readlink, readlinkSync, realpath, realpathSync, relative, relativePosix, resolve, resolvePosix, stream, streamSync, walk, walkSync}
+  PathScurryDarwin: function/0
+  PathScurryPosix: class/0 {isAbsolute, newRoot, parseRootPath}
+  PathScurryWin32: class/0 {isAbsolute, newRoot, parseRootPath}
+  PathWin32: class/1 {getRoot, getRootString, newChild, sameRoot}
+  ResolveCache: function/0

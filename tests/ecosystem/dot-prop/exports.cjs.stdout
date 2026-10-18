@@ -1,0 +1,5 @@
+module.exports: object
+  delete: function/2
+  get: function/3
+  has: function/2
+  set: function/3

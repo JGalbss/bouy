@@ -1,0 +1,1 @@
+module.exports: class/1 {__defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__, __proto__, hasOwnProperty, isPrototypeOf, propertyIsEnumerable, toLocaleString, toString, valueOf}

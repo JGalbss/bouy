@@ -10,6 +10,7 @@ pub mod compat;
 pub mod expectations;
 pub mod fake_server;
 pub mod node;
+pub mod node_bindings;
 pub mod node_surface;
 pub mod outcome;
 pub mod packages;
@@ -20,10 +21,13 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
+use std::io::{self, Read};
+use std::mem;
+use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, PoisonError, mpsc};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -93,7 +97,7 @@ pub fn buoy_env<'a>(command: &'a mut Command, temporary: &Path) -> &'a mut Comma
 /// takes longer than the deadline of one run. A binary without `buoy runtime`, such as one
 /// built from an older commit, builds it on its first run instead.
 fn warm(program: &std::ffi::OsStr) {
-    static WARMED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    static WARMED: OnceLock<()> = OnceLock::new();
     WARMED.get_or_init(|| {
         let _ = Command::new(program)
             .arg("runtime")
@@ -110,66 +114,261 @@ pub struct Run {
     pub timed_out: bool,
 }
 
-/// Runs `command` with no stdin, kills it when it runs past `deadline`, and deletes its
-/// `TMPDIR`. The CLI replaces itself with the VM, so the kill reaches the VM.
+/// How long the output of a program that exited may take to arrive.
+const OUTPUT_GRACE: Duration = Duration::from_secs(2);
+
+/// Runs `command` with no stdin in its own process group, kills it when it runs past
+/// `deadline`, and deletes its `TMPDIR`. The CLI replaces itself with the VM, so the kill
+/// reaches the VM.
+///
+/// The run ends when the program exits, as Bun's runner ends a test, and not when its
+/// pipes close: a process that the program left behind can hold them open for good. The
+/// processes that the run started die after the exit, those that `Watch` recorded out of
+/// the group as well, and the output is what the pipes held up to `OUTPUT_GRACE` later.
 ///
 /// # Panics
 ///
 /// When the command cannot start, or the wait for it fails.
 pub fn run(command: &mut Command, deadline: Duration) -> Run {
-    let child = command
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .process_group(0)
         .spawn()
         .unwrap_or_else(|error| panic!("cannot run {command:?}: {error}"));
-    let pid = child.id();
+    let watched = Watched::start(child.id());
+    let stdout = Drain::start(child.stdout.take());
+    let stderr = Drain::start(child.stderr.take());
     let (finished, waited) = mpsc::channel();
-    thread::spawn(move || finished.send(child.wait_with_output()));
-    let (output, timed_out) = if let Ok(output) = waited.recv_timeout(deadline) {
-        (output, false)
+    thread::spawn(move || finished.send(child.wait()));
+    let (status, timed_out) = if let Ok(status) = waited.recv_timeout(deadline) {
+        (status, false)
     } else {
-        // The processes that the program started would keep its pipes open, and the
-        // wait alive: they end first, before they lose their parent.
-        let mut doomed = descendants(pid);
-        doomed.push(pid);
-        let _ = Command::new("kill")
-            .arg("-KILL")
-            .args(doomed.iter().map(u32::to_string))
-            .stderr(Stdio::null())
-            .status();
+        watched.stop(true);
         (waited.recv().expect("the waiting thread sends"), true)
+    };
+    watched.stop(false);
+    let grace = Instant::now() + OUTPUT_GRACE;
+    let output = Output {
+        status: status.unwrap_or_else(|error| panic!("cannot wait for {command:?}: {error}")),
+        stdout: stdout.take(grace),
+        stderr: stderr.take(grace),
     };
     if let Some((_, Some(directory))) = command.get_envs().find(|(name, _)| *name == "TMPDIR") {
         let _ = fs::remove_dir_all(directory);
     }
-    Run {
-        output: output.unwrap_or_else(|error| panic!("cannot wait for {command:?}: {error}")),
-        timed_out,
+    Run { output, timed_out }
+}
+
+/// Sends `SIGKILL` to the process group `group` and to `pids`.
+fn kill(group: u32, pids: &[u32]) {
+    let _ = Command::new("kill")
+        .args(["-s", "KILL", "--", &format!("-{group}")])
+        .args(pids.iter().map(u32::to_string))
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// How long the thread of `Watch` waits between two reads of the process table.
+const WATCH_INTERVAL: Duration = Duration::from_millis(100);
+
+/// A process of the table that `ps` prints. `start` tells it from a later process that
+/// reuses its pid.
+#[derive(Clone, Debug)]
+struct Process {
+    pid: u32,
+    parent: u32,
+    group: u32,
+    start: String,
+}
+
+/// The processes of each run that goes on, by the pid of its program, which one thread
+/// records from `ps` every `WATCH_INTERVAL`.
+///
+/// A process group cannot hold the processes of a run: the VM starts each child process in
+/// a session of its own, because `erl_child_setup` calls setsid, and when the VM exits, the
+/// child gets init as its parent. The record still names it then. Bun's no-orphans mode
+/// (src/io/ParentDeathWatchdog.rs) walks the tree from inside the runtime, with
+/// `PR_SET_CHILD_SUBREAPER` on Linux and the `p_puniqueid` of libproc on macOS; the runner has
+/// no unsafe code for these calls, and a VM killed at the deadline runs no code, so the
+/// runner reads `ps` on both systems.
+///
+/// shortcut: a process that starts and loses its parent between two reads escapes the
+/// record; a subreaper on Linux would close that gap if it shows up.
+struct Watch {
+    runs: Mutex<BTreeMap<u32, BTreeMap<u32, Process>>>,
+    added: Condvar,
+}
+
+fn watch() -> &'static Watch {
+    static WATCH: OnceLock<Watch> = OnceLock::new();
+    WATCH.get_or_init(|| {
+        thread::spawn(|| {
+            let watch = watch();
+            loop {
+                drop(
+                    watch
+                        .added
+                        .wait_while(lock(&watch.runs), |runs| runs.is_empty())
+                        .unwrap_or_else(PoisonError::into_inner),
+                );
+                let table = processes();
+                for (root, record) in lock(&watch.runs).iter_mut() {
+                    for process in tree(&table, Some(*root), record) {
+                        record.insert(process.pid, process.clone());
+                    }
+                }
+                thread::sleep(WATCH_INTERVAL);
+            }
+        });
+        Watch {
+            runs: Mutex::new(BTreeMap::new()),
+            added: Condvar::new(),
+        }
+    })
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A run in the record of `Watch`, which leaves the record when it drops.
+struct Watched(u32);
+
+impl Watched {
+    fn start(root: u32) -> Self {
+        let watch = watch();
+        lock(&watch.runs).insert(root, BTreeMap::new());
+        watch.added.notify_one();
+        Self(root)
+    }
+
+    /// Kills the group of the run and every process of its record that still runs, with
+    /// the processes under them. `alive` says that the program still runs, so the tree under
+    /// it holds as well. A record with nothing out of the group needs no read of `ps`.
+    fn stop(&self, alive: bool) {
+        let root = self.0;
+        let record = lock(&watch().runs).get(&root).cloned().unwrap_or_default();
+        let pids = if alive || record.values().any(|process| process.group != root) {
+            let table = processes();
+            tree(&table, alive.then_some(root), &record)
+                .iter()
+                .map(|process| process.pid)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        kill(root, &pids);
     }
 }
 
-/// The processes under `pid`, from `ps`.
-fn descendants(pid: u32) -> Vec<u32> {
-    let Ok(output) = Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output() else {
-        return Vec::new();
-    };
-    let pairs: Vec<(u32, u32)> = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace().map(str::parse::<u32>);
-            Some((fields.next()?.ok()?, fields.next()?.ok()?))
+impl Drop for Watched {
+    fn drop(&mut self) {
+        lock(&watch().runs).remove(&self.0);
+    }
+}
+
+/// The processes of `table` that are `root`, the processes of `record` with the same start,
+/// or the children or group members of one of them. The runner and its group are never
+/// among them.
+fn tree<'t>(
+    table: &'t [Process],
+    root: Option<u32>,
+    record: &BTreeMap<u32, Process>,
+) -> Vec<&'t Process> {
+    let runner = std::process::id();
+    let mut found: Vec<&Process> = table
+        .iter()
+        .filter(|process| {
+            Some(process.pid) == root
+                || record
+                    .get(&process.pid)
+                    .is_some_and(|seen| seen.start == process.start)
         })
         .collect();
-    let mut found = Vec::new();
-    let mut frontier = vec![pid];
-    while let Some(parent) = frontier.pop() {
-        for &(child, _) in pairs.iter().filter(|(_, ppid)| *ppid == parent) {
-            found.push(child);
-            frontier.push(child);
+    let mut index = 0;
+    while let Some(parent) = found.get(index).map(|process| process.pid) {
+        index += 1;
+        for process in table {
+            if (process.parent == parent || process.group == parent)
+                && !found.iter().any(|known| known.pid == process.pid)
+            {
+                found.push(process);
+            }
         }
     }
+    let group = table
+        .iter()
+        .find(|process| process.pid == runner)
+        .map(|process| process.group);
+    found.retain(|process| process.pid != runner && Some(process.group) != group);
     found
+}
+
+/// The process table, from `ps`.
+fn processes() -> Vec<Process> {
+    let Ok(output) = Command::new("ps")
+        .args(["-A", "-o", "pid=,ppid=,pgid=,lstart="])
+        .stderr(Stdio::null())
+        .output()
+    else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let mut number = || fields.next()?.parse().ok();
+            let (pid, parent, group) = (number()?, number()?, number()?);
+            Some(Process {
+                pid,
+                parent,
+                group,
+                start: fields.collect::<Vec<_>>().join(" "),
+            })
+        })
+        .collect()
+}
+
+/// A pipe that a thread reads to its end. The caller takes what has arrived so far.
+struct Drain {
+    bytes: Arc<Mutex<Vec<u8>>>,
+    ended: mpsc::Receiver<()>,
+}
+
+impl Drain {
+    fn start(pipe: Option<impl Read + Send + 'static>) -> Self {
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let (end, ended) = mpsc::channel();
+        if let Some(mut pipe) = pipe {
+            let bytes = Arc::clone(&bytes);
+            thread::spawn(move || {
+                let mut chunk = [0; 8192];
+                loop {
+                    match pipe.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(read) => bytes
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .extend_from_slice(&chunk[..read]),
+                        Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                        Err(_) => break,
+                    }
+                }
+                let _ = end.send(());
+            });
+        }
+        Self { bytes, ended }
+    }
+
+    /// The bytes that arrived by the end of the pipe, or by `until`.
+    fn take(self, until: Instant) -> Vec<u8> {
+        let _ = self
+            .ended
+            .recv_timeout(until.saturating_duration_since(Instant::now()));
+        mem::take(&mut *self.bytes.lock().unwrap_or_else(PoisonError::into_inner))
+    }
 }
 
 /// The lines that differ, as `-` (node) and `+` (buoy).
@@ -297,6 +496,91 @@ pub fn parallel<T: Sync, R: Send>(
     std::iter::once(first)
         .chain(results.into_iter().map(|(_, result)| result))
         .collect()
+}
+
+/// A shallow checkout of `reference`, a commit or a tag, of the git repository at `url`, in
+/// `$XDG_CACHE_HOME/buoy/<name>`, with only the paths of `sparse` when it names any. The first
+/// use fetches into a partial directory and renames it, so the cache never holds a partial
+/// checkout. Returns the checkout and the commit of its `HEAD`.
+///
+/// # Errors
+///
+/// When neither `HOME` nor `XDG_CACHE_HOME` is set, or a git command fails.
+pub fn cached_checkout(
+    name: &str,
+    url: &str,
+    reference: &str,
+    sparse: &[&str],
+) -> Result<(PathBuf, String), String> {
+    let cache = env::var_os("XDG_CACHE_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .ok_or("set HOME or XDG_CACHE_HOME for the cache of the upstream sources")?
+        .join("buoy");
+    let checkout = cache.join(name);
+    let git = |directory: &Path, args: &[&str]| -> Result<String, String> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args(args)
+            .output()
+            .map_err(|error| format!("cannot run git: {error}"))?;
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned());
+        }
+        Err(format!(
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    };
+    if checkout.is_dir() {
+        return Ok((checkout.clone(), git(&checkout, &["rev-parse", "HEAD"])?));
+    }
+    let partial = cache.join(format!("{name}.partial-{}", std::process::id()));
+    fs::create_dir_all(&partial).map_err(|error| format!("{}: {error}", partial.display()))?;
+    eprintln!("buoy-suites: fetching {url} at {reference}");
+    let mut sparse_args = vec!["sparse-checkout", "set", "--no-cone"];
+    sparse_args.extend(sparse);
+    let fetched = git(&partial, &["init", "-q"])
+        .and_then(|_| git(&partial, &["remote", "add", "origin", url]))
+        .and_then(|_| {
+            if sparse.is_empty() {
+                return Ok(String::new());
+            }
+            git(&partial, &sparse_args)
+        })
+        .and_then(|_| {
+            let mut fetch = vec!["fetch", "-q", "--depth", "1"];
+            if !sparse.is_empty() {
+                fetch.push("--filter=blob:none");
+            }
+            fetch.extend(["origin", reference]);
+            git(&partial, &fetch)
+        })
+        .and_then(|_| {
+            git(
+                &partial,
+                &[
+                    "-c",
+                    "advice.detachedHead=false",
+                    "checkout",
+                    "-q",
+                    "FETCH_HEAD",
+                ],
+            )
+        })
+        .and_then(|_| git(&partial, &["rev-parse", "HEAD"]))
+        .and_then(|head| {
+            fs::rename(&partial, &checkout)
+                .map(|()| head)
+                .map_err(|error| format!("{}: {error}", checkout.display()))
+        });
+    if fetched.is_err() {
+        let _ = fs::remove_dir_all(&partial);
+    }
+    fetched.map(|head| (checkout, head))
 }
 
 pub(crate) fn write(path: &Path, contents: &str) -> Result<(), String> {

@@ -1,0 +1,6 @@
+namespace: object Module
+  computeAccessibleDescription: function/1
+  computeAccessibleName: function/1
+  getRole: function/1
+  isInaccessible: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isSubtreeInaccessible: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)

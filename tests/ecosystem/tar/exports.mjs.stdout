@@ -1,0 +1,80 @@
+namespace: object Module
+  Header: class/1 {decode, encode, type, typeKey}
+  Pack: class/0 {add, end, pause, warn, write}
+  PackJob: function/2
+  PackSync: class/1 {pause, resume}
+  Parser: class/0 {abort, end, warn, write}
+  Pax: class/1 {encode, encodeBody, encodeField}
+  ReadEntry: class/3 {write}
+  Unpack: class/0 {warn}
+  UnpackSync: function/0
+  WriteEntry: class/1 {emit, warn, write}
+  WriteEntrySync: function/0
+  WriteEntryTar: class/1 {end, warn, write}
+  c: function/0
+    asyncFile: function/2
+    asyncNoFile: function/2
+    syncFile: function/2
+    syncNoFile: function/2
+    validate: function/2
+  create: function/0
+    asyncFile: function/2
+    asyncNoFile: function/2
+    syncFile: function/2
+    syncNoFile: function/2
+    validate: function/2
+  extract: function/0
+    asyncFile: function/2
+    asyncNoFile: function/1
+    syncFile: function/1
+    syncNoFile: function/1
+    validate: function/2
+  filesFilter: function/2
+  list: function/0
+    asyncFile: function/2
+    asyncNoFile: function/1
+    syncFile: function/1
+    syncNoFile: function/1
+    validate: function/2
+  r: function/0
+    asyncFile: function/2
+    asyncNoFile: function/0
+    syncFile: function/2
+    syncNoFile: function/0
+    validate: function/2
+  replace: function/0
+    asyncFile: function/2
+    asyncNoFile: function/0
+    syncFile: function/2
+    syncNoFile: function/0
+    validate: function/2
+  t: function/0
+    asyncFile: function/2
+    asyncNoFile: function/1
+    syncFile: function/1
+    syncNoFile: function/1
+    validate: function/2
+  types: object
+    code: object Map
+    isCode: function/1
+    isName: function/1
+    name: object Map
+    normalFsTypes: object Set
+  u: function/0
+    asyncFile: function/2
+    asyncNoFile: function/0
+    syncFile: function/2
+    syncNoFile: function/0
+    validate: function/1
+  update: function/0
+    asyncFile: function/2
+    asyncNoFile: function/0
+    syncFile: function/2
+    syncNoFile: function/0
+    validate: function/1
+  x: function/0
+    asyncFile: function/2
+    asyncNoFile: function/1
+    syncFile: function/1
+    syncNoFile: function/1
+    validate: function/2

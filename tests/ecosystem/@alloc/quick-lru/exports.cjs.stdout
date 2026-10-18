@@ -1,0 +1,1 @@
+module.exports: class/0 {_deleteIfExpired, _emitEvictions, _entriesAscending, _getItemValue, _getOrDeleteIfExpired, _moveToRecent, _peek, _set, clear, delete, entriesAscending, entriesDescending, expiresIn, get, has, keys, peek, resize, set, size, values}
