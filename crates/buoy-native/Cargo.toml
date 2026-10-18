@@ -1,0 +1,25 @@
+[package]
+name = "buoy-native"
+description = "The native tier of Buoy: compiles the typed IR of hot typed code to machine code with Cranelift and runs it in time slices inside a BEAM process."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+# The VM loads the library with erlang:load_nif/2.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+buoy-native-ir = { path = "../buoy-native-ir" }
+corosensei = "0.3.4"
+cranelift-codegen = "0.136.3"
+cranelift-frontend = "0.136.3"
+cranelift-jit = "0.136.3"
+cranelift-module = "0.136.3"
+cranelift-native = "0.136.3"
+
+[lints]
+workspace = true
