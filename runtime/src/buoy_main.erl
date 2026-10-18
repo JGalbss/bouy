@@ -26,6 +26,8 @@ start() ->
 
 -spec boot() -> no_return().
 boot() ->
+    %% The nodeStart milestone of perf_hooks (buoy_binding_performance).
+    persistent_term:put({buoy, node_start}, erlang:monotonic_time(nanosecond)),
     %% The facts go to the file of this VM alone. A child process would inherit the
     %% variable and write its own facts over them, after this VM has exited.
     persistent_term:put({buoy, result_file}, os:getenv("BUOY_RESULT_FILE", "")),
@@ -71,6 +73,7 @@ import(Module) ->
 -spec run(module()) -> no_return().
 run(Entry) ->
     ok = start_runtime(),
+    ok = buoy_trace:start_cli(),
     _ = process_flag(trap_exit, false),
     %% Many workers reply to the top-level code at once, as in Promise.all over actor
     %% calls. Off the heap, their messages need no lock of this process.
@@ -135,6 +138,8 @@ finish(Status, Facts) ->
     catch
         _:_ -> ok
     end,
+    %% StopTracingAgent: the trace file ends before the VM does.
+    ok = buoy_trace:stop(),
     case persistent_term:get({buoy, result_file}, os:getenv("BUOY_RESULT_FILE", "")) of
         "" -> ok;
         Path -> _ = file:write_file(Path, json:encode(Facts#{status => Status}))

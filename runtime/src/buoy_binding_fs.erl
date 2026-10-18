@@ -37,6 +37,7 @@ binding() ->
     erlang:put({?MODULE, stats}, {Stats, BigStats}),
     Req = buoy_node:constructor(<<"FSReqCallback">>, 1, fun(This, Args) ->
         buoy_heap:set(This, <<"bigint">>, buoy_ref:truthy(buoy_node:arg(1, Args))),
+        buoy_binding_async_wrap:wrap(This, <<"FSREQCALLBACK">>),
         undefined
     end),
     Calls = [
@@ -90,12 +91,11 @@ call(Name, Args, Length, Fun) ->
                       catch error:{'$throw', Thrown} -> {error, Thrown}
                       end,
             buoy_node_loop:defer(fun() ->
-                OnComplete = buoy_heap:get(Req, <<"oncomplete">>),
-                case Outcome of
-                    {ok, undefined} -> buoy_heap:call(OnComplete, Req, [null]);
-                    {ok, Value} -> buoy_heap:call(OnComplete, Req, [null, Value]);
-                    {error, E} -> buoy_heap:call(OnComplete, Req, [E])
-                end
+                complete(Req, case Outcome of
+                    {ok, undefined} -> [null];
+                    {ok, Value} -> [null, Value];
+                    {error, E} -> [E]
+                end)
             end),
             undefined;
         _ ->
@@ -103,6 +103,12 @@ call(Name, Args, Length, Fun) ->
     end.
 
 noop(_Args) -> undefined.
+
+%% FSReqCallback::Resolve and Reject: req.oncomplete through MakeCallback,
+%% and then the request ends.
+complete(Req, Args) ->
+    _ = buoy_binding_async_wrap:make_callback(Req, buoy_heap:get(Req, <<"oncomplete">>), Args),
+    buoy_binding_async_wrap:emit_destroy(Req).
 
 %%% Paths and errors
 
@@ -240,7 +246,7 @@ read_stdin_async(Req, Buffer, At, Count) ->
     buoy_node_stdin:read_async(Count, fun(Bytes) ->
         {Req1, Buffer1} = erlang:erase({?MODULE, stdin_read, Ref}),
         buoy_node_encoding:view_write(Buffer1, At, Bytes),
-        buoy_heap:call(buoy_heap:get(Req1, <<"oncomplete">>), Req1, [null, byte_size(Bytes)])
+        complete(Req1, [null, byte_size(Bytes)])
     end),
     undefined.
 
