@@ -19,13 +19,15 @@
 %% in it, and the ports that it transfers, each as {Pipe, Side, Queue}.
 -module(buoy_binding_messaging).
 
--export([binding/0, ready/2, resume/2, new_port/3, pipe/0, is_message_port/1, port_side/1, transfer_out/1, close_carried/1]).
+-export([binding/0, ready/2, poll/0, new_port/3, pipe/0, is_message_port/1, port_side/1, transfer_out/1, close_carried/1]).
 -export([pipe_init/1, construct_invalid/2]).
 
 -define(STATE, {'#', ?MODULE, <<"port">>}).
 -define(PORTS(Pipe, Side), {?MODULE, port, Pipe, Side}).
 -define(CREATE, {?MODULE, create_object}).
 -define(PROTO, {?MODULE, port_prototype}).
+-define(PENDING, {?MODULE, pending}).
+-define(POLL, {?MODULE, poll}).
 
 -spec binding() -> term().
 binding() ->
@@ -91,7 +93,7 @@ pipe() ->
 new_port(Pipe, Side, Queue) ->
     Port = buoy_node:object(erlang:get(?PROTO), []),
     buoy_heap:private_put(Port, ?STATE, #{pipe => Pipe, side => Side, queue => Queue, started => false,
-                                          refed => false, state => open, scheduled => false}),
+                                          refed => false, state => open, seq => erlang:unique_integer([monotonic])}),
     erlang:put(?PORTS(Pipe, Side), Port),
     Pipe ! {attach, Side, self()},
     set_ref(Port, true),
@@ -198,6 +200,12 @@ close_carried(Messages) ->
     ok.
 
 %%% Receiving
+%%
+%% A pipe's wake-up only moves the inbox into the port's queue and marks the
+%% port. One poll job then serves every marked port in the order the ports
+%% were made, each with every message that waits, as libuv's poll phase runs
+%% each uv_async_t of MessagePort::OnMessage in handle order. Microtasks and
+%% ticks run between messages (MakeCallback).
 
 %% The pipe has messages for the side Side of Pipe in this realm.
 -spec ready(pid(), term()) -> ok.
@@ -207,18 +215,7 @@ ready(Pipe, Side) ->
             ok;
         Port ->
             take(Port),
-            dispatch(Port)
-    end.
-
-%% The next message of a port whose queue still holds some.
--spec resume(pid(), term()) -> ok.
-resume(Pipe, Side) ->
-    case erlang:get(?PORTS(Pipe, Side)) of
-        undefined ->
-            ok;
-        Port ->
-            update(Port, fun(S) -> S#{scheduled := false} end),
-            dispatch(Port)
+            schedule(Port)
     end.
 
 %% Moves the inbox of the port in its pipe to the queue of the port.
@@ -230,26 +227,71 @@ take(Port) ->
         closed -> ok
     end.
 
-%% Emits the first message of the queue when the port receives, or a close
-%% that waits first, and schedules the next one as its own macrotask.
+%% Marks a port whose queue holds messages, and makes sure a poll follows.
+schedule(Port) ->
+    case state(Port) of
+        #{state := open, queue := [_ | _], pipe := Pipe, side := Side, seq := Seq} ->
+            Pending = pending(),
+            erlang:put(?PENDING, Pending#{Seq => {Pipe, Side}}),
+            case erlang:get(?POLL) of
+                true -> ok;
+                _ -> erlang:put(?POLL, true), self() ! {'$buoy_node_call', fun ?MODULE:poll/0}
+            end,
+            ok;
+        _ ->
+            ok
+    end.
+
+pending() ->
+    case erlang:get(?PENDING) of
+        undefined -> #{};
+        P -> P
+    end.
+
+%% The poll job: each marked port, in the order of creation.
+-spec poll() -> ok.
+poll() ->
+    erlang:erase(?POLL),
+    poll_next().
+
+poll_next() ->
+    case lists:sort(maps:to_list(pending())) of
+        [] ->
+            ok;
+        [{Seq, {Pipe, Side}} | _] ->
+            erlang:put(?PENDING, maps:remove(Seq, pending())),
+            case erlang:get(?PORTS(Pipe, Side)) of
+                undefined -> ok;
+                Port -> dispatch(Port)
+            end,
+            poll_next()
+    end.
+
+%% MessagePort::OnMessage: the messages that wait, at least 1000 and at most
+%% the ones there at the start, then the rest in a later poll. A close that
+%% waits first closes the port even when it does not receive.
 dispatch(Port) ->
+    #{queue := Queue} = state(Port),
+    dispatch(Port, max(length(Queue), 1000)).
+
+dispatch(Port, 0) ->
+    schedule(Port);
+dispatch(Port, Limit) ->
     case state(Port) of
         #{state := open, queue := [close | _]} ->
             close(Port);
         #{state := open, started := true, queue := [Message | Rest]} = S ->
             save(Port, S#{queue := Rest}),
-            Rest =/= [] andalso schedule(Port),
-            emit(Port, Message);
-        _ ->
-            ok
-    end.
-
-schedule(Port) ->
-    case state(Port) of
-        #{scheduled := false, state := open, queue := [_ | _], pipe := Pipe, side := Side} = S ->
-            save(Port, S#{scheduled := true}),
-            self() ! {'$buoy_node_call', fun() -> ?MODULE:resume(Pipe, Side) end},
-            ok;
+            try emit(Port, Message)
+            catch Class:Reason:Stack ->
+                %% The uncaught error goes to the job; the rest of the queue waits for the next poll.
+                schedule(Port),
+                erlang:raise(Class, Reason, Stack)
+            end,
+            case Rest of
+                [] -> ok;
+                _ -> buoy_node_loop:after_callback(), dispatch(Port, Limit - 1)
+            end;
         _ ->
             ok
     end.
