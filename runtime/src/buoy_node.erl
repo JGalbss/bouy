@@ -138,13 +138,21 @@ boot() ->
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
     {InternalBinding, Require} = erlang:get(?LOADERS),
     Replaced = replaced_globals(),
-    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- ?BOOTSTRAP, is_compiled(Id)],
+    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- ?BOOTSTRAP ++ repl_main(), is_compiled(Id)],
     [restore_global(Name, Property) || {Name, Property} <- Replaced],
     erlang:put(?STATE, ready),
     debug("bootstrap done~n", []),
     ok.
 
 is_compiled(Id) -> lists:member(Id, (index()):ids()).
+
+%% The CLI starts the REPL with -buoy_repl, where node.cc picks
+%% internal/main/repl as the main script.
+repl_main() ->
+    case init:get_argument(buoy_repl) of
+        error -> [];
+        _ -> [<<"internal/main/repl">>]
+    end.
 
 %% The engine's globals, such as console, that the program replaced or
 %% deleted before the bootstrap ran. Node defines its globals before the

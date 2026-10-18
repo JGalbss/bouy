@@ -157,12 +157,14 @@ function setupChildProcessIpcChannel() {
   }
 }
 
-// Node's CommonJS loader: Buoy's compiler links the program, but the REPL,
-// the code of -e, and the programs that require internal/modules/cjs/loader
-// read Module.builtinModules and the search paths, as initializeCJSLoader
-// sets them.
-function initializeCJS() {
+// Node's module loaders, as initializeModuleLoaders sets them up: Buoy's
+// compiler links the program, but the REPL, the code of -e, and the programs
+// that require internal/modules/cjs/loader read Module.builtinModules and the
+// search paths of the CommonJS loader, and the ESM loader of the REPL reads
+// the default conditions.
+function initializeModuleLoaders() {
   require('internal/modules/cjs/loader').initializeCJS();
+  require('internal/modules/esm/utils').initializeESM();
 }
 
 // The code of -e and -p reads each built-in module as a global, as
@@ -192,6 +194,6 @@ setupNavigator();
 setupWarningHandler();
 setupDebugEnv();
 setupChildProcessIpcChannel();
-initializeCJS();
+initializeModuleLoaders();
 setupEvalGlobals();
 require('internal/process/pre_execution').markBootstrapComplete();

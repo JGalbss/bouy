@@ -1,6 +1,6 @@
 //! `buoy` invoked as `node`: `buoy [node options] <script> [args...]`, `buoy -e <code>`,
-//! and `buoy -p <code>`. The program runs on the reference engine, and the node options
-//! reach the VM as `process.execArgv`.
+//! `buoy -p <code>`, and the REPL. The program runs on the reference engine, and the node
+//! options reach the VM as `process.execArgv`.
 
 use std::env;
 use std::ffi::OsString;
@@ -11,12 +11,14 @@ use std::process::ExitCode;
 
 use buoy_compiler::Semantics;
 
-/// The node options of an invocation, which the VM reads with `-buoy_exec_argv`, and
-/// whether the entry is the code of `-e` or `-p`, which has no script in `process.argv`.
+/// The node options of an invocation, which the VM reads with `-buoy_exec_argv`, whether
+/// the entry is the code of `-e` or `-p`, which has no script in `process.argv`, and
+/// whether the VM starts the REPL.
 #[derive(Debug, Default)]
 pub struct Options {
     exec_argv: Vec<String>,
     pub eval: bool,
+    pub repl: bool,
 }
 
 impl Options {
@@ -159,6 +161,7 @@ enum Entry {
 pub fn run(arguments: &[OsString]) -> ExitCode {
     let mut options = Options::default();
     let mut entry = None;
+    let mut force_repl = false;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].to_string_lossy().into_owned();
@@ -189,6 +192,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                 break;
             }
             _ if argument.starts_with('-') && argument.len() > 1 => {
+                force_repl |= argument == "-i" || argument == "--interactive";
                 options.exec_argv.push(argument.clone());
                 if VALUE_OPTIONS.contains(&argument.as_str())
                     && let Some(value) = arguments.get(index)
@@ -212,7 +216,14 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         return ExitCode::from(INVALID_COMMAND_LINE_ARGUMENT);
     }
     let program_arguments = &arguments[index.min(arguments.len())..];
+    // node.cc: -i starts the REPL even with -e, and so does a terminal on stdin when no
+    // script is named. The REPL evaluates the code of -e first.
+    let terminal = std::io::stdin().is_terminal();
     match entry {
+        Some(Entry::Eval(_) | Entry::Print(_)) if force_repl => run_repl(program_arguments, options),
+        Some(Entry::Script(script)) if script == "-" && (force_repl || terminal) => {
+            run_repl(program_arguments, options)
+        }
         Some(Entry::Script(script)) if script == "-" => {
             // `node - a b` keeps `-` as process.argv[1].
             let arguments: Vec<OsString> = std::iter::once(OsString::from("-"))
@@ -244,11 +255,17 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             );
             run_source(source, false, program_arguments, &options)
         }
-        None if std::io::stdin().is_terminal() => super::fail(
-            "buoy: a REPL without a script is not supported yet; pass a script, -e, or -p",
-        ),
+        None if force_repl || terminal => run_repl(program_arguments, options),
         None => run_stdin(program_arguments, options),
     }
+}
+
+/// The REPL: an empty program whose bootstrap runs `internal/main/repl` after
+/// `internal/main/buoy`, as node.cc picks it for the main script.
+fn run_repl(arguments: &[OsString], mut options: Options) -> ExitCode {
+    options.eval = true;
+    options.repl = true;
+    run_source(String::new(), false, arguments, &options)
 }
 
 /// `buoy -` and `buoy` with piped stdin: the script is the text of stdin.
@@ -374,6 +391,7 @@ mod tests {
         let options = Options {
             exec_argv: vec!["-e".to_owned(), "say(\"hi\")\n".to_owned()],
             eval: true,
+            repl: false,
         };
         assert_eq!(options.exec_argv_json(), r#"["-e","say(\"hi\")\n"]"#);
     }
