@@ -295,6 +295,9 @@ cert_cb(Id, Name, Waiting) ->
         This ->
             S = state(This),
             save(This, S#{sni_waiting := Waiting}),
+            %% SelectSNIContextCallback names the server on the socket.
+            Owner = buoy_heap:get(This, proplists:get_value(<<"owner_symbol">>, buoy_node:per_isolate_symbols())),
+            buoy_heap:is_object(Owner) andalso buoy_heap:set(Owner, <<"servername">>, buoy_node:string(Name)),
             Info = buoy_node:object([{<<"servername">>, buoy_node:string(Name)}, {<<"OCSPRequest">>, false}]),
             call_js(This, <<"oncertcb">>, [Info])
     end.
@@ -306,11 +309,18 @@ cert_cb_done(This) ->
         #{sni_waiting := Waiting} = S when is_pid(Waiting) ->
             save(This, S#{sni_waiting := none}),
             Context = buoy_heap:get(This, <<"sni_context">>),
-            Options = case buoy_crypto_context:is_context(Context) of
-                true -> [O || {K, _} = O <- buoy_crypto_context:options(Context, server), lists:member(K, [certs_keys, cacerts])];
-                false -> []
-            end,
-            Waiting ! {'$buoy_tls_sni', Options};
+            case {buoy_crypto_context:is_context(Context), buoy_heap:is_object(Context)} of
+                {true, _} ->
+                    Waiting ! {'$buoy_tls_sni', [O || {K, _} = O <- buoy_crypto_context:options(Context, server),
+                                                       lists:member(K, [certs_keys, cacerts])]};
+                {false, true} ->
+                    %% CertCbDone: an object that is no SecureContext fails.
+                    Waiting ! {'$buoy_tls_sni', []},
+                    E = buoy_heap:error_object('TypeError', <<"Invalid SNI context">>, <<"TypeError: Invalid SNI context">>),
+                    call_js(This, <<"onerror">>, [E]);
+                _ ->
+                    Waiting ! {'$buoy_tls_sni', []}
+            end;
         _ ->
             ok
     end,
@@ -733,9 +743,14 @@ shutdown(This, Req) ->
 
 destroy(This) ->
     case state(This) of
+        #{sni_waiting := Waiting} when is_pid(Waiting) -> Waiting ! {'$buoy_tls_sni', []};
+        _ -> ok
+    end,
+    case state(This) of
         #{agent := Agent, phase := Phase, id := Id} = S when is_pid(Agent) ->
             Agent ! close,
-            Phase =:= handshaking andalso buoy_node_loop:unref_handle(),
+            %% An agent that waits in a handshake ends with it.
+            Phase =:= handshaking andalso begin exit(Agent, kill), buoy_node_loop:unref_handle() end,
             save(This, S#{agent := none, phase := closed}),
             erlang:erase({?MODULE, Id});
         #{id := Id} = S ->
