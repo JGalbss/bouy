@@ -80,7 +80,8 @@ pub fn lower_unit(
     if !module.broken.is_empty() {
         return Ok(broken_module(linking, &module.broken));
     }
-    if module.kind == Kind::Json {
+    // A JSON, text, or bytes module holds its source as a constant for the runtime.
+    if matches!(module.kind, Kind::Json | Kind::Text | Kind::Bytes) {
         return Ok(erlang::print_module(&erlang::Module {
             name: module.name.clone(),
             functions: linking.json_functions(),

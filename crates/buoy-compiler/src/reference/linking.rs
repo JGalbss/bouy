@@ -105,6 +105,8 @@ impl<'c> Linking<'c> {
             Kind::Esm => "esm",
             Kind::CommonJs => "cjs",
             Kind::Json => "json",
+            Kind::Text => "text",
+            Kind::Bytes => "bytes",
         };
         let requests = unit
             .record
