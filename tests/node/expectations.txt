@@ -949,7 +949,7 @@ parallel/test-diagnostics-channel-tracing-channel-sync-error.js pass
 parallel/test-diagnostics-channel-tracing-channel-sync-run-stores.js pass
 parallel/test-diagnostics-channel-tracing-channel-sync.js pass
 parallel/test-diagnostics-channel-udp.js fail
-parallel/test-diagnostics-channel-web-locks.js timeout
+parallel/test-diagnostics-channel-web-locks.js pass
 parallel/test-diagnostics-channel-worker-threads.js fail
 parallel/test-diff.js pass
 parallel/test-directory-import.js fail
