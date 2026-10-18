@@ -496,7 +496,15 @@ advance(S, I, true) ->
     end;
 advance(_S, I, false) -> I + 1.
 
-flags_of(R) -> buoy_ref_string:units(buoy_ref:to_string(buoy_ref:get(R, <<"flags">>))).
+%% The flags of R, for the tests of a flag. A pristine R reads them from its slots: its
+%% flags accessor is the builtin, which gives the same flags in another order.
+flags_of(R) ->
+    case pristine(R) of
+        true ->
+            #{flags := Flags} = buoy_heap:slots(R),
+            buoy_ref_string:units(Flags);
+        false -> buoy_ref_string:units(buoy_ref:to_string(buoy_ref:get(R, <<"flags">>)))
+    end.
 
 full_unicode(Flags) -> lists:member($u, Flags) orelse lists:member($v, Flags).
 
@@ -647,18 +655,34 @@ symbol_replace(R, S, ReplaceValue) ->
                                 replace_match(Match, S, Functional, Template, Acc, NextPosition)
                         end, {[], 0}, Matches);
         none ->
-            Flags = flags_of(R),
-            Global = lists:member($g, Flags),
-            Global andalso buoy_ref:set(R, <<"lastIndex">>, 0),
-            Results = replace_results(R, S, Global, full_unicode(Flags), []),
-            lists:foldl(fun(Result, {Acc, NextPosition}) ->
-                                replace_match(match_record(Result, Length), S, Functional, Template, Acc, NextPosition)
-                        end, {[], 0}, Results)
+            case pristine(R) of
+                %% Without g, the one result is the builtin's array, which reading runs no code.
+                true -> replace_once(R, S, Functional, Template);
+                false -> replace_generic(R, S, Length, Functional, Template)
+            end
     end,
     case Next >= Length of
         true -> buoy_ref_string:concat(lists:reverse(Parts));
         false -> buoy_ref_string:concat(lists:reverse([buoy_ref_string:slice(S, Next, Length) | Parts]))
     end.
+
+replace_once(R, S, Functional, Template) ->
+    case builtin_search(R, S) of
+        nomatch -> {[], 0};
+        {match, Index, End, Caps, #{names := Names}} ->
+            Captures = [substring(S, C) || C <- tuple_to_list(Caps)],
+            {Named, _} = groups(lists:enumerate(1, Captures), Names),
+            replace_match({buoy_ref_string:slice(S, Index, End), Index, Captures, Named}, S, Functional, Template, [], 0)
+    end.
+
+replace_generic(R, S, Length, Functional, Template) ->
+    Flags = flags_of(R),
+    Global = lists:member($g, Flags),
+    Global andalso buoy_ref:set(R, <<"lastIndex">>, 0),
+    Results = replace_results(R, S, Global, full_unicode(Flags), []),
+    lists:foldl(fun(Result, {Acc, NextPosition}) ->
+                        replace_match(match_record(Result, Length), S, Functional, Template, Acc, NextPosition)
+                end, {[], 0}, Results).
 
 replace_results(R, S, Global, Unicode, Acc) ->
     case regexp_exec(R, S) of
