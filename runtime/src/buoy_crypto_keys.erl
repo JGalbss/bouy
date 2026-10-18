@@ -7,7 +7,7 @@
 
 -export([members/0, handle/1, key_data/1, is_handle/1, secret_bytes/1]).
 -export([from_args/2, private_encoding/1, public_encoding/1, encode_public/2, encode_private/2]).
--export([kind_name/1, jwk_curve/1]).
+-export([kind_name/1, jwk_curve/1, from_clone/1]).
 
 -define(SECRET, 0).
 -define(PUBLIC, 1).
@@ -82,13 +82,34 @@ secret(_) -> buoy_crypto:fail_code(<<"ERR_CRYPTO_INVALID_KEYTYPE">>).
 
 %% createNativeKeyObjectClass(callback): the callback gets NativeKeyObject
 %% and returns [KeyObject, SecretKeyObject, PublicKeyObject,
-%% PrivateKeyObject].
+%% PrivateKeyObject], which the realm keeps to make the KeyObjects that it
+%% receives. A NativeKeyObject clones for messaging with its key.
 native_class(_, Args) ->
     Native = buoy_node:constructor(<<"NativeKeyObject">>, 1, fun(This, A) ->
-        buoy_crypto:put_state(This, {key, key_data(buoy_node:arg(1, A))}),
+        Data = key_data(buoy_node:arg(1, A)),
+        buoy_crypto:put_state(This, {key, Data}),
+        buoy_binding_messaging:set_cloneable(This, ?MODULE, Data),
         undefined
     end),
-    buoy_heap:call(buoy_node:arg(1, Args), undefined, [Native]).
+    Classes = buoy_heap:call(buoy_node:arg(1, Args), undefined, [Native]),
+    erlang:put(classes_key(), Classes),
+    Classes.
+
+classes_key() -> {?MODULE, key_object_classes, erlang:get('$buoy_realm')}.
+
+%% The KeyObject of this realm for the key of a clone
+%% (KeyObjectTransferData::Deserialize), after node:crypto has made the
+%% classes.
+-spec from_clone(term()) -> term().
+from_clone(Data) ->
+    erlang:get(classes_key()) =:= undefined andalso buoy_node:require(<<"crypto">>),
+    Index = case Data of
+        {secret, _} -> 1;
+        {public, _} -> 2;
+        {private, _} -> 3
+    end,
+    Class = buoy_heap:get(erlang:get(classes_key()), Index),
+    buoy_heap:construct(Class, [handle(Data)], Class).
 
 %%% Reading keys
 

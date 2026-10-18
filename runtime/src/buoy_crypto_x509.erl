@@ -5,7 +5,7 @@
 %% of crypto_spkac.cc under crypto.Certificate.
 -module(buoy_crypto_x509).
 
--export([members/0, certificate/1, decode/1]).
+-export([members/0, certificate/1, decode/1, from_clone/1]).
 
 -define(SAN, {2,5,29,17}).
 -define(AIA, {1,3,6,1,5,5,7,1,1}).
@@ -145,11 +145,17 @@ certificate(Der) ->
     {ok, Cert} = decode(Der),
     handle(Cert).
 
+%% A handle clones for messaging with its certificate, as
+%% X509Certificate::CloneForMessaging does.
 handle(Cert) ->
     Class = class(),
     Handle = buoy_heap:construct(Class, [], Class),
     buoy_crypto:put_state(Handle, {x509, Cert}),
+    buoy_binding_messaging:set_cloneable(Handle, ?MODULE, Cert),
     Handle.
+
+-spec from_clone(map()) -> term().
+from_clone(Cert) -> handle(Cert).
 
 class() ->
     Key = {?MODULE, class, erlang:get('$buoy_realm')},
@@ -195,7 +201,11 @@ cert(This) -> buoy_crypto:state(This, x509).
 js(undefined) -> undefined;
 js(Text) -> buoy_node_encoding:decode_utf8(Text).
 
-public_key(#{spki := Spki}) -> buoy_crypto_pkey:parse_public_der(Spki, 2).
+%% X509_get_pubkey: a subject key that does not parse is an EVP decode error.
+public_key(#{spki := Spki}) ->
+    try buoy_crypto_pkey:parse_public_der(Spki, 2)
+    catch error:{crypto_failure, _} -> buoy_crypto:fail({openssl, decode_error})
+    end.
 
 ext(#{extensions := Exts}, Oid) ->
     case lists:keyfind(Oid, 1, Exts) of
