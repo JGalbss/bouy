@@ -12,8 +12,11 @@
 %%                        function gets a record only when it needs one, so
 %%                        an arrow function costs one id and no record.
 %%   {'$sym', Tag, Desc}  a symbol. Tag is an integer for Symbol(), the atom
-%%                        registered for Symbol.for(), or an atom such as
-%%                        iterator for a well-known symbol.
+%%                        registered for Symbol.for(), an atom such as
+%%                        iterator for a well-known symbol, or {private, N}
+%%                        for a private symbol of V8, which Node's bindings
+%%                        use: an own key only, no key of ownKeys, and
+%%                        writable on a frozen object, as a private name.
 %%   {'$c', Id}           a heap cell for a captured mutable variable. It is
 %%                        never a JavaScript value; it appears in fun envs.
 %%
@@ -47,7 +50,7 @@
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
 -export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
 -export([cell/1, cell_get/1, cell_set/2]).
--export([symbol/1, symbol_for/1, well_known/1]).
+-export([symbol/1, symbol_for/1, well_known/1, private_symbol/1]).
 -export([to_key/1, key_to_value/1]).
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
@@ -374,6 +377,7 @@ from_record({_, Proto, Props, _, _, _}, K, Receiver) ->
     end.
 
 inherited(null, _K, _Receiver) -> undefined;
+inherited(_Proto, {'$sym', {private, _}, _}, _Receiver) -> undefined;
 inherited(Proto, K, Receiver) -> get(Proto, K, Receiver).
 
 %% [[Get]] of a typed array (ECMA-262 §10.4.5.4): a numeric key reads the
@@ -640,10 +644,12 @@ set_on_receiver(_K, _V, _Receiver) ->
     false.
 
 writable({'#', _, _}, _Attrs) -> true;
+writable({'$sym', {private, _}, _}, _Attrs) -> true;
 writable(_K, #{'$frozen' := true}) -> false;
 writable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?WRITABLE =/= 0.
 
 is_private({'#', _, _}) -> true;
+is_private({'$sym', {private, _}, _}) -> true;
 is_private(_) -> false.
 
 extensible(#{'$frozen' := true}) -> false;
@@ -652,6 +658,7 @@ extensible(_) -> true.
 
 add_key(K, _Props, Keys) when is_integer(K) -> Keys;
 add_key({'#', _, _}, _Props, Keys) -> Keys;
+add_key({'$sym', {private, _}, _}, _Props, Keys) -> Keys;
 add_key(K, Props, Keys) ->
     case Props of
         #{K := _} -> Keys;
@@ -845,16 +852,21 @@ define_failed(O, K) ->
     end,
     throw_error('TypeError', Message).
 
-%% [[DefineOwnProperty]]: true when the property now matches the descriptor.
--spec define_own_property(value(), key(), map()) -> boolean().
-define_own_property(O, {'#', _, _} = K, Desc) ->
-    %% A private name is no property: it takes its value whatever the object's state.
+%% A private name is no property: it takes its value whatever the object's state.
+define_private(O, K, Desc) ->
     Slot = case is_accessor_descriptor(Desc) of
         true -> {'$accessor', maps:get(get, Desc, undefined), maps:get(set, Desc, undefined)};
         false -> maps:get(value, Desc, undefined)
     end,
     put_own(O, K, Slot, ?ALL),
-    true;
+    true.
+
+%% [[DefineOwnProperty]]: true when the property now matches the descriptor.
+-spec define_own_property(value(), key(), map()) -> boolean().
+define_own_property(O, {'#', _, _} = K, Desc) ->
+    define_private(O, K, Desc);
+define_own_property(O, {'$sym', {private, _}, _} = K, Desc) ->
+    define_private(O, K, Desc);
 define_own_property(O, K, Desc) ->
     case record_of(O) of
         {namespace, _, _, _, _, _} ->
@@ -1089,6 +1101,7 @@ own_of({_, _, Props, _, Attrs, _}, K) ->
     found(maps:find(K, Props), own_bits(K, Attrs)).
 
 own_bits({'#', _, _}, _Attrs) -> ?ALL;
+own_bits({'$sym', {private, _}, _}, _Attrs) -> ?ALL;
 own_bits(K, #{'$frozen' := true} = Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE;
 own_bits(K, Attrs) -> maps:get(K, Attrs, ?ALL).
 
@@ -1373,6 +1386,9 @@ cell_set({'$c', Id}, V) ->
 
 -spec symbol(value()) -> {'$sym', integer(), value()}.
 symbol(Description) -> {'$sym', erlang:unique_integer(), Description}.
+
+-spec private_symbol(binary()) -> {'$sym', {private, integer()}, binary()}.
+private_symbol(Description) -> {'$sym', {private, erlang:unique_integer()}, Description}.
 
 %% Symbol.for: the key is the identity, so every realm agrees without a registry.
 -spec symbol_for(binary()) -> {'$sym', registered, binary()}.
