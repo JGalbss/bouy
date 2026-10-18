@@ -2211,6 +2211,17 @@ NODE_BINDING_PER_ISOLATE_INIT(nested, node::worker::nested::Init)
     }
 
     #[test]
+    fn the_committed_erlang_module_matches_the_manifest() {
+        let root = crate::repository();
+        let manifest = load(&root).expect("the manifest loads");
+        let committed = fs::read_to_string(root.join(ERLANG)).expect("the module exists");
+        assert!(
+            committed == erlang(&manifest),
+            "{ERLANG} differs from {MANIFEST}; run `{COMMAND}`"
+        );
+    }
+
+    #[test]
     fn coverage_skips_the_names_of_stubs() {
         let module = r#"binding() -> buoy_node:object([{<<"open">>, fn(<<"open">>, 1, F)}]
             ++ buoy_node:stubs(<<"demo">>, [<<"close">>, <<"read">>])

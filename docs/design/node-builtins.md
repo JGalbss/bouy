@@ -34,6 +34,8 @@ A program that never uses Node pays nothing.
 
 `internalBinding(name)` returns `buoy_binding_<name>:binding()`, built once per realm. A name without such a module takes its entry of `buoy_node_stubs`: each function throws `ERR_BUOY_NOT_IMPLEMENTED` with the binding and the member, each class throws when constructed, each `set*` function does nothing, and each value is Node's. So Node's lib loads, and a program fails only where it calls missing native code. Read `src/<file>.cc` of Node for the semantics of a member.
 
+`tests/node/bindings.json` lists every binding and every member that `src/` of Node sets on it, and `cargo run --release -p buoy-suites -- node-bindings` writes it from Node's source at the tag of `.node-version`, with `runtime/src/buoy_node_manifest.erl`. `binding/1` gives each binding a stub for each function and class of the manifest that it lacks, so no member is silently missing. The "Node native bindings" section of `docs/COMPAT.md` counts the members of each binding that its module implements, which is the work list of the bindings.
+
 The helpers in `buoy_node`:
 
 - `fn(Name, Length, fun(This, Args) -> ... end)`, `constructor/3`, `object/1`, `object/2`, and `typed_array(Kind, Length)`.

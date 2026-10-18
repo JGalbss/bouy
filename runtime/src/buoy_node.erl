@@ -235,9 +235,20 @@ binding(Name) ->
                 {stub, Stub} -> buoy_node_stubs:binding(Stub);
                 Module -> Module:binding()
             end,
+            complete(Name, Binding),
             erlang:put(?BINDINGS, Cache#{Name => Binding}),
             Binding
     end.
+
+%% Gives Binding a stub for each function and class that src/ of Node sets on
+%% it and that Buoy lacks, so a call of missing native code names itself.
+complete(Name, Binding) ->
+    [buoy_heap:define(Binding, Key, #{value => missing_member(Name, Key, Kind), writable => true, enumerable => true, configurable => true})
+     || {Key, Kind} <- buoy_node_manifest:members(Name), not buoy_heap:has_own(Binding, Key)],
+    ok.
+
+missing_member(Name, Key, function) -> not_implemented(Name, Key);
+missing_member(Name, Key, class) -> missing_constructor(Name, Key, 0).
 
 binding_module(Name) when is_binary(Name) ->
     case lists:member(Name, (index()):bindings()) of
