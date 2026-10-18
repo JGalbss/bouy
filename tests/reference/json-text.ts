@@ -99,3 +99,31 @@ for (const text of ["[1 2]", '{"a":1,}', "tru", "nul", "{} x", '"\\u12G4"', '"\u
     console.log((error as Error).name + ": " + (error as Error).message);
   }
 }
+// JSON.stringify of plain objects and arrays, next to values whose serialization runs
+// code: a getter that adds Object.prototype.toJSON in the middle, holes, class
+// instances, hidden and symbol keys, and strings that need escapes in both forms.
+const later = { a: { b: 1 }, c: { d: 2 } };
+Object.defineProperty(later.a, "x", {
+  get() {
+    (Object.prototype as unknown as { toJSON: () => string }).toJSON = () => "proto";
+    return 1;
+  },
+  enumerable: true,
+});
+console.log(JSON.stringify(later));
+delete (Object.prototype as unknown as { toJSON?: unknown }).toJSON;
+const hidden: Record<string | symbol, unknown> = { visible: 1, [Symbol("s")]: 2 };
+Object.defineProperty(hidden, "hidden", { value: 3, enumerable: false });
+class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+}
+console.log(
+  JSON.stringify([hidden, [, 1, , 2], new Point(1, 2), Object.freeze({ f: [new Date(0)] })]),
+);
+console.log(JSON.stringify(['tab\there \u0001 "q" \\', "€\ud800\n", { "é\u0007": "😀" }]));
+console.log(JSON.stringify({ wide: ["€", { x: 1 }] }, null, "→"));

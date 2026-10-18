@@ -37,3 +37,14 @@ SyntaxError: Unexpected non-whitespace character after JSON at position 3 (line 
 SyntaxError: Bad Unicode escape in JSON at position 5 (line 1 column 6)
 SyntaxError: Bad control character in string literal in JSON at position 1 (line 1 column 2)
 SyntaxError: Unexpected end of JSON input
+{"a":{"b":1,"x":1},"c":"proto"}
+[{"visible":1},[null,1,null,2],{"x":1,"y":2},{"f":["1970-01-01T00:00:00.000Z"]}]
+["tab\there \u0001 \"q\" \\","€\ud800\n",{"é\u0007":"😀"}]
+{
+→"wide": [
+→→"€",
+→→{
+→→→"x": 1
+→→}
+→]
+}
