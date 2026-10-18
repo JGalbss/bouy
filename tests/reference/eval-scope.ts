@@ -26,6 +26,10 @@ const scopes = {
   classCaptures: sloppy(
     "function (a) { return eval('class K { m() { return a; } } new K().m()'); }",
   ),
+  // A function of the eval code reads a `var` of the same code.
+  functionReadsVar: sloppy(
+    "function () { return eval('var c = 4; function readC() { return c; } readC()'); }",
+  ),
   earlyLexical: sloppy(
     "function () { eval('function early() { return late; } let late = 5;'); return early(); }",
   ),
@@ -47,3 +51,4 @@ for (const [name, run] of Object.entries(scopes)) {
   console.log(name, run(21));
 }
 console.log(typeof (globalThis as Record<string, unknown>).x, outer);
+console.log((0, eval)("var g = 6; function readG() { return g; } readG()"));

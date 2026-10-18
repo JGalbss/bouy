@@ -812,14 +812,13 @@ impl<'a> Lowerer<'a, '_> {
         // get their cells first.
         let early = self.early_bindings(body);
         self.pre.extend(early);
-        let mut values = Vec::new();
+        let mut declared = Vec::new();
         for function in functions {
             let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get()) else {
                 continue;
             };
             if let Some(name) = declare(self, symbol) {
-                let value = self.function_value(function, None);
-                values.push(Expr::Tuple(vec![Expr::js_string(&name), value]));
+                declared.push((function, name));
             }
         }
         let mut names = Vec::new();
@@ -847,6 +846,15 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         self.declare_global_block_functions(block_functions);
+        // The functions compile once every name of the code is declared, since their
+        // bodies read the `var` names of the code.
+        let values = declared
+            .into_iter()
+            .map(|(function, name)| {
+                let value = self.function_value(function, None);
+                Expr::Tuple(vec![Expr::js_string(&name), value])
+            })
+            .collect();
         let call = match target {
             Some(object) => Expr::call(
                 "buoy_ref_eval",
