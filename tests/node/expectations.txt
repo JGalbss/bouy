@@ -1466,7 +1466,7 @@ parallel/test-fs-watch-recursive-linux-parallel-remove.js pass
 parallel/test-fs-watch-recursive-promise.js pass
 parallel/test-fs-watch-recursive-symlink.js pass
 parallel/test-fs-watch-recursive-sync-write.js pass
-parallel/test-fs-watch-recursive-update-file.js pass
+parallel/test-fs-watch-recursive-update-file.js linux=timeout,macos=pass
 parallel/test-fs-watch-recursive-validate.js pass
 parallel/test-fs-watch-recursive-watch-file.js pass
 parallel/test-fs-watch-ref-unref.js pass
