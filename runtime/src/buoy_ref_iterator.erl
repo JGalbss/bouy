@@ -7,7 +7,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4]).
--export([iterate/1, step/1, to_list/1, take/2, rest_list/1, for_in/1]).
+-export([iterate/1, step/1, to_list/1, list_from_method/2, take/2, rest_list/1, for_in/1]).
 -export([get_iterator/1, close/1, close_state/1, close_quietly/1]).
 -export([async_next/1, async_step/1, async_close/3, async_close_quietly/2]).
 -export([require_coercible/1, finish/1, pattern_cell/1, next_value/1, rest_value/1, abort/1, finish_cell/1]).
@@ -76,13 +76,30 @@ native(_Class, O) ->
     end.
 
 native_state(Iterator, Next) ->
-    case {native_class(Iterator), Next} of
-        {array_iterator, {'$f', {builtin, <<"ArrayIterator.prototype.next">>}, _}} -> {native, buoy_ref_array, Iterator};
-        {map_iterator, {'$f', {builtin, <<"MapIterator.prototype.next">>}, _}} -> {native, buoy_ref_collection, Iterator};
-        {set_iterator, {'$f', {builtin, <<"SetIterator.prototype.next">>}, _}} -> {native, buoy_ref_collection, Iterator};
-        {string_iterator, {'$f', {builtin, <<"StringIterator.prototype.next">>}, _}} -> {native, buoy_ref_string, Iterator};
-        _ -> none
+    case native_module(native_class(Iterator), Next) of
+        none -> none;
+        Module -> {native, Module, Iterator}
     end.
+
+native_module(array_iterator, {'$f', {builtin, <<"ArrayIterator.prototype.next">>}, _}) -> buoy_ref_array;
+native_module(map_iterator, {'$f', {builtin, <<"MapIterator.prototype.next">>}, _}) -> buoy_ref_collection;
+native_module(set_iterator, {'$f', {builtin, <<"SetIterator.prototype.next">>}, _}) -> buoy_ref_collection;
+native_module(string_iterator, {'$f', {builtin, <<"StringIterator.prototype.next">>}, _}) -> buoy_ref_string;
+native_module(_Class, _Next) -> none.
+
+%% IteratorToList(GetIteratorFromMethod(Source, Method)). A builtin iterator
+%% with its intrinsic next steps without result objects. The list is taken
+%% whole, so no IteratorClose happens and `return` is not read.
+-spec list_from_method(term(), term()) -> list().
+list_from_method(Source, Method) ->
+    Iterator = buoy_ref:call(Method, Source, []),
+    ?IS_OBJECT(Iterator) orelse buoy_ref:type_error(<<"Result of the Symbol.iterator method is not an object">>),
+    Next = buoy_ref:get(Iterator, <<"next">>),
+    State = case native_module(buoy_heap:class_of(Iterator), Next) of
+        none -> {protocol, Iterator, Next};
+        Module -> {native, Module, Iterator}
+    end,
+    drain(State, []).
 
 %% The class of a builtin iterator that has no return method, which
 %% IteratorClose would call: only such an iterator steps natively. A user

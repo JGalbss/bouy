@@ -255,24 +255,9 @@ construct(Kind, NewTarget, Args) ->
                 _ ->
                     case iterator_method(First) of
                         undefined -> from_array_like(Kind, Proto, First);
-                        Method -> from_list(Kind, Proto, iterator_to_list(First, Method))
+                        Method -> from_list(Kind, Proto, buoy_ref_iterator:list_from_method(First, Method))
                     end
             end
-    end.
-
-%% IteratorToList of GetIteratorFromMethod.
-iterator_to_list(Source, Method) ->
-    Iterator = buoy_ref:call(Method, Source, []),
-    ?IS_OBJECT(Iterator) orelse type_error(<<"Result of the Symbol.iterator method is not an object">>),
-    Next = buoy_ref:get(Iterator, <<"next">>),
-    iterator_steps(Iterator, Next, []).
-
-iterator_steps(Iterator, Next, Acc) ->
-    Result = buoy_ref:call(Next, Iterator, []),
-    ?IS_OBJECT(Result) orelse type_error(buoy_ref_string:concat([<<"Iterator result ">>, buoy_ref:describe(Result), <<" is not an object">>])),
-    case buoy_ref:truthy(buoy_ref:get(Result, <<"done">>)) of
-        true -> lists:reverse(Acc);
-        false -> iterator_steps(Iterator, Next, [buoy_ref:get(Result, <<"value">>) | Acc])
     end.
 
 iterator_method(O) ->
@@ -616,7 +601,7 @@ method(<<"TypedArray">>, <<"from">>, C, Args) ->
             O = buoy_ref:to_object(Source),
             Length = buoy_ref_array:length_of(O),
             {array_like, O, Length};
-        Method -> {list, iterator_to_list(Source, Method)}
+        Method -> {list, buoy_ref_iterator:list_from_method(Source, Method)}
     end,
     Length1 = case Values of
         {list, List} -> length(List);
