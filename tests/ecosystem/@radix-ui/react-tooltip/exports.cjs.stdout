@@ -1,0 +1,27 @@
+module.exports: object
+  Arrow: object
+    $$typeof: symbol
+    render: function/2
+  Content: object
+    $$typeof: symbol
+    render: function/2
+  Portal: function/1
+  Provider: function/1
+  Root: function/1
+  Tooltip: function/1
+  TooltipArrow: object
+    $$typeof: symbol
+    render: function/2
+  TooltipContent: object
+    $$typeof: symbol
+    render: function/2
+  TooltipPortal: function/1
+  TooltipProvider: function/1
+  TooltipTrigger: object
+    $$typeof: symbol
+    render: function/2
+  Trigger: object
+    $$typeof: symbol
+    render: function/2
+  createTooltipScope: function/0
+    scopeName: string

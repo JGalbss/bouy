@@ -1,0 +1,5 @@
+module.exports: object
+  decode: function/2
+  getBOMEncoding: function/1
+  isSupported: function/1 (false, false, false, false, false, false, false, false, false)
+  labelToName: function/1

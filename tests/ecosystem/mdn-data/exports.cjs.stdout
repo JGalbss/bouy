@@ -1,0 +1,13 @@
+module.exports: object
+  api: object
+    inheritance: object
+  css: object
+    atRules: object
+    functions: object
+    properties: object
+    selectors: object
+    syntaxes: object
+    types: object
+    units: object
+  l10n: object
+    css: object

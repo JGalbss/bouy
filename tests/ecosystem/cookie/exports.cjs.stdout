@@ -1,0 +1,3 @@
+module.exports: object
+  parse: function/2
+  serialize: function/3

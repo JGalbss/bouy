@@ -1,0 +1,42 @@
+module.exports: object
+  DefaultIdentityProviderConfig: class/1 {getIdentityProvider}
+  EXPIRATION_MS: number
+  HttpApiKeyAuthSigner: class/0 {sign}
+  HttpBearerAuthSigner: class/0 {sign}
+  NoAuthSigner: class/0 {sign}
+  createIsIdentityExpiredFunction: function/1
+  createPaginator: function/5
+  doesIdentityRequireRefresh: function/1
+  getHttpAuthSchemeEndpointRuleSetPlugin: function/2
+  getHttpAuthSchemePlugin: function/2
+  getHttpSigningPlugin: function/1
+  getSmithyContext: function/1
+  httpAuthSchemeEndpointRuleSetMiddlewareOptions: object
+    name: string
+    override: boolean
+    relation: string
+    step: string
+    tags: object Array
+    toMiddleware: string
+  httpAuthSchemeMiddleware: function/2
+  httpAuthSchemeMiddlewareOptions: object
+    name: string
+    override: boolean
+    relation: string
+    step: string
+    tags: object Array
+    toMiddleware: string
+  httpSigningMiddleware: function/1
+  httpSigningMiddlewareOptions: object
+    aliases: object Array
+    name: string
+    override: boolean
+    relation: string
+    step: string
+    tags: object Array
+    toMiddleware: string
+  isIdentityExpired: function/1 (throws, throws, false, false, false, false, false, false, false)
+  memoizeIdentityProvider: function/3
+  normalizeProvider: function/1
+  requestBuilder: function/2
+  setFeature: function/3

@@ -1,0 +1,3 @@
+module.exports: object
+  ParseError: function/2
+  createParser: function/1

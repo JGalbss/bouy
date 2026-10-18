@@ -1,0 +1,4 @@
+module.exports: function/1
+  isSupported: boolean
+  removed: object Array
+  version: string

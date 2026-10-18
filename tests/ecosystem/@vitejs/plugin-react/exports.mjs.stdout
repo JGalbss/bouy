@@ -1,0 +1,7 @@
+namespace: object Module
+  default: function/0
+    preambleCode: string
+  module.exports: function/1
+    default: function/1
+    reactCompilerPreset: function/0
+  reactCompilerPreset: function/0

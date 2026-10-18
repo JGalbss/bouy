@@ -1,0 +1,2 @@
+module.exports: object
+  Retrier: class/1 {pending, retry, retrying, working}

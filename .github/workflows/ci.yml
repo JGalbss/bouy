@@ -9,8 +9,10 @@ permissions:
   contents: read
 
 jobs:
+  # The suites record the outcomes of Linux on the image of the nightly job, so each job
+  # names that image rather than ubuntu-latest, which moves to a new release.
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -31,9 +33,11 @@ jobs:
 
   # The upstream suites of docs/design/testing.md section 10. A pull request runs the
   # selection of section 3.7 and compares with the expectation file of its base. A push to
-  # main runs every id until the nightly job exists.
+  # main runs every id of test262, and the selection of Node's tests, whose every id the
+  # nightly job runs.
   suites:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,8 +82,8 @@ jobs:
           ACCEPT: ${{ contains(github.event.pull_request.labels.*.name, 'accept-regression') }}
         run: |
           base="$BEFORE"
-          select="all"
-          if [ "$EVENT" = "pull_request" ]; then base="$BASE"; select="pr"; fi
+          select="pr"
+          if [ "$EVENT" = "pull_request" ]; then base="$BASE"; fi
           git show "$base:tests/node/expectations.txt" > "$RUNNER_TEMP/node-base.txt" 2>/dev/null || rm -f "$RUNNER_TEMP/node-base.txt"
           accept=""
           if [ "$ACCEPT" = "true" ]; then accept="--accept-regressions"; fi

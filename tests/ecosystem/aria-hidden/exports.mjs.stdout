@@ -1,0 +1,16 @@
+namespace: object Module
+  __esModule: boolean
+  default: object
+    hideOthers: function/3
+    inertOthers: function/3
+    supportsInert: function/0
+    suppressOthers: function/3
+  hideOthers: function/3
+  inertOthers: function/3
+  module.exports: object
+    hideOthers: function/3
+    inertOthers: function/3
+    supportsInert: function/0
+    suppressOthers: function/3
+  supportsInert: function/0
+  suppressOthers: function/3

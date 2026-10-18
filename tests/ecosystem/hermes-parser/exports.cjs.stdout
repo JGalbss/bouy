@@ -1,0 +1,131 @@
+module.exports: object
+  FlowVisitorKeys: object
+    AnyTypeAnnotation: object Array
+    ArrayExpression: object Array
+    ArrayPattern: object Array
+    ArrayTypeAnnotation: object Array
+    ArrowFunctionExpression: object Array
+    AsConstExpression: object Array
+    AsExpression: object Array
+    AssignmentExpression: object Array
+    AssignmentPattern: object Array
+    AwaitExpression: object Array
+    BigIntLiteralTypeAnnotation: object Array
+    BigIntTypeAnnotation: object Array
+    BinaryExpression: object Array
+    BlockStatement: object Array
+    BooleanLiteralTypeAnnotation: object Array
+    BooleanTypeAnnotation: object Array
+    BreakStatement: object Array
+    CallExpression: object Array
+    CatchClause: object Array
+    ChainExpression: object Array
+    ClassBody: object Array
+    ClassDeclaration: object Array
+    ClassExpression: object Array
+    ClassImplements: object Array
+    ComponentDeclaration: object Array
+    ComponentParameter: object Array
+    ComponentTypeAnnotation: object Array
+    ComponentTypeParameter: object Array
+    ConditionalExpression: object Array
+    ConditionalTypeAnnotation: object Array
+    ContinueStatement: object Array
+    DebuggerStatement: object Array
+    DeclareClass: object Array
+    DeclareComponent: object Array
+    DeclareEnum: object Array
+    DeclareExportAllDeclaration: object Array
+    DeclareExportDeclaration: object Array
+    DeclareFunction: object Array
+    DeclareHook: object Array
+    DeclareInterface: object Array
+    DeclareModule: object Array
+    DeclareModuleExports: object Array
+    DeclareNamespace: object Array
+    DeclareOpaqueType: object Array
+    DeclareTypeAlias: object Array
+    DeclareVariable: object Array
+    DeclaredPredicate: object Array
+    DoWhileStatement: object Array
+    EmptyStatement: object Array
+    EmptyTypeAnnotation: object Array
+    EnumBigIntBody: object Array
+    EnumBigIntMember: object Array
+    EnumBooleanBody: object Array
+    EnumBooleanMember: object Array
+    EnumDeclaration: object Array
+    EnumDefaultedMember: object Array
+    EnumNumberBody: object Array
+    EnumNumberMember: object Array
+    EnumStringBody: object Array
+    EnumStringMember: object Array
+    EnumSymbolBody: object Array
+    ExistsTypeAnnotation: object Array
+    ExportAllDeclaration: object Array
+    ExportDefaultDeclaration: object Array
+    ExportNamedDeclaration: object Array
+    ExportSpecifier: object Array
+    ExpressionStatement: object Array
+    ForInStatement: object Array
+    ForOfStatement: object Array
+    ForStatement: object Array
+    FunctionDeclaration: object Array
+    FunctionExpression: object Array
+    FunctionTypeAnnotation: object Array
+    FunctionTypeParam: object Array
+    GenericTypeAnnotation: object Array
+    HookDeclaration: object Array
+    HookTypeAnnotation: object Array
+    Identifier: object Array
+    IfStatement: object Array
+    ImportAttribute: object Array
+    ImportDeclaration: object Array
+    ImportDefaultSpecifier: object Array
+    ImportExpression: object Array
+    ImportNamespaceSpecifier: object Array
+    ImportSpecifier: object Array
+    IndexedAccessType: object Array
+    InferTypeAnnotation: object Array
+    InferredPredicate: object Array
+    InterfaceDeclaration: object Array
+    InterfaceExtends: object Array
+    InterfaceTypeAnnotation: object Array
+    IntersectionTypeAnnotation: object Array
+    JSXAttribute: object Array
+    JSXClosingElement: object Array
+    JSXClosingFragment: object Array
+    JSXElement: object Array
+    JSXEmptyExpression: object Array
+    JSXExpressionContainer: object Array
+    JSXFragment: object Array
+    JSXIdentifier: object Array
+    ... 78 more keys
+  ParserOptionsKeys: object Set
+  SimpleTransform: class/0 {transform}
+  SimpleTraverser: class/0 {_setErrorContext, _traverse, traverse}
+    Break: object Error
+    Skip: object Error
+  SimpleTraverserBreak: object Error
+  SimpleTraverserSkip: object Error
+  Transforms: object
+    stripComponentSyntax: function/2
+    stripFlowTypes: function/2
+    stripFlowTypesForBabel: function/2
+  astArrayMutationHelpers: object
+    arrayIsEqual: function/2
+    insertInArray: function/3
+    removeFromArray: function/2
+    replaceInArray: function/3
+  astNodeMutationHelpers: object
+    deepCloneNode: function/2
+    nodeWith: function/3
+    removeNodeOnParent: function/3
+    replaceNodeOnParent: function/4
+    setParentPointersInDirectChildren: function/2
+    shallowCloneNode: function/2
+    updateAllParentPointers: function/2
+  getVisitorKeys: function/2
+  isNode: function/1 (false, false, false, false, false, false, false, false, false)
+  mutateESTreeASTForPrettier: function/2
+  parse: function/2

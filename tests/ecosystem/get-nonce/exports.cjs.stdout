@@ -1,0 +1,3 @@
+module.exports: object
+  getNonce: function/0
+  setNonce: function/1

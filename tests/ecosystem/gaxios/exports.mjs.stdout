@@ -1,0 +1,9 @@
+namespace: object Module
+  Gaxios: class/1 {_defaultAdapter, _request, fetch, getMultipartRequest, getResponseData, getResponseDataFromContentType, request, validateStatus}
+  GaxiosError: function/4
+  GaxiosInterceptorManager: function/0
+  instance: object
+    agentCache: object Map
+    defaults: object
+    interceptors: object
+  request: function/1

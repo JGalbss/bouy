@@ -1,0 +1,10 @@
+module.exports: class/0 {addEventListener, dispatchEvent, removeEventListener}
+  EventTarget: class/0 {addEventListener, dispatchEvent, removeEventListener}
+    EventTarget: class/0 {addEventListener, dispatchEvent, removeEventListener}
+    default: class/0 {addEventListener, dispatchEvent, removeEventListener}
+    defineEventAttribute: function/2
+  default: class/0 {addEventListener, dispatchEvent, removeEventListener}
+    EventTarget: class/0 {addEventListener, dispatchEvent, removeEventListener}
+    default: class/0 {addEventListener, dispatchEvent, removeEventListener}
+    defineEventAttribute: function/2
+  defineEventAttribute: function/2

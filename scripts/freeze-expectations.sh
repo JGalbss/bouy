@@ -17,9 +17,9 @@
 # before/src/main.ts, as the README of the fixture describes, and writes
 # before/expected.stdout.
 #
-# tests/npm and tests/packages hold one directory for each case or package. Their programs
-# are the files named main.mjs, main.cjs, main-<variant>.mjs, exports.mjs, and exports.cjs
-# outside node_modules, and the output of each is `<program>.stdout`, such as
+# tests/npm, tests/packages, and tests/ecosystem hold one directory for each case or package.
+# Their programs are the files named main.mjs, main.cjs, main-<variant>.mjs, exports.mjs, and
+# exports.cjs outside node_modules, and the output of each is `<program>.stdout`, such as
 # `exports.cjs.stdout`, because two programs of a directory share a stem. One case or
 # package directory, such as tests/packages/zod@4, freezes only its programs.
 #
@@ -117,7 +117,7 @@ case "${1%/}" in
 *migration)
     freeze "${1%/}/before/expected" --experimental-transform-types "${1%/}/before/src/main.ts"
     ;;
-*npm | *packages | */npm/* | */packages/*)
+*npm | *packages | *ecosystem | */npm/* | */packages/* | */ecosystem/*)
     # The names of these programs hold no spaces.
     for program in $(find "${1%/}" -name node_modules -prune -o -type f \( -name main.mjs \
         -o -name main.cjs -o -name 'main-*.mjs' -o -name exports.mjs -o -name exports.cjs \) \

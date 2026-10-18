@@ -1,0 +1,5 @@
+module.exports: object
+  PNG: class/1 {_gamma, _handleClose, _metadata, adjustGamma, bitblt, end, pack, parse, write}
+    adjustGamma: function/1
+    bitblt: function/8
+    sync: object

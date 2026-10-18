@@ -1,0 +1,7 @@
+module.exports: function/2
+  options: object
+    escapeEverything: boolean
+    isIdentifier: boolean
+    quotes: string
+    wrap: boolean
+  version: string

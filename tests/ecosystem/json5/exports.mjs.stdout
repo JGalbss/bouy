@@ -1,0 +1,7 @@
+namespace: object Module
+  default: object
+    parse: function/2
+    stringify: function/3
+  module.exports: object
+    parse: function/2
+    stringify: function/3

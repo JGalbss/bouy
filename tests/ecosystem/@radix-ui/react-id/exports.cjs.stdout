@@ -1,0 +1,2 @@
+module.exports: object
+  useId: function/1

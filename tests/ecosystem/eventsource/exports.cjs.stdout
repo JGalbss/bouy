@@ -1,0 +1,6 @@
+module.exports: object
+  ErrorEvent: function/2
+  EventSource: class/2 {addEventListener, close, onerror, onmessage, onopen, readyState, removeEventListener, url, withCredentials}
+    CLOSED: number
+    CONNECTING: number
+    OPEN: number

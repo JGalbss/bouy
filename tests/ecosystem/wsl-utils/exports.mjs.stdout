@@ -1,0 +1,5 @@
+namespace: object Module
+  isWsl: boolean
+  powerShellPath: function/0
+  powerShellPathFromWsl: function/0
+  wslDrivesMountPoint: function/0

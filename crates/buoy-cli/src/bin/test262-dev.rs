@@ -551,7 +551,7 @@ fn vm_pass(
         "-mode",
         "minimal",
         "-boot",
-        "no_dot_erlang",
+        &runtime.boot,
         "-pa",
     ])
     .arg(&runtime.ebin)

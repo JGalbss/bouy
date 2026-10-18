@@ -1,0 +1,24 @@
+module.exports: object
+  TargetNames: object
+    android: string
+    chrome: string
+    deno: string
+    edge: string
+    electron: string
+    firefox: string
+    ie: string
+    ios: string
+    node: string
+    opera: string
+    opera_mobile: string
+    rhino: string
+    safari: string
+    samsung: string
+  default: function/0
+  filterItems: function/7
+  getInclusionReasons: function/3
+  isBrowsersQueryValid: function/1 (false, false, false, false, true, true, true, false, false)
+  isRequired: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  prettifyTargets: function/1
+  unreleasedLabels: object
+    safari: string

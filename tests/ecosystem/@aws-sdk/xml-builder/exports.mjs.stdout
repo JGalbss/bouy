@@ -1,0 +1,12 @@
+namespace: object Module
+  XmlNode: class/1 {a, addAttribute, addChildNode, c, cc, l, lc, n, removeAttribute, toString, withName}
+  XmlText: class/1 {toString}
+  default: object
+    XmlNode: class/1 {a, addAttribute, addChildNode, c, cc, l, lc, n, removeAttribute, toString, withName}
+    XmlText: class/1 {toString}
+    parseXML: function/1
+  module.exports: object
+    XmlNode: class/1 {a, addAttribute, addChildNode, c, cc, l, lc, n, removeAttribute, toString, withName}
+    XmlText: class/1 {toString}
+    parseXML: function/1
+  parseXML: function/1

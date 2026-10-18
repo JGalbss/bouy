@@ -1,0 +1,30 @@
+module.exports: object
+  IdempotencyLevel: object
+    IDEMPOTENCY_UNKNOWN: string
+    IDEMPOTENT: string
+    NO_SIDE_EFFECTS: string
+  Long: class/3 {__isLong__, add, and, clz, comp, compare, countLeadingZeros, countTrailingZeros, ctz, div, divide, eq, equals, eqz, ge, getHighBits, getHighBitsUnsigned, getLowBits, getLowBitsUnsigned, getNumBitsAbs, greaterThan, greaterThanOrEqual, gt, gte, isEven, isNegative, isOdd, isPositive, isSafeInteger, isZero, le, lessThan, lessThanOrEqual, lt, lte, mod, modulo, mul, multiply, ne, neg, negate, neq, not, notEquals, or, rem, rotateLeft, rotateRight, rotl, rotr, shiftLeft, shiftRight, shiftRightUnsigned, shl, shr, shr_u, shru, sub, subtract, toBigInt, toBytes, toBytesBE, toBytesLE, toInt, toNumber, toSigned, toString, toUnsigned, xor}
+    MAX_UNSIGNED_VALUE: object
+    MAX_VALUE: object
+    MIN_VALUE: object
+    NEG_ONE: object
+    ONE: object
+    UONE: object
+    UZERO: object
+    ZERO: object
+    fromBigInt: function/2
+    fromBits: function/3
+    fromBytes: function/3
+    fromBytesBE: function/2
+    fromBytesLE: function/2
+    fromInt: function/2
+    fromNumber: function/2
+    fromString: function/3
+    fromValue: function/2
+    isLong: function/1
+  fromJSON: function/2
+  isAnyExtension: function/1 (throws, throws, throws, throws, throws, throws, false, false, throws)
+  load: function/2
+  loadFileDescriptorSetFromBuffer: function/2
+  loadFileDescriptorSetFromObject: function/2
+  loadSync: function/2

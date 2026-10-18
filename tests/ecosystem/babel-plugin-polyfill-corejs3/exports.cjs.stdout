@@ -1,0 +1,3 @@
+module.exports: object
+  __esModule: boolean
+  default: function/3
