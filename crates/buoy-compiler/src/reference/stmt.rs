@@ -106,32 +106,34 @@ impl<'a> Lowerer<'a, '_> {
         // The block cells of the shared block functions come first, so that every function
         // of the block can close over them.
         let mut blocks = Vec::new();
-        let mut block_cells = Vec::new();
+        let mut block_cells: Vec<(String, &oxc::ast::ast::Function<'a>)> = Vec::new();
+        let symbol_of = |function: &oxc::ast::ast::Function<'a>| {
+            function.id.as_ref().and_then(|id| id.symbol_id.get())
+        };
         for statement in list {
-            if let Statement::FunctionDeclaration(function) = statement
+            if let Some(function) = declared_function(statement)
                 && self.is_block_function(function)
                 && !self.has_block_cell(function)
             {
-                let (cell, code) = self.block_function_cell(function);
+                let shared = block_cells
+                    .iter()
+                    .find(|(_, other)| symbol_of(other) == symbol_of(function))
+                    .map(|(cell, _)| cell.clone());
+                let (cell, code) = self.block_function_cell(function, shared);
                 blocks.extend(code);
-                block_cells.push((cell, &**function));
+                block_cells.push((cell, function));
             }
         }
         let functions: Vec<_> = list
             .iter()
-            .filter(|statement| {
-                !matches!(statement, Statement::FunctionDeclaration(function) if self.is_block_function(function))
-            })
-            .filter_map(|statement| match statement {
-                Statement::FunctionDeclaration(function) => function
-                    .id
-                    .as_ref()
-                    .and_then(|id| id.symbol_id.get())
+            .filter_map(|statement| declared_function(statement))
+            .filter(|function| !self.is_block_function(function))
+            .filter_map(|function| {
+                symbol_of(function)
                     .filter(|symbol| {
                         !self.tops.contains_key(symbol) && !self.hoisted.contains(symbol)
                     })
-                    .map(|symbol| (symbol, function)),
-                _ => None,
+                    .map(|symbol| (symbol, function))
             })
             .collect();
         let saved = std::mem::take(&mut self.pre);
@@ -516,6 +518,16 @@ impl<'a> Lowerer<'a, '_> {
         let discriminant = self.bind(discriminant);
         let early = self.early_case_bindings(statement);
         self.pre.extend(early);
+        // The cases share one block, so each function declaration of a case exists from
+        // the start of the switch, as in a block.
+        let functions: Vec<&'a Statement<'a>> = statement
+            .cases
+            .iter()
+            .flat_map(|case| case.consequent.iter())
+            .filter(|item| declared_function(item).is_some())
+            .collect();
+        let hoisted = self.hoist(&functions);
+        self.pre.extend(hoisted);
         let mut code = std::mem::take(&mut self.pre);
         let vars = self.assigned_in(statement.span, |visitor| {
             for case in &statement.cases {
@@ -733,4 +745,14 @@ pub fn is_simple(statement: &Statement<'_>) -> bool {
             | Statement::ExportDefaultDeclaration(_)
             | Statement::DebuggerStatement(_)
     )
+}
+
+/// The function that a statement declares: a function declaration, also behind labels,
+/// which sloppy code allows (Annex B.3.1).
+fn declared_function<'a, 's>(statement: &'s Statement<'a>) -> Option<&'s oxc::ast::ast::Function<'a>> {
+    match statement {
+        Statement::FunctionDeclaration(function) => Some(function),
+        Statement::LabeledStatement(labeled) => declared_function(&labeled.body),
+        _ => None,
+    }
 }

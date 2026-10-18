@@ -8,3 +8,4 @@ TypeError: Assignment to constant variable.
 [ 5, 10 ]
 block functions undefined,inner,replaced,number,undefined,function
 [ false, true, 'TypeError', 'named', '' ]
+[ 4, 4 ] g [ 'h', 'h' ] [ 7, 7 ]

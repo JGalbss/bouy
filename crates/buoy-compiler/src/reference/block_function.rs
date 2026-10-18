@@ -176,6 +176,12 @@ impl<'a> Lowerer<'a, '_> {
     /// The block cell that a reference to `symbol` at `span` reads: the innermost block of
     /// a separate block binding that holds the reference.
     pub fn block_cell(&self, symbol: SymbolId, span: Span) -> Option<String> {
+        self.block_binding(symbol, span)
+            .and_then(|function| function.cell.clone())
+    }
+
+    /// The separate block binding of `symbol` whose block holds `span`, the innermost.
+    pub fn block_binding(&self, symbol: SymbolId, span: Span) -> Option<&BlockFunction> {
         self.block_functions
             .iter()
             .filter(|function| {
@@ -185,7 +191,6 @@ impl<'a> Lowerer<'a, '_> {
                     && span.end <= function.block.end
             })
             .min_by_key(|function| function.block.size())
-            .and_then(|function| function.cell.clone())
     }
 
     /// Whether `reference` to `symbol` is outside the blocks of a hidden block function, so
@@ -233,12 +238,25 @@ impl<'a> Lowerer<'a, '_> {
 
     /// The block cell of the separate block function `function`, which holds undefined
     /// until the block sets it, and the code that makes it.
-    pub fn block_function_cell(&mut self, function: &Function<'a>) -> (String, Vec<Expr>) {
-        let cell = self.fresh("Block");
-        let code = vec![Expr::matches(
-            Expr::var(cell.clone()),
-            Expr::call("buoy_heap", "cell", vec![Expr::undefined()]),
-        )];
+    /// A second declaration of the same name in the block shares the cell of the first
+    /// (`shared`), and the block sets it to each in turn, so the last one wins (Annex
+    /// B.3.2.4), and no code makes a cell.
+    pub fn block_function_cell(
+        &mut self,
+        function: &Function<'a>,
+        shared: Option<String>,
+    ) -> (String, Vec<Expr>) {
+        let (cell, code) = match shared {
+            Some(cell) => (cell, Vec::new()),
+            None => {
+                let cell = self.fresh("Block");
+                let code = vec![Expr::matches(
+                    Expr::var(cell.clone()),
+                    Expr::call("buoy_heap", "cell", vec![Expr::undefined()]),
+                )];
+                (cell, code)
+            }
+        };
         for block_function in &mut self.block_functions {
             if block_function.declaration == function.span {
                 block_function.cell = Some(cell.clone());

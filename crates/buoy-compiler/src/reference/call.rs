@@ -86,9 +86,11 @@ impl<'a> Lowerer<'a, '_> {
             let args = self.args(&call.arguments);
             return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
         }
+        // A static call, unless the name is the cell of a block function in its block.
         if let Expression::Identifier(ident) = callee
             && let Some(symbol) = self.symbol_of(ident.reference_id.get())
             && !self.frame.env.contains_key(&symbol)
+            && self.block_cell(symbol, ident.span).is_none()
         {
             match self.tops.get(&symbol).cloned() {
                 Some(Top::Function { name, .. }) if !call.optional => {
