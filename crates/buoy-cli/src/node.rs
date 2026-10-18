@@ -2,9 +2,11 @@
 //! and `buoy -p <code>`. The program runs on the reference engine, and the node options
 //! reach the VM as `process.execArgv`.
 
+use std::collections::hash_map::DefaultHasher;
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Write as _;
+use std::hash::{Hash as _, Hasher as _};
 use std::io::{IsTerminal as _, Read as _};
 use std::path::Path;
 use std::process::ExitCode;
@@ -165,10 +167,14 @@ fn run_stdin(arguments: &[OsString], mut options: Options) -> ExitCode {
 }
 
 /// Compiles the code as the module `[eval]` of the working directory, so it resolves its
-/// imports from there, and starts it.
+/// imports from there, and starts it. The name carries a hash of the code: runs of other
+/// code in the same directory at the same time write other files of the build.
 fn run_source(code: String, module: bool, arguments: &[OsString], options: &Options) -> ExitCode {
     let directory = env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
-    let entry = directory.join(if module { "[eval].mjs" } else { "[eval].cjs" });
+    let mut hasher = DefaultHasher::new();
+    code.hash(&mut hasher);
+    let extension = if module { "mjs" } else { "cjs" };
+    let entry = directory.join(format!("[eval-{:016x}].{extension}", hasher.finish()));
     match buoy_compiler::compile_source(&entry, code) {
         Ok(project) => super::start_program(&project, &entry, arguments, options),
         Err(diagnostics) => {
