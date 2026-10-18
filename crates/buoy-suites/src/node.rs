@@ -417,13 +417,13 @@ pub fn run(options: &Options) -> Result<Report, String> {
     // the outcome of its own.
     let recorded = expectations::read(&options.directory.join("expectations.txt"))?;
     let expected = expectations::on_platform(&recorded, PLATFORM);
-    let base = match &options.base {
-        Some(path) if path.is_file() => Some(expectations::on_platform(
-            &expectations::read(path)?,
-            PLATFORM,
-        )),
+    let base_recorded = match &options.base {
+        Some(path) if path.is_file() => Some(expectations::read(path)?),
         _ => None,
     };
+    let base = base_recorded
+        .as_ref()
+        .map(|base| expectations::on_platform(base, PLATFORM));
     let started = Instant::now();
     let ran = execute_selected(options, &config, &tests, &expected)?;
     durations_ms.insert("execute".to_owned(), started.elapsed().as_millis());
@@ -441,18 +441,7 @@ pub fn run(options: &Options) -> Result<Report, String> {
         })
         .map(|(_, execution)| execution.report.clone())
         .collect();
-    let mut entries: Expectations = recorded
-        .into_iter()
-        .filter(|(id, _)| ids.contains(id))
-        .collect();
-    for (test, execution) in &ran {
-        let entry = entries
-            .get(&test.id)
-            .map_or(Entry::Same(execution.outcome), |line| {
-                line.with_platform(PLATFORM, execution.outcome, options.update)
-            });
-        entries.insert(test.id.clone(), entry);
-    }
+    let entries = record(recorded, &ids, &ran, options.update);
     let blocked: Vec<&Vec<String>> = ran
         .iter()
         .map(|(_, execution)| &execution.blockers)
@@ -468,7 +457,10 @@ pub fn run(options: &Options) -> Result<Report, String> {
         blockers: summary::blockers(blocked),
     }
     .updated_since(&options.directory.join("summary.json"));
-    let comment = comparison.comment(&summary.comment_heading(base.as_ref(), run.len()), 50);
+    let comment = comparison.comment(
+        &summary.comment_heading(base_recorded.as_ref(), run.len()),
+        50,
+    );
     let results = Results {
         date: crate::date(),
         host: format!("{}-{}", env::consts::OS, env::consts::ARCH),
@@ -506,6 +498,29 @@ pub fn run(options: &Options) -> Result<Report, String> {
         durations_ms,
         reports,
     })
+}
+
+/// The lines of the files of the suite, with the outcome of each file that ran on this
+/// platform (`Entry::with_platform`).
+fn record(
+    recorded: Expectations,
+    ids: &BTreeSet<String>,
+    ran: &[(&Test, Execution)],
+    update: bool,
+) -> Expectations {
+    let mut entries: Expectations = recorded
+        .into_iter()
+        .filter(|(id, _)| ids.contains(id))
+        .collect();
+    for (test, execution) in ran {
+        let entry = entries
+            .get(&test.id)
+            .map_or(Entry::Same(execution.outcome), |line| {
+                line.with_platform(PLATFORM, execution.outcome, update)
+            });
+        entries.insert(test.id.clone(), entry);
+    }
+    entries
 }
 
 /// Runs the selected files, with the files of `sequential` one at a time after the others,
