@@ -68,7 +68,7 @@ binding() ->
         {<<"loadSession">>, fun(_, _) -> undefined end},
         {<<"endParser">>, fun(_, _) -> undefined end},
         {<<"newSessionDone">>, fun(_, _) -> undefined end},
-        {<<"getTLSTicket">>, fun(_, _) -> undefined end},
+        {<<"getTLSTicket">>, fun(This, _) -> tls_ticket(This) end},
         {<<"getPeerCertificate">>, fun(This, Args) -> peer_certificate(This, buoy_ref:truthy(A(1, Args))) end},
         {<<"getPeerX509Certificate">>, fun(This, _) -> peer_x509(This) end},
         {<<"getCertificate">>, fun(This, _) -> own_certificate(This, legacy) end},
@@ -1215,6 +1215,26 @@ protocol_name(_) -> null.
 %% The wire format of ALPN, length-prefixed names, as a list.
 alpn_list(<<Length, Name:Length/binary, Rest/binary>>) -> [Name | alpn_list(Rest)];
 alpn_list(_) -> [].
+
+%% getTLSTicket(): the opaque ticket of the session, as
+%% SSL_SESSION_get0_ticket gives it: the last NewSessionTicket of a TLS 1.3
+%% client, or the ticket that it resumed with. ssl has no TLS 1.2 tickets.
+tls_ticket(This) ->
+    Ticket = case state(This) of
+        #{ticket := T} -> T;
+        #{session := Bytes} when is_binary(Bytes) ->
+            case try binary_to_term(Bytes, [safe]) catch error:_ -> none end of
+                {tls13_ticket, T} -> T;
+                _ -> none
+            end;
+        _ -> none
+    end,
+    case Ticket of
+        #{ticket := NewSessionTicket} when tuple_size(NewSessionTicket) >= 5 ->
+            buoy_node_encoding:new_buffer(element(5, NewSessionTicket));
+        _ ->
+            undefined
+    end.
 
 servername(This) ->
     case state(This) of
