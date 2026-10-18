@@ -124,9 +124,10 @@ by_id(Id) -> erlang:get({?MODULE, Id}).
 wrap(Parent, Context, Server) ->
     buoy_crypto_context:is_context(Context) orelse
         buoy_node:throw_code('TypeError', <<"ERR_TLS_INVALID_CONTEXT">>, <<"context must be a SecureContext">>),
-    buoy_node_socket:find(Parent) =/= error orelse
-        buoy_node:throw_code('Error', <<"ERR_BUOY_NOT_IMPLEMENTED">>,
-                             <<"TLS over a stream that is not a socket handle is not implemented on Buoy">>),
+    %% A Pipe that has not connected yet becomes a local socket now.
+    buoy_node_socket:find(Parent) =:= error
+        andalso buoy_heap:get(Parent, <<"constructor">>) =:= erlang:get({buoy_node_socket, constructor, pipe})
+        andalso buoy_node_socket:create(Parent, pipe),
     Class = erlang:get({?MODULE, class}),
     This = buoy_heap:construct(Class, [], Class),
     Id = make_ref(),
@@ -138,8 +139,7 @@ wrap(Parent, Context, Server) ->
                  shutdown => none, controller => none, active => false, inbox => [], inbox_size => 0,
                  peer_eof => false, info => #{}, read => 0, written => 0,
                  async_id => new_async_id()}),
-    buoy_node_socket:set_listener(Parent, fun(Event) -> parent_event(Id, Event) end),
-    {ok, #{reading := Reading}} = buoy_node_socket:find(Parent),
+    Reading = listen(Parent, Id),
     put(This, reading, Reading),
     %% A server's handshake begins once tls.js has set the options of the
     %% socket, which it does right after wrap, as OpenSSL waits for the
@@ -180,7 +180,7 @@ begin_handshake(This, Role) ->
     Agent ! {options, ssl_options(S, Role, Agent)},
     save(This, S#{phase := handshaking, agent := Agent}),
     buoy_node_loop:ref_handle(),
-    buoy_node_socket:read_start(Parent),
+    parent_read(Parent, true),
     Role =:= server andalso call_js(This, <<"onhandshakestart">>, [buoy_node_loop:now()]),
     ok.
 
@@ -197,12 +197,13 @@ start_ssl() ->
 %% The ssl options of the connection; the verify_fun reports to Agent.
 ssl_options(S, Role, Agent) ->
     #{context := Context, verify := {Request, _Reject}, servername := Name, alpn := Alpn, session := Session} = S,
+    Base = buoy_crypto_context:options(Context, Role),
+    Cas = proplists:get_value(cacerts, Base, []),
     Verify = case {Role, Request} of
         {server, false} -> [{verify, verify_none}];
-        {server, true} -> [{verify, verify_peer}, {fail_if_no_peer_cert, false}, {verify_fun, verify_fun(Agent)}];
-        {client, _} -> [{verify, verify_peer}, {verify_fun, verify_fun(Agent)}]
+        {server, true} -> [{verify, verify_peer}, {fail_if_no_peer_cert, false}, {verify_fun, verify_fun(Agent, Cas)}];
+        {client, _} -> [{verify, verify_peer}, {verify_fun, verify_fun(Agent, Cas)}]
     end,
-    Base = buoy_crypto_context:options(Context, Role),
     Sni = case {Role, Name} of
         {client, none} -> [{server_name_indication, disable}];
         {client, _} -> [{server_name_indication, binary_to_list(Name)}];
@@ -245,11 +246,15 @@ self_realm() -> self().
 
 %% Records each verification error at the agent and lets the handshake go
 %% on; the hostname is tls.js's to check (checkServerIdentity).
-verify_fun(Agent) ->
+verify_fun(Agent, Cas) ->
     Fun = fun
         (_Cert, {bad_cert, hostname_check_failed}, State) -> {valid, State};
         (Cert, {bad_cert, Reason}, State) ->
-            Agent ! {verify_error, Reason, der(Cert)},
+            Der = der(Cert),
+            %% A self-signed certificate that the store holds is trusted,
+            %% as OpenSSL trusts it.
+            Agent ! {verify_chain, Der},
+            Reason =:= selfsigned_peer andalso lists:member(Der, Cas) orelse (Agent ! {verify_error, Reason, Der}),
             {valid, State};
         (_Cert, {extension, _}, State) -> {unknown, State};
         (Cert, valid, State) -> Agent ! {verify_chain, der(Cert)}, {valid, State};
@@ -347,7 +352,11 @@ verification() -> verification([], []).
 verification(Errors, Chain) ->
     receive
         {verify_error, Reason, Der} -> verification([{Reason, Der} | Errors], Chain);
-        {verify_chain, Der} -> verification(Errors, [Der | Chain])
+        {verify_chain, Der} ->
+            case lists:member(Der, Chain) of
+                true -> verification(Errors, Chain);
+                false -> verification(Errors, [Der | Chain])
+            end
     after 0 ->
         {lists:reverse(Errors), Chain}
     end.
@@ -501,7 +510,7 @@ transport(Id, Event) ->
     ok.
 
 transport_event(_This, S, {send, Data}) ->
-    buoy_node_socket:write_raw(maps:get(parent, S), Data);
+    parent_write(maps:get(parent, S), Data);
 transport_event(This, S, {active, Caller, Mode}) ->
     save(This, S#{controller := Caller, active := Mode}),
     pump(This);
@@ -509,9 +518,67 @@ transport_event(This, S, {controller, Pid}) ->
     save(This, S#{controller := Pid}),
     pump(This);
 transport_event(_This, S, {shutdown, How}) when How =:= write; How =:= read_write ->
-    buoy_node_socket:shutdown_raw(maps:get(parent, S));
+    parent_shutdown(maps:get(parent, S));
 transport_event(_This, _S, _) ->
     ok.
+
+%%% The parent stream
+
+%% Takes the reads of the parent; returns whether it reads. A socket handle
+%% of buoy_node_socket hands them over in Erlang; another StreamBase, such
+%% as the JSStream of a Duplex, through its onread, as TLSWrap becomes the
+%% StreamListener of any StreamBase in Node.
+listen(Parent, Id) ->
+    case buoy_node_socket:find(Parent) of
+        {ok, #{reading := Reading}} ->
+            buoy_node_socket:set_listener(Parent, fun(Event) -> parent_event(Id, Event) end),
+            Reading;
+        error ->
+            Onread = buoy_node:fn(<<"onread">>, 1, fun(_, Args) -> generic_read(Id, buoy_node:arg(1, Args)) end),
+            buoy_heap:set(Parent, <<"onread">>, Onread),
+            buoy_ref:truthy(buoy_heap:get(Parent, <<"reading">>))
+    end.
+
+generic_read(Id, ArrayBuffer) ->
+    State = stream_state(),
+    Event = case buoy_heap:get(State, ?K_READ_BYTES) of
+        N when N > 0 ->
+            Offset = buoy_heap:get(State, ?K_OFFSET),
+            {data, buoy_node_encoding:view_bytes(ArrayBuffer, Offset, Offset + N)};
+        0 -> none;
+        ?UV_EOF -> eof;
+        N -> {error, N}
+    end,
+    Event =/= none andalso parent_event(Id, Event),
+    undefined.
+
+parent_read(Parent, Reading) ->
+    case {buoy_node_socket:find(Parent), Reading} of
+        {{ok, _}, true} -> buoy_node_socket:read_start(Parent);
+        {{ok, _}, false} -> buoy_node_socket:read_stop(Parent);
+        {error, true} -> call_js(Parent, <<"readStart">>, []);
+        {error, false} -> call_js(Parent, <<"readStop">>, [])
+    end.
+
+parent_write(Parent, Data) ->
+    case buoy_node_socket:find(Parent) of
+        {ok, _} -> buoy_node_socket:write_raw(Parent, Data);
+        error -> call_js(Parent, <<"writeBuffer">>, [request(<<"WriteWrap">>, Parent), buoy_node_encoding:new_buffer(Data)])
+    end.
+
+parent_shutdown(Parent) ->
+    case buoy_node_socket:find(Parent) of
+        {ok, _} -> buoy_node_socket:shutdown_raw(Parent);
+        error -> call_js(Parent, <<"shutdown">>, [request(<<"ShutdownWrap">>, Parent)])
+    end.
+
+%% A request of stream_wrap whose completion needs nothing.
+request(Class, Parent) ->
+    Constructor = buoy_heap:get(buoy_node:binding(<<"stream_wrap">>), Class),
+    Req = buoy_heap:construct(Constructor, [], Constructor),
+    buoy_heap:set(Req, <<"handle">>, Parent),
+    buoy_heap:set(Req, <<"oncomplete">>, buoy_node:fn(<<"oncomplete">>, 1, fun(_, _) -> undefined end)),
+    Req.
 
 %% The parent read: encrypted bytes for ssl, the end, or an error.
 parent_event(Id, Event) ->
@@ -523,7 +590,7 @@ parent_event(Id, Event) ->
 encrypted_in(This, {data, Data}) ->
     #{inbox := Inbox, inbox_size := Size, parent := Parent} = S = state(This),
     save(This, S#{inbox := [Data | Inbox], inbox_size := Size + byte_size(Data)}),
-    Size + byte_size(Data) > ?INBOX_LIMIT andalso buoy_node_socket:read_stop(Parent),
+    Size + byte_size(Data) > ?INBOX_LIMIT andalso parent_read(Parent, false),
     pump(This);
 encrypted_in(This, eof) ->
     save(This, (state(This))#{peer_eof := true}),
@@ -555,7 +622,7 @@ pump(This) ->
                 _ -> Pid ! {buoy_tls_passive, Socket}, false
             end,
             save(This, S#{inbox := [], inbox_size := 0, active := Next}),
-            maps:get(inbox_size, S) > ?INBOX_LIMIT andalso buoy_node_socket:read_start(Parent),
+            maps:get(inbox_size, S) > ?INBOX_LIMIT andalso parent_read(Parent, true),
             ok;
         %% A closed transport tells each activation again, as gen_tcp's
         %% setopts fails on a closed socket: ssl defers a close that came
