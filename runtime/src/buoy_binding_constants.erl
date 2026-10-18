@@ -4,25 +4,30 @@
 %% table of each platform when Buoy runs on another one.
 -module(buoy_binding_constants).
 
+-include("buoy_ref.hrl").
+
 -export([binding/0]).
 
 -spec binding() -> term().
 binding() ->
     Binding = buoy_node:from_json(json()),
-    [null_prototype(buoy_heap:get(Binding, K)) || K <- buoy_heap:enumerable_keys(Binding)],
+    %% JSON has no Infinity, which node_constants.cc gives Z_MAX_CHUNK.
+    buoy_heap:set(buoy_heap:get(Binding, <<"zlib">>), <<"Z_MAX_CHUNK">>, 'Infinity'),
+    [table(buoy_heap:get(Binding, K)) || K <- buoy_heap:enumerable_keys(Binding)],
     Binding.
 
 %% node_constants.cc gives each table, and each table inside one, a null
-%% prototype, so os.constants.signals['__proto__'] is undefined.
-null_prototype(O) ->
-    case buoy_heap:is_object(O) of
-        true ->
-            buoy_heap:set_prototype_of(O, null),
-            [null_prototype(buoy_heap:get(O, K)) || K <- buoy_heap:enumerable_keys(O)],
-            ok;
-        false ->
-            ok
-    end.
+%% prototype, so os.constants.signals['__proto__'] is undefined, and
+%% NODE_DEFINE_CONSTANT makes each constant read-only and permanent.
+table(O) ->
+    buoy_heap:set_prototype_of(O, null),
+    lists:foreach(
+        fun(K) ->
+            case buoy_heap:get(O, K) of
+                V when ?IS_OBJECT(V) -> table(V);
+                V -> buoy_heap:define(O, K, #{value => V, writable => false, enumerable => true, configurable => false})
+            end
+        end, buoy_heap:enumerable_keys(O)).
 
 json() ->
     %% Recorded with node --expose-internals -p
