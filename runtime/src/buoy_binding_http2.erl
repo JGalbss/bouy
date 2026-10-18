@@ -66,7 +66,22 @@ binding() ->
                {<<"Http2Session">>, session_class()},
                {<<"Http2Stream">>, stream_class()}],
     [buoy_heap:set(B, K, V) || {K, V} <- Members],
+    hidden_constants(buoy_heap:get(B, <<"constants">>)),
     B.
+
+%% The constants that node_http2.cc defines with NODE_DEFINE_HIDDEN_CONSTANT:
+%% not enumerable, so the recording of the binding's shape missed them.
+hidden_constants(Constants) ->
+    [buoy_heap:define(Constants, Name, #{value => V, writable => false, enumerable => false, configurable => false})
+     || {Name, V} <- [{<<"NGHTTP2_HCAT_REQUEST">>, 0}, {<<"NGHTTP2_HCAT_RESPONSE">>, 1},
+                      {<<"NGHTTP2_HCAT_PUSH_RESPONSE">>, 2}, {<<"NGHTTP2_HCAT_HEADERS">>, 3},
+                      {<<"NGHTTP2_NV_FLAG_NONE">>, 0}, {<<"NGHTTP2_NV_FLAG_NO_INDEX">>, 1},
+                      {<<"NGHTTP2_ERR_DEFERRED">>, -508}, {<<"NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE">>, -509},
+                      {<<"NGHTTP2_ERR_INVALID_ARGUMENT">>, -501}, {<<"NGHTTP2_ERR_STREAM_CLOSED">>, -510},
+                      {<<"NGHTTP2_ERR_NOMEM">>, -901},
+                      {<<"STREAM_OPTION_EMPTY_PAYLOAD">>, ?STREAM_OPTION_EMPTY_PAYLOAD},
+                      {<<"STREAM_OPTION_GET_TRAILERS">>, ?STREAM_OPTION_GET_TRAILERS}]],
+    ok.
 
 %%% Settings and options in the shared buffers
 

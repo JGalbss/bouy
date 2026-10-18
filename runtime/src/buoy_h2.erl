@@ -139,6 +139,8 @@
              remote_window = ?INITIAL_WINDOW :: integer(),
              local_window = ?INITIAL_WINDOW :: integer(),
              recv_window = 0 :: integer(),
+             %% How far set_local_window_size shrank the window (recv_reduction).
+             recv_reduction = 0 :: integer(),
              consumed = 0 :: integer(),
              window_update_queued = false :: boolean(),
              goaway_sent = false :: boolean(),
@@ -894,18 +896,24 @@ should_update(Local, Size) -> Size > 0 andalso Size >= Local div 2.
 -spec set_local_window_size(session(), integer()) -> {integer(), session()}.
 set_local_window_size(_, Size) when Size < 0 ->
     {?ERR_INVALID_ARGUMENT, undefined};
-set_local_window_size(#h2{local_window = L, recv_window = R} = H, Size) ->
-    Delta = Size - L,
-    case Delta of
+set_local_window_size(#h2{local_window = L, recv_window = R, recv_reduction = Reduction} = H, Size) ->
+    case Size - L of
         0 ->
             {0, H};
+        D when D > 0, L > ?MAX_WINDOW - D ->
+            {?ERR_FLOW_CONTROL, H};
         D when D > 0 ->
-            %% Grow the window and give the peer the room at once.
-            H1 = H#h2{local_window = Size},
-            Inc = D + R,
-            {0, queue(reg, {window_update, 0, Inc}, H1#h2{recv_window = 0})};
+            %% nghttp2_increase_local_window_size: the room taken back from
+            %% an earlier shrink needs no WINDOW_UPDATE.
+            Back = min(Reduction, D),
+            H1 = H#h2{local_window = Size, recv_reduction = Reduction - Back, recv_window = R + Back},
+            case D - Back of
+                0 -> {0, H1};
+                Inc -> {0, queue(reg, {window_update, 0, Inc}, H1)}
+            end;
         D ->
-            {0, H#h2{local_window = Size, recv_window = R + D}}
+            %% nghttp2_adjust_local_window_size shrinks without telling the peer.
+            {0, H#h2{local_window = Size, recv_window = R + D, recv_reduction = Reduction - D}}
     end.
 
 %%% Submitting
@@ -1493,9 +1501,9 @@ last_proc_stream_id(#h2{last_proc_stream_id = L}) -> L.
 session_state(H) ->
     Queue = length(H#h2.ob_urgent) + length(H#h2.ob_reg) + length(H#h2.ob_syn),
     [H#h2.local_window,                      % effective local window size
-     H#h2.recv_window,                       % effective recv data length
+     max(0, H#h2.recv_window),               % effective recv data length
      H#h2.next_stream_id,
-     H#h2.local_window,
+     max(0, H#h2.local_window - H#h2.recv_window),
      H#h2.last_proc_stream_id,
      H#h2.remote_window,
      Queue,
@@ -1520,7 +1528,7 @@ stream_state(H, Id) ->
                 _ -> 2
             end,
             [State, S#stream.weight, S#stream.sum_dep_weight, bool(S#stream.shut_wr), bool(S#stream.shut_rd),
-             S#stream.local_window - S#stream.recv_window]
+             max(0, S#stream.local_window - S#stream.recv_window)]
     end.
 
 -spec local_settings(session()) -> map().
