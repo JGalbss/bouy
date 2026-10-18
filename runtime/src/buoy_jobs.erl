@@ -34,6 +34,7 @@
 -define(PROMISE_PROTO, {'$o', 'Promise.prototype'}).
 -define(MAX_DELAY, 2147483647).
 -define(GC_MIN, 20000).
+-define(EXTERNAL_GC, 67108864).
 
 %%% Microtasks
 
@@ -446,14 +447,14 @@ loop_until_exit() ->
 
 %% Collects when the realm allocated more ids since the last collection than
 %% twice the live count then, and at least ?GC_MIN, so the cost stays in
-%% proportion to the allocation.
+%% proportion to the allocation, or ?EXTERNAL_GC bytes of buffers.
 maybe_gc() ->
     {At, Live} = case erlang:get(?LAST_GC) of
         undefined -> {0, 0};
         L -> L
     end,
     Allocated = buoy_heap:allocated(),
-    case Allocated - At >= max(?GC_MIN, 2 * Live) of
+    case Allocated - At >= max(?GC_MIN, 2 * Live) orelse buoy_heap:external() >= ?EXTERNAL_GC of
         true ->
             #{live := Live1} = buoy_heap:gc([]),
             erlang:put(?LAST_GC, {Allocated, Live1});

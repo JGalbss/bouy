@@ -53,7 +53,7 @@
 -export([symbol/1, symbol_for/1, well_known/1, private_symbol/1]).
 -export([to_key/1, key_to_value/1]).
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
--export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
+-export([gc/1, gc_stats/0, heap_size/0, allocated/0, add_external/1, external/0]).
 -export([clone_out/1, clone_in/1, clone_out/2, clone_in/2]).
 -export([private_find/2, private_put/3, set_failed/2]).
 
@@ -66,6 +66,7 @@
 
 -define(NEXT, '$buoy_next').
 -define(STATS, '$buoy_gc').
+-define(EXTERNAL, '$buoy_external').
 -define(CLONE_HOOK, '$buoy_clone_hook').
 -define(WORDS_PER_ID, 16).
 -define(MIN_HEAP_WORDS, 4096).
@@ -1472,6 +1473,10 @@ gc(Roots) ->
     {Live, Chunks, Weak} = ephemerons(Live0, Chunks0, Weak0),
     clear_weak(Weak, Chunks),
     Freed = sweep(Ids, Chunks, 0),
+    %% The data of a dropped buffer is an atomics array that only BEAM's own
+    %% collection of this process frees.
+    external() >= 1048576 andalso erlang:garbage_collect(),
+    erlang:erase(?EXTERNAL),
     Us = erlang:monotonic_time(microsecond) - Start,
     Stats = #{live => Live, freed => Freed, us => Us},
     {Runs, Total, Max} = case erlang:get(?STATS) of
@@ -1481,6 +1486,21 @@ gc(Roots) ->
     erlang:put(?STATS, Stats#{runs => Runs + 1, total_us => Total + Us, max_us => max(Max, Us), at => allocated()}),
     size_heap(Live),
     Stats.
+
+%% Bytes that the realm allocated outside the heap since the last
+%% collection, such as the data of ArrayBuffers: V8's external memory, which
+%% paces collection next to the ids, since one id can hold a large buffer.
+-spec add_external(non_neg_integer()) -> ok.
+add_external(Bytes) ->
+    erlang:put(?EXTERNAL, external() + Bytes),
+    ok.
+
+-spec external() -> non_neg_integer().
+external() ->
+    case erlang:get(?EXTERNAL) of
+        undefined -> 0;
+        N -> N
+    end.
 
 -spec gc_stats() -> map().
 gc_stats() ->
