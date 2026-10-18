@@ -282,15 +282,12 @@ super_get(Home, K, This) -> lookup(buoy_heap:prototype_of(Home), K, This).
 -spec get_from(term(), buoy_heap:key(), term()) -> term().
 get_from(O, K, Receiver) -> lookup(O, K, Receiver).
 
+%% [[Get]] of a primitive's prototype with the primitive as the receiver: a
+%% proxy on the chain gets its get trap.
 lookup(null, _K, _Receiver) ->
     undefined;
 lookup(O, K, Receiver) ->
-    case buoy_heap:get_own(O, K) of
-        {data, V, _} -> V;
-        {accessor, undefined, _, _} -> undefined;
-        {accessor, G, _, _} -> call(G, Receiver, []);
-        none -> lookup(buoy_heap:prototype_of(O), K, Receiver)
-    end.
+    buoy_heap:get(O, K, Receiver).
 
 -spec super_call(term(), buoy_heap:key(), term(), list()) -> term().
 super_call(Home, K, This, Args) -> invoke(super_get(Home, K, This), This, K, Args).

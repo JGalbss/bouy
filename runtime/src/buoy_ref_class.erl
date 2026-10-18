@@ -221,17 +221,7 @@ new_target_construct(Body, NewTarget, Args) ->
 -spec super_get(term(), term(), term()) -> term().
 super_get(null, K, _This) ->
     buoy_ref:type_error(<<"Cannot read properties of null (reading '", (key_text(buoy_ref:to_property_key(K)))/binary, "')">>);
-super_get(Base, K, This) -> lookup(Base, buoy_ref:to_property_key(K), This).
-
-lookup(null, _K, _Receiver) ->
-    undefined;
-lookup(O, K, Receiver) ->
-    case buoy_heap:get_own(O, K) of
-        {data, V, _} -> V;
-        {accessor, undefined, _, _} -> undefined;
-        {accessor, G, _, _} -> buoy_ref:call(G, Receiver, []);
-        none -> lookup(buoy_heap:prototype_of(O), K, Receiver)
-    end.
+super_get(Base, K, This) -> buoy_heap:get(Base, buoy_ref:to_property_key(K), This).
 
 %% super.k = V: [[Set]] on Base with this as receiver. Strict code throws
 %% when [[Set]] returns false, and sloppy code ignores it.
