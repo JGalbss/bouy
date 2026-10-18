@@ -23,7 +23,7 @@ build.rs compiles each id with the reference compiler into the runtime module `b
 
 ## 2. The bootstrap
 
-The first use of a built-in module, or of `process`, `Buffer`, `global`, `setImmediate`, or `clearImmediate`, or the first call of `setTimeout` or `setInterval`, runs the bootstrap in the realm. It runs the steps of Node's `node.cc`:
+The first use of a built-in module, or of `process`, `Buffer`, `global`, `setImmediate`, or `clearImmediate`, the first call of `setTimeout` or `setInterval`, or the first use of a `console` member other than `log`, `info`, `debug`, `warn`, and `error`, runs the bootstrap in the realm. It runs the steps of Node's `node.cc`:
 
 1. `internal/per_context/primordials`, `domexception`, and `messageport`, with the private and per-isolate symbols of `src/env_properties.h`.
 2. `internal/bootstrap/realm`, which defines `BuiltinModule` and hands `internalBinding` and `requireBuiltin` to the `builtins` binding.

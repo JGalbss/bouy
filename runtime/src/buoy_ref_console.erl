@@ -10,15 +10,47 @@
 -define(MAX_ITEMS, 100).
 -define(CIRCULAR, '$buoy_inspect_circular').
 
+%% The console of the engine has the methods of Node's global console, in its
+%% order. log, info, debug, warn, and error print at once, so a program that
+%% never uses Node pays nothing for them. The other members are Node's: the
+%% first use runs Node's bootstrap, which makes Node's console the global one,
+%% and goes on with the member of Node's console.
+-define(PRINTS, [<<"log">>, <<"info">>, <<"debug">>, <<"warn">>, <<"error">>]).
+-define(NODE_METHODS, [<<"dir">>, <<"time">>, <<"timeEnd">>, <<"timeLog">>, <<"trace">>, <<"assert">>, <<"clear">>,
+                       <<"count">>, <<"countReset">>, <<"group">>, <<"groupEnd">>, <<"table">>, <<"dirxml">>,
+                       <<"groupCollapsed">>]).
+
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
-    [{'console', buoy_ref_realm:record(object, ?OBJECT_PROTO, ?METHODS(<<"console">>, [<<"log">>, <<"error">>, <<"warn">>, <<"info">>, <<"debug">>]), none)}].
+    Methods = [{Name, F, 7} || {Name, F} <- ?METHODS(<<"console">>, [{Name, 0} || Name <- ?PRINTS ++ ?NODE_METHODS])],
+    Get = buoy_ref_realm:builtin(<<"get console.Console">>, <<"get Console">>, 0, fun(_This, _Args) -> node_member(<<"Console">>) end),
+    Set = buoy_ref_realm:builtin(<<"set console.Console">>, <<"set Console">>, 1, fun(This, Args) -> define_member(This, <<"Console">>, buoy_ref_realm:arg(1, Args)) end),
+    Members = Methods ++ [{<<"Console">>, {'$accessor', Get, Set}, 6}, {?SYM(toStringTag), <<"console">>, 4}],
+    [{'console', buoy_ref_realm:record(object, ?OBJECT_PROTO, Members, none)}].
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{<<"console">>, {'$o', 'console'}}].
 
--spec method(binary(), binary(), term(), list()) -> undefined.
-method(<<"console">>, Name, _This, Args) -> write(Name, Args).
+%% After the bootstrap, a printing method that a program kept from before goes
+%% to Node's console too, so it follows console.group and process.stdout.
+-spec method(binary(), binary(), term(), list()) -> term().
+method(<<"console">>, Name, _This, Args) ->
+    case lists:member(Name, ?PRINTS) andalso not buoy_node:ready() of
+        true -> write(Name, Args);
+        false -> buoy_heap:call(node_member(Name), node_console(), Args)
+    end.
+
+node_member(Name) -> buoy_heap:get(node_console(), Name).
+
+%% Node's global console, which require('console') returns even when the
+%% program replaced globalThis.console.
+node_console() ->
+    {ok, Console} = buoy_node:require(<<"console">>),
+    Console.
+
+define_member(This, Name, Value) ->
+    buoy_heap:define(This, Name, #{value => Value, writable => true, enumerable => true, configurable => true}),
+    undefined.
 
 -spec write(binary(), list()) -> undefined.
 write(Name, Args) ->
