@@ -153,6 +153,8 @@ enum Entry {
     Script(String),
     Eval(String),
     Print(String),
+    /// `node --test [patterns]`: the arguments are the patterns of the test files.
+    TestRunner,
 }
 
 /// Runs the invocation whose arguments, after the binary, are `arguments`.
@@ -197,11 +199,18 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                     index += 1;
                 }
             }
+            _ if is_test_runner(&options.exec_argv) => {
+                index -= 1;
+                break;
+            }
             _ => {
                 entry = Some(Entry::Script(argument));
                 break;
             }
         }
+    }
+    if entry.is_none() && is_test_runner(&options.exec_argv) {
+        entry = Some(Entry::TestRunner);
     }
     if let Some(error) = invalid_option(&options.exec_argv) {
         let program = env::args_os().next().map_or_else(
@@ -244,11 +253,22 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             );
             run_source(source, false, program_arguments, &options)
         }
+        Some(Entry::TestRunner) => {
+            options.eval = true;
+            // The test runner is the main script of the bootstrap (internal/main/buoy),
+            // which the first read of `process` runs.
+            run_source("process;".to_owned(), false, program_arguments, &options)
+        }
         None if std::io::stdin().is_terminal() => super::fail(
             "buoy: a REPL without a script is not supported yet; pass a script, -e, or -p",
         ),
         None => run_stdin(program_arguments, options),
     }
+}
+
+/// Whether the node options select the test runner, as `--test` does.
+fn is_test_runner(exec_argv: &[String]) -> bool {
+    exec_argv.iter().any(|option| option == "--test")
 }
 
 /// `buoy -` and `buoy` with piped stdin: the script is the text of stdin.

@@ -6,6 +6,7 @@
 // module loaders do not run.
 
 const {
+  ArrayPrototypeSlice,
   NumberParseInt,
   ObjectDefineProperty,
 } = primordials;
@@ -211,6 +212,21 @@ function initializeHeapSnapshotSignalHandlers() {
   process.on(signal, () => writeHeapSnapshot());
 }
 
+// node --test: the steps of internal/main/test_runner after the preparation
+// above. The arguments of the command line are the patterns of the files.
+function runTestRunner() {
+  const { run } = require('internal/test_runner/runner');
+  const { parseCommandLine } = require('internal/test_runner/utils');
+  const { exitCodes: { kGenericUserError } } = internalBinding('errors');
+  const options = parseCommandLine();
+  options.globPatterns = ArrayPrototypeSlice(process.argv, 1);
+  run(options).on('test:summary', (data) => {
+    if (!data.success) {
+      process.exitCode = kGenericUserError;
+    }
+  });
+}
+
 // Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 setupTraceCategoryState();
@@ -229,3 +245,6 @@ initializeCJS();
 initializeESM();
 setupEvalGlobals();
 require('internal/process/pre_execution').markBootstrapComplete();
+if (getOptionValue('--test')) {
+  runTestRunner();
+}

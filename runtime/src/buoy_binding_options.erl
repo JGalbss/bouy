@@ -11,7 +11,9 @@ binding() ->
     buoy_node:object([
         {<<"getCLIOptionsValues">>, F(<<"getCLIOptionsValues">>, 0, fun(_, _) -> cli_values() end)},
         {<<"getCLIOptionsInfo">>, F(<<"getCLIOptionsInfo">>, 0, fun(_, _) -> info() end)},
-        {<<"getOptionsAsFlags">>, F(<<"getOptionsAsFlags">>, 0, fun(_, _) -> buoy_heap:new_array([]) end)},
+        {<<"getOptionsAsFlags">>, F(<<"getOptionsAsFlags">>, 0, fun(_, _) ->
+            buoy_heap:new_array([buoy_node:string(Flag) || Flag <- options_as_flags()])
+        end)},
         {<<"getEmbedderOptions">>, F(<<"getEmbedderOptions">>, 0, fun(_, _) ->
             buoy_node:object([{<<"shouldNotRegisterESMLoader">>, false}, {<<"noGlobalSearchPaths">>, false},
                               {<<"noBrowserGlobals">>, false}, {<<"hasEmbedderPreload">>, false}])
@@ -46,9 +48,33 @@ values_map() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
-    %% The oracle recorded the defaults under -e, so its code is no default.
-    Defaults = (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false},
-    apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, Defaults).
+    apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, defaults()).
+
+%% The oracle recorded the defaults under -e, so its code is no default.
+defaults() ->
+    (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false}.
+
+%% GetOptionsAsFlags: the node options that the command line set, as flags.
+%% A boolean that differs from its default is --name or --no-name, a number
+%% or string --name=value, and a list one --name=value for each value. The
+%% internal [entries], V8 options, and no-ops are left out.
+options_as_flags() ->
+    #{<<"options">> := Options} = json:decode(info_json()),
+    Defaults = defaults(),
+    Values = values_map(),
+    lists:append([flags(Name, maps:get(<<"type">>, Info), maps:get(Name, Values, none), maps:get(Name, Defaults, none))
+                  || [<<"--", _/binary>> = Name, Info] <- Options]).
+
+flags(_, _, Same, Same) -> [];
+flags(<<"--", Positive/binary>>, 2, Value, _) when is_boolean(Value) ->
+    case Value of
+        true -> [<<"--", Positive/binary>>];
+        false -> [<<"--no-", Positive/binary>>]
+    end;
+flags(Name, 7, Values, _) when is_list(Values) -> [<<Name/binary, "=", V/binary>> || V <- Values];
+flags(Name, Type, Value, _) when Type =:= 3; Type =:= 4 -> [<<Name/binary, "=", (integer_to_binary(Value))/binary>>];
+flags(Name, Type, Value, _) when (Type =:= 5 orelse Type =:= 6), is_binary(Value) -> [<<Name/binary, "=", Value/binary>>];
+flags(_, _, _, _) -> [].
 
 %% Node's options parser expands an alias until none applies, and an alias
 %% "<option> <arg>", such as "--print <arg>", when a value follows: -p code
