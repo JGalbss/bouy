@@ -8,6 +8,9 @@
 
 -export([members/0, exists/1, otp_cipher/1, rsa_crypt/5]).
 
+%% Functions that only throw.
+-dialyzer({no_return, [invalid_iv/0, invalid_tag_length/1, rsa_failure/5, failed/0]}).
+
 -define(NO_TAG, undefined).
 -define(RSA_PKCS1_PADDING, 1).
 -define(RSA_NO_PADDING, 3).
@@ -438,11 +441,7 @@ otp_state(#{cipher := #{impl := Impl}, key := Key, iv := IV, encrypt := Encrypt,
     end,
     {Ref, S#{engine := {otp, Ref}}}.
 
-block_size(Atom) ->
-    case crypto:cipher_info(Atom) of
-        #{block_size := B} -> B;
-        _ -> 1
-    end.
+block_size(Atom) -> maps:get(block_size, crypto:cipher_info(Atom)).
 
 %% A wrap mode wraps or unwraps all its data in one update.
 wrap(#{cipher := #{impl := des3_wrap}, key := Key, encrypt := true}, Data) ->

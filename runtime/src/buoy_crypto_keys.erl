@@ -66,13 +66,13 @@ key_data(Handle) -> buoy_crypto:state(Handle, key).
 
 -spec is_handle(term()) -> boolean().
 is_handle(V) ->
-    buoy_heap:is_object(V) andalso buoy_heap:private_find(V, {'#', buoy_crypto, key}) =/= error.
+    buoy_heap:is_object(V) andalso buoy_heap:private_find(V, buoy_crypto:state_key(key)) =/= error.
 
 %% The bytes of a secret key: a KeyObjectHandle, or the bytes of a buffer
 %% (ByteSource::FromSecretKeyBytes).
 -spec secret_bytes(term()) -> binary().
 secret_bytes(V) ->
-    case buoy_heap:is_object(V) andalso buoy_heap:private_find(V, {'#', buoy_crypto, key}) of
+    case buoy_heap:is_object(V) andalso buoy_heap:private_find(V, buoy_crypto:state_key(key)) of
         {ok, Data} -> secret(Data);
         _ -> buoy_crypto:bytes(V)
     end.

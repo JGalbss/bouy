@@ -5,6 +5,9 @@
 
 -export([members/0, verify/6]).
 
+%% Functions that only throw.
+-dialyzer({no_return, [md5_sha1_unsupported/0]}).
+
 -define(RSA_PKCS1_PADDING, 1).
 -define(RSA_PKCS1_PSS_PADDING, 6).
 -define(SIGN, 0).

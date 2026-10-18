@@ -7,7 +7,7 @@
 -include("buoy_ref.hrl").
 
 -export([bytes/1, data/2, is_buffer_source/1, array_buffer/1, buffer/1, encoding/2, encode/2, encode_output/3]).
--export([class/3, fn/3, method/3, state/2, put_state/2, guard/1]).
+-export([class/3, fn/3, method/3, state/2, put_state/2, state_key/1, guard/1]).
 -export([fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, error_value/1, openssl_message/1]).
 -export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2]).
 
@@ -113,17 +113,21 @@ method(Proto, Name, Fun) ->
     ok.
 
 %% The native state Tag of This, or an Illegal invocation.
--spec state(term(), term()) -> term().
+-spec state(term(), atom()) -> term().
 state(This, Tag) ->
-    case buoy_heap:is_object(This) andalso buoy_heap:private_find(This, {'#', ?MODULE, Tag}) of
+    case buoy_heap:is_object(This) andalso buoy_heap:private_find(This, state_key(Tag)) of
         {ok, S} -> S;
         _ -> illegal()
     end.
 
--spec put_state(term(), {term(), term()}) -> ok.
+-spec put_state(term(), {atom(), term()}) -> ok.
 put_state(This, {Tag, S}) ->
-    buoy_heap:private_put(This, {'#', ?MODULE, Tag}, S),
+    buoy_heap:private_put(This, state_key(Tag), S),
     ok.
+
+%% The private name that holds the native state Tag of an object.
+-spec state_key(atom()) -> {'#', ?MODULE, binary()}.
+state_key(Tag) -> {'#', ?MODULE, atom_to_binary(Tag)}.
 
 -spec illegal() -> no_return().
 illegal() -> buoy_ref:type_error(<<"Illegal invocation">>).
@@ -252,7 +256,6 @@ library(rsa) -> {4, <<"rsa routines">>, <<"RSA_">>};
 library(dh) -> {5, <<"Diffie-Hellman routines">>, <<"DH_">>};
 library(evp) -> {6, <<"digital envelope routines">>, <<"EVP_">>};
 library(pem) -> {9, <<"PEM routines">>, <<"PEM_">>};
-library(asn1) -> {13, <<"asn1 encoding routines">>, <<"ASN1_">>};
 library(crypto) -> {15, <<"common libcrypto routines">>, <<"CRYPTO_">>};
 library(ec) -> {16, <<"elliptic curve routines">>, <<"EC_">>};
 library(prov) -> {57, <<"Provider routines">>, <<>>};

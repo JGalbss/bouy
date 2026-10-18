@@ -17,6 +17,9 @@
 -export([curve/1, curve_by_name/1, curve_name/1, curve_info/1, curve_bits/1, decode_point/2, encode_point/3, on_curve/2]).
 -export([pss_params/1]).
 
+%% Functions that only throw.
+-dialyzer({no_return, [fail/1]}).
+
 -define(RSA, {1,2,840,113549,1,1,1}).
 -define(RSA_PSS, {1,2,840,113549,1,1,10}).
 -define(DSA, {1,2,840,10040,4,1}).
@@ -612,8 +615,11 @@ curve_of_oid(Oid) ->
         _:_ -> error
     end.
 
+%% The parameters of Curve. crypto:ec_curve/1 returns those of
+%% crypto_ec_curves, whose primes are binaries where the spec of
+%% ec_prime_field() says integers, so the call goes to the module itself.
 -spec curve_info(atom()) -> tuple().
-curve_info(Curve) -> crypto:ec_curve(Curve).
+curve_info(Curve) -> crypto_ec_curves:curve(Curve).
 
 %% The bits of the order of Curve: the size of its private keys.
 -spec curve_bits(atom()) -> pos_integer().

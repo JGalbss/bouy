@@ -6,6 +6,9 @@
 
 -export([members/0]).
 
+%% Functions that only throw.
+-dialyzer({no_return, [failed/1]}).
+
 -spec members() -> [{binary(), term()}].
 members() ->
     [{<<"KEMEncapsulateJob">>, buoy_crypto_job:class(<<"KEMEncapsulateJob">>, fun encapsulate_job/1)},
