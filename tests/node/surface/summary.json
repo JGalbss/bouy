@@ -1,15 +1,15 @@
 {
   "suite": "node-surface",
   "version": "v25.9.0",
-  "updated": "5e1d3e50eb21bb9222d614f8cdafbc1bd4deece8",
+  "updated": "25d078a04ed87b1fbb93eb859ca662e9a3b74758",
   "total": 4460,
   "outcomes": {
-    "pass": 3449,
+    "pass": 3450,
     "rejected": 0,
     "late": 0,
     "skip": 0,
     "never": 0,
-    "fail": 1011,
+    "fail": 1010,
     "timeout": 0,
     "harness_error": 0,
     "crash": 0
@@ -21,8 +21,8 @@
         "fail": 29
       },
       "documented": {
-        "pass": 3349,
-        "fail": 982
+        "pass": 3350,
+        "fail": 981
       }
     },
     "module": {
@@ -402,8 +402,7 @@
         "fail": 2
       },
       "node:vm": {
-        "pass": 15,
-        "fail": 1
+        "pass": 16
       },
       "node:wasi": {
         "pass": 6

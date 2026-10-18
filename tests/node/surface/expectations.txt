@@ -3686,7 +3686,7 @@ node:v8.takeCoverage fail
 node:v8.writeHeapSnapshot pass
 node:vm pass
 node:vm.Script pass
-node:vm.Script.prototype.createCachedData fail
+node:vm.Script.prototype.createCachedData pass
 node:vm.Script.prototype.runInContext pass
 node:vm.Script.prototype.runInNewContext pass
 node:vm.Script.prototype.runInThisContext pass

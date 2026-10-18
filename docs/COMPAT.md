@@ -9,8 +9,8 @@ The pass rate of each test tier that exists today. `bouy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 1,910 | 4,419 | 43.2% | 1,915 | 11 | 9c879fd | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 3,449 | 4,460 | 77.3% | 1,011 | 0 | 5e1d3e5 | `tests/node/surface/expectations.txt` |
+| node | node | v25.9.0 | 1,950 | 4,419 | 44.1% | 1,876 | 10 | 25d078a | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,450 | 4,460 | 77.4% | 1,010 | 0 | 25d078a | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/bouy-cli/tests/equivalence.rs` |
@@ -950,15 +950,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at 9c879fd. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at 25d078a. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 1,910 | 43.2% | 0 | 0 | 583 | 0 | 1,747 | 168 | 0 | 11 |
+| every test | 4,419 | 1,950 | 44.1% | 0 | 0 | 583 | 0 | 1,755 | 121 | 0 | 10 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 1,910 | 46.9% | 0 | 0 | 240 | 0 | 1,747 | 168 | 0 | 11 |
+| kind: public | 4,076 | 1,950 | 47.8% | 0 | 0 | 240 | 0 | 1,755 | 121 | 0 | 10 |
 
 ### By module
 
@@ -969,8 +969,8 @@ node at v25.9.0, updated at 9c879fd. Evidence: `tests/node/expectations.txt`.
 | assert | 14 | 8 | 57.1% | 0 | 0 | 1 | 0 | 3 | 0 | 0 | 2 |
 | async_hooks | 56 | 15 | 26.8% | 0 | 0 | 11 | 0 | 30 | 0 | 0 | 0 |
 | buffer | 69 | 58 | 84.1% | 0 | 0 | 6 | 0 | 5 | 0 | 0 | 0 |
-| child_process | 114 | 45 | 39.5% | 0 | 0 | 7 | 0 | 30 | 31 | 0 | 1 |
-| cluster | 88 | 12 | 13.6% | 0 | 0 | 2 | 0 | 30 | 44 | 0 | 0 |
+| child_process | 114 | 68 | 59.6% | 0 | 0 | 7 | 0 | 24 | 15 | 0 | 0 |
+| cluster | 88 | 25 | 28.4% | 0 | 0 | 2 | 0 | 48 | 13 | 0 | 0 |
 | console | 22 | 17 | 77.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 3 |
 | constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | crypto | 161 | 152 | 94.4% | 0 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
@@ -990,7 +990,7 @@ node at v25.9.0, updated at 9c879fd. Evidence: `tests/node/expectations.txt`.
 | other | 616 | 216 | 35.1% | 0 | 0 | 178 | 0 | 207 | 13 | 0 | 2 |
 | path | 17 | 17 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | perf_hooks | 27 | 15 | 55.6% | 0 | 0 | 3 | 0 | 7 | 1 | 0 | 1 |
-| process | 131 | 90 | 68.7% | 0 | 0 | 8 | 0 | 27 | 6 | 0 | 0 |
+| process | 131 | 94 | 71.8% | 0 | 0 | 8 | 0 | 23 | 6 | 0 | 0 |
 | punycode | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | querystring | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | quic | 9 | 6 | 66.7% | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
@@ -1030,8 +1030,8 @@ node at v25.9.0, updated at 9c879fd. Evidence: `tests/node/expectations.txt`.
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | es-module | 222 | 65 | 29.3% | 0 | 0 | 16 | 0 | 128 | 13 | 0 | 0 |
-| parallel | 4,079 | 1,807 | 44.3% | 0 | 0 | 545 | 0 | 1,569 | 147 | 0 | 11 |
-| sequential | 118 | 38 | 32.2% | 0 | 0 | 22 | 0 | 50 | 8 | 0 | 0 |
+| parallel | 4,079 | 1,846 | 45.3% | 0 | 0 | 545 | 0 | 1,577 | 101 | 0 | 10 |
+| sequential | 118 | 39 | 33.1% | 0 | 0 | 22 | 0 | 50 | 7 | 0 | 0 |
 
 ### Blockers
 
@@ -1042,20 +1042,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at 5e1d3e5. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 25d078a. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 3,449 | 77.3% | 0 | 0 | 0 | 0 | 1,011 | 0 | 0 | 0 |
+| every test | 4,460 | 3,450 | 77.4% | 0 | 0 | 0 | 0 | 1,010 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | deprecated | 129 | 100 | 77.5% | 0 | 0 | 0 | 0 | 29 | 0 | 0 | 0 |
-| documented | 4,331 | 3,349 | 77.3% | 0 | 0 | 0 | 0 | 982 | 0 | 0 | 0 |
+| documented | 4,331 | 3,350 | 77.3% | 0 | 0 | 0 | 0 | 981 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1185,7 +1185,7 @@ node-surface at v25.9.0, updated at 5e1d3e5. Evidence: `tests/node/surface/expec
 | node:util | 97 | 97 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:util/types | 44 | 44 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:v8 | 72 | 70 | 97.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
-| node:vm | 16 | 15 | 93.8% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| node:vm | 16 | 16 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:wasi | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:worker_threads | 84 | 80 | 95.2% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
 | node:zlib | 553 | 553 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |

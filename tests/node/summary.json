@@ -1,18 +1,18 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "9c879fd59d770e0857236c0e2415db924e56158e",
+  "updated": "25d078a04ed87b1fbb93eb859ca662e9a3b74758",
   "total": 4419,
   "outcomes": {
-    "pass": 1910,
+    "pass": 1950,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1747,
-    "timeout": 168,
+    "fail": 1755,
+    "timeout": 121,
     "harness_error": 0,
-    "crash": 11
+    "crash": 10
   },
   "groups": {
     "directory": {
@@ -23,17 +23,17 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1807,
+        "pass": 1846,
         "skip": 545,
-        "fail": 1569,
-        "timeout": 147,
-        "crash": 11
+        "fail": 1577,
+        "timeout": 101,
+        "crash": 10
       },
       "sequential": {
-        "pass": 38,
+        "pass": 39,
         "skip": 22,
         "fail": 50,
-        "timeout": 8
+        "timeout": 7
       }
     },
     "kind": {
@@ -41,11 +41,11 @@
         "skip": 343
       },
       "public": {
-        "pass": 1910,
+        "pass": 1950,
         "skip": 240,
-        "fail": 1747,
-        "timeout": 168,
-        "crash": 11
+        "fail": 1755,
+        "timeout": 121,
+        "crash": 10
       }
     },
     "module": {
@@ -66,17 +66,16 @@
         "fail": 5
       },
       "child_process": {
-        "pass": 45,
+        "pass": 68,
         "skip": 7,
-        "fail": 30,
-        "timeout": 31,
-        "crash": 1
+        "fail": 24,
+        "timeout": 15
       },
       "cluster": {
-        "pass": 12,
+        "pass": 25,
         "skip": 2,
-        "fail": 30,
-        "timeout": 44
+        "fail": 48,
+        "timeout": 13
       },
       "console": {
         "pass": 17,
@@ -175,9 +174,9 @@
         "crash": 1
       },
       "process": {
-        "pass": 90,
+        "pass": 94,
         "skip": 8,
-        "fail": 27,
+        "fail": 23,
         "timeout": 6
       },
       "punycode": {

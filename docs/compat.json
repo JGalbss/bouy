@@ -2972,19 +2972,19 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "9c879fd",
+      "updated": "25d078a",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 1910,
+        "pass": 1950,
         "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 1747,
-        "timeout": 168,
+        "fail": 1755,
+        "timeout": 121,
         "harness_error": 0,
-        "crash": 11
+        "crash": 10
       },
       "groups": {
         "directory": {
@@ -2995,17 +2995,17 @@
             "timeout": 13
           },
           "parallel": {
-            "pass": 1807,
+            "pass": 1846,
             "skip": 545,
-            "fail": 1569,
-            "timeout": 147,
-            "crash": 11
+            "fail": 1577,
+            "timeout": 101,
+            "crash": 10
           },
           "sequential": {
-            "pass": 38,
+            "pass": 39,
             "skip": 22,
             "fail": 50,
-            "timeout": 8
+            "timeout": 7
           }
         },
         "kind": {
@@ -3013,11 +3013,11 @@
             "skip": 343
           },
           "public": {
-            "pass": 1910,
+            "pass": 1950,
             "skip": 240,
-            "fail": 1747,
-            "timeout": 168,
-            "crash": 11
+            "fail": 1755,
+            "timeout": 121,
+            "crash": 10
           }
         },
         "module": {
@@ -3038,17 +3038,16 @@
             "fail": 5
           },
           "child_process": {
-            "pass": 45,
+            "pass": 68,
             "skip": 7,
-            "fail": 30,
-            "timeout": 31,
-            "crash": 1
+            "fail": 24,
+            "timeout": 15
           },
           "cluster": {
-            "pass": 12,
+            "pass": 25,
             "skip": 2,
-            "fail": 30,
-            "timeout": 44
+            "fail": 48,
+            "timeout": 13
           },
           "console": {
             "pass": 17,
@@ -3147,9 +3146,9 @@
             "crash": 1
           },
           "process": {
-            "pass": 90,
+            "pass": 94,
             "skip": 8,
-            "fail": 27,
+            "fail": 23,
             "timeout": 6
           },
           "punycode": {
@@ -3275,16 +3274,16 @@
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "5e1d3e5",
+      "updated": "25d078a",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 3449,
+        "pass": 3450,
         "rejected": 0,
         "late": 0,
         "skip": 0,
         "never": 0,
-        "fail": 1011,
+        "fail": 1010,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3296,8 +3295,8 @@
             "fail": 29
           },
           "documented": {
-            "pass": 3349,
-            "fail": 982
+            "pass": 3350,
+            "fail": 981
           }
         },
         "module": {
@@ -3677,8 +3676,7 @@
             "fail": 2
           },
           "node:vm": {
-            "pass": 15,
-            "fail": 1
+            "pass": 16
           },
           "node:wasi": {
             "pass": 6
