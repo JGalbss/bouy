@@ -22,14 +22,13 @@
 -define(FDS, '$buoy_node_fds').
 -define(NEXT_FD, '$buoy_node_next_fd').
 -define(STAT_FIELDS, 18).
-%% The open flags of this OS, as the constants binding reports them: Linux, or
-%% else darwin.
+%% The open flags of darwin, as the constants binding reports them.
 -define(O_WRONLY, 1).
 -define(O_RDWR, 2).
--define(O_APPEND, open_flag(16#400, 16#8)).
--define(O_CREAT, open_flag(16#40, 16#200)).
--define(O_TRUNC, open_flag(16#200, 16#400)).
--define(O_EXCL, open_flag(16#80, 16#800)).
+-define(O_APPEND, 8).
+-define(O_CREAT, 512).
+-define(O_TRUNC, 1024).
+-define(O_EXCL, 2048).
 
 -spec binding() -> term().
 binding() ->
@@ -106,12 +105,6 @@ call(Name, Args, Length, Fun) ->
 noop(_Args) -> undefined.
 
 %%% Paths and errors
-
-open_flag(Linux, Darwin) ->
-    case os:type() of
-        {unix, linux} -> Linux;
-        _ -> Darwin
-    end.
 
 path(V) when ?IS_STRING(V) -> buoy_ref_string:to_utf8(V);
 path(V) when ?IS_OBJECT(V) -> buoy_node_encoding:view_bytes(V);
