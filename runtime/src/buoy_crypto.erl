@@ -227,6 +227,7 @@ reason(pub_exponent_out_of_range) -> {rsa, 178, <<"pub exponent out of range">>}
 reason(provider_keymgmt_failure) -> {evp, 233, <<"provider keymgmt failure">>};
 reason(unsupported) -> {evp, 16#8010C, <<"unsupported">>};
 reason(decode_error) -> {evp, 114, <<"decode error">>};
+reason(xts_duplicated_keys) -> {prov, 149, <<"xts duplicated keys">>};
 reason(pem_no_start_line) -> {pem, 108, <<"no start line">>};
 reason(pem_unsupported_cipher) -> {pem, 113, <<"unsupported cipher">>};
 reason(decoder_unsupported) -> {decoder, 16#8010C, <<"unsupported">>};

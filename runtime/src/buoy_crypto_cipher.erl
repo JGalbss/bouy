@@ -226,10 +226,14 @@ impl(<<"id-aes", _:3/binary, "-", Suffix/binary>>, _, Key) -> aes_impl(Suffix, K
 impl(<<"id-smime-alg-cms3deswrap">>, _, _) -> des3_wrap;
 impl(<<"des-ede3-cbc">>, _, _) -> {otp, des_ede3_cbc};
 impl(<<"des-ede3-cfb">>, _, _) -> {otp, des_ede3_cfb};
-impl(<<"des-ede3">>, _, _) -> {ecb, des_ede3};
+impl(<<"des-ede3">>, _, _) -> {modes, ecb, des_ede3};
+impl(<<"des-ede3-", Mode/binary>>, _, _) -> block_impl(des_ede3, Mode);
 impl(<<"des-ede-cbc">>, _, _) -> {two_key, {otp, des_ede3_cbc}};
 impl(<<"des-ede-cfb">>, _, _) -> {two_key, {otp, des_ede3_cfb}};
-impl(<<"des-ede">>, _, _) -> {two_key, {ecb, des_ede3}};
+impl(<<"des-ede">>, _, _) -> {two_key, {modes, ecb, des_ede3}};
+impl(<<"des-ede-", Mode/binary>>, _, _) -> {two_key, block_impl(des_ede3, Mode)};
+impl(<<"camellia-", _:3/binary, "-", Mode/binary>>, _, _) -> block_impl(camellia, Mode);
+impl(<<"aria-", _:3/binary, "-", Mode/binary>>, _, _) -> block_impl(aria, Mode);
 impl(<<"chacha20">>, _, _) -> {otp, chacha20};
 impl(<<"chacha20-poly1305">>, _, _) -> chacha20_poly1305;
 impl(<<"sm4-cbc">>, _, _) -> {otp, sm4_cbc};
@@ -244,9 +248,21 @@ aes_impl(<<"cfb8">>, Bits) -> {otp, aes(Bits, <<"cfb8">>)};
 aes_impl(<<"gcm">>, Bits) -> {gcm, aes_ecb(Bits), aes(Bits, <<"gcm">>)};
 aes_impl(<<"ccm">>, Bits) -> {ccm, aes(Bits, <<"ccm">>)};
 aes_impl(<<"ocb">>, Bits) -> {ocb, aes_ecb(Bits)};
+aes_impl(<<"cfb1">>, Bits) -> {modes, cfb1, aes_ecb(Bits)};
+aes_impl(<<"xts">>, Bits) -> {xts, aes_ecb(Bits div 2)};
 aes_impl(Mode, Bits) when Mode =:= <<"cbc">>; Mode =:= <<"ecb">>; Mode =:= <<"ctr">>; Mode =:= <<"ofb">> ->
     {otp, aes(Bits, Mode)};
 aes_impl(_, _) -> unsupported.
+
+%% A mode of a block cipher that OTP's crypto runs only as ECB, or not at
+%% all: buoy_crypto_modes runs it.
+block_impl(Cipher, <<"gcm">>) -> {gcm, Cipher, {modes, gcm, Cipher}};
+block_impl(Cipher, <<"ccm">>) -> {ccm, {modes, ccm, Cipher}};
+block_impl(Cipher, Mode) ->
+    case lists:member(Mode, [<<"ecb">>, <<"cbc">>, <<"cfb">>, <<"cfb1">>, <<"cfb8">>, <<"ofb">>, <<"ctr">>]) of
+        true -> {modes, binary_to_atom(Mode), Cipher};
+        false -> unsupported
+    end.
 
 aes(Bits, Mode) -> binary_to_atom(iolist_to_binary(["aes_", integer_to_binary(Bits), "_", Mode])).
 
@@ -283,6 +299,10 @@ init_iv(Name, #{mode := Mode, iv := ExpectedIV, impl := Impl} = Cipher, Key, IV,
     (not Aead andalso HasIV andalso byte_size(IV) =/= ExpectedIV) andalso invalid_iv(),
     (Impl =:= chacha20_poly1305 andalso byte_size(IV) > 12) andalso invalid_iv(),
     Impl =:= unsupported andalso buoy_crypto:fail({openssl, unsupported}),
+    %% OpenSSL's XTS refuses to encrypt with two equal halves of the key.
+    (is_tuple(Impl) andalso element(1, Impl) =:= xts andalso Encrypt andalso
+     binary:part(Key, 0, byte_size(Key) div 2) =:= binary:part(Key, byte_size(Key) div 2, byte_size(Key) div 2))
+        andalso buoy_crypto:fail({openssl, xts_duplicated_keys}),
     State0 = #{cipher => Cipher, encrypt => Encrypt, key => Key, iv => IV, live => true, padding => true,
                tag_len => ?NO_TAG, tag => undefined, tag_state => unknown, aad => [], started => false,
                auth_failed => false, plaintext_len => undefined, total => 0, engine => undefined},
@@ -366,6 +386,10 @@ cipher_update(#{cipher := #{impl := chacha20_poly1305}, key := Key, iv := IV} = 
         {chacha, R, A} -> {R, A}
     end,
     {crypto:crypto_update(Ref, Data), S#{engine := {chacha, Ref, [Acc, Data]}}};
+cipher_update(#{cipher := #{impl := {xts, Ecb}}, key := Key, iv := IV, encrypt := Encrypt} = S, Data) ->
+    %% Each update is one data unit of at least one block, under the same tweak.
+    byte_size(Data) >= 16 orelse buoy_crypto:throw_error(<<"Trying to add data in unsupported state">>),
+    {buoy_crypto_modes:xts(Ecb, Key, IV, Data, Encrypt), S};
 cipher_update(#{cipher := #{impl := {ocb, _}}} = S, Data) ->
     Acc = case maps:get(engine, S) of
         undefined -> [];
@@ -380,37 +404,11 @@ cipher_update(#{cipher := #{impl := Impl}} = S, Data) when Impl =:= des3_wrap; e
     end;
 cipher_update(S, Data) ->
     case otp_state(S) of
-        {{ecb, _, _} = Ecb, S1} ->
-            {Out, Ecb1} = ecb_update(Ecb, Data, maps:get(encrypt, S1), maps:get(padding, S1)),
-            {Out, S1#{engine := {otp, Ecb1}}};
+        {{modes, Stream}, S1} ->
+            {Out, Stream1} = buoy_crypto_modes:stream_update(Stream, Data),
+            {Out, S1#{engine := {otp, {modes, Stream1}}}};
         {Ref, S1} -> {crypto:crypto_update(Ref, Data), S1}
     end.
-
-%% ECB of Triple-DES as EVP_CipherUpdate runs it: whole blocks out, and a
-%% decryption with padding holds the last block back for final().
-ecb_update({ecb, Key, Buffer}, Data, Encrypt, Padding) ->
-    All = <<Buffer/binary, Data/binary>>,
-    Whole = byte_size(All) div 8 * 8,
-    Keep = case not Encrypt andalso Padding andalso Whole > 0 andalso Whole =:= byte_size(All) of
-        true -> 8;
-        false -> byte_size(All) - Whole
-    end,
-    Take = byte_size(All) - Keep,
-    <<Now:Take/binary, Rest/binary>> = All,
-    {buoy_crypto_modes:ecb(des_ede3, Key, Now, Encrypt), {ecb, Key, Rest}}.
-
-ecb_final({ecb, Key, Buffer}, true, true) ->
-    N = 8 - byte_size(Buffer),
-    buoy_crypto_modes:ecb(des_ede3, Key, <<Buffer/binary, (binary:copy(<<N>>, N))/binary>>, true);
-ecb_final({ecb, _, <<>>}, _, false) -> <<>>;
-ecb_final({ecb, Key, <<_:8/binary>> = Buffer}, false, true) ->
-    Plain = buoy_crypto_modes:ecb(des_ede3, Key, Buffer, false),
-    N = binary:last(Plain),
-    case N >= 1 andalso N =< 8 andalso binary:part(Plain, 8 - N, N) =:= binary:copy(<<N>>, N) of
-        true -> binary:part(Plain, 0, 8 - N);
-        false -> error(final)
-    end;
-ecb_final(_, _, _) -> error(final).
 
 gcm_first_counter(Ecb, Key, IV) ->
     J0 = buoy_crypto_modes:gcm_j0(Ecb, Key, IV),
@@ -437,7 +435,7 @@ otp_state(#{cipher := #{impl := Impl}, key := Key, iv := IV, encrypt := Encrypt,
                 <<>> -> crypto:crypto_init(Atom, K, Opts);
                 _ -> crypto:crypto_init(Atom, K, IV, Opts)
             end;
-        {ecb, des_ede3} -> {ecb, K, <<>>}
+        {modes, Mode, Block} -> {modes, buoy_crypto_modes:stream_init(Mode, Block, K, IV, Encrypt, Padding)}
     end,
     {Ref, S#{engine := {otp, Ref}}}.
 
@@ -482,16 +480,23 @@ ccm_update(#{plaintext_len := Announced, iv := IV} = S, Data) ->
     #{cipher := #{impl := {ccm, Atom}}, key := Key, aad := AAD, tag_len := TagLen} = S,
     case S of
         #{encrypt := true} ->
-            {Out, Tag} = crypto:crypto_one_time_aead(Atom, Key, IV, Data, iolist_to_binary(AAD), TagLen, true),
+            {Out, Tag} = aead(Atom, Key, IV, Data, iolist_to_binary(AAD), TagLen, true),
             {Out, S#{engine := done, tag := Tag}};
         #{tag := undefined} ->
             {<<>>, S#{engine := done, auth_failed := true}};
         #{tag := Tag} ->
-            case crypto:crypto_one_time_aead(Atom, Key, IV, Data, iolist_to_binary(AAD), Tag, false) of
+            case aead(Atom, Key, IV, Data, iolist_to_binary(AAD), Tag, false) of
                 error -> {<<>>, S#{engine := done, auth_failed := true}};
                 Out -> {Out, S#{engine := done}}
             end
     end.
+
+%% The one-pass AEAD of OTP's crypto, or of buoy_crypto_modes for a block
+%% cipher that OTP lacks.
+aead({modes, Mode, Block}, Key, IV, Data, AAD, TagOrLen, Encrypt) ->
+    buoy_crypto_modes:Mode(Block, Key, IV, Data, AAD, TagOrLen, Encrypt);
+aead(Atom, Key, IV, Data, AAD, TagOrLen, Encrypt) ->
+    crypto:crypto_one_time_aead(Atom, Key, IV, Data, AAD, TagOrLen, Encrypt).
 
 ccm_max(12) -> 16777215;
 ccm_max(13) -> 65535;
@@ -532,8 +537,10 @@ cipher_final(#{cipher := #{impl := {gcm, Ecb, Atom}}, key := Key, iv := IV, aad 
     end,
     _ = Ecb,
     aead_final(S, fun(Encrypt, TagOrLen) ->
-        crypto:crypto_one_time_aead(Atom, Key, IV, Data, iolist_to_binary(AAD), TagOrLen, Encrypt)
+        aead(Atom, Key, IV, Data, iolist_to_binary(AAD), TagOrLen, Encrypt)
     end, 16, <<>>);
+cipher_final(#{cipher := #{impl := {xts, _}}} = S) ->
+    {ok, <<>>, S};
 cipher_final(#{cipher := #{impl := chacha20_poly1305}, key := Key, iv := IV, aad := AAD} = S) ->
     Data = case maps:get(engine, S) of
         undefined -> <<>>;
@@ -571,7 +578,7 @@ cipher_final(S) ->
         error:final -> {error, final_error(S1), S1}
     end.
 
-final_bytes({ecb, _, _} = Ecb, #{encrypt := Encrypt, padding := Padding}) -> ecb_final(Ecb, Encrypt, Padding);
+final_bytes({modes, Stream}, _) -> buoy_crypto_modes:stream_final(Stream);
 final_bytes(Ref, _) -> crypto:crypto_final(Ref).
 
 %% The OpenSSL error of a failed EVP_CipherFinal_ex.

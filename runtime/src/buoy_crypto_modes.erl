@@ -1,19 +1,160 @@
 %% The cipher modes that OpenSSL has and OTP's crypto does not expose, on
-%% the block ciphers that it does: the GCM key stream for streaming
-%% encryption, OCB (RFC 7253), AES key wrap (RFC 3394 and RFC 5649), the
-%% Triple-DES key wrap of CMS (RFC 3217), and ECB of Triple-DES.
+%% the block ciphers that it does and on Camellia and ARIA: the GCM key
+%% stream for streaming encryption, GCM and CCM in one pass, OCB (RFC 7253),
+%% XTS (IEEE 1619), the stream of ECB, CBC, CFB, CFB1, CFB8, OFB, and CTR
+%% as EVP_CipherUpdate runs it, AES key wrap (RFC 3394 and RFC 5649), and
+%% the Triple-DES key wrap of CMS (RFC 3217).
 -module(buoy_crypto_modes).
 
--export([ecb/4, gcm_j0/3, gcm_stream/4, ocb/6, aes_wrap/4, aes_unwrap/4, aes_wrap_pad/4, aes_unwrap_pad/4,
-         des3_wrap/2, des3_unwrap/2]).
+-export([ecb/4, gcm_j0/3, gcm_stream/4, gcm/7, ccm/7, ocb/6, xts/5, aes_wrap/4, aes_unwrap/4, aes_wrap_pad/4,
+         aes_unwrap_pad/4, des3_wrap/2, des3_unwrap/2]).
+-export([stream_init/6, stream_update/2, stream_final/1]).
 
-%% ECB of the block cipher Cipher (an OTP ECB cipher, or des_ede3) over
-%% whole blocks.
--spec ecb(atom(), binary(), binary(), boolean()) -> binary().
+%% A block cipher: an OTP ECB cipher such as aes_128_ecb, des_ede3,
+%% camellia, or aria.
+-type block_cipher() :: atom().
+
+%% ECB of the block cipher Cipher over whole blocks.
+-spec ecb(block_cipher(), binary(), binary(), boolean()) -> binary().
 ecb(des_ede3, Key, Data, Encrypt) ->
     << <<(crypto:crypto_one_time(des_ede3_cbc, Key, <<0:64>>, B, Encrypt))/binary>> || <<B:8/binary>> <= Data >>;
+ecb(Cipher, Key, Data, Encrypt) when Cipher =:= camellia; Cipher =:= aria ->
+    F = block_fun(Cipher, Key, Encrypt),
+    << <<(F(B))/binary>> || <<B:16/binary>> <= Data >>;
 ecb(Cipher, Key, Data, Encrypt) ->
     crypto:crypto_one_time(Cipher, Key, Data, Encrypt).
+
+%% The function of one block of Cipher under Key, with the key schedule made once.
+block_fun(camellia, Key, Encrypt) ->
+    Schedule = buoy_crypto_camellia:schedule(Key, Encrypt),
+    fun(B) -> buoy_crypto_camellia:block(Schedule, B) end;
+block_fun(aria, Key, Encrypt) ->
+    Schedule = buoy_crypto_aria:schedule(Key, Encrypt),
+    fun(B) -> buoy_crypto_aria:block(Schedule, B) end;
+block_fun(Cipher, Key, Encrypt) ->
+    fun(B) -> ecb(Cipher, Key, B, Encrypt) end.
+
+block_size(des_ede3) -> 8;
+block_size(_) -> 16.
+
+%%% Streams
+
+%% The state of a mode of Cipher as EVP_CipherInit leaves it. Only ECB and
+%% CBC decrypt with the inverse cipher; the feedback modes encrypt both ways.
+-spec stream_init(ecb | cbc | cfb | cfb1 | cfb8 | ofb | ctr, block_cipher(), binary(), binary(), boolean(),
+                  boolean()) -> map().
+stream_init(Mode, Cipher, Key, IV, Encrypt, Padding) ->
+    Forward = Encrypt orelse (Mode =/= ecb andalso Mode =/= cbc),
+    #{mode => Mode, size => block_size(Cipher), block => block_fun(Cipher, Key, Forward), encrypt => Encrypt,
+      padding => Padding, register => IV, stream => <<>>, num => 0, buffer => <<>>}.
+
+%% The output of an update. ECB and CBC give whole blocks, and a decryption
+%% with padding holds its last block back for the final step.
+-spec stream_update(map(), binary()) -> {binary(), map()}.
+stream_update(#{mode := Mode, size := Size, buffer := Buffer, encrypt := Encrypt, padding := Padding} = S, Data)
+  when Mode =:= ecb; Mode =:= cbc ->
+    All = <<Buffer/binary, Data/binary>>,
+    Whole = byte_size(All) div Size * Size,
+    Keep = case not Encrypt andalso Padding andalso Whole > 0 andalso Whole =:= byte_size(All) of
+        true -> Size;
+        false -> byte_size(All) - Whole
+    end,
+    Take = byte_size(All) - Keep,
+    <<Now:Take/binary, Rest/binary>> = All,
+    {Out, S1} = blocks(S, Now),
+    {Out, S1#{buffer := Rest}};
+stream_update(S, Data) ->
+    feedback(S, Data, []).
+
+%% The output of the final step, or error(final) when the data does not
+%% end a block or its padding is wrong, as EVP_CipherFinal fails.
+-spec stream_final(map()) -> binary().
+stream_final(#{mode := Mode} = S) when Mode =:= ecb; Mode =:= cbc ->
+    case S of
+        #{encrypt := true, padding := true, buffer := B, size := Size} ->
+            N = Size - byte_size(B),
+            element(1, blocks(S, <<B/binary, (binary:copy(<<N>>, N))/binary>>));
+        #{padding := false, buffer := <<>>} ->
+            <<>>;
+        #{encrypt := false, padding := true, buffer := B, size := Size} when byte_size(B) =:= Size ->
+            {Plain, _} = blocks(S, B),
+            N = binary:last(Plain),
+            case N >= 1 andalso N =< Size andalso binary:part(Plain, Size - N, N) =:= binary:copy(<<N>>, N) of
+                true -> binary:part(Plain, 0, Size - N);
+                false -> error(final)
+            end;
+        _ ->
+            error(final)
+    end;
+stream_final(_) ->
+    <<>>.
+
+blocks(#{mode := ecb, block := F, size := Size} = S, Data) ->
+    {<< <<(F(B))/binary>> || <<B:Size/binary>> <= Data >>, S};
+blocks(#{mode := cbc, block := F, size := Size, encrypt := true, register := IV} = S, Data) ->
+    {Out, Last} = lists:mapfoldl(fun(P, Prev) -> C = F(crypto:exor(P, Prev)), {C, C} end, IV,
+                                 [B || <<B:Size/binary>> <= Data]),
+    {iolist_to_binary(Out), S#{register := Last}};
+blocks(#{mode := cbc, block := F, size := Size, register := IV} = S, Data) ->
+    {Out, Last} = lists:mapfoldl(fun(C, Prev) -> {crypto:exor(F(C), Prev), C} end, IV,
+                                 [B || <<B:Size/binary>> <= Data]),
+    {iolist_to_binary(Out), S#{register := Last}}.
+
+%% The feedback modes, as CRYPTO_cfb128_encrypt, CRYPTO_ofb128_encrypt,
+%% CRYPTO_ctr128_encrypt, CRYPTO_cfb128_8_encrypt, and
+%% CRYPTO_cfb128_1_encrypt run them: Num counts the bytes of the register
+%% that the stream has used.
+feedback(S, <<>>, Acc) ->
+    {iolist_to_binary(lists:reverse(Acc)), S};
+feedback(#{mode := cfb8, block := F, size := Size, encrypt := Encrypt, register := Reg} = S, <<B, Rest/binary>>, Acc) ->
+    <<K, _/binary>> = F(Reg),
+    Out = B bxor K,
+    Fed = case Encrypt of
+        true -> Out;
+        false -> B
+    end,
+    feedback(S#{register := <<(binary:part(Reg, 1, Size - 1))/binary, Fed>>}, Rest, [Out | Acc]);
+feedback(#{mode := cfb1} = S, <<B, Rest/binary>>, Acc) ->
+    {Out, S1} = cfb1_byte(S, B, 7, 0),
+    feedback(S1, Rest, [Out | Acc]);
+feedback(#{mode := Mode, block := F, size := Size, encrypt := Encrypt, num := Num, register := Reg0} = S, Data, Acc) ->
+    L = min(Size - Num, byte_size(Data)),
+    <<Chunk:L/binary, Rest/binary>> = Data,
+    S1 = case {Mode, Num} of
+        {cfb, 0} -> S#{register := F(Reg0)};
+        {ofb, 0} -> S#{register := F(Reg0)};
+        {ctr, 0} -> <<Counter:(Size * 8)>> = Reg0, S#{stream := F(Reg0), register := <<(Counter + 1):(Size * 8)>>};
+        _ -> S
+    end,
+    Pad = case Mode of
+        ctr -> maps:get(stream, S1);
+        _ -> maps:get(register, S1)
+    end,
+    Out = crypto:exor(Chunk, binary:part(Pad, Num, L)),
+    S2 = case {Mode, Encrypt} of
+        {cfb, true} -> S1#{register := replace(maps:get(register, S1), Num, Out)};
+        {cfb, false} -> S1#{register := replace(maps:get(register, S1), Num, Chunk)};
+        _ -> S1
+    end,
+    feedback(S2#{num := (Num + L) rem Size}, Rest, [Out | Acc]).
+
+replace(Bin, At, Part) ->
+    <<Head:At/binary, _:(byte_size(Part))/binary, Tail/binary>> = Bin,
+    <<Head/binary, Part/binary, Tail/binary>>.
+
+%% One byte of CFB1, a bit at a time from the high bit, each with a block.
+cfb1_byte(S, _, -1, Out) ->
+    {Out, S};
+cfb1_byte(#{block := F, size := Size, encrypt := Encrypt, register := Reg} = S, B, Bit, Out) ->
+    <<K:1, _/bitstring>> = F(Reg),
+    In = (B bsr Bit) band 1,
+    O = In bxor K,
+    Fed = case Encrypt of
+        true -> O;
+        false -> In
+    end,
+    <<_:1, Shifted:(Size * 8 - 1)/bitstring>> = Reg,
+    cfb1_byte(S#{register := <<Shifted/bitstring, Fed:1>>}, B, Bit - 1, Out bor (O bsl Bit)).
 
 %%% GCM
 
@@ -56,6 +197,110 @@ gcm_stream({Ecb, Key}, Counter, Pending, Data) ->
 
 inc32(Counter, N) ->
     (Counter band (bnot 16#FFFFFFFF)) bor ((Counter + N) band 16#FFFFFFFF).
+
+%% GCM in one pass on the ECB cipher Ecb, as crypto_one_time_aead runs it:
+%% {Out, Tag} for an encryption with a tag of TagOrLen bytes, and Out, or
+%% error when the tag TagOrLen does not match, for a decryption.
+-spec gcm(block_cipher(), binary(), binary(), binary(), binary(), pos_integer() | binary(), boolean()) ->
+    {binary(), binary()} | binary() | error.
+gcm(Ecb, Key, IV, Data, AAD, TagOrLen, Encrypt) ->
+    H = binary:decode_unsigned(ecb(Ecb, Key, <<0:128>>, true)),
+    J0 = gcm_j0(Ecb, Key, IV),
+    {Out, _, _} = gcm_stream({Ecb, Key}, inc32(J0, 1), <<>>, Data),
+    Ciphertext = case Encrypt of
+        true -> Out;
+        false -> Data
+    end,
+    Blocks = <<(pad16(AAD))/binary, (pad16(Ciphertext))/binary, (bit_size(AAD)):64, (bit_size(Ciphertext)):64>>,
+    S = lists:foldl(fun(B, Y) -> gf_mult(Y bxor B, H) end, 0, [B || <<B:128>> <= Blocks]),
+    Full = crypto:exor(ecb(Ecb, Key, <<J0:128>>, true), <<S:128>>),
+    tagged(Encrypt, Out, Full, TagOrLen).
+
+tagged(true, Out, Full, Length) -> {Out, binary:part(Full, 0, Length)};
+tagged(false, Out, Full, Tag) ->
+    case crypto:hash_equals(binary:part(Full, 0, byte_size(Tag)), Tag) of
+        true -> Out;
+        false -> error
+    end.
+
+pad16(Bin) -> <<Bin/binary, 0:(((16 - byte_size(Bin) rem 16) rem 16) * 8)>>.
+
+%% CCM of NIST SP 800-38C on the ECB cipher Ecb, as gcm/7.
+-spec ccm(block_cipher(), binary(), binary(), binary(), binary(), pos_integer() | binary(), boolean()) ->
+    {binary(), binary()} | binary() | error.
+ccm(Ecb, Key, Nonce, Data, AAD, TagOrLen, Encrypt) ->
+    Enc = fun(B) -> ecb(Ecb, Key, B, true) end,
+    L = 15 - byte_size(Nonce),
+    M = case Encrypt of
+        true -> TagOrLen;
+        false -> byte_size(TagOrLen)
+    end,
+    Counter = fun(I) -> <<(L - 1), Nonce/binary, I:(L * 8)>> end,
+    Stream = Enc(<< <<(Counter(I))/binary>> || I <- lists:seq(1, (byte_size(Data) + 15) div 16) >>),
+    Out = crypto:exor(Data, binary:part(Stream, 0, byte_size(Data))),
+    Plain = case Encrypt of
+        true -> Data;
+        false -> Out
+    end,
+    Adata = case AAD of
+        <<>> -> 0;
+        _ -> 1
+    end,
+    B0 = <<0:1, Adata:1, ((M - 2) div 2):3, (L - 1):3, Nonce/binary, (byte_size(Plain)):(L * 8)>>,
+    Mac = lists:foldl(fun(B, X) -> Enc(crypto:exor(X, B)) end, <<0:128>>,
+                      [B || <<B:16/binary>> <= <<B0/binary, (pad16(aad_length(AAD)))/binary, (pad16(Plain))/binary>>]),
+    tagged(Encrypt, Out, crypto:exor(Mac, Enc(Counter(0))), TagOrLen).
+
+%% The length of the associated data before it (SP 800-38C, A.2.2).
+aad_length(<<>>) -> <<>>;
+aad_length(AAD) when byte_size(AAD) < 16#FF00 -> <<(byte_size(AAD)):16, AAD/binary>>;
+aad_length(AAD) when byte_size(AAD) < 1 bsl 32 -> <<16#FFFE:16, (byte_size(AAD)):32, AAD/binary>>;
+aad_length(AAD) -> <<16#FFFF:16, (byte_size(AAD)):64, AAD/binary>>.
+
+%%% XTS
+
+%% XTS of IEEE 1619 on one data unit of at least one block: Key is the two
+%% keys of the AES cipher Ecb, and IV the tweak. A last partial block steals
+%% the end of the block before it.
+-spec xts(atom(), binary(), binary(), binary(), boolean()) -> binary().
+xts(Ecb, Key, IV, Data, Encrypt) ->
+    Half = byte_size(Key) div 2,
+    <<K1:Half/binary, K2:Half/binary>> = Key,
+    <<T0:128/little>> = ecb(Ecb, K2, IV, true),
+    Full = byte_size(Data) div 16,
+    Tail = byte_size(Data) rem 16,
+    Tweaks = tweaks(T0, Full + 1),
+    Run = fun(Bin, Ts) ->
+        Mask = << <<T:128/little>> || T <- Ts >>,
+        crypto:exor(ecb(Ecb, K1, crypto:exor(Bin, Mask), Encrypt), Mask)
+    end,
+    case Tail of
+        0 ->
+            Run(Data, lists:sublist(Tweaks, Full));
+        _ ->
+            Head = (Full - 1) * 16,
+            <<First:Head/binary, Last:16/binary, Partial:Tail/binary>> = Data,
+            {Before, [TLast, TNext]} = lists:split(Full - 1, Tweaks),
+            %% Decryption takes the two last tweaks in the other order.
+            {TA, TB} = case Encrypt of
+                true -> {TLast, TNext};
+                false -> {TNext, TLast}
+            end,
+            CC = Run(Last, [TA]),
+            <<Stolen:Tail/binary, Kept/binary>> = CC,
+            <<(Run(First, Before))/binary, (Run(<<Partial/binary, Kept/binary>>, [TB]))/binary, Stolen/binary>>
+    end.
+
+%% The tweaks T, T*a, T*a^2, ... of GF(2^128) in little-endian order.
+tweaks(T, N) ->
+    {Ts, _} = lists:mapfoldl(fun(_, X) -> {X, xts_double(X)} end, T, lists:seq(1, N)),
+    Ts.
+
+xts_double(X) ->
+    case X bsr 127 of
+        1 -> ((X bsl 1) band ((1 bsl 128) - 1)) bxor 16#87;
+        0 -> X bsl 1
+    end.
 
 %%% OCB
 
