@@ -63,12 +63,13 @@ call_constructor(Name, _This, _Args) -> buoy_ref:type_error(<<"Constructor ", Na
 
 %%% Storage
 
-%% A new buffer of ByteLength zero bytes.
+%% A new buffer of ByteLength zero bytes, of %ArrayBuffer% of the current
+%% realm, as AllocateTypedArrayBuffer makes it.
 -spec allocate(non_neg_integer()) -> term().
 allocate(ByteLength) -> allocate(ByteLength, none).
 
 -spec allocate(non_neg_integer(), non_neg_integer() | none) -> term().
-allocate(ByteLength, Max) -> create(array_buffer, {'$o', 'ArrayBuffer.prototype'}, ByteLength, Max).
+allocate(ByteLength, Max) -> create(array_buffer, buoy_heap:intrinsic('ArrayBuffer.prototype'), ByteLength, Max).
 
 create(Class, Proto, ByteLength, Max) ->
     Capacity = case Max of
