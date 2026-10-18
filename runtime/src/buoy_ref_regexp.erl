@@ -1075,6 +1075,8 @@ split_string(S, Separator, Limit) ->
         {_, undefined, _} -> buoy_heap:new_array([S]);
         {_, _, 0} -> buoy_heap:new_array([buoy_ref_string:unit_string(S, I) || I <- lists:seq(0, min(Lim, Length) - 1)]);
         _ when Length =:= 0 -> buoy_heap:new_array([S]);
+        %% Two one-byte strings: the parts are sub-binaries, found by one BIF.
+        _ when is_binary(S), is_binary(R) -> buoy_heap:new_array(lists:sublist(binary:split(S, R, [global]), Lim));
         _ -> buoy_heap:new_array(lists:sublist(split_parts(S, R, 0), Lim))
     end.
 

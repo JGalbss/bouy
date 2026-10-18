@@ -877,7 +877,19 @@ parse_float(S) ->
     end.
 
 %% parseInt with the radix R of ToInt32.
-parse_int(S, R0) ->
+parse_int(S, R0) when is_binary(S), byte_size(S) > 0, byte_size(S) =< 15, (R0 =:= 0 orelse R0 =:= 10) ->
+    %% Up to 15 decimal digits are exact, so the common case is one BIF.
+    case is_decimal(S) of
+        true -> binary_to_integer(S);
+        false -> parse_int_units(S, R0)
+    end;
+parse_int(S, R0) -> parse_int_units(S, R0).
+
+is_decimal(<<C, Rest/binary>>) when C >= $0, C =< $9 -> is_decimal(Rest);
+is_decimal(<<>>) -> true;
+is_decimal(_) -> false.
+
+parse_int_units(S, R0) ->
     Units0 = lists:dropwhile(fun buoy_ref_string:is_whitespace/1, buoy_ref_string:units(S)),
     {Sign, Units1} = case Units0 of
         [$- | T] -> {-1, T};
