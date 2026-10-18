@@ -34,6 +34,7 @@
 -define(K_HAS_ALTSVC_LISTENERS, 3).
 -define(ERR_PROTO, -505).
 -define(ERR_CALLBACK_FAILURE, -902).
+-define(PERFORMANCE_ENTRY_TYPE_HTTP2, 2).
 -define(ENHANCE_YOUR_CALM, 11).
 -define(SETTINGS_COUNT, 7).
 %% The setting ids of the settings buffer by index, in the order of
@@ -187,7 +188,10 @@ new_session(This, TypeArg) ->
                 write_scheduled => false, in_scope => false, sending => false, write_in_progress => false,
                 reading_stopped => false, destroyed => false, closing => false, graceful => false,
                 invalid_frames => 0, rejected_streams => 0, chunks_sent => 0,
-                remote_custom => remote_custom(), local_custom => []},
+                remote_custom => remote_custom(), local_custom => [],
+                stats => #{start => now_ns(), frames_received => 0, frames_sent => 0, data_sent => 0,
+                           data_received => 0, stream_count => 0, max_concurrent => 0, ping_rtt => 0,
+                           stream_average_duration => 0}},
     buoy_heap:private_put(This, ?SESSION, Session),
     H = buoy_h2:new(Type, Opts, fun(Event, H0) -> event(This, Event, H0) end),
     put_h2(This, H),
@@ -256,6 +260,7 @@ consume(This, Handle) ->
 
 %% Http2Session::OnStreamRead and ConsumeHTTP2Data.
 on_stream_read(This, Bytes) ->
+    count(This, data_received, byte_size(Bytes)),
     case session(This) of
         #{destroyed := false} ->
             scoped(This, fun() ->
@@ -328,6 +333,7 @@ send_pending(This) ->
                     buoy_heap:set(Req, <<"oncomplete">>, buoy_node:fn(<<"oncomplete">>, 3, fun(_, Args) ->
                         after_write(This, to_int(buoy_node:arg(1, Args)))
                     end)),
+                    count(This, data_sent, iolist_size(Buffers)),
                     Write = buoy_heap:get(Handle, <<"writev">>),
                     Chunks = buoy_heap:new_array([buoy_node_encoding:new_buffer(iolist_to_binary(B)) || B <- Buffers]),
                     Status = buoy_heap:call(Write, Handle, [Req, Chunks, true]),
@@ -439,6 +445,7 @@ close(This, Code, SocketClosed) ->
             Pings = maps:get(pings, session(This)),
             update(This, fun(S) -> S#{pings => []} end),
             [buoy_node_loop:set_immediate(fun() -> ping_done(Cb, Start, false, undefined) end) || {Cb, Start} <- Pings],
+            emit_session_statistics(This),
             undefined;
         _ ->
             undefined
@@ -649,6 +656,7 @@ on(This, {header, Id, Name, Value, NoIndex}) ->
                         false ->
                             update_stream(Stream, fun(St) -> St#{headers => [{Name, Value, NoIndex} | Headers],
                                                                  headers_length => Length + Size} end),
+                            stream_count(Stream, first_header, fun(0) -> now_ns(); (T) -> T end),
                             ok
                     end
             end
@@ -656,6 +664,7 @@ on(This, {header, Id, Name, Value, NoIndex}) ->
 on(_, {invalid_header, _, _, _}) ->
     ok;
 on(This, {frame_recv, #{type := Type} = F}) ->
+    count(This, frames_received, 1),
     case frame_received(This, Type, F) of
         fatal -> {fatal, ?ERR_CALLBACK_FAILURE};
         _ -> 0
@@ -668,6 +677,7 @@ on(This, {data_chunk, Id, Data, _Flags}) ->
             case stream(Stream) of
                 #{destroyed := true} -> ok;
                 #{reading := Reading} ->
+                    stream_count(Stream, received, byte_size(Data)),
                     buoy_stream_base:emit_read(Stream, Data),
                     case Reading of
                         true -> put_h2(This, buoy_h2:consume_stream(h2(This), Id, byte_size(Data)));
@@ -715,7 +725,8 @@ on(This, {frame_not_sent, #{type := Type, stream_id := Id}, Lib}) ->
         false -> call_session(This, frame_error, [Id, Type, translate_error(Lib)])
     end,
     0;
-on(_, {frame_sent, _}) ->
+on(This, {frame_sent, _}) ->
+    count(This, frames_sent, 1),
     0;
 on(This, {error, -536, _}) ->
     call_session(This, error, [?ERR_PROTO]),
@@ -734,6 +745,51 @@ on(This, {select_padding, Len, Max}) ->
             end;
         _ -> Len
     end.
+
+%%% Statistics, which Http2Session::EmitStatistics and
+%%% Http2Stream::EmitStatistics hand to perf_hooks when an observer of
+%%% 'http2' exists.
+
+now_ns() -> buoy_binding_performance:now_ns().
+
+%% Adds N to a counter of the session's statistics, or applies a fun.
+count(This, Key, N) ->
+    update(This, fun(#{stats := St} = S) -> S#{stats => maps:update_with(Key, step(N), St)}; (S) -> S end).
+
+stream_count(Stream, Key, N) ->
+    update_stream(Stream, fun(#{stats := St} = S) -> S#{stats => maps:update_with(Key, step(N), St)}; (S) -> S end).
+
+step(F) when is_function(F) -> F;
+step(N) -> fun(V) -> V + N end.
+
+emit_stream_statistics(Session, Id, #{stats := St}) ->
+    End = now_ns(),
+    #{start := Start} = St,
+    count(Session, stream_average_duration,
+          fun(_) -> (End - Start) / max(1, maps:get(stream_count, maps:get(stats, session(Session)))) / 1.0e6 end),
+    Since = fun(K) -> (maps:get(K, St) - Start) / 1.0e6 end,
+    Details = [{<<"bytesRead">>, maps:get(received, St)}, {<<"bytesWritten">>, maps:get(sent, St)}, {<<"id">>, Id},
+               {<<"timeToFirstByte">>, Since(first_byte)}, {<<"timeToFirstByteSent">>, Since(first_byte_sent)},
+               {<<"timeToFirstHeader">>, Since(first_header)}],
+    emit_statistics(<<"Http2Stream">>, Start, End, Details);
+emit_stream_statistics(_, _, _) ->
+    ok.
+
+emit_session_statistics(This) ->
+    #{stats := St, type := Type} = session(This),
+    Details = [{<<"bytesWritten">>, maps:get(data_sent, St)}, {<<"bytesRead">>, maps:get(data_received, St)},
+               {<<"framesReceived">>, maps:get(frames_received, St)}, {<<"framesSent">>, maps:get(frames_sent, St)},
+               {<<"maxConcurrentStreams">>, maps:get(max_concurrent, St)}, {<<"pingRTT">>, maps:get(ping_rtt, St)},
+               {<<"streamAverageDuration">>, maps:get(stream_average_duration, St)},
+               {<<"streamCount">>, maps:get(stream_count, St)}, {<<"type">>, atom_to_binary(Type)}],
+    emit_statistics(<<"Http2Session">>, maps:get(start, St), now_ns(), Details).
+
+%% The entry goes out in a native immediate, as SetImmediate takes it.
+emit_statistics(Name, Start, End, Details) ->
+    buoy_binding_performance:has_observer(?PERFORMANCE_ENTRY_TYPE_HTTP2) andalso buoy_node_loop:set_immediate(fun() ->
+        buoy_binding_performance:notify(?PERFORMANCE_ENTRY_TYPE_HTTP2, Name, Start, (End - Start) / 1.0e6,
+                                        buoy_node:object(Details))
+    end).
 
 uint32(Fields, Offset) ->
     lists:sum([trunc(buoy_heap:get(Fields, Offset + I)) bsl (8 * I) || I <- lists:seq(0, 3)]).
@@ -821,6 +877,7 @@ frame_received(This, 6, #{flags := Flags, opaque_data := Payload}) ->
             case maps:get(pings, session(This)) of
                 [{Callback, Start} | Rest] ->
                     update(This, fun(S) -> S#{pings => Rest} end),
+                    count(This, ping_rtt, fun(_) -> hrtime() - Start end),
                     ping_done(Callback, Start, true, Payload);
                 [] ->
                     call_session(This, error, [?ERR_PROTO])
@@ -891,6 +948,9 @@ read_data(This, Id, Max) ->
                     end;
                 _ ->
                     Amount = min(Available, Max),
+                    %% Http2Session::OnRead
+                    stream_count(Stream, first_byte_sent, fun(0) -> now_ns(); (T) -> T end),
+                    stream_count(Stream, sent, Amount),
                     {Bytes, Done, Rest} = take(maps:get(queue, St), Amount, [], []),
                     update_stream(Stream, fun(S) -> S#{queue => Rest, available => Available - Amount} end),
                     update(This, fun(S) -> S#{outgoing => [{Req, Stream} || Req <- Done] ++ maps:get(outgoing, S)} end),
@@ -967,9 +1027,14 @@ new_stream(Session, Id, Cat, Options) ->
               has_trailers => Options band ?STREAM_OPTION_GET_TRAILERS =/= 0,
               headers => [], headers_length => 0, paused_consumed => 0,
               max_header_length => min(maps:get(max_header_list_size, Local), 16777215),
-              async_id => async_id()},
+              async_id => async_id(),
+              stats => #{start => now_ns(), first_header => 0, first_byte => 0, first_byte_sent => 0,
+                         sent => 0, received => 0}},
     buoy_heap:private_put(Stream, ?STREAM, State),
     update(Session, fun(S) -> S#{streams => (maps:get(streams, S))#{Id => Stream}} end),
+    %% Http2Session::AddStream
+    count(Session, stream_count, 1),
+    count(Session, max_concurrent, fun(N) -> max(N, map_size(maps:get(streams, session(Session)))) end),
     case Options band ?STREAM_OPTION_EMPTY_PAYLOAD of
         0 -> ok;
         _ -> update_stream(Stream, fun(S) -> S#{writable => false} end)
@@ -1082,7 +1147,8 @@ destroy_stream(This) ->
                 Queue = maps:get(queue, stream(This)),
                 update_stream(This, fun(S) -> S#{queue => [], available => 0} end),
                 [buoy_stream_base:done(Req, ?UV_ECANCELED, This) || {_, Req} <- Queue, Req =/= undefined]
-            end);
+            end),
+            emit_stream_statistics(Session, Id, stream(This));
         _ ->
             ok
     end.
