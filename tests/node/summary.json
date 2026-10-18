@@ -1,15 +1,15 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "7785f26fd5c7f48125c475431da4d3a401676c52",
+  "updated": "351b228387d2a73a13e0713be4fd51b9bc06b0f5",
   "total": 4419,
   "outcomes": {
-    "pass": 1981,
+    "pass": 1983,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1724,
+    "fail": 1722,
     "timeout": 121,
     "harness_error": 0,
     "crash": 10
@@ -23,9 +23,9 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1877,
+        "pass": 1879,
         "skip": 545,
-        "fail": 1546,
+        "fail": 1544,
         "timeout": 101,
         "crash": 10
       },
@@ -41,9 +41,9 @@
         "skip": 343
       },
       "public": {
-        "pass": 1981,
+        "pass": 1983,
         "skip": 240,
-        "fail": 1724,
+        "fail": 1722,
         "timeout": 121,
         "crash": 10
       }
@@ -208,9 +208,9 @@
         "skip": 2
       },
       "stream": {
-        "pass": 231,
+        "pass": 233,
         "skip": 8,
-        "fail": 24
+        "fail": 22
       },
       "string_decoder": {
         "pass": 3

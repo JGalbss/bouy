@@ -200,7 +200,7 @@ event(_) ->
 %% unref'd ones are.
 run_timers() ->
     Process = process(),
-    Expiry = buoy_ref:to_number(buoy_heap:call(callback(process_timers), Process, [now()])),
+    Expiry = buoy_ref:to_number(process_timers(Process)),
     case Expiry of
         0 ->
             toggle_timer_ref(false);
@@ -209,6 +209,18 @@ run_timers() ->
             toggle_timer_ref(E > 0);
         _ ->
             toggle_timer_ref(false)
+    end.
+
+%% An exception out of processTimers goes to the uncaught exception handler,
+%% and processTimers runs again, so the timers after the one that threw still
+%% fire: the loop of Environment::RunTimers.
+process_timers(Process) ->
+    try
+        buoy_heap:call(callback(process_timers), Process, [now()])
+    catch
+        error:Reason:Stack ->
+            uncaught(buoy_ref:caught(Reason, Stack), false),
+            process_timers(Process)
     end.
 
 %% The check phase: CheckImmediate.

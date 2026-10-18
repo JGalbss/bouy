@@ -3293,8 +3293,8 @@ parallel/test-stream-pipe-without-listenerCount.js pass
 parallel/test-stream-pipeline-async-iterator.js pass
 parallel/test-stream-pipeline-duplex.js pass
 parallel/test-stream-pipeline-http2.js pass
-parallel/test-stream-pipeline-listeners.js fail
-parallel/test-stream-pipeline-process.js fail
+parallel/test-stream-pipeline-listeners.js pass
+parallel/test-stream-pipeline-process.js pass
 parallel/test-stream-pipeline-queued-end-in-destroy.js pass
 parallel/test-stream-pipeline-uncaught.js pass
 parallel/test-stream-pipeline-with-empty-string.js pass
