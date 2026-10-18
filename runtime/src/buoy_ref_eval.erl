@@ -355,7 +355,9 @@ load_module(Main, Importer, Specifier, Mode) ->
             [Path, Modules] = binary:split(Rest, <<"\n">>),
             Loaded = load_modules(Modules, []),
             [{Entry, _} | _] = Loaded,
-            {program, Path, Entry, Entry:'$graph'()};
+            %% The answer names every module of the program, also one that the
+            %% VM loaded before as a module of another program, without '$graph'/0.
+            {program, Path, Entry, [{buoy_ref_string:from_utf8(P), M} || {M, P} <- Loaded]};
         <<2, Diagnostic/binary>> ->
             case binary:split(Diagnostic, <<"\t">>) of
                 [Code, Message] -> {error, Code, Message};

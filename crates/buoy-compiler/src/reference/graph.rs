@@ -158,9 +158,19 @@ pub fn load(
     let mut index: HashMap<PathBuf, usize> = HashMap::new();
     let mut names: HashMap<String, PathBuf> = HashMap::new();
     let mut queue = VecDeque::from([entry.to_path_buf()]);
-    index.insert(entry.to_path_buf(), 0);
+    // A classic script is not a module: an import of its own file loads that file again as
+    // a module of its own, so the script holds no path that a request can find.
+    let entry_key = if script {
+        PathBuf::new()
+    } else {
+        entry.to_path_buf()
+    };
+    index.insert(entry_key, 0);
     while let Some(path) = queue.pop_front() {
-        let name = unit_name(root, &path);
+        let mut name = unit_name(root, &path);
+        if script && !units.is_empty() && path == entry {
+            name.push_str("@module");
+        }
         let scanned = match names.insert(name.clone(), path.clone()) {
             Some(other) => Err(vec![Reporter::new(&path, "").at(
                 0,
