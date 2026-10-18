@@ -15,7 +15,7 @@
 -export([new_promise/0, new_promise/1, capability/0, promise_resolve/1, perform_then/4, is_promise/1]).
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
 -export([await/3, async_call/1, enqueue/1, drain/0]).
--export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1]).
+-export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1, quiet_capability/0]).
 -export([set_timer/4, clear_timer/1]).
 -export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
@@ -164,10 +164,9 @@ resolve_promise(P, V) ->
 
 %% NewPromiseResolveThenableJob, between the hooks of P.
 thenable_job(P, Thenable, Then) ->
-    case erlang:get(?HOOKS) of
-        undefined -> resolve_thenable_job(P, Thenable, Then);
-        _ -> hooked(P, fun() -> resolve_thenable_job(P, Thenable, Then) end)
-    end.
+    promise_hook(2, P),
+    resolve_thenable_job(P, Thenable, Then),
+    promise_hook(3, P).
 
 resolve_thenable_job(P, Thenable, Then) ->
     {Resolve, Reject} = resolving_functions(P),
@@ -219,10 +218,9 @@ reaction_job({_Kind, {await, Throwaway, Outer}, Handler, _}, Argument) ->
     fulfill(Throwaway, undefined),
     hook(3, [Throwaway]);
 reaction_job({_, {P, _, _}, _, _} = Reaction, Argument) ->
-    case erlang:get(?HOOKS) of
-        undefined -> settle_reaction(Reaction, Argument);
-        _ -> hooked(P, fun() -> settle_reaction(Reaction, Argument) end)
-    end.
+    promise_hook(2, P),
+    settle_reaction(Reaction, Argument),
+    promise_hook(3, P).
 
 settle_reaction({Kind, {_, Resolve, Reject}, Handler, _}, Argument) ->
     Outcome = case Handler of
@@ -363,17 +361,26 @@ hook(I, Args) ->
             end
     end.
 
-%% A job of promise P between its before and after hooks; V8 has no hooks
-%% for a promise of another class.
-hooked(P, Job) ->
-    case is_promise(P) of
-        false ->
-            Job();
-        true ->
-            hook(2, [P]),
-            Result = Job(),
-            hook(3, [P]),
-            Result
+%% The before or after hook of the job of P. V8 has no hooks for the
+%% promise of a capability of another class. Each hook is checked when it is
+%% due, so a hook that the job enables runs after it, as in V8.
+promise_hook(I, P) ->
+    case erlang:get(?HOOKS) =/= undefined andalso is_promise(P) of
+        true -> hook(I, [P]);
+        false -> ok
+    end.
+
+%% A capability of the engine that no code observes, such as the promise of
+%% a module evaluation: its promise and its settlement run no promise hook.
+-spec quiet_capability() -> {term(), fun((term()) -> term()), fun((term()) -> term())}.
+quiet_capability() ->
+    {P, Resolve, Reject} = quiet(fun capability/0),
+    {P, fun(V) -> quiet(fun() -> Resolve(V) end) end, fun(E) -> quiet(fun() -> Reject(E) end) end}.
+
+quiet(Fun) ->
+    case erlang:erase(?HOOKS) of
+        undefined -> Fun();
+        Hooks -> try Fun() after erlang:put(?HOOKS, Hooks) end
     end.
 
 %% A promise that fulfills when every promise of the list has, or rejects

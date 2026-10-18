@@ -155,7 +155,7 @@ evaluate(M0) ->
         {P, _, _} ->
             P;
         undefined ->
-            {P, Resolve, Reject} = Capability = buoy_jobs:capability(),
+            {P, Resolve, Reject} = Capability = buoy_jobs:quiet_capability(),
             %% require(esm) can evaluate a graph while another one evaluates.
             Outer = get_stack(),
             put_stack([]),

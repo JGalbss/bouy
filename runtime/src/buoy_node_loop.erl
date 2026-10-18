@@ -87,13 +87,18 @@ handles() ->
         N -> N
     end.
 
-%% Runs Fun as a later macrotask, as a callback of libuv's thread pool; the
-%% loop stays alive until it runs.
+%% Runs Fun as a later macrotask, as a callback of libuv's thread pool, with
+%% the async context frame of now; the loop stays alive until it runs.
 -spec defer(fun(() -> term())) -> ok.
 defer(Fun) ->
     ref_handle(),
     Ref = make_ref(),
-    erlang:put({?MODULE, deferred, Ref}, Fun),
+    Frame = buoy_jobs:context(),
+    erlang:put({?MODULE, deferred, Ref}, fun() ->
+        Prior = buoy_jobs:context(),
+        buoy_jobs:set_context(Frame),
+        try Fun() after buoy_jobs:set_context(Prior) end
+    end),
     self() ! {'$buoy_node_deferred', Ref},
     ok.
 
@@ -225,12 +230,16 @@ process_timers(Process, Now) ->
 %% The check phase: CheckImmediate.
 -spec check() -> ok.
 check() ->
+    _ = buoy_node:ready() andalso buoy_binding_async_wrap:destroy_queued(),
+    immediates().
+
+immediates() ->
     case buoy_node:ready() andalso immediate_field(?K_COUNT) > 0 of
         true ->
             trace("check ~w ~w ~w~n", [immediate_field(0), immediate_field(1), immediate_field(2)]),
             buoy_jobs:run_job(fun() -> buoy_heap:call(callback(process_immediate), process(), []) end),
             case immediate_field(?K_HAS_OUTSTANDING) =/= 0 of
-                true -> check();
+                true -> immediates();
                 false -> ok
             end;
         false ->
@@ -349,6 +358,7 @@ finish() ->
     Process = process(),
     case exiting() of
         false ->
+            buoy_binding_async_wrap:destroy_queued(),
             buoy_jobs:run_job(fun() -> emit(Process, <<"beforeExit">>, exit_code(0)) end),
             case buoy_jobs:has_work() of
                 true ->
