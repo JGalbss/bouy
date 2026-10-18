@@ -192,6 +192,10 @@ event({'$buoy_node_deferred', Ref}) ->
 event({'$buoy_node_call', Fun}) when is_function(Fun, 0) ->
     buoy_jobs:run_job(Fun),
     true;
+%% A select message of the socket module, for a socket of buoy_node_socket.
+event({'$socket', _, _, _} = Message) ->
+    buoy_jobs:run_job(fun() -> buoy_node_socket:event(Message) end),
+    true;
 event(_) ->
     false.
 
