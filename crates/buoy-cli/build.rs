@@ -121,7 +121,12 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
         false,
         &[],
         &[],
-        &buoy_compiler::EvalContext::default(),
+        // The polyfill is part of the runtime: like a native Temporal, it must not observe
+        // a program that replaces `Math.sign` or the array iterator.
+        &buoy_compiler::EvalContext {
+            internal: true,
+            ..buoy_compiler::EvalContext::default()
+        },
     )
     .unwrap_or_else(|diagnostics| {
         panic!(

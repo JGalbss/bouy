@@ -8,6 +8,13 @@
 
 -export([intrinsics/0, globals/0, method/4]).
 -export([iterate/1, step/1, to_list/1, list_from_method/2, take/2, rest_list/1, for_in/1]).
+-export([iterate_internal/1, to_list_internal/1, take_internal/2, pattern_cell_internal/1]).
+
+%% Set while internal code runs that no program code can interleave with,
+%% such as the top level of the Temporal polyfill: the builtins that it calls
+%% then iterate an array as internal code does (iterate_internal/1).
+-define(INTERNAL, '$buoy_internal_iteration').
+-export([internally/1]).
 -export([get_iterator/1, close/1, close_state/1, close_quietly/1]).
 -export([async_next/1, async_step/1, async_close/3, async_close_quietly/2]).
 -export([require_coercible/1, finish/1, pattern_cell/1, next_value/1, rest_value/1, abort/1, finish_cell/1]).
@@ -49,7 +56,8 @@ list_iterator_next(O) ->
 iterate({'$o', _} = O) ->
     case buoy_heap:class_of(O) of
         array ->
-            case buoy_heap:get(O, buoy_heap:well_known(iterator)) of
+            case erlang:get(?INTERNAL) =:= true orelse buoy_heap:get(O, buoy_heap:well_known(iterator)) of
+                true -> {array, O, 0};
                 {'$f', {builtin, <<"Array.prototype.values">>}, _} -> {array, O, 0};
                 _ -> protocol(O)
             end;
@@ -66,6 +74,36 @@ iterate({'$o', _} = O) ->
 iterate(S) when ?IS_STRING(S) -> {list, [buoy_ref_string:from_code_points([C]) || C <- buoy_ref_string:code_points(S)]};
 iterate({'$f', _, _} = F) -> protocol(F);
 iterate(V) -> buoy_ref:type_error(buoy_ref_string:concat(buoy_ref:describe(V), <<" is not iterable">>)).
+
+%% The iteration of internal code, such as the Temporal polyfill: an array
+%% steps over its elements as the intrinsic array iterator does, whatever a
+%% program wrote to Array.prototype[Symbol.iterator] or to the next method
+%% of %ArrayIteratorPrototype%. Other values iterate as iterate/1 does.
+-spec iterate_internal(term()) -> term().
+iterate_internal({'$o', _} = O) ->
+    case buoy_heap:class_of(O) of
+        array -> {array, O, 0};
+        _ -> iterate(O)
+    end;
+iterate_internal(V) -> iterate(V).
+
+%% Runs Fun as internal code that program code cannot interleave with.
+-spec internally(fun(() -> T)) -> T.
+internally(Fun) ->
+    Outer = erlang:put(?INTERNAL, true),
+    try Fun()
+    after
+        erlang:put(?INTERNAL, Outer)
+    end.
+
+-spec to_list_internal(term()) -> list().
+to_list_internal(V) -> drain(iterate_internal(V), []).
+
+-spec take_internal(term(), non_neg_integer()) -> {list(), term()}.
+take_internal(V, N) -> take(iterate_internal(V), N, []).
+
+-spec pattern_cell_internal(term()) -> {'$c', pos_integer()}.
+pattern_cell_internal(Source) -> buoy_heap:cell(iterate_internal(Source)).
 
 %% A builtin iterator whose next method is the intrinsic one steps without
 %% the result objects of the protocol: {native, Module, Iterator}.

@@ -26,7 +26,7 @@
 
 -export([install/0, global/1, set_global/3, has_binding/1, set_resolved/3, not_defined/1, declare_globals/3, declare_script/4, delete_global/1, constructor/2]).
 -export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
--export([function_record/2, proto_for/2]).
+-export([function_record/2, proto_for/2, primordial/2]).
 -export([create/0, function_realm/1, realm_fun/2, callee/1, localize/2, current/1, global_object/0]).
 -export([intrinsics/0, globals/0, method/4]).
 
@@ -237,6 +237,31 @@ has_binding(Name) ->
 -spec set_resolved(binary(), term(), boolean()) -> term().
 set_resolved(Name, Value, true) -> set_global(Name, Value, strict);
 set_resolved(Name, _Value, false) -> not_defined(Name).
+
+%% Global.Key as the runtime installed it, whatever a program wrote since:
+%% the static record of the standard global Global holds the original data
+%% property, which internal code reads (EvalContext internal, such as
+%% Math.sign in the Temporal polyfill). An accessor, or a key that the record
+%% does not hold, reads the current value.
+-spec primordial(binary(), term()) -> term().
+primordial(Global, Key) ->
+    Static = case persistent_term:get({?MODULE, globals}) of
+        #{Global := V} -> static_props(V);
+        _ -> #{}
+    end,
+    case Static of
+        #{Key := {'$accessor', _, _}} -> buoy_heap:get(global(Global), Key);
+        #{Key := {'$live', _}} -> buoy_heap:get(global(Global), Key);
+        #{Key := Value} -> current(Value);
+        _ -> buoy_heap:get(global(Global), Key)
+    end.
+
+static_props({'$o', Id}) when is_atom(Id) -> record_props(persistent_term:get({buoy_heap, Id}, undefined));
+static_props({'$f', {builtin, _} = Id, _}) -> record_props(persistent_term:get({buoy_heap, Id}, undefined));
+static_props(_) -> #{}.
+
+record_props({_Class, _Proto, Props, _Keys, _Attrs, _Slots}) when is_map(Props) -> Props;
+record_props(_) -> #{}.
 
 global_slow(Name) ->
     G = global_object(),

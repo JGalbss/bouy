@@ -167,7 +167,7 @@ impl<'a> Lowerer<'a, '_> {
             .collect();
         self.bind(Expr::call(
             "buoy_ref",
-            "array_spread",
+            &self.iteration("array_spread"),
             vec![Expr::List(parts)],
         ))
     }

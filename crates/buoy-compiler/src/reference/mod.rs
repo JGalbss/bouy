@@ -96,6 +96,11 @@ pub struct EvalContext {
     pub place: EvalPlace,
     /// The private names that the call sees (`privates`, their keys in this order).
     pub privates: Vec<String>,
+    /// The code is part of the runtime, such as the Temporal polyfill: a static member of
+    /// a standard global, such as `Math.sign`, reads the value that the runtime installed,
+    /// and an array iterates without its user-visible iterator. Node's lib gets the same
+    /// from its primordials, and Bun's builtin modules from their intrinsics.
+    pub internal: bool,
 }
 
 /// Where a direct eval is called, which decides what its code may use.

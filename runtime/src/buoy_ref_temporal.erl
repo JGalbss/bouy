@@ -50,7 +50,10 @@ load(?NAMESPACE = Id) ->
         Intl = buoy_heap:object(?OBJECT_PROTO, [{<<"DateTimeFormat">>, buoy_ref_realm:constructor(?MODULE, <<"Intl.DateTimeFormat">>)}]),
         Clock = buoy_ref_realm:builtin(<<"Temporal.nowNanoseconds">>, fun(_, _) -> {'$bigint', erlang:system_time(nanosecond)} end),
         Host = buoy_heap:object(?OBJECT_PROTO, [{<<"Intl">>, Intl}, {<<"nowNanoseconds">>, Clock}]),
-        {'$o', Made} = Module:'__eval__'(Host, [], #{}),
+        %% The top level of the polyfill runs no program code, so the builtins that
+        %% it calls, such as the Set constructor, iterate arrays as a native
+        %% Temporal would, whatever a program wrote to the array iterator.
+        {'$o', Made} = buoy_ref_iterator:internally(fun() -> Module:'__eval__'(Host, [], #{}) end),
         Record = erlang:get(Made),
         erlang:put(Id, Record),
         erlang:put({?MODULE, instant}, maps:get(<<"Instant">>, element(3, Record))),

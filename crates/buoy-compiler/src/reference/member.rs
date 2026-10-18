@@ -143,6 +143,13 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn static_member(&mut self, member: &'a StaticMemberExpression<'a>) -> Expr {
+        if let Some((global, key)) = self.primordial(member) {
+            return self.bind(Expr::call(
+                "buoy_ref_realm",
+                "primordial",
+                vec![Expr::js_string(global), key],
+            ));
+        }
         if let Expression::Super(_) = member.object {
             let object = self.super_reference();
             return self.get(
@@ -158,6 +165,32 @@ impl<'a> Lowerer<'a, '_> {
             object,
             MemberKey::Static(static_key(member.property.name.as_str())),
         )
+    }
+
+    /// The global and the key of a static member such as `Math.sign` that internal code
+    /// reads (`EvalContext::internal`): a standard global that no scope binds.
+    pub fn primordial(&self, member: &'a StaticMemberExpression<'a>) -> Option<(&'a str, Expr)> {
+        let Expression::Identifier(ident) = &member.object else {
+            return None;
+        };
+        let name = ident.name.as_str();
+        (self.eval_context.internal
+            && !member.optional
+            && PRIMORDIAL_GLOBALS.contains(&name)
+            && self.symbol_of(ident.reference_id.get()).is_none()
+            && self.eval_binding(name).is_none()
+            && self.with_objects(ident).is_empty())
+        .then(|| (name, static_key(member.property.name.as_str())))
+    }
+
+    /// The function of a module of the runtime that starts an iteration: the variant for
+    /// internal code, which iterates an array without its user-visible iterator.
+    pub fn iteration(&self, function: &str) -> String {
+        if self.eval_context.internal {
+            format!("{function}_internal")
+        } else {
+            function.to_owned()
+        }
     }
 
     pub fn computed_member(&mut self, member: &'a ComputedMemberExpression<'a>) -> Expr {
@@ -312,6 +345,31 @@ pub fn index_of(name: &str) -> Option<i64> {
         .ok()
         .filter(|index| *index <= 4_294_967_294)
 }
+
+/// The standard globals whose static members internal code reads as the runtime installed
+/// them.
+const PRIMORDIAL_GLOBALS: &[&str] = &[
+    "Array",
+    "ArrayBuffer",
+    "BigInt",
+    "Boolean",
+    "DataView",
+    "Date",
+    "Error",
+    "JSON",
+    "Map",
+    "Math",
+    "Number",
+    "Object",
+    "Promise",
+    "Reflect",
+    "RegExp",
+    "Set",
+    "String",
+    "Symbol",
+    "WeakMap",
+    "WeakSet",
+];
 
 /// The code of an optional chain with each guard as a case: `undefined` for a nullish
 /// value, else the rest of the chain.

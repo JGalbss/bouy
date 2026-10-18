@@ -210,7 +210,7 @@ impl<'a> Lowerer<'a, '_> {
                 k,
             );
         }
-        let state = Expr::call("buoy_ref_iterator", "iterate", vec![right]);
+        let state = Expr::call("buoy_ref_iterator", &self.iteration("iterate"), vec![right]);
         self.each(
             &statement.left,
             &statement.body,

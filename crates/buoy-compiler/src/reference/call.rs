@@ -34,7 +34,11 @@ impl<'a> Lowerer<'a, '_> {
             .map(|argument| match argument {
                 Argument::SpreadElement(spread) => {
                     let value = self.expr(&spread.argument);
-                    self.bind(Expr::call("buoy_ref_iterator", "to_list", vec![value]))
+                    self.bind(Expr::call(
+                        "buoy_ref_iterator",
+                        &self.iteration("to_list"),
+                        vec![value],
+                    ))
                 }
                 other => match other.as_expression() {
                     Some(expression) => Expr::List(vec![self.expr(expression)]),
@@ -124,6 +128,23 @@ impl<'a> Lowerer<'a, '_> {
         call: &'a CallExpression<'a>,
         member: &'a MemberExpression<'a>,
     ) -> Expr {
+        if let MemberExpression::StaticMemberExpression(static_member) = member
+            && !call.optional
+            && let Some((global, key)) = self.primordial(static_member)
+        {
+            let function = self.bind(Expr::call(
+                "buoy_ref_realm",
+                "primordial",
+                vec![Expr::js_string(global), key],
+            ));
+            let this = self.bind(Expr::call(
+                "buoy_ref",
+                "global",
+                vec![Expr::js_string(global)],
+            ));
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+        }
         if let Expression::Super(_) = member.object() {
             let (object, key) = self.member_parts(member);
             let method = self.get(object.clone(), key);

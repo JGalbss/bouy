@@ -122,6 +122,7 @@ impl EvalRequest {
         let context = EvalContext {
             place: self.place,
             privates: self.private,
+            internal: false,
         };
         let compiled = if self.script {
             buoy_compiler::compile_eval_script(text, &module)

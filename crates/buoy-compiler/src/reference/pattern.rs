@@ -203,7 +203,11 @@ impl<'a> Lowerer<'a, '_> {
         let cell = self.fresh("Iteration");
         self.pre.push(Expr::matches(
             Expr::var(cell.clone()),
-            Expr::call("buoy_ref_iterator", "pattern_cell", vec![source]),
+            Expr::call(
+                "buoy_ref_iterator",
+                &self.iteration("pattern_cell"),
+                vec![source],
+            ),
         ));
         let handler = self.pattern_handler(&cell, suspends);
         let level = self.frame.region + 1;
@@ -398,7 +402,7 @@ impl<'a> Lowerer<'a, '_> {
             Expr::Tuple(vec![Expr::List(items.clone()), state.clone()]),
             Expr::call(
                 "buoy_ref_iterator",
-                "take",
+                &self.iteration("take"),
                 vec![source, Expr::Integer(i64::try_from(count).unwrap_or(0))],
             ),
         ));
