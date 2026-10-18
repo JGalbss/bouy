@@ -97,7 +97,7 @@ trace(Module, Index, Outcome) ->
                     {ok, _} -> native;
                     {deopt, Reason} -> Reason
                 end,
-            io:format(standard_error, "buoy native: ~s ~B ~s~n", [Module, Index, What]);
+            io:format(standard_error, "buoy jit: ~s ~B ~s~n", [Module, Index, What]);
         false ->
             ok
     end.

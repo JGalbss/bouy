@@ -18,7 +18,7 @@
 
 #![allow(unsafe_code)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use buoy_jit_ir::{
     Bail, Binary, ClassId, Expr, FuncId, Function, MathFn, Program, Stmt, Ty, Unary,
@@ -503,6 +503,73 @@ struct Gen<'a, 'm> {
     /// The continue and break targets of the enclosing loops, innermost last.
     loops: Vec<(Block, Block)>,
     bails: HashMap<u8, Block>,
+    /// Where a `return` of the function whose body is being emitted goes: the block
+    /// after an inlined call, or `None` for a real return.
+    exit: Option<Block>,
+    /// The functions whose bodies are inlined around the current point.
+    inlined: Vec<FuncId>,
+    /// References that are neither `null` nor `undefined`: a new object, a receiver, or the
+    /// value that a check produced, which only code after the check can use.
+    nonnull: HashSet<Value>,
+    /// The `ToInt32` of numbers that came from 32-bit integers.
+    int32s: HashMap<Value, Value>,
+    /// The numbers of constants.
+    constants: HashMap<Value, f64>,
+}
+
+/// The most IR nodes of a function that a call inlines.
+const INLINE_SIZE: usize = 48;
+
+/// The most inlined calls around one point.
+const INLINE_DEPTH: usize = 3;
+
+/// The IR nodes of statements.
+fn size_of_stmts(stmts: &[Stmt]) -> usize {
+    stmts.iter().map(size_of_stmt).sum()
+}
+
+fn size_of_stmt(stmt: &Stmt) -> usize {
+    1 + match stmt {
+        Stmt::Expr(expr) => size_of_expr(expr),
+        Stmt::If(test, then, otherwise) => {
+            size_of_expr(test) + size_of_stmts(then) + size_of_stmts(otherwise)
+        }
+        Stmt::Loop {
+            cond, body, update, ..
+        } => cond.as_ref().map_or(0, size_of_expr) + size_of_stmts(body) + size_of_stmts(update),
+        Stmt::Return(value) => value.as_ref().map_or(0, size_of_expr),
+        Stmt::Break(_) | Stmt::Continue(_) | Stmt::Bail(_) => 0,
+    }
+}
+
+fn size_of_expr(expr: &Expr) -> usize {
+    let all = |items: &[Expr]| items.iter().map(size_of_expr).sum::<usize>();
+    1 + match expr {
+        Expr::Num(_)
+        | Expr::Bool(_)
+        | Expr::Null
+        | Expr::Undefined
+        | Expr::Local(_)
+        | Expr::Global(_) => 0,
+        Expr::SetLocal(_, value)
+        | Expr::Unary(_, value)
+        | Expr::Field(value, _, _)
+        | Expr::Length(value) => size_of_expr(value),
+        Expr::Binary(_, a, b)
+        | Expr::And(a, b)
+        | Expr::Or(a, b)
+        | Expr::SetField(a, _, _, b)
+        | Expr::Index(a, b)
+        | Expr::Push(a, b)
+        | Expr::ArrayFill(_, a, b) => size_of_expr(a) + size_of_expr(b),
+        Expr::Cond(_, a, b, c) | Expr::SetIndex(a, b, c) => {
+            size_of_expr(a) + size_of_expr(b) + size_of_expr(c)
+        }
+        // A call or a dispatch costs about as much as a small body that it would inline.
+        Expr::Call(_, args) | Expr::New(_, _, args) => 4 + all(args),
+        Expr::Dispatch { args, .. } => 6 + all(args),
+        Expr::ArrayOf(_, items) | Expr::Math(_, items) | Expr::Seq(items) => all(items),
+    }
 }
 
 type Typed = (Option<Value>, Ty);
@@ -529,6 +596,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             frame: Value::from_u32(0),
             loops: Vec::new(),
             bails: HashMap::new(),
+            exit: None,
+            inlined: Vec::new(),
+            nonnull: HashSet::new(),
+            int32s: HashMap::new(),
+            constants: HashMap::new(),
         }
     }
 
@@ -538,6 +610,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.b.switch_to_block(entry);
         let params: Vec<Value> = self.b.block_params(entry).to_vec();
         self.frame = params[0];
+        if self.function.receiver
+            && let Some(receiver) = params.get(1)
+        {
+            self.nonnull.insert(*receiver);
+        }
         let mut param_values = params[1..].iter();
         for (index, ty) in self.function.locals.iter().enumerate() {
             let repr = repr(ty).ok_or("a local has no value")?;
@@ -773,19 +850,27 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
             Stmt::Return(value) => {
                 let result = self.function.result.clone();
-                match value {
+                let value = match value {
                     Some(value) => {
                         let (value, ty) = self.expr(value)?;
                         self.expect(&ty, &result)?;
-                        match value {
-                            Some(value) => self.b.ins().return_(&[value]),
-                            None => self.b.ins().return_(&[]),
-                        };
+                        value
                     }
-                    None if result == Ty::Void => {
-                        self.b.ins().return_(&[]);
+                    None if result == Ty::Void => None,
+                    None => {
+                        self.bail(Bail::Undefined);
+                        return Ok(());
                     }
-                    None => self.bail(Bail::Undefined),
+                };
+                match self.exit {
+                    Some(exit) => {
+                        let args: Vec<BlockArg> = value.into_iter().map(BlockArg::Value).collect();
+                        self.b.ins().jump(exit, &args);
+                    }
+                    None => {
+                        let values: Vec<Value> = value.into_iter().collect();
+                        self.b.ins().return_(&values);
+                    }
                 }
             }
             Stmt::Bail(reason) => self.bail(*reason),
@@ -844,6 +929,29 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.bail_if(nullish, Bail::Nullish);
     }
 
+    /// The value of a reference expression, checked: it bails when the reference is
+    /// `null` or `undefined`. A local that held it holds the checked value from then on,
+    /// so the accesses that follow in code that the check dominates skip the check.
+    fn object(&mut self, expr: &Expr) -> Result<(Value, Ty), Error> {
+        let (value, ty) = self.reference(expr)?;
+        Ok((self.checked(value, Some(expr))?, ty))
+    }
+
+    /// `value`, checked as `object` checks it.
+    fn checked(&mut self, value: Value, expr: Option<&Expr>) -> Result<Value, Error> {
+        if self.nonnull.contains(&value) {
+            return Ok(value);
+        }
+        self.check_object(value);
+        let checked = self.b.ins().iadd_imm_s(value, 0);
+        self.nonnull.insert(checked);
+        if let Some(Expr::Local(local)) = expr {
+            let (var, _) = self.local(*local)?;
+            self.b.def_var(var, checked);
+        }
+        Ok(checked)
+    }
+
     fn local(&self, local: u32) -> Result<(Variable, Ty), Error> {
         let index = local as usize;
         match (self.vars.get(index), self.function.locals.get(index)) {
@@ -876,7 +984,11 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn expr(&mut self, expr: &Expr) -> Result<Typed, Error> {
         let flags = MemFlagsData::trusted();
         Ok(match expr {
-            Expr::Num(value) => (Some(self.b.ins().f64const(*value)), Ty::Num),
+            Expr::Num(value) => {
+                let constant = self.b.ins().f64const(*value);
+                self.constants.insert(constant, *value);
+                (Some(constant), Ty::Num)
+            }
             Expr::Bool(value) => (
                 Some(self.b.ins().iconst(types::I8, i64::from(*value))),
                 Ty::Bool,
@@ -901,18 +1013,16 @@ impl<'a, 'm> Gen<'a, 'm> {
             Expr::Or(left, right) => self.logical(false, left, right)?,
             Expr::Cond(ty, test, then, otherwise) => self.conditional(ty, test, then, otherwise)?,
             Expr::Field(object, class, index) => {
-                let (object, object_ty) = self.reference(object)?;
+                let (object, object_ty) = self.object(object)?;
                 let (at, ty) = self.field_slot(&object_ty, *class, *index)?;
-                self.check_object(object);
                 let repr = repr(&ty).ok_or("a field without a value")?;
                 (Some(self.b.ins().load(repr, flags, object, at)), ty)
             }
             Expr::SetField(object, class, index, value) => {
-                let (object, object_ty) = self.reference(object)?;
+                let (object, object_ty) = self.object(object)?;
                 let (at, ty) = self.field_slot(&object_ty, *class, *index)?;
                 let (value, value_ty) = self.value(value)?;
                 self.expect(&value_ty, &ty)?;
-                self.check_object(object);
                 self.b.ins().store(flags, value, object, at);
                 (Some(value), ty)
             }
@@ -972,7 +1082,8 @@ impl<'a, 'm> Gen<'a, 'm> {
             .get(index as usize)
             .ok_or("no such global")?
             .clone();
-        let flags = MemFlagsData::trusted();
+        // The globals never change during a run, so their loads may move and merge.
+        let flags = MemFlagsData::trusted().with_readonly().with_can_move();
         let globals = self
             .b
             .ins()
@@ -1045,10 +1156,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                 let value = self.number(operand)?;
                 let int = self.int32(value);
                 let flipped = self.b.ins().bnot(int);
-                (
-                    Some(self.b.ins().fcvt_from_sint(types::F64, flipped)),
-                    Ty::Num,
-                )
+                let number = self.b.ins().fcvt_from_sint(types::F64, flipped);
+                self.int32s.insert(number, flipped);
+                (Some(number), Ty::Num)
             }
             Unary::Truthy => {
                 let (value, ty) = self.value(operand)?;
@@ -1081,6 +1191,15 @@ impl<'a, 'm> Gen<'a, 'm> {
 
     /// `ToInt32` of a number: a conversion when it fits in 64 bits, else the helper.
     fn int32(&mut self, value: Value) -> Value {
+        if let Some(int) = self.int32s.get(&value) {
+            return *int;
+        }
+        if let Some(constant) = self.constants.get(&value) {
+            return self
+                .b
+                .ins()
+                .iconst(types::I32, i64::from(buoy_jit_ir::to_int32(*constant)));
+        }
         let magnitude = self.b.ins().fabs(value);
         let bound = self.b.ins().f64const(9.0e18);
         let small = self.b.ins().fcmp(FloatCC::LessThan, magnitude, bound);
@@ -1144,11 +1263,14 @@ impl<'a, 'm> Gen<'a, 'm> {
             Binary::Shr => (ins.sshr(x, y), false),
             _ => (ins.ushr(x, y), true),
         };
-        if unsigned {
+        let number = if unsigned {
             self.b.ins().fcvt_from_uint(types::F64, result)
         } else {
             self.b.ins().fcvt_from_sint(types::F64, result)
-        }
+        };
+        // A uint32 has the bits of its ToInt32.
+        self.int32s.insert(number, result);
+        number
     }
 
     /// `===` and `!==`: of numbers by value, of booleans and references by identity.
@@ -1204,7 +1326,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         let Ty::Array(element) = ty else {
             return fail(format!("{}: an array is expected", self.function.name));
         };
-        self.check_object(array);
+        let array = self.checked(array, Some(expr))?;
         Ok((array, *element))
     }
 
@@ -1264,7 +1386,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         let index = self.number(index)?;
         let (value, value_ty) = self.value(value)?;
         self.expect(&value_ty, &element)?;
-        self.check_object(array_value);
+        let array_value = self.checked(array_value, Some(array))?;
         let (integer, exact) = self.exact_index(index);
         let not_exact = self.b.ins().icmp_imm_s(IntCC::Equal, exact, 0);
         self.bail_if(not_exact, Bail::Index);
@@ -1432,12 +1554,76 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn call(&mut self, id: FuncId, args: &[Expr]) -> Result<Typed, Error> {
         let program = self.program;
         let function = function_at(program, id)?;
-        let mut values = vec![self.frame];
-        values.extend(self.arguments(function, args, 0)?);
-        let callee = self.function_ref(id)?;
-        let call = self.b.ins().call(callee, &values);
-        let result = self.b.inst_results(call).first().copied();
+        let mut values = self.arguments(function, args, 0)?;
+        // The callee relies on its receiver, so a direct call checks it.
+        if function.receiver
+            && let Some(first) = values.first_mut()
+        {
+            *first = self.checked(*first, args.first())?;
+        }
+        let result = self.invoke(id, values)?;
         Ok((result, function.result.clone()))
+    }
+
+    /// Calls the function with the values of its parameters: inline when its body is
+    /// small and the call is not recursive, else with a call instruction.
+    fn invoke(&mut self, id: FuncId, values: Vec<Value>) -> Result<Option<Value>, Error> {
+        let function = function_at(self.program, id)?;
+        let small = size_of_stmts(&function.body) <= INLINE_SIZE;
+        let recursive = self.inlined.contains(&id) || std::ptr::eq(function, self.function);
+        if small && !recursive && self.inlined.len() < INLINE_DEPTH {
+            return self.inline(id, function, &values);
+        }
+        let callee = self.function_ref(id)?;
+        let mut call_args = vec![self.frame];
+        call_args.extend(values);
+        let call = self.b.ins().call(callee, &call_args);
+        Ok(self.b.inst_results(call).first().copied())
+    }
+
+    /// Emits the body of `function` in place of a call, with its locals as new variables
+    /// and its returns as jumps to the block after it.
+    fn inline(
+        &mut self,
+        id: FuncId,
+        function: &'a Function,
+        values: &[Value],
+    ) -> Result<Option<Value>, Error> {
+        let exit = self.b.create_block();
+        let result = repr(&function.result).map(|repr| self.b.append_block_param(exit, repr));
+        let mut vars = Vec::with_capacity(function.locals.len());
+        for (index, ty) in function.locals.iter().enumerate() {
+            let repr = repr(ty).ok_or("a local has no value")?;
+            let var = self.b.declare_var(repr);
+            let value = if index < function.params as usize {
+                *values.get(index).ok_or("a parameter is missing")?
+            } else {
+                self.zero(ty)
+            };
+            self.b.def_var(var, value);
+            vars.push(var);
+        }
+        let saved_function = std::mem::replace(&mut self.function, function);
+        let saved_vars = std::mem::replace(&mut self.vars, vars);
+        let saved_loops = std::mem::take(&mut self.loops);
+        let saved_exit = self.exit.replace(exit);
+        self.inlined.push(id);
+        let emitted = self.stmts(&function.body);
+        if emitted.is_ok() && !self.is_filled() {
+            if function.result == Ty::Void {
+                self.b.ins().jump(exit, &[]);
+            } else {
+                self.bail(Bail::Undefined);
+            }
+        }
+        self.inlined.pop();
+        self.exit = saved_exit;
+        self.loops = saved_loops;
+        self.vars = saved_vars;
+        self.function = saved_function;
+        emitted?;
+        self.b.switch_to_block(exit);
+        Ok(result)
     }
 
     fn new_object(
@@ -1470,10 +1656,10 @@ impl<'a, 'm> Gen<'a, 'm> {
             let at = i32::try_from(8 + 8 * index).map_err(|e| e.to_string())?;
             self.b.ins().store(flags, zero, object, at);
         }
-        let callee = self.function_ref(constructor)?;
-        let mut call_args = vec![self.frame, object];
+        self.nonnull.insert(object);
+        let mut call_args = vec![object];
         call_args.extend(values);
-        self.b.ins().call(callee, &call_args);
+        self.invoke(constructor, call_args)?;
         Ok((Some(object), Ty::Object(class)))
     }
 
@@ -1526,7 +1712,22 @@ impl<'a, 'm> Gen<'a, 'm> {
                 targets.push((id, found.function));
             }
         }
-        self.check_object(receiver);
+        let receiver = self.checked(receiver, Some(receiver_expr))?;
+        // A receiver of a class whose subclasses all call one function needs no switch:
+        // its type says that it is an instance of one of them.
+        if let Some(bound) = bound
+            && let Some(&(_, only)) = targets.first()
+            && targets.iter().all(|(_, function)| *function == only)
+            && (0..program.classes.len()).all(|index| {
+                let id = u32::try_from(index).unwrap_or(u32::MAX);
+                !is_subclass(program, id, bound) || targets.iter().any(|(class, _)| *class == id)
+            })
+        {
+            let mut call_args = vec![receiver];
+            call_args.extend(&values);
+            let value = self.invoke(only, call_args)?;
+            return Ok((value.filter(|_| *result != Ty::Void), result.clone()));
+        }
         let class_id = self
             .b
             .ins()
@@ -1548,11 +1749,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         ordered.sort_by_key(|(id, _)| *id);
         for (function_id, block) in ordered {
             self.b.switch_to_block(block);
-            let callee = self.function_ref(function_id)?;
-            let mut call_args = vec![self.frame, receiver];
+            let mut call_args = vec![receiver];
             call_args.extend(&values);
-            let call = self.b.ins().call(callee, &call_args);
-            match (merged, self.b.inst_results(call).first().copied()) {
+            match (merged, self.invoke(function_id, call_args)?) {
                 (Some(_), Some(value)) => {
                     self.b.ins().jump(merge, &[BlockArg::Value(value)]);
                 }

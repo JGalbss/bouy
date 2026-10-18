@@ -299,6 +299,30 @@ fn a_spinning_actor_does_not_delay_replies() {
     );
 }
 
+/// The kernel of the program is an island of the native tier, which runs it as machine
+/// code in slices of 200 us (contract section 17.10).
+#[test]
+fn a_native_kernel_does_not_delay_replies() {
+    let mut command = common::buoy();
+    command
+        .current_dir(common::repository())
+        .args(["run", "--semantics", "reference"])
+        .arg(Path::new("tests/programs").join("native-fairness.ts"))
+        .env("ERL_FLAGS", "+S 1")
+        .env("BUOY_JIT_TRACE", "1");
+    check_on_vm(
+        &mut command,
+        &Outcome {
+            stdout: "1596680831\n1141913883\nevery reply was fast\n\
+                     50 replies arrived during the kernel\n",
+            stderr: "buoy jit: kernel is an island\n\
+                     buoy jit: buoy@programs@native_fairness_ts 0 native\n\
+                     buoy jit: buoy@programs@native_fairness_ts 0 native\n",
+            status: 0,
+        },
+    );
+}
+
 #[test]
 fn ten_thousand_actors_answer() {
     check_on_vm(

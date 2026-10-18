@@ -76,7 +76,7 @@ pub fn plan(semantic: &Semantic<'_>) -> Plan {
         match Island::new(semantic).compile(id.symbol_id(), function) {
             Ok(built) => {
                 if trace {
-                    eprintln!("buoy native: {name} is an island");
+                    eprintln!("buoy jit: {name} is an island");
                 }
                 plan.sealed.extend(built.classes.iter().copied());
                 let index = plan.programs.len();
@@ -91,7 +91,7 @@ pub fn plan(semantic: &Semantic<'_>) -> Plan {
                     },
                 );
             }
-            Err(reason) if trace => eprintln!("buoy native: {name}: {}", reason.0),
+            Err(reason) if trace => eprintln!("buoy jit: {name}: {}", reason.0),
             Err(_) => {}
         }
     }
