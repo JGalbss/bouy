@@ -133,12 +133,35 @@ boot() ->
     GetInternal = fn(<<"getInternalBinding">>, 1, fun(_, Args) -> binding(buoy_ref_realm:arg(1, Args)) end),
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
     {InternalBinding, Require} = erlang:get(?LOADERS),
+    Replaced = replaced_globals(),
     [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- ?BOOTSTRAP, is_compiled(Id)],
+    [restore_global(Name, Property) || {Name, Property} <- Replaced],
     erlang:put(?STATE, ready),
     debug("bootstrap done~n", []),
     ok.
 
 is_compiled(Id) -> lists:member(Id, (index()):ids()).
+
+%% The engine's globals, such as console, that the program replaced or
+%% deleted before the bootstrap ran. Node defines its globals before the
+%% program runs, so the bootstrap must not overwrite them.
+replaced_globals() ->
+    G = buoy_ref_realm:global_object(),
+    [{Name, Property} || {Name, Initial} <- maps:to_list(persistent_term:get({buoy_ref_realm, globals}, #{})),
+                         Property <- [buoy_heap:get_own(G, Name)],
+                         not is_initial(Property, buoy_ref_realm:current(Initial))].
+
+is_initial({data, Value, _}, Value) -> true;
+is_initial(_, _) -> false.
+
+restore_global(Name, none) ->
+    buoy_heap:delete_property(buoy_ref_realm:global_object(), Name);
+restore_global(Name, {data, Value, Bits}) ->
+    buoy_heap:define(buoy_ref_realm:global_object(), Name,
+                     #{value => Value, writable => Bits band 1 =/= 0, enumerable => Bits band 2 =/= 0, configurable => Bits band 4 =/= 0});
+restore_global(Name, {accessor, Get, Set, Bits}) ->
+    buoy_heap:define(buoy_ref_realm:global_object(), Name,
+                     #{get => Get, set => Set, enumerable => Bits band 2 =/= 0, configurable => Bits band 4 =/= 0}).
 
 %% Calls the function around the code of the built-in Id with Args.
 run(Id, Args) ->
