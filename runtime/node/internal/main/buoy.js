@@ -157,6 +157,15 @@ function setupChildProcessIpcChannel() {
   }
 }
 
+function setupStreamIter() {
+  if (!getOptionValue('--experimental-stream-iter')) {
+    return;
+  }
+  const { BuiltinModule } = require('internal/bootstrap/realm');
+  BuiltinModule.allowRequireByUsers('stream/iter');
+  BuiltinModule.allowRequireByUsers('zlib/iter');
+}
+
 // Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 loadEnvFiles();
@@ -165,6 +174,7 @@ setupEventsource();
 initializeReport();
 initializeDeprecations();
 setupNavigator();
+setupStreamIter();
 setupWarningHandler();
 setupDebugEnv();
 setupChildProcessIpcChannel();

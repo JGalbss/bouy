@@ -587,10 +587,29 @@ builtin_names() ->
      <<"node:test">>, <<"node:test/reporters">>].
 
 is_builtin(<<"node:", Rest/binary>> = Name) ->
-    lists:member(Rest, builtin_names()) orelse lists:member(Name, builtin_names());
+    lists:member(Rest, builtin_names()) orelse lists:member(Name, builtin_names()) orelse is_enabled(Rest);
 is_builtin(Name) when is_binary(Name) ->
-    lists:member(Name, builtin_names());
+    lists:member(Name, builtin_names()) orelse is_enabled(Name);
 is_builtin(_) -> false.
+
+%% Whether Name is an experimental module that its flag enables, as
+%% setupStreamIter of lib/internal/process/pre_execution.js allows it.
+is_enabled(Name) ->
+    is_experimental(Name) andalso lists:member(<<"--experimental-stream-iter">>, buoy_node_process:exec_argv()).
+
+is_experimental(Name) -> Name =:= <<"stream/iter">> orelse Name =:= <<"zlib/iter">>.
+
+%% require of an experimental module without its flag: node:<id> names no
+%% built-in, and the bare id names a package.
+%% shortcut: the bare id does not look for a package `stream` with an `iter`
+%% subpath; resolve it as a package when a program needs one.
+require_enabled(M, Specifier, Name) ->
+    case is_experimental(Name) andalso not is_enabled(Name) of
+        false -> ok;
+        true when Specifier =:= Name -> not_found(M, Specifier);
+        true -> throw_coded('Error', <<"ERR_UNKNOWN_BUILTIN_MODULE">>,
+                            buoy_ref_string:concat([<<"No such built-in module: ">>, Specifier]))
+    end.
 
 %%% Bindings before initialization
 
@@ -925,6 +944,7 @@ require(M, Specifier) ->
         andalso lists:member(Specifier, buoy_node:ids()),
     case target(M, Specifier, require) of
         {builtin, Name} ->
+            require_enabled(M, Specifier, Name),
             builtin_exports(Name);
         _ when Internal ->
             builtin_exports(Specifier);

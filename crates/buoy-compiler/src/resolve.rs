@@ -148,16 +148,21 @@ const BUILTINS: &[&str] = &[
 
 const PREFIX_ONLY: &[&str] = &["sea", "sqlite", "test", "test/reporters"];
 
+/// The experimental modules that `--experimental-stream-iter` enables. The runtime checks
+/// the flag when the program loads one.
+const EXPERIMENTAL: &[&str] = &["stream/iter", "zlib/iter"];
+
 /// The built-in module that `specifier` names, with or without `node:`.
 #[must_use]
 pub fn builtin(specifier: &str) -> Option<String> {
     if let Some(name) = specifier.strip_prefix("node:") {
-        if BUILTINS.contains(&name) {
+        if BUILTINS.contains(&name) || EXPERIMENTAL.contains(&name) {
             return Some(name.to_owned());
         }
         return PREFIX_ONLY.contains(&name).then(|| format!("node:{name}"));
     }
-    BUILTINS.contains(&specifier).then(|| specifier.to_owned())
+    (BUILTINS.contains(&specifier) || EXPERIMENTAL.contains(&specifier))
+        .then(|| specifier.to_owned())
 }
 
 /// Whether a specifier is relative or absolute: it names a path, not a package.
