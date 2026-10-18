@@ -1713,7 +1713,7 @@ throw_error(Name, Message) ->
 %% Marks from every pdict entry whose key is not an integer and from Roots,
 %% then erases every integer key that marking did not reach. The caller's
 %% stack must hold no heap reference that Roots leaves out.
--spec gc([term()]) -> #{live := non_neg_integer(), freed := non_neg_integer(), us := non_neg_integer()}.
+-spec gc([term()]) -> #{live := non_neg_integer(), freed := non_neg_integer(), us := integer(), floor := pos_integer()}.
 gc(Roots) ->
     Start = erlang:monotonic_time(microsecond),
     _ = erlang:erase(?YOUNG),
