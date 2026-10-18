@@ -559,8 +559,10 @@ host_out(O, Ports, Js) ->
         error ->
             is_message_port(O) andalso
                 clone_error(<<"Object that needs transfer was found in message but not listed in transferList">>),
-            case transfer_mode(O) of
-                undefined ->
+            %% V8's serializer asks the delegate only about plain objects; it
+            %% clones an ArrayBuffer, an array, or a Map itself, marked or not.
+            case buoy_heap:class_of(O) =:= object andalso transfer_mode(O) of
+                Unmarked when Unmarked =:= false; Unmarked =:= undefined ->
                     none;
                 Mode ->
                     Transferred = lists:member(O, Js),
