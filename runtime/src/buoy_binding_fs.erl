@@ -22,24 +22,24 @@
 -compile({no_auto_import, [link/1, unlink/1]}).
 
 -export([binding/0, uv_error/3, uv_error/4, uv_errno/1, errno_exception/4, strerror/1, request/2, path/1, encoded/2,
-         read_info/2, dirent_type/1, stat_array/3, stat_pair/3, int/1]).
+         read_info/2, dirent_type/1, stat_array/3, stat_pair/3, int/1, inherited_file/1]).
 
 -define(FDS, '$buoy_node_fds').
 -define(STATE, {?MODULE, state}).
 -define(FD_SLOT, {'#', ?MODULE, <<"fd">>}).
 -define(STAT_FIELDS, 18).
-%% The open flags of darwin, as the constants binding reports them.
+%% The open flags of this OS, as the constants binding reports them.
 -define(O_WRONLY, 1).
 -define(O_RDWR, 2).
--define(O_APPEND, 8).
--define(O_SYNC, 128).
--define(O_NOFOLLOW, 256).
--define(O_CREAT, 512).
--define(O_TRUNC, 1024).
--define(O_EXCL, 2048).
--define(O_DIRECTORY, 1048576).
--define(O_DSYNC, 4194304).
--define(O_SYMLINK, 2097152).
+-define(O_APPEND, flag(<<"O_APPEND">>)).
+-define(O_SYNC, flag(<<"O_SYNC">>)).
+-define(O_NOFOLLOW, flag(<<"O_NOFOLLOW">>)).
+-define(O_CREAT, flag(<<"O_CREAT">>)).
+-define(O_TRUNC, flag(<<"O_TRUNC">>)).
+-define(O_EXCL, flag(<<"O_EXCL">>)).
+-define(O_DIRECTORY, flag(<<"O_DIRECTORY">>)).
+-define(O_DSYNC, flag(<<"O_DSYNC">>)).
+-define(O_SYMLINK, flag(<<"O_SYMLINK">>)).
 -define(COPYFILE_EXCL, 1).
 -define(COPYFILE_FICLONE_FORCE, 4).
 -define(S_IFMT, 8#170000).
@@ -314,6 +314,21 @@ file(Fd, Syscall) ->
 
 fd(V) -> int(V).
 
+%% The file of a descriptor of the realm that a child process takes as a
+%% stdio descriptor (UV_INHERIT_FD). The VM keeps its descriptors from its
+%% children, so the child opens the path again.
+-spec inherited_file(term()) -> {file, string()} | ignore.
+inherited_file(Fd) ->
+    case fds() of
+        #{Fd := {_, Path, Access}} when Access =/= link ->
+            case unicode:characters_to_list(Path) of
+                Name when is_list(Name) -> {file, Name};
+                _ -> ignore
+            end;
+        _ ->
+            ignore
+    end.
+
 %% The OS descriptor of a raw file.
 os_fd(File) ->
     <<N:32/native-signed>> = prim_file:get_handle(File),
@@ -362,6 +377,14 @@ new_mode(Path, true, Mode) ->
 new_mode(_, false, _) ->
     keep.
 
+%% An fs constant of the constants binding, or 0 for a flag that this OS
+%% lacks, such as O_SYMLINK on Linux.
+flag(Name) ->
+    case buoy_heap:get(buoy_heap:get(buoy_node:binding(<<"constants">>), <<"fs">>), Name) of
+        N when is_integer(N) -> N;
+        _ -> 0
+    end.
+
 %% O_SYMLINK opens a symlink itself, which prim_file cannot: the descriptor
 %% of /dev/null holds the number, and the calls on it act on the path.
 link_handle() ->
@@ -384,7 +407,6 @@ open_file(Path, Flags, Access, NewMode) ->
     File = case file:open(Path, [raw, binary | Modes]) of
         {ok, F} -> F;
         {error, eisdir} when Access =:= read -> check(file:open(Path, [raw, binary, read, directory]), <<"open">>, Path);
-        {error, eexist} when Create, Flags band ?O_EXCL =/= 0 -> uv_error(eexist, <<"open">>, Path);
         {error, Reason} -> uv_error(Reason, <<"open">>, Path)
     end,
     Truncate andalso Access =/= read andalso Base =/= [write] andalso file:truncate(File),
