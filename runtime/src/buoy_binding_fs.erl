@@ -993,12 +993,17 @@ remove(Path, Recursive) ->
             Error
     end.
 
+%% Removes each entry of a directory. libc++'s remove_all, which Node uses
+%% on darwin, reads the next entry after a failure and so clears its error:
+%% it removes what it can, and the directory reports ENOTEMPTY. libstdc++,
+%% which Node uses on Linux, stops at the first error.
 remove_all([]) -> ok;
 remove_all([Path | Rest]) ->
-    case remove(Path, true) of
-        ok -> remove_all(Rest);
-        {error, enoent} -> remove_all(Rest);
-        Error -> Error
+    case {remove(Path, true), os:type()} of
+        {ok, _} -> remove_all(Rest);
+        {{error, enoent}, _} -> remove_all(Rest);
+        {_, {unix, darwin}} -> remove_all(Rest);
+        {Error, _} -> Error
     end.
 
 del_dir(Path) ->
