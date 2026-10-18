@@ -1,5 +1,6 @@
 // Hoisted functions and closures that read bindings declared after them, the temporal dead
 // zone, and the order of a method call.
+import blockFunctions from "./modules/block-functions.cjs";
 function outer(): number {
   function helper(): number {
     return config.scale * later();
@@ -77,3 +78,4 @@ function varsReadEarly(): unknown[] {
   return [later(), hoisted()];
 }
 console.log(varsReadEarly());
+console.log("block functions", blockFunctions);

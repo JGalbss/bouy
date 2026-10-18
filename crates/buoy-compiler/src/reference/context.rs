@@ -253,6 +253,8 @@ pub struct Lowerer<'a, 'c> {
     /// The function declarations that the code of the enclosing block already set when
     /// the block began, which the rest of the block must not create again.
     pub hoisted: std::collections::HashSet<SymbolId>,
+    /// The function declarations in the blocks of sloppy code (Annex B.3.3).
+    pub block_functions: Vec<super::block_function::BlockFunction>,
     /// What the module's imports and exports refer to.
     pub linking: Linking<'c>,
 }
@@ -282,7 +284,10 @@ impl Lowerer<'_, '_> {
     }
 
     pub fn symbol_of(&self, reference: Option<oxc::semantic::ReferenceId>) -> Option<SymbolId> {
-        reference.and_then(|id| self.semantic.scoping().get_reference(id).symbol_id())
+        let id = reference?;
+        let symbol = self.semantic.scoping().get_reference(id).symbol_id()?;
+        // A reference outside the block of a block function that Annex B does not hoist.
+        self.redirected(symbol, id).unwrap_or(Some(symbol))
     }
 
     /// The current value of a variable: its version, or the read of its cell.

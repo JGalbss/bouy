@@ -32,6 +32,7 @@
 //! - `analyze`: the facts the lowering needs before it emits code.
 
 mod analyze;
+mod block_function;
 mod call;
 mod class;
 mod context;
@@ -102,6 +103,10 @@ pub struct EvalContext {
     /// and an array iterates without its user-visible iterator. Node's lib gets the same
     /// from its primordials, and Bun's builtin modules from their intrinsics.
     pub internal: bool,
+    /// The names that `let`, `const`, and classes bind between a direct eval and the
+    /// variables of its function: a block function of the eval code does not reach a
+    /// name that one of them shadows (Annex B.3.3.3).
+    pub lexical: Vec<String>,
 }
 
 /// Where a direct eval is called, which decides what its code may use.
@@ -252,7 +257,11 @@ pub fn lower_eval(
             )]);
         }
     }
-    lower_one_script(path, name, source, Some((strict, context)), scope)
+    let context = EvalContext {
+        lexical: lexical.to_vec(),
+        ..context.clone()
+    };
+    lower_one_script(path, name, source, Some((strict, &context)), scope)
 }
 
 /// Lowers a classic script of its own (`compile_script` of the crate), named `name`.
@@ -394,6 +403,7 @@ fn lower(
                 early: std::collections::HashSet::new(),
                 using_stacks: Vec::new(),
                 hoisted: std::collections::HashSet::new(),
+                block_functions: Vec::new(),
                 linking,
             };
             let functions = if module.kind == Kind::CommonJs {

@@ -46,6 +46,9 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn read_symbol(&mut self, symbol: SymbolId, span: Span) -> Expr {
+        if let Some(cell) = self.block_cell(symbol, span) {
+            return self.bind(cell_get(&cell));
+        }
         if let Some(local) = self.frame.env.get(&symbol) {
             return match local.clone() {
                 Local::Var(name) => Expr::var(name),
@@ -157,6 +160,11 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     fn assign_initialized(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
+        if let Some(cell) = self.block_cell(symbol, span) {
+            let value = self.bind(value);
+            self.pre.push(cell_set(&cell, value.clone()));
+            return value;
+        }
         // The name of a function expression is immutable: sloppy code ignores a write to
         // it (ECMA-262 §9.1.1.1.5).
         if self.class_bindings.contains(&symbol) && self.frame.sloppy {

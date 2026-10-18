@@ -253,6 +253,21 @@ impl<'a> Lowerer<'a, '_> {
             code.extend(self.arguments_cell(scope));
         }
         let saved = std::mem::take(&mut self.pre);
+        if let FnBody::Block(block) = body {
+            let parameters: Vec<String> = params
+                .items
+                .iter()
+                .flat_map(|param| param.pattern.get_binding_identifiers())
+                .chain(
+                    params
+                        .rest
+                        .iter()
+                        .flat_map(|rest| rest.rest.argument.get_binding_identifiers()),
+                )
+                .map(|id| id.name.to_string())
+                .collect();
+            self.find_block_functions(&block.statements, &parameters);
+        }
         if self.frame.sloppy
             && let FnBody::Block(block) = body
         {

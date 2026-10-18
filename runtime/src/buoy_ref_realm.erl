@@ -27,6 +27,7 @@
 -export([install/0, global/1, set_global/3, has_binding/1, set_resolved/3, not_defined/1, declare_globals/3, declare_script/4, delete_global/1, constructor/2]).
 -export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
 -export([function_record/2, proto_for/2, primordial/2]).
+-export([declare_block_functions/3, set_block_function/3]).
 -export([create/0, function_realm/1, realm_fun/2, callee/1, localize/2, current/1, global_object/0]).
 -export([intrinsics/0, globals/0, method/4]).
 
@@ -375,6 +376,38 @@ declare_globals(Vars, Functions, Configurable) ->
                               false -> buoy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => Configurable})
                           end
                   end, Vars).
+
+%% Annex B.3.3.2 and B.3.3.3 for the block functions Names of the script or
+%% the eval code Module: a name that no global lexical binding has and that the
+%% global object can take becomes a property, undefined until its declaration
+%% runs, configurable only for eval code; the others stay as they are, and their
+%% declarations set nothing.
+-spec declare_block_functions(module(), [binary()], boolean()) -> ok.
+declare_block_functions(Module, Names, Configurable) ->
+    G = global_object(),
+    Lexical = lexical_record(),
+    Definable = [Name || Name <- Names,
+                         not is_map_key(Name, Lexical),
+                         buoy_heap:has_own(G, Name) orelse buoy_heap:is_extensible(G)],
+    lists:foreach(fun(Name) ->
+                          buoy_heap:has_own(G, Name) orelse
+                              buoy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => Configurable})
+                  end, Definable),
+    erlang:put({'$buoy_block_functions', Module}, Definable),
+    ok.
+
+%% The declaration of a block function of the script Module runs: the global
+%% takes its value, when the script could declare it.
+-spec set_block_function(module(), binary(), term()) -> term().
+set_block_function(Module, Name, Value) ->
+    Definable = case erlang:get({'$buoy_block_functions', Module}) of
+        undefined -> [];
+        Names -> Names
+    end,
+    case lists:member(Name, Definable) of
+        true -> set_in_mode(global_object(), Name, Value, sloppy);
+        false -> Value
+    end.
 
 %% A function may replace a configurable global, or a writable and
 %% enumerable data property, or define a new one on an extensible global.

@@ -449,7 +449,25 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::call("buoy_ref_realm", "global_object", vec![]),
             ));
             self.frame.this = Some(this);
+            self.find_block_functions(body.iter().copied(), &[]);
+            let block_functions = self.script_block_functions();
             code.push(self.declare_script_call(body));
+            if !block_functions.is_empty() {
+                code.push(Expr::call(
+                    "buoy_ref_realm",
+                    "declare_block_functions",
+                    vec![
+                        Expr::atom(self.module.clone()),
+                        Expr::List(
+                            block_functions
+                                .iter()
+                                .map(|name| Expr::js_string(name))
+                                .collect(),
+                        ),
+                        Expr::atom("false"),
+                    ],
+                ));
+            }
         }
         // A script that is not the entry of a program is one that a host's evalScript
         // runs (`buoy_ref_eval:script/1`): it returns its completion value, as eval does.
@@ -641,6 +659,8 @@ impl<'a> Lowerer<'a, '_> {
             ),
         ));
         code.extend(self.eval_context_frame());
+        self.find_block_functions(body.iter().copied(), &[]);
+        self.shadow_block_functions();
         code.extend(self.eval_declarations(body));
         let completion = self.fresh("Completion");
         code.push(Expr::matches(
@@ -785,6 +805,33 @@ impl<'a> Lowerer<'a, '_> {
             {
                 names.push(Expr::js_string(&name));
             }
+        }
+        // The block functions that Annex B.3.3.3 hoists: variables of the function of a
+        // direct eval, or properties of the global object that the eval can declare.
+        let mut block_functions = Vec::new();
+        for symbol in self.block_function_targets() {
+            if !self.tops.contains_key(&symbol)
+                && !self.frame.env.contains_key(&symbol)
+                && let Some(name) = declare(self, symbol)
+            {
+                if target.is_some() {
+                    names.push(Expr::js_string(&name));
+                } else {
+                    self.check_block_function_target(symbol);
+                    block_functions.push(Expr::js_string(&name));
+                }
+            }
+        }
+        if !block_functions.is_empty() {
+            self.pre.push(Expr::call(
+                "buoy_ref_realm",
+                "declare_block_functions",
+                vec![
+                    Expr::atom(self.module.clone()),
+                    Expr::List(block_functions),
+                    Expr::atom("true"),
+                ],
+            ));
         }
         let call = match target {
             Some(object) => Expr::call(

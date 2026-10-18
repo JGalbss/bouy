@@ -21,6 +21,11 @@ impl<'a> Lowerer<'a, '_> {
     pub fn stmts(&mut self, list: Vec<&'a Statement<'a>>, k: &Cont<'a>) -> Vec<Expr> {
         let saved = std::mem::take(&mut self.pre);
         let saved_hoisted = self.hoisted.clone();
+        let saved_cells: Vec<Option<String>> = self
+            .block_functions
+            .iter()
+            .map(|function| function.cell.clone())
+            .collect();
         let mut code = self.hoist(&list);
         let mut list = list;
         let mut index = 0;
@@ -86,6 +91,9 @@ impl<'a> Lowerer<'a, '_> {
         }
         self.pre = saved;
         self.hoisted = saved_hoisted;
+        for (function, cell) in self.block_functions.iter_mut().zip(saved_cells) {
+            function.cell = cell;
+        }
         self.seal(code)
     }
 
@@ -95,8 +103,25 @@ impl<'a> Lowerer<'a, '_> {
     /// the properties that the code gave the first, as `Buffer.prototype` in Node's
     /// lib/buffer.js.
     pub fn hoist(&mut self, list: &[&'a Statement<'a>]) -> Vec<Expr> {
+        // The block cells of the shared block functions come first, so that every function
+        // of the block can close over them.
+        let mut blocks = Vec::new();
+        let mut block_cells = Vec::new();
+        for statement in list {
+            if let Statement::FunctionDeclaration(function) = statement
+                && self.is_block_function(function)
+                && !self.has_block_cell(function)
+            {
+                let (cell, code) = self.block_function_cell(function);
+                blocks.extend(code);
+                block_cells.push((cell, &**function));
+            }
+        }
         let functions: Vec<_> = list
             .iter()
+            .filter(|statement| {
+                !matches!(statement, Statement::FunctionDeclaration(function) if self.is_block_function(function))
+            })
             .filter_map(|statement| match statement {
                 Statement::FunctionDeclaration(function) => function
                     .id
@@ -133,7 +158,12 @@ impl<'a> Lowerer<'a, '_> {
             self.pre.push(cell_set(&cell, value));
             self.hoisted.insert(*symbol);
         }
-        std::mem::replace(&mut self.pre, saved)
+        for (cell, function) in block_cells {
+            let value = self.function_value(function, None);
+            self.pre.push(cell_set(&cell, value));
+        }
+        blocks.extend(std::mem::replace(&mut self.pre, saved));
+        blocks
     }
 
     /// The variables declared outside `span` that `visit` assigns and that are versions
@@ -201,6 +231,10 @@ impl<'a> Lowerer<'a, '_> {
             }
             Statement::ClassDeclaration(class) if !class.declare => {
                 self.class_declaration(class);
+            }
+            Statement::FunctionDeclaration(function) => {
+                let code = self.block_function_evaluation(function);
+                self.pre.extend(code);
             }
             _ => {}
         }
