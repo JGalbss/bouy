@@ -7,6 +7,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use oxc::ast::ast::{
@@ -143,6 +144,15 @@ pub struct Record {
     pub functions: Vec<String>,
 }
 
+/// The Erlang module of an entry given as text, such as the code of `node -e`: its name
+/// holds a hash of the text, because concurrent programs of one directory share the build
+/// directory, and one program must not run the code of another.
+fn source_name(root: &Path, path: &Path, source: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    source.hash(&mut hasher);
+    format!("{}_{:016x}", unit_name(root, path), hasher.finish())
+}
+
 /// Reads the entry module and every module it reaches. A module other than the entry
 /// that does not parse becomes a broken unit, which throws when the program loads it.
 /// When `script` holds, the entry is a classic script. `text`, when given, is the source of
@@ -160,7 +170,10 @@ pub fn load(
     let mut queue = VecDeque::from([entry.to_path_buf()]);
     index.insert(entry.to_path_buf(), 0);
     while let Some(path) = queue.pop_front() {
-        let name = unit_name(root, &path);
+        let name = match &text {
+            Some(source) if units.is_empty() => source_name(root, &path, source),
+            _ => unit_name(root, &path),
+        };
         let scanned = match names.insert(name.clone(), path.clone()) {
             Some(other) => Err(vec![Reporter::new(&path, "").at(
                 0,

@@ -129,3 +129,18 @@ fn reference_lowering_names_unsupported_syntax() {
         ["`accessor` fields is not supported by the reference-semantics prototype"]
     );
 }
+
+/// Two programs given as text at one path, as concurrent `node -e` runs in one directory
+/// give them, compile to two Erlang modules, so that one run never loads the other's code.
+#[test]
+fn source_programs_at_one_path_compile_to_distinct_modules() {
+    let entry = fixtures().join("[eval].cjs");
+    let compile = |text: &str| {
+        buoy_compiler::compile_source(&entry, text.to_owned())
+            .unwrap_or_else(|diagnostics| panic!("does not compile:\n{}", render(&diagnostics)))
+    };
+    assert_ne!(
+        compile("console.log(1);").entry,
+        compile("console.log(2);").entry
+    );
+}
