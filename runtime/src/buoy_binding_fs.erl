@@ -22,13 +22,13 @@
 -define(FDS, '$buoy_node_fds').
 -define(NEXT_FD, '$buoy_node_next_fd').
 -define(STAT_FIELDS, 18).
-%% The open flags of darwin, as the constants binding reports them.
+%% The open flags of this OS, as the constants binding reports them.
 -define(O_WRONLY, 1).
 -define(O_RDWR, 2).
--define(O_APPEND, 8).
--define(O_CREAT, 512).
--define(O_TRUNC, 1024).
--define(O_EXCL, 2048).
+-define(O_APPEND, buoy_binding_constants:fs(<<"O_APPEND">>)).
+-define(O_CREAT, buoy_binding_constants:fs(<<"O_CREAT">>)).
+-define(O_TRUNC, buoy_binding_constants:fs(<<"O_TRUNC">>)).
+-define(O_EXCL, buoy_binding_constants:fs(<<"O_EXCL">>)).
 
 -spec binding() -> term().
 binding() ->
