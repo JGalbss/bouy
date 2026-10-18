@@ -45,7 +45,7 @@
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
--export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
+-export([class_of/1, slots/1, set_slots/2, new_exotic/3, new_record/1, proxy/2, is_object/1, is_callable/1]).
 -export([cell/1, cell_get/1, cell_set/2]).
 -export([symbol/1, symbol_for/1, well_known/1]).
 -export([to_key/1, key_to_value/1]).
@@ -202,6 +202,14 @@ proxy(Target, Handler) ->
 new_exotic(Class, Proto, Slots) ->
     Id = next_id(),
     erlang:put(Id, {Class, Proto, #{}, [], #{}, Slots}),
+    {'$o', Id}.
+
+%% An object with a record that the caller built whole, such as a RegExp with its
+%% lastIndex in place.
+-spec new_record(tuple()) -> value().
+new_record(Record) ->
+    Id = next_id(),
+    erlang:put(Id, Record),
     {'$o', Id}.
 
 %% The items of an array, holes as undefined. Another object, such as a proxy

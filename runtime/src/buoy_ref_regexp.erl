@@ -193,8 +193,10 @@ initialize(O, Pattern, Flags) ->
 -spec literal(buoy_ref_string:js_string(), binary()) -> term().
 literal(Source, Flags) ->
     {_Program, Names} = program(Source, Flags),
-    O = buoy_heap:new_exotic(regexp, buoy_heap:intrinsic('RegExp.prototype'), #{legacy => true, source => Source, flags => Flags, names => Names}),
-    buoy_heap:define(O, <<"lastIndex">>, #{value => 0, writable => true, enumerable => false, configurable => false}).
+    Slots = #{legacy => true, source => Source, flags => Flags, names => Names},
+    %% lastIndex: 0, writable only (attribute bits 1).
+    buoy_heap:new_record({regexp, buoy_heap:intrinsic('RegExp.prototype'), #{<<"lastIndex">> => 0}, [<<"lastIndex">>],
+                          #{<<"lastIndex">> => 1}, Slots}).
 
 %% The matcher of an initialized RegExp. The object keeps its source and flags,
 %% not the matcher: the collector scans the slots of each live object, and many
