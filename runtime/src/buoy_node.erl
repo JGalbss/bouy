@@ -42,6 +42,16 @@
                     <<"internal/bootstrap/switches/does_own_process_state">>,
                     <<"internal/main/buoy">>]).
 
+%% The bootstrap of a worker thread (buoy_binding_worker), as node.cc runs it
+%% for a Worker: the switches of a thread that is not the main one, then
+%% internal/main/worker_thread.
+-define(WORKER_BOOTSTRAP, [<<"internal/bootstrap/node">>,
+                           <<"internal/bootstrap/web/exposed-wildcard">>,
+                           <<"internal/bootstrap/web/exposed-window-or-worker">>,
+                           <<"internal/bootstrap/switches/is_not_main_thread">>,
+                           <<"internal/bootstrap/switches/does_not_own_process_state">>,
+                           <<"internal/main/worker_thread">>]).
+
 -define(PER_CONTEXT, [<<"internal/per_context/primordials">>,
                       <<"internal/per_context/domexception">>,
                       <<"internal/per_context/messageport">>]).
@@ -133,7 +143,11 @@ boot() ->
     GetInternal = fn(<<"getInternalBinding">>, 1, fun(_, Args) -> binding(buoy_ref_realm:arg(1, Args)) end),
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
     {InternalBinding, Require} = erlang:get(?LOADERS),
-    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- ?BOOTSTRAP, is_compiled(Id)],
+    Bootstrap = case buoy_binding_worker:is_worker() of
+        true -> ?WORKER_BOOTSTRAP;
+        false -> ?BOOTSTRAP
+    end,
+    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- Bootstrap, is_compiled(Id)],
     erlang:put(?STATE, ready),
     debug("bootstrap done~n", []),
     ok.

@@ -375,6 +375,16 @@ exiting() ->
 emit_exit(Process) ->
     Fields = buoy_node_process:exit_info(),
     buoy_heap:set(Fields, 0, 1),
+    %% EmitProcessExitInternal: an exit with no code while the entry module
+    %% still awaits is kUnsettledTopLevelAwait.
+    case exit_code(0) =:= 0 andalso buoy_jobs:unsettled_main() of
+        true ->
+            io:put_chars(buoy_ref:stderr(), "Warning: Detected unsettled top-level await\n"),
+            buoy_heap:set(Fields, 1, 13),
+            buoy_heap:set(Fields, 2, 1);
+        false ->
+            ok
+    end,
     buoy_jobs:run_job(fun() -> emit(Process, <<"exit">>, exit_code(0)) end).
 
 emit(Process, Event, Code) ->
