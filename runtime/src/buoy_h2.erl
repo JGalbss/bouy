@@ -528,10 +528,20 @@ header_fields(F, Id, [], H) ->
         none ->
             H;
         S ->
+            %% session_after_header_block_received: a block that breaks the
+            %% messaging rules, or ends a stream short of its content-length,
+            %% resets the stream before on_frame_recv.
+            Ends = maps:get(type, F) =/= ?PUSH_PROMISE andalso maps:get(flags, F) band ?FLAG_END_STREAM =/= 0,
             case http_on_headers_end(F, S) of
                 {ok, Http} ->
-                    H1 = put_stream(S#stream{http = Http}, H),
-                    end_headers(F, Id, H1);
+                    S1 = S#stream{http = Http},
+                    case Ends andalso http_on_remote_end_stream(S1) =:= error of
+                        false ->
+                            end_headers(F, Id, put_stream(S1, H));
+                        true ->
+                            H1 = invalid_stream(F#{stream_id => Id}, ?ERR_HTTP_MESSAGING, put_stream(S1, H)),
+                            update_stream(Id, fun(St) -> St#stream{shut_rd = true} end, H1)
+                    end;
                 error ->
                     invalid_stream(F#{stream_id => Id}, ?ERR_HTTP_MESSAGING, H)
             end
@@ -566,11 +576,7 @@ end_headers(#{flags := Flags, stream_id := Id} = F, Id, H) ->
         _ ->
             case find(Id, H1) of
                 none -> H1;
-                S ->
-                    case http_on_remote_end_stream(S) of
-                        error -> add_rst_stream(Id, ?PROTOCOL_ERROR, H1);
-                        ok -> close_if_shut(Id, put_stream(S#stream{shut_rd = true}, H1))
-                    end
+                S -> close_if_shut(Id, put_stream(S#stream{shut_rd = true}, H1))
             end
     end.
 
@@ -758,14 +764,25 @@ recv_window_update(#{stream_id := Id} = F, <<_:1, Inc:31>>, H) ->
             element(2, cb({frame_recv, F#{increment => Inc}}, H1))
     end.
 
+%% nghttp2_session_on_altsvc_received: a stream's ALTSVC names no origin and
+%% a live stream, and the connection's names an origin; both need a value.
 recv_altsvc(F, <<OriginLen:16, Origin:OriginLen/binary, Value/binary>>, H) ->
-    case {maps:get(stream_id, F), Origin} of
-        {0, <<>>} -> H;
-        {Id, _} when Id =/= 0, Origin =/= <<>> -> H;
+    Id = maps:get(stream_id, F),
+    Stream = case Id of 0 -> none; _ -> find(Id, H) end,
+    case {Id, Origin, Stream, Value} of
+        {0, <<>>, _, _} -> invalid_frame(F, ?ERR_PROTO, H);
+        {0, _, _, <<>>} -> invalid_frame(F, ?ERR_PROTO, H);
+        {0, _, _, _} -> element(2, cb({frame_recv, F#{origin => Origin, field_value => Value}}, H));
+        {_, <<_, _/binary>>, _, _} -> invalid_frame(F, ?ERR_PROTO, H);
+        {_, _, none, _} -> H;
+        {_, _, #stream{state = closing}, _} -> H;
+        {_, _, _, <<>>} -> invalid_frame(F, ?ERR_PROTO, H);
         _ -> element(2, cb({frame_recv, F#{origin => Origin, field_value => Value}}, H))
     end;
 recv_altsvc(_, _, H) ->
     H.
+
+invalid_frame(F, Lib, H) -> element(2, cb({invalid_frame, F, Lib}, H)).
 
 recv_origin(#{stream_id := 0, flags := 0} = F, Payload, H) ->
     case origins(Payload, []) of
@@ -1381,7 +1398,7 @@ not_sent(F, Lib, H) -> {[], element(2, cb({frame_not_sent, F, Lib}, H))}.
 %% (on_invalid_header), or error for a violation that resets the stream.
 http_on_header(F, #stream{http = Http}, Name, Value, H) ->
     Strict = maps:get(strict_ws, H#h2.opts, true),
-    case valid_name(Name) andalso valid_value(Value, Strict) of
+    case valid_name(Name) andalso valid_field_value(Name, Value, Strict, F, H) of
         false when Name =:= <<>> -> error;
         false ->
             case Name of
@@ -1458,9 +1475,33 @@ valid_name(<<>>) -> false;
 valid_name(<<$:, Rest/binary>>) -> Rest =/= <<>> andalso valid_token(Rest);
 valid_name(Name) -> valid_token(Name).
 
-valid_token(Name) ->
+valid_token(Name) -> valid_token(Name, lower).
+
+%% A tchar of RFC 9110; a header name must be lowercase.
+valid_token(Name, Case) ->
     lists:all(fun(C) -> (C >= $a andalso C =< $z) orelse (C >= $0 andalso C =< $9)
+                        orelse (Case =:= upper andalso C >= $A andalso C =< $Z)
                         orelse lists:member(C, "!#$%&'*+-.^_`|~") end, binary_to_list(Name)).
+
+%% nghttp2_http_on_header: each pseudo-header has its own character set.
+valid_field_value(<<":method">>, Value, _, _, _) ->
+    Value =/= <<>> andalso valid_token(Value, upper);
+valid_field_value(<<":path">>, Value, _, _, _) ->
+    lists:all(fun(C) -> C > 16#20 andalso C =/= 16#7f end, binary_to_list(Value));
+valid_field_value(Name, Value, Strict, F, H) when Name =:= <<":authority">>; Name =:= <<"host">> ->
+    case H#h2.server orelse maps:get(type, F) =:= ?PUSH_PROMISE of
+        true -> lists:all(fun authority_char/1, binary_to_list(Value));
+        false -> valid_value(Value, Strict)
+    end;
+valid_field_value(<<":protocol">>, Value, _, _, _) ->
+    valid_value(Value, false);
+valid_field_value(_, Value, Strict, _, _) ->
+    valid_value(Value, Strict).
+
+%% VALID_AUTHORITY_CHARS: unreserved, sub-delims, ":", "@", "[", "]", and "%".
+authority_char(C) ->
+    (C >= $a andalso C =< $z) orelse (C >= $A andalso C =< $Z) orelse (C >= $0 andalso C =< $9)
+        orelse lists:member(C, "-._~!$&'()*+,;=:@[]%").
 
 valid_value(Value, Strict) ->
     Ok = lists:all(fun(C) -> C =:= $\t orelse (C >= 16#20 andalso C =/= 16#7f) end, binary_to_list(Value)),
