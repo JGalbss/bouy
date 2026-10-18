@@ -53,7 +53,10 @@
 -spec require(binary()) -> {ok, term()} | error.
 require(Id) ->
     ensure(),
-    case is_public(Id) of
+    %% With --expose-internals, the internal ids load too (BuiltinModule.exposeInternals).
+    Exposed = is_internal(Id) andalso lists:member(Id, ids())
+        andalso lists:member(<<"--expose-internals">>, bouy_node_process:exec_argv()),
+    case is_public(Id) orelse Exposed of
         false ->
             error;
         true ->

@@ -898,20 +898,20 @@ require(M, Specifier) ->
                                              bouy_ref_string:concat([<<"The \"id\" argument must be of type string. Received ">>, bouy_ref:describe(Specifier)])),
     Specifier =:= <<>> andalso throw_coded('TypeError', <<"ERR_INVALID_ARG_VALUE">>,
                                            <<"The argument 'id' must be a non-empty string. Received ''">>),
+    %% --expose-internals lets require load the internal ids of Node's lib.
+    Internal = lists:member(<<"--expose-internals">>, bouy_node_process:exec_argv())
+        andalso lists:member(Specifier, bouy_node:ids()),
     case target(M, Specifier, require) of
         {builtin, Name} ->
             builtin_exports(Name);
+        _ when Internal ->
+            builtin_exports(Specifier);
         {error, Code, Message} ->
             throw_coded('Error', Code, Message);
         {_Path, Target} when is_atom(Target), Target =/= none ->
             require_module(Target);
-        _ when ?IS_STRING(Specifier) ->
-            %% --expose-internals lets require load the internal ids of Node's lib.
-            case lists:member(<<"--expose-internals">>, bouy_node_process:exec_argv())
-                 andalso lists:member(Specifier, bouy_node:ids()) of
-                true -> builtin_exports(Specifier);
-                false -> not_found(M, Specifier)
-            end
+        _ ->
+            not_found(M, Specifier)
     end.
 
 -spec not_found(module(), term()) -> no_return().

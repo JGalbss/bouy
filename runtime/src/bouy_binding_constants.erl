@@ -7,7 +7,22 @@
 -export([binding/0]).
 
 -spec binding() -> term().
-binding() -> bouy_node:from_json(json()).
+binding() ->
+    Binding = bouy_node:from_json(json()),
+    [null_prototype(bouy_heap:get(Binding, K)) || K <- bouy_heap:enumerable_keys(Binding)],
+    Binding.
+
+%% node_constants.cc gives each table, and each table inside one, a null
+%% prototype, so os.constants.signals['__proto__'] is undefined.
+null_prototype(O) ->
+    case bouy_heap:is_object(O) of
+        true ->
+            bouy_heap:set_prototype_of(O, null),
+            [null_prototype(bouy_heap:get(O, K)) || K <- bouy_heap:enumerable_keys(O)],
+            ok;
+        false ->
+            ok
+    end.
 
 json() ->
     %% Recorded with node --expose-internals -p

@@ -114,11 +114,18 @@ kill(Pid, Signal) ->
     case trunc(bouy_ref:to_number(Signal)) of
         Number when Number < 0; Number > 31 -> -22;
         Number ->
-            Command = io_lib:format("kill -~w ~w 2>/dev/null; echo $?", [Number, trunc(bouy_ref:to_number(Pid))]),
-            case string:trim(os:cmd(lists:flatten(Command))) of
-                "0" -> 0;
-                _ -> -3
+            Target = trunc(bouy_ref:to_number(Pid)),
+            case Target =:= list_to_integer(os:getpid()) andalso bouy_binding_signal_wrap:emulate(Number) of
+                true -> 0;
+                false -> kill_os(Target, Number)
             end
+    end.
+
+kill_os(Target, Number) ->
+    Command = io_lib:format("kill -~w ~w 2>/dev/null; echo $?", [Number, Target]),
+    case string:trim(os:cmd(lists:flatten(Command))) of
+        "0" -> 0;
+        _ -> -3
     end.
 
 load_env_file(Path) ->

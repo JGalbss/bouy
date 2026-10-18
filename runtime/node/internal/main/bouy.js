@@ -147,6 +147,9 @@ function loadEnvFiles() {
 // Web Storage needs SQLite, which Bouy lacks, as a node built without it does.
 patchProcessObject();
 loadEnvFiles();
+if (getOptionValue('--expose-internals')) {
+  require('internal/bootstrap/realm').BuiltinModule.exposeInternals();
+}
 setupWebsocket();
 setupEventsource();
 initializeReport();
