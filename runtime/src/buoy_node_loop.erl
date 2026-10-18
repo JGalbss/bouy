@@ -24,6 +24,7 @@
 -export([has_work/0, poll_timeout/0, event/1, check/0, after_callback/0, uncaught/2, finish/0, really_exit/1]).
 -export([schedule_timer/1, toggle_timer_ref/1, toggle_immediate_ref/1, now/0, set_callback/2, callback/1]).
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
+-export([set_immediate/1]).
 
 -define(TIMER, '$buoy_node_timer').
 -define(IMMEDIATE_REF, '$buoy_node_immediate_ref').
@@ -31,6 +32,7 @@
 -define(BASE, '$buoy_node_timer_base').
 -define(PROCESS, '$buoy_node_process').
 -define(EXITING, '$buoy_node_exiting').
+-define(NATIVE_IMMEDIATES, '$buoy_node_native_immediates').
 %% The fields of immediateInfo: kCount, kRefCount, kHasOutstanding.
 -define(K_COUNT, 0).
 -define(K_REF_COUNT, 1).
@@ -97,6 +99,29 @@ defer(Fun) ->
     self() ! {'$buoy_node_deferred', Ref},
     ok.
 
+%% Environment::SetImmediate: Fun runs at the start of the next check
+%% phase, before the immediates of JavaScript, and keeps the loop alive.
+-spec set_immediate(fun(() -> term())) -> ok.
+set_immediate(Fun) ->
+    erlang:put(?NATIVE_IMMEDIATES, [Fun | native_immediates()]),
+    ok.
+
+native_immediates() ->
+    case erlang:get(?NATIVE_IMMEDIATES) of
+        undefined -> [];
+        L -> L
+    end.
+
+%% RunAndClearNativeImmediates: until the queue is empty, so an immediate
+%% that one of them queues runs in the same phase.
+run_native_immediates() ->
+    case erlang:erase(?NATIVE_IMMEDIATES) of
+        undefined -> ok;
+        Funs ->
+            [buoy_jobs:run_job(F) || F <- lists:reverse(Funs)],
+            run_native_immediates()
+    end.
+
 %%% Timers
 
 %% scheduleTimer(ms): the one native timer fires in Ms milliseconds.
@@ -144,7 +169,7 @@ toggle_immediate_ref(Ref) ->
 has_work() ->
     case buoy_node:ready() of
         false -> false;
-        true -> timer_alive() orelse immediates_alive() orelse handles() > 0
+        true -> timer_alive() orelse immediates_alive() orelse handles() > 0 orelse native_immediates() =/= []
     end.
 
 timer_alive() ->
@@ -159,7 +184,7 @@ immediates_alive() ->
 %% The time the poll of the mailbox may wait: none while immediates wait.
 -spec poll_timeout() -> infinity | 0.
 poll_timeout() ->
-    case buoy_node:ready() andalso immediate_field(?K_COUNT) > 0 of
+    case buoy_node:ready() andalso (immediate_field(?K_COUNT) > 0 orelse native_immediates() =/= []) of
         true -> 0;
         false -> infinity
     end.
@@ -221,12 +246,16 @@ run_timers() ->
 %% The check phase: CheckImmediate.
 -spec check() -> ok.
 check() ->
+    run_native_immediates(),
+    check_immediates().
+
+check_immediates() ->
     case buoy_node:ready() andalso immediate_field(?K_COUNT) > 0 of
         true ->
             trace("check ~w ~w ~w~n", [immediate_field(0), immediate_field(1), immediate_field(2)]),
             buoy_jobs:run_job(fun() -> buoy_heap:call(callback(process_immediate), process(), []) end),
             case immediate_field(?K_HAS_OUTSTANDING) =/= 0 of
-                true -> check();
+                true -> check_immediates();
                 false -> ok
             end;
         false ->

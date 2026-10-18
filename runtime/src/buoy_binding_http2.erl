@@ -238,7 +238,7 @@ maybe_schedule_write(This) ->
                 false -> ok;
                 true ->
                     update(This, fun(St) -> St#{write_scheduled => true} end),
-                    buoy_node_loop:defer(fun() ->
+                    buoy_node_loop:set_immediate(fun() ->
                         case session(This) of
                             #{write_scheduled := true, destroyed := false} -> send_pending(This);
                             _ -> ok
@@ -456,7 +456,7 @@ close(This, Code, SocketClosed) ->
             end,
             Pings = maps:get(pings, session(This)),
             update(This, fun(S) -> S#{pings => []} end),
-            [buoy_node_loop:defer(fun() -> ping_done(Cb, Start, false, undefined) end) || {Cb, Start} <- Pings],
+            [buoy_node_loop:set_immediate(fun() -> ping_done(Cb, Start, false, undefined) end) || {Cb, Start} <- Pings],
             undefined;
         _ ->
             undefined
@@ -1085,7 +1085,7 @@ destroy_stream(This) ->
             end,
             update_stream(This, fun(S) -> S#{destroyed => true} end),
             update(Session, fun(S) -> S#{streams => maps:remove(Id, maps:get(streams, S))} end),
-            buoy_node_loop:defer(fun() ->
+            buoy_node_loop:set_immediate(fun() ->
                 Queue = maps:get(queue, stream(This)),
                 update_stream(This, fun(S) -> S#{queue => [], available => 0} end),
                 [buoy_stream_base:done(Req, ?UV_ECANCELED, This) || {_, Req} <- Queue, Req =/= undefined]
