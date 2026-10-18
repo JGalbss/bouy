@@ -25,7 +25,7 @@ methods(Proto, Impl) ->
     A = fun buoy_node:arg/2,
     Write = fun(This, Req, Chunks) -> write(Impl, This, Req, Chunks) end,
     Methods = [
-        {<<"writeBuffer">>, fun(This, Args) -> Write(This, A(1, Args), [buoy_node_encoding:view_bytes(A(2, Args))]) end},
+        {<<"writeBuffer">>, fun(This, Args) -> Write(This, A(1, Args), [buoy_node_encoding:write_buffer_bytes(A(2, Args))]) end},
         {<<"writev">>, fun(This, Args) -> Write(This, A(1, Args), chunks(A(2, Args), buoy_ref:truthy(A(3, Args)))) end},
         {<<"writeUtf8String">>, fun(This, Args) -> Write(This, A(1, Args), [buoy_node_encoding:encode(utf8, A(2, Args))]) end},
         {<<"writeAsciiString">>, fun(This, Args) -> Write(This, A(1, Args), [buoy_node_encoding:encode(latin1, A(2, Args))]) end},

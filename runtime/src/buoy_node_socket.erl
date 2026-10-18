@@ -107,7 +107,7 @@ methods(Proto) ->
     A = fun buoy_node:arg/2,
     Write = fun(Encode) -> fun(This, Args) -> write(This, A(1, Args), Encode(A(2, Args))) end end,
     Methods = [
-        {<<"writeBuffer">>, Write(fun buoy_node_encoding:view_bytes/1)},
+        {<<"writeBuffer">>, Write(fun buoy_node_encoding:write_buffer_bytes/1)},
         {<<"writeUtf8String">>, Write(fun(V) -> buoy_node_encoding:encode(utf8, V) end)},
         {<<"writeAsciiString">>, Write(fun(V) -> buoy_node_encoding:encode(latin1, V) end)},
         {<<"writeLatin1String">>, Write(fun(V) -> buoy_node_encoding:encode(latin1, V) end)},
