@@ -40,7 +40,7 @@ members() ->
         {<<"setTicketKeys">>, 1, Set(ticket_keys, fun(Args) -> buoy_crypto:bytes(A(1, Args)) end)},
         {<<"getTicketKeys">>, 0, fun(This, _) -> buoy_crypto:buffer(maps:get(ticket_keys, state(This))) end},
         {<<"setAllowPartialTrustChain">>, 0, Set(partial_chain, fun(_) -> true end)},
-        {<<"loadPKCS12">>, 2, fun(_, _) -> fail(<<"ERR_CRYPTO_UNSUPPORTED_OPERATION">>, <<"PKCS#12 is not supported on Buoy">>) end},
+        {<<"loadPKCS12">>, 2, fun(This, Args) -> load_pkcs12(This, A(1, Args), A(2, Args)) end},
         {<<"setClientCertEngine">>, 1, fun(_, _) -> fail(<<"ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED">>, <<"Custom engines not supported by this OpenSSL">>) end},
         {<<"getCertificate">>, 0, fun(This, _) -> certificate(This, leaf) end},
         {<<"getIssuer">>, 0, fun(This, _) -> certificate(This, issuer) end},
@@ -112,12 +112,12 @@ set_key(This, Key, Passphrase) ->
         [] -> buoy_crypto:throw_openssl(decoder_unsupported);
         [Entry | _] ->
             Decoded = decode_key(Entry, Pass),
-            %% SSL_CTX_use_PrivateKey checks the key against the certificate.
-            case maps:get(chains, state(This)) of
+            %% SSL_CTX_use_PrivateKey checks the key against the certificate
+            %% of its algorithm's slot.
+            case [Leaf || [Leaf | _] <- maps:get(chains, state(This)), matches(Leaf, Decoded)] of
                 [] -> ok;
-                Chains ->
-                    [Leaf | _] = lists:last(Chains),
-                    key_matches(Leaf, Decoded) orelse
+                Leaves ->
+                    key_matches(lists:last(Leaves), Decoded) orelse
                         erlang:error({'$throw', ssl_error_value(16#74, <<"key values mismatch">>, x509)})
             end,
             update(This, fun(S) -> S#{keys := maps:get(keys, S) ++ [Decoded]} end)
@@ -163,6 +163,27 @@ set_cert(This, Cert) ->
     undefined.
 
 certificates(V) -> [Der || {'Certificate', Der, _} <- public_key:pem_decode(pem(V))].
+
+%% loadPKCS12(pfx, passphrase): the key and its certificate, with the other
+%% certificates of the PFX as its chain and as trusted CAs, as
+%% SecureContext::LoadPKCS12 does. Its errors are plain, with OpenSSL's text.
+load_pkcs12(This, Pfx, Passphrase) ->
+    Pass = case Passphrase of
+        undefined -> none;
+        P -> buoy_crypto:bytes(P)
+    end,
+    case buoy_crypto_pkcs12:parse(buoy_crypto:bytes(Pfx), Pass) of
+        {ok, Key, Leaf, Extra} ->
+            update(This, fun(#{chains := Chains, keys := Keys, cas := Cas} = S) ->
+                Trusted = case Cas of none -> roots() ++ Extra; _ -> Cas ++ Extra end,
+                S#{chains := Chains ++ [[Leaf | Extra]], keys := Keys ++ [Key], cas := Trusted}
+            end);
+        {error, unsupported} ->
+            fail(<<"ERR_CRYPTO_UNSUPPORTED_OPERATION">>, <<"Unsupported PKCS12 PFX data">>);
+        {error, Reason} ->
+            erlang:error({'$throw', buoy_heap:error_object('Error', Reason, <<"Error: ", Reason/binary>>)})
+    end,
+    undefined.
 
 add_ca(This, Cert) ->
     Ders = certificates(Cert),
@@ -415,18 +436,21 @@ pairs(Chains, Keys) ->
         end
     end, Chains).
 
-matches(Cert, {Type, _}) ->
-    try
-        #'OTPCertificate'{tbsCertificate = #'OTPTBSCertificate'{subjectPublicKeyInfo = Spki}} = public_key:pkix_decode_cert(Cert, otp),
-        #'OTPSubjectPublicKeyInfo'{algorithm = #'PublicKeyAlgorithm'{algorithm = Algorithm}} = Spki,
-        case {Algorithm, Type} of
-            {{1,2,840,113549,1,1,1}, 'RSAPrivateKey'} -> true;
-            {{1,2,840,10045,2,1}, 'ECPrivateKey'} -> true;
-            {{1,2,840,10040,4,1}, 'DSAPrivateKey'} -> true;
-            _ -> false
-        end
-    catch
-        _:_ -> false
+matches(Cert, Key) ->
+    try cert_algorithm(Cert) =:= key_algorithm(Key) catch _:_ -> false end.
+
+cert_algorithm(Cert) ->
+    #'OTPCertificate'{tbsCertificate = #'OTPTBSCertificate'{subjectPublicKeyInfo = Spki}} = public_key:pkix_decode_cert(Cert, otp),
+    #'OTPSubjectPublicKeyInfo'{algorithm = #'PublicKeyAlgorithm'{algorithm = Algorithm}} = Spki,
+    Algorithm.
+
+%% A PKCS #8 key decodes to the record of its algorithm.
+key_algorithm({Type, Der}) ->
+    case public_key:der_decode(Type, Der) of
+        #'RSAPrivateKey'{} -> {1,2,840,113549,1,1,1};
+        #'ECPrivateKey'{} -> {1,2,840,10045,2,1};
+        #'DSAPrivateKey'{} -> {1,2,840,10040,4,1};
+        _ -> none
     end.
 
 cacerts(#{cas := none, roots := true}) -> roots();
