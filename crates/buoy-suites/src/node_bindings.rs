@@ -510,7 +510,7 @@ fn read_sources(checkout: &Path) -> Result<Manifest, String> {
             }
             sources.insert(unit.path.clone());
             let scope = HashMap::from([(target, Value::Node(*root))]);
-            reader.read(definition, scope, &[]);
+            let _ = reader.read(definition, scope, &[]);
         }
     }
     let mut bindings: BTreeMap<String, Binding> = roots
@@ -1449,6 +1449,8 @@ struct Reader<'a> {
     nodes: Vec<Node>,
     /// The definitions that the reader is inside, to stop a recursion.
     active: Vec<usize>,
+    /// The unit and the class of the definition that the reader is inside.
+    context: Vec<(usize, Option<String>)>,
 }
 
 impl<'a> Reader<'a> {
@@ -1473,6 +1475,7 @@ impl<'a> Reader<'a> {
             declarations,
             nodes: Vec::new(),
             active: Vec::new(),
+            context: Vec::new(),
         }
     }
 
@@ -1494,7 +1497,9 @@ impl<'a> Reader<'a> {
             .copied()
             .filter(|index| {
                 let definition = &self.definitions[*index];
-                arity.is_none_or(|arity| definition.params.len() >= arity)
+                // A definition that the reader is inside is an overload that calls another.
+                !self.active.contains(index)
+                    && arity.is_none_or(|arity| definition.params.len() >= arity)
                     && qualifier.is_none_or(|qualifier| definition.is_in(qualifier))
             })
             .min_by_key(|index| {
@@ -1517,16 +1522,24 @@ impl<'a> Reader<'a> {
 
     /// Reads the body of a definition with the variables of `scope`. `prefix` holds the
     /// branches of the call that reached it, relative to the binding's function.
-    fn read(&mut self, definition: usize, mut scope: Scope, prefix: &[(usize, usize)]) {
+    /// Returns the object or the template of the first `return name` whose `name` holds one.
+    fn read(
+        &mut self,
+        definition: usize,
+        mut scope: Scope,
+        prefix: &[(usize, usize)],
+    ) -> Option<usize> {
         if self.active.contains(&definition) || self.active.len() > 12 {
-            return;
+            return None;
         }
         self.active.push(definition);
         let found = &self.definitions[definition];
         let unit = found.unit;
         let class = found.class().map(str::to_owned);
+        self.context.push((unit, class.clone()));
         let tokens = &self.units[unit].tokens[found.body.0 + 1..found.body.1];
         let base = self.units[unit].tokens[found.body.0].branches.len();
+        let mut returned = None;
         for index in 0..tokens.len() {
             let mut place = prefix.to_vec();
             place.extend(tokens[index].branches.iter().skip(base));
@@ -1534,8 +1547,32 @@ impl<'a> Reader<'a> {
             Self::to_local(tokens, index, &mut scope);
             self.setter(tokens, index, &scope, &place);
             self.call(unit, class.as_deref(), tokens, index, &scope, &place);
+            if returned.is_none() && tokens[index].is("return") {
+                returned = Self::target(&tokens[index + 1..=index + 1], &scope);
+            }
         }
+        self.context.pop();
         self.active.pop();
+        returned
+    }
+
+    /// The template that the call `value` returns, such as `KeyObjectHandle::Initialize(env)`
+    /// whose body ends with `return templ->GetFunction(...)`.
+    fn returned_template(&mut self, value: &[Tok]) -> Option<usize> {
+        let open = value.iter().position(|token| token.is("("))?;
+        let name = value.get(open.checked_sub(1)?)?.ident()?;
+        let qualifier = open
+            .checked_sub(3)
+            .filter(|&at| value[at + 1].is("::"))
+            .and_then(|at| value[at].ident());
+        let (args, _) = arguments(value, open)?;
+        let (unit, class) = self.context.last().cloned()?;
+        let definition = match qualifier {
+            Some(qualifier) => self.find(unit, Some(qualifier), name, Some(args.len())),
+            None => self.find_from(unit, None, class.as_deref(), name, Some(args.len())),
+        }?;
+        self.read(definition, Scope::new(), &[])
+            .filter(|&node| self.nodes[node].template)
     }
 
     /// A variable that starts at `index`: `Local<T> name = value;`, `auto name = value;`, or
@@ -1629,6 +1666,15 @@ impl<'a> Reader<'a> {
         };
         if starts(&["Object", "::", "New"]) || starts(&["ObjectTemplate", "::", "New"]) {
             return Some(Value::Node(self.node(false)));
+        }
+        // `Local<Function> fn = t->GetFunction(context).ToLocalChecked();`
+        if init.iter().any(|token| token.is("GetFunction"))
+            && let Some(Value::Node(node)) = init
+                .first()
+                .and_then(Tok::ident)
+                .and_then(|name| scope.get(name))
+        {
+            return Some(Value::Node(*node));
         }
         let template = declared.iter().any(|kind| kind == "FunctionTemplate")
             || starts(&["NewFunctionTemplate"])
@@ -1778,9 +1824,9 @@ impl<'a> Reader<'a> {
                 }
             }
             "SetConstructorFunction" => {
-                let class = args
-                    .get(shift + 2)
-                    .and_then(|template| Self::target(template, scope));
+                let class = args.get(shift + 2).and_then(|template| {
+                    Self::target(template, scope).or_else(|| self.returned_template(template))
+                });
                 if let (Some(node), Some(name)) = (object, named) {
                     self.add(node, name, Kind::Class, place, class);
                 }
@@ -1885,7 +1931,7 @@ impl<'a> Reader<'a> {
     }
 
     /// The kind of a member from the expression of its value.
-    fn classify(&self, value: &[Tok], scope: &Scope) -> (Kind, Option<usize>) {
+    fn classify(&mut self, value: &[Tok], scope: &Scope) -> (Kind, Option<usize>) {
         let first = value
             .first()
             .and_then(Tok::ident)
@@ -1907,7 +1953,11 @@ impl<'a> Reader<'a> {
                     (Kind::Object, Some(node))
                 }
             }
-            _ => (Kind::Value, None),
+            Some(_) => (Kind::Value, None),
+            None => match self.returned_template(value) {
+                Some(node) => (Kind::Class, Some(node)),
+                None => (Kind::Value, None),
+            },
         }
     }
 
@@ -2054,7 +2104,7 @@ impl<'a> Reader<'a> {
             }
             callee.insert(param.name.clone(), value);
         }
-        self.read(definition, callee, place);
+        let _ = self.read(definition, callee, place);
     }
 
     /// The members of a node for the manifest.
@@ -2119,6 +2169,26 @@ mod tests {
                     r#"
 #define LIST(V) V(Alpha) V(Beta)
 namespace node {
+void AddMethods(Environment* env, Local<FunctionTemplate> t) {
+  AddMethods(env->isolate_data(), t);
+}
+void AddMethods(IsolateData* data, Local<FunctionTemplate> t) {
+  SetProtoMethod(isolate, t, "readStart", ReadStart);
+}
+Local<FunctionTemplate> Lock::GetConstructorTemplate(Environment* env) {
+  Local<FunctionTemplate> tmpl = NewFunctionTemplate(isolate, NewLock);
+  SetProtoMethod(isolate, tmpl, "release", Release);
+  AddMethods(env, tmpl);
+  return tmpl;
+}
+Local<Function> MakeKey(Environment* env) {
+  auto templ = env->key_constructor();
+  if (templ.IsEmpty()) {
+    templ = NewFunctionTemplate(isolate, NewKey);
+    SetProtoMethod(isolate, templ, "export", Export);
+  }
+  return templ->GetFunction(env->context()).ToLocalChecked();
+}
 static void Helper(Environment* env, Local<Object> obj) {
   SetMethod(env->context(), obj, "fromHelper", Fn);
 }
@@ -2154,6 +2224,11 @@ void Initialize(Local<Object> target, Local<Value> unused, Local<Context> contex
   MakeClass<Stream>::Make(env, target, "Zlib");
   Local<FunctionTemplate> w = NewFunctionTemplate(isolate, NewWindow);
   SetProtoMethod(isolate, w, "resize", Resize);
+  target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Key"), MakeKey(env)).Check();
+  SetConstructorFunction(context, target, "Lock", Lock::GetConstructorTemplate(env));
+  Local<FunctionTemplate> s = NewFunctionTemplate(isolate, NewSocket);
+  Local<Function> fn = s->GetFunction(context).ToLocalChecked();
+  target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Socket"), fn).Check();
   Local<Value> func;
   if (w->GetFunction(context).ToLocal(&func) &&
       target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Window"), func).IsJust()) {
@@ -2176,6 +2251,9 @@ NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
             kinds,
             [
                 ("Handle", Kind::Class, false),
+                ("Key", Kind::Class, false),
+                ("Lock", Kind::Class, false),
+                ("Socket", Kind::Class, false),
                 ("Window", Kind::Class, false),
                 ("Zlib", Kind::Class, false),
                 ("constants", Kind::Object, false),
@@ -2191,6 +2269,14 @@ NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
         assert_eq!(
             demo.members["Handle"].prototype,
             BTreeSet::from(["close".to_owned()])
+        );
+        assert_eq!(
+            demo.members["Key"].prototype,
+            BTreeSet::from(["export".to_owned()])
+        );
+        assert_eq!(
+            demo.members["Lock"].prototype,
+            BTreeSet::from(["readStart".to_owned(), "release".to_owned()])
         );
         assert!(demo.members["constants"].members.contains_key("O_RDONLY"));
         let erlang = erlang(&manifest);

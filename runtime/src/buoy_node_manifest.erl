@@ -29,8 +29,8 @@ members(<<"blob">>) ->
      {<<"revokeObjectURL">>, function},
      {<<"storeDataObject">>, function}];
 members(<<"block_list">>) ->
-    [{<<"BlockList">>, {class, []}},
-     {<<"SocketAddress">>, {class, []}}];
+    [{<<"BlockList">>, {class, [<<"addAddress">>, <<"addRange">>, <<"addSubnet">>, <<"check">>, <<"getRules">>]}},
+     {<<"SocketAddress">>, {class, [<<"detail">>, <<"flowlabel">>, <<"legacyDetail">>]}}];
 members(<<"buffer">>) ->
     [{<<"asciiSlice">>, function},
      {<<"asciiWriteStatic">>, function},
@@ -121,6 +121,7 @@ members(<<"crypto">>) ->
      {<<"KEMDecapsulateJob">>, {class, [<<"run">>]}},
      {<<"KEMEncapsulateJob">>, {class, [<<"run">>]}},
      {<<"KangarooTwelveJob">>, {class, [<<"run">>]}},
+     {<<"KeyObjectHandle">>, {class, [<<"checkEcKeyData">>, <<"equals">>, <<"export">>, <<"exportJwk">>, <<"getAsymmetricKeyType">>, <<"getSymmetricKeySize">>, <<"init">>, <<"initECRaw">>, <<"initEDRaw">>, <<"initJwk">>, <<"initPqcRaw">>, <<"keyDetail">>, <<"rawPublicKey">>, <<"rawSeed">>]}},
      {<<"KmacJob">>, {class, [<<"run">>]}},
      {<<"NidKeyPairGenJob">>, {class, [<<"run">>]}},
      {<<"PBKDF2Job">>, {class, [<<"run">>]}},
@@ -131,7 +132,7 @@ members(<<"crypto">>) ->
      {<<"RsaKeyPairGenJob">>, {class, [<<"run">>]}},
      {<<"ScryptJob">>, {class, [<<"run">>]}},
      {<<"SecretKeyGenJob">>, {class, [<<"run">>]}},
-     {<<"SecureContext">>, {class, []}},
+     {<<"SecureContext">>, {class, [<<"addCACert">>, <<"addCRL">>, <<"addRootCerts">>, <<"close">>, <<"enableTicketKeyCallback">>, <<"getCertificate">>, <<"getIssuer">>, <<"getMaxProto">>, <<"getMinProto">>, <<"getTicketKeys">>, <<"init">>, <<"loadPKCS12">>, <<"setAllowPartialTrustChain">>, <<"setCert">>, <<"setCipherSuites">>, <<"setCiphers">>, <<"setClientCertEngine">>, <<"setDHParam">>, <<"setECDHCurve">>, <<"setEngineKey">>, <<"setKey">>, <<"setMaxProto">>, <<"setMinProto">>, <<"setOptions">>, <<"setSessionIdContext">>, <<"setSessionTimeout">>, <<"setSigalgs">>, <<"setTicketKeys">>]}},
      {<<"Sign">>, {class, [<<"init">>, <<"sign">>, <<"update">>]}},
      {<<"SignJob">>, {class, [<<"run">>]}},
      {<<"TurboShakeJob">>, {class, [<<"run">>]}},
@@ -185,7 +186,7 @@ members(<<"errors">>) ->
      {<<"triggerUncaughtException">>, function}];
 members(<<"fs">>) ->
     [{<<"FSReqCallback">>, {class, []}},
-     {<<"FileHandle">>, {class, [<<"close">>, <<"closeSync">>, <<"releaseFD">>]}},
+     {<<"FileHandle">>, {class, [<<"close">>, <<"closeSync">>, <<"readStart">>, <<"readStop">>, <<"releaseFD">>, <<"shutdown">>, <<"useUserBuffer">>, <<"writeAsciiString">>, <<"writeBuffer">>, <<"writeLatin1String">>, <<"writeUcs2String">>, <<"writeUtf8String">>, <<"writev">>]}},
      {<<"StatWatcher">>, {class, [<<"start">>]}},
      {<<"access">>, function},
      {<<"chmod">>, function},
@@ -244,7 +245,7 @@ members(<<"heap_utils">>) ->
      {<<"triggerHeapSnapshot">>, function}];
 members(<<"http2">>) ->
     [{<<"Http2Session">>, {class, [<<"altsvc">>, <<"consume">>, <<"destroy">>, <<"goaway">>, <<"hasPendingData">>, <<"localSettings">>, <<"origin">>, <<"ping">>, <<"receive">>, <<"refreshState">>, <<"remoteSettings">>, <<"request">>, <<"setGracefulClose">>, <<"setLocalWindowSize">>, <<"setNextStreamID">>, <<"settings">>, <<"updateChunksSent">>]}},
-     {<<"Http2Stream">>, {class, [<<"destroy">>, <<"id">>, <<"info">>, <<"priority">>, <<"pushPromise">>, <<"refreshState">>, <<"respond">>, <<"rstStream">>, <<"trailers">>]}},
+     {<<"Http2Stream">>, {class, [<<"destroy">>, <<"id">>, <<"info">>, <<"priority">>, <<"pushPromise">>, <<"readStart">>, <<"readStop">>, <<"refreshState">>, <<"respond">>, <<"rstStream">>, <<"shutdown">>, <<"trailers">>, <<"useUserBuffer">>, <<"writeAsciiString">>, <<"writeBuffer">>, <<"writeLatin1String">>, <<"writeUcs2String">>, <<"writeUtf8String">>, <<"writev">>]}},
      {<<"nghttp2ErrorString">>, function},
      {<<"packSettings">>, function},
      {<<"refreshDefaultSettings">>, function},
@@ -278,7 +279,7 @@ members(<<"inspector">>) ->
 members(<<"internal_only_v8">>) ->
     [{<<"queryObjects">>, function}];
 members(<<"js_stream">>) ->
-    [{<<"JSStream">>, {class, [<<"emitEOF">>, <<"finishShutdown">>, <<"finishWrite">>, <<"readBuffer">>]}}];
+    [{<<"JSStream">>, {class, [<<"emitEOF">>, <<"finishShutdown">>, <<"finishWrite">>, <<"readBuffer">>, <<"readStart">>, <<"readStop">>, <<"shutdown">>, <<"useUserBuffer">>, <<"writeAsciiString">>, <<"writeBuffer">>, <<"writeLatin1String">>, <<"writeUcs2String">>, <<"writeUtf8String">>, <<"writev">>]}}];
 members(<<"js_udp_wrap">>) ->
     [{<<"JSUDPWrap">>, {class, [<<"emitReceived">>, <<"onAfterBind">>, <<"onSendDone">>, <<"recvStart">>, <<"recvStop">>]}}];
 members(<<"locks">>) ->
@@ -341,7 +342,7 @@ members(<<"os">>) ->
      {<<"getUserInfo">>, function},
      {<<"setPriority">>, function}];
 members(<<"performance">>) ->
-    [{<<"Histogram">>, {class, []}},
+    [{<<"Histogram">>, {class, [<<"add">>, <<"countBigInt">>, <<"exceedsBigInt">>, <<"maxBigInt">>, <<"minBigInt">>, <<"percentileBigInt">>, <<"percentiles">>, <<"percentilesBigInt">>]}},
      {<<"createELDHistogram">>, function},
      {<<"installGarbageCollectionTracking">>, function},
      {<<"loopIdleTime">>, function},
@@ -432,8 +433,8 @@ members(<<"spawn_sync">>) ->
     [{<<"spawn">>, function}];
 members(<<"sqlite">>) ->
     [{<<"DatabaseSync">>, {class, [<<"aggregate">>, <<"applyChangeset">>, <<"close">>, <<"createSession">>, <<"createTagStore">>, <<"enableDefensive">>, <<"enableLoadExtension">>, <<"exec">>, <<"function">>, <<"loadExtension">>, <<"location">>, <<"open">>, <<"prepare">>, <<"setAuthorizer">>]}},
-     {<<"Session">>, {class, []}},
-     {<<"StatementSync">>, {class, []}}];
+     {<<"Session">>, {class, [<<"changeset">>, <<"close">>, <<"patchset">>]}},
+     {<<"StatementSync">>, {class, [<<"all">>, <<"columns">>, <<"get">>, <<"iterate">>, <<"run">>, <<"setAllowBareNamedParameters">>, <<"setAllowUnknownNamedParameters">>, <<"setReadBigInts">>, <<"setReturnArrays">>]}}];
 members(<<"stream_pipe">>) ->
     [{<<"StreamPipe">>, {class, [<<"isClosed">>, <<"pendingWrites">>, <<"start">>, <<"unpipe">>]}}];
 members(<<"stream_wrap">>) ->
@@ -457,7 +458,8 @@ members(<<"timers">>) ->
      {<<"toggleImmediateRef">>, function},
      {<<"toggleTimerRef">>, function}];
 members(<<"tls_wrap">>) ->
-    [{<<"wrap">>, function}];
+    [{<<"TLSWrap">>, {class, [<<"certCbDone">>, <<"destroySSL">>, <<"enableALPNCb">>, <<"enableCertCb">>, <<"enableKeylogCallback">>, <<"enablePskCallback">>, <<"enableSessionCallbacks">>, <<"enableTrace">>, <<"endParser">>, <<"exportKeyingMaterial">>, <<"getALPNNegotiatedProtocol">>, <<"getCertificate">>, <<"getCipher">>, <<"getEphemeralKeyInfo">>, <<"getFinished">>, <<"getPeerCertificate">>, <<"getPeerFinished">>, <<"getPeerX509Certificate">>, <<"getProtocol">>, <<"getServername">>, <<"getSession">>, <<"getSharedSigalgs">>, <<"getTLSTicket">>, <<"getX509Certificate">>, <<"isSessionReused">>, <<"loadSession">>, <<"newSessionDone">>, <<"readStart">>, <<"readStop">>, <<"receive">>, <<"renegotiate">>, <<"requestOCSP">>, <<"setALPNProtocols">>, <<"setKeyCert">>, <<"setMaxSendFragment">>, <<"setOCSPResponse">>, <<"setPskIdentityHint">>, <<"setServername">>, <<"setSession">>, <<"setVerifyMode">>, <<"shutdown">>, <<"start">>, <<"useUserBuffer">>, <<"verifyError">>, <<"writeAsciiString">>, <<"writeBuffer">>, <<"writeLatin1String">>, <<"writeUcs2String">>, <<"writeUtf8String">>, <<"writesIssuedByPrevListenerDone">>, <<"writev">>]}},
+     {<<"wrap">>, function}];
 members(<<"trace_events">>) ->
     [{<<"CategorySet">>, {class, [<<"disable">>, <<"enable">>]}},
      {<<"getCategoryEnabledBuffer">>, function},

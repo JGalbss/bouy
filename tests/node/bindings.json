@@ -358,10 +358,22 @@
           "kind": "value"
         },
         "BlockList": {
-          "kind": "class"
+          "kind": "class",
+          "prototype": [
+            "addAddress",
+            "addRange",
+            "addSubnet",
+            "check",
+            "getRules"
+          ]
         },
         "SocketAddress": {
-          "kind": "class"
+          "kind": "class",
+          "prototype": [
+            "detail",
+            "flowlabel",
+            "legacyDetail"
+          ]
         }
       }
     },
@@ -2840,7 +2852,23 @@
           ]
         },
         "KeyObjectHandle": {
-          "kind": "value"
+          "kind": "class",
+          "prototype": [
+            "checkEcKeyData",
+            "equals",
+            "export",
+            "exportJwk",
+            "getAsymmetricKeyType",
+            "getSymmetricKeySize",
+            "init",
+            "initECRaw",
+            "initEDRaw",
+            "initJwk",
+            "initPqcRaw",
+            "keyDetail",
+            "rawPublicKey",
+            "rawSeed"
+          ]
         },
         "KmacJob": {
           "kind": "class",
@@ -2912,7 +2940,57 @@
           ]
         },
         "SecureContext": {
-          "kind": "class"
+          "kind": "class",
+          "prototype": [
+            "addCACert",
+            "addCRL",
+            "addRootCerts",
+            "close",
+            "enableTicketKeyCallback",
+            "getCertificate",
+            "getIssuer",
+            "getMaxProto",
+            "getMinProto",
+            "getTicketKeys",
+            "init",
+            "loadPKCS12",
+            "setAllowPartialTrustChain",
+            "setCert",
+            "setCipherSuites",
+            "setCiphers",
+            "setClientCertEngine",
+            "setDHParam",
+            "setECDHCurve",
+            "setEngineKey",
+            "setKey",
+            "setMaxProto",
+            "setMinProto",
+            "setOptions",
+            "setSessionIdContext",
+            "setSessionTimeout",
+            "setSigalgs",
+            "setTicketKeys"
+          ],
+          "accessors": [
+            "_external"
+          ],
+          "members": {
+            "kTicketKeyAESIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyHMACIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyIVIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyNameIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyReturnIndex": {
+              "kind": "value"
+            }
+          }
         },
         "Sign": {
           "kind": "class",
@@ -3317,7 +3395,20 @@
           "prototype": [
             "close",
             "closeSync",
-            "releaseFD"
+            "readStart",
+            "readStop",
+            "releaseFD",
+            "shutdown",
+            "useUserBuffer",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase"
           ]
         },
         "StatWatcher": {
@@ -3568,10 +3659,23 @@
             "info",
             "priority",
             "pushPromise",
+            "readStart",
+            "readStop",
             "refreshState",
             "respond",
             "rstStream",
-            "trailers"
+            "shutdown",
+            "trailers",
+            "useUserBuffer",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase"
           ]
         },
         "constants": {
@@ -4608,7 +4712,20 @@
             "emitEOF",
             "finishShutdown",
             "finishWrite",
-            "readBuffer"
+            "readBuffer",
+            "readStart",
+            "readStop",
+            "shutdown",
+            "useUserBuffer",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase"
           ]
         }
       }
@@ -4949,7 +5066,17 @@
       ],
       "members": {
         "Histogram": {
-          "kind": "class"
+          "kind": "class",
+          "prototype": [
+            "add",
+            "countBigInt",
+            "exceedsBigInt",
+            "maxBigInt",
+            "minBigInt",
+            "percentileBigInt",
+            "percentiles",
+            "percentilesBigInt"
+          ]
         },
         "constants": {
           "kind": "object",
@@ -5829,10 +5956,26 @@
           ]
         },
         "Session": {
-          "kind": "class"
+          "kind": "class",
+          "prototype": [
+            "changeset",
+            "close",
+            "patchset"
+          ]
         },
         "StatementSync": {
-          "kind": "class"
+          "kind": "class",
+          "prototype": [
+            "all",
+            "columns",
+            "get",
+            "iterate",
+            "run",
+            "setAllowBareNamedParameters",
+            "setAllowUnknownNamedParameters",
+            "setReadBigInts",
+            "setReturnArrays"
+          ]
         },
         "backup": {
           "kind": "value"
@@ -6259,7 +6402,64 @@
           "kind": "value"
         },
         "TLSWrap": {
-          "kind": "value"
+          "kind": "class",
+          "prototype": [
+            "certCbDone",
+            "destroySSL",
+            "enableALPNCb",
+            "enableCertCb",
+            "enableKeylogCallback",
+            "enablePskCallback",
+            "enableSessionCallbacks",
+            "enableTrace",
+            "endParser",
+            "exportKeyingMaterial",
+            "getALPNNegotiatedProtocol",
+            "getCertificate",
+            "getCipher",
+            "getEphemeralKeyInfo",
+            "getFinished",
+            "getPeerCertificate",
+            "getPeerFinished",
+            "getPeerX509Certificate",
+            "getProtocol",
+            "getServername",
+            "getSession",
+            "getSharedSigalgs",
+            "getTLSTicket",
+            "getX509Certificate",
+            "isSessionReused",
+            "loadSession",
+            "newSessionDone",
+            "readStart",
+            "readStop",
+            "receive",
+            "renegotiate",
+            "requestOCSP",
+            "setALPNProtocols",
+            "setKeyCert",
+            "setMaxSendFragment",
+            "setOCSPResponse",
+            "setPskIdentityHint",
+            "setServername",
+            "setSession",
+            "setVerifyMode",
+            "shutdown",
+            "start",
+            "useUserBuffer",
+            "verifyError",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writesIssuedByPrevListenerDone",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase",
+            "writeQueueSize"
+          ]
         },
         "wrap": {
           "kind": "function"
