@@ -195,7 +195,12 @@ port.on('message', (message) => {
           value: filename,
         });
         ArrayPrototypeSplice(process.argv, 1, 0, name);
-        const module = getOptionValue('--input-type') === 'module';
+        const inputType = getOptionValue('--input-type');
+        // Without --input-type, code with import or export syntax is a module,
+        // as --experimental-detect-module finds it.
+        const module = inputType === 'module' ||
+          (inputType === '' && getOptionValue('--experimental-detect-module') &&
+           RegExpPrototypeExec(/^\s*(?:import|export)\b/m, filename) !== null);
         // Each code compiles to a module of its own, so the name holds its hash.
         const entry = join(process.cwd(), `[worker eval ${hash(filename)}].${module ? 'mjs' : 'cjs'}`);
         RegExpPrototypeExec(/^/, '');

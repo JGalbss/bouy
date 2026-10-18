@@ -329,6 +329,13 @@ serve(Port) ->
             end,
             From ! {Ref, Answer},
             serve(Port);
+        {load, From, Ref, Module, Binary} ->
+            case code:is_loaded(Module) of
+                false -> {module, Module} = code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary);
+                _ -> ok
+            end,
+            From ! {Ref, ok},
+            serve(Port);
         {Port, {exit_status, Status}} ->
             exit({compiler_exit, Status})
     end.
@@ -383,7 +390,7 @@ load_modules(Text, Acc) ->
     <<Erlang:Length/binary, More/binary>> = Rest,
     Module = binary_to_atom(Name),
     case code:is_loaded(Module) of
-        false -> {module, Module} = compile_loaded(Module, Erlang);
+        false -> ok = load_once(Module, compile_loaded(Erlang));
         _ -> ok
     end,
     load_modules(More, [{Module, Path} | Acc]).
@@ -396,14 +403,27 @@ split3(Text) ->
 
 %% A module of a loaded program compiles in this process, without the
 %% optimizing passes, as eval code does.
-compile_loaded(Module, Erlang) ->
+compile_loaded(Erlang) ->
     {ok, Tokens, _} = erl_scan:string(unicode:characters_to_list(Erlang)),
     Forms = [Form || FormTokens <- split_forms(Tokens, [], []), {ok, Form} <- [erl_parse:parse_form(FormTokens)]],
     Options = [binary, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process, no_ssa_opt,
                no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt, no_fun_opt,
                no_module_opt, no_line_info],
-    {ok, Module, Binary} = compile:forms(Forms, Options),
-    code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary).
+    {ok, _Module, Binary} = compile:forms(Forms, Options),
+    Binary.
+
+%% The compiler process loads each module once: realms that load the same
+%% module at once, such as workers that start the same script, would
+%% otherwise load it twice, and the second load purges the code that the
+%% first realm runs, which kills that realm.
+load_once(Module, Binary) ->
+    Server = compiler(),
+    Ref = erlang:monitor(process, Server),
+    Server ! {load, self(), Ref, Module, Binary},
+    receive
+        {Ref, ok} -> erlang:demonitor(Ref, [flush]), ok;
+        {'DOWN', Ref, process, _, Reason} -> exit({compiler_down, Reason})
+    end.
 
 %% The compiler reports a diagnostic as <ErrorName>\t<message>.
 -spec report(binary()) -> no_return().

@@ -177,7 +177,8 @@ invalid([<<"--", _/binary>> = Arg | Rest], Known, Acc) ->
             invalid(Rest, Known, [Arg | Acc]);
         {Found, Other} ->
             {ok, Type} = case Found of error -> Other; _ -> Found end,
-            case lists:member(Dashed, per_process_options()) of
+            %% V8's flags are the process's: a worker cannot take them (Worker::New).
+            case Type =:= 1 orelse lists:member(Dashed, per_process_options()) of
                 true -> invalid(Rest, Known, [Arg | Acc]);
                 false when Value =:= none, Type >= 3, Type =/= 2 ->
                     case Rest of
