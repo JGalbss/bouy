@@ -226,6 +226,13 @@ impl<'a> Lowerer<'a, '_> {
         statement: &'a ForInStatement<'a>,
         k: &Cont<'a>,
     ) -> Vec<Expr> {
+        // `for (var a = init in o)` in sloppy code: the initializer runs once, before the
+        // object (Annex B.3.5).
+        if let ForStatementLeft::VariableDeclaration(declaration) = &statement.left
+            && declaration.kind.is_var()
+        {
+            self.variables(declaration);
+        }
         let head = self.head_bindings(&statement.left, statement.right.span());
         let right = self.expr(&statement.right);
         self.end_head_bindings(head);

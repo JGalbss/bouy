@@ -2,6 +2,7 @@
 //! tail call: of the join fun of the rest of the block, of a loop fun, or of the function
 //! end. So `return v` is just the value, and loops do not grow the stack.
 
+use oxc::ast::AstKind;
 use oxc::ast::ast::{
     BindingPattern, Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement,
     VariableDeclarationKind,
@@ -241,6 +242,37 @@ impl<'a> Lowerer<'a, '_> {
         std::mem::replace(&mut self.pre, saved)
     }
 
+    /// The simple catch parameter of the name of the `var` `id` in a catch clause around
+    /// the declaration, inside its function. oxc binds such a parameter as a shadow of the
+    /// var, outside the bindings of its scope.
+    fn catch_parameter_shadowing(
+        &self,
+        id: &oxc::ast::ast::BindingIdentifier<'a>,
+        symbol: SymbolId,
+    ) -> Option<SymbolId> {
+        for ancestor in self.semantic.nodes().ancestors(id.node_id.get()) {
+            match ancestor.kind() {
+                AstKind::Function(_)
+                | AstKind::ArrowFunctionExpression(_)
+                | AstKind::StaticBlock(_)
+                | AstKind::Program(_) => return None,
+                AstKind::CatchClause(clause) => {
+                    if let Some(parameter) = &clause.param
+                        && let BindingPattern::BindingIdentifier(binding) = &parameter.pattern
+                        && binding.name == id.name
+                    {
+                        // oxc may give the parameter the symbol of the var: the write then
+                        // reaches the parameter's binding in the catch clause all the same.
+                        let _ = symbol;
+                        return binding.symbol_id.get();
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
     pub fn variables(&mut self, declaration: &'a oxc::ast::ast::VariableDeclaration<'a>) {
         if declaration.declare {
             return;
@@ -259,6 +291,13 @@ impl<'a> Lowerer<'a, '_> {
                 let objects = self.with_objects_for(Some(symbol), id.name.as_str());
                 if !objects.is_empty() {
                     self.with_var_initializer(id.name.as_str(), symbol, &objects, init);
+                    continue;
+                }
+                // A `var` in a catch block whose simple parameter has its name: the
+                // initializer writes the parameter (Annex B.3.4).
+                if let Some(parameter) = self.catch_parameter_shadowing(id, symbol) {
+                    let value = self.named_expr(init, binding_name(&declarator.id));
+                    let _ = self.assign_symbol(parameter, value, id.span);
                     continue;
                 }
             }

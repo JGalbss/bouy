@@ -10,7 +10,7 @@ use oxc::semantic::ScopeFlags;
 
 use super::analyze::Suspends;
 use super::context::{
-    Cont, FinallyFrame, Kind, Lowerer, Reify, block, cell_get, cell_set, throw_value,
+    Cont, FinallyFrame, Kind, Local, Lowerer, Reify, block, cell_get, cell_set, throw_value,
 };
 use super::stmt::jump_tuple;
 use crate::erlang::{CatchClause as ErlangCatch, Clause, Expr};
@@ -66,9 +66,10 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(handler) = &statement.handler {
             let error = self.fresh("E");
             let saved = std::mem::take(&mut self.pre);
-            if let Some(param) = &handler.param {
-                self.declare_pattern(&param.pattern, Expr::var(error.clone()));
-            }
+            let shadowed = handler
+                .param
+                .as_ref()
+                .and_then(|param| self.catch_parameter(&param.pattern, &error));
             let mut catch = std::mem::replace(&mut self.pre, saved);
             // The completion of a catch clause starts over (ECMA-262 §14.15.3).
             if let Some(completion) = &self.frame.completion {
@@ -78,6 +79,7 @@ impl<'a> Lowerer<'a, '_> {
                 handler.body.body.iter().collect(),
                 &Cont::Value(normal.clone()),
             ));
+            self.end_catch_parameter(shadowed);
             self.frame.env.clone_from(&saved_env);
             let catch = if statement.finalizer.is_some() {
                 self.raising_try(catch)
@@ -315,9 +317,10 @@ impl<'a> Lowerer<'a, '_> {
         let outer = self.handler_chain();
         let depth = self.frame.region;
         let saved = std::mem::take(&mut self.pre);
-        if let Some(param) = &clause.param {
-            self.declare_pattern(&param.pattern, Expr::var(error.to_owned()));
-        }
+        let shadowed = clause
+            .param
+            .as_ref()
+            .and_then(|param| self.catch_parameter(&param.pattern, error));
         let mut catch = std::mem::replace(&mut self.pre, saved);
         match throw_finally {
             Some(throw_finally) => {
@@ -331,6 +334,7 @@ impl<'a> Lowerer<'a, '_> {
             None => catch.extend(self.stmts(clause.body.body.iter().collect(), after)),
         }
         let catch = self.seal(catch);
+        self.end_catch_parameter(shadowed);
         self.wrap_chain(catch, &outer)
     }
 
@@ -583,5 +587,40 @@ fn cont_vars(k: &Cont<'_>) -> Vec<oxc::semantic::SymbolId> {
     match k {
         Cont::Call { vars, .. } | Cont::Next { vars, .. } | Cont::Test { vars, .. } => vars.clone(),
         Cont::Return | Cont::Value(_) => Vec::new(),
+    }
+}
+
+impl<'a> Lowerer<'a, '_> {
+    /// Binds the parameter of a catch clause to the thrown value. A simple parameter that
+    /// oxc shares with a `var` of the code around it, such as a global of a script, is a
+    /// local of the clause (Annex B.3.4): returns its symbol and the binding to restore.
+    fn catch_parameter(
+        &mut self,
+        pattern: &'a oxc::ast::ast::BindingPattern<'a>,
+        error: &str,
+    ) -> Option<(oxc::semantic::SymbolId, Option<Local>)> {
+        if let oxc::ast::ast::BindingPattern::BindingIdentifier(id) = pattern
+            && let Some(symbol) = id.symbol_id.get()
+            && self.tops.contains_key(&symbol)
+        {
+            let cell = self.fresh("Catch");
+            self.pre.push(Expr::matches(
+                Expr::var(cell.clone()),
+                Expr::call("buoy_heap", "cell", vec![Expr::var(error.to_owned())]),
+            ));
+            let previous = self.frame.env.insert(symbol, Local::Cell(cell));
+            return Some((symbol, previous));
+        }
+        self.declare_pattern(pattern, Expr::var(error.to_owned()));
+        None
+    }
+
+    fn end_catch_parameter(&mut self, shadowed: Option<(oxc::semantic::SymbolId, Option<Local>)>) {
+        if let Some((symbol, previous)) = shadowed {
+            match previous {
+                Some(local) => self.frame.env.insert(symbol, local),
+                None => self.frame.env.remove(&symbol),
+            };
+        }
     }
 }

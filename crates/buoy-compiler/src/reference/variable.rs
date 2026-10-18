@@ -229,6 +229,15 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Declares `symbol` with `value`: a version, a cell, or a module variable.
     pub fn declare_symbol(&mut self, symbol: SymbolId, value: Expr) {
+        // A catch parameter that shares the symbol of a global or module `var` shadows it
+        // inside its clause, also for the writes of a `var` there (Annex B.3.4).
+        if self.tops.contains_key(&symbol)
+            && let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
+        {
+            let value = self.bind(value);
+            self.pre.push(cell_set(&cell, value));
+            return;
+        }
         if self.early.contains(&symbol)
             && let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
         {

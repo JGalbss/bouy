@@ -348,6 +348,12 @@ impl<'a> Lowerer<'a, '_> {
             ));
             return std::mem::replace(&mut self.pre, saved);
         }
+        // A global or a variable of eval code is the var binding, also inside a catch
+        // clause whose parameter shadows it there.
+        if let Some(Top::Global(name)) = self.tops.get(&target).cloned() {
+            let _ = self.set_global(&name, value);
+            return std::mem::replace(&mut self.pre, saved);
+        }
         match self.frame.env.get(&target).cloned() {
             Some(Local::Cell(cell)) => self.pre.push(cell_set(&cell, value)),
             // A span outside every block, so that the write reaches the var binding.
