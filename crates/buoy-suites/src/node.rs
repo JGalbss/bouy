@@ -1,5 +1,5 @@
 //! Node's own tests (section 5.7 of docs/design/testing.md): the files of `parallel`,
-//! `es-module`, and `sequential` that `scripts/vendor-node-tests.sh` copied into
+//! `es-module`, `sequential`, and `wasi` that `scripts/vendor-node-tests.sh` copied into
 //! `tests/node/test` at the tag of `.node-version`. Each file runs in its own `buoy` OS
 //! process, because these files use `process.exit`, signals, stdio, and child processes. A
 //! file passes when it exits with 0 within the deadline. `config.json` skips the files that
@@ -33,7 +33,7 @@ pub const UPDATE: &str =
 const SUITE_DIRECTORY: &str = "test";
 
 /// The directories of test files. `sequential` runs one file at a time.
-const DIRECTORIES: [&str; 3] = ["parallel", "es-module", "sequential"];
+const DIRECTORIES: [&str; 4] = ["parallel", "es-module", "sequential", "wasi"];
 const SEQUENTIAL: &str = "sequential/";
 
 /// The flags of a file that tests a private internal or a V8 engine detail. These files
@@ -352,11 +352,14 @@ fn flag_name(word: &str) -> Option<String> {
 }
 
 /// The group of `module` of a file (section 5.7): the built-in module of its name, or
-/// `module` for the files of `es-module`, or `other`.
+/// `module` for the files of `es-module`, `wasi` for the files of `wasi`, or `other`.
 fn module_of(id: &str) -> String {
     let (directory, file) = id.split_once('/').unwrap_or(("", id));
     if directory == "es-module" {
         return "module".to_owned();
+    }
+    if directory == "wasi" {
+        return "wasi".to_owned();
     }
     let name = file.strip_prefix("test-").unwrap_or(file);
     MODULES
@@ -704,6 +707,7 @@ mod tests {
             ("parallel/test-worker-message-port.js", "worker_threads"),
             ("es-module/test-esm-loader.mjs", "module"),
             ("sequential/test-fsx.js", "other"),
+            ("wasi/test-return-on-exit.js", "wasi"),
         ] {
             assert_eq!(module_of(id), module, "{id}");
         }
