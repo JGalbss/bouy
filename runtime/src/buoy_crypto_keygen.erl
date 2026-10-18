@@ -145,7 +145,7 @@ ec_job([Name, ParamEncoding | Rest]) ->
 
 %% new DhKeyPairGenJob(mode, group, ...encoding) or (mode, prime or
 %% primeLength, generator, ...encoding)
-dh_job([Group | Rest]) when is_binary(Group); is_tuple(Group) ->
+dh_job([Group | Rest]) when is_binary(Group); element(1, Group) =:= '$u16' ->
     Prime = case buoy_crypto_dh:group_prime(buoy_crypto:string(Group)) of
         {ok, P} -> binary:decode_unsigned(P);
         error -> buoy_crypto:fail_code(<<"ERR_CRYPTO_UNKNOWN_DH_GROUP">>)

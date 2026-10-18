@@ -156,10 +156,13 @@ sign_digest(_, _, _, _, _) ->
     buoy_crypto:fail({openssl, operation_not_supported_for_this_keytype}).
 
 verify_digest(#{kind := Kind} = K, Md, Digest, Sig, Padding, Salt) when Kind =:= rsa; Kind =:= rsa_pss ->
-    Opts = rsa_options(K, Md, Padding, Salt),
-    try crypto:verify(rsa, otp_md(Md), {digest, Digest}, Sig, [maps:get(e, K), maps:get(n, K)], Opts)
+    %% A key or a padding that rejects the options gives false (VerifyFinal).
+    try
+        Opts = rsa_options(K, Md, Padding, Salt),
+        crypto:verify(rsa, otp_md(Md), {digest, Digest}, Sig, [maps:get(e, K), maps:get(n, K)], Opts)
     catch
-        error:{_, _, _} -> false
+        error:{_, _, _} -> false;
+        error:{crypto_failure, _} -> false
     end;
 verify_digest(#{kind := ec, curve := Curve, pub := Pub}, Md, Digest, Sig, _, _) ->
     try crypto:verify(ecdsa, otp_md(Md), {digest, Digest}, Sig, [Pub, Curve])
@@ -191,7 +194,11 @@ rsa_private(#{e := E, n := N, d := D, p := P, q := Q, dp := DP, dq := DQ, qi := 
 %% the MGF1 digest, which a restricted RSA-PSS key sets.
 rsa_options(K, Md, ?RSA_PKCS1_PSS_PADDING, Salt) ->
     {Mgf1, KeySalt} = case buoy_crypto_pkey:pss_params(K) of
-        #{mgf1 := M, salt := S} ->
+        #{md := KeyMd, mgf1 := M, salt := S} ->
+            {ok, #{name := Allowed}} = buoy_crypto_hash:digest(KeyMd),
+            maps:get(name, Md) =:= Allowed orelse buoy_crypto:fail({openssl, digest_not_allowed}),
+            is_integer(Salt) andalso Salt >= 0 andalso Salt < S andalso
+                buoy_crypto:fail({openssl, pss_saltlen_too_small}),
             {ok, MgfMd} = buoy_crypto_hash:digest(M),
             {otp_md(MgfMd), S};
         undefined -> {otp_md(Md), undefined}

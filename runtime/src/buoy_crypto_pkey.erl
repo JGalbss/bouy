@@ -105,9 +105,12 @@ parse_private(Text, ?FORMAT_PEM, _, Passphrase) -> private_pem(Text, Passphrase)
 parse_private(Der, ?FORMAT_DER, ?PKCS1, _) -> der_or_fail(fun() -> rsa_private_decode(Der) end);
 parse_private(Der, ?FORMAT_DER, ?SEC1, _) -> der_or_fail(fun() -> sec1_decode(Der, undefined) end);
 parse_private(Der, ?FORMAT_DER, ?PKCS8, Passphrase) ->
-    case is_encrypted_pkcs8(Der) of
-        true -> pkcs8_decode(decrypt_pkcs8(Der, Passphrase));
-        false -> pkcs8_decode(Der)
+    case {is_encrypted_pkcs8(Der), Passphrase} of
+        %% d2i_PKCS8PrivateKey_bio reports PEM_R_BAD_PASSWORD_READ, which
+        %% TryParsePrivateKey turns into NEED_PASSPHRASE.
+        {true, undefined} -> buoy_crypto:fail_code(<<"ERR_MISSING_PASSPHRASE">>);
+        {true, _} -> pkcs8_decode(decrypt_pkcs8(Der, Passphrase));
+        {false, _} -> pkcs8_decode(Der)
     end;
 parse_private(_, _, _, _) -> fail(decoder_unsupported).
 
@@ -297,37 +300,51 @@ decrypt_pkcs8(Der, Passphrase) ->
         {{KdfSpec, EncSpec}, D}
     end),
     {{seq, [{oid, ?PBKDF2}, {seq, [{octets, Salt}, {int, Iter} | KdfRest]}]}, {seq, [{oid, CipherOid} | CipherParams]}} = Scheme,
-    {Cipher, KeyLen} = case lists:keyfind(CipherOid, 2, pbes_ciphers()) of
-        {_, _, C, L} -> {C, L};
-        false -> fail(unsupported)
+    Cipher = case [Name || {Name, Oid} <- cipher_oids(), Oid =:= CipherOid] of
+        [Name] -> pbe_cipher(Name);
+        [] -> fail(unsupported)
     end,
     Prf = case [O || {seq, [{oid, O} | _]} <- KdfRest] of
         [O] -> md_of_oid(hmac_oid(O));
         [] -> <<"sha1">>
     end,
     {ok, Md} = buoy_crypto_hash:digest(Prf),
-    Key = buoy_crypto_kdf:pbkdf2(Md, Passphrase, Salt, Iter, KeyLen),
-    [{octets, IV}] = CipherParams,
-    unpad_or_fail(crypto:crypto_one_time(Cipher, Key, IV, Data, false)).
+    Key = buoy_crypto_kdf:pbkdf2(Md, Passphrase, Salt, Iter, maps:get(key, Cipher)),
+    IV = case CipherParams of
+        [{octets, V}] -> V;
+        _ -> <<>>
+    end,
+    crypt(Cipher, Key, IV, Data, false).
 
-unpad_or_fail(<<>>) -> fail(bad_decrypt);
-unpad_or_fail(Plain) ->
-    Pad = binary:last(Plain),
-    Size = byte_size(Plain),
-    case Pad >= 1 andalso Pad =< 16 andalso Pad =< Size andalso
-         binary:part(Plain, Size - Pad, Pad) =:= binary:copy(<<Pad>>, Pad) of
-        true -> binary:part(Plain, 0, Size - Pad);
-        false -> fail(bad_decrypt)
+%% The ciphers of OpenSSL's key encryption that OTP's crypto runs, with the
+%% OIDs that PBES2 names them by.
+cipher_oids() ->
+    [{<<"aes-128-ecb">>, {2,16,840,1,101,3,4,1,1}}, {<<"aes-128-cbc">>, {2,16,840,1,101,3,4,1,2}},
+     {<<"aes-128-ofb">>, {2,16,840,1,101,3,4,1,3}}, {<<"aes-128-cfb">>, {2,16,840,1,101,3,4,1,4}},
+     {<<"aes-192-ecb">>, {2,16,840,1,101,3,4,1,21}}, {<<"aes-192-cbc">>, {2,16,840,1,101,3,4,1,22}},
+     {<<"aes-192-ofb">>, {2,16,840,1,101,3,4,1,23}}, {<<"aes-192-cfb">>, {2,16,840,1,101,3,4,1,24}},
+     {<<"aes-256-ecb">>, {2,16,840,1,101,3,4,1,41}}, {<<"aes-256-cbc">>, {2,16,840,1,101,3,4,1,42}},
+     {<<"aes-256-ofb">>, {2,16,840,1,101,3,4,1,43}}, {<<"aes-256-cfb">>, {2,16,840,1,101,3,4,1,44}},
+     {<<"des-ede3-cbc">>, {1,2,840,113549,3,7}}, {<<"des-cbc">>, {1,3,14,3,2,7}}].
+
+%% The cipher of a name, as OpenSSL's key encryption takes it.
+pbe_cipher(Name) ->
+    case buoy_crypto_cipher:otp_cipher(Name) of
+        {ok, C} -> C;
+        error -> fail(unsupported)
     end.
 
-%% The ciphers of PBES2 and of the RFC 1421 headers: name, OID, OTP cipher,
-%% and key length.
-pbes_ciphers() ->
-    [{<<"aes-128-cbc">>, {2,16,840,1,101,3,4,1,2}, aes_128_cbc, 16},
-     {<<"aes-192-cbc">>, {2,16,840,1,101,3,4,1,22}, aes_192_cbc, 24},
-     {<<"aes-256-cbc">>, {2,16,840,1,101,3,4,1,42}, aes_256_cbc, 32},
-     {<<"des-ede3-cbc">>, {1,2,840,113549,3,7}, des_ede3_cbc, 24},
-     {<<"des-cbc">>, {1,3,14,3,2,7}, des_cbc, 8}].
+%% Data encrypted or decrypted, with PKCS#7 padding for a block cipher.
+crypt(#{otp := Otp, block := Block}, Key, IV, Data, Encrypt) ->
+    Opts = [{encrypt, Encrypt}] ++ [{padding, pkcs_padding} || Block > 1],
+    try
+        case IV of
+            <<>> -> crypto:crypto_one_time(Otp, Key, Data, Opts);
+            _ -> crypto:crypto_one_time(Otp, Key, IV, Data, Opts)
+        end
+    catch
+        error:_ -> fail(bad_decrypt)
+    end.
 
 %% The RFC 1421 encryption of a PEM block (Proc-Type and DEK-Info).
 legacy_decrypt(Der, Headers, Passphrase) ->
@@ -336,13 +353,10 @@ legacy_decrypt(Der, Headers, Passphrase) ->
         {_, _} when Passphrase =:= undefined -> fail(interrupted_or_cancelled);
         {_, Info} ->
             [Name, IVHex] = binary:split(Info, <<",">>),
-            {_, _, Cipher, KeyLen} = case lists:keyfind(string:lowercase(Name), 1, pbes_ciphers()) of
-                false -> fail(unsupported);
-                Found -> Found
-            end,
+            #{key := KeyLen} = Cipher = pbe_cipher(Name),
             IV = binary:decode_hex(IVHex),
             Key = bytes_to_key(Passphrase, binary:part(IV, 0, 8), KeyLen),
-            unpad_or_fail(crypto:crypto_one_time(Cipher, Key, IV, Der, false))
+            crypt(Cipher, Key, IV, Der, false)
     end.
 
 %% EVP_BytesToKey with MD5 and one round.
@@ -369,8 +383,8 @@ rsa_only(_) -> fail(unsupported).
 out(?FORMAT_PEM, Label, Der) -> buoy_crypto_der:pem_encode(Label, Der);
 out(_, _, Der) -> Der.
 
-%% The private key K in Format and Type, encrypted with Cipher (a name of
-%% pbes_ciphers/0, or undefined) under Passphrase.
+%% The private key K in Format and Type, encrypted with the cipher named
+%% Cipher, or not when it is undefined, under Passphrase.
 -spec write_private(key(), integer(), integer(), binary() | undefined, binary() | undefined) -> binary().
 write_private(K, Format, ?PKCS1, Cipher, Passphrase) ->
     rsa_only(K),
@@ -385,14 +399,15 @@ write_private(K, Format, _, Cipher, Passphrase) ->
     out(Format, <<"ENCRYPTED PRIVATE KEY">>, encrypt_pkcs8(pkcs8(K), Cipher, Passphrase)).
 
 legacy_out(?FORMAT_PEM, Label, Der, undefined, _) -> buoy_crypto_der:pem_encode(Label, Der);
-legacy_out(?FORMAT_PEM, Label, Der, Cipher, Passphrase) ->
-    {Name, _, OtpCipher, KeyLen} = cipher(Cipher),
-    IV = crypto:strong_rand_bytes(iv_length(OtpCipher)),
+legacy_out(?FORMAT_PEM, Label, Der, CipherName, Passphrase) ->
+    #{name := Name, key := KeyLen, iv := IVLen} = Cipher = pbe_cipher(CipherName),
+    %% PEM_write_bio_* needs a cipher with an IV, whose head salts the key.
+    IVLen >= 8 orelse fail(pem_unsupported_cipher),
+    IV = crypto:strong_rand_bytes(IVLen),
     Key = bytes_to_key(Passphrase, binary:part(IV, 0, 8), KeyLen),
-    Encrypted = crypto:crypto_one_time(OtpCipher, Key, IV, pad(Der, iv_length(OtpCipher)), true),
     Headers = [{<<"Proc-Type">>, <<"4,ENCRYPTED">>},
                {<<"DEK-Info">>, <<(string:uppercase(Name))/binary, ",", (binary:encode_hex(IV))/binary>>}],
-    pem_with_headers(Label, Headers, Encrypted);
+    pem_with_headers(Label, Headers, crypt(Cipher, Key, IV, Der, true));
 legacy_out(_, _, Der, _, _) -> Der.
 
 pem_with_headers(Label, Headers, Der) ->
@@ -401,34 +416,23 @@ pem_with_headers(Label, Headers, Der) ->
     <<Begin:(byte_size(Begin))/binary, Body/binary>> = Pem,
     iolist_to_binary([Begin, [[K, <<": ">>, V, $\n] || {K, V} <- Headers], $\n, Body]).
 
-cipher(Name) ->
-    case lists:keyfind(string:lowercase(Name), 1, pbes_ciphers()) of
-        false -> fail(unsupported);
-        Found -> Found
-    end.
-
-iv_length(des_ede3_cbc) -> 8;
-iv_length(des_cbc) -> 8;
-iv_length(_) -> 16.
-
-pad(Data, Block) ->
-    N = Block - (byte_size(Data) rem Block),
-    <<Data/binary, (binary:copy(<<N>>, N))/binary>>.
-
 %% PBES2 with PBKDF2 and HMAC-SHA256, as OpenSSL 3 writes it.
-encrypt_pkcs8(Der, Cipher, Passphrase) ->
-    {_, Oid, OtpCipher, KeyLen} = cipher(Cipher),
+encrypt_pkcs8(Der, CipherName, Passphrase) ->
+    #{name := Name, key := KeyLen, iv := IVLen} = Cipher = pbe_cipher(CipherName),
+    Oid = case lists:keyfind(Name, 1, cipher_oids()) of
+        {_, O} -> O;
+        false -> fail(unsupported)
+    end,
     Salt = crypto:strong_rand_bytes(16),
     Iter = 2048,
-    IV = crypto:strong_rand_bytes(iv_length(OtpCipher)),
+    IV = crypto:strong_rand_bytes(IVLen),
     {ok, Md} = buoy_crypto_hash:digest(<<"sha256">>),
     Key = buoy_crypto_kdf:pbkdf2(Md, Passphrase, Salt, Iter, KeyLen),
-    Encrypted = crypto:crypto_one_time(OtpCipher, Key, IV, pad(Der, iv_length(OtpCipher)), true),
     buoy_crypto_der:encode({seq, [
         {seq, [{oid, ?PBES2}, {seq, [
             {seq, [{oid, ?PBKDF2}, {seq, [{octets, Salt}, {int, Iter}, {seq, [{oid, {1,2,840,113549,2,9}}, null]}]}]},
             {seq, [{oid, Oid}, {octets, IV}]}]}]},
-        {octets, Encrypted}]}).
+        {octets, crypt(Cipher, Key, IV, Der, true)}]}).
 
 %% SubjectPublicKeyInfo of K.
 -spec spki(key()) -> binary().
@@ -593,7 +597,11 @@ curve_name(Curve) ->
 
 curve_oid(prime256v1) -> pubkey_cert_records:namedCurves(secp256r1);
 curve_oid(prime192v1) -> pubkey_cert_records:namedCurves(secp192r1);
-curve_oid(Curve) -> pubkey_cert_records:namedCurves(Curve).
+curve_oid(Curve) ->
+    try pubkey_cert_records:namedCurves(Curve)
+    catch
+        error:_ -> fail(missing_oid)
+    end.
 
 curve_of_oid(Oid) ->
     try pubkey_cert_records:namedCurves(Oid) of

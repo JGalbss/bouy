@@ -6,9 +6,14 @@
 %% select message of the socket module, which buoy_node_loop routes to
 %% event/1, says that the descriptor is ready.
 %%
-%% - Reads: readStart arms a recv, and each read goes to onread as its own
-%%   callback. readStop leaves the data in the kernel, so the peer's writes
-%%   stop when its window fills: the backpressure of TCP.
+%% - Reads: readStart arms a recv. A ready socket reads up to 32 times,
+%%   64 KiB each, as uv__read does, and each read goes to onread as its own
+%%   job. readStop leaves the data in the kernel, so the peer's writes stop
+%%   when its window fills: the backpressure of TCP.
+%% - event/1 runs outside any job, as libuv's poll phase does, and runs
+%%   each JavaScript callback as a job (js/1), which drains the microtasks
+%%   and ticks after it. A kick is a select message that the handle sends
+%%   itself, so a read or a write that JavaScript starts runs there too.
 %% - Writes: a write sends at once, as uv_try_write, and completes
 %%   synchronously (kLastWriteWasAsync 0) when the kernel takes every byte.
 %%   Otherwise the rest waits in a queue that drains when the socket is
@@ -20,8 +25,10 @@
 %%   listening, connecting, writing, or shutting down.
 -module(buoy_node_socket).
 
--export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, later/1, event/1]).
+-export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, write_kick/1, later/1, js/1, event/1]).
 -export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
+-export([sockaddr/3, address_text/1, scope/1]).
+-export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1]).
 -export_type([kind/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -41,8 +48,8 @@
 create(Handle, Kind) ->
     buoy_heap:private_put(Handle, ?STATE, #{
         kind => Kind, socket => none, refed => true, closed => false, reading => false,
-        listening => false, rsel => none, wsel => none, kicked => false, queue => [], queued => 0,
-        shutdown => none, connect => none, rbuf => <<>>, user_buffer => none, path => none,
+        listening => false, rsel => none, wsel => none, queue => [], queued => 0,
+        shutdown => none, connect => none, rbuf => <<>>, user_buffer => none, path => none, listener => none,
         read => 0, written => 0, async_id => new_async_id()}).
 
 %% The handle of a socket that a listener accepted, made with the constructor
@@ -84,6 +91,9 @@ holds(#{reading := Reading, listening := Listening, connect := Connect, queue :=
     Reading orelse Listening orelse Connect =/= none orelse Queue =/= [] orelse Shutdown =/= none.
 
 attach(Handle, Socket) ->
+    %% A read takes up to 64 KiB, as libuv's buffers do; the socket module
+    %% reads 8 KiB by default, and a datagram arrives whole.
+    _ = socket:setopt(Socket, {otp, rcvbuf}, 65536),
     erlang:put({?MODULE, Socket}, Handle),
     save(Handle, (state(Handle))#{socket := Socket}).
 
@@ -96,6 +106,10 @@ new_async_id() ->
 %% Runs Fun as a later callback of the loop.
 -spec later(fun(() -> term())) -> ok.
 later(Fun) -> buoy_node_stream:call(self(), Fun).
+
+%% Runs a JavaScript callback as a job of its own, from event/1.
+-spec js(fun(() -> term())) -> ok.
+js(Fun) -> buoy_jobs:run_job(Fun).
 
 %%% The methods
 
@@ -123,6 +137,8 @@ methods(Proto) ->
                {<<"bytesWritten">>, fun(This, _) -> maps:get(written, state(This)) end},
                {<<"writeQueueSize">>, fun(This, _) -> maps:get(queued, state(This)) end}],
     [define(Proto, Name, get, Fun) || {Name, Fun} <- Getters],
+    %% LibuvStreamWrap's flag, which tls.TLSSocket asserts before it wraps.
+    buoy_heap:define(Proto, <<"isStreamBase">>, #{value => true, writable => true, enumerable => true, configurable => true}),
     handle_methods(Proto).
 
 %% Defines the methods of HandleWrap on Proto, and the fd getter.
@@ -167,19 +183,29 @@ fd(#{socket := Socket}) ->
 
 %%% Reads
 
-read_start(Handle) ->
-    S = state(Handle),
-    save(Handle, S#{reading := true}),
-    kick(Handle),
-    0.
-
-%% Reads in a later callback, unless a read waits for the socket already.
+%% Reads soon, unless a read waits for the socket already: a select
+%% message that the handle sends itself.
 -spec kick(term()) -> ok.
 kick(Handle) ->
     case state(Handle) of
-        #{rsel := none, kicked := false, socket := Socket} = S when Socket =/= none ->
-            save(Handle, S#{kicked := true}),
-            later(fun() -> save(Handle, (state(Handle))#{kicked := false}), readable(Handle) end);
+        #{rsel := none, socket := Socket, closed := false} = S when Socket =/= none ->
+            Ref = make_ref(),
+            save(Handle, S#{rsel := Ref}),
+            self() ! {'$socket', Socket, select, Ref},
+            ok;
+        _ ->
+            ok
+    end.
+
+%% Flushes soon, unless a write waits for the socket already.
+-spec write_kick(term()) -> ok.
+write_kick(Handle) ->
+    case state(Handle) of
+        #{wsel := none, socket := Socket, closed := false} = S when Socket =/= none ->
+            Ref = make_ref(),
+            save(Handle, S#{wsel := Ref}),
+            self() ! {'$socket', Socket, select, Ref},
+            ok;
         _ ->
             ok
     end.
@@ -189,43 +215,52 @@ kick(Handle) ->
 readable(Handle) ->
     case state(Handle) of
         #{kind := udp} -> buoy_binding_udp_wrap:receive_ready(Handle);
-        #{listening := true} -> accept(Handle);
-        _ -> read(Handle)
+        #{listening := true} -> accept(Handle, 32);
+        _ -> read(Handle, 32)
     end.
 
-%% One read while the handle reads: data, the end, or an error goes to
-%% onread, and the next read is a later callback. With no data the socket
-%% selects, and event/1 calls back.
-read(Handle) ->
+%% Up to N reads while the handle reads, each to onread as a job; with no
+%% data the socket selects, and event/1 calls back.
+read(Handle, 0) ->
+    kick(Handle);
+read(Handle, N) ->
     case state(Handle) of
         #{closed := true} -> ok;
         #{reading := false} -> ok;
         #{rsel := Ref} when Ref =/= none -> ok;
         #{rbuf := Buffered} = S when Buffered =/= <<>> ->
             save(Handle, S#{rbuf := <<>>}),
-            data(Handle, Buffered),
-            kick(Handle);
+            js(fun() -> data(Handle, Buffered) end),
+            read(Handle, N - 1);
         #{socket := Socket} = S ->
             case socket:recv(Socket, 0, [], nowait) of
                 {ok, Data} ->
-                    data(Handle, Data),
-                    kick(Handle);
+                    js(fun() -> data(Handle, Data) end),
+                    read(Handle, N - 1);
                 {select, {{select_info, _, Ref}, Data}} ->
                     save(Handle, S#{rsel := Ref}),
-                    data(Handle, Data);
+                    js(fun() -> data(Handle, Data) end);
                 {select, {select_info, _, Ref}} ->
                     save(Handle, S#{rsel := Ref});
                 {error, closed} ->
-                    ended(Handle, ?UV_EOF);
+                    js(fun() -> ended(Handle, ?UV_EOF) end);
                 {error, Reason} ->
-                    ended(Handle, errno(Reason))
+                    js(fun() -> ended(Handle, errno(Reason)) end)
             end
     end.
 
 %% Data to onread, through the user's buffer when net set one (useUserBuffer):
-%% what does not fit waits for the next read.
+%% what does not fit waits for the next read. A listener, such as the
+%% TLSWrap that wraps the handle, takes the data in place of onread.
 data(Handle, Data) ->
-    S = state(Handle),
+    case state(Handle) of
+        #{listener := none} = S -> data(Handle, S, Data);
+        #{listener := Listener} = S ->
+            save(Handle, S#{read := maps:get(read, S) + byte_size(Data)}),
+            Listener({data, Data})
+    end.
+
+data(Handle, S, Data) ->
     {Chunk, Rest} = case S of
         #{user_buffer := none} -> {Data, <<>>};
         #{user_buffer := User} ->
@@ -252,9 +287,17 @@ data(Handle, Data) ->
 %% The end of the stream (UV_EOF) or a read error: reading stops, as
 %% uv__stream_eof stops it.
 ended(Handle, Status) ->
-    save(Handle, (state(Handle))#{reading := false}),
-    buoy_heap:set(stream_state(), ?K_READ_BYTES, Status),
-    onread(Handle, undefined).
+    S = state(Handle),
+    save(Handle, S#{reading := false}),
+    case S of
+        #{listener := none} ->
+            buoy_heap:set(stream_state(), ?K_READ_BYTES, Status),
+            onread(Handle, undefined);
+        #{listener := Listener} when Status =:= ?UV_EOF ->
+            Listener(eof);
+        #{listener := Listener} ->
+            Listener({error, Status})
+    end.
 
 onread(Handle, Arg) ->
     Onread = buoy_heap:get(Handle, <<"onread">>),
@@ -316,7 +359,7 @@ flush(Handle) ->
             case socket:send(Socket, Bytes, [], nowait) of
                 ok ->
                     save(Handle, S#{queue := Rest, queued := Queued - byte_size(Bytes)}),
-                    complete(Req, 0, Handle),
+                    js(fun() -> complete(Req, 0, Handle) end),
                     flush(Handle);
                 {select, {{select_info, _, Ref}, Left}} ->
                     save(Handle, S#{queue := [{Req, Left} | Rest], queued := Queued - byte_size(Bytes) + byte_size(Left), wsel := Ref});
@@ -325,16 +368,19 @@ flush(Handle) ->
                 {error, Reason} ->
                     save(Handle, S#{queue := [], queued := 0}),
                     Status = errno(write_reason(Reason)),
-                    [complete(R, Status, Handle) || {R, _} <- [{Req, Bytes} | Rest]],
+                    js(fun() -> [complete(R, Status, Handle) || {R, _} <- [{Req, Bytes} | Rest]] end),
                     flush(Handle)
             end;
         #{queue := [], shutdown := Req} when Req =/= none ->
-            finish_shutdown(Handle);
+            js(fun() -> finish_shutdown(Handle) end);
         _ ->
             ok
     end.
 
 %% A request's oncomplete(status, handle, error), as StreamReq::Done calls it.
+%% A write of a listener, {raw, Done}, calls Done(status).
+complete({raw, Done}, Status, _Handle) ->
+    Done(Status);
 complete(Req, Status, Handle) ->
     Oncomplete = buoy_heap:get(Req, <<"oncomplete">>),
     buoy_heap:is_callable(Oncomplete) andalso buoy_heap:call(Oncomplete, Req, [Status, Handle, undefined]).
@@ -385,6 +431,36 @@ finish_shutdown(Handle) ->
             ok
     end.
 
+%%% The parent of a wrapping stream
+
+%% Listener(Event) takes the reads of the handle in place of onread: {data,
+%% Bytes}, eof, or {error, Status}; none gives them back to onread.
+-spec set_listener(term(), none | fun((term()) -> term())) -> ok.
+set_listener(Handle, Listener) ->
+    save(Handle, (state(Handle))#{listener := Listener}).
+
+-spec read_start(term()) -> integer().
+read_start(Handle) ->
+    S = state(Handle),
+    save(Handle, S#{reading := true}),
+    kick(Handle),
+    0.
+
+-spec read_stop(term()) -> integer().
+read_stop(Handle) ->
+    save(Handle, (state(Handle))#{reading := false}),
+    0.
+
+%% Writes bytes of a listener: 0, or a negative errno.
+-spec write_raw(term(), iodata()) -> integer().
+write_raw(Handle, Bytes) ->
+    write(Handle, {raw, fun(_) -> ok end}, iolist_to_binary(Bytes)).
+
+%% Shuts the write side after the queued writes: 0, or a negative errno.
+-spec shutdown_raw(term()) -> integer().
+shutdown_raw(Handle) ->
+    shutdown(Handle, {raw, fun(_) -> ok end}).
+
 %%% Close
 
 %% close(callback): the socket closes now; in a later callback the requests
@@ -434,8 +510,6 @@ ensure(Handle, Domain) ->
             end,
             case socket:open(Domain, Type, Protocol) of
                 {ok, Socket} ->
-                    %% A datagram arrives whole: room for the largest one.
-                    Kind =:= udp andalso socket:setopt(Socket, {otp, rcvbuf}, 65536),
                     attach(Handle, Socket),
                     {ok, Socket};
                 {error, Reason} ->
@@ -476,26 +550,34 @@ listen(Handle, Backlog) ->
             case socket:listen(Socket, max(Backlog, 1)) of
                 ok ->
                     save(Handle, S#{listening := true}),
-                    later(fun() -> accept(Handle) end),
+                    kick(Handle),
                     0;
                 {error, Reason} ->
                     errno(Reason)
             end
     end.
 
-accept(Handle) ->
+%% Up to N accepts, each to onconnection as a job, as uv__server_io loops.
+%% An error waits 100 ms before the next accept, as one such as EMFILE
+%% repeats until a descriptor frees.
+accept(Handle, 0) ->
+    kick(Handle);
+accept(Handle, N) ->
     case state(Handle) of
         #{listening := true, rsel := none, socket := Socket, kind := Kind} = S ->
             case socket:accept(Socket, nowait) of
                 {ok, Client} ->
                     Constructor = erlang:get({?MODULE, constructor, Kind}),
-                    onconnection(Handle, 0, adopt(Constructor, Kind, Client)),
-                    later(fun() -> accept(Handle) end);
+                    js(fun() -> onconnection(Handle, 0, adopt(Constructor, Kind, Client)) end),
+                    accept(Handle, N - 1);
                 {select, {select_info, _, Ref}} ->
                     save(Handle, S#{rsel := Ref});
                 {error, Reason} ->
-                    onconnection(Handle, errno(Reason), undefined),
-                    later(fun() -> accept(Handle) end)
+                    js(fun() -> onconnection(Handle, errno(Reason), undefined) end),
+                    Ref = make_ref(),
+                    save(Handle, (state(Handle))#{rsel := Ref}),
+                    erlang:send_after(100, self(), {'$socket', Socket, select, Ref}),
+                    ok
             end;
         _ ->
             ok
@@ -546,7 +628,10 @@ connected(Handle, Req, Status) ->
     end,
     Oncomplete = buoy_heap:get(Req, <<"oncomplete">>),
     buoy_heap:is_callable(Oncomplete) andalso buoy_heap:call(Oncomplete, Req, [Status, Handle, Req, true, true]),
-    flush(Handle).
+    case state(Handle) of
+        #{queue := [_ | _]} -> write_kick(Handle);
+        _ -> ok
+    end.
 
 %% open(fd): the handle takes a socket descriptor that the VM inherited.
 -spec open_fd(term(), integer()) -> integer().
@@ -569,8 +654,8 @@ address(Handle, Out, Get) ->
             errno(ebadf);
         #{socket := Socket} ->
             case Get(Socket) of
-                {ok, #{family := Family, addr := Addr, port := Port}} when Family =:= inet; Family =:= inet6 ->
-                    buoy_heap:set(Out, <<"address">>, buoy_node:string(inet:ntoa(Addr))),
+                {ok, #{family := Family, port := Port} = Sockaddr} when Family =:= inet; Family =:= inet6 ->
+                    buoy_heap:set(Out, <<"address">>, address_text(Sockaddr)),
                     buoy_heap:set(Out, <<"family">>, case Family of inet -> <<"IPv4">>; inet6 -> <<"IPv6">> end),
                     buoy_heap:set(Out, <<"port">>, Port),
                     0;
@@ -580,6 +665,55 @@ address(Handle, Out, Get) ->
                     errno(Reason)
             end
     end.
+
+%% The sockaddr of an address text and a port: an IPv6 address may end in
+%% %<interface> or %<index>, its scope, as uv_ip6_addr reads it.
+-spec sockaddr(inet | inet6, term(), term()) -> {ok, map()} | error.
+sockaddr(inet, Address, Port) ->
+    case inet:parse_ipv4strict_address(text(Address)) of
+        {ok, Addr} -> {ok, #{family => inet, addr => Addr, port => port(Port)}};
+        {error, _} -> error
+    end;
+sockaddr(inet6, Address, Port) ->
+    {Text, Scope} = case string:split(text(Address), "%") of
+        [A, S] -> {A, S};
+        [A] -> {A, ""}
+    end,
+    case inet:parse_ipv6strict_address(Text) of
+        {ok, Addr} -> {ok, #{family => inet6, addr => Addr, port => port(Port), flowinfo => 0, scope_id => scope(Scope)}};
+        {error, _} -> error
+    end.
+
+%% The index of an interface name or number, or 0.
+-spec scope(string()) -> non_neg_integer().
+scope("") -> 0;
+scope(Scope) ->
+    case {string:to_integer(Scope), net:if_name2index(Scope)} of
+        {{N, ""}, _} when is_integer(N), N >= 0 -> N;
+        {_, {ok, Index}} -> Index;
+        _ -> 0
+    end.
+
+text(V) -> unicode:characters_to_list(buoy_ref_string:to_utf8(buoy_ref:to_string(V))).
+
+port(V) ->
+    case buoy_ref:to_number(V) of
+        N when is_integer(N) -> N;
+        F when is_float(F), F == trunc(F) -> trunc(F);
+        _ -> 0
+    end.
+
+%% The text of a sockaddr's address, with the %<interface> of a scoped IPv6
+%% address, as Node's AddressToJS writes it.
+-spec address_text(map()) -> term().
+address_text(#{family := inet6, addr := Addr, scope_id := Scope}) when Scope > 0 ->
+    Name = case net:if_index2name(Scope) of
+        {ok, N} -> N;
+        _ -> integer_to_list(Scope)
+    end,
+    buoy_node:string([inet:ntoa(Addr), "%", Name]);
+address_text(#{addr := Addr}) ->
+    buoy_node:string(inet:ntoa(Addr)).
 
 %% Sets an option of the handle's socket: 0 or a negative errno.
 -spec setopt(term(), socket:socket_option(), term()) -> integer().
@@ -595,8 +729,9 @@ setopt(Handle, Option, Value) ->
 
 %%% The loop
 
-%% A select message of the socket module: the socket of a handle is ready
-%% for the read or the write that waited.
+%% A select message of the socket module, or a kick: the socket of a
+%% handle is ready for the read or the write that waited. It runs outside
+%% any job (buoy_node_loop).
 -spec event(term()) -> ok.
 event({'$socket', Socket, select, Ref}) ->
     case erlang:get({?MODULE, Socket}) of
@@ -611,7 +746,7 @@ event({'$socket', Socket, select, Ref}) ->
                         ok -> 0;
                         {error, Reason} -> errno(Reason)
                     end,
-                    connected(Handle, Req, Status);
+                    js(fun() -> connected(Handle, Req, Status) end);
                 #{wsel := Ref, kind := udp} = S -> save(Handle, S#{wsel := none}), buoy_binding_udp_wrap:send_ready(Handle);
                 #{wsel := Ref} = S -> save(Handle, S#{wsel := none}), flush(Handle);
                 _ -> ok

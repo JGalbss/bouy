@@ -298,26 +298,28 @@ bit_length(N) -> bit_length(N bsr 1) + 1.
 %% The primes of the groups of RFC 2409 and RFC 3526 (generator 2), as
 %% getDiffieHellman(name) gives them.
 -spec group_prime(binary()) -> {ok, binary()} | error.
-group_prime(<<"modp1">>) ->
+group_prime(Name) -> modp_prime(string:lowercase(Name)).
+
+modp_prime(<<"modp1">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a63a3620ffffffffffffffff">>)};
-group_prime(<<"modp2">>) ->
+modp_prime(<<"modp2">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
       "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece65381ffffffffffffffff">>)};
-group_prime(<<"modp5">>) ->
+modp_prime(<<"modp5">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
       "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f"
       "83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca237327ffffffffffffffff">>)};
-group_prime(<<"modp14">>) ->
+modp_prime(<<"modp14">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
       "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f"
       "83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3b"
       "e39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa0510"
       "15728e5a8aacaa68ffffffffffffffff">>)};
-group_prime(<<"modp15">>) ->
+modp_prime(<<"modp15">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
       "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f"
@@ -326,7 +328,7 @@ group_prime(<<"modp15">>) ->
       "15728e5a8aaac42dad33170d04507a33a85521abdf1cba64ecfb850458dbef0a8aea71575d060c7db3970f85a6e1e4c7"
       "abf5ae8cdb0933d71e8c94e04a25619dcee3d2261ad2ee6bf12ffa06d98a0864d87602733ec86a64521f2b18177b200c"
       "bbe117577a615d6c770988c0bad946e208e24fa074e5ab3143db5bfce0fd108e4b82d120a93ad2caffffffffffffffff">>)};
-group_prime(<<"modp16">>) ->
+modp_prime(<<"modp16">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
       "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f"
@@ -338,7 +340,7 @@ group_prime(<<"modp16">>) ->
       "88719a10bdba5b2699c327186af4e23c1a946834b6150bda2583e9ca2ad44ce8dbbbc2db04de8ef92e8efc141fbecaa6"
       "287c59474e6bc05d99b2964fa090c3a2233ba186515be7ed1f612970cee2d7afb81bdd762170481cd0069127d5b05aa9"
       "93b4ea988d8fddc186ffb7dc90a6c08f4df435c934063199ffffffffffffffff">>)};
-group_prime(<<"modp17">>) ->
+modp_prime(<<"modp17">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
       "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f"
@@ -355,7 +357,7 @@ group_prime(<<"modp17">>) ->
       "d55e702f46980c82b5a84031900b1c9e59e7c97fbec7e8f323a97a7e36cc88be0f1d45b7ff585ac54bd407b22b4154aa"
       "cc8f6d7ebf48e1d814cc5ed20f8037e0a79715eef29be32806a1d58bb7c5da76f550aa3d8a1fbff0eb19ccb1a313d55c"
       "da56c9ec2ef29632387fe8d76e3c0468043e8f663f4860ee12bf2d5b0b7474d6e694f91e6dcc4024ffffffffffffffff">>)};
-group_prime(<<"modp18">>) ->
+modp_prime(<<"modp18">>) ->
     {ok, binary:decode_hex(<<"ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404dd"
       "ef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
       "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f"
@@ -378,4 +380,4 @@ group_prime(<<"modp18">>) ->
       "4597e899a0255dc164f31cc50846851df9ab48195ded7ea1b1d510bd7ee74d73faf36bc31ecfa268359046f4eb879f92"
       "4009438b481c6cd7889a002ed5ee382bc9190da6fc026e479558e4475677e9aa9e3050e2765694dfc81f56e880b96e71"
       "60c980dd98edd3dfffffffffffffffff">>)};
-group_prime(_) -> error.
+modp_prime(_) -> error.
