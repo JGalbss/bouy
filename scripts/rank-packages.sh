@@ -22,6 +22,10 @@
 # the second group was a dependency of a package of the first group at its latest version.
 # Review the list each quarter, when this script runs again.
 #
+# RANK_TOP, RANK_PAGES, and RANK_OUTPUT change the kept packages, the candidate pages, and the
+# file. scripts/ecosystem.sh writes tests/ecosystem/ranking.json with
+# RANK_TOP=1000 RANK_PAGES=15 RANK_OUTPUT=tests/ecosystem/ranking.json.
+#
 # Usage: scripts/rank-packages.sh. It needs curl and jq, and it takes a few minutes.
 
 set -eu
@@ -85,9 +89,9 @@ execa
 '
 
 # The candidates: ecosyste.ms pages of 100 packages each.
-pages=10
+pages=${RANK_PAGES:-10}
 # The packages that the file keeps, apart from the AI tier.
-top=500
+top=${RANK_TOP:-500}
 # The share of the weekly downloads that a major version needs.
 share=0.2
 # The parallel requests. The npm APIs answer HTTP 429 to more.
@@ -243,6 +247,7 @@ if [ -n "$missing" ]; then
     echo "$0: the registry has no metadata for these packages of the AI tier: $missing" >&2
     exit 1
 fi
-mkdir -p "$root/tests/packages"
-mv "$work/ranking.json" "$root/tests/packages/ranking.json"
-echo "wrote tests/packages/ranking.json: $(jq '.packages | length' "$root/tests/packages/ranking.json") packages, $(jq '.ai_tier' "$root/tests/packages/ranking.json") in the AI tier"
+output=${RANK_OUTPUT:-tests/packages/ranking.json}
+mkdir -p "$(dirname "$root/$output")"
+mv "$work/ranking.json" "$root/$output"
+echo "wrote $output: $(jq '.packages | length' "$root/$output") packages, $(jq '.ai_tier' "$root/$output") in the AI tier"

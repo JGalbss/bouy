@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use buoy_suites::comparison::Selection;
 use buoy_suites::test262;
-use buoy_suites::{compat, node, node_surface, packages, summary};
+use buoy_suites::{compat, node, node_bindings, node_surface, packages, summary};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// The lines of each list of the report. `results.json` holds every id.
@@ -38,6 +38,9 @@ enum Suite {
     Node(Upstream),
     /// The API surface of tests/node/surface.json, probed on Buoy.
     NodeSurface(Surface),
+    /// Read Node's src/ at the tag of .node-version and write tests/node/bindings.json and
+    /// `runtime/src/buoy_node_manifest.erl`.
+    NodeBindings,
     /// The ecosystem tier: tests/npm, tests/packages, and the areas of tests/equivalence
     /// that have an expectation file.
     Packages(Packages),
@@ -143,6 +146,7 @@ fn main() -> ExitCode {
         Suite::Packages(arguments) => run_packages(arguments),
         Suite::Node(upstream) => run_node(upstream),
         Suite::NodeSurface(arguments) => run_node_surface(arguments),
+        Suite::NodeBindings => write_node_bindings(),
         Suite::Test262 { upstream, checkout } => run_test262(upstream, checkout),
     }
 }
@@ -267,6 +271,33 @@ fn run_node_surface(arguments: Surface) -> ExitCode {
     if report.comparison.fails(arguments.accept_regressions) {
         return ExitCode::FAILURE;
     }
+    ExitCode::SUCCESS
+}
+
+fn write_node_bindings() -> ExitCode {
+    let manifest = match node_bindings::update(&buoy_suites::repository()) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            eprintln!("buoy-suites: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let members: usize = manifest
+        .bindings
+        .values()
+        .map(|binding| binding.members.len())
+        .sum();
+    println!(
+        "Node {} ({}): {} bindings, {members} members",
+        manifest.node,
+        compat::short(&manifest.commit),
+        manifest.bindings.len()
+    );
+    println!(
+        "wrote {} and {}",
+        node_bindings::MANIFEST,
+        node_bindings::ERLANG
+    );
     ExitCode::SUCCESS
 }
 
