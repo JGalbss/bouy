@@ -51,8 +51,13 @@ binding() ->
     BigStats = buoy_node:typed_array(<<"BigInt64Array">>, 2 * ?STAT_FIELDS),
     StatFs = buoy_node:typed_array(<<"Float64Array">>, 7),
     BigStatFs = buoy_node:typed_array(<<"BigInt64Array">>, 7),
+    Constants = buoy_heap:get(buoy_node:binding(<<"constants">>), <<"fs">>),
+    Flags = maps:from_list([{Name, N} || Name <- [<<"O_APPEND">>, <<"O_SYNC">>, <<"O_NOFOLLOW">>, <<"O_CREAT">>,
+                                                   <<"O_TRUNC">>, <<"O_EXCL">>, <<"O_DIRECTORY">>, <<"O_DSYNC">>,
+                                                   <<"O_SYMLINK">>],
+                                         N <- [buoy_heap:get(Constants, Name)], is_integer(N)]),
     erlang:put(?STATE, #{promises => Promises, stats => Stats, bigint_stats => BigStats, statfs => StatFs,
-                         bigint_statfs => BigStatFs}),
+                         bigint_statfs => BigStatFs, flags => Flags}),
     Req = buoy_node:constructor(<<"FSReqCallback">>, 1, fun(This, Args) ->
         buoy_heap:set(This, <<"bigint">>, buoy_ref:truthy(buoy_node:arg(1, Args))),
         undefined
@@ -377,13 +382,9 @@ new_mode(Path, true, Mode) ->
 new_mode(_, false, _) ->
     keep.
 
-%% An fs constant of the constants binding, or 0 for a flag that this OS
-%% lacks, such as O_SYMLINK on Linux.
-flag(Name) ->
-    case buoy_heap:get(buoy_heap:get(buoy_node:binding(<<"constants">>), <<"fs">>), Name) of
-        N when is_integer(N) -> N;
-        _ -> 0
-    end.
+%% An open flag of the constants binding, which binding/0 reads once, or 0
+%% for a flag that this OS lacks, such as O_SYMLINK on Linux.
+flag(Name) -> maps:get(Name, maps:get(flags, erlang:get(?STATE)), 0).
 
 %% O_SYMLINK opens a symlink itself, which prim_file cannot: the descriptor
 %% of /dev/null holds the number, and the calls on it act on the path.
