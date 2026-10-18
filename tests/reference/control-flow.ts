@@ -62,3 +62,13 @@ for (const key in table) {
   visited += key + table[key];
 }
 console.log(visited);
+
+// A parenthesized optional chain is still a reference: the call keeps its this.
+const holder = {
+  label: "holder",
+  read(this: { label: string }): string {
+    return this.label;
+  },
+};
+const maybe: typeof holder | undefined = holder;
+console.log((maybe?.read)(), (holder.read)?.(), (maybe?.read)?.());

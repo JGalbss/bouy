@@ -2,8 +2,8 @@
 //! property reads and writes of the runtime.
 
 use oxc::ast::ast::{
-    ChainElement, ChainExpression, ComputedMemberExpression, Expression, PrivateFieldExpression,
-    PropertyKey, StaticMemberExpression,
+    ChainElement, ChainExpression, ComputedMemberExpression, Expression, MemberExpression,
+    PrivateFieldExpression, PropertyKey, StaticMemberExpression,
 };
 
 use super::context::Lowerer;
@@ -75,10 +75,44 @@ impl<'a> Lowerer<'a, '_> {
             ChainElement::ComputedMemberExpression(member) => me.computed_member(member),
             ChainElement::PrivateFieldExpression(member) => me.private_member(member),
         });
+        self.end_chain(code, &Expr::undefined())
+    }
+
+    /// The function and the `this` of a parenthesized chain that a call calls, such as
+    /// `(a?.b)()`: the chain is a reference, so `a` is the `this` of the call
+    /// (ECMA-262 §13.3.6.1). Both are undefined when the chain ends early.
+    pub fn chain_reference(&mut self, member: &'a MemberExpression<'a>) -> (Expr, Expr) {
+        let code = self.branch(|me| {
+            let object = me.expr(member.object());
+            let object = me.bind(object);
+            if member.optional() {
+                me.chain_guard(object.clone());
+            }
+            let key = me.member_key(member);
+            let function = me.get(object.clone(), key);
+            Expr::Tuple(vec![function, object])
+        });
+        let ended = Expr::Tuple(vec![Expr::undefined(), Expr::undefined()]);
+        let reference = self.end_chain(code, &ended);
+        let function = self.bind(Expr::call(
+            "erlang",
+            "element",
+            vec![Expr::Integer(1), reference.clone()],
+        ));
+        let this = self.bind(Expr::call(
+            "erlang",
+            "element",
+            vec![Expr::Integer(2), reference],
+        ));
+        (function, this)
+    }
+
+    /// The value of the code of a chain, or `ended` when one of its guards ends it.
+    fn end_chain(&mut self, code: Vec<Expr>, ended: &Expr) -> Expr {
         if code.iter().any(holds_marker) {
             // An `await` or a `yield` cannot split an Erlang `try`, so each guard of this
             // chain becomes a case whose last clause holds the rest of the chain.
-            let mut code = nest_guards(code);
+            let mut code = nest_guards(code, ended);
             let value = code.pop().unwrap_or_else(Expr::undefined);
             self.pre.extend(code);
             return self.bind(value);
@@ -89,7 +123,7 @@ impl<'a> Lowerer<'a, '_> {
                 class: Expr::atom("throw"),
                 reason: Expr::atom(CHAIN),
                 stack: "_".to_owned(),
-                body: vec![Expr::undefined()],
+                body: vec![ended.clone()],
             }],
             after: vec![],
         })
@@ -152,10 +186,7 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The object and the key of a member expression, lowered in order.
-    pub fn member_parts(
-        &mut self,
-        member: &'a oxc::ast::ast::MemberExpression<'a>,
-    ) -> (Expr, MemberKey) {
+    pub fn member_parts(&mut self, member: &'a MemberExpression<'a>) -> (Expr, MemberKey) {
         if let Expression::Super(_) = member.object() {
             let this = self.this_expr();
             let this = self.bind(this);
@@ -168,15 +199,15 @@ impl<'a> Lowerer<'a, '_> {
         (object, key)
     }
 
-    pub fn member_key(&mut self, member: &'a oxc::ast::ast::MemberExpression<'a>) -> MemberKey {
+    pub fn member_key(&mut self, member: &'a MemberExpression<'a>) -> MemberKey {
         match member {
-            oxc::ast::ast::MemberExpression::StaticMemberExpression(member) => {
+            MemberExpression::StaticMemberExpression(member) => {
                 MemberKey::Static(static_key(member.property.name.as_str()))
             }
-            oxc::ast::ast::MemberExpression::ComputedMemberExpression(member) => {
+            MemberExpression::ComputedMemberExpression(member) => {
                 self.computed_key(&member.expression)
             }
-            oxc::ast::ast::MemberExpression::PrivateFieldExpression(member) => {
+            MemberExpression::PrivateFieldExpression(member) => {
                 MemberKey::Private(self.private_key(member.field.name.as_str()))
             }
         }
@@ -284,19 +315,19 @@ pub fn index_of(name: &str) -> Option<i64> {
 
 /// The code of an optional chain with each guard as a case: `undefined` for a nullish
 /// value, else the rest of the chain.
-fn nest_guards(mut code: Vec<Expr>) -> Vec<Expr> {
+fn nest_guards(mut code: Vec<Expr>, ended: &Expr) -> Vec<Expr> {
     let Some(index) = code.iter().position(is_guard) else {
         return code;
     };
-    let rest = nest_guards(code.split_off(index + 1));
+    let rest = nest_guards(code.split_off(index + 1), ended);
     let Some(Expr::Case(subject, _)) = code.pop() else {
         return code;
     };
     code.push(Expr::Case(
         subject,
         vec![
-            Clause::new(Expr::undefined(), vec![Expr::undefined()]),
-            Clause::new(Expr::atom("null"), vec![Expr::undefined()]),
+            Clause::new(Expr::undefined(), vec![ended.clone()]),
+            Clause::new(Expr::atom("null"), vec![ended.clone()]),
             Clause::new(Expr::var("_"), rest),
         ],
     ));

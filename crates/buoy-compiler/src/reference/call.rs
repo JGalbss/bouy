@@ -55,6 +55,16 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(member) = callee.as_member_expression() {
             return self.method_call(call, member);
         }
+        if let Expression::ChainExpression(chain) = callee
+            && let Some(member) = chain.expression.as_member_expression()
+        {
+            let (function, this) = self.chain_reference(member);
+            if call.optional {
+                self.chain_guard(function.clone());
+            }
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+        }
         // A call of the name `eval` is a direct eval also through a `with` object.
         if let Expression::Identifier(ident) = callee
             && ident.name == "eval"
