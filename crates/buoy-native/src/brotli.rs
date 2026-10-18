@@ -21,9 +21,13 @@ use crate::Failure;
 pub struct Encoder {
     state: BrotliEncoderStateStruct<StandardAlloc>,
     dictionary: Vec<u8>,
-    /// brotli-rs fixes the parameters when it takes the dictionary, so the encoder takes
-    /// it on its first write, after `init` has set them.
-    dictionary_attached: bool,
+    /// brotli-rs fixes the parameters when the stream starts, so the encoder starts it,
+    /// and takes the dictionary, on its first write, after `init` has set them.
+    started: bool,
+    /// Whether a block has been encoded, which builds the hasher.
+    encoded: bool,
+    /// The input that the encoder holds and has not encoded yet.
+    pending: usize,
     succeeded: bool,
 }
 
@@ -39,7 +43,9 @@ impl Encoder {
         Self {
             state: BrotliEncoderStateStruct::new(StandardAlloc::default()),
             dictionary,
-            dictionary_attached: false,
+            started: false,
+            encoded: false,
+            pending: 0,
             succeeded: true,
         }
     }
@@ -70,19 +76,68 @@ impl Encoder {
     /// `BrotliEncoderCompressStream` with the operation `flush`: the bytes read and
     /// written.
     pub fn write(&mut self, flush: u32, input: &[u8], output: &mut [u8]) -> (usize, usize) {
-        if !self.dictionary_attached {
-            self.dictionary_attached = true;
-            if !self.dictionary.is_empty() {
-                self.state
-                    .set_custom_dictionary(self.dictionary.len(), &self.dictionary);
-            }
-        }
         let operation = match flush {
             1 => BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
             2 => BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
             3 => BrotliEncoderOperation::BROTLI_OPERATION_EMIT_METADATA,
             _ => BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
         };
+        if !self.started {
+            self.started = true;
+            if !self.dictionary.is_empty() {
+                self.state
+                    .set_custom_dictionary(self.dictionary.len(), &self.dictionary);
+                self.encoded = true;
+            }
+            // Starts the stream with the window of the parameters, which the header
+            // records.
+            let _ = self.compress(
+                BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
+                &[],
+                &mut [],
+            );
+        }
+        let pending = self.pending + input.len();
+        let block = 1usize << self.state.params.lgblock;
+        let (read, written) = match self.one_shot_window(operation, pending) {
+            Some(window) => {
+                let lgwin = std::mem::replace(&mut self.state.params.lgwin, window);
+                let progress = self.compress(operation, input, output);
+                self.state.params.lgwin = lgwin;
+                progress
+            }
+            None => self.compress(operation, input, output),
+        };
+        match operation {
+            BrotliEncoderOperation::BROTLI_OPERATION_PROCESS if pending < block => {
+                self.pending = pending;
+            }
+            _ => self.encoded = true,
+        }
+        (read, written)
+    }
+
+    /// The window of the hasher when the first block that the encoder encodes holds all
+    /// the input. C brotli then sizes the hasher of quality 10 and 11 for the input,
+    /// where brotli-rs sizes it for the window: 32 MiB at the default window. A window
+    /// that holds the input gives the same matches, so the encoder builds the hasher with
+    /// the smaller window, and the header keeps the window of the parameters.
+    fn one_shot_window(&self, operation: BrotliEncoderOperation, pending: usize) -> Option<i32> {
+        let BrotliEncoderOperation::BROTLI_OPERATION_FINISH = operation else {
+            return None;
+        };
+        if self.encoded || self.state.params.quality < 10 {
+            return None;
+        }
+        (10..self.state.params.lgwin).find(|bits| (1usize << bits) - 16 >= pending)
+    }
+
+    fn compress(
+        &mut self,
+        operation: BrotliEncoderOperation,
+        input: &[u8],
+        output: &mut [u8],
+    ) -> (usize, usize) {
         let (mut available_in, mut read) = (input.len(), 0);
         let (mut available_out, mut written) = (output.len(), 0);
         let mut ignore_metablocks = |_: &mut PredictionModeContextMap<InputReferenceMut>,
@@ -255,6 +310,59 @@ mod tests {
             b"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum.".repeat(20);
         assert_eq!(round_trip(&[], &data), data);
         assert_eq!(round_trip(b"Lorem ipsum dolor sit amet", &data), data);
+    }
+
+    /// The bytes of brotli-rs for `data`, written in one call or before the call that
+    /// finishes, with the hasher of the whole window.
+    fn reference(quality: u32, data: &[u8], split: bool) -> Vec<u8> {
+        let mut encoder = Encoder::new(Vec::new());
+        encoder.set_parameter(1, quality).expect("a quality");
+        let mut out = vec![0; data.len() + 1024];
+        let finish = BrotliEncoderOperation::BROTLI_OPERATION_FINISH;
+        let (_, written) = if split {
+            let (_, first) = encoder.compress(
+                BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
+                data,
+                &mut out,
+            );
+            let (_, rest) = encoder.compress(finish, &[], &mut out[first..]);
+            (0, first + rest)
+        } else {
+            encoder.compress(finish, data, &mut out)
+        };
+        out.truncate(written);
+        out
+    }
+
+    #[test]
+    fn a_small_hasher_for_all_the_input_gives_the_same_bytes() {
+        let text: Vec<u8> = (0..300_000u32)
+            .map(|i| {
+                b"the quick brown fox jumps over the lazy dog "[(i * 7 % 44) as usize]
+                    ^ (i % 3) as u8
+            })
+            .collect();
+        for quality in [10, 11] {
+            for size in [0, 1, 100, 5_000, 300_000] {
+                for split in [false, true] {
+                    let data = &text[..size];
+                    let mut encoder = Encoder::new(Vec::new());
+                    encoder.set_parameter(1, quality).expect("a quality");
+                    let mut out = vec![0; size + 1024];
+                    let written = if split {
+                        let (_, first) = encoder.write(0, data, &mut out);
+                        first + encoder.write(2, &[], &mut out[first..]).1
+                    } else {
+                        encoder.write(2, data, &mut out).1
+                    };
+                    assert_eq!(
+                        out[..written],
+                        reference(quality, data, split),
+                        "quality {quality}, {size} bytes"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
