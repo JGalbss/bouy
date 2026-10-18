@@ -1,0 +1,22 @@
+namespace: object Module
+  BatchLogRecordProcessor: class/0 {onShutdown}
+  ConsoleLogRecordExporter: class/0 {_exportInfo, _sendLogRecords, export, forceFlush, shutdown}
+  InMemoryLogRecordExporter: class/0 {export, forceFlush, getFinishedLogRecords, reset, shutdown}
+  LoggerProvider: class/0 {_shutdown, forceFlush, getLogger, shutdown}
+  SimpleLogRecordProcessor: class/1 {_shutdown, forceFlush, onEmit, shutdown}
+  __esModule: boolean
+  createLoggerConfigurator: function/1
+  default: object
+    BatchLogRecordProcessor: class/0 {onShutdown}
+    ConsoleLogRecordExporter: class/0 {_exportInfo, _sendLogRecords, export, forceFlush, shutdown}
+    InMemoryLogRecordExporter: class/0 {export, forceFlush, getFinishedLogRecords, reset, shutdown}
+    LoggerProvider: class/0 {_shutdown, forceFlush, getLogger, shutdown}
+    SimpleLogRecordProcessor: class/1 {_shutdown, forceFlush, onEmit, shutdown}
+    createLoggerConfigurator: function/1
+  module.exports: object
+    BatchLogRecordProcessor: class/0 {onShutdown}
+    ConsoleLogRecordExporter: class/0 {_exportInfo, _sendLogRecords, export, forceFlush, shutdown}
+    InMemoryLogRecordExporter: class/0 {export, forceFlush, getFinishedLogRecords, reset, shutdown}
+    LoggerProvider: class/0 {_shutdown, forceFlush, getLogger, shutdown}
+    SimpleLogRecordProcessor: class/1 {_shutdown, forceFlush, onEmit, shutdown}
+    createLoggerConfigurator: function/1

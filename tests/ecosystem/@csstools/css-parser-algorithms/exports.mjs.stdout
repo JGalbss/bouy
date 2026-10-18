@@ -1,0 +1,29 @@
+namespace: object Module
+  CommentNode: class/1 {isCommentNode, toJSON, toString, tokens}
+  ComponentValueType: object
+    Comment: string
+    Function: string
+    SimpleBlock: string
+    Token: string
+    Whitespace: string
+  ContainerNodeBaseClass: class/0 {at, forEach, indexOf, walk}
+  FunctionNode: class/3 {getName, isFunctionNode, normalize, toJSON, toString, tokens}
+  SimpleBlockNode: class/3 {isSimpleBlockNode, normalize, toJSON, toString, tokens}
+  TokenNode: class/1 {isTokenNode, toJSON, toString, tokens}
+  WhitespaceNode: class/1 {isWhitespaceNode, toJSON, toString, tokens}
+  forEach: function/3
+  gatherNodeAncestry: function/1
+  isCommentNode: function/1 (false, false, false, false, false, false, false, false, false)
+  isFunctionNode: function/1 (false, false, false, false, false, false, false, false, false)
+  isSimpleBlockNode: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenNode: function/1 (false, false, false, false, false, false, false, false, false)
+  isWhiteSpaceOrCommentNode: function/1 (false, false, false, false, false, false, false, false, false)
+  isWhitespaceNode: function/1 (false, false, false, false, false, false, false, false, false)
+  parseCommaSeparatedListOfComponentValues: function/2
+  parseComponentValue: function/2
+  parseListOfComponentValues: function/2
+  replaceComponentValues: function/2
+  sourceIndices: function/1
+  stringify: function/1
+  walk: function/3
+  walkerIndexGenerator: function/1

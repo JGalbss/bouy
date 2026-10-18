@@ -1,0 +1,40 @@
+namespace: object Module
+  ALWAYS: number
+  C1: object
+    name: string
+  DECIMAL_FIT: number
+  DECIMAL_ROUND: number
+  Decoder: class/1 {_mergeStructures, decode, unpack, unpackMultiple}
+    SUPPORTS_STRUCT_HOOKS: boolean
+  DecoderStream: class/1 {_transform, getNullValue}
+  Encoder: class/1 {clearSharedData, position, useBuffer}
+    SUPPORTS_STRUCT_HOOKS: boolean
+  EncoderStream: class/1 {_transform}
+  FLOAT32_OPTIONS: object
+    ALWAYS: number
+    DECIMAL_FIT: number
+    DECIMAL_ROUND: number
+    NEVER: number
+  NEVER: number
+  Packr: class/1 {clearSharedData, position, useBuffer}
+    SUPPORTS_STRUCT_HOOKS: boolean
+  PackrStream: class/1 {_transform}
+  RESERVE_START_SPACE: number
+  RESET_BUFFER_MODE: number
+  REUSE_BUFFER_MODE: number
+  Unpackr: class/1 {_mergeStructures, decode, unpack, unpackMultiple}
+    SUPPORTS_STRUCT_HOOKS: boolean
+  UnpackrStream: class/1 {_transform, getNullValue}
+  addExtension: function/1
+  clearSource: function/0
+  decode: function/2
+  decodeIter: function/1
+  encode: function/2
+  encodeIter: function/1
+  isNativeAccelerationEnabled: boolean
+  mapsAsObjects: boolean
+  pack: function/2
+  roundFloat32: function/1
+  unpack: function/2
+  unpackMultiple: function/2
+  useRecords: boolean

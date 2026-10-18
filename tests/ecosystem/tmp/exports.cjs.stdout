@@ -1,0 +1,9 @@
+module.exports: object
+  dir: function/2
+  dirSync: function/1
+  file: function/2
+  fileSync: function/1
+  setGracefulCleanup: function/0
+  tmpName: function/2
+  tmpNameSync: function/1
+  tmpdir: string

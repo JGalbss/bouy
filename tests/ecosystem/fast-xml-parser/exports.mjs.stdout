@@ -1,0 +1,5 @@
+namespace: object Module
+  XMLBuilder: class/1 {build, buildAttrPairStr, buildAttributesForStopNode, buildObjectNode, buildRawContent, buildTextValNode, checkStopNode, closeTag, extractAttributes, j2x, replaceEntitiesValue}
+  XMLParser: class/1 {addEntity, parse}
+  XMLValidator: object
+    validate: function/2

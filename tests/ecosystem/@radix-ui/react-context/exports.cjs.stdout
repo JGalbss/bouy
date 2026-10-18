@@ -1,0 +1,3 @@
+module.exports: object
+  createContext: function/2
+  createContextScope: function/1

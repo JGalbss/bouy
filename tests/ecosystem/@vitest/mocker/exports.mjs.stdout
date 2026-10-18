@@ -1,0 +1,7 @@
+namespace: object Module
+  AutomockedModule: class/3 {toJSON}
+  AutospiedModule: class/3 {toJSON}
+  ManualMockedModule: class/4 {resolve, toJSON}
+  MockerRegistry: class/0 {add, clear, delete, deleteById, get, getById, has, keys, register}
+  RedirectedModule: class/4 {toJSON}
+  mockObject: function/2

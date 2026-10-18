@@ -1,0 +1,9 @@
+module.exports: function/1
+  compareTags: function/1
+  compareTuples: function/2
+  matchTags: function/2
+  matchTuple: function/2
+  parseTags: function/1
+  parseTuple: function/1
+  path: function/1
+  resolve: function/1

@@ -1,0 +1,10 @@
+namespace: object Module
+  RemoveScroll: object
+    $$typeof: symbol
+    classNames: object
+    render: function/2
+  __esModule: boolean
+  default: object
+    RemoveScroll: object
+  module.exports: object
+    RemoveScroll: object

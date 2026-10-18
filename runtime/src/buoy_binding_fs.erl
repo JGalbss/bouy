@@ -60,6 +60,7 @@ binding() ->
                          bigint_statfs => BigStatFs, flags => Flags}),
     Req = buoy_node:constructor(<<"FSReqCallback">>, 1, fun(This, Args) ->
         buoy_heap:set(This, <<"bigint">>, buoy_ref:truthy(buoy_node:arg(1, Args))),
+        buoy_binding_async_wrap:wrap(This, <<"FSREQCALLBACK">>),
         undefined
     end),
     %% {Name, the position of the request argument, the call}
@@ -209,13 +210,18 @@ request(Req, Call) ->
     end.
 
 complete(Req, {ok, Result}) ->
-    OnComplete = buoy_heap:get(Req, <<"oncomplete">>),
     case value(Result, global) of
-        undefined -> buoy_heap:call(OnComplete, Req, [null]);
-        Value -> buoy_heap:call(OnComplete, Req, [null, Value])
+        undefined -> callback(Req, [null]);
+        Value -> callback(Req, [null, Value])
     end;
 complete(Req, {error, E}) ->
-    buoy_heap:call(buoy_heap:get(Req, <<"oncomplete">>), Req, [E]).
+    callback(Req, [E]).
+
+%% FSReqCallback::Resolve and Reject: req.oncomplete through MakeCallback,
+%% and then the request ends.
+callback(Req, Args) ->
+    _ = buoy_binding_async_wrap:make_callback(Req, buoy_heap:get(Req, <<"oncomplete">>), Args),
+    buoy_binding_async_wrap:emit_destroy(Req).
 
 settle(Promise, {ok, Result}) -> buoy_jobs:resolve_promise(Promise, value(Result, fresh));
 settle(Promise, {error, E}) -> buoy_jobs:reject_promise(Promise, E).
@@ -531,7 +537,7 @@ read_stdin_async(Req, Buffer, At, Count) ->
     buoy_node_stdin:read_async(Count, fun(Bytes) ->
         {Req1, Buffer1} = erlang:erase({?MODULE, stdin_read, Ref}),
         buoy_node_encoding:view_write(Buffer1, At, Bytes),
-        buoy_heap:call(buoy_heap:get(Req1, <<"oncomplete">>), Req1, [null, byte_size(Bytes)])
+        callback(Req1, [null, byte_size(Bytes)])
     end),
     undefined.
 

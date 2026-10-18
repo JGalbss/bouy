@@ -1,0 +1,5 @@
+namespace: object Module
+  _default_options: function/0
+  _run_cli: function/1
+  minify: function/3
+  minify_sync: function/3

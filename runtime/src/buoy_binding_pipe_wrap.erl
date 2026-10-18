@@ -11,10 +11,12 @@
 
 -define(UV_EINVAL, -22).
 -define(UV_EBADF, -9).
+-define(TYPE, {'#', ?MODULE, <<"type">>}).
+-define(IPC, 2).
 
 -spec binding() -> term().
 binding() ->
-    Pipe = buoy_node:constructor(<<"Pipe">>, 1, fun(_, _) -> undefined end),
+    Pipe = buoy_node:constructor(<<"Pipe">>, 1, fun(This, Args) -> buoy_heap:private_put(This, ?TYPE, buoy_node:arg(1, Args)), undefined end),
     erlang:put({buoy_node_socket, constructor, pipe}, Pipe),
     Proto = buoy_heap:get(Pipe, <<"prototype">>),
     buoy_node_stream:methods(Proto),
@@ -98,9 +100,24 @@ local_path(V) ->
         _ -> {ok, Path}
     end.
 
-%% open(fd): a channel process owns a port on the descriptor; the handle stays
-%% a root of the heap until the channel ends.
+%% open(fd): an IPC Pipe on a socket is the channel of buoy_node_ipc, which
+%% passes handles. Otherwise a channel process owns a port on the
+%% descriptor; the handle stays a root of the heap until the channel ends.
 open(This, Fd) when is_integer(Fd), Fd >= 0 ->
+    case is_ipc(This) andalso buoy_node_ipc:open(This, Fd) of
+        ok -> 0;
+        _ -> open_port_channel(This, Fd)
+    end;
+open(_This, _Fd) ->
+    -22.
+
+is_ipc(This) ->
+    case buoy_heap:private_find(This, ?TYPE) of
+        {ok, Type} -> Type == ?IPC;
+        error -> false
+    end.
+
+open_port_channel(This, Fd) ->
     Realm = self(),
     Channel = spawn(fun() ->
         Port = open_port({fd, Fd, Fd}, [binary, stream, eof]),
@@ -108,9 +125,7 @@ open(This, Fd) when is_integer(Fd), Fd >= 0 ->
     end),
     erlang:put({?MODULE, root, Channel}, This),
     buoy_node_stream:attach(This, Channel),
-    0;
-open(_This, _Fd) ->
-    -22.
+    0.
 
 fd_loop(Port, Realm, Handle) ->
     receive

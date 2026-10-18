@@ -1,0 +1,3 @@
+module.exports: object Module
+  Context: class/2 {event, executionCtx, req, res, var}
+  Hono: function/0

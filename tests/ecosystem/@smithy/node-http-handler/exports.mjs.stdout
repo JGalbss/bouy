@@ -1,0 +1,15 @@
+namespace: object Module
+  DEFAULT_REQUEST_TIMEOUT: number
+  NodeHttp2Handler: class/1 {destroy, handle, httpHandlerConfigs, updateHttpClientConfig}
+  NodeHttpHandler: class/1 {destroy, handle, httpHandlerConfigs, resolveDefaultConfig, updateHttpClientConfig}
+  default: object
+    DEFAULT_REQUEST_TIMEOUT: number
+    NodeHttp2Handler: class/1 {destroy, handle, httpHandlerConfigs, updateHttpClientConfig}
+    NodeHttpHandler: class/1 {destroy, handle, httpHandlerConfigs, resolveDefaultConfig, updateHttpClientConfig}
+    streamCollector: function/1
+  module.exports: object
+    DEFAULT_REQUEST_TIMEOUT: number
+    NodeHttp2Handler: class/1 {destroy, handle, httpHandlerConfigs, updateHttpClientConfig}
+    NodeHttpHandler: class/1 {destroy, handle, httpHandlerConfigs, resolveDefaultConfig, updateHttpClientConfig}
+    streamCollector: function/1
+  streamCollector: function/1

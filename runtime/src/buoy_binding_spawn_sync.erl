@@ -202,7 +202,7 @@ collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, Acc, Size, Error) ->
             case MaxBuffer =/= infinity andalso NewSize > MaxBuffer andalso Error =:= none of
                 true ->
                     kill(OsPid, KillSignal),
-                    collect(Port, OsPid, infinity, MaxBuffer, KillSignal, [Acc, Data], NewSize, -55);
+                    collect(Port, OsPid, infinity, MaxBuffer, KillSignal, [Acc, Data], NewSize, uv(<<"ENOBUFS">>));
                 false ->
                     collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, [Acc, Data], NewSize, Error)
             end;
@@ -210,8 +210,12 @@ collect(Port, OsPid, Deadline, MaxBuffer, KillSignal, Acc, Size, Error) ->
             {Status, iolist_to_binary(Acc), Error}
     after Wait ->
         kill(OsPid, KillSignal),
-        collect(Port, OsPid, infinity, MaxBuffer, KillSignal, Acc, Size, -60)
+        collect(Port, OsPid, infinity, MaxBuffer, KillSignal, Acc, Size, uv(<<"ETIMEDOUT">>))
     end.
+
+%% The code of a libuv error of this OS, such as -60 for ETIMEDOUT on darwin.
+uv(Name) ->
+    hd([Code || {Code, N, _} <- buoy_binding_uv:errors(), N =:= Name]).
 
 kill(0, _Signal) -> ok;
 kill(OsPid, Signal) ->

@@ -1,0 +1,134 @@
+module.exports: object
+  AccessKind: object
+    0: string
+    1: string
+    2: string
+    3: string
+    4: string
+    Delete: number
+    None: number
+    Read: number
+    ReadWrite: number
+    Write: number
+  DeclarationDomain: object
+    1: string
+    2: string
+    4: string
+    7: string
+    8: string
+    Any: number
+    Import: number
+    Namespace: number
+    Type: number
+    Value: number
+  UsageDomain: object
+    1: string
+    2: string
+    4: string
+    5: string
+    7: string
+    8: string
+    Any: number
+    Namespace: number
+    Type: number
+    TypeQuery: number
+    Value: number
+    ValueOrNamespace: number
+  collectVariableUsage: function/1
+  forEachComment: function/2
+  forEachToken: function/2
+  getAccessKind: function/1
+  getCallSignaturesOfType: function/1
+  getPropertyOfType: function/2
+  getWellKnownSymbolPropertyOfType: function/3
+  hasDecorators: function/1
+  hasExpressionInitializer: function/1
+  hasInitializer: function/1
+  hasJSDoc: function/1
+  hasModifiers: function/1
+  hasType: function/1
+  hasTypeArguments: function/1
+  includesModifier: function/1
+  intersectionConstituents: function/1
+  intersectionTypeParts: function/1
+  isAbstractKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAccessExpression: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAccessibilityModifier: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAccessorDeclaration: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAccessorKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAnyKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isArrayBindingElement: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isArrayBindingOrAssignmentPattern: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAssertKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAssertsKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAssignmentKind: function/1 (false, false, false, false, false, false, false, false, false)
+  isAssignmentPattern: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAsyncKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isAwaitKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBigIntKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBigIntLiteralType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBindingOrAssignmentElementRestIndicator: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBindingOrAssignmentElementTarget: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBindingOrAssignmentPattern: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBindingPattern: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBlockLike: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBooleanKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBooleanLiteral: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isBooleanLiteralType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isClassLikeDeclaration: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isClassMemberModifier: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isColonToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isCompilerOptionEnabled: function/2 (throws, throws, false, false, false, false, false, false, false)
+  isConditionalType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isConstAssertionExpression: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isConstKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDeclarationName: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDeclarationWithTypeParameterChildren: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDeclarationWithTypeParameters: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDeclareKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDefaultKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDestructuringPattern: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDotToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEndOfFileToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEntityNameExpression: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEntityNameOrEntityNameExpression: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEnumType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEqualsGreaterThanToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEqualsToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEvolvingArrayType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isExclamationToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isExportKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFalseKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFalseLiteral: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFalseLiteralType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFalsyType: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isForInOrOfStatement: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFreshableIntrinsicType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFreshableType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFunctionLikeDeclaration: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isFunctionScopeBoundary: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isImportExpression: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isImportKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isInKeyword: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIndexType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIndexedAccessType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isInstantiableType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntersectionType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicAnyType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicBigIntType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicBooleanType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicESSymbolType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicErrorType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicNeverType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicNonPrimitiveType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicNullType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicNumberType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicStringType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicUndefinedType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicUnknownType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIntrinsicVoidType: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isIterationStatement: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isJSDocComment: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isJSDocNamespaceBody: function/1 (throws, throws, false, false, false, false, false, false, false)
+  ... 96 more keys

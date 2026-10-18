@@ -1,0 +1,9 @@
+module.exports: object
+  AsyncIterator: class/2 {next, return, throw}
+  async: function/5
+  awrap: function/1
+  isGeneratorFunction: function/1 (false, false, false, false, false, false, false, false, false)
+  keys: function/1
+  mark: function/1
+  values: function/1
+  wrap: function/4

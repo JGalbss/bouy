@@ -1,0 +1,9 @@
+module.exports: object
+  isIdentifierChar: function/1 (false, false, false, false, false, false, false, false, false)
+  isIdentifierName: function/1 (throws, throws, false, false, false, true, false, false, false)
+  isIdentifierStart: function/1 (false, false, false, false, false, false, false, false, false)
+  isKeyword: function/1 (false, false, false, false, false, false, false, false, false)
+  isReservedWord: function/2 (false, false, false, false, false, false, false, false, false)
+  isStrictBindOnlyReservedWord: function/1 (false, false, false, false, false, false, false, false, false)
+  isStrictBindReservedWord: function/2 (false, false, false, false, false, false, false, false, false)
+  isStrictReservedWord: function/2 (false, false, false, false, false, false, false, false, false)

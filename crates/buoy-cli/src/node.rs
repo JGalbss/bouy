@@ -33,31 +33,123 @@ impl Options {
     }
 }
 
-/// The node options that take their value as the next argument.
-const VALUE_OPTIONS: [&str; 22] = [
-    "-r",
-    "--require",
-    "--import",
-    "--loader",
-    "--experimental-loader",
+/// The node options that take their value as the next argument: the options of
+/// `getCLIOptionsInfo()` of node v25.9.0 whose type is a number, a string, a host and
+/// port, or a list, and their aliases.
+const VALUE_OPTIONS: [&str; 76] = [
+    "--allow-fs-read",
+    "--allow-fs-write",
+    "--build-sea",
+    "--build-snapshot-config",
     "-C",
     "--conditions",
-    "--title",
+    "--cpu-prof-dir",
+    "--cpu-prof-interval",
+    "--cpu-prof-name",
+    "--debug-port",
+    "--diagnostic-dir",
+    "--disable-proto",
+    "--disable-warning",
+    "--dns-result-order",
     "--env-file",
     "--env-file-if-exists",
+    "--experimental-config-file",
+    "--experimental-loader",
+    "--experimental-sea-config",
+    "--experimental-test-isolation",
+    "--heap-prof-dir",
+    "--heap-prof-interval",
+    "--heap-prof-name",
+    "--heapsnapshot-near-heap-limit",
+    "--heapsnapshot-signal",
+    "--icu-data-dir",
+    "--import",
     "--input-type",
     "--inspect-port",
+    "--inspect-publish-uid",
+    "--loader",
+    "--localstorage-file",
+    "--max-http-header-size",
+    "--max-old-space-size-percentage",
+    "--network-family-autoselection-attempt-timeout",
+    "--openssl-config",
+    "-r",
     "--redirect-warnings",
-    "--unhandled-rejections",
-    "--dns-result-order",
-    "--diagnostic-dir",
     "--report-dir",
+    "--report-directory",
+    "--report-filename",
+    "--report-signal",
+    "--require",
+    "--run",
+    "--secure-heap",
+    "--secure-heap-min",
+    "--security-revert",
+    "--security-reverts",
+    "--snapshot-blob",
+    "--stack-trace-limit",
+    "--test-concurrency",
+    "--test-coverage-branches",
+    "--test-coverage-exclude",
+    "--test-coverage-functions",
+    "--test-coverage-include",
+    "--test-coverage-lines",
+    "--test-global-setup",
+    "--test-isolation",
     "--test-name-pattern",
     "--test-reporter",
     "--test-reporter-destination",
+    "--test-rerun-failures",
+    "--test-shard",
+    "--test-skip-pattern",
+    "--test-timeout",
+    "--title",
+    "--tls-cipher-list",
+    "--tls-keylog",
+    "--trace-event-categories",
+    "--trace-event-file-pattern",
+    "--trace-require-module",
+    "--unhandled-rejections",
+    "--use-largepages",
+    "--v8-pool-size",
+    "--watch-kill-signal",
     "--watch-path",
-    "--localstorage-file",
 ];
+
+/// The options whose value must be one of a list, with the error of
+/// `EnvironmentOptions::CheckOptions` in node v25.9.0 for another value. An empty value
+/// passes, as Node checks only a value that is set.
+const CHOICE_OPTIONS: [(&str, &[&str], &str); 1] = [(
+    "--unhandled-rejections",
+    &["warn-with-error-code", "throw", "strict", "warn", "none"],
+    "invalid value for --unhandled-rejections",
+)];
+
+/// `ExitCode::kInvalidCommandLineArgument` of Node.
+const INVALID_COMMAND_LINE_ARGUMENT: u8 = 9;
+
+/// The error of the first option of `exec_argv` whose value Node rejects, which Node
+/// reports before any JavaScript runs.
+fn invalid_option(exec_argv: &[String]) -> Option<&'static str> {
+    let mut items = exec_argv.iter();
+    while let Some(item) = items.next() {
+        let (name, inline) = item
+            .split_once('=')
+            .map_or((item.as_str(), None), |(name, value)| (name, Some(value)));
+        let name = name.replace('_', "-");
+        let Some((_, choices, error)) =
+            CHOICE_OPTIONS.iter().find(|(option, _, _)| *option == name)
+        else {
+            continue;
+        };
+        let value = inline
+            .or_else(|| items.next().map(String::as_str))
+            .unwrap_or("");
+        if !value.is_empty() && !choices.contains(&value) {
+            return Some(error);
+        }
+    }
+    None
+}
 
 enum Entry {
     Script(String),
@@ -112,6 +204,14 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                 break;
             }
         }
+    }
+    if let Some(error) = invalid_option(&options.exec_argv) {
+        let program = env::args_os().next().map_or_else(
+            || "buoy".to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        eprintln!("{program}: {error}");
+        return ExitCode::from(INVALID_COMMAND_LINE_ARGUMENT);
     }
     let program_arguments = &arguments[index.min(arguments.len())..];
     match entry {
@@ -251,6 +351,30 @@ mod tests {
             "import x from 'y'",
             &["--input-type".to_owned(), "commonjs".to_owned()]
         ));
+    }
+
+    #[test]
+    fn rejects_a_value_that_node_rejects() {
+        let argv = |items: &[&str]| {
+            items
+                .iter()
+                .map(|item| (*item).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            invalid_option(&argv(&["--unhandled-rejections=foobar"])),
+            Some("invalid value for --unhandled-rejections")
+        );
+        assert_eq!(
+            invalid_option(&argv(&["--unhandled_rejections", "foobar"])),
+            Some("invalid value for --unhandled-rejections")
+        );
+        assert_eq!(
+            invalid_option(&argv(&["--unhandled-rejections=strict"])),
+            None
+        );
+        assert_eq!(invalid_option(&argv(&["--unhandled-rejections="])), None);
+        assert_eq!(invalid_option(&argv(&["--no-warnings"])), None);
     }
 
     #[test]

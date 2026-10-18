@@ -1,0 +1,16 @@
+module.exports: object
+  createDeprecation: function/1
+  createWarning: function/0
+  default: object
+    createDeprecation: function/1
+    createWarning: function/0
+    default: object
+    processWarning: object
+    spyWarning: function/1
+  processWarning: object
+    createDeprecation: function/1
+    createWarning: function/0
+    default: object
+    processWarning: object
+    spyWarning: function/1
+  spyWarning: function/1

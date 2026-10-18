@@ -1,0 +1,2 @@
+module.exports: object
+  StringDecoder: class/1 {end, lastChar, lastNeed, lastTotal, text, write}

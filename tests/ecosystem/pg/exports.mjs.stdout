@@ -1,0 +1,56 @@
+namespace: object Module
+  Client: class/1 {_attachListeners, _connect, _errorAllQueries, _getActiveQuery, _getPassword, _handleAuthCleartextPassword, _handleAuthMD5Password, _handleAuthSASL, _handleAuthSASLContinue, _handleAuthSASLFinal, _handleBackendKeyData, _handleCommandComplete, _handleCopyData, _handleCopyInResponse, _handleDataRow, _handleEmptyQuery, _handleErrorEvent, _handleErrorMessage, _handleErrorWhileConnecting, _handleNotice, _handleNotification, _handleParseComplete, _handlePortalSuspended, _handleReadyForQuery, _handleRowDescription, _pulsePipelinedQueryQueue, _pulseQueryQueue, activeQuery, cancel, connect, end, escapeIdentifier, escapeLiteral, getStartupConf, getTransactionStatus, getTypeParser, query, queryQueue, ref, setTypeParser, unref}
+    Query: class/3 {_checkForMultirow, _getRows, handleCommandComplete, handleCopyData, handleCopyInResponse, handleDataRow, handleEmptyQuery, handleError, handlePortalSuspended, handleReadyForQuery, handleRowDescription, hasBeenParsed, prepare, requiresPreparation, submit}
+  Connection: class/1 {_send, attachListeners, bind, cancel, close, connect, describe, end, endCopyFrom, execute, flush, parse, password, query, ref, requestSsl, sendCopyFail, sendCopyFromChunk, sendSASLInitialResponseMessage, sendSCRAMClientFinalMessage, startup, sync, unref, upgradeToSSL}
+  DatabaseError: function/3
+  Pool: function/1
+  Query: class/3 {_checkForMultirow, _getRows, handleCommandComplete, handleCopyData, handleCopyInResponse, handleDataRow, handleEmptyQuery, handleError, handlePortalSuspended, handleReadyForQuery, handleRowDescription, hasBeenParsed, prepare, requiresPreparation, submit}
+  Result: class/2 {_parseRowAsArray, addCommandComplete, addFields, addRow, parseRow}
+  TypeOverrides: class/1 {getOverrides, getTypeParser, setTypeParser}
+  default: object
+    Client: class/1 {_attachListeners, _connect, _errorAllQueries, _getActiveQuery, _getPassword, _handleAuthCleartextPassword, _handleAuthMD5Password, _handleAuthSASL, _handleAuthSASLContinue, _handleAuthSASLFinal, _handleBackendKeyData, _handleCommandComplete, _handleCopyData, _handleCopyInResponse, _handleDataRow, _handleEmptyQuery, _handleErrorEvent, _handleErrorMessage, _handleErrorWhileConnecting, _handleNotice, _handleNotification, _handleParseComplete, _handlePortalSuspended, _handleReadyForQuery, _handleRowDescription, _pulsePipelinedQueryQueue, _pulseQueryQueue, activeQuery, cancel, connect, end, escapeIdentifier, escapeLiteral, getStartupConf, getTransactionStatus, getTypeParser, query, queryQueue, ref, setTypeParser, unref}
+    Connection: class/1 {_send, attachListeners, bind, cancel, close, connect, describe, end, endCopyFrom, execute, flush, parse, password, query, ref, requestSsl, sendCopyFail, sendCopyFromChunk, sendSASLInitialResponseMessage, sendSCRAMClientFinalMessage, startup, sync, unref, upgradeToSSL}
+    DatabaseError: function/3
+    Pool: function/1
+    Query: class/3 {_checkForMultirow, _getRows, handleCommandComplete, handleCopyData, handleCopyInResponse, handleDataRow, handleEmptyQuery, handleError, handlePortalSuspended, handleReadyForQuery, handleRowDescription, hasBeenParsed, prepare, requiresPreparation, submit}
+    Result: class/2 {_parseRowAsArray, addCommandComplete, addFields, addRow, parseRow}
+    TypeOverrides: class/1 {getOverrides, getTypeParser, setTypeParser}
+    _pools: object Array
+    defaults: object
+    escapeIdentifier: function/1
+    escapeLiteral: function/1
+    types: object
+    utils: object
+  defaults: object
+    application_name: undefined
+    binary: boolean
+    client_encoding: string
+    connect_timeout: number
+    connectionString: undefined
+    database: undefined
+    fallback_application_name: undefined
+    host: string
+    idleTimeoutMillis: number
+    idle_in_transaction_session_timeout: boolean
+    keepalives: number
+    keepalives_idle: number
+    lock_timeout: boolean
+    max: number
+    options: undefined
+    parseInputDatesAsUTC: boolean
+    parseInt8: undefined
+    password: null
+    port: number
+    query_timeout: boolean
+    rows: number
+    ssl: boolean
+    sslnegotiation: undefined
+    statement_timeout: boolean
+    user: undefined
+  escapeIdentifier: function/1
+  escapeLiteral: function/1
+  types: object
+    arrayParser: object
+    builtins: object
+    getTypeParser: function/2
+    setTypeParser: function/3

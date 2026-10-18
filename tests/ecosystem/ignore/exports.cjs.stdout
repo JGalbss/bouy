@@ -1,0 +1,5 @@
+module.exports: function/1
+  default: function/1
+    default: function/1
+    isPathValid: function/1
+  isPathValid: function/1 (false, false, false, false, false, true, false, false, false)

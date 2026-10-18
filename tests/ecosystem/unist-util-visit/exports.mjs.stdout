@@ -1,0 +1,5 @@
+namespace: object Module
+  CONTINUE: boolean
+  EXIT: boolean
+  SKIP: string
+  visit: function/4

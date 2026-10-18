@@ -1,0 +1,22 @@
+module.exports: object
+  DatabaseError: function/3
+  parse: function/2
+  serialize: object
+    bind: function/0
+    cancel: function/2
+    close: function/1
+    copyData: function/1
+    copyDone: function/0
+    copyFail: function/1
+    describe: function/1
+    end: function/0
+    execute: function/1
+    flush: function/0
+    parse: function/1
+    password: function/1
+    query: function/1
+    requestSsl: function/0
+    sendSASLInitialResponseMessage: function/2
+    sendSCRAMClientFinalMessage: function/1
+    startup: function/1
+    sync: function/0

@@ -1,0 +1,6 @@
+namespace: object Module
+  _isFullWidth: function/1
+  _isFullwidth: function/1
+  _isWide: function/1
+  eastAsianWidth: function/1
+  eastAsianWidthType: function/1

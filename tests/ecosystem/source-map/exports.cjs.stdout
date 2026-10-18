@@ -1,0 +1,11 @@
+module.exports: object
+  SourceMapConsumer: class/2 {__generatedMappings, __originalMappings, _charIsMappingSeparator, _generatedMappings, _originalMappings, _parseMappings, _version, allGeneratedPositionsFor, eachMapping}
+    GENERATED_ORDER: number
+    GREATEST_LOWER_BOUND: number
+    LEAST_UPPER_BOUND: number
+    ORIGINAL_ORDER: number
+    fromSourceMap: function/2
+  SourceMapGenerator: class/1 {_generateSourcesContent, _serializeMappings, _validateMapping, _version, addMapping, applySourceMap, setSourceContent, toJSON, toString}
+    fromSourceMap: function/1
+  SourceNode: class/5 {add, join, prepend, replaceRight, setSourceContent, toString, toStringWithSourceMap, walk, walkSourceContents}
+    fromStringWithSourceMap: function/3

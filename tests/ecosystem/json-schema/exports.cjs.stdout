@@ -1,0 +1,12 @@
+module.exports: function/2
+  Integer: object
+    type: string
+  _validate: function/3
+  checkPropertyChange: function/3
+  mustBeValid: function/1
+  validate: function/2
+    Integer: object
+    _validate: function/3
+    checkPropertyChange: function/3
+    mustBeValid: function/1
+    validate: function/2

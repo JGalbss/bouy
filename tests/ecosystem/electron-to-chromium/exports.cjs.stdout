@@ -1,0 +1,403 @@
+module.exports: object
+  chromiumToElectron: function/1
+  chromiumVersions: object
+    100: string
+    102: string
+    103: string
+    104: string
+    105: string
+    106: string
+    107: string
+    108: string
+    110: string
+    111: string
+    112: string
+    114: string
+    116: string
+    118: string
+    119: string
+    120: string
+    121: string
+    122: string
+    123: string
+    124: string
+    125: string
+    126: string
+    127: string
+    128: string
+    129: string
+    130: string
+    131: string
+    132: string
+    133: string
+    134: string
+    135: string
+    136: string
+    137: string
+    138: string
+    139: string
+    140: string
+    141: string
+    142: string
+    143: string
+    144: string
+    146: string
+    147: string
+    148: string
+    149: string
+    150: string
+    151: string
+    152: string
+    154: string
+    155: string
+    156: string
+    39: string
+    40: string
+    41: string
+    42: string
+    43: string
+    44: string
+    45: string
+    47: string
+    49: string
+    50: string
+    51: string
+    52: string
+    53: string
+    54: string
+    56: string
+    58: string
+    59: string
+    61: string
+    66: string
+    69: string
+    72: string
+    73: string
+    76: string
+    78: string
+    79: string
+    80: string
+    82: string
+    83: string
+    84: string
+    85: string
+    86: string
+    87: string
+    89: string
+    90: string
+    91: string
+    92: string
+    93: string
+    94: string
+    95: string
+    96: string
+    98: string
+    99: string
+  electronToBrowserList: function/1
+  electronToChromium: function/1
+  fullChromiumVersions: object
+    100.0.4894.0: object Array
+    100.0.4896.127: object Array
+    100.0.4896.143: object Array
+    100.0.4896.160: object Array
+    100.0.4896.56: object Array
+    100.0.4896.60: object Array
+    100.0.4896.75: object Array
+    102.0.4962.3: object Array
+    102.0.4971.0: object Array
+    102.0.4989.0: object Array
+    102.0.4999.0: object Array
+    102.0.5005.115: object Array
+    102.0.5005.134: object Array
+    102.0.5005.148: object Array
+    102.0.5005.167: object Array
+    102.0.5005.27: object Array
+    102.0.5005.40: object Array
+    102.0.5005.49: object Array
+    102.0.5005.61: object Array
+    102.0.5005.63: object Array
+    103.0.5044.0: object Array
+    104.0.5073.0: object Array
+    104.0.5112.102: object Array
+    104.0.5112.114: object Array
+    104.0.5112.124: object Array
+    104.0.5112.39: object Array
+    104.0.5112.48: object Array
+    104.0.5112.57: object Array
+    104.0.5112.65: object Array
+    104.0.5112.81: object Array
+    105.0.5187.0: object Array
+    106.0.5216.0: object Array
+    106.0.5249.103: object Array
+    106.0.5249.119: object Array
+    106.0.5249.165: object Array
+    106.0.5249.168: object Array
+    106.0.5249.181: object Array
+    106.0.5249.199: object Array
+    106.0.5249.40: object Array
+    106.0.5249.51: object Array
+    106.0.5249.61: object Array
+    106.0.5249.91: object Array
+    107.0.5286.0: object Array
+    108.0.5329.0: object Array
+    108.0.5355.0: object Array
+    108.0.5359.10: object Array
+    108.0.5359.125: object Array
+    108.0.5359.179: object Array
+    108.0.5359.215: object Array
+    108.0.5359.29: object Array
+    108.0.5359.40: object Array
+    108.0.5359.48: object Array
+    108.0.5359.62: object Array
+    110.0.5415.0: object Array
+    110.0.5451.0: object Array
+    110.0.5478.5: object Array
+    110.0.5481.100: object Array
+    110.0.5481.104: object Array
+    110.0.5481.177: object Array
+    110.0.5481.179: object Array
+    110.0.5481.192: object Array
+    110.0.5481.208: object Array
+    110.0.5481.30: object Array
+    110.0.5481.38: object Array
+    110.0.5481.52: object Array
+    110.0.5481.77: object Array
+    111.0.5560.0: object Array
+    111.0.5563.50: object Array
+    112.0.5615.165: object Array
+    112.0.5615.183: object Array
+    112.0.5615.20: object Array
+    112.0.5615.204: object Array
+    112.0.5615.29: object Array
+    112.0.5615.39: object Array
+    112.0.5615.49: object Array
+    112.0.5615.50: object Array
+    112.0.5615.87: object Array
+    114.0.5694.0: object Array
+    114.0.5710.0: object Array
+    114.0.5719.0: object Array
+    114.0.5735.106: object Array
+    114.0.5735.134: object Array
+    114.0.5735.16: object Array
+    114.0.5735.199: object Array
+    114.0.5735.243: object Array
+    114.0.5735.248: object Array
+    114.0.5735.289: object Array
+    114.0.5735.35: object Array
+    114.0.5735.45: object Array
+    116.0.5791.0: object Array
+    116.0.5815.0: object Array
+    116.0.5831.0: object Array
+    116.0.5845.0: object Array
+    116.0.5845.14: object Array
+    116.0.5845.179: object Array
+    116.0.5845.188: object Array
+    116.0.5845.190: object Array
+    116.0.5845.228: object Array
+    116.0.5845.42: object Array
+    116.0.5845.49: object Array
+    ... 452 more keys
+  fullVersions: object
+    0.20.0: string
+    0.20.1: string
+    0.20.2: string
+    0.20.3: string
+    0.20.4: string
+    0.20.5: string
+    0.20.6: string
+    0.20.7: string
+    0.20.8: string
+    0.21.0: string
+    0.21.1: string
+    0.21.2: string
+    0.21.3: string
+    0.22.1: string
+    0.22.2: string
+    0.22.3: string
+    0.23.0: string
+    0.24.0: string
+    0.25.0: string
+    0.25.1: string
+    0.25.2: string
+    0.25.3: string
+    0.26.0: string
+    0.26.1: string
+    0.27.0: string
+    0.27.1: string
+    0.27.2: string
+    0.27.3: string
+    0.28.0: string
+    0.28.1: string
+    0.28.2: string
+    0.28.3: string
+    0.29.1: string
+    0.29.2: string
+    0.30.4: string
+    0.31.0: string
+    0.31.2: string
+    0.32.2: string
+    0.32.3: string
+    0.33.0: string
+    0.33.1: string
+    0.33.2: string
+    0.33.3: string
+    0.33.4: string
+    0.33.6: string
+    0.33.7: string
+    0.33.8: string
+    0.33.9: string
+    0.34.0: string
+    0.34.1: string
+    0.34.2: string
+    0.34.3: string
+    0.34.4: string
+    0.35.1: string
+    0.35.2: string
+    0.35.3: string
+    0.35.4: string
+    0.35.5: string
+    0.36.0: string
+    0.36.10: string
+    0.36.11: string
+    0.36.12: string
+    0.36.2: string
+    0.36.3: string
+    0.36.4: string
+    0.36.5: string
+    0.36.6: string
+    0.36.7: string
+    0.36.8: string
+    0.36.9: string
+    0.37.0: string
+    0.37.1: string
+    0.37.3: string
+    0.37.4: string
+    0.37.5: string
+    0.37.6: string
+    0.37.7: string
+    0.37.8: string
+    1.0.0: string
+    1.0.1: string
+    1.0.2: string
+    1.1.0: string
+    1.1.1: string
+    1.1.2: string
+    1.1.3: string
+    1.2.0: string
+    1.2.1: string
+    1.2.2: string
+    1.2.3: string
+    1.2.4: string
+    1.2.5: string
+    1.2.6: string
+    1.2.7: string
+    1.2.8: string
+    1.3.0: string
+    1.3.1: string
+    1.3.10: string
+    1.3.13: string
+    1.3.14: string
+    1.3.15: string
+    ... 1835 more keys
+  versions: object
+    0.20: string
+    0.21: string
+    0.22: string
+    0.23: string
+    0.24: string
+    0.25: string
+    0.26: string
+    0.27: string
+    0.28: string
+    0.29: string
+    0.30: string
+    0.31: string
+    0.32: string
+    0.33: string
+    0.34: string
+    0.35: string
+    0.36: string
+    0.37: string
+    1.0: string
+    1.1: string
+    1.2: string
+    1.3: string
+    1.4: string
+    1.5: string
+    1.6: string
+    1.7: string
+    1.8: string
+    10.0: string
+    10.1: string
+    10.2: string
+    10.3: string
+    10.4: string
+    11.0: string
+    11.1: string
+    11.2: string
+    11.3: string
+    11.4: string
+    11.5: string
+    12.0: string
+    12.1: string
+    12.2: string
+    13.0: string
+    13.1: string
+    13.2: string
+    13.3: string
+    13.4: string
+    13.5: string
+    13.6: string
+    14.0: string
+    14.1: string
+    14.2: string
+    15.0: string
+    15.1: string
+    15.2: string
+    15.3: string
+    15.4: string
+    15.5: string
+    16.0: string
+    16.1: string
+    16.2: string
+    17.0: string
+    17.1: string
+    17.2: string
+    17.3: string
+    17.4: string
+    18.0: string
+    18.1: string
+    18.2: string
+    18.3: string
+    19.0: string
+    19.1: string
+    2.0: string
+    2.1: string
+    20.0: string
+    20.1: string
+    20.2: string
+    20.3: string
+    21.0: string
+    21.1: string
+    21.2: string
+    21.3: string
+    21.4: string
+    22.0: string
+    22.1: string
+    22.2: string
+    22.3: string
+    23.0: string
+    23.1: string
+    23.2: string
+    23.3: string
+    24.0: string
+    24.1: string
+    24.2: string
+    24.3: string
+    24.4: string
+    24.5: string
+    24.6: string
+    24.7: string
+    24.8: string
+    25.0: string
+    ... 182 more keys

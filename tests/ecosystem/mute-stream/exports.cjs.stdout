@@ -1,0 +1,1 @@
+module.exports: class/1 {_onpipe, close, columns, destroy, destroySoon, end, isTTY, mute, pause, pipe, resume, rows, unmute, write}

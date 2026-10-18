@@ -1,0 +1,7 @@
+module.exports: object
+  createMatchPath: function/4
+  createMatchPathAsync: function/4
+  loadConfig: function/1
+  matchFromAbsolutePaths: function/6
+  matchFromAbsolutePathsAsync: function/7
+  register: function/1

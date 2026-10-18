@@ -1,0 +1,5 @@
+module.exports: object
+  _resetHasWarned: function/0
+  getAllVersions: function/1
+  getCompatibleVersions: function/1
+  getTimeline: function/1

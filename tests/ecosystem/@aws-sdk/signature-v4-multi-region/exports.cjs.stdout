@@ -1,0 +1,5 @@
+module.exports: object
+  SignatureV4MultiRegion: class/1 {getSigv4aSigner, presign, presignWithCredentials, sign, signWithCredentials}
+  SignatureV4SignWithCredentials: class/0 {presignWithCredentials, signWithCredentials}
+  signatureV4CrtContainer: object
+    CrtSignerV4: null

@@ -1,0 +1,8 @@
+module.exports: object
+  _configVault: function/1
+  _parseVault: function/1
+  config: function/1
+  configDotenv: function/1
+  decrypt: function/2
+  parse: function/1
+  populate: function/2

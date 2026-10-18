@@ -1,0 +1,5 @@
+module.exports: object
+  VERSION: string
+  parseType: function/1
+  parsedTypeCheck: function/3
+  typeCheck: function/3

@@ -1,0 +1,157 @@
+module.exports: object
+  Area: class/0 {render, renderArea, renderAreaStatically, renderAreaWithAnimation, renderClipRect, renderDots, renderHorizontalRect, renderVerticalRect}
+    defaultProps: object
+    displayName: string
+    getBaseValue: function/4
+    getComposedData: function/1
+    renderDotItem: function/2
+  AreaChart: object
+    $$typeof: symbol
+    render: function/2
+  Bar: class/0 {render, renderBackground, renderErrorBar, renderRectangles, renderRectanglesStatically, renderRectanglesWithAnimation}
+    defaultProps: object
+    displayName: string
+    getComposedData: function/1
+  BarChart: object
+    $$typeof: symbol
+    render: function/2
+  Brush: class/1 {attachDragEndListener, componentWillUnmount, detachDragEndListener, getIndex, getTextOfTick, handleSlideDrag, handleTravellerDragStart, handleTravellerMove, handleTravellerMoveKeyboard, render, renderBackground, renderPanorama, renderSlide, renderText, renderTravellerLayer}
+    defaultProps: object
+    displayName: string
+  CartesianAxis: class/1 {componentDidMount, getTickLineCoord, getTickTextAnchor, getTickVerticalAnchor, render, renderAxisLine, renderTicks, shouldComponentUpdate}
+    defaultProps: object
+    displayName: string
+  CartesianGrid: function/1
+    displayName: string
+  Cell: function/1
+    displayName: string
+  ComposedChart: object
+    $$typeof: symbol
+    render: function/2
+  Cross: function/1
+  Curve: function/1
+  Customized: function/1
+    displayName: string
+  DefaultLegendContent: class/0 {render, renderIcon, renderItems}
+    defaultProps: object
+    displayName: string
+  DefaultTooltipContent: function/1
+  Dot: function/1
+  ErrorBar: class/0 {render}
+    defaultProps: object
+    displayName: string
+  Funnel: class/0 {isActiveIndex, render, renderTrapezoids, renderTrapezoidsStatically, renderTrapezoidsWithAnimation}
+    defaultProps: object
+    displayName: string
+    getComposedData: function/1
+    getRealFunnelData: function/1
+    getRealWidthHeight: function/2
+  FunnelChart: object
+    $$typeof: symbol
+    render: function/2
+  Global: object
+    get: function/1
+    isSsr: boolean
+    set: function/2
+  Label: function/1
+    displayName: string
+    parseViewBox: function/1
+    renderCallByParent: function/2
+  LabelList: function/1
+    displayName: string
+    renderCallByParent: function/2
+  Layer: object
+    $$typeof: symbol
+    render: function/2
+  Legend: class/0 {componentDidMount, componentDidUpdate, getBBox, getBBoxSnapshot, getDefaultPosition, render, updateBBox}
+    defaultProps: object
+    displayName: string
+  Line: class/0 {componentDidMount, componentDidUpdate, getTotalLength, render, renderCurve, renderCurveStatically, renderCurveWithAnimation, renderDots, renderErrorBar}
+    defaultProps: object
+    displayName: string
+    getComposedData: function/1
+  LineChart: object
+    $$typeof: symbol
+    render: function/2
+  Pie: class/1 {attachKeyboardHandlers, componentDidMount, hasActiveIndex, isActiveIndex, render, renderLabels, renderSectors, renderSectorsStatically, renderSectorsWithAnimation}
+    defaultProps: object
+    displayName: string
+    getComposedData: function/1
+    getRealPieData: function/1
+    parseCoordinateOfPie: function/2
+    parseDeltaAngle: function/2
+  PieChart: object
+    $$typeof: symbol
+    render: function/2
+  PolarAngleAxis: class/0 {getTickLineCoord, getTickTextAnchor, render, renderAxisLine, renderTicks}
+    axisType: string
+    defaultProps: object
+    displayName: string
+  PolarGrid: function/1
+    displayName: string
+  PolarRadiusAxis: class/0 {getTickTextAnchor, getTickValueCoord, getViewBox, render, renderAxisLine, renderTicks}
+    axisType: string
+    defaultProps: object
+    displayName: string
+  Polygon: function/1
+  Radar: class/0 {render, renderDots, renderPolygon, renderPolygonStatically, renderPolygonWithAnimation}
+    defaultProps: object
+    displayName: string
+    getComposedData: function/1
+  RadarChart: object
+    $$typeof: symbol
+    render: function/2
+  RadialBar: class/0 {getDeltaAngle, render, renderBackground, renderSectors, renderSectorsStatically, renderSectorsWithAnimation}
+    defaultProps: object
+    displayName: string
+    getComposedData: function/1
+  RadialBarChart: object
+    $$typeof: symbol
+    render: function/2
+  Rectangle: function/1
+  ReferenceArea: class/0 {render}
+    defaultProps: object
+    displayName: string
+    renderRect: function/2
+  ReferenceDot: class/0 {render}
+    defaultProps: object
+    displayName: string
+    renderDot: function/2
+  ReferenceLine: class/0 {render}
+    defaultProps: object
+    displayName: string
+  ResponsiveContainer: object
+    $$typeof: symbol
+    render: function/2
+  Sankey: class/0 {handleClick, handleMouseEnter, handleMouseLeave, render, renderLinks, renderNodes, renderTooltip}
+    defaultProps: object
+    displayName: string
+  Scatter: class/0 {render, renderErrorBar, renderLine, renderSymbols, renderSymbolsStatically, renderSymbolsWithAnimation}
+    defaultProps: object
+    displayName: string
+    getComposedData: function/1
+  ScatterChart: object
+    $$typeof: symbol
+    render: function/2
+  Sector: function/1
+  SunburstChart: function/1
+  Surface: function/1
+  Symbols: function/1
+    registerSymbol: function/2
+  Text: function/1
+  Tooltip: class/0 {render}
+    defaultProps: object
+    displayName: string
+  Trapezoid: function/1
+  Treemap: class/0 {handleClick, handleMouseEnter, handleMouseLeave, handleNestIndex, render, renderAllNodes, renderItem, renderNestIndex, renderNode, renderTooltip}
+    defaultProps: object
+    displayName: string
+  XAxis: class/0 {render}
+    defaultProps: object
+    displayName: string
+  YAxis: class/0 {render}
+    defaultProps: object
+    displayName: string
+  ZAxis: class/0 {render}
+    defaultProps: object
+    displayName: string

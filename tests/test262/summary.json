@@ -1,18 +1,18 @@
 {
   "suite": "test262",
   "version": "d53ebc8b1931d9f1541e43d59650776e4b766248",
-  "updated": "7a9cb206b31f381bc62e161a868a68d5410bdd1f",
+  "updated": "e75ea79aef97fc66661f0784e3eba4ba8b6d3810",
   "total": 53616,
   "outcomes": {
-    "pass": 4320,
-    "rejected": 49251,
+    "pass": 4678,
+    "rejected": 48894,
     "late": 0,
     "skip": 44,
     "never": 0,
     "fail": 0,
     "timeout": 0,
     "harness_error": 0,
-    "crash": 1
+    "crash": 0
   },
   "groups": {
     "directory": {
@@ -791,11 +791,12 @@
         "rejected": 36
       },
       "built-ins/RegExp/property-escapes": {
-        "rejected": 613
+        "pass": 163,
+        "rejected": 450
       },
       "built-ins/RegExp/prototype": {
-        "pass": 1,
-        "rejected": 486
+        "pass": 29,
+        "rejected": 458
       },
       "built-ins/RegExp/regexp-modifiers": {
         "rejected": 70
@@ -1595,8 +1596,8 @@
         "rejected": 101
       },
       "language/literals/regexp": {
-        "pass": 21,
-        "rejected": 219
+        "pass": 188,
+        "rejected": 52
       },
       "language/literals/string": {
         "pass": 35,
@@ -1707,8 +1708,7 @@
       },
       "language/statements/function": {
         "pass": 60,
-        "rejected": 390,
-        "crash": 1
+        "rejected": 391
       },
       "language/statements/generators": {
         "pass": 32,
@@ -1988,8 +1988,8 @@
         "skip": 3
       },
       "es12": {
-        "pass": 75,
-        "rejected": 843,
+        "pass": 76,
+        "rejected": 842,
         "skip": 4
       },
       "es13": {
@@ -2001,12 +2001,12 @@
         "rejected": 383
       },
       "es15": {
-        "pass": 1,
-        "rejected": 845
+        "pass": 50,
+        "rejected": 796
       },
       "es16": {
-        "pass": 8,
-        "rejected": 1276,
+        "pass": 91,
+        "rejected": 1193,
         "skip": 4
       },
       "es17": {
@@ -2014,12 +2014,11 @@
       },
       "es5": {
         "pass": 474,
-        "rejected": 7690,
-        "crash": 1
+        "rejected": 7691
       },
       "es6": {
-        "pass": 1746,
-        "rejected": 17776
+        "pass": 1775,
+        "rejected": 17747
       },
       "es7": {
         "pass": 14,
@@ -2031,8 +2030,8 @@
         "skip": 1
       },
       "es9": {
-        "pass": 444,
-        "rejected": 4382,
+        "pass": 640,
+        "rejected": 4186,
         "skip": 32
       },
       "esnext": {
@@ -2590,8 +2589,8 @@
         "rejected": 4
       },
       "numeric-separator-literal": {
-        "pass": 63,
-        "rejected": 96
+        "pass": 64,
+        "rejected": 95
       },
       "object-rest": {
         "pass": 7,
@@ -2631,17 +2630,20 @@
         "rejected": 31
       },
       "regexp-modifiers": {
-        "rejected": 230
+        "pass": 83,
+        "rejected": 147
       },
       "regexp-named-groups": {
-        "rejected": 100
+        "pass": 54,
+        "rejected": 46
       },
       "regexp-unicode-property-escapes": {
-        "rejected": 681
+        "pass": 163,
+        "rejected": 518
       },
       "regexp-v-flag": {
-        "pass": 1,
-        "rejected": 186
+        "pass": 50,
+        "rejected": 137
       },
       "resizable-arraybuffer": {
         "rejected": 471
@@ -2702,14 +2704,13 @@
     },
     "kind": {
       "negative": {
-        "pass": 4315,
-        "rejected": 419
+        "pass": 4673,
+        "rejected": 61
       },
       "positive": {
         "pass": 5,
-        "rejected": 48832,
-        "skip": 44,
-        "crash": 1
+        "rejected": 48833,
+        "skip": 44
       }
     },
     "subset": {
@@ -2719,18 +2720,17 @@
         "skip": 1
       },
       "npm": {
-        "pass": 3978,
-        "rejected": 36216,
-        "skip": 37,
-        "crash": 1
+        "pass": 4204,
+        "rejected": 35991,
+        "skip": 37
       }
     }
   },
   "blockers": [
     {
       "blocker": "BUOY206",
-      "files": 48753,
-      "only": 371
+      "files": 48395,
+      "only": 13
     },
     {
       "blocker": "BUOY200",
@@ -2744,12 +2744,12 @@
     },
     {
       "blocker": "harness/assert.js",
-      "files": 48868,
+      "files": 48869,
       "only": 0
     },
     {
       "blocker": "harness/sta.js",
-      "files": 48868,
+      "files": 48869,
       "only": 0
     },
     {

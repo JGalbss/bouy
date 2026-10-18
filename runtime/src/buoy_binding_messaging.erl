@@ -50,7 +50,7 @@ binding() ->
         {<<"stopMessagePort">>, F(<<"stopMessagePort">>, 1, fun(_, Args) -> stop(A(1, Args)) end)},
         {<<"drainMessagePort">>, F(<<"drainMessagePort">>, 1, fun(_, Args) -> drain(A(1, Args)) end)},
         {<<"receiveMessageOnPort">>, F(<<"receiveMessageOnPort">>, 1, fun(_, Args) -> receive_message(A(1, Args)) end)},
-        {<<"moveMessagePortToContext">>, F(<<"moveMessagePortToContext">>, 2, fun(_, Args) -> move_to_context(A(1, Args), A(2, Args)) end)},
+        {<<"moveMessagePortToContext">>, F(<<"moveMessagePortToContext">>, 0, fun(_, Args) -> move_to_context(A(1, Args), A(2, Args)) end)},
         {<<"setDeserializerCreateObjectFunction">>, F(<<"setDeserializerCreateObjectFunction">>, 1, fun(_, Args) ->
             erlang:put(?CREATE, A(1, Args)),
             undefined
@@ -64,7 +64,7 @@ binding() ->
 define_methods(Proto) ->
     [buoy_heap:define(Proto, Name, #{value => buoy_node:fn(Name, Length, Fun), writable => true, enumerable => true,
                                      configurable => true})
-     || {Name, Length, Fun} <- [{<<"postMessage">>, 1, fun post_message/2},
+     || {Name, Length, Fun} <- [{<<"postMessage">>, 0, fun post_message/2},
                                 {<<"start">>, 0, fun(This, _) -> start(This) end},
                                 {<<"close">>, 0, fun(This, _) -> close(This), undefined end},
                                 {<<"ref">>, 0, fun(This, _) -> set_ref(This, true) end},
@@ -642,9 +642,11 @@ host_out(O, Ports, Js) ->
             end
     end.
 
+%% V8's serializer asks the delegate only about plain objects; it clones an
+%% ArrayBuffer, an array, or a Map itself, marked or not.
 js_host_out(O, Js) ->
-    case transfer_mode(O) of
-        undefined ->
+    case buoy_heap:class_of(O) =:= object andalso transfer_mode(O) of
+        Unmarked when Unmarked =:= false; Unmarked =:= undefined ->
             none;
         Mode ->
             Transferred = lists:member(O, Js),

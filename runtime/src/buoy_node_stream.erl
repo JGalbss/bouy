@@ -11,7 +11,7 @@
 %% writable side.
 -module(buoy_node_stream).
 
--export([methods/1, attach/2, deliver/2, call/2, written/3]).
+-export([methods/1, attach/2, set_fd/2, deliver/2, call/2, written/3, forward/2, pass/2]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
@@ -25,8 +25,8 @@
 methods(Proto) ->
     F = fun buoy_node:fn/3,
     A = fun buoy_node:arg/2,
-    Writes = [{<<"writeBuffer">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:view_bytes(A(2, Args))) end},
-              {<<"writeUtf8String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(utf8, A(2, Args))) end},
+    Writes = [{<<"writeBuffer">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:view_bytes(A(2, Args)), A(3, Args)) end},
+              {<<"writeUtf8String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(utf8, A(2, Args)), A(3, Args)) end},
               {<<"writeAsciiString">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(latin1, A(2, Args))) end},
               {<<"writeLatin1String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(latin1, A(2, Args))) end},
               {<<"writeUcs2String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(ucs2, A(2, Args))) end},
@@ -47,7 +47,7 @@ methods(Proto) ->
     [buoy_heap:define(Proto, Name, #{get => F(<<"get ", Name/binary>>, 0, Get), enumerable => true, configurable => true})
      || {Name, Get} <- [{<<"bytesRead">>, fun(This, _) -> maps:get(read, state(This), 0) end},
                         {<<"bytesWritten">>, fun(This, _) -> maps:get(written, state(This), 0) end},
-                        {<<"fd">>, fun(_, _) -> -1 end},
+                        {<<"fd">>, fun(This, _) -> maps:get(fd, state(This), -1) end},
                         {<<"writeQueueSize">>, fun(_, _) -> 0 end}]],
     ok.
 
@@ -57,6 +57,11 @@ attach(Handle, Channel) ->
     Id = erlang:unique_integer([positive]),
     update(Handle, fun(S) -> S#{channel => Channel, reading => false, pending => [], eof => false,
                                 read => 0, written => 0, async_id => Id, closed => false} end).
+
+%% The descriptor that the handle's fd reports, as uv_fileno.
+-spec set_fd(term(), integer()) -> ok.
+set_fd(Handle, Fd) ->
+    update(Handle, fun(S) -> S#{fd => Fd} end).
 
 state(Handle) ->
     case buoy_heap:is_object(Handle) andalso buoy_heap:private_find(Handle, ?STATE) of
@@ -93,14 +98,23 @@ stream_state() ->
 
 %% The request stays a root of the heap, and keeps the loop alive as libuv's
 %% active request does, until the channel reports the write.
-write(Handle, Req, Bytes) ->
+write(Handle, Req, Bytes) -> write(Handle, Req, Bytes, undefined).
+
+%% A write of an IPC channel may pass SendHandle, as StreamBase::WriteString
+%% passes it to uv_write2; the request keeps it alive until the write ends.
+write(Handle, Req, Bytes, SendHandle) ->
     buoy_node_loop:ref_handle(),
     State = stream_state(),
     buoy_heap:set(State, ?K_BYTES_WRITTEN, byte_size(Bytes)),
     buoy_heap:set(State, ?K_ASYNC, 1),
     Ref = make_ref(),
     erlang:put({?MODULE, request, Ref}, {Handle, Req}),
+    Fds = case buoy_heap:is_object(SendHandle) of
+        true -> buoy_heap:set(Req, <<"handle">>, SendHandle), buoy_node_ipc:send_fds(SendHandle);
+        false -> []
+    end,
     case state(Handle) of
+        #{channel := Channel} when is_pid(Channel), Fds =/= [] -> Channel ! {write, Bytes, self(), Ref, Fds};
         #{channel := Channel} when is_pid(Channel) -> Channel ! {write, Bytes, self(), Ref};
         _ -> call(self(), fun() -> written(Ref, -32, ok) end)
     end,
@@ -154,13 +168,38 @@ set_ref(Handle, Refed) ->
     update(Handle, fun(S) -> S#{refed := Refed} end),
     undefined.
 
+%% A child whose stdio entry is this handle (a 'wrap' of getValidStdio)
+%% shares its descriptor: while Target, the manager of that child, is set,
+%% what the handle reads goes to the child's stdin, as the reads of the
+%% child take it from the shared pipe.
+-spec forward(term(), pid() | none) -> ok.
+forward(Handle, Target) ->
+    #{pending := Pending} = state(Handle),
+    update(Handle, fun(S) -> S#{forward => Target, pending := case Target of none -> Pending; _ -> [] end} end),
+    is_pid(Target) andalso lists:foreach(fun(Item) -> pass_to(Target, Item) end, lists:reverse(Pending)),
+    ok.
+
+pass_to(Target, eof) -> Target ! shutdown;
+pass_to(Target, {Bytes, _Pending}) -> pass_to(Target, Bytes);
+pass_to(Target, Bytes) -> Target ! {write, Bytes, self(), make_ref()}.
+
+%% A child's output whose stdio entry is this handle: the bytes go out
+%% through the handle's channel, as the child writes to the shared pipe.
+-spec pass(term(), binary()) -> ok.
+pass(Handle, Bytes) ->
+    send(Handle, {write, Bytes, self(), make_ref()}).
+
 %% Data that the channel read, or eof: the handle's onread gets it while it
-%% reads, and keeps it for readStart otherwise.
--spec deliver(term(), binary() | eof) -> term().
+%% reads, and keeps it for readStart otherwise. Data that an IPC channel
+%% read with a handle, {Bytes, Pending}, sets the handle's pendingHandle
+%% first, as LibuvStreamWrap::OnUvRead does.
+-spec deliver(term(), binary() | {binary(), term()} | eof) -> term().
 deliver(Handle, Item) ->
     case state(Handle) of
         #{closed := true} ->
             ok;
+        #{forward := Target} when is_pid(Target) ->
+            pass_to(Target, Item);
         #{reading := false} = S ->
             update(Handle, fun(_) -> S#{pending := [Item | maps:get(pending, S)]} end);
         S ->
@@ -171,6 +210,9 @@ deliver(Handle, Item) ->
                     update(Handle, fun(_) -> S#{eof := true} end),
                     buoy_heap:set(State, ?K_READ_BYTES, ?UV_EOF),
                     buoy_heap:is_callable(Onread) andalso buoy_heap:call(Onread, Handle, [undefined]);
+                {Bytes, Pending} ->
+                    buoy_heap:set(Handle, <<"pendingHandle">>, Pending),
+                    deliver(Handle, Bytes);
                 Bytes ->
                     update(Handle, fun(_) -> S#{read => maps:get(read, S, 0) + byte_size(Bytes)} end),
                     Buffer = buoy_ref_buffer:allocate(byte_size(Bytes)),

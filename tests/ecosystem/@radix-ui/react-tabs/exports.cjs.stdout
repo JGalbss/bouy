@@ -1,0 +1,27 @@
+module.exports: object
+  Content: object
+    $$typeof: symbol
+    render: function/2
+  List: object
+    $$typeof: symbol
+    render: function/2
+  Root: object
+    $$typeof: symbol
+    render: function/2
+  Tabs: object
+    $$typeof: symbol
+    render: function/2
+  TabsContent: object
+    $$typeof: symbol
+    render: function/2
+  TabsList: object
+    $$typeof: symbol
+    render: function/2
+  TabsTrigger: object
+    $$typeof: symbol
+    render: function/2
+  Trigger: object
+    $$typeof: symbol
+    render: function/2
+  createTabsScope: function/0
+    scopeName: string

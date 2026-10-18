@@ -1,0 +1,5 @@
+module.exports: object
+  Settings: class/0 {_getValue}
+  walk: function/3
+  walkStream: function/2
+  walkSync: function/2

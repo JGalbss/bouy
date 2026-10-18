@@ -1,0 +1,13 @@
+module.exports: function/5
+  CachedInputFileSystem: class/2 {purge}
+  CloneBasenamePlugin: class/2 {apply}
+  LogInfoPlugin: class/1 {apply}
+  ResolverFactory: object
+    createResolver: function/1
+  TsconfigPathsPlugin: class/1 {_findExtendsInNodeModules, _findTsconfigUpward, _getTsconfigPathsMap, _loadTsconfig, _loadTsconfigFromExtends, _loadTsconfigPathsMap, _loadTsconfigReferences, _selectPathsDataForContext, apply}
+  create: function/1
+    promise: function/1
+    sync: function/1
+  forEachBail: function/3
+  promise: function/4
+  sync: function/4
