@@ -33,10 +33,12 @@ use clap::Parser;
 /// The VM gives the first realm `$262CreateRealm`, which makes a realm in the same process
 /// and returns its global object (`buoy_ref_realm:create/0`); the prelude takes it off the
 /// global object. Each realm has the hidden global `__buoyEvalScript`, which runs a script
-/// in that realm (`buoy_ref_eval:script/1`).
+/// in that realm (`buoy_ref_eval:script/1`), and `__buoyAbstractModuleSource`, the
+/// intrinsic %AbstractModuleSource% of that realm.
 const HOST: &str = "function print(message) { console.log(String(message)); }\n\
 var $262 = (function host(global, createRealm, agent) {\n\
   return { global: global, gc: function () {}, evalScript: function (source) { return global.__buoyEvalScript(source); },\n\
+    AbstractModuleSource: global.__buoyAbstractModuleSource,\n\
     createRealm: function () { return host(createRealm(), createRealm); },\n\
     detachArrayBuffer: function (buffer) { if (!buffer.detached) buffer.transfer(); }, agent: agent };\n\
 })(globalThis, globalThis.$262CreateRealm, globalThis.$262.agent);\n\
