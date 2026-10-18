@@ -21,7 +21,7 @@
 -module(buoy_node_socket).
 
 -export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, later/1, event/1]).
--export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
+-export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, open_descriptor/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
 -export_type([kind/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -551,9 +551,31 @@ connected(Handle, Req, Status) ->
 %% open(fd): the handle takes a socket descriptor that the VM inherited.
 -spec open_fd(term(), integer()) -> integer().
 open_fd(Handle, Fd) ->
-    case socket:open(Fd) of
+    case open_descriptor(Fd, #{}) of
         {ok, Socket} -> attach(Handle, Socket), 0;
         {error, Reason} -> errno(Reason)
+    end.
+
+%% A socket on the descriptor Fd. OTP reads its domain with SO_DOMAIN, which
+%% macOS lacks: there a duplicate opens as inet, and its sockname gives the
+%% family, which sockaddr carries whatever the domain.
+-spec open_descriptor(integer(), map()) -> {ok, socket:socket()} | {error, term()}.
+open_descriptor(Fd, Options) ->
+    case socket:open(Fd, Options) of
+        {error, {invalid, {options, domain, _}}} ->
+            case socket:open(Fd, #{domain => inet, dup => true}) of
+                {ok, Probe} ->
+                    Name = socket:sockname(Probe),
+                    socket:close(Probe),
+                    case Name of
+                        {ok, #{family := Family}} -> socket:open(Fd, Options#{domain => Family});
+                        {error, _} = Error -> Error
+                    end;
+                Error ->
+                    Error
+            end;
+        Result ->
+            Result
     end.
 
 %% The socket's own address or its peer's, or a negative errno.

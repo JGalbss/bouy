@@ -184,9 +184,9 @@ constructor_name(O, Depth) ->
     end.
 
 %% guessHandleType(fd): the index of the type in the handleTypes of
-%% internal/util (TCP, TTY, UDP, FILE, PIPE, UNKNOWN). Stdio reads as a file,
-%% so that process.stdout is a SyncWriteStream, unless the VM's device is a
-%% terminal.
+%% internal/util (TCP, TTY, UDP, FILE, PIPE, UNKNOWN). Stdio is a terminal
+%% when the VM's device is one, a socket as uv_guess_handle reports it, and
+%% otherwise a file, so that process.stdout over a pipe is a SyncWriteStream.
 handle_type(Fd) ->
     case buoy_ref:to_number(Fd) of
         N when N =:= 0; N =:= 1; N =:= 2 ->
@@ -195,10 +195,10 @@ handle_type(Fd) ->
                 Options when is_list(Options) ->
                     case proplists:get_value(terminal, Options, false) of
                         true -> 1;
-                        _ -> 3
+                        _ -> socket_type(N)
                     end;
                 _ ->
-                    3
+                    socket_type(N)
             end;
         N when is_integer(N), N > 2 ->
             socket_type(N);
@@ -209,7 +209,7 @@ handle_type(Fd) ->
 %% TCP, UDP, or PIPE for a socket descriptor, which a duplicate probes, and
 %% FILE for another one.
 socket_type(Fd) ->
-    case socket:open(Fd, #{dup => true}) of
+    case buoy_node_socket:open_descriptor(Fd, #{dup => true}) of
         {ok, Socket} ->
             Info = socket:info(Socket),
             socket:close(Socket),

@@ -1,15 +1,15 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "270df4186a6d5c2ef53dd1adcb44cf1181b999ee",
+  "updated": "53c5881b298db46ea427ab6de2fa26d1af61cfa6",
   "total": 4419,
   "outcomes": {
-    "pass": 2012,
+    "pass": 2047,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1693,
+    "fail": 1658,
     "timeout": 121,
     "harness_error": 0,
     "crash": 10
@@ -23,16 +23,16 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1908,
+        "pass": 1942,
         "skip": 545,
-        "fail": 1515,
+        "fail": 1481,
         "timeout": 101,
         "crash": 10
       },
       "sequential": {
-        "pass": 39,
+        "pass": 40,
         "skip": 22,
-        "fail": 50,
+        "fail": 49,
         "timeout": 7
       }
     },
@@ -41,9 +41,9 @@
         "skip": 343
       },
       "public": {
-        "pass": 2012,
+        "pass": 2047,
         "skip": 240,
-        "fail": 1693,
+        "fail": 1658,
         "timeout": 121,
         "crash": 10
       }
@@ -66,9 +66,9 @@
         "fail": 5
       },
       "child_process": {
-        "pass": 68,
+        "pass": 69,
         "skip": 7,
-        "fail": 24,
+        "fail": 23,
         "timeout": 15
       },
       "cluster": {
@@ -208,9 +208,9 @@
         "skip": 2
       },
       "stream": {
-        "pass": 203,
+        "pass": 237,
         "skip": 8,
-        "fail": 52
+        "fail": 18
       },
       "string_decoder": {
         "pass": 3

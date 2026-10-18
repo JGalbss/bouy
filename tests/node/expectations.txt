@@ -438,7 +438,7 @@ parallel/test-child-process-fork-no-shell.js timeout
 parallel/test-child-process-fork-ref.js pass
 parallel/test-child-process-fork-ref2.js pass
 parallel/test-child-process-fork-stdio-string-variant.js fail
-parallel/test-child-process-fork-stdio.js fail
+parallel/test-child-process-fork-stdio.js pass
 parallel/test-child-process-fork-timeout-kill-signal.js pass
 parallel/test-child-process-fork-url.mjs pass
 parallel/test-child-process-fork.js pass
@@ -4396,7 +4396,7 @@ sequential/test-require-cache-without-stat.js pass
 sequential/test-resolution-inspect-brk.js pass
 sequential/test-runner-run-inspect.mjs pass
 sequential/test-stream2-fs.js pass
-sequential/test-stream2-stderr-sync.js fail
+sequential/test-stream2-stderr-sync.js pass
 sequential/test-timers-block-eventloop.js skip
 sequential/test-timers-set-interval-excludes-callback-duration.js skip
 sequential/test-tls-connect.js pass
