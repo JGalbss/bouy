@@ -158,20 +158,10 @@ closing(State, Step) ->
     try Step()
     catch
         error:{'$throw', _} = Reason:Stack ->
-            close(State),
+            buoy_ref_iterator:close_quietly(State),
             erlang:raise(error, Reason, Stack)
     end.
 
-close({protocol, Iterator, _}) ->
-    try
-        case buoy_ref:get(Iterator, <<"return">>) of
-            R when R =:= undefined; R =:= null -> ok;
-            Return -> buoy_ref:call(Return, Iterator, [])
-        end
-    catch
-        error:{'$throw', _} -> ok
-    end;
-close(_) -> ok.
 
 %%% The entries
 
@@ -510,7 +500,7 @@ key_steps(Iterator, Next, F, Default) ->
             case F(key(buoy_ref:get(Result, <<"value">>))) of
                 continue -> key_steps(Iterator, Next, F, Default);
                 {stop, Value} ->
-                    close({protocol, Iterator, Next}),
+                    buoy_ref_iterator:close(Iterator),
                     Value
             end
     end.

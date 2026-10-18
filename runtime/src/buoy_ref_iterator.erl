@@ -71,9 +71,10 @@ iterate({'$o', _} = O) ->
             native(Class, O);
         _ -> protocol(O)
     end;
-iterate(S) when ?IS_STRING(S) -> {list, [buoy_ref_string:from_code_points([C]) || C <- buoy_ref_string:code_points(S)]};
-iterate({'$f', _, _} = F) -> protocol(F);
-iterate(V) -> buoy_ref:type_error(buoy_ref_string:concat(buoy_ref:describe(V), <<" is not iterable">>)).
+%% A primitive iterates through the @@iterator of its prototype, called with
+%% the primitive as this, so a program may replace String.prototype[@@iterator]
+%% or give Number.prototype one.
+iterate(V) -> protocol(V).
 
 %% The iteration of internal code, such as the Temporal polyfill: an array
 %% steps over its elements as the intrinsic array iterator does, whatever a
@@ -85,6 +86,7 @@ iterate_internal({'$o', _} = O) ->
         array -> {array, O, 0};
         _ -> iterate(O)
     end;
+iterate_internal(S) when ?IS_STRING(S) -> {list, [buoy_ref_string:from_code_points([C]) || C <- buoy_ref_string:code_points(S)]};
 iterate_internal(V) -> iterate(V).
 
 %% Runs Fun as internal code that program code cannot interleave with.
