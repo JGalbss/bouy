@@ -42,7 +42,7 @@ binding() ->
             C = buoy_ref_realm:global(<<"SharedArrayBuffer">>),
             buoy_heap:construct(C, [buoy_node:arg(1, A)], C)
         end)},
-        {<<"shouldAbortOnUncaughtToggle">>, buoy_node:typed_array(<<"Uint32Array">>, 1)},
+        {<<"shouldAbortOnUncaughtToggle">>, abort_toggle()},
         {<<"guessHandleType">>, F(<<"guessHandleType">>, 1, fun(_, A) -> handle_type(buoy_node:arg(1, A)) end)},
         {<<"isConstructor">>, F(<<"isConstructor">>, 1, fun(_, A) -> buoy_heap:is_constructor(buoy_node:arg(1, A)) end)}
     ] ++ buoy_binding_types:checks([<<"isArrayBuffer">>, <<"isAsyncFunction">>, <<"isDataView">>, <<"isDate">>,
@@ -244,3 +244,10 @@ env_value(Value) ->
         [Before, _] -> string:trim(Before);
         [_] -> Value
     end.
+
+%% Environment starts should_abort_on_uncaught_toggle_ at 1; a capture
+%% callback, such as the one of a domain, sets it to 0.
+abort_toggle() ->
+    Toggle = buoy_node:typed_array(<<"Uint32Array">>, 1),
+    buoy_heap:set(Toggle, 0, 1),
+    Toggle.

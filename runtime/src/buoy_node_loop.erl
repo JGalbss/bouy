@@ -282,12 +282,15 @@ uncaught(Error, FromPromise) ->
     %% A program that replaced process._fatalException with no function exits
     %% with kInvalidFatalExceptionMonkeyPatching, as TriggerUncaughtException does.
     buoy_heap:is_callable(Fatal) orelse begin print_fatal(Error), really_exit(6) end,
+    FromPromise orelse should_abort() andalso abort(Error),
     Handled = try buoy_heap:call(Fatal, Process, [Error, FromPromise])
               catch
                   error:Reason:Stack -> {thrown, buoy_ref:caught(Reason, Stack)}
               end,
     case Handled of
         {thrown, Thrown} ->
+            %% V8 would abort at the throw in the handler, where no catch waits.
+            is_abort_option() andalso abort(Thrown),
             print_fatal(Thrown),
             really_exit(7);
         H ->
@@ -299,6 +302,24 @@ uncaught(Error, FromPromise) ->
                     really_exit(exit_code(1))
             end
     end.
+
+%% ShouldAbortOnUncaughtException of src/api/environment.cc: with
+%% --abort-on-uncaught-exception, an exception that no capture callback,
+%% such as a domain, takes aborts the process. V8 aborts at the throw; Buoy
+%% learns of it only when the exception reaches the loop.
+should_abort() ->
+    is_abort_option() andalso
+        buoy_heap:get(buoy_heap:get(buoy_node:binding(<<"util">>), <<"shouldAbortOnUncaughtToggle">>), 0) =/= 0.
+
+is_abort_option() ->
+    lists:any(fun(Arg) -> binary:replace(Arg, <<"_">>, <<"-">>, [global]) =:= <<"--abort-on-uncaught-exception">> end,
+              buoy_node_process:exec_argv()).
+
+%% The abort of V8: the error, then the status of SIGABRT, as a shell reports it.
+-spec abort(term()) -> no_return().
+abort(Error) ->
+    print_fatal(Error),
+    really_exit(134).
 
 print_fatal(Error) ->
     Text = case buoy_heap:is_object(Error) andalso buoy_heap:class_of(Error) =:= error of
