@@ -36,6 +36,9 @@
 -define(ERR_CALLBACK_FAILURE, -902).
 -define(ENHANCE_YOUR_CALM, 11).
 -define(SETTINGS_COUNT, 7).
+%% The setting ids of the settings buffer by index, in the order of
+%% Http2SettingsIndex (node_http2_state.h) that lib/internal/http2/util.js reads.
+-define(SETTING_IDS, [1, 2, 4, 5, 3, 6, 8]).
 -define(MAX_ADDITIONAL_SETTINGS, 10).
 
 -spec binding() -> term().
@@ -69,7 +72,7 @@ binding() ->
 
 refresh_defaults() ->
     #{settings := Buf} = erlang:get(?STATE),
-    Defaults = [4096, 1, 16#FFFFFFFF, 65535, 16384, 65535, 0],
+    Defaults = [4096, 1, 65535, 16384, 16#FFFFFFFF, 65535, 0],
     [buoy_heap:set(Buf, I, V) || {I, V} <- lists:enumerate(0, Defaults)],
     buoy_heap:set(Buf, ?SETTINGS_COUNT, (1 bsl ?SETTINGS_COUNT) - 1),
     buoy_heap:set(Buf, ?SETTINGS_COUNT + 1, 0),
@@ -81,8 +84,7 @@ settings_entries() ->
     #{settings := Buf} = erlang:get(?STATE),
     Get = fun(I) -> trunc(buoy_heap:get(Buf, I)) end,
     Flags = Get(?SETTINGS_COUNT),
-    Ids = [1, 2, 3, 4, 5, 6, 8],
-    Standard = [{Id, Get(I)} || {I, Id} <- lists:enumerate(0, Ids), Flags band (1 bsl I) =/= 0],
+    Standard = lists:keysort(1, [{Id, Get(I)} || {I, Id} <- lists:enumerate(0, ?SETTING_IDS), Flags band (1 bsl I) =/= 0]),
     Custom = [{Get(?SETTINGS_COUNT + 2 + N * 2), Get(?SETTINGS_COUNT + 3 + N * 2)}
               || N <- lists:seq(0, Get(?SETTINGS_COUNT + 1) - 1)],
     Standard ++ Custom.
@@ -583,7 +585,7 @@ update_settings(This, Which) ->
     #{settings := Buf} = erlang:get(?STATE),
     H = h2(This),
     Settings = case Which of local -> buoy_h2:local_settings(H); remote -> buoy_h2:remote_settings(H) end,
-    Keys = [header_table_size, enable_push, max_concurrent_streams, initial_window_size, max_frame_size,
+    Keys = [header_table_size, enable_push, initial_window_size, max_frame_size, max_concurrent_streams,
             max_header_list_size, enable_connect_protocol],
     [buoy_heap:set(Buf, I, maps:get(K, Settings)) || {I, K} <- lists:enumerate(0, Keys)],
     Custom = case Which of
