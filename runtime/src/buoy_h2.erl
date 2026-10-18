@@ -958,7 +958,10 @@ submit_settings(H, Entries) ->
                 ({2, V}, Acc) -> Acc#h2{pending_enable_push = V};
                 (_, Acc) -> Acc
             end, H, Entries),
-            {0, queue(urgent, {settings, Entries}, H1)}
+            %% nghttp2_session_add_settings: the settings are in flight from
+            %% their submission, so an ACK that comes before they go out
+            %% still applies them.
+            {0, queue(urgent, {settings, Entries}, H1#h2{inflight = H1#h2.inflight ++ [Entries]})}
     end.
 
 validate_settings(Entries) ->
@@ -1210,8 +1213,7 @@ send_item({settings_ack}, H0) ->
     {frame_bytes(?SETTINGS, ?FLAG_ACK, 0, []), sent(#{type => ?SETTINGS, flags => ?FLAG_ACK, stream_id => 0}, H)};
 send_item({settings, Entries}, H) ->
     Payload = [<<K:16, V:32>> || {K, V} <- Entries],
-    H1 = H#h2{inflight = H#h2.inflight ++ [Entries]},
-    {frame_bytes(?SETTINGS, 0, 0, Payload), sent(#{type => ?SETTINGS, flags => 0, stream_id => 0}, H1)};
+    {frame_bytes(?SETTINGS, 0, 0, Payload), sent(#{type => ?SETTINGS, flags => 0, stream_id => 0}, H)};
 send_item({ping, Flags, Payload}, H0) ->
     H = case Flags of ?FLAG_ACK -> H0#h2{obq_flood = H0#h2.obq_flood - 1}; _ -> H0 end,
     {frame_bytes(?PING, Flags, 0, Payload), sent(#{type => ?PING, flags => Flags, stream_id => 0}, H)};
