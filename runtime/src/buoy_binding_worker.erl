@@ -42,7 +42,7 @@ binding() ->
                {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This), -1) end},
                {<<"getResourceLimits">>, fun(This, _) -> limits_array(maps:get(limits, state(This))) end},
                {<<"loopStartTime">>, fun(This, _) -> maps:get(loop_start, state(This), -1) end},
-               {<<"loopIdleTime">>, fun(_, _) -> 0 end},
+               {<<"loopIdleTime">>, fun(This, _) -> loop_idle_time(This) end},
                {<<"getHeapStatistics">>, fun(This, _) -> heap_statistics(This) end},
                {<<"cpuUsage">>, fun(This, _) -> cpu_usage(This) end}],
     [buoy_heap:define(Proto, Name, #{value => F(Name, 0, Fun), writable => true, enumerable => true, configurable => true})
@@ -400,6 +400,14 @@ env_port() ->
                 Port ->
                     Port
             end
+    end.
+
+%% Worker::LoopIdleTime: the idle time of the worker's loop, in ms.
+loop_idle_time(This) ->
+    case state(This) of
+        #{status := running, pid := Pid} -> buoy_ref_number:canonical(buoy_node_loop:idle_time(Pid) / 1.0e6);
+        _ ->
+            0
     end.
 
 %% runMain(filename): runs the script of the worker as its main module.

@@ -28,7 +28,7 @@
 -export([schedule_timer/1, toggle_timer_ref/1, toggle_immediate_ref/1, now/0, set_callback/2, callback/1]).
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
 -export([set_immediate/1]).
--export([enter/0, poll/0, polled/2, metrics/0, idle_time/0]).
+-export([enter/0, poll/0, polled/2, metrics/0, idle_time/0, idle_time/1]).
 
 -define(TIMER, '$buoy_node_timer').
 -define(IMMEDIATE_REF, '$buoy_node_immediate_ref').
@@ -205,6 +205,15 @@ metrics() ->
 %% uv_metrics_idle_time in nanoseconds.
 -spec idle_time() -> non_neg_integer().
 idle_time() -> element(4, metrics_state()).
+
+%% The idle time of the loop of another realm, such as a worker's, which
+%% Worker::LoopIdleTime reads from the parent.
+-spec idle_time(pid()) -> non_neg_integer().
+idle_time(Pid) ->
+    case erlang:process_info(Pid, {dictionary, ?METRICS}) of
+        {{dictionary, ?METRICS}, {_, _, _, Idle}} -> Idle;
+        _ -> 0
+    end.
 
 metrics_state() ->
     case erlang:get(?METRICS) of
