@@ -32,12 +32,31 @@ binding() ->
         end)}
     ] ++ [{Name, F(Name, 1, fun(_, A) -> set_id(Kind, Name, bouy_node:arg(1, A)) end)}
           || {Name, Kind} <- [{<<"setuid">>, user}, {<<"seteuid">>, user}, {<<"setgid">>, group}, {<<"setegid">>, group}]]
-      ++ [{Name, F(Name, 2, fun(_, _) -> set_groups(Name) end)} || Name <- [<<"initgroups">>, <<"setgroups">>]]).
+      ++ [{<<"setgroups">>, F(<<"setgroups">>, 1, fun(_, A) -> set_groups(bouy_heap:array_items(bouy_node:arg(1, A))) end)},
+          {<<"initgroups">>, F(<<"initgroups">>, 2, fun(_, A) -> init_groups(bouy_node:arg(1, A), bouy_node:arg(2, A)) end)}]).
 
-%% initgroups and setgroups succeed for root only.
-set_groups(Syscall) ->
+%% setgroups(groups): the 1-based index of a name that is no group, as
+%% node_credentials.cc returns it for ERR_UNKNOWN_CREDENTIAL, else the
+%% syscall, which succeeds for root only.
+set_groups(Groups) ->
+    Unknown = [I || {I, G} <- lists:enumerate(Groups), not is_integer(G), find(group, G) =:= error],
+    case Unknown of
+        [First | _] -> First;
+        [] -> root_only(<<"setgroups">>)
+    end.
+
+%% initgroups(user, extraGroup): 2 for an unknown group, which InitGroups
+%% checks first, 1 for an unknown user.
+init_groups(User, Group) ->
+    case {is_integer(Group) orelse find(group, Group) =/= error, is_integer(User) orelse find(user, User) =/= error} of
+        {false, _} -> 2;
+        {_, false} -> 1;
+        _ -> root_only(<<"initgroups">>)
+    end.
+
+root_only(Syscall) ->
     case id("-u") of
-        0 -> undefined;
+        0 -> 0;
         _ -> errno_error(<<"EPERM">>, <<"Operation not permitted">>, Syscall)
     end.
 
@@ -55,16 +74,24 @@ set_id(Kind, Syscall, Id) ->
     end.
 
 lookup(Kind, Name) ->
+    case find(Kind, Name) of
+        {ok, Number} -> Number;
+        error ->
+            What = case Kind of user -> <<"User">>; group -> <<"Group">> end,
+            bouy_node:throw_code('Error', <<"ERR_UNKNOWN_CREDENTIAL">>,
+                                 bouy_ref_string:from_utf8(<<What/binary, " identifier does not exist: ", Name/binary>>))
+    end.
+
+%% The id of a user or group name.
+find(Kind, Value) when not is_binary(Value) -> find(Kind, bouy_ref_string:to_utf8(bouy_ref:to_string(Value)));
+find(Kind, Name) ->
     Command = case Kind of
         user -> "id -u " ++ shell_word(Name) ++ " 2>/dev/null";
         group -> "(getent group " ++ shell_word(Name) ++ " | cut -d: -f3) 2>/dev/null || dscl . -read /Groups/"
                  ++ shell_word(Name) ++ " PrimaryGroupID 2>/dev/null | awk '{print $2}'"
     end,
-    try list_to_integer(string:trim(os:cmd(Command)))
-    catch _:_ ->
-        What = case Kind of user -> <<"User">>; group -> <<"Group">> end,
-        bouy_node:throw_code('Error', <<"ERR_UNKNOWN_CREDENTIAL">>,
-                             bouy_ref_string:from_utf8(<<What/binary, " identifier does not exist: ", Name/binary>>))
+    try {ok, list_to_integer(string:trim(os:cmd(Command)))}
+    catch _:_ -> error
     end.
 
 shell_word(Name) -> "'" ++ [C || C <- unicode:characters_to_list(Name), C =/= $'] ++ "'".

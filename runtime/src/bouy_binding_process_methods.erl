@@ -109,11 +109,16 @@ resource_usage(Array) ->
     bouy_heap:set(Array, 2, erlang:memory(total) div 1024),
     undefined.
 
+%% _kill(pid, signal): 0, EINVAL for a signal that the OS lacks, else ESRCH.
 kill(Pid, Signal) ->
-    Command = io_lib:format("kill -~w ~w 2>/dev/null; echo $?", [trunc(bouy_ref:to_number(Signal)), trunc(bouy_ref:to_number(Pid))]),
-    case string:trim(os:cmd(lists:flatten(Command))) of
-        "0" -> 0;
-        _ -> -3
+    case trunc(bouy_ref:to_number(Signal)) of
+        Number when Number < 0; Number > 31 -> -22;
+        Number ->
+            Command = io_lib:format("kill -~w ~w 2>/dev/null; echo $?", [Number, trunc(bouy_ref:to_number(Pid))]),
+            case string:trim(os:cmd(lists:flatten(Command))) of
+                "0" -> 0;
+                _ -> -3
+            end
     end.
 
 load_env_file(Path) ->
