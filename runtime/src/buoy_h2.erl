@@ -78,6 +78,9 @@
 -define(ERR_SETTINGS_EXPECTED, -536).
 -define(ERR_TOO_MANY_SETTINGS, -537).
 -define(ERR_BAD_CLIENT_MAGIC, -903).
+-define(ERR_FLOODED, -904).
+%% NGHTTP2_DEFAULT_MAX_OBQ_FLOOD_ITEM, which Node does not change.
+-define(MAX_OUTBOUND_ACK, 1000).
 
 -define(MAGIC, <<"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n">>).
 -define(MAX_WINDOW, 16#7FFFFFFF).
@@ -160,7 +163,9 @@
              num_outgoing = 0 :: non_neg_integer(),
              num_incoming = 0 :: non_neg_integer(),
              opts = #{} :: map(),
-             preface_sent = false :: boolean()}).
+             preface_sent = false :: boolean(),
+             %% The PING and SETTINGS ACKs in the queue (obq_flood_counter_).
+             obq_flood = 0 :: non_neg_integer()}).
 
 -opaque session() :: #h2{}.
 
@@ -622,6 +627,8 @@ recv_settings(#{flags := Flags, length := Len} = F, _, H) when Flags band ?FLAG_
         {0, []} -> invalid_connection(F, ?ERR_PROTO, <<"SETTINGS: unexpected ACK">>, H);
         _ -> invalid_connection(F, ?ERR_FRAME_SIZE_ERROR, <<"SETTINGS: ACK and payload != 0">>, H)
     end;
+recv_settings(_, _, #h2{obq_flood = N} = H) when N >= ?MAX_OUTBOUND_ACK ->
+    throw({?MODULE, fatal, ?ERR_FLOODED, H});
 recv_settings(F, Payload, H) ->
     Entries = [{Key, Value} || <<Key:16, Value:32>> <= Payload],
     case length(Entries) > maps:get(max_settings, H#h2.opts, 32) of
@@ -638,7 +645,7 @@ recv_settings(F, Payload, H) ->
                 {ok, H1} ->
                     H2 = case session_closing(H1) of
                         true -> H1;
-                        false -> queue(urgent, {settings_ack}, H1)
+                        false -> queue(urgent, {settings_ack}, H1#h2{obq_flood = H1#h2.obq_flood + 1})
                     end,
                     element(2, cb({frame_recv, F#{settings => Entries}}, H2))
             end
@@ -717,7 +724,8 @@ recv_ping(#{stream_id := Id} = F, _, H) when Id =/= 0 ->
     invalid_connection(F, ?ERR_PROTO, <<"PING: stream_id != 0">>, H);
 recv_ping(#{flags := Flags} = F, Payload, H) ->
     H1 = case Flags band ?FLAG_ACK =:= 0 andalso not session_closing(H) of
-        true -> queue(urgent, {ping, ?FLAG_ACK, Payload}, H);
+        true when H#h2.obq_flood >= ?MAX_OUTBOUND_ACK -> throw({?MODULE, fatal, ?ERR_FLOODED, H});
+        true -> queue(urgent, {ping, ?FLAG_ACK, Payload}, H#h2{obq_flood = H#h2.obq_flood + 1});
         false -> H
     end,
     element(2, cb({frame_recv, F#{opaque_data => Payload}}, H1)).
@@ -1197,13 +1205,15 @@ frame_bytes(Type, Flags, Id, Payload) ->
     Len = iolist_size(Payload),
     [<<Len:24, Type:8, Flags:8, 0:1, Id:31>>, Payload].
 
-send_item({settings_ack}, H) ->
+send_item({settings_ack}, H0) ->
+    H = H0#h2{obq_flood = H0#h2.obq_flood - 1},
     {frame_bytes(?SETTINGS, ?FLAG_ACK, 0, []), sent(#{type => ?SETTINGS, flags => ?FLAG_ACK, stream_id => 0}, H)};
 send_item({settings, Entries}, H) ->
     Payload = [<<K:16, V:32>> || {K, V} <- Entries],
     H1 = H#h2{inflight = H#h2.inflight ++ [Entries]},
     {frame_bytes(?SETTINGS, 0, 0, Payload), sent(#{type => ?SETTINGS, flags => 0, stream_id => 0}, H1)};
-send_item({ping, Flags, Payload}, H) ->
+send_item({ping, Flags, Payload}, H0) ->
+    H = case Flags of ?FLAG_ACK -> H0#h2{obq_flood = H0#h2.obq_flood - 1}; _ -> H0 end,
     {frame_bytes(?PING, Flags, 0, Payload), sent(#{type => ?PING, flags => Flags, stream_id => 0}, H)};
 send_item({goaway, Last, Code, Data, Kind}, H) ->
     H1 = H#h2{goaway_sent = true, local_last_stream_id = min(Last, H#h2.local_last_stream_id),

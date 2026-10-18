@@ -674,8 +674,10 @@ on(This, {header, Id, Name, Value, NoIndex}) ->
 on(_, {invalid_header, _, _, _}) ->
     ok;
 on(This, {frame_recv, #{type := Type} = F}) ->
-    frame_received(This, Type, F),
-    0;
+    case frame_received(This, Type, F) of
+        fatal -> {fatal, ?ERR_CALLBACK_FAILURE};
+        _ -> 0
+    end;
 on(This, {data_chunk, Id, Data, _Flags}) ->
     put_h2(This, buoy_h2:consume_connection(h2(This), byte_size(Data))),
     case find_stream(This, Id) of
@@ -770,9 +772,18 @@ frame_received(This, 0, #{stream_id := Id, flags := Flags, length := Len}) ->
                 _ -> ok
             end;
         _ when Len =:= 0 ->
+            %% HandleDataFrame: a flood of empty frames without END_STREAM
+            %% fails the session.
             S = session(This),
             N = maps:get(invalid_frames, S),
-            update(This, fun(St) -> St#{invalid_frames => N + 1} end);
+            update(This, fun(St) -> St#{invalid_frames => N + 1} end),
+            case N > uint32(maps:get(fields, S), 4) of
+                true ->
+                    update(This, fun(St) -> St#{custom_error => <<"ERR_HTTP2_TOO_MANY_INVALID_FRAMES">>} end),
+                    fatal;
+                false ->
+                    ok
+            end;
         _ ->
             ok
     end;
