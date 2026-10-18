@@ -177,6 +177,7 @@ initializeDeprecations();
 setupNavigator();
 setupWarningHandler();
 setupDebugEnv();
+require('internal/dns/utils').initializeDns();
 setupChildProcessIpcChannel();
 initializeClusterIPC();
 require('internal/process/pre_execution').markBootstrapComplete();

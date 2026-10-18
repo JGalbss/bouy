@@ -508,6 +508,10 @@ event_step({'$buoy_node_call', _} = Message) ->
     update_now(),
     _ = buoy_node_loop:event(Message),
     ok;
+event_step({'$socket', _, _, _} = Message) ->
+    update_now(),
+    _ = buoy_node_loop:event(Message),
+    ok;
 event_step({'$buoy_timer', _Id}) ->
     run_due_timers();
 event_step({'$buoy_atomics_wake', _} = Event) ->

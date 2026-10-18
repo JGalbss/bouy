@@ -201,9 +201,26 @@ handle_type(Fd) ->
                     3
             end;
         N when is_integer(N), N > 2 ->
-            3;
+            socket_type(N);
         _ ->
             5
+    end.
+
+%% TCP, UDP, or PIPE for a socket descriptor, which a duplicate probes, and
+%% FILE for another one.
+socket_type(Fd) ->
+    case buoy_node_socket:open_inherited(Fd, #{dup => true}) of
+        {ok, Socket} ->
+            Info = socket:info(Socket),
+            socket:close(Socket),
+            case Info of
+                #{domain := local} -> 4;
+                #{type := dgram} -> 2;
+                #{type := stream} -> 0;
+                _ -> 5
+            end;
+        {error, _} ->
+            3
     end.
 
 %% parseEnv(content): the variables of a dotenv text, as Node's Dotenv

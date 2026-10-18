@@ -7,5 +7,5 @@
   4,         3,         5,
   undefined, 7,         2,
   'b',       'a',       9,
-  undefined
+  undefined, 'ab'
 ]

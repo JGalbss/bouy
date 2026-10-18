@@ -191,8 +191,8 @@ platform() ->
         {unix, Other} -> atom_to_binary(Other)
     end.
 
-%% process.versions of Node 25.9.0, without the libraries that Buoy does not
-%% have: openssl, so that Node's tests skip the crypto cases, and sqlite.
+%% process.versions of Node 25.9.0, without sqlite, which Buoy does not have,
+%% and with the OpenSSL that OTP's crypto links.
 versions() ->
     buoy_node:object([{K, V} || {K, V} <- [
         {<<"node">>, <<"25.9.0">>}, {<<"acorn">>, <<"8.16.0">>}, {<<"ada">>, <<"3.4.4">>},
@@ -202,7 +202,17 @@ versions() ->
         {<<"simdutf">>, <<"7.3.3">>}, {<<"tz">>, <<"2026a">>}, {<<"undici">>, <<"7.24.4">>},
         {<<"unicode">>, <<"17.0">>}, {<<"uv">>, <<"1.52.1">>}, {<<"uvwasi">>, <<"0.0.23">>},
         {<<"v8">>, <<"14.1.146.11-node.25">>}, {<<"zlib">>, <<"1.2.12">>}, {<<"zstd">>, <<"1.5.7">>},
-        {<<"buoy">>, <<"0.1.0">>}]]).
+        {<<"buoy">>, <<"0.1.0">>}] ++ openssl()]).
+
+%% The version of the OpenSSL that OTP's crypto links, as "3.6.4", or none
+%% when crypto cannot load it.
+openssl() ->
+    try crypto:info_lib() of
+        [{<<"OpenSSL">>, _, Text} | _] -> [{<<"openssl">>, hd(tl(binary:split(Text, <<" ">>, [global])))}];
+        _ -> []
+    catch
+        error:_ -> []
+    end.
 
 raw_debug(_This, Args) ->
     Text = lists:join(<<" ">>, [buoy_ref_string:to_utf8(buoy_ref:to_string(A)) || A <- Args]),

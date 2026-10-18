@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "78826336ff1504b0655e1bfe8446ee211fe7ed4a",
+  "updated": "0e11e74a050fb674a905651e9c0c7df52a78aa01",
   "total": 4419,
   "outcomes": {
-    "pass": 2064,
+    "pass": 1968,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1649,
-    "timeout": 113,
+    "fail": 1736,
+    "timeout": 122,
     "harness_error": 0,
     "crash": 10
   },
@@ -23,16 +23,16 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1959,
+        "pass": 1864,
         "skip": 545,
-        "fail": 1472,
-        "timeout": 93,
+        "fail": 1558,
+        "timeout": 102,
         "crash": 10
       },
       "sequential": {
-        "pass": 40,
+        "pass": 39,
         "skip": 22,
-        "fail": 49,
+        "fail": 50,
         "timeout": 7
       }
     },
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2064,
+        "pass": 1968,
         "skip": 240,
-        "fail": 1649,
-        "timeout": 113,
+        "fail": 1736,
+        "timeout": 122,
         "crash": 10
       }
     },
@@ -66,10 +66,10 @@
         "fail": 5
       },
       "child_process": {
-        "pass": 85,
+        "pass": 68,
         "skip": 7,
-        "fail": 17,
-        "timeout": 5
+        "fail": 24,
+        "timeout": 15
       },
       "cluster": {
         "pass": 25,
@@ -103,8 +103,9 @@
         "timeout": 2
       },
       "dns": {
+        "pass": 18,
         "skip": 10,
-        "fail": 19
+        "timeout": 1
       },
       "domain": {
         "pass": 25,
@@ -267,10 +268,10 @@
         "crash": 1
       },
       "worker_threads": {
-        "pass": 108,
+        "pass": 11,
         "skip": 12,
-        "fail": 25,
-        "timeout": 3
+        "fail": 124,
+        "timeout": 1
       },
       "zlib": {
         "pass": 2,
