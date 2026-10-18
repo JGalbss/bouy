@@ -610,13 +610,24 @@ read_file_utf8(Args) ->
         Fd when is_integer(Fd) ->
             read_all(Fd, []);
         _ ->
-            Path = path(Target),
-            {File, _} = open_path(Path, int(buoy_node:arg(2, Args)), 8#666),
-            try read_rest(File, [])
-            after file:close(File)
-            end
+            read_path(path(Target), int(buoy_node:arg(2, Args)))
     end,
     buoy_node_encoding:decode_utf8(Bytes).
+
+%% The bytes of the file at Path. A read-only open reads the file in one
+%% call on a dirty I/O scheduler, as ReadFileUtf8 opens, reads, and closes
+%% in C++; other flags open the file as open does.
+read_path(Path, 0) ->
+    case prim_file:read_file(Path) of
+        {ok, Bytes} -> Bytes;
+        {error, eisdir} -> uv_error(eisdir, <<"read">>, undefined);
+        {error, Reason} -> uv_error(Reason, <<"open">>, Path)
+    end;
+read_path(Path, Flags) ->
+    {File, _} = open_path(Path, Flags, 8#666),
+    try read_rest(File, [])
+    after file:close(File)
+    end.
 
 read_all(0, Acc) ->
     case buoy_node_stdin:read(65536) of
