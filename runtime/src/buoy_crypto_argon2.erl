@@ -1,12 +1,13 @@
 %% Argon2Job of internalBinding('crypto') (src/crypto/crypto_argon2.cc):
 %% Argon2d, Argon2i, and Argon2id of RFC 9106, version 0x13, in Erlang,
 %% with BLAKE2b of RFC 7693 for the variable-length hashes that OTP's
-%% crypto does not give. OpenSSL computes it on one thread, as here.
+%% crypto does not give. The lanes of a slice fill on parallel processes.
 -module(buoy_crypto_argon2).
 
 -export([members/0, argon2/9, blake2b/2]).
 
 -define(MASK, 16#FFFFFFFFFFFFFFFF).
+-define(M32, 16#FFFFFFFF).
 -define(VERSION, 16#13).
 
 -spec members() -> [{binary(), term()}].
@@ -42,14 +43,36 @@ argon2(Type, P, S, K, X, Lanes, TagLen, Memory, Passes) ->
     Q = Blocks div Lanes,
     Seg = Q div 4,
     Ctx = #{type => Type, lanes => Lanes, q => Q, seg => Seg, blocks => Blocks, passes => Passes},
-    Mem0 = maps:from_list([{{L, C}, words(hprime(1024, <<H0/binary, C:32/little, L:32/little>>))}
-                           || L <- lists:seq(0, Lanes - 1), C <- [0, 1]]),
-    Mem = lists:foldl(fun({Pass, Slice, Lane}, M) -> segment(Ctx, M, Pass, Slice, Lane) end, Mem0,
-                      [{Pass, Slice, Lane} || Pass <- lists:seq(0, Passes - 1), Slice <- lists:seq(0, 3),
-                                              Lane <- lists:seq(0, Lanes - 1)]),
-    Final = lists:foldl(fun(L, Acc) -> xor_blocks(Acc, maps:get({L, Q - 1}, Mem)) end,
-                        maps:get({0, Q - 1}, Mem), lists:seq(1, Lanes - 1)),
-    hprime(TagLen, bytes(Final)).
+    %% The blocks live in an ETS table as 1 KiB binaries, off the heap of
+    %% the process, so the memory cost stays near the memory parameter.
+    Mem = ets:new(?MODULE, [set, public, {read_concurrency, true}, {write_concurrency, true}]),
+    try
+        ets:insert(Mem, [{{L, C}, hprime(1024, <<H0/binary, C:32/little, L:32/little>>)}
+                         || L <- lists:seq(0, Lanes - 1), C <- [0, 1]]),
+        [slice(Ctx, Mem, Pass, Slice) || Pass <- lists:seq(0, Passes - 1), Slice <- lists:seq(0, 3)],
+        Final = lists:foldl(fun(L, Acc) -> crypto:exor(Acc, block(Mem, {L, Q - 1})) end,
+                            block(Mem, {0, Q - 1}), lists:seq(1, Lanes - 1)),
+        hprime(TagLen, Final)
+    after
+        ets:delete(Mem)
+    end.
+
+block(Mem, Key) -> ets:lookup_element(Mem, Key, 2).
+
+%% The segments of one slice. A lane reads other lanes only in finished
+%% slices (RFC 9106, section 3.4), so the lanes fill at once, on at most
+%% one process for each scheduler.
+slice(#{lanes := 1} = Ctx, Mem, Pass, Slice) -> segment(Ctx, Mem, Pass, Slice, 0);
+slice(#{lanes := Lanes} = Ctx, Mem, Pass, Slice) ->
+    Workers = min(Lanes, erlang:system_info(schedulers_online)),
+    Monitors = [spawn_monitor(fun() ->
+                    [segment(Ctx, Mem, Pass, Slice, Lane) || Lane <- lists:seq(First, Lanes - 1, Workers)]
+                end) || First <- lists:seq(0, Workers - 1)],
+    [receive
+         {'DOWN', Ref, process, Pid, normal} -> ok;
+         {'DOWN', Ref, process, Pid, Reason} -> erlang:error({argon2_lane, Reason})
+     end || {Pid, Ref} <- Monitors],
+    ok.
 
 segment(#{type := Type, seg := Seg} = Ctx, Mem, Pass, Slice, Lane) ->
     Independent = Type =:= 1 orelse (Type =:= 2 andalso Pass =:= 0 andalso Slice < 2),
@@ -57,14 +80,16 @@ segment(#{type := Type, seg := Seg} = Ctx, Mem, Pass, Slice, Lane) ->
         true -> 2;
         false -> 0
     end,
-    {M, _} = lists:foldl(fun(Index, {M0, Addresses}) ->
+    lists:foldl(fun(Index, Addresses) ->
+        Prev = block(Mem, previous(Ctx, Lane, Slice, Index)),
         {Pseudo, Addresses1} = case Independent of
             true -> address(Ctx, Pass, Lane, Slice, Index, Addresses);
-            false -> {element(1, maps:get(previous(Ctx, Lane, Slice, Index), M0)), Addresses}
+            false -> {binary:decode_unsigned(binary:part(Prev, 0, 8), little), Addresses}
         end,
-        {fill(Ctx, M0, Pass, Slice, Lane, Index, Pseudo), Addresses1}
-    end, {Mem, undefined}, lists:seq(Start, Seg - 1)),
-    M.
+        fill(Ctx, Mem, Pass, Slice, Lane, Index, Pseudo, Prev),
+        Addresses1
+    end, undefined, lists:seq(Start, Seg - 1)),
+    ok.
 
 previous(#{seg := Seg, q := Q}, Lane, Slice, Index) ->
     J = Slice * Seg + Index,
@@ -80,13 +105,16 @@ address(#{blocks := Blocks, passes := Passes, type := Type}, Pass, Lane, Slice, 
     Block = case Addresses of
         {Counter, B} -> B;
         _ ->
-            Input = list_to_tuple([Pass, Lane, Slice, Blocks, Passes, Type, Counter | lists:duplicate(121, 0)]),
-            Zero = erlang:make_tuple(128, 0),
+            Input = <<Pass:64/little, Lane:64/little, Slice:64/little, Blocks:64/little, Passes:64/little,
+                      Type:64/little, Counter:64/little, 0:(121 * 64)>>,
+            Zero = <<0:8192>>,
             compress(Zero, compress(Zero, Input))
     end,
-    {element((Index rem 128) + 1, Block), {Counter, Block}}.
+    Offset = (Index rem 128) * 8,
+    <<_:Offset/binary, Word:64/little, _/binary>> = Block,
+    {Word, {Counter, Block}}.
 
-fill(#{lanes := Lanes, q := Q, seg := Seg}, Mem, Pass, Slice, Lane, Index, Pseudo) ->
+fill(#{lanes := Lanes, q := Q, seg := Seg}, Mem, Pass, Slice, Lane, Index, Pseudo, Prev) ->
     J1 = Pseudo band 16#FFFFFFFF,
     J2 = Pseudo bsr 32,
     RefLane = case Pass =:= 0 andalso Slice =:= 0 of
@@ -110,56 +138,74 @@ fill(#{lanes := Lanes, q := Q, seg := Seg}, Mem, Pass, Slice, Lane, Index, Pseud
         true -> 0;
         false -> (Slice + 1) * Seg
     end,
-    Ref = maps:get({RefLane, (StartPos + Relative) rem Q}, Mem),
-    Prev = maps:get(previous(#{seg => Seg, q => Q}, Lane, Slice, Index), Mem),
-    New = compress(Prev, Ref),
+    New = compress(Prev, block(Mem, {RefLane, (StartPos + Relative) rem Q})),
     Key = {Lane, Slice * Seg + Index},
-    case Pass of
-        0 -> Mem#{Key => New};
-        _ -> Mem#{Key => xor_blocks(maps:get(Key, Mem), New)}
-    end.
+    ets:insert(Mem, {Key, case Pass of
+                              0 -> New;
+                              _ -> crypto:exor(block(Mem, Key), New)
+                          end}).
 
-%%% The compression function G
+%%% The compression function G, on 1 KiB binaries
 
+%% The 64-bit words of a block are split into 32-bit halves, low then high,
+%% so that every value stays a small integer and no bignum is made.
 compress(X, Y) ->
-    R = xor_blocks(X, Y),
-    Rows = lists:foldl(fun(I, Acc) -> permute_words(Acc, [16 * I + K || K <- lists:seq(0, 15)]) end,
-                       R, lists:seq(0, 7)),
-    Cols = lists:foldl(fun(I, Acc) ->
-        permute_words(Acc, lists:append([[2 * I + 16 * K, 2 * I + 16 * K + 1] || K <- lists:seq(0, 7)]))
-    end, Rows, lists:seq(0, 7)),
-    xor_blocks(Cols, R).
+    R = crypto:exor(X, Y),
+    Q = << <<(p(Row))/binary>> || <<Row:128/binary>> <= R >>,
+    Cols = list_to_tuple([p(<< <<(binary:part(Q, (2 * C + 16 * K) * 8, 16))/binary>> || K <- lists:seq(0, 7) >>)
+                          || C <- lists:seq(0, 7)]),
+    Z = << <<(binary:part(element(C + 1, Cols), K * 16, 16))/binary>> || K <- lists:seq(0, 7), C <- lists:seq(0, 7) >>,
+    crypto:exor(Z, R).
 
-%% P over the 16 words of Block at the indices Is.
-permute_words(Block, Is) ->
-    V = list_to_tuple([element(I + 1, Block) || I <- Is]),
-    V1 = lists:foldl(fun({A, B, C, D}, Acc) -> gb(Acc, A, B, C, D) end, V,
-                     [{0, 4, 8, 12}, {1, 5, 9, 13}, {2, 6, 10, 14}, {3, 7, 11, 15},
-                      {0, 5, 10, 15}, {1, 6, 11, 12}, {2, 7, 8, 13}, {3, 4, 9, 14}]),
-    {Out, _} = lists:foldl(fun(I, {B, N}) -> {setelement(I + 1, B, element(N, V1)), N + 1} end, {Block, 1}, Is),
-    Out.
+%% The permutation P of RFC 9106 on the 16 words of 128 bytes.
+p(<<L0:32/little, H0:32/little, L1:32/little, H1:32/little, L2:32/little, H2:32/little, L3:32/little, H3:32/little,
+    L4:32/little, H4:32/little, L5:32/little, H5:32/little, L6:32/little, H6:32/little, L7:32/little, H7:32/little,
+    L8:32/little, H8:32/little, L9:32/little, H9:32/little, L10:32/little, H10:32/little, L11:32/little, H11:32/little,
+    L12:32/little, H12:32/little, L13:32/little, H13:32/little, L14:32/little, H14:32/little, L15:32/little, H15:32/little>>) ->
+    {AL0, AH0, AL4, AH4, AL8, AH8, AL12, AH12} = g(L0, H0, L4, H4, L8, H8, L12, H12),
+    {AL1, AH1, AL5, AH5, AL9, AH9, AL13, AH13} = g(L1, H1, L5, H5, L9, H9, L13, H13),
+    {AL2, AH2, AL6, AH6, AL10, AH10, AL14, AH14} = g(L2, H2, L6, H6, L10, H10, L14, H14),
+    {AL3, AH3, AL7, AH7, AL11, AH11, AL15, AH15} = g(L3, H3, L7, H7, L11, H11, L15, H15),
+    {BL0, BH0, BL5, BH5, BL10, BH10, BL15, BH15} = g(AL0, AH0, AL5, AH5, AL10, AH10, AL15, AH15),
+    {BL1, BH1, BL6, BH6, BL11, BH11, BL12, BH12} = g(AL1, AH1, AL6, AH6, AL11, AH11, AL12, AH12),
+    {BL2, BH2, BL7, BH7, BL8, BH8, BL13, BH13} = g(AL2, AH2, AL7, AH7, AL8, AH8, AL13, AH13),
+    {BL3, BH3, BL4, BH4, BL9, BH9, BL14, BH14} = g(AL3, AH3, AL4, AH4, AL9, AH9, AL14, AH14),
+    <<BL0:32/little, BH0:32/little, BL1:32/little, BH1:32/little, BL2:32/little, BH2:32/little, BL3:32/little, BH3:32/little,
+      BL4:32/little, BH4:32/little, BL5:32/little, BH5:32/little, BL6:32/little, BH6:32/little, BL7:32/little, BH7:32/little,
+      BL8:32/little, BH8:32/little, BL9:32/little, BH9:32/little, BL10:32/little, BH10:32/little, BL11:32/little, BH11:32/little,
+      BL12:32/little, BH12:32/little, BL13:32/little, BH13:32/little, BL14:32/little, BH14:32/little, BL15:32/little, BH15:32/little>>.
 
-gb(V, IA, IB, IC, ID) ->
-    [A0, B0, C0, D0] = [element(I + 1, V) || I <- [IA, IB, IC, ID]],
-    A1 = blamka(A0, B0),
-    D1 = rotr(D0 bxor A1, 32),
-    C1 = blamka(C0, D1),
-    B1 = rotr(B0 bxor C1, 24),
-    A2 = blamka(A1, B1),
-    D2 = rotr(D1 bxor A2, 16),
-    C2 = blamka(C1, D2),
-    B2 = rotr(B1 bxor C2, 63),
-    lists:foldl(fun({I, W}, Acc) -> setelement(I + 1, Acc, W) end, V, [{IA, A2}, {IB, B2}, {IC, C2}, {ID, D2}]).
+-compile({inline, [blamka/4]}).
 
-blamka(A, B) -> (A + B + 2 * (A band 16#FFFFFFFF) * (B band 16#FFFFFFFF)) band ?MASK.
+%% fBlaMka: x + y + 2 * lo(x) * lo(y) modulo 2^64, as {Low, High}. The
+%% product of the low halves is taken in two parts of at most 48 bits.
+blamka(XL, XH, YL, YH) ->
+    P1 = XL * (YL bsr 16),
+    T = XL * (YL band 16#FFFF) + ((P1 band 16#FFFF) bsl 16),
+    ML = T band ?M32,
+    MH = (T bsr 32) + (P1 bsr 16),
+    SL = XL + YL + ((ML bsl 1) band ?M32),
+    {SL band ?M32, (XH + YH + (((MH bsl 1) bor (ML bsr 31)) band ?M32) + (SL bsr 32)) band ?M32}.
+
+%% GB of RFC 9106 on four words: the rotations by 32, 24, 16, and 63 bits
+%% move bits between the halves.
+g(AL, AH, BL, BH, CL, CH, DL, DH) ->
+    {AL1, AH1} = blamka(AL, AH, BL, BH),
+    DL1 = DH bxor AH1, DH1 = DL bxor AL1,
+    {CL1, CH1} = blamka(CL, CH, DL1, DH1),
+    BXL = BL bxor CL1, BXH = BH bxor CH1,
+    BL1 = ((BXL bsr 24) bor (BXH bsl 8)) band ?M32, BH1 = ((BXH bsr 24) bor (BXL bsl 8)) band ?M32,
+    {AL2, AH2} = blamka(AL1, AH1, BL1, BH1),
+    DXL = DL1 bxor AL2, DXH = DH1 bxor AH2,
+    DL2 = ((DXL bsr 16) bor (DXH bsl 16)) band ?M32, DH2 = ((DXH bsr 16) bor (DXL bsl 16)) band ?M32,
+    {CL2, CH2} = blamka(CL1, CH1, DL2, DH2),
+    BYL = BL1 bxor CL2, BYH = BH1 bxor CH2,
+    BL2 = ((BYL bsl 1) bor (BYH bsr 31)) band ?M32, BH2 = ((BYH bsl 1) bor (BYL bsr 31)) band ?M32,
+    {AL2, AH2, BL2, BH2, CL2, CH2, DL2, DH2}.
 
 rotr(W, N) -> ((W bsr N) bor (W bsl (64 - N))) band ?MASK.
 
-xor_blocks(A, B) -> list_to_tuple(lists:zipwith(fun(X, Y) -> X bxor Y end, tuple_to_list(A), tuple_to_list(B))).
-
 words(Bin) -> list_to_tuple([W || <<W:64/little>> <= Bin]).
-
-bytes(Block) -> << <<W:64/little>> || W <- tuple_to_list(Block) >>.
 
 %% H' of RFC 9106: a hash of T bytes.
 hprime(T, A) when T =< 64 -> blake2b(T, <<T:32/little, A/binary>>);

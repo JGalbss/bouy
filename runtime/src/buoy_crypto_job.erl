@@ -11,6 +11,7 @@
 -define(ASYNC, 0).
 
 -type outcome() :: {ok, term()} | {error, term()}.
+-type config() :: {fun(() -> outcome()), fun((term()) -> term())}.
 -export_type([outcome/0]).
 
 %% The job class Name. Config(Params) runs in the realm when the job is
@@ -18,7 +19,7 @@
 %% throws, and returns {Work, Encode}. Work only reads Erlang terms, never
 %% the JavaScript heap, and returns {ok, Out} or {error, Reason} (an error
 %% of buoy_crypto:error_value/1, or a failure of buoy_crypto:fail/1). Encode(Out) makes the result in the realm.
--spec class(binary(), fun((list()) -> {fun(() -> outcome()), fun((term()) -> term())})) -> term().
+-spec class(binary(), fun((list()) -> config()) | fun((list(), sync | async) -> config())) -> term().
 class(Name, Config) ->
     buoy_crypto:class(Name, fun(This, Args) -> init(This, Args, Config) end,
                       [{<<"run">>, 0, fun run/2}]).
@@ -32,7 +33,12 @@ init(This, Args, Config) ->
         [_ | Rest] -> Rest;
         [] -> []
     end,
-    buoy_crypto:put_state(This, {job, {Mode, Config(Params)}}).
+    buoy_crypto:put_state(This, {job, {Mode, configure(Config, Params, Mode)}}).
+
+%% A job whose failure depends on the mode, as a DeriveBits of Node that
+%% throws only in kCryptoJobSync, takes the mode too.
+configure(Config, Params, Mode) when is_function(Config, 2) -> Config(Params, Mode);
+configure(Config, Params, _) -> Config(Params).
 
 run(This, _) ->
     case buoy_crypto:state(This, job) of

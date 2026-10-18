@@ -6,6 +6,7 @@
 -module(buoy_crypto_pqc).
 
 -export([private_decode/2, private_encode/1, from_raw/3, otp_type/1, generate/1, from_seed/2]).
+-export([ml_dsa_sign/4, ml_dsa_verify/5]).
 
 %% The OTP name of a kind.
 -spec otp_type(atom()) -> atom().
@@ -116,13 +117,16 @@ shake(Bits, Data, Length) ->
 
 -define(DQ, 8380417).
 
-dsa_params(ml_dsa_44) -> #{k => 4, l => 4, eta => 2};
-dsa_params(ml_dsa_65) -> #{k => 6, l => 5, eta => 4};
-dsa_params(ml_dsa_87) -> #{k => 8, l => 7, eta => 2}.
+dsa_params(ml_dsa_44) ->
+    #{k => 4, l => 4, eta => 2, tau => 39, lambda => 128, gamma1 => 1 bsl 17, gamma2 => (?DQ - 1) div 88, omega => 80};
+dsa_params(ml_dsa_65) ->
+    #{k => 6, l => 5, eta => 4, tau => 49, lambda => 192, gamma1 => 1 bsl 19, gamma2 => (?DQ - 1) div 32, omega => 55};
+dsa_params(ml_dsa_87) ->
+    #{k => 8, l => 7, eta => 2, tau => 60, lambda => 256, gamma1 => 1 bsl 19, gamma2 => (?DQ - 1) div 32, omega => 75}.
 
 ml_dsa_keygen(#{k := K, l := L, eta := Eta}, Xi) ->
     <<Rho:32/binary, RhoPrime:64/binary, Key:32/binary>> = shake(shake256, <<Xi/binary, K, L>>, 128),
-    A = [[rej_ntt_poly(<<Rho/binary, S, R>>) || S <- lists:seq(0, L - 1)] || R <- lists:seq(0, K - 1)],
+    A = expand_a(Rho, K, L),
     S1 = [rej_bounded_poly(<<RhoPrime/binary, R:16/little>>, Eta) || R <- lists:seq(0, L - 1)],
     S2 = [rej_bounded_poly(<<RhoPrime/binary, (R + L):16/little>>, Eta) || R <- lists:seq(0, K - 1)],
     T = dsa_t(A, S1, S2),
@@ -145,7 +149,7 @@ ml_dsa_public(Kind, Sk) ->
     <<S1Bytes:(L * PolyBytes)/binary, S2Bytes:(K * PolyBytes)/binary, _/binary>> = Rest,
     S1 = [[Eta - C || C <- unpack(B, EtaBits)] || <<B:PolyBytes/binary>> <= S1Bytes],
     S2 = [[Eta - C || C <- unpack(B, EtaBits)] || <<B:PolyBytes/binary>> <= S2Bytes],
-    A = [[rej_ntt_poly(<<Rho/binary, S, R>>) || S <- lists:seq(0, L - 1)] || R <- lists:seq(0, K - 1)],
+    A = expand_a(Rho, K, L),
     {T1, _} = lists:unzip([power2round(P) || P <- dsa_t(A, S1, S2)]),
     <<Rho/binary, (<< <<(pack(P, 10))/binary>> || P <- T1 >>)/binary>>.
 
@@ -215,6 +219,160 @@ dsa_ntt(P) -> tuple_to_list(ntt(list_to_tuple(P), dsa_zetas(), ?DQ, 128, 1, 0)).
 dsa_intt(P) ->
     W = intt(list_to_tuple(P), dsa_zetas(), ?DQ, 1, 256, 1),
     [(C * 8347681) rem ?DQ || C <- tuple_to_list(W)].
+
+%% ML-DSA.Sign of FIPS 204 (Algorithms 2 and 7) with the context Ctx and
+%% hedged randomness, for the contexts that OTP's crypto cannot pass.
+-spec ml_dsa_sign(atom(), binary(), binary(), binary()) -> binary().
+ml_dsa_sign(Kind, Sk, Message, Ctx) ->
+    #{k := K, l := L, eta := Eta} = P = dsa_params(Kind),
+    EtaBits = bit_length(2 * Eta),
+    PolyBytes = 32 * EtaBits,
+    <<Rho:32/binary, Key:32/binary, Tr:64/binary, Rest/binary>> = Sk,
+    <<S1B:(L * PolyBytes)/binary, S2B:(K * PolyBytes)/binary, T0B/binary>> = Rest,
+    Hat = fun(Bytes, Size, Offset) -> [dsa_ntt([q_mod(Offset - C) || C <- unpack(B, Size div 32)])
+                                       || <<B:Size/binary>> <= Bytes] end,
+    Mu = shake(shake256, <<Tr/binary, 0, (byte_size(Ctx)), Ctx/binary, Message/binary>>, 64),
+    State = #{a => expand_a(Rho, K, L), mu => Mu,
+              s1 => Hat(S1B, PolyBytes, Eta), s2 => Hat(S2B, PolyBytes, Eta), t0 => Hat(T0B, 416, 4096),
+              rho2 => shake(shake256, <<Key/binary, (crypto:strong_rand_bytes(32))/binary, Mu/binary>>, 64)},
+    sign_attempt(P, State, 0).
+
+sign_attempt(#{l := L, gamma1 := G1, gamma2 := G2, eta := Eta, tau := Tau, omega := Omega} = P,
+             #{a := A, mu := Mu, s1 := S1, s2 := S2, t0 := T0, rho2 := Rho2} = State, Kappa) ->
+    Beta = Tau * Eta,
+    Y = expand_mask(P, Rho2, Kappa),
+    YHat = [dsa_ntt([q_mod(C) || C <- Poly]) || Poly <- Y],
+    W = [dsa_intt(row_product(Row, YHat, ?DQ)) || Row <- A],
+    CTilde = commitment(P, Mu, [[high_bits(C, G2) || C <- Poly] || Poly <- W]),
+    CHat = dsa_ntt([q_mod(C) || C <- sample_in_ball(CTilde, Tau)]),
+    Times = fun(Hats) -> [[centered_q(C) || C <- dsa_intt(pointwise(CHat, H))] || H <- Hats] end,
+    Z = [[Yc + Cc || {Yc, Cc} <- lists:zip(Yp, Cp)] || {Yp, Cp} <- lists:zip(Y, Times(S1))],
+    R = [[Wc - Cc || {Wc, Cc} <- lists:zip(Wp, Cp)] || {Wp, Cp} <- lists:zip(W, Times(S2))],
+    CT0 = Times(T0),
+    Hint = [[high_bits(Rc + Tc, G2) =/= high_bits(Rc, G2) || {Rc, Tc} <- lists:zip(Rp, Tp)]
+            || {Rp, Tp} <- lists:zip(R, CT0)],
+    Rejected = norm(Z) >= G1 - Beta orelse norm([[low_bits(C, G2) || C <- Poly] || Poly <- R]) >= G2 - Beta
+        orelse norm(CT0) >= G2 orelse length([H || Poly <- Hint, H <- Poly, H]) > Omega,
+    case Rejected of
+        true -> sign_attempt(P, State, Kappa + L);
+        false ->
+            Bits = bit_length(2 * G1 - 1),
+            iolist_to_binary([CTilde, [pack([G1 - C || C <- Poly], Bits) || Poly <- Z], hint_pack(Hint, Omega)])
+    end.
+
+%% ML-DSA.Verify of FIPS 204 (Algorithms 3 and 8) with the context Ctx.
+-spec ml_dsa_verify(atom(), binary(), binary(), binary(), binary()) -> boolean().
+ml_dsa_verify(Kind, Pk, Message, Sig, Ctx) ->
+    #{k := K, l := L, gamma1 := G1, gamma2 := G2, eta := Eta, tau := Tau, lambda := Lambda, omega := Omega} = P =
+        dsa_params(Kind),
+    Bits = bit_length(2 * G1 - 1),
+    ZBytes = 32 * Bits,
+    CSize = Lambda div 4,
+    case {Sig, Pk} of
+        {<<CTilde:CSize/binary, ZB:(L * ZBytes)/binary, HintBytes:(Omega + K)/binary>>, <<_:32/binary, _:(K * 320)/binary>>} ->
+            Z = [[G1 - C || C <- unpack(B, Bits)] || <<B:ZBytes/binary>> <= ZB],
+            case hint_unpack(HintBytes, K, Omega) of
+                {ok, Hint} ->
+                    <<Rho:32/binary, T1B/binary>> = Pk,
+                    T1Hat = [dsa_ntt([(C bsl 13) rem ?DQ || C <- unpack(B, 10)]) || <<B:320/binary>> <= T1B],
+                    Mu = shake(shake256, <<(shake(shake256, Pk, 64))/binary, 0, (byte_size(Ctx)), Ctx/binary,
+                                           Message/binary>>, 64),
+                    CHat = dsa_ntt([q_mod(C) || C <- sample_in_ball(CTilde, Tau)]),
+                    ZHat = [dsa_ntt([q_mod(C) || C <- Poly]) || Poly <- Z],
+                    W = [dsa_intt(poly_add(row_product(Row, ZHat, ?DQ), [?DQ - X || X <- pointwise(CHat, T)], ?DQ))
+                         || {Row, T} <- lists:zip(expand_a(Rho, K, L), T1Hat)],
+                    W1 = [[use_hint(H, C, G2) || {H, C} <- lists:zip(Hp, Wp)] || {Hp, Wp} <- lists:zip(Hint, W)],
+                    norm(Z) < G1 - Tau * Eta andalso commitment(P, Mu, W1) =:= CTilde;
+                error -> false
+            end;
+        _ -> false
+    end.
+
+expand_a(Rho, K, L) ->
+    [[rej_ntt_poly(<<Rho/binary, S, R>>) || S <- lists:seq(0, L - 1)] || R <- lists:seq(0, K - 1)].
+
+%% ExpandMask: the l polynomials of y, with coefficients in (-gamma1, gamma1].
+expand_mask(#{l := L, gamma1 := G1}, Rho2, Kappa) ->
+    Bits = bit_length(2 * G1 - 1),
+    [[G1 - C || C <- unpack(shake(shake256, <<Rho2/binary, (Kappa + R):16/little>>, 32 * Bits), Bits)]
+     || R <- lists:seq(0, L - 1)].
+
+%% The hash of mu and w1Encode(w1).
+commitment(#{lambda := Lambda, gamma2 := G2}, Mu, W1) ->
+    Bits = bit_length((?DQ - 1) div (2 * G2) - 1),
+    shake(shake256, iolist_to_binary([Mu | [pack(Poly, Bits) || Poly <- W1]]), Lambda div 4).
+
+%% SampleInBall: tau coefficients of +-1 at positions that SHAKE256 picks.
+sample_in_ball(Seed, Tau) -> sample_in_ball(Seed, Tau, 8 + 4 * 136).
+
+sample_in_ball(Seed, Tau, Length) ->
+    <<Signs:64/little, Stream/binary>> = shake(shake256, Seed, Length),
+    case place(Stream, 256 - Tau, Signs, list_to_tuple(lists:duplicate(256, 0))) of
+        {ok, C} -> tuple_to_list(C);
+        more -> sample_in_ball(Seed, Tau, Length * 2)
+    end.
+
+place(_, 256, _, C) -> {ok, C};
+place(<<J, Rest/binary>>, I, Signs, C) when J =< I ->
+    Sign = 1 - 2 * (Signs band 1),
+    place(Rest, I + 1, Signs bsr 1, setelement(J + 1, setelement(I + 1, C, element(J + 1, C)), Sign));
+place(<<_, Rest/binary>>, I, Signs, C) -> place(Rest, I, Signs, C);
+place(<<>>, _, _, _) -> more.
+
+%% Decompose (Algorithm 36): {r1, r0} with r = r1 (2 gamma2) + r0.
+decompose(R, G2) ->
+    Plus = q_mod(R),
+    R0 = centered(Plus rem (2 * G2), 2 * G2),
+    case Plus - R0 of
+        D when D =:= ?DQ - 1 -> {0, R0 - 1};
+        D -> {D div (2 * G2), R0}
+    end.
+
+high_bits(R, G2) -> element(1, decompose(R, G2)).
+low_bits(R, G2) -> element(2, decompose(R, G2)).
+
+use_hint(false, R, G2) -> high_bits(R, G2);
+use_hint(true, R, G2) ->
+    M = (?DQ - 1) div (2 * G2),
+    case decompose(R, G2) of
+        {R1, R0} when R0 > 0 -> (R1 + 1) rem M;
+        {R1, _} -> (R1 - 1 + M) rem M
+    end.
+
+%% HintBitPack (Algorithm 20).
+hint_pack(Hint, Omega) ->
+    Positions = [[J || {J, true} <- lists:enumerate(0, Poly)] || Poly <- Hint],
+    All = lists:append(Positions),
+    Ends = tl(lists:reverse(lists:foldl(fun(Ps, [Last | _] = Acc) -> [Last + length(Ps) | Acc] end, [0], Positions))),
+    <<(list_to_binary(All))/binary, 0:((Omega - length(All)) * 8), (list_to_binary(Ends))/binary>>.
+
+%% HintBitUnpack (Algorithm 21), which rejects a malformed hint.
+hint_unpack(Bytes, K, Omega) ->
+    <<Positions:Omega/binary, Ends:K/binary>> = Bytes,
+    hint_unpack(binary_to_list(Positions), binary_to_list(Ends), 0, Omega, []).
+
+hint_unpack(Positions, [], Index, _, Acc) ->
+    case lists:all(fun(P) -> P =:= 0 end, lists:nthtail(Index, Positions)) of
+        true -> {ok, lists:reverse(Acc)};
+        false -> error
+    end;
+hint_unpack(Positions, [End | Ends], Index, Omega, Acc) when End >= Index, End =< Omega ->
+    Mine = lists:sublist(Positions, Index + 1, End - Index),
+    case Mine =:= lists:usort(Mine) of
+        true ->
+            Set = sets:from_list(Mine, [{version, 2}]),
+            hint_unpack(Positions, Ends, End, Omega, [[sets:is_element(J, Set) || J <- lists:seq(0, 255)] | Acc]);
+        false -> error
+    end;
+hint_unpack(_, _, _, _, _) -> error.
+
+q_mod(X) -> ((X rem ?DQ) + ?DQ) rem ?DQ.
+
+centered_q(X) -> centered(q_mod(X), ?DQ).
+
+norm(Polys) -> lists:max([abs(centered_q(C)) || Poly <- Polys, C <- Poly]).
+
+pointwise(F, G) -> [(X * Y) rem ?DQ || {X, Y} <- lists:zip(F, G)].
 
 %%% ML-KEM (FIPS 203)
 

@@ -6,10 +6,13 @@
 
 -export([members/0]).
 
+%% Functions that only throw.
+-dialyzer({no_return, [failed/1]}).
+
 -spec members() -> [{binary(), term()}].
 members() ->
     [{<<"KEMEncapsulateJob">>, buoy_crypto_job:class(<<"KEMEncapsulateJob">>, fun encapsulate_job/1)},
-     {<<"KEMDecapsulateJob">>, buoy_crypto_job:class(<<"KEMDecapsulateJob">>, fun decapsulate_job/1)}].
+     {<<"KEMDecapsulateJob">>, buoy_crypto_job:class(<<"KEMDecapsulateJob">>, fun decapsulate_job/2)}].
 
 %% new KEMEncapsulateJob(mode, key, format, type, passphrase)
 encapsulate_job(Args) ->
@@ -18,10 +21,23 @@ encapsulate_job(Args) ->
      fun({Secret, Ciphertext}) -> buoy_heap:new_array([buoy_crypto:buffer(Secret), buoy_crypto:buffer(Ciphertext)]) end}.
 
 %% new KEMDecapsulateJob(mode, key, format, type, passphrase, ciphertext)
-decapsulate_job(Args) ->
+%% Only a sync job throws the error of the failed decapsulation; an async
+%% one reports that deriving the bits failed (DeriveBitsJob).
+decapsulate_job(Args, Mode) ->
     {{_, K}, [Ciphertext | _]} = buoy_crypto_keys:from_args(Args, private),
     Bytes = buoy_crypto:bytes(Ciphertext),
-    {fun() -> {ok, decapsulate(K, Bytes)} end, fun buoy_crypto:buffer/1}.
+    Work = fun() -> {ok, decapsulate(K, Bytes)} end,
+    {case Mode of
+         sync -> Work;
+         async -> fun() -> deriving_bits(Work) end
+     end, fun buoy_crypto:buffer/1}.
+
+deriving_bits(Work) ->
+    try Work()
+    catch
+        error:{crypto_failure, {code, _, <<"ERR_CRYPTO_OPERATION_FAILED">>, _}} ->
+            {error, {message, <<"Deriving bits failed">>}}
+    end.
 
 failed(Operation) ->
     buoy_crypto:fail_code(<<"ERR_CRYPTO_OPERATION_FAILED">>, <<"Failed to perform ", Operation/binary>>).

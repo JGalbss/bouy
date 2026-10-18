@@ -8,6 +8,9 @@
 
 -export([members/0, exists/1, otp_cipher/1, rsa_crypt/5]).
 
+%% Functions that only throw.
+-dialyzer({no_return, [invalid_iv/0, invalid_tag_length/1, rsa_failure/5, failed/0]}).
+
 -define(NO_TAG, undefined).
 -define(RSA_PKCS1_PADDING, 1).
 -define(RSA_NO_PADDING, 3).
@@ -438,11 +441,7 @@ otp_state(#{cipher := #{impl := Impl}, key := Key, iv := IV, encrypt := Encrypt,
     end,
     {Ref, S#{engine := {otp, Ref}}}.
 
-block_size(Atom) ->
-    case crypto:cipher_info(Atom) of
-        #{block_size := B} -> B;
-        _ -> 1
-    end.
+block_size(Atom) -> maps:get(block_size, crypto:cipher_info(Atom)).
 
 %% A wrap mode wraps or unwraps all its data in one update.
 wrap(#{cipher := #{impl := des3_wrap}, key := Key, encrypt := true}, Data) ->
@@ -710,8 +709,8 @@ cipher_info(#{name := Name, nid := Nid, mode := Mode, key := Key, iv := IV, bloc
 %% publicEncrypt and the others: (key, format, type, passphrase, buffer,
 %% padding, oaepHash, oaepLabel)
 public_key_cipher(Which, Operation, Args) ->
-    {{_, K}, Rest} = buoy_crypto_keys:from_args(Args, Which),
-    [Buffer, Padding, OaepHash, OaepLabel | _] = Rest ++ [undefined, undefined, undefined, undefined],
+    %% The digest is checked before the key is parsed, as in ncrypto's Cipher.
+    OaepHash = buoy_node:arg(7, Args),
     Md = case buoy_crypto:is_string(OaepHash) of
         true ->
             case buoy_crypto_hash:digest(OaepHash) of
@@ -720,6 +719,8 @@ public_key_cipher(Which, Operation, Args) ->
             end;
         false -> sha
     end,
+    {{_, K}, Rest} = buoy_crypto_keys:from_args(Args, Which),
+    [Buffer, Padding, _, OaepLabel | _] = Rest ++ [undefined, undefined, undefined, undefined],
     Label = case OaepLabel of
         undefined -> <<>>;
         _ -> buoy_crypto:bytes(OaepLabel)
@@ -797,15 +798,16 @@ aes_job([CipherMode, KeyHandle, Data, Variant | Rest]) ->
         kw ->
             fun() -> aes_kw(Bits, Key, In, Encrypt) end;
         _ ->
-            [IVV, TagBits, AADV | _] = Rest ++ [undefined, undefined, undefined],
+            %% lib/internal/crypto/aes.js passes the tag length in bytes.
+            [IVV, TagLen, AADV | _] = Rest ++ [undefined, undefined, undefined],
             IV = buoy_crypto:bytes(IVV),
-            (is_integer(TagBits) andalso TagBits >= 0 andalso TagBits =< 128) orelse
+            (is_integer(TagLen) andalso TagLen >= 0 andalso TagLen =< 16) orelse
                 buoy_crypto:fail_code(<<"ERR_CRYPTO_INVALID_TAG_LENGTH">>),
             AAD = case buoy_crypto:is_buffer_source(AADV) of
                 true -> buoy_crypto:bytes(AADV);
                 false -> <<>>
             end,
-            fun() -> aes_aead(Mode, Bits, Key, IV, TagBits div 8, AAD, In, Encrypt) end
+            fun() -> aes_aead(Mode, Bits, Key, IV, TagLen, AAD, In, Encrypt) end
     end,
     {fun() -> {ok, Work()} end, fun buoy_crypto:array_buffer/1}.
 

@@ -35,11 +35,17 @@ members() ->
 %% names and aliases of the default provider, in any case.
 -spec digest(term()) -> {ok, md()} | error.
 digest(Name) ->
-    case buoy_crypto:is_string(Name) andalso lookup(string:lowercase(buoy_crypto:string(Name))) of
+    case buoy_crypto:is_string(Name) andalso lookup(name(buoy_crypto:string(Name))) of
         {Atom, Size} -> {ok, #{name => Atom, size => Size, xof => false}};
         {Atom, Size, xof} -> {ok, #{name => Atom, size => Size, xof => true}};
         _ -> error
     end.
+
+%% ncrypto's getDigestByName keeps the legacy DSA names of SHA-1, exactly
+%% as written; OpenSSL matches every other name in any case.
+name(<<"dss1">>) -> <<"sha1">>;
+name(<<"DSS1">>) -> <<"sha1">>;
+name(Name) -> string:lowercase(Name).
 
 lookup(Name) ->
     case lists:keyfind(Name, 1, aliases()) of

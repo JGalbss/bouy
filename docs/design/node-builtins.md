@@ -72,7 +72,8 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 
 ## 6. Limits
 
-- Buoy has no OpenSSL, Intl, or inspector yet: `process.versions` has no `openssl`, and `process.config` sets no `v8_enable_i18n_support`, so the tests that need them skip.
+- Buoy has no Intl or inspector yet: `process.config` sets no `v8_enable_i18n_support`, so the tests that need them skip.
+- `internalBinding('crypto')` runs on OTP's `crypto`, which links OpenSSL, and `process.versions.openssl` names that OpenSSL. Erlang code fills what the NIF lacks: the ASN.1 key codecs, streaming AEAD, X.509, Argon2, TurboSHAKE, KangarooTwelve, KMAC, keys from ML-DSA and ML-KEM seeds, and Ed448 and ML-DSA signatures with a context. Argon2 and the Keccak functions run in Erlang, not in native code. SLH-DSA with a context, `secureHeapUsed`, `--openssl-config`, and FIPS providers do not work, and `SecureContext` belongs to TLS, which is not done.
 - The constants of the `constants`, `uv`, and `os` bindings are darwin's, as the oracle recorded them.
 - Stack traces of errors are `at <buoy>`: the engine has no JavaScript call stack yet.
 - `async_context_frame` keeps one value per realm, which promise jobs do not carry yet.
