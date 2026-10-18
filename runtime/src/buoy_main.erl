@@ -31,6 +31,9 @@ boot() ->
     ok = os:set_signal(sigterm, default),
     _ = logger:remove_handler(default),
     _ = logger:add_handler(default, logger_std_h, #{config => #{type => standard_error}}),
+    %% A closed stdout pipe ends the writer of user_drv, which reports it; the
+    %% program sees EPIPE on its writes instead (buoy_node_stdio), as in Node.
+    ok = logger:set_module_level(user_drv, none),
     %% Node writes UTF-8 under any locale. A device in latin1 mode would escape or
     %% mangle the characters outside latin1.
     ok = io:setopts(standard_io, [{encoding, unicode}]),

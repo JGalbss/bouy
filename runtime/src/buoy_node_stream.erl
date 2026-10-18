@@ -144,7 +144,13 @@ pairs([Chunk, Encoding | Rest]) ->
     [Bytes | pairs(Rest)];
 pairs(_) -> [].
 
+%% A closed handle cannot read: uv_read_start fails with UV_EINVAL.
 read_start(Handle) ->
+    read_start(Handle, maps:get(closed, state(Handle), false)).
+
+read_start(_Handle, true) ->
+    -22;
+read_start(Handle, false) ->
     update(Handle, fun(S) -> S#{reading := true} end),
     set_ref(Handle, true),
     case state(Handle) of

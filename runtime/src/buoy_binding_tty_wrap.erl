@@ -1,11 +1,6 @@
 %% internalBinding('tty_wrap') (src/tty_wrap.cc): isTTY(fd), and TTY, the
 %% stream handle of tty.ReadStream and tty.WriteStream on the standard
-%% descriptors of the VM.
-%%
-%% A TTY handle has the StreamBase methods of buoy_node_stream. A write goes
-%% to the device of the descriptor at once, in order with console output and
-%% with the writes of fs on the same descriptor, as WriteStream asks for a
-%% blocking handle. The handle of fd 0 reads through buoy_node_stdin.
+%% descriptors of the VM, which buoy_node_stdio reads and writes.
 %% getWindowSize asks the terminal driver of OTP, and setRawMode sets the
 %% termios flags of uv_tty_set_mode with stty(1); buoy_main resets the mode
 %% before the VM halts, as Node's ResetStdio does.
@@ -13,7 +8,6 @@
 
 -export([binding/0, is_tty/1, reset_mode/0]).
 
--define(FD, {'#', ?MODULE, <<"fd">>}).
 -define(SAVED_MODE, {?MODULE, saved_mode}).
 -define(UV_EINVAL, -22).
 -define(UV_ENOTTY, -25).
@@ -24,11 +18,11 @@ binding() ->
     TTY = buoy_node:constructor(<<"TTY">>, 2, fun(This, Args) -> init(This, buoy_node:arg(1, Args), buoy_node:arg(2, Args)) end),
     Proto = buoy_heap:get(TTY, <<"prototype">>),
     buoy_node_stream:methods(Proto),
+    buoy_node_stdio:methods(Proto),
     Methods = [{<<"getWindowSize">>, fun(This, Args) -> window_size(fd(This), buoy_node:arg(1, Args)) end},
                {<<"setRawMode">>, fun(This, Args) -> set_raw_mode(fd(This), buoy_ref:truthy(buoy_node:arg(1, Args))) end}],
     [buoy_heap:define(Proto, Name, #{value => F(Name, 0, Fun), writable => true, enumerable => true, configurable => true})
      || {Name, Fun} <- Methods],
-    buoy_heap:define(Proto, <<"fd">>, #{get => F(<<"get fd">>, 0, fun(This, _) -> fd(This) end), enumerable => true, configurable => true}),
     buoy_node:object([
         {<<"isTTY">>, F(<<"isTTY">>, 0, fun(_, Args) -> is_tty(buoy_node:arg(1, Args)) end)},
         {<<"TTY">>, TTY}]).
@@ -50,53 +44,14 @@ isatty(Device) ->
 %% new TTY(fd, ctx): ctx gets the error of uv_tty_init for a descriptor
 %% that the VM cannot drive as a terminal.
 init(This, Fd, _Ctx) when Fd =:= 0; Fd =:= 1; Fd =:= 2 ->
-    buoy_heap:private_put(This, ?FD, Fd),
-    case Fd of
-        0 -> reader(This);
-        _ -> buoy_node_stream:attach(This, none, writer(Fd))
-    end,
+    buoy_node_stdio:open(This, Fd),
     undefined;
 init(_This, _Fd, Ctx) ->
     [buoy_heap:set(Ctx, K, V) || {K, V} <- [{<<"errno">>, ?UV_EINVAL}, {<<"code">>, <<"EINVAL">>},
                                             {<<"message">>, <<"invalid argument">>}, {<<"syscall">>, <<"uv_tty_init">>}]],
     undefined.
 
-fd(This) ->
-    case buoy_heap:private_find(This, ?FD) of
-        {ok, Fd} -> Fd;
-        error -> -1
-    end.
-
-writer(1) -> fun(Bytes) -> buoy_binding_fs:put_bytes(standard_io, Bytes), 0 end;
-writer(2) -> fun(Bytes) -> buoy_binding_fs:put_bytes(buoy_ref:stderr(), Bytes), 0 end.
-
-%% shortcut: the reader takes stdin from the start, where libuv reads only
-%% while the handle reads; a child that inherits the terminal can lose the
-%% bytes that the reader took. Start it on readStart when that matters.
-reader(Handle) ->
-    Realm = self(),
-    Channel = spawn(fun() -> read_loop(Realm, Handle) end),
-    erlang:put({?MODULE, root, Channel}, Handle),
-    buoy_node_stream:attach(Handle, Channel).
-
-read_loop(Realm, Handle) ->
-    receive
-        close -> ended(Realm, Handle)
-    after 0 ->
-        case buoy_node_stdin:read(65536) of
-            <<>> -> ended(Realm, Handle);
-            Bytes ->
-                buoy_node_stream:call(Realm, fun() -> buoy_node_stream:deliver(Handle, Bytes) end),
-                read_loop(Realm, Handle)
-        end
-    end.
-
-ended(Realm, Handle) ->
-    Self = self(),
-    buoy_node_stream:call(Realm, fun() ->
-        buoy_node_stream:deliver(Handle, eof),
-        erlang:erase({?MODULE, root, Self})
-    end).
+fd(This) -> buoy_heap:get(This, <<"fd">>).
 
 %% getWindowSize([columns, rows]): 0, or the error of the ioctl.
 window_size(Fd, Size) ->

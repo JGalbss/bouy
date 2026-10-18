@@ -184,15 +184,15 @@ constructor_name(O, Depth) ->
     end.
 
 %% guessHandleType(fd): the index of the type in the handleTypes of
-%% internal/util (TCP, TTY, UDP, FILE, PIPE, UNKNOWN). Stdio reads as a file,
-%% so that process.stdout is a SyncWriteStream, unless the descriptor is a
-%% terminal.
+%% internal/util (TCP, TTY, UDP, FILE, PIPE, UNKNOWN), as uv_guess_handle
+%% reports the standard descriptors. Another descriptor reads as a file.
 handle_type(Fd) ->
     case buoy_ref:to_number(Fd) of
         N when N =:= 0; N =:= 1; N =:= 2 ->
-            case buoy_binding_tty_wrap:is_tty(N) of
-                true -> 1;
-                false -> 3
+            case buoy_node_stdio:kind(N) of
+                tty -> 1;
+                file -> 3;
+                pipe -> 4
             end;
         N when is_integer(N), N > 2 ->
             3;

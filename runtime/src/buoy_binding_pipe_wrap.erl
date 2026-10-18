@@ -1,8 +1,9 @@
 %% internalBinding('pipe_wrap') (src/pipe_wrap.cc): Pipe, the handle of the
 %% stdio pipes of a child process. process_wrap binds each one to its
 %% channel; the StreamBase methods are buoy_node_stream's. open(fd) reads and
-%% writes a descriptor that the VM inherited, such as the IPC channel of a
-%% forked child (NODE_CHANNEL_FD). A Pipe that connects or listens fails with
+%% writes a descriptor that the VM inherited: the standard descriptors through
+%% buoy_node_stdio, and others, such as the IPC channel of a forked child
+%% (NODE_CHANNEL_FD), through a port. A Pipe that connects or listens fails with
 %% ENOTSUP until Buoy has local sockets.
 -module(buoy_binding_pipe_wrap).
 
@@ -15,6 +16,7 @@ binding() ->
     Pipe = buoy_node:constructor(<<"Pipe">>, 1, fun(_, _) -> undefined end),
     Proto = buoy_heap:get(Pipe, <<"prototype">>),
     buoy_node_stream:methods(Proto),
+    buoy_node_stdio:methods(Proto),
     [buoy_heap:define(Proto, Name, #{value => buoy_node:fn(Name, 0, fun(_, _) -> ?UV_ENOTSUP end),
                                       writable => true, enumerable => true, configurable => true})
      || Name <- [<<"bind">>, <<"listen">>, <<"connect">>, <<"fchmod">>, <<"setPendingInstances">>]],
@@ -28,6 +30,9 @@ binding() ->
 
 %% open(fd): a channel process owns a port on the descriptor; the handle stays
 %% a root of the heap until the channel ends.
+open(This, Fd) when Fd =:= 0; Fd =:= 1; Fd =:= 2 ->
+    buoy_node_stdio:open(This, Fd),
+    0;
 open(This, Fd) when is_integer(Fd), Fd >= 0 ->
     Realm = self(),
     Channel = spawn(fun() ->
