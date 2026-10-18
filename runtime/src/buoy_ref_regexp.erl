@@ -736,8 +736,10 @@ same_value(A, B) when is_float(A), is_float(B) -> <<A/float>> =:= <<B/float>>;
 same_value(A, B) when is_number(A), is_number(B) -> A =:= B;
 same_value(A, B) -> A =:= B.
 
+%% The fast path also needs a primitive limit: ToUint32 of an object runs its
+%% valueOf after the splitter exists, and that code may replace exec.
 symbol_split(R, S, Limit) ->
-    case pristine(R) andalso erlang:get({builtin, <<"RegExp">>}) =:= undefined of
+    case pristine(R) andalso erlang:get({builtin, <<"RegExp">>}) =:= undefined andalso not ?IS_OBJECT(Limit) of
         true -> fast_split(R, S, Limit);
         false -> generic_split(R, S, Limit)
     end.
