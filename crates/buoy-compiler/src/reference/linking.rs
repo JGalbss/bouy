@@ -189,19 +189,19 @@ impl<'c> Linking<'c> {
             "$module",
             Expr::Map(
                 vec![
-                (Expr::atom("kind"), Expr::atom(kind)),
-                (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
-                (Expr::atom("requests"), Expr::List(requests)),
-                (
-                    Expr::atom("async"),
-                    Expr::atom(if unit.record.has_await {
-                        "true"
-                    } else {
-                        "false"
-                    }),
-                ),
-                (Expr::atom("error"), error),
-            ]
+                    (Expr::atom("kind"), Expr::atom(kind)),
+                    (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
+                    (Expr::atom("requests"), Expr::List(requests)),
+                    (
+                        Expr::atom("async"),
+                        Expr::atom(if unit.record.has_await {
+                            "true"
+                        } else {
+                            "false"
+                        }),
+                    ),
+                    (Expr::atom("error"), error),
+                ]
                 .into_iter()
                 .chain(extra)
                 .collect(),

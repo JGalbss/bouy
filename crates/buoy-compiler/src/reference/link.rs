@@ -28,7 +28,10 @@ pub enum Binding {
     BuiltinNamespace(String),
     /// An export of a request that the host links at run time, or its namespace for
     /// `None`: the runtime resolves it once the request is linked.
-    Hosted { request: usize, name: Option<String> },
+    Hosted {
+        request: usize,
+        name: Option<String>,
+    },
 }
 
 /// An error that linking the module throws.

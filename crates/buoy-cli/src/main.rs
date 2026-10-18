@@ -309,7 +309,11 @@ fn serve_eval() -> ExitCode {
 /// Text that does not parse has none.
 fn cjs_lexer_answer(text: &str) -> Vec<u8> {
     let (names, reexports) = buoy_compiler::cjs_lexer(text).unwrap_or_default();
-    [&[0], format!("{}\n\n{}", names.join("\n"), reexports.join("\n")).as_bytes()].concat()
+    [
+        &[0],
+        format!("{}\n\n{}", names.join("\n"), reexports.join("\n")).as_bytes(),
+    ]
+    .concat()
 }
 
 /// The answer to `@load`, a module that a running program loads at run time. The request

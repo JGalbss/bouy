@@ -226,7 +226,10 @@ pub fn hosted(text: String, name: &str, path: PathBuf) -> Result<Graph, Vec<Diag
     let scanned = scan_as(&path, text, Kind::Esm, false)?;
     let mut requests: Vec<Request> = Vec::new();
     for (specifier, _) in &scanned.record.order {
-        if requests.iter().all(|request| &request.specifier != specifier) {
+        if requests
+            .iter()
+            .all(|request| &request.specifier != specifier)
+        {
             requests.push(Request {
                 specifier: specifier.clone(),
                 mode: Mode::Import,
@@ -505,7 +508,12 @@ fn scan(
 }
 
 /// Reads the syntax facts of a module of a known format.
-fn scan_as(path: &Path, text: String, kind: Kind, script: bool) -> Result<Scanned, Vec<Diagnostic>> {
+fn scan_as(
+    path: &Path,
+    text: String,
+    kind: Kind,
+    script: bool,
+) -> Result<Scanned, Vec<Diagnostic>> {
     let source = match kind {
         Kind::CommonJs => wrap(&text),
         _ => text,
