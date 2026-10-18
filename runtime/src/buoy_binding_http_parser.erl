@@ -179,12 +179,17 @@ run(This, #{ll := LL, generation := Generation} = S, Data) ->
     Current = case Data of finish -> <<>>; _ -> Data end,
     save(This, S#{current => Current}),
     Cb = fun(Event) -> event(This, Event) end,
-    {_, LL1} = case Data of
+    {Status, LL1} = case Data of
         finish -> buoy_llhttp:finish(LL, Cb);
         _ -> buoy_llhttp:execute(LL, Data, Cb)
     end,
     S1 = state(This),
-    {Result, LL2} = case buoy_llhttp:error_of(LL1) of
+    %% llhttp_finish returns HPE_OK on a parser that has failed already.
+    Error = case {Data, Status} of
+        {finish, ok} -> ok;
+        _ -> buoy_llhttp:error_of(LL1)
+    end,
+    {Result, LL2} = case Error of
         ok -> {ok, LL1};
         {<<"HPE_PAUSED_UPGRADE">>, _, Pos} -> {{nread, Pos}, buoy_llhttp:resume_after_upgrade(LL1)};
         {Code, Reason, Pos} -> {{error, Code, Reason, Pos}, LL1}
