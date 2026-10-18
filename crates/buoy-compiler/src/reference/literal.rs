@@ -275,9 +275,10 @@ fn is_proto_setter(property: &oxc::ast::ast::ObjectProperty<'_>) -> bool {
             .is_some_and(|name| name == "__proto__")
 }
 
-/// `{'$o', Name}`: an intrinsic object.
+/// The intrinsic object `name` of the running realm, so that a literal in the code of a
+/// `vm` context gets the prototype of that context, as in V8.
 pub fn intrinsic(name: &str) -> Expr {
-    Expr::Tuple(vec![Expr::atom("$o"), Expr::atom(name)])
+    Expr::call("buoy_heap", "intrinsic", vec![Expr::atom(name)])
 }
 
 /// The keys of an object literal that `buoy_heap:literal/3` can build: every property a
