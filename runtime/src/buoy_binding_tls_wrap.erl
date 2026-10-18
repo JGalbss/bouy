@@ -274,6 +274,9 @@ self_realm() -> self().
 %% runs its TLS 1.3 ticket tracker, which a socket that ssl upgrades lacks.
 %% Connections with the same context options share one listener; the
 %% options of one connection join at the handshake.
+%% shortcut: a listener lives as long as its realm, so a server that
+%% rotates many contexts keeps a UDP socket and three ssl processes for
+%% each; close a listener with its last SecureContext if that matters.
 server_options(Options) ->
     Own = [verify, fail_if_no_peer_cert, verify_fun, alpn_preferred_protocols, sni_fun, keep_secrets, buoy_alpn_cb],
     {Connection, Shared} = lists:partition(fun(O) -> lists:member(element(1, O), Own) end, Options),
