@@ -739,6 +739,31 @@ impl<'a> Lowerer<'a, '_> {
     /// that the caller's function binds is that binding, and every other name is a
     /// binding of the caller's variables: the object of the first `@vars` entry of the
     /// scope, or the global object.
+    /// The block functions of global eval code that Annex B.3.3.3 hoists: configurable
+    /// properties of the global object, where the eval can declare them.
+    fn declare_global_block_functions(
+        &mut self,
+        block_functions: Vec<(oxc::semantic::SymbolId, String)>,
+    ) {
+        if block_functions.is_empty() {
+            return;
+        }
+        let mut names = Vec::new();
+        for (symbol, name) in block_functions {
+            self.check_block_function_target(symbol);
+            names.push(Expr::js_string(&name));
+        }
+        self.pre.push(Expr::call(
+            "buoy_ref_realm",
+            "declare_block_functions",
+            vec![
+                Expr::atom(self.module.clone()),
+                Expr::List(names),
+                Expr::atom("true"),
+            ],
+        ));
+    }
+
     fn eval_declarations(&mut self, body: &[&'a Statement<'a>]) -> Vec<Expr> {
         let mut vars = analyze::VarDeclarations::default();
         for statement in body {
@@ -817,22 +842,11 @@ impl<'a> Lowerer<'a, '_> {
                 if target.is_some() {
                     names.push(Expr::js_string(&name));
                 } else {
-                    self.check_block_function_target(symbol);
-                    block_functions.push(Expr::js_string(&name));
+                    block_functions.push((symbol, name));
                 }
             }
         }
-        if !block_functions.is_empty() {
-            self.pre.push(Expr::call(
-                "buoy_ref_realm",
-                "declare_block_functions",
-                vec![
-                    Expr::atom(self.module.clone()),
-                    Expr::List(block_functions),
-                    Expr::atom("true"),
-                ],
-            ));
-        }
+        self.declare_global_block_functions(block_functions);
         let call = match target {
             Some(object) => Expr::call(
                 "buoy_ref_eval",

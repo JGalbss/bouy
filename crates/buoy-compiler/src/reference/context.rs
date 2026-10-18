@@ -287,7 +287,10 @@ impl Lowerer<'_, '_> {
         let id = reference?;
         let symbol = self.semantic.scoping().get_reference(id).symbol_id()?;
         // A reference outside the block of a block function that Annex B does not hoist.
-        self.redirected(symbol, id).unwrap_or(Some(symbol))
+        if self.is_hidden_reference(symbol, id) {
+            return self.outer_binding(symbol);
+        }
+        Some(symbol)
     }
 
     /// The current value of a variable: its version, or the read of its cell.

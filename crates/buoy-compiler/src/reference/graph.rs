@@ -6,6 +6,7 @@
 //! `require`, `module`, `__filename`, and `__dirname` as parameters.
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -287,7 +288,10 @@ fn typed_unit(root: &Path, path: &Path, kind: Kind) -> Unit {
     };
     let (source, broken) = match fs::read(path) {
         Ok(bytes) if kind == Kind::Bytes => (
-            bytes.iter().map(|byte| format!("{byte:02x}")).collect(),
+            bytes.iter().fold(String::new(), |mut hex, byte| {
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            }),
             Vec::new(),
         ),
         // UTF-8 decode, which replaces a bad sequence and drops a byte order mark.

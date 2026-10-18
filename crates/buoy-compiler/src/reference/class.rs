@@ -39,7 +39,7 @@ enum Deferred<'a> {
 }
 
 /// A field: the key that it defines, private or not, its initializer, and the name that
-/// NamedEvaluation gives an anonymous function of the initializer.
+/// `NamedEvaluation` gives an anonymous function of the initializer.
 struct Field<'a> {
     key: Expr,
     private: bool,
@@ -302,7 +302,7 @@ impl<'a> Lowerer<'a, '_> {
 
     /// `accessor key = value`: a getter and a setter of `key` on `home` over a new private
     /// name, and the field of that name, which `value` initializes (the decorators
-    /// proposal, MakeAutoAccessorGetter and MakeAutoAccessorSetter).
+    /// proposal, `MakeAutoAccessorGetter` and `MakeAutoAccessorSetter`).
     fn auto_accessor(
         &mut self,
         accessor: &'a AccessorProperty<'a>,

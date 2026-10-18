@@ -188,31 +188,33 @@ impl<'a> Lowerer<'a, '_> {
             .and_then(|function| function.cell.clone())
     }
 
-    /// The symbol of a reference outside the blocks of a hidden block function: the
-    /// binding of the name around the var scope, or none for a global.
-    pub fn redirected(&self, symbol: SymbolId, reference: ReferenceId) -> Option<Option<SymbolId>> {
+    /// Whether `reference` to `symbol` is outside the blocks of a hidden block function, so
+    /// that it resolves around the var scope (`outer_binding`).
+    pub fn is_hidden_reference(&self, symbol: SymbolId, reference: ReferenceId) -> bool {
         let mut functions = self
             .block_functions
             .iter()
             .filter(|function| function.symbol == symbol)
             .peekable();
-        functions.peek()?;
+        if functions.peek().is_none() {
+            return false;
+        }
         let scoping = self.semantic.scoping();
         let node = scoping.get_reference(reference).node_id();
         let span = self.semantic.nodes().get_node(node).kind().span();
-        for function in functions {
+        functions.all(|function| {
             let inside = function.block.start <= span.start && span.end <= function.block.end;
-            if !function.hidden || inside {
-                return None;
-            }
-        }
-        let var_scope = scoping.symbol_scope_id(symbol);
+            function.hidden && !inside
+        })
+    }
+
+    /// The binding of the name of `symbol` around its var scope, or none for a global.
+    pub fn outer_binding(&self, symbol: SymbolId) -> Option<SymbolId> {
+        let scoping = self.semantic.scoping();
         let name = scoping.symbol_name(symbol);
-        Some(
-            scoping
-                .scope_parent_id(var_scope)
-                .and_then(|parent| scoping.find_binding(parent, name.into())),
-        )
+        scoping
+            .scope_parent_id(scoping.symbol_scope_id(symbol))
+            .and_then(|parent| scoping.find_binding(parent, name.into()))
     }
 
     /// Whether `function` is a block function whose binding is a cell of its block.
@@ -400,7 +402,7 @@ impl Declarations {
         }
     }
 
-    fn arm<'a>(&mut self, statement: &Statement<'a>) {
+    fn arm(&mut self, statement: &Statement<'_>) {
         match statement {
             Statement::FunctionDeclaration(function) => self.record(function, true),
             other => self.visit_statement(other),
