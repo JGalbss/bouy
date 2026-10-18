@@ -11,7 +11,7 @@
 %% writable side.
 -module(buoy_node_stream).
 
--export([methods/1, attach/2, deliver/2, call/2, written/3]).
+-export([methods/1, attach/2, deliver/2, call/2, written/3, forward/2, pass/2]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
@@ -154,6 +154,26 @@ set_ref(Handle, Refed) ->
     update(Handle, fun(S) -> S#{refed := Refed} end),
     undefined.
 
+%% A child whose stdio entry is this handle (a 'wrap' of getValidStdio)
+%% shares its descriptor: while Target, the manager of that child, is set,
+%% what the handle reads goes to the child's stdin, as the reads of the
+%% child take it from the shared pipe.
+-spec forward(term(), pid() | none) -> ok.
+forward(Handle, Target) ->
+    #{pending := Pending} = state(Handle),
+    update(Handle, fun(S) -> S#{forward => Target, pending := case Target of none -> Pending; _ -> [] end} end),
+    is_pid(Target) andalso lists:foreach(fun(Item) -> pass_to(Target, Item) end, lists:reverse(Pending)),
+    ok.
+
+pass_to(Target, eof) -> Target ! shutdown;
+pass_to(Target, Bytes) -> Target ! {write, Bytes, self(), make_ref()}.
+
+%% A child's output whose stdio entry is this handle: the bytes go out
+%% through the handle's channel, as the child writes to the shared pipe.
+-spec pass(term(), binary()) -> ok.
+pass(Handle, Bytes) ->
+    send(Handle, {write, Bytes, self(), make_ref()}).
+
 %% Data that the channel read, or eof: the handle's onread gets it while it
 %% reads, and keeps it for readStart otherwise.
 -spec deliver(term(), binary() | eof) -> term().
@@ -161,6 +181,8 @@ deliver(Handle, Item) ->
     case state(Handle) of
         #{closed := true} ->
             ok;
+        #{forward := Target} when is_pid(Target) ->
+            pass_to(Target, Item);
         #{reading := false} = S ->
             update(Handle, fun(_) -> S#{pending := [Item | maps:get(pending, S)]} end);
         S ->

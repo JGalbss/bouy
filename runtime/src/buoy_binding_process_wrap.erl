@@ -71,7 +71,7 @@ unstarted(Stdio) ->
     [begin
          buoy_node_stream:attach(Handle, spawn(fun() -> closed_pipe(monitor(process, Realm)) end)),
          buoy_node_loop:defer(fun() -> buoy_node_stream:deliver(Handle, eof) end)
-     end || {pipe, Handle} <- Stdio],
+     end || {Kind, Handle} <- Stdio, Kind =:= pipe orelse Kind =:= ipc],
     -2.
 
 closed_pipe(Monitor) ->
@@ -84,8 +84,9 @@ closed_pipe(Monitor) ->
 
 stdio(S) ->
     case buoy_ref_string:to_utf8(buoy_ref:to_string(get(S, <<"type">>))) of
-        <<"pipe">> -> {pipe, get(S, <<"handle">>)};
+        <<"pipe">> -> pipe(S);
         <<"overlapped">> -> {pipe, get(S, <<"handle">>)};
+        <<"wrap">> -> {wrap, get(S, <<"handle">>)};
         <<"inherit">> -> inherit;
         <<"fd">> ->
             case get(S, <<"fd">>) of
@@ -95,16 +96,27 @@ stdio(S) ->
         _ -> ignore
     end.
 
+%% The IPC channel of fork, a pipe that getValidStdio marks ipc, reads and
+%% writes, at whatever index it has.
+pipe(S) ->
+    case get(S, <<"ipc">>) of
+        true -> {ipc, get(S, <<"handle">>)};
+        _ -> {pipe, get(S, <<"handle">>)}
+    end.
+
 start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
     ok = start_inet_db(),
     {ok, Listen} = gen_tcp:listen(0, [binary, {ip, loopback}, {active, false}, {reuseaddr, true}, {backlog, 8}]),
     {ok, ListenPort} = inet:port(Listen),
-    %% A pipe past stderr, such as the IPC channel of fork, is a socket at its
-    %% index in the child (NODE_CHANNEL_FD); it connects at fd 10 + index first.
+    %% A pipe past stderr, and the IPC channel of fork at any index, is a
+    %% socket at its index in the child (NODE_CHANNEL_FD) that reads and
+    %% writes; it connects at fd 10 + index first.
     Realm0 = self(),
     Extras = [{Index, Handle, spawn(fun() -> ipc_channel(Realm0, Handle) end)}
-              || {Index, {pipe, Handle}} <- lists:enumerate(3, More)],
-    Piped = [Name || {Name, {pipe, _}} <- [{stdin, In}, {stderr, Err}]] ++ [{extra, I} || {I, _, _} <- Extras],
+              || {Index, {Kind, Handle}} <- lists:enumerate(0, [In, Out, Err | More]),
+                 Kind =:= ipc orelse (Kind =:= pipe andalso Index >= 3)],
+    Piped = [Name || {Name, {Kind, _}} <- [{stdin, In}, {stderr, Err}], Kind =:= pipe orelse Kind =:= wrap]
+            ++ [{extra, I} || {I, _, _} <- Extras],
     Tcp = "<>/dev/tcp/127.0.0.1/" ++ integer_to_list(ListenPort) ++ " || exit 127; ",
     %% Each piped stream connects in this order, so the accepts know which is which.
     Connect = lists:append(["exec " ++ integer_to_list(fd_of(Name)) ++ Tcp || Name <- Piped]),
@@ -113,7 +125,7 @@ start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
                           || {I, _, _} <- Extras]),
     Script = Connect ++ "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&- 5<&- 6<&-" ++ Moves,
     Realm = self(),
-    Handles = #{stdin => pipe_handle(In), stdout => pipe_handle(Out), stderr => pipe_handle(Err)},
+    Handles = #{stdin => pipe_handle(In), stdout => output_handle(Out), stderr => output_handle(Err)},
     {Manager, Monitor} = spawn_monitor(fun() ->
         Port = open_port({spawn_executable, "/bin/bash"},
                          [nouse_stdio, binary, exit_status, {cd, Cwd}, {args, ["-c", Script, Program | ProgramArgs]}]),
@@ -138,7 +150,7 @@ start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
     receive
         {Manager, started, OsPid} ->
             erlang:demonitor(Monitor, [flush]),
-            started(This, Manager, OsPid, Handles, Extras);
+            started(This, Manager, OsPid, Handles, Extras, In);
         {'DOWN', Monitor, process, Manager, _} ->
             [exit(Channel, kill) || {_, _, Channel} <- Extras],
             unstarted([In, Out, Err | More])
@@ -211,7 +223,7 @@ accept(Listen, [Name | Rest]) ->
         _ -> #{}
     end.
 
-started(This, Manager, OsPid, Handles, Extras) ->
+started(This, Manager, OsPid, Handles, Extras, In) ->
     [begin
          erlang:put({?MODULE, root, Channel}, Handle),
          buoy_node_stream:attach(Handle, Channel)
@@ -219,15 +231,26 @@ started(This, Manager, OsPid, Handles, Extras) ->
     %% The handles stay roots of the heap until the manager has sent its last
     %% callback, which may still name them.
     erlang:put({?MODULE, root, Manager}, {This, Handles}),
-    [buoy_node_stream:attach(H, Manager) || H <- maps:values(Handles), H =/= none],
+    [buoy_node_stream:attach(H, Manager) || H <- maps:values(Handles), H =/= none, element(1, H) =/= wrap],
+    Source = case In of
+        {wrap, Stream} -> buoy_node_stream:forward(Stream, Manager), Stream;
+        _ -> none
+    end,
     buoy_heap:set(This, <<"pid">>, OsPid),
-    save(This, #{manager => Manager, pid => OsPid, refed => false, exited => false}),
+    save(This, #{manager => Manager, pid => OsPid, refed => false, exited => false, source => Source}),
     set_ref(This, true),
     0.
 
 pipe_handle({pipe, Handle}) -> Handle;
 pipe_handle(_) -> none.
 
+%% The output of the child goes to its pipe, or out through the handle of a
+%% wrap entry, which the child shares.
+output_handle({wrap, Handle}) -> {wrap, Handle};
+output_handle(Stdio) -> pipe_handle(Stdio).
+
+redirect(_, {ipc, _}) -> "";
+redirect(I, {wrap, Handle}) -> redirect(I, {pipe, Handle});
 redirect(0, {pipe, _}) -> " <&5";
 redirect(0, inherit) -> "";
 redirect(0, {fd, 0}) -> "";
@@ -295,6 +318,8 @@ drain(Writer) when is_pid(Writer) -> Writer ! shutdown, ok;
 drain(_) -> ok.
 
 deliver(_Realm, none, _Item) -> ok;
+deliver(_Realm, {wrap, _}, eof) -> ok;
+deliver(Realm, {wrap, Handle}, Bytes) -> buoy_node_stream:call(Realm, fun() -> buoy_node_stream:pass(Handle, Bytes) end);
 deliver(Realm, Handle, Item) -> buoy_node_stream:call(Realm, fun() -> buoy_node_stream:deliver(Handle, Item) end).
 
 %% The writer of stdin: a send that fills the socket's buffer waits here, not
@@ -333,6 +358,8 @@ report(Realm, Ref, _Error) ->
 exited(This, Code, Signal) ->
     S = state(This),
     save(This, S#{exited => true}),
+    %% The child's stdin no longer reads the stream that it shared.
+    maps:get(source, S, none) =/= none andalso buoy_node_stream:forward(maps:get(source, S), none),
     set_ref(This, false),
     Name = case Signal of
         0 -> <<>>;
