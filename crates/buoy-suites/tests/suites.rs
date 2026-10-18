@@ -337,3 +337,21 @@ fn a_timed_out_run_stops_the_processes_that_it_started() {
         started.elapsed()
     );
 }
+
+/// A program that exits and leaves a process behind, which holds its pipes open and outlives
+/// its parent, ends the run at its exit, with the output that it wrote.
+#[test]
+fn a_run_ends_when_the_program_exits_and_its_leftovers_die() {
+    let started = std::time::Instant::now();
+    let mut command = std::process::Command::new("sh");
+    command.args(["-c", "sleep 30 & echo done"]);
+    let run = buoy_suites::run(&mut command, std::time::Duration::from_secs(20));
+    assert!(!run.timed_out);
+    assert!(run.output.status.success());
+    assert_eq!(String::from_utf8_lossy(&run.output.stdout), "done\n");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "the run waited {:?}",
+        started.elapsed()
+    );
+}

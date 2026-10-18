@@ -20,10 +20,13 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
+use std::io::{self, Read};
+use std::mem;
+use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, PoisonError, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -110,42 +113,101 @@ pub struct Run {
     pub timed_out: bool,
 }
 
-/// Runs `command` with no stdin, kills it when it runs past `deadline`, and deletes its
-/// `TMPDIR`. The CLI replaces itself with the VM, so the kill reaches the VM.
+/// How long the output of a program that exited may take to arrive.
+const OUTPUT_GRACE: Duration = Duration::from_secs(2);
+
+/// Runs `command` with no stdin in its own process group, kills it when it runs past
+/// `deadline`, and deletes its `TMPDIR`. The CLI replaces itself with the VM, so the kill
+/// reaches the VM.
+///
+/// The run ends when the program exits, as Bun's runner ends a test, and not when its
+/// pipes close: a process that the program left behind can hold them open for good. The
+/// processes left in the group die after the exit, and the output is what the pipes held
+/// up to `OUTPUT_GRACE` later.
 ///
 /// # Panics
 ///
 /// When the command cannot start, or the wait for it fails.
 pub fn run(command: &mut Command, deadline: Duration) -> Run {
-    let child = command
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .process_group(0)
         .spawn()
         .unwrap_or_else(|error| panic!("cannot run {command:?}: {error}"));
     let pid = child.id();
+    let stdout = Drain::start(child.stdout.take());
+    let stderr = Drain::start(child.stderr.take());
     let (finished, waited) = mpsc::channel();
-    thread::spawn(move || finished.send(child.wait_with_output()));
-    let (output, timed_out) = if let Ok(output) = waited.recv_timeout(deadline) {
-        (output, false)
+    thread::spawn(move || finished.send(child.wait()));
+    let (status, timed_out) = if let Ok(status) = waited.recv_timeout(deadline) {
+        (status, false)
     } else {
-        // The processes that the program started would keep its pipes open, and the
-        // wait alive: they end first, before they lose their parent.
-        let mut doomed = descendants(pid);
-        doomed.push(pid);
-        let _ = Command::new("kill")
-            .arg("-KILL")
-            .args(doomed.iter().map(u32::to_string))
-            .stderr(Stdio::null())
-            .status();
+        // A process that left the group, such as a detached child, dies first, before it
+        // loses its parent.
+        kill(pid, &descendants(pid));
         (waited.recv().expect("the waiting thread sends"), true)
+    };
+    kill(pid, &[]);
+    let grace = Instant::now() + OUTPUT_GRACE;
+    let output = Output {
+        status: status.unwrap_or_else(|error| panic!("cannot wait for {command:?}: {error}")),
+        stdout: stdout.take(grace),
+        stderr: stderr.take(grace),
     };
     if let Some((_, Some(directory))) = command.get_envs().find(|(name, _)| *name == "TMPDIR") {
         let _ = fs::remove_dir_all(directory);
     }
-    Run {
-        output: output.unwrap_or_else(|error| panic!("cannot wait for {command:?}: {error}")),
-        timed_out,
+    Run { output, timed_out }
+}
+
+/// Sends `SIGKILL` to the process group `group` and to `pids`.
+fn kill(group: u32, pids: &[u32]) {
+    let _ = Command::new("kill")
+        .args(["-s", "KILL", "--", &format!("-{group}")])
+        .args(pids.iter().map(u32::to_string))
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// A pipe that a thread reads to its end. The caller takes what has arrived so far.
+struct Drain {
+    bytes: Arc<Mutex<Vec<u8>>>,
+    ended: mpsc::Receiver<()>,
+}
+
+impl Drain {
+    fn start(pipe: Option<impl Read + Send + 'static>) -> Self {
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let (end, ended) = mpsc::channel();
+        if let Some(mut pipe) = pipe {
+            let bytes = Arc::clone(&bytes);
+            thread::spawn(move || {
+                let mut chunk = [0; 8192];
+                loop {
+                    match pipe.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(read) => bytes
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .extend_from_slice(&chunk[..read]),
+                        Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                        Err(_) => break,
+                    }
+                }
+                let _ = end.send(());
+            });
+        }
+        Self { bytes, ended }
+    }
+
+    /// The bytes that arrived by the end of the pipe, or by `until`.
+    fn take(self, until: Instant) -> Vec<u8> {
+        let _ = self
+            .ended
+            .recv_timeout(until.saturating_duration_since(Instant::now()));
+        mem::take(&mut *self.bytes.lock().unwrap_or_else(PoisonError::into_inner))
     }
 }
 
