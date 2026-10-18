@@ -160,11 +160,14 @@ canonical(I) when is_integer(I) ->
     catch
         error:badarg -> infinity(I)
     end;
-canonical(F) when is_float(F), F == 0 -> zero(F);
-canonical(F) when is_float(F), abs(F) =< ?SAFE ->
-    case trunc(F) of
-        I when I == F -> I;
-        _ -> F
+%% A float compares only with floats here: a comparison of a float with an
+%% integer and abs/1, which boxes a new float, cost more than the rest.
+canonical(F) when is_float(F), F =< 9007199254740992.0, F >= -9007199254740992.0 ->
+    I = trunc(F),
+    case F - I == 0.0 of
+        false -> F;
+        true when I =:= 0 -> zero(F);
+        true -> I
     end;
 canonical(V) -> V.
 
@@ -205,10 +208,21 @@ add('Infinity', '-Infinity') -> 'NaN';
 add('-Infinity', 'Infinity') -> 'NaN';
 add(A, _) when is_atom(A) -> A;
 add(_, B) when is_atom(B) -> B;
-add(A, B) -> float_result(fun() -> float(A) + float(B) end, fun() -> infinity(A / 2 + B / 2) end).
+add(A, B) ->
+    try A + B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(A / 2 + B / 2)
+    end.
 
 -spec sub(term(), term()) -> term().
 sub(A, B) when is_integer(A), is_integer(B) -> canonical(A - B);
+sub(A, B) when is_number(A), is_number(B) ->
+    try A - B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(A / 2 - B / 2)
+    end;
 sub(A, B) -> add(A, negate(B)).
 
 -spec mul(term(), term()) -> term().
@@ -225,7 +239,12 @@ mul(A, B) when is_atom(A); is_atom(B) ->
         true -> 'NaN';
         false -> infinity(sign(A) * sign(B))
     end;
-mul(A, B) -> float_result(fun() -> float(A) * float(B) end, fun() -> infinity(sign(A) * sign(B)) end).
+mul(A, B) ->
+    try A * B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(sign(A) * sign(B))
+    end.
 
 -spec divide(term(), term()) -> term().
 divide('NaN', _) -> 'NaN';
@@ -237,7 +256,12 @@ divide(A, B) when B == 0, A == 0 -> 'NaN';
 divide(A, B) when B == 0 -> infinity(sign(A) * sign(B));
 divide(A, B) when A == 0 -> signed_zero(sign(A) * sign(B));
 divide(A, B) when is_integer(A), is_integer(B), A rem B =:= 0 -> A div B;
-divide(A, B) -> float_result(fun() -> A / B end, fun() -> infinity(sign(A) * sign(B)) end).
+divide(A, B) ->
+    try A / B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(sign(A) * sign(B))
+    end.
 
 %% The remainder has the sign of the dividend, as C's fmod.
 -spec remainder(term(), term()) -> term().
@@ -337,13 +361,6 @@ is_zero(N) -> is_number(N) andalso N == 0.
 signed_zero(-1) -> -0.0;
 signed_zero(_) -> 0.
 
-%% A float operation that raises badarith on overflow.
-float_result(Op, Overflow) ->
-    try Op() of
-        F -> canonical(F)
-    catch
-        error:badarith -> Overflow()
-    end.
 
 %%% 32-bit integer operations
 
