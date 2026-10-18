@@ -450,7 +450,7 @@ parallel/test-child-process-ipc.js pass
 parallel/test-child-process-kill.js pass
 parallel/test-child-process-net-reuseport.js pass
 parallel/test-child-process-no-deprecation.js pass
-parallel/test-child-process-pipe-dataflow.js fail
+parallel/test-child-process-pipe-dataflow.js pass
 parallel/test-child-process-promisified.js pass
 parallel/test-child-process-prototype-tampering.mjs pass
 parallel/test-child-process-recv-handle.js fail
@@ -2635,7 +2635,7 @@ parallel/test-path-zero-length-strings.js pass
 parallel/test-path.js pass
 parallel/test-pending-deprecation.js skip
 parallel/test-perf-gc-crash.js pass
-parallel/test-perf-hooks-eventlooputilization.js fail
+parallel/test-perf-hooks-eventlooputilization.js pass
 parallel/test-perf-hooks-histogram-fast-calls.js skip
 parallel/test-perf-hooks-histogram.js fail
 parallel/test-perf-hooks-resourcetiming.js pass
@@ -2717,7 +2717,7 @@ parallel/test-pipe-return-val.js pass
 parallel/test-pipe-stream.js fail
 parallel/test-pipe-unref.js fail
 parallel/test-pipe-writev.js fail
-parallel/test-preload-print-process-argv.js fail
+parallel/test-preload-print-process-argv.js pass
 parallel/test-preload-self-referential.js pass
 parallel/test-preload-worker.js pass
 parallel/test-preload.js fail
@@ -4205,7 +4205,7 @@ parallel/test-worker-stack-overflow-stack-size.js timeout
 parallel/test-worker-stack-overflow.js timeout
 parallel/test-worker-stdio-flush-inflight.js pass
 parallel/test-worker-stdio-flush.js pass
-parallel/test-worker-stdio-from-preload-module.js fail
+parallel/test-worker-stdio-from-preload-module.js pass
 parallel/test-worker-stdio.js pass
 parallel/test-worker-syntax-error-file.js pass
 parallel/test-worker-syntax-error.js pass
