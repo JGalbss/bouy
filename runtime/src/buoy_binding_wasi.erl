@@ -200,10 +200,19 @@ preopens([{Mapped, Real} | Rest], Fd, Table) ->
                         path = normalize(Mapped), real = Real, preopen = Mapped},
             preopens(Rest, Fd + 1, Table#{Fd => Entry});
         {ok, _} ->
-            buoy_node:throw_code('Error', <<"ENOTDIR">>, <<"WASI preopen is not a directory: ", Real/binary>>);
+            init_error(?ENOTDIR, <<"ENOTDIR">>);
         {error, Reason} ->
-            buoy_node:throw_code('Error', string:uppercase(atom_to_binary(Reason)), <<"WASI preopen: ", Real/binary>>)
+            init_error(errno(Reason), string:uppercase(atom_to_binary(Reason)))
     end.
+
+%% WASIException of node_wasi.cc for a failed uvwasi_init: "UVWASI_<code>,
+%% uvwasi_init", with the errno, the code, and the syscall.
+init_error(Errno, Name) ->
+    Code = <<"UVWASI_", Name/binary>>,
+    Message = <<Code/binary, ", uvwasi_init">>,
+    E = buoy_heap:error_object('Error', Message, <<"Error: ", Message/binary>>),
+    [buoy_heap:set(E, Key, Value) || {Key, Value} <- [{<<"errno">>, Errno}, {<<"code">>, Code}, {<<"syscall">>, <<"uvwasi_init">>}]],
+    erlang:error({'$throw', E}).
 
 state(This) -> maps:get(This, erlang:get(?STATE)).
 
@@ -801,26 +810,40 @@ now(_) -> fail(?EINVAL).
 
 %%% poll_oneoff
 
-%% Waits for the earliest clock subscription, or answers the descriptor
-%% subscriptions, which are always ready for a file and a standard stream.
+%% uvwasi_poll_oneoff: the events of the subscriptions that are ready, or,
+%% when none is, the first that becomes ready: the earliest clock, or stdin
+%% once it has bytes or ends. Files and the other descriptors are always
+%% ready, as uv_poll finds them.
 poll_oneoff(_S, _In, _Out, 0, _Nevents) -> ?EINVAL;
 poll_oneoff(S, In, Out, Count, Nevents) ->
     Subs = [decode_subscription(read(S, In + I * 48, 48)) || I <- lists:seq(0, Count - 1)],
-    Clocks = [{Timeout, User} || {clock, User, Timeout} <- Subs],
-    Fds = [{Type, User, Fd} || {Type, User, Fd} <- Subs, Type =/= clock],
-    Events = case Fds of
-        [] ->
-            case lists:sort(Clocks) of
-                [] -> [];
-                [{Timeout, User} | _] ->
-                    timer:sleep(Timeout div 1000000 + case Timeout rem 1000000 of 0 -> 0; _ -> 1 end),
-                    [<<User:64/little, 0:16, 0:8, 0:40, 0:64, 0:16, 0:48>>]
-            end;
-        _ ->
-            [fd_event(S, Sub) || Sub <- Fds]
+    Clocks = lists:sort([{Timeout, User} || {clock, User, Timeout} <- Subs]),
+    Fds = [fd_ready(S, Sub) || {Type, _, _} = Sub <- Subs, Type =/= clock],
+    Events = case [Event || {ready, Event} <- Fds] of
+        [] -> wait([Sub || {waiting, Sub} <- Fds], Clocks);
+        Ready -> Ready
     end,
     ok = write(S, Out, iolist_to_binary(Events)),
     write(S, Nevents, <<(length(Events)):32/little>>).
+
+%% Waits for stdin or the earliest clock, whichever comes first.
+wait([], []) -> [];
+wait([], [{Timeout, User} | _]) ->
+    timer:sleep(ceil_ms(Timeout)),
+    [clock_event(User)];
+wait(Stdin, Clocks) ->
+    Limit = case Clocks of
+        [] -> infinity;
+        [{Timeout, _} | _] -> ceil_ms(Timeout)
+    end,
+    case buoy_node_stdin:poll(Limit) of
+        timeout -> [clock_event(User) || {_, User} <- lists:sublist(Clocks, 1)];
+        {Bytes, Ended} -> [fd_event(User, ?ESUCCESS, Type, Bytes, Ended) || {Type, User, _} <- Stdin]
+    end.
+
+ceil_ms(Nanoseconds) -> (Nanoseconds + 999999) div 1000000.
+
+clock_event(User) -> <<User:64/little, 0:16, 0:8, 0:40, 0:64, 0:16, 0:48>>.
 
 decode_subscription(<<User:64/little, 0:8, _:56, _Id:32/little, _:32, Timeout:64/little, _Precision:64/little,
                       Flags:16/little, _/binary>>) ->
@@ -833,13 +856,24 @@ decode_subscription(<<User:64/little, Tag:8, _:56, Fd:32/little, _/binary>>) whe
     {Tag, User, Fd};
 decode_subscription(_) -> fail(?EINVAL).
 
-fd_event(#{fds := Fds}, {Type, User, Fd}) ->
-    Error = case Fds of
-        #{Fd := #fd{base = B}} when B band ?POLL_FD_READWRITE =/= 0 -> ?ESUCCESS;
-        #{Fd := _} -> ?ENOTCAPABLE;
-        _ -> ?EBADF
-    end,
-    <<User:64/little, Error:16/little, Type:8, 0:40, 0:64/little, 0:16, 0:48>>.
+%% The event of a descriptor subscription when it is ready now: a read of
+%% stdin is ready once bytes wait or stdin ended, which sets the hangup
+%% flag.
+fd_ready(#{fds := Fds}, {Type, User, Fd} = Sub) ->
+    case Fds of
+        #{Fd := #fd{kind = stdio, host = 0, base = B}} when Type =:= 1, B band ?POLL_FD_READWRITE =/= 0 ->
+            case buoy_node_stdin:poll(0) of
+                timeout -> {waiting, Sub};
+                {Bytes, Ended} -> {ready, fd_event(User, ?ESUCCESS, Type, Bytes, Ended)}
+            end;
+        #{Fd := #fd{base = B}} when B band ?POLL_FD_READWRITE =/= 0 -> {ready, fd_event(User, ?ESUCCESS, Type, 0, false)};
+        #{Fd := _} -> {ready, fd_event(User, ?ENOTCAPABLE, Type, 0, false)};
+        _ -> {ready, fd_event(User, ?EBADF, Type, 0, false)}
+    end.
+
+fd_event(User, Error, Type, Bytes, Hangup) ->
+    Flags = case Hangup of true -> 1; false -> 0 end,
+    <<User:64/little, Error:16/little, Type:8, 0:40, Bytes:64/little, Flags:16/little, 0:48>>.
 
 %%% Strings and memory
 
