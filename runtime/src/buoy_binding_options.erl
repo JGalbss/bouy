@@ -3,7 +3,7 @@
 %% Buoy honors no option yet, so every value is Node 25.9.0's default.
 -module(buoy_binding_options).
 
--export([binding/0]).
+-export([binding/0, value/1]).
 
 -spec binding() -> term().
 binding() ->
@@ -35,11 +35,18 @@ info() ->
 %% --name or --no-name, and another option takes --name=value or
 %% --name value, a list option once for each.
 cli_values() ->
+    buoy_node:from_json(iolist_to_binary(json:encode(values_map()))).
+
+%% The value of the option Name after the command line, for the native side,
+%% such as the tracing agent, which reads its options before any realm does.
+-spec value(binary()) -> term().
+value(Name) -> maps:get(Name, values_map()).
+
+values_map() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
-    Values = apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())),
-    buoy_node:from_json(iolist_to_binary(json:encode(Values))).
+    apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())).
 
 expand(Args, Expansions) ->
     lists:append([maps:get(normalize(A), Expansions, [A]) || A <- Args]).

@@ -1,0 +1,3 @@
+module.exports: class/3 {unhook}
+  Hook: class/3 {unhook}
+    Hook: class/3 {unhook}

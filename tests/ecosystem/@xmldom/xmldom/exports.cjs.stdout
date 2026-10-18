@@ -1,0 +1,4 @@
+module.exports: object
+  DOMImplementation: class/0 {createDocument, createDocumentType, hasFeature}
+  DOMParser: class/1 {parseFromString}
+  XMLSerializer: class/0 {serializeToString}

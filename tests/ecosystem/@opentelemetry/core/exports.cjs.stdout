@@ -1,0 +1,79 @@
+module.exports: object
+  AnchoredClock: class/2 {now}
+  BindOnceFuture: class/2 {call, isCalled, promise}
+  CompositePropagator: class/0 {extract, fields, inject}
+  ExportResultCode: object
+    0: string
+    1: string
+    FAILED: number
+    SUCCESS: number
+  RPCType: object
+    HTTP: string
+  SDK_INFO: object
+    process.runtime.name: string
+    telemetry.sdk.language: string
+    telemetry.sdk.name: string
+    telemetry.sdk.version: string
+  TRACE_PARENT_HEADER: string
+  TRACE_STATE_HEADER: string
+  TimeoutError: function/1
+  TraceState: class/1 {_fromState, _getState, get, serialize, set, unset}
+  W3CBaggagePropagator: class/0 {extract, fields, inject}
+  W3CTraceContextPropagator: class/0 {extract, fields, inject}
+  _globalThis: object global
+    atob: function/1
+    btoa: function/1
+    clearImmediate: function/1
+    clearInterval: function/1
+    clearTimeout: function/1
+    crypto: object Crypto
+    fetch: function/1
+    global: object global
+    localStorage: object
+    navigator: object
+    performance: object Performance
+    queueMicrotask: function/1
+    sessionStorage: object
+    setImmediate: function/1
+    setInterval: function/2
+    setTimeout: function/2
+    structuredClone: function/2
+  addHrTimes: function/2
+  callWithTimeout: function/2
+  deleteRPCMetadata: function/1
+  diagLogLevelFromString: function/1
+  getBooleanFromEnv: function/1
+  getNumberFromEnv: function/1
+  getRPCMetadata: function/1
+  getStringFromEnv: function/1
+  getStringListFromEnv: function/1
+  getTimeOrigin: function/0
+  globalErrorHandler: function/1
+  hrTime: function/1
+  hrTimeDuration: function/2
+  hrTimeToMicroseconds: function/1
+  hrTimeToMilliseconds: function/1
+  hrTimeToNanoseconds: function/1
+  hrTimeToSeconds: function/1
+  hrTimeToTimeStamp: function/1
+  internal: object
+    _export: function/2
+  isAttributeValue: function/1 (true, true, true, true, true, true, true, false, true)
+  isTimeInput: function/1 (false, false, true, true, false, false, false, false, false)
+  isTimeInputHrTime: function/1 (false, false, false, false, false, false, false, false, false)
+  isTracingSuppressed: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isUrlIgnored: function/2 (false, false, false, false, false, false, false, false, false)
+  loggingErrorHandler: function/0
+  merge: function/0
+  millisToHrTime: function/1
+  otperformance: object Performance
+  parseKeyPairsIntoRecord: function/1
+  parseTraceParent: function/1
+  sanitizeAttributes: function/1
+  setGlobalErrorHandler: function/1
+  setRPCMetadata: function/2
+  suppressTracing: function/1
+  timeInputToHrTime: function/1
+  unrefTimer: function/1
+  unsuppressTracing: function/1
+  urlMatches: function/2

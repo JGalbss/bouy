@@ -51,9 +51,11 @@ binding() ->
             undefined
         end)},
         {<<"reallyExit">>, F(<<"reallyExit">>, 0, fun ?MODULE:really_exit/2)},
+        %% Uptime of src/node_process_methods.cc counts from node_start_time,
+        %% the nodeStart milestone of perf_hooks, not from the start of the VM.
         {<<"uptime">>, F(<<"uptime">>, 0, fun(_, _) ->
-            {Ms, _} = erlang:statistics(wall_clock),
-            Ms / 1000
+            Now = erlang:monotonic_time(nanosecond),
+            (Now - persistent_term:get({buoy, node_start}, Now)) / 1.0e9
         end)},
         {<<"patchProcessObject">>, F(<<"patchProcessObject">>, 0, fun(_, Args) -> buoy_node_process:patch(A(1, Args)) end)},
         {<<"dlopen">>, F(<<"dlopen">>, 0, fun ?MODULE:dlopen/2)},

@@ -1,0 +1,10 @@
+module.exports: object
+  clearCaches: function/0
+  createProgram: function/2
+  meta: object
+    name: string
+    version: string
+  parse: function/2
+  parseForESLint: function/2
+  version: string
+  withoutProjectParserOptions: function/1

@@ -1,0 +1,12 @@
+module.exports: object
+  FEATURES: object
+    decorators: number
+    fields: number
+    privateIn: number
+    privateMethods: number
+    staticBlocks: number
+  buildCheckInRHS: function/3
+  buildNamedEvaluationVisitor: function/2
+  createClassFeaturePlugin: function/1
+  enableFeature: function/3
+  injectInitialization: function/5

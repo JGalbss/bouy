@@ -1,0 +1,37 @@
+module.exports: object
+  Features: object
+    0: string
+    1: string
+    16: string
+    2: string
+    32: string
+    4: string
+    64: string
+    8: string
+    AtApply: number
+    AtImport: number
+    AtTheme: number
+    JsPluginCompat: number
+    None: number
+    ThemeFunction: number
+    Utilities: number
+    Variants: number
+  Instrumentation: class/0 {end, hit, report, reset, span, start, track}
+  Polyfills: object
+    0: string
+    1: string
+    2: string
+    3: string
+    All: number
+    AtProperty: number
+    ColorMix: number
+    None: number
+  __unstable__loadDesignSystem: function/2
+  compile: function/2
+  compileAst: function/2
+  env: object
+    DEBUG: boolean
+  loadModule: function/4
+  normalizePath: function/1
+  optimize: function/1
+  toSourceMap: function/1

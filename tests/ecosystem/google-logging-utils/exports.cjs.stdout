@@ -1,0 +1,18 @@
+module.exports: object
+  AdhocDebugLogger: class/2 {invoke, invokeSeverity}
+  DebugLogBackendBase: class/0 {log}
+  env: object
+    nodeEnables: string
+  getDebugBackend: function/1
+  getNodeBackend: function/0
+  getStructuredBackend: function/1
+  log: function/2
+  placeholder: function/1
+    debug: function/0
+    error: function/0
+    info: function/0
+    instance: object
+    on: function/2
+    sublog: function/1
+    warn: function/0
+  setBackend: function/1

@@ -1,0 +1,6 @@
+namespace: object Module
+  compile: function/1
+  micromark: function/3
+  parse: function/1
+  postprocess: function/1
+  preprocess: function/0

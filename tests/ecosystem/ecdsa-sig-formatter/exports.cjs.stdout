@@ -1,0 +1,3 @@
+module.exports: object
+  derToJose: function/2
+  joseToDer: function/2

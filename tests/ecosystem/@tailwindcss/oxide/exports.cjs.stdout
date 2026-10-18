@@ -1,0 +1,2 @@
+module.exports: object
+  Scanner: class/0 {files, getCandidatesWithPositions, globs, normalizedSources, scan, scanFiles, scannedFiles}

@@ -1,0 +1,10 @@
+module.exports: object
+  analyse: function/1
+  default: object
+    analyse: function/1
+    detect: function/1
+    detectFile: function/1
+    detectFileSync: function/1
+  detect: function/1
+  detectFile: function/1
+  detectFileSync: function/1

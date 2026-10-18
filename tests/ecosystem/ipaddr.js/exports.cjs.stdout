@@ -1,0 +1,23 @@
+module.exports: object
+  IPv4: class/1 {SpecialRanges, kind, match, prefixLengthFromSubnetMask, range, toByteArray, toIPv4MappedAddress, toNormalizedString, toString}
+    broadcastAddressFromCIDR: function/1
+    isIPv4: function/1
+    isValid: function/1
+    isValidFourPartDecimal: function/1
+    networkAddressFromCIDR: function/1
+    parse: function/1
+    parseCIDR: function/1
+    parser: function/1
+    subnetMaskFromPrefixLength: function/1
+  IPv6: class/2 {SpecialRanges, isIPv4MappedAddress, kind, match, prefixLengthFromSubnetMask, range, toByteArray, toFixedLengthString, toIPv4Address, toNormalizedString, toRFC5952String, toString}
+    isIPv6: function/1
+    isValid: function/1
+    parse: function/1
+    parseCIDR: function/1
+    parser: function/1
+  fromByteArray: function/1
+  isValid: function/1 (false, false, false, false, false, false, false, false, false)
+  parse: function/1
+  parseCIDR: function/1
+  process: function/1
+  subnetMatch: function/3

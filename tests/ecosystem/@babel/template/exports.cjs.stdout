@@ -1,0 +1,18 @@
+module.exports: object
+  default: function/1
+    ast: function/1
+    expression: function/1
+    program: function/1
+    smart: function/1
+    statement: function/1
+    statements: function/1
+  expression: function/1
+    ast: function/1
+  program: function/1
+    ast: function/1
+  smart: function/1
+    ast: function/1
+  statement: function/1
+    ast: function/1
+  statements: function/1
+    ast: function/1

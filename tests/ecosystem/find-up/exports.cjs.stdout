@@ -1,0 +1,6 @@
+module.exports: function/1
+  exists: function/1
+    sync: function/1
+  stop: symbol
+  sync: function/1
+    exists: function/1

@@ -1,0 +1,3 @@
+module.exports: object
+  fromArrayBuffer: function/1
+  fromString: function/2

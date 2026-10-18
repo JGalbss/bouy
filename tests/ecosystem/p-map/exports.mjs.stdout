@@ -1,0 +1,8 @@
+namespace: object Module
+  default: function/3
+  pMapIterable: function/2
+  pMapKeyed: function/3
+  pMapSettled: function/3
+  pMapSettledKeyed: function/3
+  pMapSkip: symbol
+  pMapStop: symbol

@@ -1,0 +1,5 @@
+module.exports: object
+  error: string
+  info: string
+  success: string
+  warning: string

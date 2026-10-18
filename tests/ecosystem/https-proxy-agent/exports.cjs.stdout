@@ -1,0 +1,3 @@
+module.exports: object
+  HttpsProxyAgent: class/2 {connect}
+    protocols: object Array

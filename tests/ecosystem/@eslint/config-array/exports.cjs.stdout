@@ -1,0 +1,9 @@
+module.exports: object
+  ConfigArray: class/1 {files, getConfig, getConfigStatus, getConfigWithStatus, ignores, isDirectoryIgnored, isFileIgnored, isIgnored, isNormalized, normalize, normalizeSync}
+  ConfigArraySymbol: object
+    configCache: symbol
+    finalizeConfig: symbol
+    isNormalized: symbol
+    preprocessConfig: symbol
+    schema: symbol
+  ObjectSchema: class/1 {hasKey, merge, validate}

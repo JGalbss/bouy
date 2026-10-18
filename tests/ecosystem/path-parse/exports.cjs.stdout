@@ -1,0 +1,5 @@
+module.exports: function/1
+  posix: function/1
+    posix: function/1
+    win32: function/1
+  win32: function/1

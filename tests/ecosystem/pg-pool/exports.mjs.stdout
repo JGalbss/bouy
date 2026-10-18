@@ -1,0 +1,2 @@
+namespace: object Module
+  default: class/2 {_acquireClient, _afterConnect, _isAboveMin, _isFull, _promiseTry, _pulseQueue, _release, _releaseOnce, _remove, connect, end, expiredCount, idleCount, newClient, query, totalCount, waitingCount}

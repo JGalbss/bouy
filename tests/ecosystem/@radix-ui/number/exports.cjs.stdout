@@ -1,0 +1,2 @@
+module.exports: object
+  clamp: function/2

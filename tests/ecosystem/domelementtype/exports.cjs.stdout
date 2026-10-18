@@ -1,0 +1,21 @@
+module.exports: object
+  CDATA: string
+  Comment: string
+  Directive: string
+  Doctype: string
+  ElementType: object
+    CDATA: string
+    Comment: string
+    Directive: string
+    Doctype: string
+    Root: string
+    Script: string
+    Style: string
+    Tag: string
+    Text: string
+  Root: string
+  Script: string
+  Style: string
+  Tag: string
+  Text: string
+  isTag: function/1 (throws, throws, false, false, false, false, false, false, false)

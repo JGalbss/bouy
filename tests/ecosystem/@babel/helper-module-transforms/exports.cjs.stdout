@@ -1,0 +1,12 @@
+module.exports: object
+  buildDynamicImport: function/4
+  buildNamespaceInitStatements: function/2
+  ensureStatementsHoisted: function/1
+  getDynamicImportSource: function/1
+  getModuleName: function/2
+  hasExports: function/1
+  isModule: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isSideEffectImport: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  rewriteModuleStatementsAndPrepareHeader: function/2
+  rewriteThis: function/1
+  wrapInterop: function/3

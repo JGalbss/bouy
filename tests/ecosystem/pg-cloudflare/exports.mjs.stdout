@@ -1,0 +1,6 @@
+namespace: object Module
+  __esModule: boolean
+  default: object
+    default: object
+  module.exports: object
+    default: object

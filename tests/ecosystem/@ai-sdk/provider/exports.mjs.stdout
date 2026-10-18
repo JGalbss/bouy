@@ -1,0 +1,19 @@
+namespace: object Module
+  AISDKError: function/1
+  APICallError: function/1
+  EmptyResponseBodyError: function/0
+  InvalidArgumentError: function/1
+  InvalidPromptError: function/1
+  InvalidResponseDataError: function/1
+  JSONParseError: function/1
+  LoadAPIKeyError: function/1
+  LoadSettingError: function/1
+  NoContentGeneratedError: function/0
+  NoSuchModelError: function/1
+  TooManyEmbeddingValuesForCallError: function/1
+  TypeValidationError: function/1
+  UnsupportedFunctionalityError: function/1
+  getErrorMessage: function/1
+  isJSONArray: function/1 (false, false, false, false, false, false, true, false, false)
+  isJSONObject: function/1 (false, false, false, false, false, false, true, true, false)
+  isJSONValue: function/1 (false, true, true, true, true, true, true, true, true)

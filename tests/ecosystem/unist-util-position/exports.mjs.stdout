@@ -1,0 +1,4 @@
+namespace: object Module
+  pointEnd: function/1
+  pointStart: function/1
+  position: function/1

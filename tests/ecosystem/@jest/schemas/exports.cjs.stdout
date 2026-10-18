@@ -1,0 +1,9 @@
+module.exports: object
+  FakeTimers: object
+    allOf: object Array
+  InitialOptions: object
+    properties: object
+    type: string
+  SnapshotFormat: object
+    properties: object
+    type: string

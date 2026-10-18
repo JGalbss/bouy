@@ -1,0 +1,5 @@
+namespace: object Module
+  default: object
+    hide: function/0
+    show: function/0
+    toggle: function/2

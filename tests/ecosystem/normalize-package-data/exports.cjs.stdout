@@ -1,0 +1,21 @@
+module.exports: function/3
+  fixer: object
+    fixBinField: function/1
+    fixBugsField: function/1
+    fixBundleDependenciesField: function/1
+    fixDependencies: function/2
+    fixDescriptionField: function/1
+    fixFilesField: function/1
+    fixHomepageField: function/1
+    fixKeywordsField: function/1
+    fixLicenseField: function/1
+    fixManField: function/1
+    fixModulesField: function/1
+    fixNameField: function/2
+    fixPeople: function/1
+    fixReadmeField: function/1
+    fixRepositoryField: function/1
+    fixScriptsField: function/1
+    fixTypos: function/1
+    fixVersionField: function/2
+    warn: function/0

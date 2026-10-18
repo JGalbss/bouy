@@ -1,0 +1,3 @@
+module.exports: object
+  read: function/5
+  write: function/6

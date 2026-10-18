@@ -1,0 +1,6 @@
+module.exports: object
+  parallel: function/3
+  serial: function/3
+  serialOrdered: function/4
+    ascending: function/2
+    descending: function/2

@@ -1,0 +1,4 @@
+module.exports: object
+  format: function/1
+  parse: function/1
+  test: function/1

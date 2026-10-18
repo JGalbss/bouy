@@ -1,0 +1,5 @@
+module.exports: class/0 {addListener, emit, eventNames, listenerCount, listeners, off, on, once, removeAllListeners, removeListener}
+  EventEmitter: class/0 {addListener, emit, eventNames, listenerCount, listeners, off, on, once, removeAllListeners, removeListener}
+    EventEmitter: class/0 {addListener, emit, eventNames, listenerCount, listeners, off, on, once, removeAllListeners, removeListener}
+    prefixed: boolean
+  prefixed: boolean

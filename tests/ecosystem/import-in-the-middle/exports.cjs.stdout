@@ -1,0 +1,9 @@
+module.exports: class/3 {unhook}
+  Hook: class/3 {unhook}
+    Hook: class/3 {unhook}
+    addHook: function/1
+    createAddHookMessageChannel: function/0
+    removeHook: function/1
+  addHook: function/1
+  createAddHookMessageChannel: function/0
+  removeHook: function/1

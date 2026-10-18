@@ -1,0 +1,14 @@
+namespace: object Module
+  Branch: object
+    $$typeof: symbol
+    render: function/2
+  DismissableLayer: object
+    $$typeof: symbol
+    render: function/2
+  DismissableLayerBranch: object
+    $$typeof: symbol
+    render: function/2
+  Root: object
+    $$typeof: symbol
+    render: function/2
+  useDismissableLayerSurface: function/0

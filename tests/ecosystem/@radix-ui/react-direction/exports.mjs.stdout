@@ -1,0 +1,4 @@
+namespace: object Module
+  DirectionProvider: function/1
+  Provider: function/1
+  useDirection: function/1

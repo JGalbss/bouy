@@ -1,0 +1,4 @@
+module.exports: object
+  checkAndPreparePackage: function/3
+  isNpm: function/0 (undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined)
+  isPnp: function/0 (false, false, false, false, false, false, false, false, false)

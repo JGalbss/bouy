@@ -1,0 +1,7 @@
+module.exports: object
+  configs: object
+    all: object
+    recommended: object
+  meta: object
+    name: string
+    version: string

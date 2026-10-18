@@ -1,0 +1,6 @@
+module.exports: object
+  XMLNS_1_0: object
+    ED3: object
+  XML_1_0: object
+    ED4: object
+    ED5: object

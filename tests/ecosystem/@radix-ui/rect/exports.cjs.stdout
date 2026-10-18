@@ -1,0 +1,2 @@
+module.exports: object
+  observeElementRect: function/2
