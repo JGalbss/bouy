@@ -25,3 +25,14 @@ console.log(
   from(values) !== values,
   Iterator.from(values) === values,
 );
+// A buffer that a typed array of another realm allocates is an ArrayBuffer of that
+// realm, and SpeciesConstructor and Array.from make objects of the realm they name.
+const foreignBuffer = vm.runInContext("new Int8Array(4).buffer", context) as ArrayBuffer;
+const ForeignArrayBuffer = vm.runInContext("ArrayBuffer", context) as ArrayBufferConstructor;
+const foreignFrom = vm.runInContext("Array.from", context) as typeof Array.from;
+console.log(
+  "foreign buffers",
+  Object.getPrototypeOf(foreignBuffer) === ForeignArrayBuffer.prototype,
+  ArrayBuffer.prototype.slice.call(foreignBuffer, 0, 2).constructor === ForeignArrayBuffer,
+  foreignFrom.call(Array, [1]) instanceof Array,
+);

@@ -1154,9 +1154,9 @@ from_array_like(C, O, Mapper) ->
             A
     end.
 
-%% Whether Array.from and Array.of make a new array of %Array%: this is not
-%% a constructor, or is %Array% itself.
-fresh_constructor(C) -> C =:= constructor() orelse not is_constructor(C).
+%% Whether Array.from and Array.of make a new array of %Array% of the
+%% current realm: this is not a constructor, or is that %Array% itself.
+fresh_constructor(C) -> C =:= buoy_ref_realm:current(constructor()) orelse not is_constructor(C).
 
 mapped(none, V, _K) -> V;
 mapped({F, This}, V, K) -> buoy_ref:call(F, This, [V, K]).

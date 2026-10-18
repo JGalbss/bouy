@@ -1789,7 +1789,7 @@ in({'$array_buffer', N, Bytes, Max}, Made) ->
     buoy_ref_buffer:write(O, 0, Bytes),
     {O, Made#{N => O}};
 in({'$shared_array_buffer', N, Slots}, Made) ->
-    O = new_exotic(shared_array_buffer, {'$o', 'SharedArrayBuffer.prototype'}, Slots),
+    O = new_exotic(shared_array_buffer, intrinsic('SharedArrayBuffer.prototype'), Slots),
     {O, Made#{N => O}};
 in({'$typed_array', N, Kind, BufferTerm, Offset, Length}, Made) ->
     {Buffer, Made1} = in(BufferTerm, Made),
