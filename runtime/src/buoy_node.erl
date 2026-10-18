@@ -135,6 +135,9 @@ boot() ->
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
     {InternalBinding, Require} = erlang:get(?LOADERS),
     [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- ?BOOTSTRAP, is_compiled(Id)],
+    %% A global that the bootstrap did not define, such as Storage under
+    %% --no-webstorage, is not defined, as in Node.
+    [buoy_heap:delete_property({'$o', 'globalThis'}, Name) || Name <- lazy_globals(), is_lazy(Name)],
     erlang:put(?STATE, ready),
     debug("bootstrap done~n", []),
     ok.
@@ -201,6 +204,12 @@ global_get(Name) ->
             undefined;
         _ ->
             buoy_heap:get(G, Name)
+    end.
+
+is_lazy(Name) ->
+    case buoy_heap:get_own({'$o', 'globalThis'}, Name) of
+        {accessor, {'$f', {builtin, <<"node:", _/binary>>}, _}, _, _} -> true;
+        _ -> false
     end.
 
 %% The setter of a lazy global: the program's value replaces it.

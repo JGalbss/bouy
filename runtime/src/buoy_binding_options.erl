@@ -42,7 +42,17 @@ cli_values() ->
     buoy_node:from_json(iolist_to_binary(json:encode(Values))).
 
 expand(Args, Expansions) ->
-    lists:append([maps:get(normalize(A), Expansions, [A]) || A <- Args]).
+    lists:append([expansion(normalize(A), A, Expansions) || A <- Args]).
+
+%% --no-name negates the option that the alias --name names, as Node's parser
+%% reads --no-webstorage as --no-experimental-webstorage.
+expansion(<<"--no-", Positive/binary>>, Arg, Expansions) ->
+    case maps:get(<<"--", Positive/binary>>, Expansions, none) of
+        [<<"--", Name/binary>>] -> [<<"--no-", Name/binary>>];
+        _ -> [Arg]
+    end;
+expansion(Normalized, Arg, Expansions) ->
+    maps:get(Normalized, Expansions, [Arg]).
 
 %% --expose_gc names --expose-gc: underscores of the name are dashes.
 normalize(<<"--", _/binary>> = Arg) ->

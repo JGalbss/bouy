@@ -145,6 +145,25 @@ function loadEnvFiles() {
   }
 }
 
+function setupWebStorage() {
+  const { getEmbedderOptions } = require('internal/options');
+  if (getEmbedderOptions().noBrowserGlobals ||
+      !getOptionValue('--experimental-webstorage')) {
+    return;
+  }
+
+  const {
+    exposeLazyInterfaces,
+    defineReplaceableLazyAttribute,
+  } = require('internal/util');
+
+  // https://html.spec.whatwg.org/multipage/webstorage.html#webstorage
+  exposeLazyInterfaces(globalThis, 'internal/webstorage', ['Storage']);
+  defineReplaceableLazyAttribute(globalThis, 'internal/webstorage', [
+    'localStorage', 'sessionStorage',
+  ]);
+}
+
 function setupSQLite() {
   if (getOptionValue('--no-experimental-sqlite')) {
     return;
@@ -169,6 +188,7 @@ function setupChildProcessIpcChannel() {
 patchProcessObject();
 loadEnvFiles();
 setupSQLite();
+setupWebStorage();
 setupWebsocket();
 setupEventsource();
 initializeReport();
