@@ -353,15 +353,21 @@ impl<'a> Lowerer<'a, '_> {
         program: &'a Program<'a>,
         source: &str,
     ) -> Vec<Function> {
-        // A directive is an expression statement too: `eval("'1'")` is "1".
-        // compile_eval writes the directive of strict eval code before the code.
+        // A directive is an expression statement too: `eval("'1'")` is "1", the value of
+        // its string literal, not its raw text. compile_eval writes the directive of
+        // strict eval code before the code.
         let injected = usize::from(self.eval == Some(true));
         let directive = program
             .directives
             .iter()
             .skip(injected)
             .last()
-            .map(|directive| Expr::js_string(directive.directive.as_str()));
+            .map(|directive| {
+                super::literal::js_string_literal(
+                    directive.expression.value.as_str(),
+                    directive.expression.lone_surrogates,
+                )
+            });
         let body: Vec<&'a Statement<'a>> = program.body.iter().collect();
         let mut functions = vec![self.eval_function(&body, directive)];
         functions.push(self.class_dispatch());

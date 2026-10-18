@@ -28,3 +28,4 @@ const results: unknown[] = [
   eval("class C {}"),
 ];
 console.log(results);
+console.log([eval("'\\x31'"), eval("'a\\u0062'; 'c\\x64'")]);
