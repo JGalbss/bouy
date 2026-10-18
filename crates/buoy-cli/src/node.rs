@@ -121,6 +121,8 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             run_stdin(&arguments, options)
         }
         Some(Entry::Script(script)) => {
+            let script = buoy_compiler::resolve_main(Path::new(&script))
+                .map_or(script, |path| path.to_string_lossy().into_owned());
             let project = match super::compile(Path::new(&script), Semantics::Reference) {
                 Ok(project) => project,
                 Err(code) => return code,

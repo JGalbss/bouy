@@ -134,6 +134,25 @@ pub fn compile_source(entry: &Path, text: String) -> Result<Project, Vec<Diagnos
     compile_reference_text(entry, &root, false, Some(text))
 }
 
+/// The file that `node <script>` runs: the script itself, or the file that `require` of its
+/// absolute path finds, with an extension or as a directory, as Node's `Module.runMain`
+/// resolves the main entry.
+#[must_use]
+pub fn resolve_main(script: &Path) -> Option<PathBuf> {
+    if script.is_file() {
+        return Some(script.to_path_buf());
+    }
+    let absolute = std::env::current_dir().ok()?.join(script);
+    match resolve::Resolver::default().resolve(
+        &absolute.to_string_lossy(),
+        &absolute,
+        resolve::Mode::Require,
+    ) {
+        Ok(resolve::Target::File(path)) => Some(path),
+        _ => None,
+    }
+}
+
 /// What a running program loads at run time: a specifier that its static graph did not
 /// reach, such as `require(path.join(dir, name))`.
 #[derive(Debug)]
