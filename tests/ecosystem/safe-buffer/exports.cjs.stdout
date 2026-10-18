@@ -1,0 +1,28 @@
+module.exports: object
+  Blob: class/0 {arrayBuffer, bytes, size, slice, stream, text, type}
+  Buffer: class/3 {asciiSlice, asciiWrite, base64Slice, base64Write, base64urlSlice, base64urlWrite, compare, copy, equals, fill, hexSlice, hexWrite, includes, indexOf, inspect, lastIndexOf, latin1Slice, latin1Write, offset, parent, readBigInt64BE, readBigInt64LE, readBigUInt64BE, readBigUInt64LE, readBigUint64BE, readBigUint64LE, readDoubleBE, readDoubleLE, readFloatBE, readFloatLE, readInt16BE, readInt16LE, readInt32BE, readInt32LE, readInt8, readIntBE, readIntLE, readUInt16BE, readUInt16LE, readUInt32BE, readUInt32LE, readUInt8, readUIntBE, readUIntLE, readUint16BE, readUint16LE, readUint32BE, readUint32LE, readUint8, readUintBE, readUintLE, slice, subarray, swap16, swap32, swap64, toJSON, toLocaleString, toString, ucs2Slice, ucs2Write, utf8Slice, utf8Write, write, writeBigInt64BE, writeBigInt64LE, writeBigUInt64BE, writeBigUInt64LE, writeBigUint64BE, writeBigUint64LE, writeDoubleBE, writeDoubleLE, writeFloatBE, writeFloatLE, writeInt16BE, writeInt16LE, writeInt32BE, writeInt32LE, writeInt8, writeIntBE, writeIntLE, writeUInt16BE, writeUInt16LE, writeUInt32BE, writeUInt32LE, writeUInt8, writeUIntBE, writeUIntLE, writeUint16BE, writeUint16LE, writeUint32BE, writeUint32LE, writeUint8, writeUintBE, writeUintLE}
+    alloc: function/3
+    allocUnsafe: function/1
+    allocUnsafeSlow: function/1
+    byteLength: function/2
+    compare: function/2
+    concat: function/2
+    copyBytesFrom: function/3
+    from: function/3
+    isBuffer: function/1
+    isEncoding: function/1
+    of: function/0
+    poolSize: number
+  File: class/2 {lastModified, name}
+  INSPECT_MAX_BYTES: number
+  atob: function/1
+  btoa: function/1
+  constants: object
+    MAX_LENGTH: number
+    MAX_STRING_LENGTH: number
+  isAscii: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isUtf8: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  kMaxLength: number
+  kStringMaxLength: number
+  resolveObjectURL: function/1
+  transcode: function/3

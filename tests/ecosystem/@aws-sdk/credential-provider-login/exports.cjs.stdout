@@ -1,0 +1,2 @@
+module.exports: object
+  fromLoginCredentials: function/1

@@ -1,0 +1,56 @@
+namespace: object Module
+  Argument: class/2 {_collectValue, argOptional, argParser, argRequired, choices, default, name}
+  Command: class/1 {_callParseArg, _chainOrCall, _chainOrCallHooks, _chainOrCallSubCommandHook, _checkForBrokenPassThrough, _checkForConflictingLocalOptions, _checkForConflictingOptions, _checkForMissingExecutable, _checkForMissingMandatoryOptions, _checkNumberOfArguments, _conflictingOption, _dispatchHelpCommand, _dispatchSubcommand, _excessArguments, _executeSubCommand, _exit, _findCommand, _findOption, _getCommandAndAncestors, _getHelpCommand, _getHelpOption, _getOutputContext, _initCommandGroup, _initOptionGroup, _optionEx, _outputHelpIfRequested, _parseCommand, _parseOptionsEnv, _parseOptionsImplied, _prepareForParse, _prepareUserArgs, _processArguments, _registerCommand, _registerOption, action, addArgument, addCommand, addHelpCommand, addHelpOption, addHelpText, addOption, alias, aliases, allowExcessArguments, allowUnknownOption, argument, arguments, combineFlagAndOptionalValue, command, commandsGroup, configureHelp, configureOutput, copyInheritedSettings, createArgument, createCommand, createHelp, createOption, description, enablePositionalOptions, error, executableDir, exitOverride, getOptionValue, getOptionValueSource, getOptionValueSourceWithGlobals, help, helpCommand, helpGroup, helpInformation, helpOption, hook, missingArgument, missingMandatoryOptionValue, name, nameFromFilename, option, optionMissingArgument, optionsGroup, opts, optsWithGlobals, outputHelp, parse, parseAsync, parseOptions, passThroughOptions, requiredOption, restoreStateBeforeParse, saveStateBeforeParse, setOptionValue, setOptionValueWithSource, showHelpAfterError, showSuggestionAfterError, storeOptionsAsProperties, summary, unknownCommand, unknownOption, usage, version}
+  CommanderError: function/3
+  Help: class/0 {argumentDescription, argumentTerm, boxWrap, commandDescription, commandUsage, compareOptions, displayWidth, formatHelp, formatItem, formatItemList, groupItems, longestArgumentTermLength, longestGlobalOptionTermLength, longestOptionTermLength, longestSubcommandTermLength, optionDescription, optionTerm, padWidth, preformatted, prepareContext, styleArgumentDescription, styleArgumentTerm, styleArgumentText, styleCommandDescription, styleCommandText, styleDescriptionText, styleOptionDescription, styleOptionTerm, styleOptionText, styleSubcommandDescription, styleSubcommandTerm, styleSubcommandText, styleTitle, styleUsage, subcommandDescription, subcommandTerm, visibleArguments, visibleCommands, visibleGlobalOptions, visibleOptions}
+  InvalidArgumentError: function/1
+  InvalidOptionArgumentError: function/1
+  Option: class/2 {_collectValue, argParser, attributeName, choices, conflicts, default, env, helpGroup, hideHelp, implies, is, isBoolean, makeOptionMandatory, name, preset}
+  createArgument: function/2
+  createCommand: function/1
+  createOption: function/2
+  program: object
+    _actionHandler: null
+    _addImplicitHelpCommand: undefined
+    _aliases: object Array
+    _allowExcessArguments: boolean
+    _allowUnknownOption: boolean
+    _args: object Array
+    _argsDescription: undefined
+    _combineFlagAndOptionalValue: boolean
+    _defaultCommandGroup: undefined
+    _defaultCommandName: null
+    _defaultOptionGroup: undefined
+    _description: string
+    _enablePositionalOptions: boolean
+    _events: object
+    _eventsCount: number
+    _executableDir: null
+    _executableFile: null
+    _executableHandler: boolean
+    _exitCallback: null
+    _helpCommand: undefined
+    _helpConfiguration: object
+    _helpGroupHeading: undefined
+    _helpOption: undefined
+    _hidden: boolean
+    _lifeCycleHooks: object
+    _maxListeners: undefined
+    _name: string
+    _optionValueSources: object
+    _optionValues: object
+    _outputConfiguration: object
+    _passThroughOptions: boolean
+    _savedState: null
+    _scriptPath: null
+    _showHelpAfterError: boolean
+    _showSuggestionAfterError: boolean
+    _storeOptionsAsProperties: boolean
+    _summary: string
+    args: object Array
+    commands: object Array
+    options: object Array
+    parent: null
+    processedArgs: object Array
+    rawArgs: object Array
+    registeredArguments: object Array

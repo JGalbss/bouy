@@ -451,8 +451,8 @@ __filename pass
 atob pass
 btoa pass
 clearImmediate pass
-clearInterval fail
-clearTimeout fail
+clearInterval pass
+clearTimeout pass
 console pass
 console.Console.prototype.assert fail
 console.Console.prototype.clear fail
@@ -3279,9 +3279,9 @@ node:tls.getCACertificates fail
 node:tls.getCiphers fail
 node:tls.rootCertificates fail
 node:tls.setDefaultCACertificates fail
-node:trace_events fail
-node:trace_events.createTracing fail
-node:trace_events.getEnabledCategories fail
+node:trace_events pass
+node:trace_events.createTracing pass
+node:trace_events.getEnabledCategories pass
 node:tty pass
 node:tty.ReadStream pass
 node:tty.ReadStream.listenerCount pass
@@ -4448,7 +4448,7 @@ process.unref pass
 process.uptime pass
 process.version pass
 process.versions pass
-queueMicrotask fail
+queueMicrotask pass
 require pass
 require.cache pass
 require.extensions pass
@@ -4457,6 +4457,6 @@ require.resolve pass
 require.resolve.paths pass
 sessionStorage fail
 setImmediate pass
-setInterval fail
-setTimeout fail
+setInterval pass
+setTimeout pass
 structuredClone pass

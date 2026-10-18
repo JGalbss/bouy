@@ -1,0 +1,7 @@
+module.exports: object
+  Root: object
+    $$typeof: symbol
+    render: function/2
+  Separator: object
+    $$typeof: symbol
+    render: function/2

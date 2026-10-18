@@ -1,0 +1,4 @@
+module.exports: object
+  length: function/1
+  read: function/3
+  write: function/3

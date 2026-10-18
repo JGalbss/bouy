@@ -1,0 +1,6 @@
+module.exports: function/1
+  compile: function/1
+  create: function/1
+  expand: function/1
+  parse: function/1
+  stringify: function/1

@@ -1,0 +1,14 @@
+module.exports: object
+  Asyncify: class/0 {assertState, init, wrapExportFunction, wrapExports, wrapImportFunction, wrapImports}
+  Memory: class/1 {HEAP16, HEAP32, HEAP64, HEAP8, HEAPF32, HEAPF64, HEAPU16, HEAPU32, HEAPU64, HEAPU8, view}
+  WASI: class/0 {finalizeBindings, getImportObject, initialize, start}
+  WebAssemblyMemory: class/1 {buffer, grow}
+  asyncifyLoad: function/3
+  asyncifyLoadSync: function/3
+  createAsyncWASI: function/0
+  extendMemory: function/1
+  load: function/2
+  loadSync: function/2
+  wrapAsyncExport: function/1
+  wrapAsyncImport: function/3
+  wrapExports: function/2

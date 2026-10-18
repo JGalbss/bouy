@@ -1,0 +1,2 @@
+namespace: object Module
+  observeElementRect: function/2

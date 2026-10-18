@@ -1,0 +1,9 @@
+module.exports: function/1
+  readDoubleBE: function/2
+  readDoubleLE: function/2
+  readFloatBE: function/2
+  readFloatLE: function/2
+  writeDoubleBE: function/3
+  writeDoubleLE: function/3
+  writeFloatBE: function/3
+  writeFloatLE: function/3

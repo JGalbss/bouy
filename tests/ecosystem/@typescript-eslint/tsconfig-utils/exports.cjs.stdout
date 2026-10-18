@@ -1,0 +1,6 @@
+module.exports: object
+  CORE_COMPILER_OPTIONS: object
+    noEmit: boolean
+    noUnusedLocals: boolean
+    noUnusedParameters: boolean
+  getParsedConfigFile: function/3

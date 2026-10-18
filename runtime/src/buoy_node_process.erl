@@ -11,6 +11,7 @@
 
 -export([exec_argv/0, create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
 -export([getenv/1, environ/0, node_options/0]).
+-export([version_pairs/0, initial_title/0]).
 
 -define(VERSION, <<"v25.9.0">>).
 %% The fields of Environment::ExitInfoField: kExiting, kExitCode, kHasExitCode.
@@ -53,7 +54,13 @@ patch(Process) ->
     %% The title starts as --title gives it, or node; the VM cannot rename its OS process.
     erlang:put(?TITLE, title(node_options() ++ exec_argv())),
     Title = buoy_node:fn(<<"get title">>, 0, fun(_, _) -> erlang:get(?TITLE) end),
-    SetTitle = buoy_node:fn(<<"set title">>, 1, fun(_, A) -> erlang:put(?TITLE, buoy_ref:to_string(buoy_node:arg(1, A))), undefined end),
+    SetTitle = buoy_node:fn(<<"set title">>, 1, fun(_, A) ->
+        New = buoy_ref:to_string(buoy_node:arg(1, A)),
+        erlang:put(?TITLE, New),
+        %% ProcessTitleSetter records the title for the trace.
+        buoy_trace:metadata(<<"process_name">>, [{<<"name">>, buoy_ref_string:to_utf8(New)}]),
+        undefined
+    end),
     buoy_heap:define(Process, <<"title">>, #{get => Title, set => SetTitle, enumerable => true, configurable => true}),
     [_ | Argv0] = persistent_term:get({buoy, argv}, [<<"buoy">>]),
     %% The code of -e and -p is no script of process.argv.
@@ -193,8 +200,11 @@ platform() ->
 
 %% process.versions of Node 25.9.0, without sqlite, which Buoy does not have,
 %% and with the OpenSSL that OTP's crypto links.
-versions() ->
-    buoy_node:object([{K, V} || {K, V} <- [
+versions() -> buoy_node:object(version_pairs()).
+
+-spec version_pairs() -> [{binary(), binary()}].
+version_pairs() ->
+    [
         {<<"node">>, <<"25.9.0">>}, {<<"acorn">>, <<"8.16.0">>}, {<<"ada">>, <<"3.4.4">>},
         {<<"ares">>, <<"1.34.6">>}, {<<"brotli">>, <<"1.2.0">>}, {<<"cldr">>, <<"48.0">>},
         {<<"icu">>, <<"78.3">>}, {<<"llhttp">>, <<"9.3.1">>}, {<<"modules">>, <<"141">>},
@@ -202,7 +212,7 @@ versions() ->
         {<<"simdutf">>, <<"7.3.3">>}, {<<"tz">>, <<"2026a">>}, {<<"undici">>, <<"7.24.4">>},
         {<<"unicode">>, <<"17.0">>}, {<<"uv">>, <<"1.52.1">>}, {<<"uvwasi">>, <<"0.0.23">>},
         {<<"v8">>, <<"14.1.146.11-node.25">>}, {<<"zlib">>, <<"1.2.12">>}, {<<"zstd">>, <<"1.5.7">>},
-        {<<"buoy">>, <<"0.1.0">>}] ++ openssl()]).
+        {<<"buoy">>, <<"0.1.0">>}] ++ openssl().
 
 %% The version of the OpenSSL that OTP's crypto links, as "3.6.4", or none
 %% when crypto cannot load it.
@@ -213,6 +223,10 @@ openssl() ->
     catch
         error:_ -> []
     end.
+
+%% The title that --title gives, or node, in UTF-8.
+-spec initial_title() -> binary().
+initial_title() -> buoy_ref_string:to_utf8(title(exec_argv())).
 
 raw_debug(_This, Args) ->
     Text = lists:join(<<" ">>, [buoy_ref_string:to_utf8(buoy_ref:to_string(A)) || A <- Args]),

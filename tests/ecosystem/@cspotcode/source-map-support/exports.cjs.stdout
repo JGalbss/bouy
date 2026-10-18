@@ -1,0 +1,8 @@
+module.exports: object
+  getErrorSource: function/1
+  install: function/1
+  mapSourcePosition: function/1
+  resetRetrieveHandlers: function/0
+  retrieveSourceMap: function/1
+  uninstall: function/0
+  wrapCallSite: function/2

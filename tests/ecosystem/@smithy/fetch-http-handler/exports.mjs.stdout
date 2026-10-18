@@ -1,0 +1,13 @@
+namespace: object Module
+  FetchHttpHandler: class/1 {destroy, handle, httpHandlerConfigs, updateHttpClientConfig}
+  default: object
+    FetchHttpHandler: class/1 {destroy, handle, httpHandlerConfigs, updateHttpClientConfig}
+    keepAliveSupport: object
+    streamCollector: function/1
+  keepAliveSupport: object
+    supported: undefined
+  module.exports: object
+    FetchHttpHandler: class/1 {destroy, handle, httpHandlerConfigs, updateHttpClientConfig}
+    keepAliveSupport: object
+    streamCollector: function/1
+  streamCollector: function/1

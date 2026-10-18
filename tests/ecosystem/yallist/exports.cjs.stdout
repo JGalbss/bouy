@@ -1,0 +1,5 @@
+module.exports: class/1 {forEach, forEachReverse, get, getReverse, map, mapReverse, pop, push, pushNode, reduce, reduceReverse, removeNode, reverse, shift, slice, sliceReverse, splice, toArray, toArrayReverse, unshift, unshiftNode}
+  Node: function/4
+  create: class/1 {forEach, forEachReverse, get, getReverse, map, mapReverse, pop, push, pushNode, reduce, reduceReverse, removeNode, reverse, shift, slice, sliceReverse, splice, toArray, toArrayReverse, unshift, unshiftNode}
+    Node: function/4
+    create: class/1 {forEach, forEachReverse, get, getReverse, map, mapReverse, pop, push, pushNode, reduce, reduceReverse, removeNode, reverse, shift, slice, sliceReverse, splice, toArray, toArrayReverse, unshift, unshiftNode}

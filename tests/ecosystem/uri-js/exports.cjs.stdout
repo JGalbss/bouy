@@ -1,0 +1,20 @@
+module.exports: object
+  SCHEMES: object
+    http: object
+    https: object
+    mailto: object
+    urn: object
+    urn:uuid: object
+    ws: object
+    wss: object
+  equal: function/3
+  escapeComponent: function/2
+  normalize: function/2
+  parse: function/1
+  pctDecChars: function/1
+  pctEncChar: function/1
+  removeDotSegments: function/1
+  resolve: function/3
+  resolveComponents: function/2
+  serialize: function/1
+  unescapeComponent: function/2

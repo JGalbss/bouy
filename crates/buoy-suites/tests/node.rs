@@ -12,8 +12,8 @@ use buoy_suites::node::{self, Options};
 use buoy_suites::outcome::Outcome;
 
 /// The file is the last argument. Rejects `common/index.mjs` on `check`. On `run`, a file named `*rejected*` is rejected,
-/// `*fail*` exits with 1, and `*env*` passes only with the variables of the runner and of
-/// its `// Env:` line.
+/// `*fail*` exits with 1, `*flaky*` fails until the file `FAKE_MARK` exists and makes it,
+/// and `*env*` passes only with the variables of the runner and of its `// Env:` line.
 const FAKE_BUOY: &str = r#"#!/bin/sh
 for file; do :; done
 if [ "$1" = check ]; then
@@ -23,6 +23,10 @@ fi
 case "$file" in
 *rejected*) echo '{"status":2,"diagnostics":["BUOY206"]}' >"$BUOY_RESULT_FILE"; exit 2 ;;
 *fail*) echo '{"status":1}' >"$BUOY_RESULT_FILE"; exit 1 ;;
+*flaky*)
+    if [ ! -f "$FAKE_MARK" ]; then
+        touch "$FAKE_MARK"; echo '{"status":1}' >"$BUOY_RESULT_FILE"; exit 1
+    fi ;;
 *env*)
     if [ "$FAKE_ENV" != yes ] || [ -z "$TEST_SERIAL_ID" ] || [ ! -d "$NODE_TEST_DIR" ] ||
         [ "$NODE_SKIP_FLAG_CHECK" != 1 ]; then
@@ -267,4 +271,65 @@ fn the_committed_node_files_agree() {
             "{outcome}"
         );
     }
+}
+
+/// A line names each platform whose outcome differs, and a run compares with its own. The
+/// regenerated file of a run keeps the other platform; an update moves every platform.
+#[test]
+fn a_line_holds_the_outcome_of_each_platform() {
+    let suite = FakeSuite::new("platforms");
+    let platform = buoy_suites::expectations::PLATFORM;
+    node::run(&suite.options(true)).expect("the update runs");
+    let recorded = suite.read("expectations.txt");
+    let split = if platform == "linux" {
+        "parallel/test-pass.js linux=pass,macos=fail\n"
+    } else {
+        "parallel/test-pass.js linux=fail,macos=pass\n"
+    };
+    fs::write(
+        suite.root.join("tests/expectations.txt"),
+        recorded.replace("parallel/test-pass.js pass\n", split),
+    )
+    .expect("writable");
+    let report = node::run(&suite.options(false)).expect("the run");
+    assert_eq!(
+        report.comparison,
+        Comparison::default(),
+        "its own platform passes"
+    );
+    fs::write(
+        suite.root.join("tests/expectations.txt"),
+        recorded.replace(
+            "parallel/test-pass.js pass\n",
+            "parallel/test-pass.js fail\n",
+        ),
+    )
+    .expect("writable");
+    let report = node::run(&suite.options(false)).expect("the run");
+    assert_eq!(report.comparison.stale.len(), 1);
+    let output = fs::read_to_string(suite.root.join("output/expectations.txt")).expect("written");
+    assert!(output.contains(split), "{output}");
+    node::run(&suite.options(true)).expect("the update runs");
+    assert_eq!(suite.read("expectations.txt"), recorded);
+}
+
+/// A file whose outcome its line does not expect runs once more, alone, and the rerun
+/// decides.
+#[test]
+fn an_unexpected_outcome_gets_one_rerun() {
+    let suite = FakeSuite::new("rerun");
+    fs::write(
+        suite.root.join("tests/test/parallel/test-flaky.js"),
+        "'use strict';\n// Env: FAKE_MARK=../flaky.mark\n",
+    )
+    .expect("writable");
+    node::run(&suite.options(true)).expect("the update runs");
+    assert!(
+        suite
+            .read("expectations.txt")
+            .contains("parallel/test-flaky.js pass\n")
+    );
+    fs::remove_file(suite.root.join("flaky.mark")).expect("the first run made the mark");
+    let report = node::run(&suite.options(false)).expect("the run");
+    assert_eq!(report.comparison, Comparison::default());
 }

@@ -13,6 +13,7 @@
     "runtime/vendor/",
     "runtime/node/",
     "docs/COMPAT.md",
+    "tests/ecosystem/",
     "tests/fuzz/",
     "tests/node/test/",
     "tests/node/surface.json",

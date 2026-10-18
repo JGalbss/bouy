@@ -1,0 +1,5 @@
+module.exports: object
+  FetchHttpHandler: class/1 {destroy, handle, httpHandlerConfigs, updateHttpClientConfig}
+  keepAliveSupport: object
+    supported: undefined
+  streamCollector: function/1

@@ -1,0 +1,5 @@
+module.exports: function/1
+  abbrev: function/1
+    abbrev: function/1
+    monkeyPatch: function/0
+  monkeyPatch: function/0

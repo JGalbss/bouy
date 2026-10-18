@@ -1,0 +1,30 @@
+module.exports: object
+  AttributeAction: object
+    Any: string
+    Element: string
+    End: string
+    Equals: string
+    Exists: string
+    Hyphen: string
+    Not: string
+    Start: string
+  IgnoreCaseMode: object
+    CaseSensitive: boolean
+    IgnoreCase: boolean
+    QuirksMode: string
+    Unknown: null
+  SelectorType: object
+    Adjacent: string
+    Attribute: string
+    Child: string
+    ColumnCombinator: string
+    Descendant: string
+    Parent: string
+    Pseudo: string
+    PseudoElement: string
+    Sibling: string
+    Tag: string
+    Universal: string
+  isTraversal: function/1 (throws, throws, false, false, false, false, false, false, false)
+  parse: function/1
+  stringify: function/1

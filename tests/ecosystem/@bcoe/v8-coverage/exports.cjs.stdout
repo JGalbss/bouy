@@ -1,0 +1,16 @@
+module.exports: object
+  RangeTree: class/4 {normalize, split, toRanges}
+  cloneFunctionCov: function/1
+  cloneProcessCov: function/1
+  cloneRangeCov: function/1
+  cloneScriptCov: function/1
+  compareFunctionCovs: function/2
+  compareRangeCovs: function/2
+  compareScriptCovs: function/2
+  emitForest: function/1
+  emitForestLines: function/1
+  mergeFunctionCovs: function/1
+  mergeProcessCovs: function/1
+  mergeScriptCovs: function/1
+  parseFunctionRanges: function/2
+  parseOffsets: function/1

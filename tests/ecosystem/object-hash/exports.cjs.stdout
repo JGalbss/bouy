@@ -1,0 +1,6 @@
+module.exports: function/2
+  MD5: function/1
+  keys: function/1
+  keysMD5: function/1
+  sha1: function/1
+  writeToStream: function/3

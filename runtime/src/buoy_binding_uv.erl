@@ -1,7 +1,7 @@
 %% internalBinding('uv') (src/uv.cc): the error codes of libuv, their names,
-%% and their messages, as Node 25.9.0 reports them on darwin.
-%% shortcut: the numbers are darwin's errno values, recorded with the oracle;
-%% record the table of each platform when Buoy runs on another one.
+%% and their messages, as Node 25.9.0 reports them. The codes are the negated
+%% errno values of darwin, and Linux replaces the ones that differ, as the
+%% oracle recorded them on Linux.
 -module(buoy_binding_uv).
 
 -export([binding/0, errors/0, name/1]).
@@ -41,6 +41,27 @@ name(Code) ->
 
 -spec errors() -> [{integer(), binary(), binary()}].
 errors() ->
+    case buoy_node_process:platform() of
+        <<"linux">> ->
+            Linux = linux(),
+            [{maps:get(Name, Linux, Code), Name, Message} || {Code, Name, Message} <- darwin()];
+        _ ->
+            darwin()
+    end.
+
+linux() ->
+    #{<<"EADDRINUSE">> => -98, <<"EADDRNOTAVAIL">> => -99, <<"EAFNOSUPPORT">> => -97, <<"EAGAIN">> => -11,
+      <<"EALREADY">> => -114, <<"ECANCELED">> => -125, <<"ECONNABORTED">> => -103, <<"ECONNREFUSED">> => -111,
+      <<"ECONNRESET">> => -104, <<"EDESTADDRREQ">> => -89, <<"EHOSTUNREACH">> => -113, <<"EISCONN">> => -106,
+      <<"ELOOP">> => -40, <<"EMSGSIZE">> => -90, <<"ENAMETOOLONG">> => -36, <<"ENETDOWN">> => -100,
+      <<"ENETUNREACH">> => -101, <<"ENOBUFS">> => -105, <<"ENONET">> => -64, <<"ENOPROTOOPT">> => -92,
+      <<"ENOSYS">> => -38, <<"ENOTCONN">> => -107, <<"ENOTEMPTY">> => -39, <<"ENOTSOCK">> => -88,
+      <<"ENOTSUP">> => -95, <<"EOVERFLOW">> => -75, <<"EPROTO">> => -71, <<"EPROTONOSUPPORT">> => -93,
+      <<"EPROTOTYPE">> => -91, <<"ESHUTDOWN">> => -108, <<"ETIMEDOUT">> => -110, <<"EHOSTDOWN">> => -112,
+      <<"EREMOTEIO">> => -121, <<"EFTYPE">> => -4028, <<"EILSEQ">> => -84, <<"ESOCKTNOSUPPORT">> => -94,
+      <<"ENODATA">> => -61, <<"EUNATCH">> => -49}.
+
+darwin() ->
     [{-7, <<"E2BIG">>, <<"argument list too long">>},
      {-13, <<"EACCES">>, <<"permission denied">>},
      {-48, <<"EADDRINUSE">>, <<"address already in use">>},

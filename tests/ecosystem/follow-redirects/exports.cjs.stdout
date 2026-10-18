@@ -1,0 +1,10 @@
+module.exports: object
+  http: object
+    get: function/3
+    request: function/3
+  https: object
+    get: function/3
+    request: function/3
+  maxBodyLength: number
+  maxRedirects: number
+  wrap: function/1

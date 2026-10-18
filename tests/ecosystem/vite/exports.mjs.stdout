@@ -1,0 +1,61 @@
+namespace: object Module
+  BuildEnvironment: class/3 {init}
+  DevEnvironment: class/3 {_registerInputsAsSafeModules, _registerRequestProcessing, close, fetchModule, init, invalidateModule, listen, pluginContainer, reloadModule, transformRequest, waitForRequestsIdle, warmupRequest}
+  Visitor: class/1 {visit}
+  build: function/0
+  buildErrorMessage: function/1
+  createBuilder: function/0
+  createFetchableDevEnvironment: function/3
+  createFilter: function/3
+  createIdResolver: function/2
+  createLogger: function/0
+  createRunnableDevEnvironment: function/2
+  createServer: function/0
+  createServerHotChannel: function/0
+  createServerModuleRunner: function/1
+  createServerModuleRunnerTransport: function/1
+  defaultAllowedOrigins: object RegExp
+  defaultClientConditions: object Array
+  defaultClientMainFields: object Array
+  defaultExternalConditions: object Array
+  defaultServerConditions: object Array
+  defaultServerMainFields: object Array
+  defineConfig: function/1
+  esbuildVersion: string
+  esmExternalRequirePlugin: function/1
+  fetchModule: function/3
+  formatPostcssSourceMap: function/2
+  isCSSRequest: function/1 (false, false, false, false, false, false, false, false, false)
+  isFetchableDevEnvironment: function/1 (false, false, false, false, false, false, false, false, false)
+  isFileLoadingAllowed: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isFileServingAllowed: function/2 (throws, throws, throws, throws, throws, throws, throws, throws, throws)
+  isRunnableDevEnvironment: function/1 (false, false, false, false, false, false, false, false, false)
+  loadConfigFromFile: function/2
+  loadEnv: function/2
+  mergeAlias: function/2
+  mergeConfig: function/2
+  minify: function/3
+  minifySync: function/3
+  moduleRunnerTransform: function/5
+  normalizePath: function/1
+  optimizeDeps: function/1
+  parse: function/3
+  parseAst: function/3
+  parseAstAsync: function/3
+  parseSync: function/3
+  perEnvironmentPlugin: function/2
+  perEnvironmentState: function/1
+  preprocessCSS: function/3
+  preview: function/0
+  resolveConfig: function/2
+  resolveEnvPrefix: function/1
+  rolldownVersion: string
+  rollupVersion: string
+  runnerImport: function/2
+  searchForWorkspaceRoot: function/1
+  send: function/5
+  sortUserPlugins: function/1
+  transformWithEsbuild: function/6
+  transformWithOxc: function/6
+  version: string
+  withFilter: function/2

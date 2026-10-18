@@ -1,0 +1,4 @@
+namespace: object Module
+  create: function/1
+  createStore: function/1
+  useStore: function/1

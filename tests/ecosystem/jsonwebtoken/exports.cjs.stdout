@@ -1,0 +1,7 @@
+module.exports: object
+  JsonWebTokenError: function/2
+  NotBeforeError: function/2
+  TokenExpiredError: function/2
+  decode: function/2
+  sign: function/4
+  verify: function/4

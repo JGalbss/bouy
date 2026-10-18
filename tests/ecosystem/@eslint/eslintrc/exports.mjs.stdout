@@ -1,0 +1,18 @@
+namespace: object Module
+  FlatCompat: class/0 {config, env, extends, plugins}
+  Legacy: object
+    CascadingConfigArrayFactory: class/0 {_cacheConfig, _finalizeConfigArray, _loadConfigInAncestors, clearCache, cwd, getConfigArrayForFile, setOverrideConfig}
+    ConfigArray: class/0 {extractConfig, isAdditionalTargetPath, isRoot, pluginEnvironments, pluginProcessors, pluginRules}
+    ConfigArrayFactory: class/0 {_loadConfigData, _loadExtendedBuiltInConfig, _loadExtendedPluginConfig, _loadExtendedShareableConfig, _loadExtends, _loadParser, _loadPlugin, _loadPlugins, _normalizeConfigData, _normalizeESLintIgnoreData, _normalizeObjectConfigData, _normalizeObjectConfigDataBody, _takeFileExtensionProcessors, create, loadDefaultESLintIgnore, loadESLintIgnore, loadFile, loadInDirectory}
+    ConfigDependency: class/1 {toJSON}
+    ConfigOps: object Module
+    ConfigValidator: class/0 {formatErrors, getRuleOptionsSchema, validate, validateConfigArray, validateConfigSchema, validateEnvironment, validateGlobals, validateProcessor, validateRuleOptions, validateRuleSchema, validateRuleSeverity, validateRules}
+    ExtractedConfig: class/0 {toCompatibleObjectAsConfigFileContent}
+    IgnorePattern: class/2 {getPatternsRelativeTo}
+    ModuleResolver: object Module
+    OverrideTester: class/2 {test, toJSON}
+    createConfigArrayFactoryContext: function/5
+    environments: object Map
+    getUsedExtractedConfigs: function/1
+    loadConfigFile: function/1
+    naming: object Module

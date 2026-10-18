@@ -1,0 +1,5 @@
+namespace: object Module
+  Bench: class/0 {add, addEventListener, getTask, remove, removeEventListener, reset, results, run, runConcurrently, runTask, table, tasks, todo, todos, warmup, warmupConcurrently}
+  Task: class/3 {addEventListener, loop, removeEventListener, reset, run, setResult, warmup}
+  hrtimeNow: function/0
+  now: function/0

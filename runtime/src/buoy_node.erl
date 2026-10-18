@@ -128,6 +128,8 @@ ready() -> erlang:get(?STATE) =:= ready.
 
 boot() ->
     erlang:put(?STATE, booting),
+    %% The v8Start milestone of perf_hooks (buoy_binding_performance).
+    erlang:put('$buoy_node_boot_ns', erlang:monotonic_time(nanosecond)),
     persistent_term:put({buoy_node, debug}, os:getenv("BUOY_NODE_DEBUG") =/= false),
     Primordials = buoy_heap:object(null, []),
     erlang:put(?PRIMORDIALS, Primordials),
@@ -139,6 +141,8 @@ boot() ->
     [run(Id, [Context, Primordials, Private, PerIsolate]) || Id <- ?PER_CONTEXT, is_compiled(Id)],
     Process = buoy_node_process:create(),
     buoy_node_loop:set_process(Process),
+    buoy_trace:open_scope(<<"node,node.environment">>, <<"Environment">>, [{<<"args">>, #{
+        <<"args">> => persistent_term:get({buoy, argv}, []), <<"exec_args">> => buoy_node_process:exec_argv()}}]),
     GetLinked = fn(<<"getLinkedBinding">>, 1, fun ?MODULE:linked_binding/2),
     GetInternal = fn(<<"getInternalBinding">>, 1, fun(_, Args) -> binding(buoy_ref_realm:arg(1, Args)) end),
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
@@ -267,9 +271,42 @@ binding(Name) ->
                 {stub, Stub} -> buoy_node_stubs:binding(Stub);
                 Module -> Module:binding()
             end,
+            complete(Name, Binding),
             erlang:put(?BINDINGS, Cache#{Name => Binding}),
             Binding
     end.
+
+%% Gives Binding a stub for each function and class that src/ of Node sets on
+%% it and that Buoy lacks, and each class of Binding a stub for each method of
+%% its prototype that it lacks, so a call of missing native code names itself.
+complete(Name, Binding) ->
+    [complete(Name, Binding, Key, Kind) || {Key, Kind} <- buoy_node_manifest:members(Name)],
+    ok.
+
+complete(Name, Binding, Key, Kind) ->
+    case {buoy_heap:has_own(Binding, Key), Kind} of
+        {false, function} -> stub(Binding, Key, not_implemented(Name, Key), true);
+        {false, {class, _}} -> stub(Binding, Key, missing_constructor(Name, Key, 0), true);
+        {true, {class, Methods}} -> complete_prototype(Name, Key, buoy_heap:get(buoy_heap:get(Binding, Key), <<"prototype">>), Methods);
+        {true, function} -> ok
+    end.
+
+complete_prototype(Name, Class, Prototype, Methods) ->
+    case buoy_heap:is_object(Prototype) of
+        true ->
+            Missing = [M || M <- Methods, not buoy_heap:has(Prototype, M)],
+            [stub(Prototype, M, missing_method(Name, Class, M), false) || M <- Missing],
+            ok;
+        false ->
+            ok
+    end.
+
+stub(Object, Key, Value, Enumerable) ->
+    buoy_heap:define(Object, Key, #{value => Value, writable => true, enumerable => Enumerable, configurable => true}).
+
+missing_method(Name, Class, Method) ->
+    Message = <<"internalBinding('", Name/binary, "').", Class/binary, ".prototype.", Method/binary, " is not implemented on Buoy">>,
+    buoy_heap:function(fun(_, _) -> missing(Message) end, Method, 0, #{}).
 
 binding_module(Name) when is_binary(Name) ->
     case lists:member(Name, (index()):bindings()) of

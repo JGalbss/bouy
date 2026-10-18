@@ -1,0 +1,4 @@
+module.exports: object
+  credentialsTreatedAsExpired: function/1
+  credentialsWillNeedRefresh: function/1
+  defaultProvider: function/0

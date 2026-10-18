@@ -1,0 +1,5 @@
+module.exports: object
+  FifoQueue: class/0 {dequeue, enqueue}
+  PriorityQueue: class/1 {_enqueue, _getWorkerQueue, dequeue, enqueue}
+  Worker: class/2 {_bindExposedWorkerMethods, _callFunctionWithArgs, end, getStderr, getStdout}
+  messageParent: function/1

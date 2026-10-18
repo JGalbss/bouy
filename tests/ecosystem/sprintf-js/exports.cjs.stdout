@@ -1,0 +1,3 @@
+module.exports: object
+  sprintf: function/1
+  vsprintf: function/2

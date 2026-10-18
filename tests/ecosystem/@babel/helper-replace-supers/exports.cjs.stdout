@@ -1,0 +1,16 @@
+module.exports: object
+  default: class/1 {getObjectRef, getSuperRef, replace}
+  environmentVisitor: object
+    ArrowFunctionExpression: object
+    ClassAccessorProperty: object
+    ClassMethod: object
+    ClassPrivateMethod: object
+    ClassPrivateProperty: object
+    ClassProperty: object
+    FunctionDeclaration: object
+    FunctionExpression: object
+    ObjectMethod: object
+    ObjectProperty: object
+    StaticBlock: object
+    TSModuleBlock: object
+  skipAllButComputedKey: function/1
