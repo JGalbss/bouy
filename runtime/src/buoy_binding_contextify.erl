@@ -11,7 +11,7 @@
 %% global's; a write and a definition go to the sandbox and to the global.
 -module(buoy_binding_contextify).
 
--export([binding/0]).
+-export([binding/0, cached_data/1, source_map_url/1]).
 -export([get/4, set/5, has/3, has_binding/3, delete_property/3, own_keys/2, get_own_property/3, define_own_property/4]).
 
 -define(SCRIPT, {'#', ?MODULE, <<"script">>}).
@@ -51,15 +51,17 @@ binding() ->
     end), writable => true, enumerable => true, configurable => true}),
     buoy_node:object([
         {<<"ContextifyScript">>, Script},
-        {<<"makeContext">>, F(<<"makeContext">>, 0, fun(_, Args) -> make_context(A(1, Args)) end)},
+        {<<"makeContext">>, F(<<"makeContext">>, 0, fun(_, Args) -> make_context(A(1, Args), A(7, Args)) end)},
         {<<"compileFunction">>, F(<<"compileFunction">>, 0, fun(_, Args) -> compile_function(Args) end)},
         {<<"constants">>, Constants},
         {<<"startSigintWatchdog">>, F(<<"startSigintWatchdog">>, 0, fun(_, _) -> undefined end)},
         {<<"stopSigintWatchdog">>, F(<<"stopSigintWatchdog">>, 0, fun(_, _) -> false end)},
         {<<"watchdogHasPendingSigint">>, F(<<"watchdogHasPendingSigint">>, 0, fun(_, _) -> false end)},
         {<<"containsModuleSyntax">>, F(<<"containsModuleSyntax">>, 2, fun(_, _) -> false end)},
-        {<<"measureMemory">>, F(<<"measureMemory">>, 2, fun(_, Args) -> measure_memory(A(1, Args)) end)}]
-        ++ buoy_node:stubs(<<"contextify">>, [<<"compileFunctionForCJSLoader">>])).
+        {<<"measureMemory">>, F(<<"measureMemory">>, 2, fun(_, Args) -> measure_memory(A(1, Args)) end)},
+        {<<"compileFunctionForCJSLoader">>, F(<<"compileFunctionForCJSLoader">>, 4, fun(_, Args) ->
+            compile_function_for_cjs_loader(A(1, Args), A(2, Args))
+        end)}]).
 
 %% measureMemory(mode, execution): a promise of V8's estimate of the memory
 %% of each context. All contexts share the heap of the process, so a context
@@ -91,7 +93,7 @@ private() -> buoy_node:private_symbol(<<"contextify_context_private_symbol">>).
 %% makeContext(contextObject, ...): a new realm whose global proxy intercepts
 %% the sandbox, or the global object of a new realm for
 %% vm.constants.DONT_CONTEXTIFY.
-make_context(Sandbox) ->
+make_context(Sandbox, Option) ->
     Global = buoy_ref_realm:create(),
     Realm = erlang:get('$buoy_realms'),
     [buoy_heap:delete_property(Global, K) || K <- buoy_heap:own_keys(Global), is_binary(K), not lists:member(K, ?V8_GLOBALS)],
@@ -105,6 +107,16 @@ make_context(Sandbox) ->
             Global
     end,
     buoy_heap:define(Context, private(), #{value => Realm, writable => false, enumerable => false, configurable => false}),
+    %% import() of code of the context without a script, such as indirect eval
+    %% in a job, takes the context's host-defined option.
+    case Option of
+        {'$sym', _, _} ->
+            buoy_heap:define(Context, buoy_node:private_symbol(<<"host_defined_option_symbol">>),
+                             #{value => Option, writable => true, enumerable => false, configurable => true}),
+            buoy_module:set_realm_host(Realm, Option);
+        _ ->
+            ok
+    end,
     Context.
 
 %% new ContextifyScript(code, filename, lineOffset, columnOffset, cachedData,
@@ -115,6 +127,7 @@ new_script(This, Args) ->
     Module = buoy_ref_eval:compile_script(Code),
     buoy_heap:private_put(This, ?SCRIPT, Module),
     buoy_heap:private_put(This, ?SOURCE, Code),
+    set_host(This, Module, buoy_node:arg(2, Args), buoy_node:arg(8, Args)),
     [buoy_heap:set(This, K, V) || {K, V} <- cache_fields(Code, Args) ++ [{<<"sourceMapURL">>, source_map_url(Code)}]],
     undefined.
 
@@ -134,12 +147,14 @@ cache_fields(Code, Args) ->
 %% The code cache of a source text. The compiled module lives in the VM, so
 %% the cache only identifies it, as V8's checks its source hash and flags: a
 %% cache of another source or of another runtime is rejected.
+-spec cached_data(term()) -> binary().
 cached_data(Code) ->
     Tag = buoy_binding_v8:version_tag(),
     <<"BUOY", Tag:32, (erlang:md5(buoy_ref_string:to_utf8(buoy_ref:to_string(Code))))/binary>>.
 
 %% The URL of the last `//# sourceMappingURL=` comment of the code, as V8's
 %% scanner reads the magic comment, or undefined.
+-spec source_map_url(term()) -> term().
 source_map_url(Code) ->
     Text = buoy_ref_string:to_utf8(buoy_ref:to_string(Code)),
     case re:run(Text, <<"//[#@][ \\t]sourceMappingURL=([^\\s'\"]+)[ \\t]*(?:\\r|\\n|$)">>, [global, {capture, all_but_first, binary}, unicode]) of
@@ -188,7 +203,45 @@ compile_function(Args) ->
         Context when Context =:= undefined; Context =:= null -> Make(undefined, undefined);
         Context -> (buoy_ref_realm:realm_fun(realm_of(Context), Make))(undefined, undefined)
     end,
+    {'$f', _, Fun} = Function,
+    {module, Module} = erlang:fun_info(Fun, module),
+    set_host(Function, Module, buoy_node:arg(2, Args), buoy_node:arg(10, Args)),
     buoy_node:object([{<<"function">>, Function}, {<<"sourceMapURL">>, source_map_url(Code)}] ++ cache_fields(Code, Args)).
+
+%% The host-defined option of a script or a function, which import() of its
+%% code passes to the dynamic import callback of module_wrap, as V8 keeps it
+%% in the script's host-defined options.
+%% shortcut: scripts of one source text share their compiled module, so the
+%% last of them names the option; a module of each script would separate
+%% them.
+set_host(Referrer, Module, Filename, {'$sym', _, _} = Option) ->
+    buoy_heap:define(Referrer, buoy_node:private_symbol(<<"host_defined_option_symbol">>),
+                     #{value => Option, writable => true, enumerable => false, configurable => true}),
+    buoy_module:set_host(Module, 0, {Filename, Option});
+set_host(_, _, _, _) ->
+    ok.
+
+%% compileFunctionForCJSLoader(content, filename, isSeaMain, shouldDetectModule):
+%% the function of a CommonJS module of the parameters of Node's wrapper, as
+%% Node's CommonJS loader runs it. A module of the program has its compiled
+%% function already, as V8 takes a function from its code cache. A hashbang
+%% line becomes a comment, as V8 reads it in the source of a script.
+compile_function_for_cjs_loader(Code, Filename) ->
+    Text = buoy_ref:to_string(Code),
+    Function = case buoy_module:compiled_wrapper(Filename) of
+        {ok, Wrapper} -> Wrapper;
+        none -> compile_cjs(Text)
+    end,
+    buoy_node:object([{<<"cachedDataRejected">>, false}, {<<"sourceMapURL">>, source_map_url(Text)},
+                      {<<"sourceURL">>, undefined}, {<<"function">>, Function}, {<<"canParseAsESM">>, false}]).
+
+compile_cjs(Text) ->
+    Length = buoy_ref_string:length_of(Text),
+    Body = case buoy_ref_string:slice(Text, 0, min(2, Length)) of
+        <<"#!">> -> buoy_ref_string:concat(<<"//">>, buoy_ref_string:slice(Text, 2, Length));
+        _ -> Text
+    end,
+    buoy_ref_eval:create_function([<<"exports">>, <<"require">>, <<"module">>, <<"__filename">>, <<"__dirname">>, Body]).
 
 %%% The interceptors of the global proxy. Sandbox is the contextified object
 %%% and Global the realm's own global object.

@@ -167,6 +167,25 @@ function initializeCJS() {
   require('internal/modules/cjs/loader').initializeCJS();
 }
 
+// The ESM loader of Node runs the modules that node:vm, createRequire, and
+// import() of a vm script hand it, as initializeModuleLoaders sets it up.
+function initializeESM() {
+  require('internal/modules/esm/utils').initializeESM();
+}
+
+// As setupVmModules of pre_execution.
+function setupVmModules() {
+  if (getOptionValue('--experimental-vm-modules')) {
+    const {
+      Module, SourceTextModule, SyntheticModule,
+    } = require('internal/vm/module');
+    const vm = require('vm');
+    vm.Module = Module;
+    vm.SourceTextModule = SourceTextModule;
+    vm.SyntheticModule = SyntheticModule;
+  }
+}
+
 // The code of -e and -p reads each built-in module as a global, as
 // internal/main/eval_string gives it.
 function setupEvalGlobals() {
@@ -194,6 +213,8 @@ setupNavigator();
 setupWarningHandler();
 setupDebugEnv();
 setupChildProcessIpcChannel();
+setupVmModules();
 initializeCJS();
+initializeESM();
 setupEvalGlobals();
 require('internal/process/pre_execution').markBootstrapComplete();

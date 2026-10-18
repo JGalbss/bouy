@@ -16,9 +16,11 @@
 -export([run/1, evaluate_dependencies/1]).
 -export([namespace/1, foreign_export/2, builtin_export/2, builtin_namespace/1]).
 -export([uninitialized/2, hoisted/1]).
--export([dynamic_import/4, meta/1, require/2]).
+-export([dynamic_import/4, meta/1, require/2, compiled_wrapper/1]).
 -export([define_namespace/3, broken/1]).
 -export([deferred_namespace/1, ensure_deferred/1]).
+-export([hosted_import/3, new_synthetic/3, set_synthetic_export/3, link_requests/2, instantiate/1, evaluate/1]).
+-export([set_realm_host/2, status/1, error_of/1, has_async_graph/1, has_top_level_await/1, requests_of/1, set_host/3, required_facade/1]).
 
 -define(RECORD(M), {'$buoy_module', M}).
 -define(NAMESPACE(M), {'$buoy_namespace', M}).
@@ -30,6 +32,10 @@
 -define(CACHE, '$buoy_require_cache').
 -define(MAIN_MODULE, '$buoy_main_module').
 -define(ACTOR, '$buoy_actor_realm').
+-define(SYNTHETIC(M, Name), {'$buoy_synthetic', M, Name}).
+%% The host of a module that module_wrap made, or of a script of node:vm:
+%% {Realm, Referrer, HostDefinedOption}.
+-define(HOST(M), {'$buoy_module_host', M}).
 -define(WRITABLE, 1).
 -define(ENUMERABLE, 2).
 
@@ -82,14 +88,17 @@ evaluate_dependencies(Module) ->
 record(M) ->
     case erlang:get(?RECORD(M)) of
         undefined ->
-            R = #{module => M, status => new, info => M:'$module'(), index => 0, ancestor => 0,
-                  cycle_root => M, order => undefined, pending => 0, parents => [],
-                  error => none, capability => undefined},
+            R = new_record(M, M:'$module'()),
             erlang:put(?RECORD(M), R),
             R;
         R ->
             R
     end.
+
+new_record(M, Info) ->
+    #{module => M, status => new, info => Info, index => 0, ancestor => 0,
+      cycle_root => M, order => undefined, pending => 0, parents => [],
+      error => none, capability => undefined}.
 
 get(M, Key) -> maps:get(Key, record(M)).
 
@@ -119,7 +128,7 @@ link_graph(M, Marked) ->
         new ->
             set(M, status, linking),
             Marked1 = lists:foldl(fun(R, Acc) -> link_graph(R, Acc) end, [M | Marked], requests(M)),
-            case info(M, error) of
+            case link_failure(M) of
                 none ->
                     Marked1;
                 Error ->
@@ -193,8 +202,23 @@ inner_evaluate(M, Index) ->
         _ ->
             case kind(M) of
                 esm -> inner_evaluate_esm(M, Index);
+                synthetic -> evaluate_synthetic(M), Index;
                 _ -> evaluate_foreign(M), Index
             end
+    end.
+
+%% A synthetic module of module_wrap runs its evaluation steps; an error of
+%% the steps is the error of the module.
+evaluate_synthetic(M) ->
+    set(M, status, evaluating),
+    #{steps := Steps} = get(M, info),
+    try Steps() of
+        _ -> set(M, status, evaluated)
+    catch
+        error:Reason:Stack ->
+            set(M, status, evaluated),
+            set(M, error, {error, buoy_ref:caught(Reason, Stack)}),
+            erlang:raise(error, Reason, Stack)
     end.
 
 %% A CommonJS or JSON module runs at once, as the synthetic module that Node
@@ -313,12 +337,21 @@ next_order() ->
 
 %% ExecuteModule of a module without top-level await.
 execute(M) ->
-    _ = M:'$body'(),
+    _ = body(M),
     ok.
+
+%% The top-level code of M, in the realm of its context of node:vm.
+body(M) ->
+    case erlang:get(?HOST(M)) of
+        {Realm, _, _} when Realm =/= 0 ->
+            (buoy_ref_realm:realm_fun(Realm, fun(_, _) -> M:'$body'() end))(undefined, undefined);
+        _ ->
+            M:'$body'()
+    end.
 
 %% ExecuteAsyncModule
 execute_async(M) ->
-    P = try M:'$body'()
+    P = try body(M)
         catch
             error:Reason:Stack -> buoy_jobs:rejected(buoy_ref:caught(Reason, Stack))
         end,
@@ -410,7 +443,7 @@ settle(M, Outcome) ->
 namespace(M) ->
     case erlang:get(?NAMESPACE(M)) of
         undefined ->
-            NS = make_namespace(M:'$namespace'()),
+            NS = make_namespace(namespace_entries(M)),
             erlang:put(?NAMESPACE(M), NS),
             NS;
         NS ->
@@ -541,9 +574,14 @@ builtin_exports(Name) ->
         error -> no_builtin(Name)
     end.
 
-%% `module` until Node's lib/module.js runs here; every other id is a module
-%% of Node's lib that buoy_node runs.
-builtin(<<"module">>) -> {ok, module_builtin()};
+%% Each id is a module of Node's lib that buoy_node runs. The Module class of
+%% `module` keeps require.cache of the program as its _cache, so Node's
+%% CommonJS loader and the compiled modules share one record of each module.
+builtin(<<"module">>) ->
+    case buoy_node:require(<<"module">>) of
+        {ok, Module} -> share_cache(Module), {ok, Module};
+        error -> error
+    end;
 builtin(<<"node:", Name/binary>>) -> builtin(Name);
 builtin(Name) when is_binary(Name) -> buoy_node:require(Name);
 builtin(_) -> error.
@@ -553,21 +591,14 @@ no_builtin(Name) ->
     throw_coded('Error', <<"ERR_BUOY_BUILTIN">>,
                 buoy_ref_string:concat([<<"Buoy does not provide the Node built-in module 'node:">>, Name, <<"' yet">>])).
 
-module_builtin() ->
-    Key = '$buoy_builtin_module',
-    case erlang:get(Key) of
-        undefined ->
-            CreateRequire = buoy_heap:function(fun(_This, Args) -> create_require(buoy_ref_realm:arg(1, Args)) end,
-                                               <<"createRequire">>, 1, #{}),
-            Builtins = buoy_heap:new_array([B || B <- builtin_names()]),
-            IsBuiltin = buoy_heap:function(fun(_This, Args) -> is_builtin(buoy_ref_realm:arg(1, Args)) end,
-                                           <<"isBuiltin">>, 1, #{}),
-            O = buoy_heap:object(?OBJECT_PROTO, [{<<"createRequire">>, CreateRequire}, {<<"builtinModules">>, Builtins},
-                                                 {<<"isBuiltin">>, IsBuiltin}]),
-            erlang:put(Key, O),
-            O;
-        O ->
-            O
+share_cache(Module) ->
+    Cache = cache(),
+    case buoy_heap:get(Module, <<"_cache">>) of
+        Cache ->
+            ok;
+        Own ->
+            [buoy_heap:set(Cache, K, buoy_heap:get(Own, K)) || K <- buoy_heap:own_keys(Own), not buoy_heap:has_own(Cache, K)],
+            buoy_heap:set(Module, <<"_cache">>, Cache)
     end.
 
 %% require('module').builtinModules of Node 25.9.0.
@@ -619,7 +650,53 @@ hoisted(Lazy) ->
 %% A source phase import fails: a JavaScript module has no source object.
 -spec dynamic_import(module(), term(), term(), evaluation | source | defer) -> term().
 dynamic_import(From, Specifier, Options, Phase) ->
-    %% Node's loader publishes import() to the tracing channel module.import.
+    case {erlang:get(?HOST(From)), erlang:get({'$buoy_realm_host', buoy_heap:realm()})} of
+        {undefined, undefined} -> import_program_module(From, Specifier, Options, Phase);
+        {undefined, Option} -> host_import({0, undefined, Option}, Specifier, Options, Phase);
+        {Host, _} -> host_import(Host, Specifier, Options, Phase)
+    end.
+
+%% The host-defined option of a context of node:vm, for import() of its code
+%% that no script or module of node:vm compiled.
+-spec set_realm_host(pos_integer(), term()) -> ok.
+set_realm_host(Realm, Option) ->
+    erlang:put({'$buoy_realm_host', Realm}, Option),
+    ok.
+
+%% import() in code that module_wrap or contextify compiled: the promise of
+%% the callback of setImportModuleDynamicallyCallback, as Node's
+%% ImportModuleDynamically calls it with the host-defined option.
+host_import({_, Referrer, Option}, Specifier, Options, Phase) ->
+    {P, Resolve, Reject} = buoy_jobs:capability(),
+    try
+        Text = buoy_ref:to_string(Specifier),
+        Attributes = import_attributes(Options),
+        Callback = case erlang:get('$buoy_import_module_dynamically') of
+            undefined -> buoy_ref:type_error(<<"import() is not supported here">>);
+            C -> C
+        end,
+        Number = case Phase of source -> 1; _ -> 2 end,
+        Result = buoy_heap:call(Callback, undefined, [Option, Text, Number, Attributes, Referrer]),
+        buoy_jobs:perform_then(buoy_jobs:promise_resolve(Result), Resolve, Reject, undefined)
+    catch
+        error:Reason:Stack -> Reject(buoy_ref:caught(Reason, Stack))
+    end,
+    P.
+
+import_attributes(Options) ->
+    check_options(Options),
+    With = case Options of
+        undefined -> undefined;
+        _ -> buoy_heap:get(Options, <<"with">>)
+    end,
+    Pairs = case With of
+        undefined -> [];
+        _ -> [{K, buoy_heap:get(With, K)} || K <- buoy_heap:enumerable_keys(With)]
+    end,
+    buoy_heap:object(null, Pairs).
+
+%% Node's loader publishes import() to the tracing channel module.import.
+import_program_module(From, Specifier, Options, Phase) ->
     buoy_binding_diagnostics_channel:trace_promise(<<"module.import">>, fun() -> [{<<"parentURL">>, file_url(info(From, path))}, {<<"url">>, Specifier}] end,
                                                    fun() -> import_traced(From, Specifier, Options, Phase) end).
 
@@ -753,8 +830,13 @@ normalize(Path) ->
 %% The import.meta object of M in this realm, as Node 25 makes it.
 -spec meta(module()) -> term().
 meta(M) ->
-    case erlang:get(?META(M)) of
-        undefined ->
+    case {erlang:get(?META(M)), erlang:get(?HOST(M))} of
+        {undefined, {_, Referrer, Option}} ->
+            O = buoy_heap:new_object(null),
+            erlang:put(?META(M), O),
+            host_meta(M, O, Referrer, Option),
+            O;
+        {undefined, _} ->
             Path = info(M, path),
             Resolve = buoy_heap:function(fun(_This, Args) -> meta_resolve(M, buoy_ref_realm:arg(1, Args)) end,
                                          <<"resolve">>, 1, #{}),
@@ -763,9 +845,42 @@ meta(M) ->
                                         {<<"url">>, file_url(Path)}]),
             erlang:put(?META(M), O),
             O;
-        O ->
+        {O, _} ->
             O
     end.
+
+%% import.meta of a module that module_wrap compiled: Node's own fields for
+%% a module of the ESM loader, else the callback of
+%% setInitializeImportMetaObjectCallback with the host-defined option.
+host_meta(M, O, Url, Option) ->
+    {_, Default} = lists:keyfind(<<"source_text_module_default_hdo">>, 1, buoy_node:per_isolate_symbols()),
+    case Option of
+        Default -> default_meta(O, Url);
+        _ ->
+            case erlang:get('$buoy_initialize_import_meta') of
+                undefined -> ok;
+                Callback -> buoy_heap:call(Callback, undefined, [Option, O, erlang:get({'$buoy_module_wrap', M})])
+            end
+    end.
+
+%% DefaultImportMetaObjectInitializer: dirname, filename, and resolve of a
+%% file: URL, and url.
+default_meta(O, Url) ->
+    Text = buoy_ref_string:to_utf8(Url),
+    case Text of
+        <<"file://", _/binary>> ->
+            Path = buoy_ref_string:from_utf8(uri_string:percent_decode(binary:part(Text, 7, byte_size(Text) - 7))),
+            buoy_heap:set(O, <<"dirname">>, dirname(Path)),
+            buoy_heap:set(O, <<"filename">>, Path);
+        _ ->
+            ok
+    end,
+    case erlang:get('$buoy_import_meta_resolve') of
+        undefined -> ok;
+        Initializer -> buoy_heap:set(O, <<"resolve">>, buoy_heap:call(Initializer, undefined, [Url]))
+    end,
+    buoy_heap:set(O, <<"url">>, Url),
+    ok.
 
 meta_resolve(M, Specifier) ->
     Text = buoy_ref:to_string(Specifier),
@@ -905,17 +1020,19 @@ make_require(M, Module) ->
     _ = Module,
     Require.
 
-%% create_require(filename) of node:module: a require for a file of the program.
-create_require(Filename) ->
-    Text = buoy_ref:to_string(Filename),
-    Path = case Text of
-        <<"file://", Rest/binary>> -> buoy_ref_string:from_utf8(uri_string:percent_decode(buoy_ref_string:to_utf8(Rest)));
-        _ -> Text
-    end,
+%% The compiled wrapper of the CommonJS module of the program at Path, which
+%% Node's CommonJS loader runs in place of a new compilation of the file.
+-spec compiled_wrapper(term()) -> {ok, term()} | none.
+compiled_wrapper(Path) ->
     Graph = case erlang:get(?GRAPH) of undefined -> #{}; G -> G end,
     case maps:find(Path, Graph) of
-        {ok, M} -> make_require(M, undefined);
-        error -> buoy_ref:type_error(buoy_ref_string:concat([<<"createRequire: ">>, Path, <<" is not a module of the program">>]))
+        {ok, M} when is_atom(M), M =/= none ->
+            case kind(M) of
+                cjs -> {ok, M:'$cjs'()};
+                _ -> none
+            end;
+        _ ->
+            none
     end.
 
 %% require(Specifier) from module M.
@@ -991,8 +1108,7 @@ required_namespace(M, NS) ->
             Key = {'$buoy_required_namespace', M},
             case erlang:get(Key) of
                 undefined ->
-                    Entries = lists:sort(fun({A, _}, {B, _}) -> buoy_ref_string:compare(A, B) =/= gt end,
-                                         [{<<"__esModule">>, fun() -> true end} | M:'$namespace'()]),
+                    Entries = sort_entries([{<<"__esModule">>, fun() -> true end} | namespace_entries(M)]),
                     Facade = make_namespace(Entries),
                     erlang:put(Key, Facade),
                     Facade;
@@ -1023,3 +1139,219 @@ throw_coded(Name, Code, Message) ->
     E = buoy_heap:error_object(Name, Message, buoy_ref_string:concat([atom_to_binary(Name), <<": ">>, Message])),
     buoy_heap:define(E, <<"code">>, #{value => Code, writable => true, enumerable => true, configurable => true}),
     erlang:error({'$throw', E}).
+
+%%% Modules that the host links: module_wrap's ModuleWrap. A source text
+%%% module compiles with hosted requests (buoy_compiler's
+%%% compile_hosted_module), which link_requests/2 binds to the modules that
+%%% Node's lib chose, and a synthetic module has export names and evaluation
+%%% steps. Both take part in the evaluation of the module graph above.
+
+%% A synthetic module of export Names, whose evaluation calls Steps.
+-spec new_synthetic(term(), [term()], fun(() -> term())) -> module().
+new_synthetic(Url, Names, Steps) ->
+    M = list_to_atom("buoy_synthetic_" ++ integer_to_list(erlang:unique_integer([positive]))),
+    Info = #{kind => synthetic, path => Url, requests => [], async => false, error => none,
+             names => Names, steps => Steps},
+    erlang:put(?RECORD(M), new_record(M, Info)),
+    M.
+
+-spec set_synthetic_export(module(), term(), term()) -> ok.
+set_synthetic_export(M, Name, Value) ->
+    lists:member(Name, info(M, names)) orelse
+        buoy_heap:throw_error('ReferenceError', buoy_ref_string:concat([<<"Export '">>, Name, <<"' is not defined in module">>])),
+    erlang:put(?SYNTHETIC(M, Name), Value),
+    ok.
+
+%% The specifiers of the requests of M, in order.
+-spec requests_of(module()) -> [term()].
+requests_of(M) -> maps:get(hosted, get(M, info), []).
+
+%% Binds the requests of M to the modules Targets, in order.
+-spec link_requests(module(), [module()]) -> ok.
+link_requests(M, Targets) ->
+    set(M, info, (get(M, info))#{requests => Targets, linked => true}),
+    ok.
+
+%% Instantiate: links the graph of M, or throws the error of a request that
+%% does not provide an import, as V8's InstantiateModule does. A source text
+%% module must have its requests linked first.
+-spec instantiate(module()) -> ok.
+instantiate(M) ->
+    kind(M) =:= synthetic orelse is_map_key(linked, get(M, info)) orelse
+        throw_coded('Error', <<"ERR_VM_MODULE_LINK_FAILURE">>, <<"module is not linked">>),
+    link_graph(M),
+    ok.
+
+%% Records the realm of a module and the referrer and host-defined option
+%% that import() and import.meta of its code pass to the callbacks of
+%% module_wrap.
+-spec set_host(module(), non_neg_integer(), {term(), term()}) -> ok.
+set_host(M, Realm, {Referrer, Option}) ->
+    erlang:put(?HOST(M), {Realm, Referrer, Option}),
+    ok.
+
+%% The status of ModuleWrap.getStatus: V8's Module::Status.
+-spec status(module()) -> 0..5.
+status(M) ->
+    case get(M, status) of
+        new -> 0;
+        linking -> 1;
+        linked -> 2;
+        evaluating -> 3;
+        _ ->
+            case get(M, error) of
+                none -> 4;
+                _ -> 5
+            end
+    end.
+
+-spec error_of(module()) -> term().
+error_of(M) ->
+    case get(M, error) of
+        {error, E} -> E;
+        none -> undefined
+    end.
+
+-spec has_top_level_await(module()) -> boolean().
+has_top_level_await(M) -> has_tla(M).
+
+%% Whether M or a module that it reaches awaits at its top level.
+-spec has_async_graph(module()) -> boolean().
+has_async_graph(M) -> has_async_graph(M, []) =:= true.
+
+has_async_graph(M, Seen) ->
+    case lists:member(M, Seen) of
+        true -> Seen;
+        false ->
+            case kind(M) =:= esm andalso has_tla(M) of
+                true -> true;
+                false -> lists:foldl(fun(_, true) -> true;
+                                        (R, S) -> has_async_graph(R, S)
+                                     end, [M | Seen], requests(M))
+            end
+    end.
+
+%% The value of the import Name (or the namespace) of the request Index of M.
+-spec hosted_import(module(), non_neg_integer(), term()) -> term().
+hosted_import(M, Index, Name) ->
+    Key = {'$buoy_hosted_import', M, Index, Name},
+    case erlang:get(Key) of
+        undefined ->
+            Target = lists:nth(Index + 1, info(M, requests)),
+            Read = case Name of
+                namespace -> fun() -> namespace(Target) end;
+                _ ->
+                    case resolve_export(Target, Name, []) of
+                        {ok, F} -> F;
+                        _ -> buoy_heap:throw_error('SyntaxError', not_provided(M, Index, Name))
+                    end
+            end,
+            erlang:put(Key, Read),
+            Read();
+        Read ->
+            Read()
+    end.
+
+%% The namespace entries of M: its export names in code unit order, each
+%% with a fun that reads it.
+namespace_entries(M) ->
+    case get(M, info) of
+        #{kind := synthetic, names := Names} ->
+            sort_entries([{N, synthetic_read(M, N)} || N <- Names]);
+        #{stars := [_ | _] = Stars} ->
+            Static = M:'$namespace'(),
+            Known = [N || {N, _} <- Static],
+            Candidates = lists:usort([N || I <- Stars, {N, _} <- namespace_entries(lists:nth(I + 1, info(M, requests))),
+                                          N =/= <<"default">>, not lists:member(N, Known)]),
+            Found = [{N, F} || N <- Candidates, {ok, F} <- [resolve_export(M, N, [])]],
+            sort_entries(Static ++ Found);
+        _ ->
+            M:'$namespace'()
+    end.
+
+sort_entries(Entries) ->
+    lists:sort(fun({A, _}, {B, _}) -> buoy_ref_string:compare(A, B) =/= gt end, Entries).
+
+synthetic_read(M, Name) ->
+    fun() ->
+            case erlang:get(?SYNTHETIC(M, Name)) of
+                undefined -> undefined;
+                V -> V
+            end
+    end.
+
+%% ResolveExport over the modules of the realm: {ok, Read}, not_found, or
+%% ambiguous.
+resolve_export(M, Name, Visited) ->
+    case lists:member({M, Name}, Visited) of
+        true ->
+            not_found;
+        false ->
+            case get(M, info) of
+                #{kind := synthetic, names := Names} ->
+                    case lists:member(Name, Names) of
+                        true -> {ok, synthetic_read(M, Name)};
+                        false -> not_found
+                    end;
+                #{stars := Stars} ->
+                    case lists:keyfind(Name, 1, M:'$namespace'()) of
+                        {_, F} -> {ok, F};
+                        false when Name =:= <<"default">> -> not_found;
+                        false -> star_export(M, Name, Stars, [{M, Name} | Visited])
+                    end;
+                _ ->
+                    case lists:keyfind(Name, 1, namespace_entries(M)) of
+                        {_, F} -> {ok, F};
+                        false -> not_found
+                    end
+            end
+    end.
+
+star_export(M, Name, Stars, Visited) ->
+    Targets = info(M, requests),
+    lists:foldl(fun(_, ambiguous) -> ambiguous;
+                   (I, Acc) ->
+                        case {resolve_export(lists:nth(I + 1, Targets), Name, Visited), Acc} of
+                            {ambiguous, _} -> ambiguous;
+                            {not_found, _} -> Acc;
+                            {Found, not_found} -> Found;
+                            {Found, Found} -> Found;
+                            {_, _} -> ambiguous
+                        end
+                end, not_found, Stars).
+
+%% The link error of M: its own, or for a module that the host links, the
+%% first import that its request does not provide.
+link_failure(M) ->
+    case {info(M, error), get(M, info)} of
+        {none, #{linked := true, imports := Imports}} ->
+            first_unresolved(M, Imports);
+        {none, #{linked := true}} ->
+            none;
+        {none, #{hosted := [Specifier | _]}} ->
+            {<<"Error">>, <<"ERR_VM_MODULE_LINK_FAILURE">>,
+             buoy_ref_string:concat([<<"request for '">>, Specifier, <<"' is from a module not been linked">>])};
+        {Error, _} ->
+            Error
+    end.
+
+first_unresolved(_, []) ->
+    none;
+first_unresolved(M, [{Index, Name} | Rest]) ->
+    case resolve_export(lists:nth(Index + 1, info(M, requests)), Name, []) of
+        {ok, _} -> first_unresolved(M, Rest);
+        not_found -> {<<"SyntaxError">>, undefined, not_provided(M, Index, Name)};
+        ambiguous ->
+            {<<"SyntaxError">>, undefined,
+             buoy_ref_string:concat([<<"The requested module '">>, lists:nth(Index + 1, requests_of(M)),
+                                     <<"' contains conflicting star exports for name '">>, Name, <<"'">>])}
+    end.
+
+not_provided(M, Index, Name) ->
+    buoy_ref_string:concat([<<"The requested module '">>, lists:nth(Index + 1, requests_of(M)),
+                            <<"' does not provide an export named '">>, Name, <<"'">>]).
+
+%% createRequiredModuleFacade: the namespace that require(esm) returns.
+-spec required_facade(module()) -> term().
+required_facade(M) ->
+    required_namespace(M, namespace(M)).

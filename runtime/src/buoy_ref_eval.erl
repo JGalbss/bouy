@@ -14,7 +14,7 @@
 
 -include("buoy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, warm_up/0, load_module/4]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4]).
 -export([interrupt/0, run_until/2]).
 
 -import(buoy_ref, [type_error/1]).
@@ -167,6 +167,16 @@ compile_script(Source, Options) ->
         {ok, M} -> M;
         none -> compile(Text, Flags, Key)
     end.
+
+%% The module of an ES module from source text whose requests the host links
+%% (buoy_binding_module_wrap). Each call compiles a module of its own, since a
+%% module instance keeps its bindings under the name of its Erlang module.
+%% shortcut: the modules stay loaded; a purge when the ModuleWrap is
+%% collected would free them for programs that make many.
+-spec compile_hosted_module(term(), term()) -> module().
+compile_hosted_module(Source, Identifier) ->
+    Name = binary:replace(buoy_ref_string:to_utf8(buoy_ref:to_string(Identifier)), [<<"\n">>, <<"\r">>], <<" ">>, [global]),
+    compile(buoy_ref:to_string(Source), ["--hosted-module=" ++ unicode:characters_to_list(Name)], make_ref()).
 
 %% Runs Fun until the deadline Ms milliseconds from now: interruptible code
 %% (compile_script/2) checks it at each turn of a loop and ends the run with

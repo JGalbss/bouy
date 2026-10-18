@@ -249,6 +249,29 @@ pub fn lower_eval(
     lower_one_script(path, name, source, Some((strict, context)), scope, false)
 }
 
+/// Lowers an ES module from source text whose requests the host links at run time
+/// (`compile_hosted_module` of the crate), named `name`, with `path` as its identifier.
+pub fn lower_hosted_module(
+    source: String,
+    name: &str,
+    path: std::path::PathBuf,
+) -> Result<String, Vec<Diagnostic>> {
+    let graph = graph::hosted(source, name, path)?;
+    let links = link::link(&graph);
+    // A module of node:vm checks the deadline of `evaluate({ timeout })` in its loops.
+    lower(
+        Linking {
+            graph: &graph,
+            unit: 0,
+            link: &links[0],
+            entry: false,
+        },
+        None,
+        &[],
+        true,
+    )
+}
+
 /// Lowers a classic script of its own (`compile_script` of the crate), named `name`.
 /// `interruptible` code checks the deadline of a run at each turn of a loop
 /// (`buoy_ref_eval:interrupt/0`), as `vm.Script` with a `timeout` needs.

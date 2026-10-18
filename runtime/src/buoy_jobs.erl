@@ -32,7 +32,6 @@
 -define(CALLS, '$buoy_calls').
 -define(LAST_GC, '$buoy_last_gc').
 -define(MAIN, '$buoy_main_result').
--define(PROMISE_PROTO, {'$o', 'Promise.prototype'}).
 -define(MAX_DELAY, 2147483647).
 -define(GC_MIN, 20000).
 %% The continuation-preserved embedder data of V8: the value that each job
@@ -97,7 +96,9 @@ set_context(Value) ->
 %% is a JavaScript function or an Erlang fun of one argument.
 
 -spec new_promise() -> term().
-new_promise() -> new_promise(?PROMISE_PROTO).
+%% A promise of the current realm, as %Promise% of the running execution
+%% context makes it.
+new_promise() -> new_promise(buoy_heap:intrinsic('Promise.prototype')).
 
 %% A pending promise whose prototype is Proto, as for a subclass.
 -spec new_promise(term()) -> term().
@@ -120,7 +121,7 @@ capability() -> capability(undefined).
 %% The capability of the promise that `Parent.then` derives.
 -spec capability(term()) -> {term(), fun((term()) -> term()), fun((term()) -> term())}.
 capability(Parent) ->
-    P = new_promise(?PROMISE_PROTO, Parent),
+    P = new_promise(buoy_heap:intrinsic('Promise.prototype'), Parent),
     {Resolve, Reject} = resolving_functions(P),
     {P, Resolve, Reject}.
 
@@ -303,7 +304,7 @@ await(V, OnFulfilled, OnRejected) ->
             %% throwaway promise from the awaited one.
             Outer = erlang:get(?OUTER),
             Awaited = promise_resolve(V, Outer),
-            Throwaway = new_promise(?PROMISE_PROTO, Awaited),
+            Throwaway = new_promise(buoy_heap:intrinsic('Promise.prototype'), Awaited),
             buoy_heap:set_slots(Throwaway, {pending, [], [], true}),
             perform_then(Awaited, OnFulfilled, OnRejected, {await, Throwaway, Outer})
     end.

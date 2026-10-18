@@ -290,6 +290,18 @@ pub fn compile_eval_script(
     reference::lower_script(source.to_owned(), name, interruptible)
 }
 
+/// Compiles an ES module from source text at run time (reference semantics) into the
+/// Erlang module `name`, as `vm.SourceTextModule` and Node's ESM loader compile a
+/// `ModuleWrap`: the host links each request of `import` and `export ... from` at run time
+/// (`buoy_module:hosted_import/3`). `identifier` is the module's URL or name.
+pub fn compile_hosted_module(
+    source: &str,
+    name: &str,
+    identifier: &str,
+) -> Result<String, Vec<Diagnostic>> {
+    reference::lower_hosted_module(source.to_owned(), name, PathBuf::from(identifier))
+}
+
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
     path.canonicalize().map_err(|error| {
         vec![Diagnostic {

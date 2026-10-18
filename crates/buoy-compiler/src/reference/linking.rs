@@ -72,6 +72,16 @@ impl<'c> Linking<'c> {
                 "builtin_namespace",
                 vec![Expr::js_string(name)],
             ),
+            Binding::Hosted { request, name } => Expr::call(
+                "buoy_module",
+                "hosted_import",
+                vec![
+                    Expr::atom(self.unit().name.clone()),
+                    Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
+                    name.as_ref()
+                        .map_or_else(|| Expr::atom("namespace"), |name| Expr::js_string(name)),
+                ],
+            ),
         }
     }
 
@@ -128,9 +138,57 @@ impl<'c> Linking<'c> {
                     })
             })
             .collect();
+        // A module that the host links lists its requests and its `export *` requests.
+        let hosted: Vec<Expr> = unit
+            .requests
+            .iter()
+            .filter(|request| matches!(request.resolved, Resolved::Hosted(_)))
+            .map(|request| Expr::js_string(&request.specifier))
+            .collect();
+        let mut extra = Vec::new();
+        if !hosted.is_empty() {
+            let stars = self
+                .link
+                .hosted_stars
+                .iter()
+                .map(|request| Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)))
+                .collect();
+            // The names that the module imports from each request, which the runtime
+            // checks when it instantiates the module, as V8 resolves each import.
+            let mut imports: Vec<(usize, String)> = Vec::new();
+            for binding in self
+                .link
+                .imports
+                .values()
+                .chain(self.link.namespace.iter().map(|(_, binding)| binding))
+            {
+                if let Binding::Hosted {
+                    request,
+                    name: Some(name),
+                } = binding
+                    && !imports.contains(&(*request, name.clone()))
+                {
+                    imports.push((*request, name.clone()));
+                }
+            }
+            imports.sort();
+            let imports = imports
+                .iter()
+                .map(|(request, name)| {
+                    Expr::Tuple(vec![
+                        Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
+                        Expr::js_string(name),
+                    ])
+                })
+                .collect();
+            extra.push((Expr::atom("hosted"), Expr::List(hosted)));
+            extra.push((Expr::atom("stars"), Expr::List(stars)));
+            extra.push((Expr::atom("imports"), Expr::List(imports)));
+        }
         constant(
             "$module",
-            Expr::Map(vec![
+            Expr::Map(
+                vec![
                 (Expr::atom("kind"), Expr::atom(kind)),
                 (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
                 (Expr::atom("requests"), Expr::List(requests)),
@@ -143,7 +201,11 @@ impl<'c> Linking<'c> {
                     }),
                 ),
                 (Expr::atom("error"), error),
-            ]),
+            ]
+                .into_iter()
+                .chain(extra)
+                .collect(),
+            ),
         )
     }
 
@@ -195,6 +257,7 @@ impl<'c> Linking<'c> {
                         Expr::js_string(failure.code),
                         Expr::js_string(&failure.message),
                     ]),
+                    Resolved::Hosted(_) => Expr::atom("none"),
                 };
                 Clause {
                     patterns: vec![Expr::js_string(&request.specifier), mode],

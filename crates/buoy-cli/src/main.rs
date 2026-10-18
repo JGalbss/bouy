@@ -85,6 +85,10 @@ struct EvalRequest {
     /// `timeout` of `vm.Script`.
     #[arg(long)]
     interruptible: bool,
+    /// The source is an ES module whose requests the host links at run time, as
+    /// `vm.SourceTextModule` compiles it, with this identifier.
+    #[arg(long)]
+    hosted_module: Option<String>,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -127,7 +131,9 @@ impl EvalRequest {
             place: self.place,
             privates: self.private,
         };
-        let compiled = if self.script {
+        let compiled = if let Some(identifier) = &self.hosted_module {
+            buoy_compiler::compile_hosted_module(text, &module, identifier)
+        } else if self.script {
             buoy_compiler::compile_eval_script(text, &module, self.interruptible)
         } else {
             buoy_compiler::compile_eval(

@@ -106,6 +106,9 @@ pub enum Resolved {
     Path(PathBuf),
     Builtin(String),
     Missing(Failure),
+    /// A request of a module that the host links at run time (`vm.SourceTextModule` and
+    /// Node's ESM loader), by its index among the module's requests.
+    Hosted(usize),
 }
 
 /// What an import or a re-export takes from its module.
@@ -214,6 +217,35 @@ pub fn load(
         });
     }
     Ok(Graph { units })
+}
+
+/// The graph of one ES module from source text whose requests the host links at run
+/// time, as V8 compiles the source of a `ModuleWrap`: each specifier of `import` and
+/// `export ... from` is a `Resolved::Hosted` request, in source order.
+pub fn hosted(text: String, name: &str, path: PathBuf) -> Result<Graph, Vec<Diagnostic>> {
+    let scanned = scan_as(&path, text, Kind::Esm, false)?;
+    let mut requests: Vec<Request> = Vec::new();
+    for (specifier, _) in &scanned.record.order {
+        if requests.iter().all(|request| &request.specifier != specifier) {
+            requests.push(Request {
+                specifier: specifier.clone(),
+                mode: Mode::Import,
+                resolved: Resolved::Hosted(requests.len()),
+            });
+        }
+    }
+    Ok(Graph {
+        units: vec![Unit {
+            path,
+            name: name.to_owned(),
+            source: scanned.source,
+            kind: Kind::Esm,
+            record: scanned.record,
+            requests,
+            broken: Vec::new(),
+            script: false,
+        }],
+    })
 }
 
 /// The requests of a module: its string specifiers, then the bare strings that a
@@ -462,6 +494,11 @@ fn scan(
         }
         Format::Detect => detect(path, &text),
     };
+    scan_as(path, text, kind, script)
+}
+
+/// Reads the syntax facts of a module of a known format.
+fn scan_as(path: &Path, text: String, kind: Kind, script: bool) -> Result<Scanned, Vec<Diagnostic>> {
     let source = match kind {
         Kind::CommonJs => wrap(&text),
         _ => text,
