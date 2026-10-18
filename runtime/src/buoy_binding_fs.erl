@@ -79,7 +79,8 @@ binding() ->
         {<<"writeFileUtf8">>, fun write_file_utf8/1}, {<<"getFormatOfExtensionlessFile">>, fun extensionless_format/1},
         {<<"cpSyncCheckPaths">>, fun buoy_node_fs_cp:check_paths/1},
         {<<"cpSyncOverrideFile">>, fun buoy_node_fs_cp:override_file/1},
-        {<<"cpSyncCopyDir">>, fun buoy_node_fs_cp:copy_dir/1}],
+        {<<"cpSyncCopyDir">>, fun buoy_node_fs_cp:copy_dir/1},
+        {<<"legacyMainResolve">>, fun legacy_main_resolve/1}],
     buoy_node:object(
         [{Name, buoy_node:fn(Name, 0, fun(_, Args) -> call(Name, Args, At, Fun) end)} || {Name, At, Fun} <- Async]
         ++ [{Name, buoy_node:fn(Name, 0, fun(_, Args) -> value(Fun(Args), global) end)} || {Name, Fun} <- Sync]
@@ -91,8 +92,7 @@ binding() ->
             {<<"statValues">>, Stats},
             {<<"bigintStatValues">>, BigStats},
             {<<"statFsValues">>, StatFs},
-            {<<"bigintStatFsValues">>, BigStatFs}]
-        ++ buoy_node:stubs(<<"fs">>, [<<"legacyMainResolve">>])).
+            {<<"bigintStatFsValues">>, BigStatFs}]).
 
 %%% Requests
 
@@ -661,6 +661,66 @@ write_file_utf8(Args) ->
             end
     end,
     undefined.
+
+%% legacyMainResolve(packagePath, main, base): the index of the first file
+%% of the legacy CommonJS main lookup of the ESM loader: main and main with
+%% each extension (0 to 6), then index.js, index.json, and index.node of the
+%% package (7 to 9). Nothing found throws ERR_MODULE_NOT_FOUND, after the
+%% checks of base, as LegacyMainResolve of src/node_file.cc does.
+legacy_main_resolve(Args) ->
+    [Package, Main, Base] = [buoy_node:arg(I, Args) || I <- [1, 2, 3]],
+    Fallback = resolve_path(path(Package), <<"./index">>),
+    Candidates = case ?IS_STRING(Main) of
+        true ->
+            Initial = resolve_path(path(Package), buoy_ref_string:to_utf8(Main)),
+            [<<Initial/binary, Ext/binary>> || Ext <- [<<>>, <<".js">>, <<".json">>, <<".node">>, <<"/index.js">>,
+                                                       <<"/index.json">>, <<"/index.node">>]];
+        false ->
+            lists:duplicate(7, none)
+    end ++ [<<Fallback/binary, Ext/binary>> || Ext <- [<<".js">>, <<".json">>, <<".node">>]],
+    case [I || {I, File} <- lists:enumerate(0, Candidates), File =/= none, is_file(File)] of
+        [Index | _] ->
+            Index;
+        [] ->
+            Missing = case ?IS_STRING(Main) of
+                true -> resolve_path(path(Package), buoy_ref_string:to_utf8(Main));
+                false -> <<Fallback/binary, ".js">>
+            end,
+            buoy_node:throw_code('Error', <<"ERR_MODULE_NOT_FOUND">>,
+                                 text([<<"Cannot find package '">>, Missing, <<"' imported from ">>, base_path(Base)]))
+    end.
+
+%% A path that exists and is no directory, as FilePathIsFile reads it.
+is_file(Path) ->
+    case prim_file:read_file_info(Path) of
+        {ok, #file_info{type = directory}} -> false;
+        {ok, _} -> true;
+        {error, _} -> false
+    end.
+
+%% The file path of the base URL of legacyMainResolve.
+base_path(Base) when ?IS_STRING(Base) ->
+    case buoy_node_url:parse(unicode:characters_to_list(buoy_ref_string:to_utf8(Base)), null) of
+        {ok, #{scheme := "file", path := Segments}} when is_list(Segments) ->
+            uri_string:percent_decode(iolist_to_binary(["/" ++ Segment || Segment <- Segments]));
+        {ok, _} ->
+            buoy_node:throw_code('TypeError', <<"ERR_INVALID_URL_SCHEME">>, <<"The URL must be of scheme file:">>);
+        failure ->
+            buoy_node:throw_code('TypeError', <<"ERR_INVALID_URL">>, <<"Invalid URL">>)
+    end;
+base_path(_) ->
+    buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>,
+                         <<"The \"base\" argument must be of type string or an instance of URL.">>).
+
+%% path.resolve(Base, Path): an absolute path with no "." or ".." segment.
+resolve_path(Base, Path) ->
+    [Root | Parts] = filename:split(filename:join(absolute(Base), Path)),
+    Kept = lists:foldl(fun(<<".">>, Acc) -> Acc;
+                          (<<"..">>, []) -> [];
+                          (<<"..">>, [_ | Acc]) -> Acc;
+                          (Part, Acc) -> [Part | Acc]
+                       end, [], Parts),
+    filename:join([Root | lists:reverse(Kept)]).
 
 %% getFormatOfExtensionlessFile(path): 1 for WebAssembly, by its magic
 %% bytes, and 0 for JavaScript.
