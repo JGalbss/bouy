@@ -1158,14 +1158,14 @@ parallel/test-fetch-mock.js pass
 parallel/test-fetch.mjs fail
 parallel/test-file-read-noexist.js pass
 parallel/test-file-validate-mode-flag.js pass
-parallel/test-file-write-stream.js fail
-parallel/test-file-write-stream2.js fail
-parallel/test-file-write-stream3.js fail
+parallel/test-file-write-stream.js pass
+parallel/test-file-write-stream2.js pass
+parallel/test-file-write-stream3.js pass
 parallel/test-file-write-stream4.js pass
-parallel/test-file-write-stream5.js fail
+parallel/test-file-write-stream5.js pass
 parallel/test-file.js fail
-parallel/test-filehandle-autoclose.mjs fail
-parallel/test-filehandle-close.js fail
+parallel/test-filehandle-autoclose.mjs pass
+parallel/test-filehandle-close.js pass
 parallel/test-filehandle-readablestream.js fail
 parallel/test-fileurltopathbuffer.js pass
 parallel/test-finalization-registry-shutdown.js skip
@@ -1382,7 +1382,7 @@ parallel/test-fs-readdir-types.js skip
 parallel/test-fs-readdir-ucs2.js pass
 parallel/test-fs-readdir.js pass
 parallel/test-fs-readfile-empty.js pass
-parallel/test-fs-readfile-eof.js timeout
+parallel/test-fs-readfile-eof.js pass
 parallel/test-fs-readfile-error.js fail
 parallel/test-fs-readfile-fd.js pass
 parallel/test-fs-readfile-flags.js pass
@@ -1443,7 +1443,7 @@ parallel/test-fs-utimes-y2K38.js pass
 parallel/test-fs-utimes.js pass
 parallel/test-fs-watch-abort-signal.js skip
 parallel/test-fs-watch-close-when-destroyed.js pass
-parallel/test-fs-watch-encoding.js timeout
+parallel/test-fs-watch-encoding.js pass
 parallel/test-fs-watch-enoent.js skip
 parallel/test-fs-watch-file-enoent-after-deletion.js pass
 parallel/test-fs-watch-ignore-function.js pass
@@ -4343,7 +4343,7 @@ sequential/test-diagnostic-dir-cpu-prof.js pass
 sequential/test-diagnostic-dir-heap-prof.js pass
 sequential/test-error-serdes.js skip
 sequential/test-fs-opendir-recursive.js timeout
-sequential/test-fs-readdir-recursive.js timeout
+sequential/test-fs-readdir-recursive.js pass
 sequential/test-fs-stat-sync-overflow.js timeout
 sequential/test-fs-watch.js pass
 sequential/test-gc-http-client-onerror.js skip
