@@ -167,8 +167,7 @@ send(Handle, Family, Args) ->
                 false ->
                     buoy_node_socket:save(Handle, S#{queue := Queue ++ [{Req, {Target, Bytes}}],
                                                      queued := maps:get(queued, S) + byte_size(Bytes)}),
-                    Queue =:= [] andalso maps:get(wsel, S) =:= none andalso
-                        buoy_node_socket:later(fun() -> send_ready(Handle) end),
+                    Queue =:= [] andalso buoy_node_socket:write_kick(Handle),
                     0
             end;
         {_, Errno} ->
@@ -194,7 +193,8 @@ transmit(Socket, Target, Bytes) ->
     end.
 
 %% The socket can send again: the queued datagrams go out in order, and each
-%% one's oncomplete(status, sent) runs.
+%% one's oncomplete(status, sent) runs as a job. It runs outside any job,
+%% from buoy_node_socket:event/1.
 -spec send_ready(term()) -> ok.
 send_ready(Handle) ->
     case buoy_node_socket:state(Handle) of
@@ -205,7 +205,7 @@ send_ready(Handle) ->
                 Result ->
                     buoy_node_socket:save(Handle, S#{queue := Rest, queued := Queued - byte_size(Bytes)}),
                     Status = case Result of ok -> 0; {error, Reason} -> errno(Reason) end,
-                    complete(Req, Status, byte_size(Bytes)),
+                    buoy_node_socket:js(fun() -> complete(Req, Status, byte_size(Bytes)) end),
                     send_ready(Handle)
             end;
         _ ->
@@ -226,23 +226,30 @@ recv_start(Handle) ->
             0
     end.
 
-%% The socket may hold a datagram: onmessage gets it, and the next receive
-%% is a later callback.
+%% The socket may hold datagrams: up to 32 go to onmessage, each as a job,
+%% as uv__udp_recvmsg reads. It runs outside any job, from
+%% buoy_node_socket:event/1.
 -spec receive_ready(term()) -> ok.
-receive_ready(Handle) ->
+receive_ready(Handle) -> receive_ready(Handle, 32).
+
+receive_ready(Handle, 0) ->
+    buoy_node_socket:kick(Handle);
+receive_ready(Handle, N) ->
     case buoy_node_socket:state(Handle) of
         #{closed := false, reading := true, rsel := none, socket := Socket} = S ->
             case socket:recvfrom(Socket, 0, [], nowait) of
                 {ok, {Source, Data}} ->
-                    onmessage(Handle, [byte_size(Data), Handle, buoy_node_encoding:new_buffer(Data), rinfo(Source)]),
-                    buoy_node_socket:kick(Handle);
+                    buoy_node_socket:js(fun() ->
+                        onmessage(Handle, [byte_size(Data), Handle, buoy_node_encoding:new_buffer(Data), rinfo(Source)])
+                    end),
+                    receive_ready(Handle, N - 1);
                 {select, {select_info, _, Ref}} ->
                     buoy_node_socket:save(Handle, S#{rsel := Ref});
                 {error, closed} ->
                     ok;
                 {error, Reason} ->
-                    onmessage(Handle, [errno(Reason), Handle]),
-                    buoy_node_socket:kick(Handle)
+                    buoy_node_socket:js(fun() -> onmessage(Handle, [errno(Reason), Handle]) end),
+                    receive_ready(Handle, N - 1)
             end;
         _ ->
             ok
