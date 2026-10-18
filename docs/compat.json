@@ -2972,17 +2972,17 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "25d078a",
+      "updated": "87f7c11",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 1950,
+        "pass": 2004,
         "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 1755,
-        "timeout": 121,
+        "fail": 1706,
+        "timeout": 116,
         "harness_error": 0,
         "crash": 10
       },
@@ -2995,16 +2995,16 @@
             "timeout": 13
           },
           "parallel": {
-            "pass": 1846,
+            "pass": 1899,
             "skip": 545,
-            "fail": 1577,
-            "timeout": 101,
+            "fail": 1529,
+            "timeout": 96,
             "crash": 10
           },
           "sequential": {
-            "pass": 39,
+            "pass": 40,
             "skip": 22,
-            "fail": 50,
+            "fail": 49,
             "timeout": 7
           }
         },
@@ -3013,10 +3013,10 @@
             "skip": 343
           },
           "public": {
-            "pass": 1950,
+            "pass": 2004,
             "skip": 240,
-            "fail": 1755,
-            "timeout": 121,
+            "fail": 1706,
+            "timeout": 116,
             "crash": 10
           }
         },
@@ -3028,9 +3028,9 @@
             "crash": 2
           },
           "async_hooks": {
-            "pass": 15,
+            "pass": 30,
             "skip": 11,
-            "fail": 30
+            "fail": 15
           },
           "buffer": {
             "pass": 58,
@@ -3038,10 +3038,10 @@
             "fail": 5
           },
           "child_process": {
-            "pass": 68,
+            "pass": 70,
             "skip": 7,
             "fail": 24,
-            "timeout": 15
+            "timeout": 13
           },
           "cluster": {
             "pass": 25,
@@ -3069,19 +3069,19 @@
             "timeout": 4
           },
           "diagnostics_channel": {
-            "pass": 40,
+            "pass": 46,
             "skip": 3,
-            "fail": 11,
-            "timeout": 2
+            "fail": 6,
+            "timeout": 1
           },
           "dns": {
             "skip": 10,
             "fail": 19
           },
           "domain": {
-            "pass": 25,
+            "pass": 28,
             "skip": 2,
-            "fail": 20,
+            "fail": 17,
             "timeout": 3
           },
           "events": {
@@ -3129,20 +3129,19 @@
             "fail": 4
           },
           "other": {
-            "pass": 216,
+            "pass": 225,
             "skip": 178,
-            "fail": 207,
-            "timeout": 13,
+            "fail": 199,
+            "timeout": 12,
             "crash": 2
           },
           "path": {
             "pass": 17
           },
           "perf_hooks": {
-            "pass": 15,
+            "pass": 20,
             "skip": 3,
-            "fail": 7,
-            "timeout": 1,
+            "fail": 3,
             "crash": 1
           },
           "process": {
@@ -3197,9 +3196,9 @@
             "timeout": 22
           },
           "timers": {
-            "pass": 42,
+            "pass": 46,
             "skip": 12,
-            "fail": 6
+            "fail": 2
           },
           "tls": {
             "pass": 204,
@@ -3207,9 +3206,9 @@
             "timeout": 1
           },
           "trace_events": {
-            "pass": 5,
+            "pass": 15,
             "skip": 3,
-            "fail": 21
+            "fail": 11
           },
           "tty": {
             "pass": 2,
@@ -3274,16 +3273,16 @@
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "25d078a",
+      "updated": "0bf743b",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 3450,
+        "pass": 3458,
         "rejected": 0,
         "late": 0,
         "skip": 0,
         "never": 0,
-        "fail": 1010,
+        "fail": 1002,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3295,8 +3294,8 @@
             "fail": 29
           },
           "documented": {
-            "pass": 3350,
-            "fail": 981
+            "pass": 3358,
+            "fail": 973
           }
         },
         "module": {
@@ -3480,10 +3479,10 @@
             "pass": 1
           },
           "clearInterval": {
-            "fail": 1
+            "pass": 1
           },
           "clearTimeout": {
-            "fail": 1
+            "pass": 1
           },
           "console": {
             "pass": 1,
@@ -3656,7 +3655,7 @@
             "fail": 126
           },
           "node:trace_events": {
-            "fail": 3
+            "pass": 3
           },
           "node:tty": {
             "pass": 143
@@ -3695,7 +3694,7 @@
             "pass": 87
           },
           "queueMicrotask": {
-            "fail": 1
+            "pass": 1
           },
           "require": {
             "pass": 6
@@ -3707,10 +3706,10 @@
             "pass": 1
           },
           "setInterval": {
-            "fail": 1
+            "pass": 1
           },
           "setTimeout": {
-            "fail": 1
+            "pass": 1
           },
           "structuredClone": {
             "fail": 1

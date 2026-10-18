@@ -9,8 +9,8 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,320 | 53,616 | 8.1% | 0 | 1 | 7a9cb20 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 1,950 | 4,419 | 44.1% | 1,876 | 10 | 25d078a | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 3,450 | 4,460 | 77.4% | 1,010 | 0 | 25d078a | `tests/node/surface/expectations.txt` |
+| node | node | v25.9.0 | 2,004 | 4,419 | 45.3% | 1,822 | 10 | 87f7c11 | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,458 | 4,460 | 77.5% | 1,002 | 0 | 0bf743b | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/equivalence.rs` |
@@ -950,15 +950,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at 25d078a. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at 87f7c11. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 1,950 | 44.1% | 0 | 0 | 583 | 0 | 1,755 | 121 | 0 | 10 |
+| every test | 4,419 | 2,004 | 45.3% | 0 | 0 | 583 | 0 | 1,706 | 116 | 0 | 10 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 1,950 | 47.8% | 0 | 0 | 240 | 0 | 1,755 | 121 | 0 | 10 |
+| kind: public | 4,076 | 2,004 | 49.2% | 0 | 0 | 240 | 0 | 1,706 | 116 | 0 | 10 |
 
 ### By module
 
@@ -967,17 +967,17 @@ node at v25.9.0, updated at 25d078a. Evidence: `tests/node/expectations.txt`.
 | module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | assert | 14 | 8 | 57.1% | 0 | 0 | 1 | 0 | 3 | 0 | 0 | 2 |
-| async_hooks | 56 | 15 | 26.8% | 0 | 0 | 11 | 0 | 30 | 0 | 0 | 0 |
+| async_hooks | 56 | 30 | 53.6% | 0 | 0 | 11 | 0 | 15 | 0 | 0 | 0 |
 | buffer | 69 | 58 | 84.1% | 0 | 0 | 6 | 0 | 5 | 0 | 0 | 0 |
-| child_process | 114 | 68 | 59.6% | 0 | 0 | 7 | 0 | 24 | 15 | 0 | 0 |
+| child_process | 114 | 70 | 61.4% | 0 | 0 | 7 | 0 | 24 | 13 | 0 | 0 |
 | cluster | 88 | 25 | 28.4% | 0 | 0 | 2 | 0 | 48 | 13 | 0 | 0 |
 | console | 22 | 17 | 77.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 3 |
 | constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | crypto | 161 | 152 | 94.4% | 0 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
 | dgram | 79 | 1 | 1.3% | 0 | 0 | 11 | 0 | 63 | 4 | 0 | 0 |
-| diagnostics_channel | 56 | 40 | 71.4% | 0 | 0 | 3 | 0 | 11 | 2 | 0 | 0 |
+| diagnostics_channel | 56 | 46 | 82.1% | 0 | 0 | 3 | 0 | 6 | 1 | 0 | 0 |
 | dns | 29 | 0 | 0.0% | 0 | 0 | 10 | 0 | 19 | 0 | 0 | 0 |
-| domain | 50 | 25 | 50.0% | 0 | 0 | 2 | 0 | 20 | 3 | 0 | 0 |
+| domain | 50 | 28 | 56.0% | 0 | 0 | 2 | 0 | 17 | 3 | 0 | 0 |
 | events | 40 | 34 | 85.0% | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
 | fs | 343 | 99 | 28.9% | 0 | 0 | 20 | 0 | 218 | 6 | 0 | 0 |
 | http | 394 | 37 | 9.4% | 0 | 0 | 15 | 0 | 341 | 1 | 0 | 0 |
@@ -987,9 +987,9 @@ node at v25.9.0, updated at 25d078a. Evidence: `tests/node/expectations.txt`.
 | module | 280 | 85 | 30.4% | 0 | 0 | 17 | 0 | 163 | 15 | 0 | 0 |
 | net | 162 | 19 | 11.7% | 0 | 0 | 10 | 0 | 128 | 5 | 0 | 0 |
 | os | 8 | 2 | 25.0% | 0 | 0 | 2 | 0 | 4 | 0 | 0 | 0 |
-| other | 616 | 216 | 35.1% | 0 | 0 | 178 | 0 | 207 | 13 | 0 | 2 |
+| other | 616 | 225 | 36.5% | 0 | 0 | 178 | 0 | 199 | 12 | 0 | 2 |
 | path | 17 | 17 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| perf_hooks | 27 | 15 | 55.6% | 0 | 0 | 3 | 0 | 7 | 1 | 0 | 1 |
+| perf_hooks | 27 | 20 | 74.1% | 0 | 0 | 3 | 0 | 3 | 0 | 0 | 1 |
 | process | 131 | 94 | 71.8% | 0 | 0 | 8 | 0 | 23 | 6 | 0 | 0 |
 | punycode | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | querystring | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1002,9 +1002,9 @@ node at v25.9.0, updated at 25d078a. Evidence: `tests/node/expectations.txt`.
 | string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | test | 65 | 23 | 35.4% | 0 | 0 | 5 | 0 | 15 | 22 | 0 | 0 |
-| timers | 60 | 42 | 70.0% | 0 | 0 | 12 | 0 | 6 | 0 | 0 | 0 |
+| timers | 60 | 46 | 76.7% | 0 | 0 | 12 | 0 | 2 | 0 | 0 | 0 |
 | tls | 220 | 204 | 92.7% | 0 | 0 | 15 | 0 | 0 | 1 | 0 | 0 |
-| trace_events | 29 | 5 | 17.2% | 0 | 0 | 3 | 0 | 21 | 0 | 0 | 0 |
+| trace_events | 29 | 15 | 51.7% | 0 | 0 | 3 | 0 | 11 | 0 | 0 | 0 |
 | tty | 3 | 2 | 66.7% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | url | 42 | 37 | 88.1% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 0 |
 | util | 30 | 13 | 43.3% | 0 | 0 | 10 | 0 | 6 | 0 | 0 | 1 |
@@ -1030,8 +1030,8 @@ node at v25.9.0, updated at 25d078a. Evidence: `tests/node/expectations.txt`.
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | es-module | 222 | 65 | 29.3% | 0 | 0 | 16 | 0 | 128 | 13 | 0 | 0 |
-| parallel | 4,079 | 1,846 | 45.3% | 0 | 0 | 545 | 0 | 1,577 | 101 | 0 | 10 |
-| sequential | 118 | 39 | 33.1% | 0 | 0 | 22 | 0 | 50 | 7 | 0 | 0 |
+| parallel | 4,079 | 1,899 | 46.6% | 0 | 0 | 545 | 0 | 1,529 | 96 | 0 | 10 |
+| sequential | 118 | 40 | 33.9% | 0 | 0 | 22 | 0 | 49 | 7 | 0 | 0 |
 
 ### Blockers
 
@@ -1042,20 +1042,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at 25d078a. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 0bf743b. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 3,450 | 77.4% | 0 | 0 | 0 | 0 | 1,010 | 0 | 0 | 0 |
+| every test | 4,460 | 3,458 | 77.5% | 0 | 0 | 0 | 0 | 1,002 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | deprecated | 129 | 100 | 77.5% | 0 | 0 | 0 | 0 | 29 | 0 | 0 | 0 |
-| documented | 4,331 | 3,350 | 77.3% | 0 | 0 | 0 | 0 | 981 | 0 | 0 | 0 |
+| documented | 4,331 | 3,358 | 77.5% | 0 | 0 | 0 | 0 | 973 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1122,8 +1122,8 @@ node-surface at v25.9.0, updated at 25d078a. Evidence: `tests/node/surface/expec
 | atob | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | btoa | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | clearImmediate | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| clearInterval | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| clearTimeout | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| clearInterval | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| clearTimeout | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | console | 23 | 1 | 4.3% | 0 | 0 | 0 | 0 | 22 | 0 | 0 | 0 |
 | crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
 | exports | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1179,7 +1179,7 @@ node-surface at v25.9.0, updated at 25d078a. Evidence: `tests/node/surface/expec
 | node:timers | 7 | 7 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:timers/promises | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:tls | 126 | 0 | 0.0% | 0 | 0 | 0 | 0 | 126 | 0 | 0 | 0 |
-| node:trace_events | 3 | 0 | 0.0% | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| node:trace_events | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:tty | 143 | 143 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:url | 46 | 44 | 95.7% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | node:util | 97 | 97 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1191,12 +1191,12 @@ node-surface at v25.9.0, updated at 25d078a. Evidence: `tests/node/surface/expec
 | node:zlib | 553 | 553 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | performance | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | process | 87 | 87 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| queueMicrotask | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| queueMicrotask | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | require | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sessionStorage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | setImmediate | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| setInterval | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| setTimeout | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| setInterval | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| setTimeout | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | structuredClone | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 
 </details>
