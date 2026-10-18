@@ -136,7 +136,7 @@ wrap(Parent, Context, Server) ->
                  session_callbacks => false, keylog => false, cert_cb => false, sni_waiting => none,
                  reading => false, cleartext => [], eof => false, pending => [], writes => #{}, queued => 0,
                  shutdown => none, controller => none, active => false, inbox => [], inbox_size => 0,
-                 peer_eof => false, closed_sent => false, info => #{}, read => 0, written => 0,
+                 peer_eof => false, info => #{}, read => 0, written => 0,
                  async_id => new_async_id()}),
     buoy_node_socket:set_listener(Parent, fun(Event) -> parent_event(Id, Event) end),
     {ok, #{reading := Reading}} = buoy_node_socket:find(Parent),
@@ -175,9 +175,9 @@ start(This) ->
 begin_handshake(This, Role) ->
     #{id := Id, parent := Parent} = S = state(This),
     ok = start_ssl(),
-    Options = ssl_options(S, Role),
     Realm = self(),
-    Agent = spawn(fun() -> agent(Realm, Id, Role, Options) end),
+    Agent = spawn(fun() -> receive {options, Options} -> agent(Realm, Id, Role, Options) end end),
+    Agent ! {options, ssl_options(S, Role, Agent)},
     save(This, S#{phase := handshaking, agent := Agent}),
     buoy_node_loop:ref_handle(),
     buoy_node_socket:read_start(Parent),
@@ -194,9 +194,9 @@ start_ssl() ->
             ok
     end.
 
-ssl_options(S, Role) ->
+%% The ssl options of the connection; the verify_fun reports to Agent.
+ssl_options(S, Role, Agent) ->
     #{context := Context, verify := {Request, _Reject}, servername := Name, alpn := Alpn, session := Session} = S,
-    Agent = self(),
     Verify = case {Role, Request} of
         {server, false} -> [{verify, verify_none}];
         {server, true} -> [{verify, verify_peer}, {fail_if_no_peer_cert, false}, {verify_fun, verify_fun(Agent)}];
@@ -231,8 +231,15 @@ ssl_options(S, Role) ->
         true -> [{keep_secrets, {keylog, keylog_fun(self_realm(), maps:get(id, S))}}];
         false -> []
     end,
+    %% Tickets are TLS 1.3's: ssl refuses the option without that version.
+    %% and the sessions of TLS 1.2 and earlier refuse a TLS 1.3 only list.
+    Versions = proplists:get_value(versions, Base, []),
+    Tls13 = lists:member('tlsv1.3', Versions),
+    Older = Versions -- ['tlsv1.3'] =/= [],
+    Tickets = [O || O <- Resume, Tls13 orelse not lists:member(element(1, O), [session_tickets, use_ticket]),
+                    Older orelse not lists:member(element(1, O), [reuse_sessions, reuse_session])],
     [{cb_info, buoy_tls_transport:cb_info()}, {log_level, none}, {handshake, full}]
-        ++ Verify ++ Sni ++ AlpnOption ++ Resume ++ SniFun ++ Keylog ++ Base.
+        ++ Verify ++ Sni ++ AlpnOption ++ Tickets ++ SniFun ++ Keylog ++ Base.
 
 self_realm() -> self().
 
@@ -371,20 +378,23 @@ agent_loop(Ssl, Report, Reading, Armed) ->
             Report({written, Ref, Status}),
             agent_loop(Ssl, Report, Reading, Armed);
         {reading, true} when not Armed ->
-            ok = ssl:setopts(Ssl, [{active, once}]),
-            agent_loop(Ssl, Report, true, true);
+            arm(Ssl, Report, true);
         {reading, Flag} ->
             agent_loop(Ssl, Report, Flag, Armed);
-        {ssl, Ssl, Data} ->
-            Report({cleartext, Data}),
-            Reading andalso ssl:setopts(Ssl, [{active, once}]),
-            agent_loop(Ssl, Report, Reading, Reading);
+        %% The agent owns one ssl socket, and ssl's messages may carry a
+        %% copy of its record whose fields differ from the one connect gave.
         {ssl, session_ticket, {_Sni, Ticket}} ->
             Report({ticket, Ticket}),
             agent_loop(Ssl, Report, Reading, Armed);
-        {ssl_closed, Ssl} ->
+        {ssl, _, Data} when is_binary(Data) ->
+            Report({cleartext, Data}),
+            case Reading of
+                true -> arm(Ssl, Report, true);
+                false -> agent_loop(Ssl, Report, false, false)
+            end;
+        {ssl_closed, _} ->
             Report(cleartext_eof);
-        {ssl_error, Ssl, Reason} ->
+        {ssl_error, _, Reason} ->
             Report({error, Reason}),
             agent_loop(Ssl, Report, Reading, Armed);
         {shutdown, Ref} ->
@@ -395,12 +405,22 @@ agent_loop(Ssl, Report, Reading, Armed) ->
             Report({shutdown, Ref, Status}),
             agent_loop(Ssl, Report, Reading, Armed);
         {export, From, Ref, Label, Context, Length} ->
-            From ! {Ref, try ssl:export_key_materials(Ssl, [Label], [Context], [Length]) catch _:_ -> error end},
+            %% The secret stays for the next export (ConsumeSecret false).
+            From ! {Ref, try ssl:export_key_materials(Ssl, [Label], [Context], [Length], false) catch _:_ -> error end},
             agent_loop(Ssl, Report, Reading, Armed);
         close ->
             ssl:close(Ssl);
         {'DOWN', _, process, _, _} ->
             ssl:close(Ssl)
+    end.
+
+%% Asks ssl for the next read. A connection that ended while its owner
+%% did not read is gone without an ssl_closed message, as ssl stops a
+%% connection whose passive owner has no receive waiting.
+arm(Ssl, Report, Reading) ->
+    case ssl:setopts(Ssl, [{active, once}]) of
+        ok -> agent_loop(Ssl, Report, Reading, true);
+        {error, _} -> Report(cleartext_eof)
     end.
 
 %%% Events of the agent, in the realm
@@ -537,9 +557,12 @@ pump(This) ->
             save(This, S#{inbox := [], inbox_size := 0, active := Next}),
             maps:get(inbox_size, S) > ?INBOX_LIMIT andalso buoy_node_socket:read_start(Parent),
             ok;
-        #{controller := Pid, active := Active, inbox := [], peer_eof := true, closed_sent := false} when is_pid(Pid), Active =/= false ->
+        %% A closed transport tells each activation again, as gen_tcp's
+        %% setopts fails on a closed socket: ssl defers a close that came
+        %% while its owner did not read, until it activates the transport.
+        #{controller := Pid, active := Active, inbox := [], peer_eof := true} when is_pid(Pid), Active =/= false ->
             Pid ! {buoy_tls_closed, transport_socket(S)},
-            save(This, S#{closed_sent := true});
+            save(This, S#{active := false});
         _ ->
             ok
     end.

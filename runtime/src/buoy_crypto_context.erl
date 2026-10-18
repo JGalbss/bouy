@@ -165,28 +165,118 @@ set_ciphers(This, List) ->
     end,
     undefined.
 
-%% The suites of an OpenSSL cipher string: each name that OTP knows, in
-%% order, and the default suites for a list of keywords only.
+%% The suites of an OpenSSL cipher string, as SSL_CTX_set_cipher_list reads
+%% it: names and aliases joined with +, each one added, or removed with -,
+%% banned with !, or moved to the end with +; @ directives such as
+%% @SECLEVEL=0 have no meaning for ssl. An unknown word selects nothing.
 suites(List, Version) ->
-    Names = [N || N <- binary:split(List, [<<":">>, <<",">>, <<" ">>], [global, trim_all])],
-    Supported = ssl:cipher_suites(all, Version) ++ ssl:cipher_suites(exclusive, Version),
-    Known = lists:filtermap(fun(Name) ->
-        try ssl:str_to_suite(binary_to_list(Name)) of
-            Suite -> lists:member(Suite, Supported) andalso {true, Suite}
-        catch _:_ -> false
-        end
-    end, Names),
-    case {Known, [N || N <- Names, is_keyword(N)]} of
-        {[], [_ | _]} -> ssl:cipher_suites(default, Version);
-        _ -> Known
+    Universe = universe(Version),
+    Words = [hd(binary:split(W, <<"@">>)) || W <- binary:split(List, [<<":">>, <<",">>, <<" ">>], [global, trim_all])],
+    {Selected, _Banned} = lists:foldl(fun(Word, Acc) -> cipher_word(Word, Universe, Acc) end, {[], []}, Words),
+    Selected.
+
+universe(Version) ->
+    Key = {?MODULE, universe, Version},
+    case persistent_term:get(Key, none) of
+        none ->
+            All = lists:usort(ssl:cipher_suites(all, Version) ++ ssl:cipher_suites(exclusive, Version))
+                ++ ssl:cipher_suites(anonymous, Version),
+            %% The order of ssl's defaults first, as OpenSSL orders by strength.
+            Default = ssl:cipher_suites(default, Version),
+            U = Default ++ [C || C <- dedup(All), not lists:member(C, Default)],
+            persistent_term:put(Key, U),
+            U;
+        U -> U
     end.
 
-is_keyword(<<"!", _/binary>>) -> false;
-is_keyword(<<"-", _/binary>>) -> false;
-is_keyword(Name) -> lists:member(hd(binary:split(Name, <<"+">>)), [<<"DEFAULT">>, <<"HIGH">>, <<"MEDIUM">>, <<"ALL">>, <<"COMPLEMENTOFDEFAULT">>,
-                                                                   <<"ECDHE">>, <<"EECDH">>, <<"DHE">>, <<"EDH">>, <<"AES">>, <<"AESGCM">>,
-                                                                   <<"AES128">>, <<"AES256">>, <<"CHACHA20">>, <<"RSA">>, <<"ECDSA">>,
-                                                                   <<"aRSA">>, <<"aECDSA">>, <<"kRSA">>, <<"SHA256">>, <<"SHA384">>]).
+dedup(List) -> dedup(List, #{}).
+dedup([H | T], Seen) when is_map_key(H, Seen) -> dedup(T, Seen);
+dedup([H | T], Seen) -> [H | dedup(T, Seen#{H => true})];
+dedup([], _) -> [].
+
+cipher_word(<<>>, _, Acc) -> Acc;
+cipher_word(<<"!", Word/binary>>, U, {Selected, Banned}) ->
+    Match = matching(Word, U),
+    {[C || C <- Selected, not lists:member(C, Match)], Banned ++ Match};
+cipher_word(<<"-", Word/binary>>, U, {Selected, Banned}) ->
+    Match = matching(Word, U),
+    {[C || C <- Selected, not lists:member(C, Match)], Banned};
+cipher_word(<<"+", Word/binary>>, U, {Selected, Banned}) ->
+    Match = matching(Word, U),
+    {[C || C <- Selected, not lists:member(C, Match)] ++ [C || C <- Selected, lists:member(C, Match)], Banned};
+cipher_word(Word, U, {Selected, Banned}) ->
+    Added = [C || C <- matching(Word, U), not lists:member(C, Selected), not lists:member(C, Banned)],
+    {Selected ++ Added, Banned}.
+
+%% The suites of Universe that each part of A+B matches.
+matching(Word, Universe) ->
+    Parts = binary:split(Word, <<"+">>, [global, trim_all]),
+    lists:foldl(fun(Part, Acc) -> [C || C <- Acc, matches_part(Part, C)] end, Universe, Parts).
+
+matches_part(Part, Suite) ->
+    case cipher_alias(Part) of
+        {ok, Test} -> Test(Suite);
+        error ->
+            try ssl:str_to_suite(binary_to_list(Part)) =:= Suite
+            catch _:_ -> false
+            end
+    end.
+
+kex(#{key_exchange := K}) -> K.
+cipher_of(#{cipher := C}) -> C.
+mac(#{mac := M}) -> M.
+
+is_anon(S) -> lists:member(kex(S), [dh_anon, ecdh_anon, psk, dhe_psk, ecdhe_psk, rsa_psk, srp_anon]).
+is_null(S) -> cipher_of(S) =:= null.
+is_aes(S) -> lists:member(cipher_of(S), [aes_128_cbc, aes_256_cbc, aes_128_gcm, aes_256_gcm, aes_128_ccm, aes_256_ccm,
+                                         aes_128_ccm_8, aes_256_ccm_8]).
+
+cipher_alias(<<"ALL">>) -> {ok, fun(S) -> not is_null(S) end};
+cipher_alias(<<"DEFAULT">>) -> {ok, fun(S) -> not is_null(S) andalso not is_anon(S) end};
+cipher_alias(<<"COMPLEMENTOFDEFAULT">>) -> {ok, fun(S) -> is_anon(S) andalso not is_null(S) end};
+cipher_alias(<<"COMPLEMENTOFALL">>) -> {ok, fun is_null/1};
+cipher_alias(<<"HIGH">>) -> {ok, fun(S) -> is_aes(S) orelse cipher_of(S) =:= chacha20_poly1305 end};
+cipher_alias(<<"MEDIUM">>) -> {ok, fun(S) -> lists:member(cipher_of(S), [rc4_128, seed_cbc]) end};
+cipher_alias(<<"LOW">>) -> {ok, fun(S) -> lists:member(cipher_of(S), [des_cbc]) end};
+cipher_alias(<<"EXPORT">>) -> {ok, fun(_) -> false end};
+cipher_alias(<<"aNULL">>) -> {ok, fun(S) -> lists:member(kex(S), [dh_anon, ecdh_anon]) end};
+cipher_alias(<<"eNULL">>) -> {ok, fun is_null/1};
+cipher_alias(<<"NULL">>) -> {ok, fun is_null/1};
+cipher_alias(<<"RSA">>) -> {ok, fun(S) -> kex(S) =:= rsa end};
+cipher_alias(<<"kRSA">>) -> {ok, fun(S) -> kex(S) =:= rsa end};
+cipher_alias(<<"aRSA">>) -> {ok, fun(S) -> lists:member(kex(S), [rsa, dhe_rsa, ecdhe_rsa, srp_rsa]) end};
+cipher_alias(<<"ECDSA">>) -> {ok, fun(S) -> lists:member(kex(S), [ecdhe_ecdsa, ecdh_ecdsa]) end};
+cipher_alias(<<"aECDSA">>) -> {ok, fun(S) -> lists:member(kex(S), [ecdhe_ecdsa, ecdh_ecdsa]) end};
+cipher_alias(<<"DSS">>) -> {ok, fun(S) -> kex(S) =:= dhe_dss end};
+cipher_alias(<<"aDSS">>) -> {ok, fun(S) -> kex(S) =:= dhe_dss end};
+cipher_alias(E) when E =:= <<"ECDHE">>; E =:= <<"EECDH">>; E =:= <<"kECDHE">>; E =:= <<"kEECDH">> ->
+    {ok, fun(S) -> lists:member(kex(S), [ecdhe_rsa, ecdhe_ecdsa, ecdhe_psk]) end};
+cipher_alias(D) when D =:= <<"DHE">>; D =:= <<"EDH">>; D =:= <<"kDHE">>; D =:= <<"kEDH">> ->
+    {ok, fun(S) -> lists:member(kex(S), [dhe_rsa, dhe_dss, dhe_psk]) end};
+cipher_alias(<<"AECDH">>) -> {ok, fun(S) -> kex(S) =:= ecdh_anon end};
+cipher_alias(<<"ADH">>) -> {ok, fun(S) -> kex(S) =:= dh_anon end};
+cipher_alias(<<"PSK">>) -> {ok, fun(S) -> lists:member(kex(S), [psk, dhe_psk, ecdhe_psk, rsa_psk]) end};
+cipher_alias(<<"kPSK">>) -> {ok, fun(S) -> kex(S) =:= psk end};
+cipher_alias(<<"SRP">>) -> {ok, fun(S) -> lists:member(kex(S), [srp_anon, srp_rsa, srp_dss]) end};
+cipher_alias(<<"AES">>) -> {ok, fun is_aes/1};
+cipher_alias(<<"AESGCM">>) -> {ok, fun(S) -> lists:member(cipher_of(S), [aes_128_gcm, aes_256_gcm]) end};
+cipher_alias(<<"AESCCM">>) -> {ok, fun(S) -> lists:member(cipher_of(S), [aes_128_ccm, aes_256_ccm, aes_128_ccm_8, aes_256_ccm_8]) end};
+cipher_alias(<<"AES128">>) -> {ok, fun(S) -> lists:member(cipher_of(S), [aes_128_cbc, aes_128_gcm, aes_128_ccm, aes_128_ccm_8]) end};
+cipher_alias(<<"AES256">>) -> {ok, fun(S) -> lists:member(cipher_of(S), [aes_256_cbc, aes_256_gcm, aes_256_ccm, aes_256_ccm_8]) end};
+cipher_alias(<<"CHACHA20">>) -> {ok, fun(S) -> cipher_of(S) =:= chacha20_poly1305 end};
+cipher_alias(<<"3DES">>) -> {ok, fun(S) -> cipher_of(S) =:= '3des_ede_cbc' end};
+cipher_alias(<<"DES">>) -> {ok, fun(S) -> cipher_of(S) =:= des_cbc end};
+cipher_alias(<<"RC4">>) -> {ok, fun(S) -> cipher_of(S) =:= rc4_128 end};
+cipher_alias(<<"CAMELLIA">>) -> {ok, fun(_) -> false end};
+cipher_alias(<<"IDEA">>) -> {ok, fun(_) -> false end};
+cipher_alias(<<"SEED">>) -> {ok, fun(S) -> cipher_of(S) =:= seed_cbc end};
+cipher_alias(<<"MD5">>) -> {ok, fun(S) -> mac(S) =:= md5 end};
+cipher_alias(Sha) when Sha =:= <<"SHA">>; Sha =:= <<"SHA1">> -> {ok, fun(S) -> mac(S) =:= sha end};
+cipher_alias(<<"SHA256">>) -> {ok, fun(S) -> mac(S) =:= sha256 orelse maps:get(prf, S) =:= sha256 end};
+cipher_alias(<<"SHA384">>) -> {ok, fun(S) -> mac(S) =:= sha384 orelse maps:get(prf, S) =:= sha384 end};
+cipher_alias(<<"TLSv1.2">>) -> {ok, fun(S) -> mac(S) =:= aead orelse lists:member(maps:get(prf, S), [sha256, sha384]) end};
+cipher_alias(V) when V =:= <<"TLSv1">>; V =:= <<"SSLv3">>; V =:= <<"TLSv1.0">> -> {ok, fun(S) -> maps:get(prf, S) =:= default_prf end};
+cipher_alias(_) -> error.
 
 %% setECDHCurve(curve): 'auto', or a list such as 'P-256:X25519'.
 set_curve(This, <<"auto">>) ->
@@ -200,17 +290,23 @@ set_curve(This, List) ->
     end,
     undefined.
 
-curve(<<"P-256">>) -> secp256r1;
-curve(<<"prime256v1">>) -> secp256r1;
-curve(<<"P-384">>) -> secp384r1;
-curve(<<"secp384r1">>) -> secp384r1;
-curve(<<"P-521">>) -> secp521r1;
-curve(<<"secp521r1">>) -> secp521r1;
-curve(<<"X25519">>) -> x25519;
-curve(<<"x25519">>) -> x25519;
-curve(<<"X448">>) -> x448;
-curve(<<"x448">>) -> x448;
-curve(_) -> unknown.
+%% A group of an OpenSSL curve list: its NIST, SECG, or X9.62 name, as
+%% SSL_CTX_set1_curves_list reads it, among the groups that ssl knows.
+curve(Name) ->
+    Atom = case string:lowercase(Name) of
+        <<"p-256">> -> secp256r1;
+        <<"prime256v1">> -> secp256r1;
+        <<"p-384">> -> secp384r1;
+        <<"p-521">> -> secp521r1;
+        <<"p-224">> -> secp224r1;
+        <<"p-192">> -> secp192r1;
+        <<"prime192v1">> -> secp192r1;
+        Lower -> Lower
+    end,
+    case [E || E <- ssl:eccs(), E =:= Atom orelse string:lowercase(atom_to_binary(E)) =:= Atom] of
+        [Group | _] -> Group;
+        [] -> unknown
+    end.
 
 %% setDHParam(dh): 'auto' (true) or PEM parameters; small ones warn.
 set_dh(This, true) ->
