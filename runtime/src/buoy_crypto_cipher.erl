@@ -6,7 +6,7 @@
 %% the cipher jobs of WebCrypto.
 -module(buoy_crypto_cipher).
 
--export([members/0, exists/1, rsa_crypt/5]).
+-export([members/0, exists/1, otp_cipher/1, rsa_crypt/5]).
 
 -define(NO_TAG, undefined).
 -define(RSA_PKCS1_PADDING, 1).
@@ -200,6 +200,16 @@ lookup_nid(Nid) ->
 cipher({_, Canonical, Nid, Mode, Key, IV, Block}) ->
     #{name => Canonical, nid => Nid, mode => Mode, key => Key, iv => IV, block => Block,
       impl => impl(Canonical, Mode, Key)}.
+
+%% The cipher of Name when OTP's crypto runs it as one stream: its
+%% canonical name, OTP's name, and its key, IV, and block sizes.
+-spec otp_cipher(binary()) -> {ok, map()} | error.
+otp_cipher(Name) ->
+    case lookup(Name) of
+        {ok, #{name := Canonical, impl := {otp, Otp}, key := Key, iv := IV, block := Block}} ->
+            {ok, #{name => Canonical, otp => Otp, key => Key, iv => IV, block => Block}};
+        _ -> error
+    end.
 
 %% Whether Name names a cipher (for the cipher of an encrypted key).
 -spec exists(binary()) -> boolean().
@@ -513,7 +523,7 @@ cipher_final(#{cipher := #{mode := ccm}, encrypt := false, auth_failed := Failed
     end;
 cipher_final(#{cipher := #{mode := ccm}} = S) ->
     case maps:get(engine, S) of
-        undefined -> cipher_final_ccm_empty(S);
+        undefined -> {error, tag_not_set, S};
         _ -> {ok, <<>>, S#{tag_state := computed}}
     end;
 cipher_final(#{cipher := #{impl := {gcm, Ecb, Atom}}, key := Key, iv := IV, aad := AAD} = S) ->
@@ -565,14 +575,9 @@ cipher_final(S) ->
 final_bytes({ecb, _, _} = Ecb, #{encrypt := Encrypt, padding := Padding}) -> ecb_final(Ecb, Encrypt, Padding);
 final_bytes(Ref, _) -> crypto:crypto_final(Ref).
 
-%% A CCM encryption of no data.
-cipher_final_ccm_empty(S) ->
-    {_, S1} = ccm_update(S, <<>>),
-    {ok, <<>>, S1#{tag_state := computed}}.
-
 %% The OpenSSL error of a failed EVP_CipherFinal_ex.
 final_error(#{encrypt := true}) -> wrong_final_block_length;
-final_error(#{total := Total, cipher := #{block := Block}}) when Block > 1, Total rem Block =/= 0 ->
+final_error(#{total := Total, cipher := #{block := Block}}) when Block > 1, Total rem Block =/= 0; Total =:= 0 ->
     wrong_final_block_length;
 final_error(_) -> bad_decrypt.
 
@@ -726,7 +731,8 @@ public_key_cipher(Which, Operation, Args) ->
 %% recover on K, with the padding Padding and OAEP's digest and label.
 -spec rsa_crypt(map(), encrypt | decrypt | sign | recover, binary(), integer(), {atom(), binary()}) -> binary().
 rsa_crypt(#{kind := Kind} = K, Operation, Data, Padding, {Md, Label}) ->
-    (Kind =:= rsa orelse Kind =:= rsa_pss) orelse buoy_crypto:fail({openssl, operation_not_supported_for_this_keytype}),
+    Kind =:= rsa_pss andalso buoy_crypto:fail({openssl, prov_operation_not_supported_for_this_keytype}),
+    Kind =:= rsa orelse buoy_crypto:fail({openssl, operation_not_supported_for_this_keytype}),
     Opts = case Padding of
         ?RSA_PKCS1_PADDING -> [{rsa_padding, rsa_pkcs1_padding}];
         ?RSA_NO_PADDING -> [{rsa_padding, rsa_no_padding}];

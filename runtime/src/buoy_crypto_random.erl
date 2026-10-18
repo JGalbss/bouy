@@ -44,7 +44,10 @@ optional_integer(V) -> binary:decode_unsigned(buoy_crypto:bytes(V)).
 
 %% new CheckPrimeJob(mode, candidate, checks)
 check_prime_job([Candidate, Checks | _]) ->
-    N = binary:decode_unsigned(buoy_crypto:bytes(Candidate)),
+    Bytes = buoy_crypto:bytes(Candidate),
+    %% BN_bin2bn takes at most INT_MAX / 4 bits.
+    byte_size(Bytes) > 16#7FFFFFFF div 32 andalso buoy_crypto:fail({openssl, bignum_too_long}),
+    N = binary:decode_unsigned(Bytes),
     {fun() -> {ok, is_prime(N, Checks)} end, fun(Prime) -> Prime end}.
 
 %%% Primes

@@ -16,7 +16,12 @@ binding() ->
         ++ buoy_crypto_cipher:members()
         ++ buoy_crypto_sig:members()
         ++ buoy_crypto_keygen:members()
-        ++ buoy_crypto_dh:members(),
+        ++ buoy_crypto_dh:members()
+        ++ buoy_crypto_x509:members()
+        ++ buoy_crypto_keccak:members()
+        ++ buoy_crypto_argon2:members()
+        ++ buoy_crypto_kem:members()
+        ++ buoy_crypto_roots:members(),
     Names = [Name || {Name, _} <- Members],
     Missing = [{Name, missing(Name)} || Name <- node_members(), not lists:member(Name, Names)],
     buoy_node:object(Members ++ Missing).
@@ -29,7 +34,12 @@ missing(Name) -> buoy_node:not_implemented(<<"crypto">>, Name).
 util() ->
     F = fun buoy_crypto:fn/3,
     [{<<"timingSafeEqual">>, F(<<"timingSafeEqual">>, 2, fun(_, Args) ->
-        buoy_crypto:equal_bytes(buoy_crypto:bytes(buoy_node:arg(1, Args)), buoy_crypto:bytes(buoy_node:arg(2, Args)))
+        A = buoy_crypto:bytes(buoy_node:arg(1, Args)),
+        B = buoy_crypto:bytes(buoy_node:arg(2, Args)),
+        byte_size(A) =:= byte_size(B) orelse
+            buoy_crypto:fail({code, 'RangeError', <<"ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH">>,
+                              <<"Input buffers must have the same byte length">>}),
+        buoy_crypto:equal_bytes(A, B)
      end)},
      %% OTP's crypto loads no engine, so no engine name is known (SetEngine).
      {<<"setEngine">>, F(<<"setEngine">>, 2, fun(_, _) -> false end)},
