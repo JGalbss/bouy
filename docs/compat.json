@@ -2972,17 +2972,17 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "db60a3a",
+      "updated": "242d926",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 1964,
+        "pass": 1889,
         "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 1798,
-        "timeout": 62,
+        "fail": 1880,
+        "timeout": 55,
         "harness_error": 0,
         "crash": 12
       },
@@ -2995,16 +2995,16 @@
             "timeout": 1
           },
           "parallel": {
-            "pass": 1859,
+            "pass": 1790,
             "skip": 545,
-            "fail": 1607,
-            "timeout": 56,
+            "fail": 1683,
+            "timeout": 49,
             "crash": 12
           },
           "sequential": {
-            "pass": 39,
+            "pass": 33,
             "skip": 22,
-            "fail": 52,
+            "fail": 58,
             "timeout": 5
           }
         },
@@ -3013,10 +3013,10 @@
             "skip": 343
           },
           "public": {
-            "pass": 1964,
+            "pass": 1889,
             "skip": 240,
-            "fail": 1798,
-            "timeout": 62,
+            "fail": 1880,
+            "timeout": 55,
             "crash": 12
           }
         },
@@ -3028,9 +3028,9 @@
             "crash": 2
           },
           "async_hooks": {
-            "pass": 15,
+            "pass": 29,
             "skip": 11,
-            "fail": 30
+            "fail": 16
           },
           "buffer": {
             "pass": 58,
@@ -3038,10 +3038,10 @@
             "fail": 5
           },
           "child_process": {
-            "pass": 72,
+            "pass": 86,
             "skip": 7,
-            "fail": 25,
-            "timeout": 10
+            "fail": 17,
+            "timeout": 4
           },
           "cluster": {
             "pass": 25,
@@ -3059,8 +3059,10 @@
             "skip": 1
           },
           "crypto": {
-            "pass": 152,
-            "skip": 9
+            "pass": 149,
+            "skip": 9,
+            "fail": 2,
+            "timeout": 1
           },
           "dgram": {
             "pass": 5,
@@ -3068,42 +3070,45 @@
             "fail": 63
           },
           "diagnostics_channel": {
-            "pass": 40,
+            "pass": 28,
             "skip": 3,
-            "fail": 11,
-            "timeout": 2
+            "fail": 24,
+            "timeout": 1
           },
           "dns": {
+            "pass": 18,
             "skip": 10,
-            "fail": 19
+            "timeout": 1
           },
           "domain": {
-            "pass": 27,
+            "pass": 30,
             "skip": 2,
-            "fail": 21
+            "fail": 18
           },
           "events": {
             "pass": 34,
             "skip": 6
           },
           "fs": {
-            "pass": 98,
+            "pass": 304,
             "skip": 20,
-            "fail": 219,
-            "timeout": 6
+            "fail": 14,
+            "timeout": 5
           },
           "http": {
-            "pass": 37,
+            "pass": 31,
             "skip": 15,
-            "fail": 342
+            "fail": 348
           },
           "http2": {
-            "pass": 242,
-            "skip": 32
+            "pass": 3,
+            "skip": 32,
+            "fail": 239
           },
           "https": {
-            "pass": 63,
-            "skip": 2
+            "pass": 2,
+            "skip": 2,
+            "fail": 61
           },
           "inspector": {
             "skip": 114
@@ -3126,26 +3131,25 @@
             "fail": 4
           },
           "other": {
-            "pass": 215,
+            "pass": 223,
             "skip": 178,
-            "fail": 217,
-            "timeout": 4,
+            "fail": 210,
+            "timeout": 3,
             "crash": 2
           },
           "path": {
             "pass": 17
           },
           "perf_hooks": {
-            "pass": 15,
+            "pass": 20,
             "skip": 3,
-            "fail": 7,
-            "timeout": 1,
+            "fail": 3,
             "crash": 1
           },
           "process": {
-            "pass": 94,
+            "pass": 92,
             "skip": 8,
-            "fail": 24,
+            "fail": 26,
             "timeout": 5
           },
           "punycode": {
@@ -3178,9 +3182,9 @@
             "skip": 2
           },
           "stream": {
-            "pass": 201,
+            "pass": 203,
             "skip": 8,
-            "fail": 54
+            "fail": 52
           },
           "string_decoder": {
             "pass": 3
@@ -3195,19 +3199,19 @@
             "timeout": 6
           },
           "timers": {
-            "pass": 42,
+            "pass": 46,
             "skip": 12,
-            "fail": 6
+            "fail": 2
           },
           "tls": {
-            "pass": 204,
+            "pass": 13,
             "skip": 15,
-            "timeout": 1
+            "fail": 192
           },
           "trace_events": {
-            "pass": 4,
+            "pass": 14,
             "skip": 3,
-            "fail": 22
+            "fail": 12
           },
           "tty": {
             "pass": 2,
@@ -3237,15 +3241,14 @@
             "crash": 1
           },
           "worker_threads": {
-            "pass": 11,
+            "pass": 108,
             "skip": 12,
-            "fail": 124,
-            "timeout": 1
+            "fail": 25,
+            "timeout": 3
           },
           "zlib": {
-            "pass": 2,
-            "skip": 3,
-            "fail": 58
+            "pass": 60,
+            "skip": 3
           }
         },
         "skip reason": {
@@ -3272,16 +3275,16 @@
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "25d078a",
+      "updated": "242d926",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 3450,
+        "pass": 3950,
         "rejected": 0,
         "late": 0,
         "skip": 0,
         "never": 0,
-        "fail": 1010,
+        "fail": 510,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3289,12 +3292,12 @@
       "groups": {
         "docs": {
           "deprecated": {
-            "pass": 100,
-            "fail": 29
+            "pass": 112,
+            "fail": 17
           },
           "documented": {
-            "pass": 3350,
-            "fail": 981
+            "pass": 3838,
+            "fail": 493
           }
         },
         "module": {
@@ -3326,10 +3329,10 @@
             "pass": 3
           },
           "Crypto": {
-            "fail": 4
+            "pass": 4
           },
           "CryptoKey": {
-            "fail": 5
+            "pass": 5
           },
           "CustomEvent": {
             "pass": 20
@@ -3365,8 +3368,7 @@
             "pass": 19
           },
           "MessagePort": {
-            "pass": 17,
-            "fail": 4
+            "pass": 21
           },
           "Navigator": {
             "pass": 1
@@ -3420,7 +3422,7 @@
             "fail": 1
           },
           "SubtleCrypto": {
-            "fail": 19
+            "pass": 19
           },
           "TextDecoder": {
             "pass": 5
@@ -3478,17 +3480,17 @@
             "pass": 1
           },
           "clearInterval": {
-            "fail": 1
+            "pass": 1
           },
           "clearTimeout": {
-            "fail": 1
+            "pass": 1
           },
           "console": {
             "pass": 1,
             "fail": 22
           },
           "crypto": {
-            "fail": 4
+            "pass": 4
           },
           "exports": {
             "pass": 1
@@ -3533,7 +3535,7 @@
             "fail": 4
           },
           "node:crypto": {
-            "fail": 401
+            "pass": 401
           },
           "node:dgram": {
             "pass": 43
@@ -3542,10 +3544,10 @@
             "pass": 13
           },
           "node:dns": {
-            "fail": 25
+            "pass": 25
           },
           "node:dns/promises": {
-            "fail": 25
+            "pass": 25
           },
           "node:domain": {
             "pass": 27
@@ -3654,7 +3656,7 @@
             "fail": 126
           },
           "node:trace_events": {
-            "fail": 3
+            "pass": 3
           },
           "node:tty": {
             "pass": 143
@@ -3680,8 +3682,7 @@
             "pass": 6
           },
           "node:worker_threads": {
-            "pass": 80,
-            "fail": 4
+            "pass": 84
           },
           "node:zlib": {
             "pass": 553
@@ -3693,7 +3694,7 @@
             "pass": 87
           },
           "queueMicrotask": {
-            "fail": 1
+            "pass": 1
           },
           "require": {
             "pass": 6
@@ -3705,13 +3706,13 @@
             "pass": 1
           },
           "setInterval": {
-            "fail": 1
+            "pass": 1
           },
           "setTimeout": {
-            "fail": 1
+            "pass": 1
           },
           "structuredClone": {
-            "fail": 1
+            "pass": 1
           }
         }
       },
@@ -8456,12 +8457,14 @@
     {
       "binding": "blob",
       "members": 6,
-      "implemented": 0
+      "implemented": 6,
+      "module": "runtime/src/buoy_binding_blob.erl"
     },
     {
       "binding": "block_list",
       "members": 4,
-      "implemented": 0
+      "implemented": 4,
+      "module": "runtime/src/buoy_binding_block_list.erl"
     },
     {
       "binding": "buffer",
@@ -8478,7 +8481,8 @@
     {
       "binding": "cares_wrap",
       "members": 18,
-      "implemented": 0
+      "implemented": 18,
+      "module": "runtime/src/buoy_binding_cares_wrap.erl"
     },
     {
       "binding": "cjs_lexer",
@@ -8494,7 +8498,7 @@
     {
       "binding": "constants",
       "members": 6,
-      "implemented": 0,
+      "implemented": 3,
       "module": "runtime/src/buoy_binding_constants.erl"
     },
     {
@@ -8513,7 +8517,8 @@
       "binding": "crypto",
       "condition": "HAVE_OPENSSL",
       "members": 144,
-      "implemented": 0
+      "implemented": 144,
+      "module": "runtime/src/buoy_binding_crypto.erl"
     },
     {
       "binding": "diagnostics_channel",
@@ -8536,18 +8541,20 @@
     {
       "binding": "fs",
       "members": 54,
-      "implemented": 44,
+      "implemented": 54,
       "module": "runtime/src/buoy_binding_fs.erl"
     },
     {
       "binding": "fs_dir",
       "members": 3,
-      "implemented": 0
+      "implemented": 3,
+      "module": "runtime/src/buoy_binding_fs_dir.erl"
     },
     {
       "binding": "fs_event_wrap",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_fs_event_wrap.erl"
     },
     {
       "binding": "heap_utils",
@@ -8584,7 +8591,8 @@
     {
       "binding": "js_stream",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_js_stream.erl"
     },
     {
       "binding": "js_udp_wrap",
@@ -8594,12 +8602,13 @@
     {
       "binding": "locks",
       "members": 5,
-      "implemented": 0
+      "implemented": 5,
+      "module": "runtime/src/buoy_binding_locks.erl"
     },
     {
       "binding": "messaging",
       "members": 11,
-      "implemented": 6,
+      "implemented": 11,
       "module": "runtime/src/buoy_binding_messaging.erl"
     },
     {
@@ -8634,7 +8643,7 @@
     {
       "binding": "performance",
       "members": 13,
-      "implemented": 12,
+      "implemented": 13,
       "module": "runtime/src/buoy_binding_performance.erl"
     },
     {
@@ -8740,7 +8749,8 @@
     {
       "binding": "tcp_wrap",
       "members": 3,
-      "implemented": 0
+      "implemented": 3,
+      "module": "runtime/src/buoy_binding_tcp_wrap.erl"
     },
     {
       "binding": "timers",
@@ -8752,7 +8762,8 @@
       "binding": "tls_wrap",
       "condition": "HAVE_OPENSSL",
       "members": 3,
-      "implemented": 0
+      "implemented": 3,
+      "module": "runtime/src/buoy_binding_tls_wrap.erl"
     },
     {
       "binding": "trace_events",
@@ -8775,7 +8786,8 @@
     {
       "binding": "udp_wrap",
       "members": 3,
-      "implemented": 0
+      "implemented": 3,
+      "module": "runtime/src/buoy_binding_udp_wrap.erl"
     },
     {
       "binding": "url",
@@ -8829,13 +8841,14 @@
     {
       "binding": "worker",
       "members": 13,
-      "implemented": 12,
+      "implemented": 13,
       "module": "runtime/src/buoy_binding_worker.erl"
     },
     {
       "binding": "zlib",
       "members": 7,
-      "implemented": 0
+      "implemented": 6,
+      "module": "runtime/src/buoy_binding_zlib.erl"
     }
   ]
 }
