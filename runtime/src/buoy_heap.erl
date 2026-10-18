@@ -69,7 +69,7 @@
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
 -export([clone_out/1, clone_in/1]).
 -export([private_find/2, private_put/3, set_failed/2]).
--export([literal_shaped/2, add_field/3, get_slot/3, set_slot/4, record/1]).
+-export([literal_shaped/2, add_field/3, get_slot/3, set_slot/4, method/2, record/1]).
 
 -export_type([value/0, key/0, property/0]).
 
@@ -246,6 +246,30 @@ get_slot({'$o', Id} = O, K, I) ->
     end;
 get_slot(O, K, _I) ->
     buoy_ref:get(O, K).
+
+%% [[Get]] of the method K for a call `o.k(...)`. A class instance has the
+%% common chain in one step: an own shape that lacks K, then a prototype
+%% whose map holds K as a function. JSC's inline cache for a method call
+%% remembers the same two facts, the structure and the prototype's slot.
+-spec method(value(), key()) -> value().
+method({'$o', Id} = O, K) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R) ->
+            case element(4, element(1, R)) of
+                #{K := I} -> element(I + 2, R);
+                _ -> proto_method(element(2, R), K, O)
+            end;
+        _ ->
+            get(O, K, O)
+    end.
+
+proto_method({'$o', Id} = P, K, Receiver) when is_integer(Id) ->
+    case erlang:get(Id) of
+        {object, _, #{K := {'$f', _, _} = F}, _, _, _} -> F;
+        _ -> get(P, K, Receiver)
+    end;
+proto_method(P, K, Receiver) ->
+    inherited(P, K, Receiver).
 
 %% A write of `o.k = v`, with the same expectation as get_slot/3.
 -spec set_slot(value(), key(), value(), pos_integer()) -> value().
@@ -695,20 +719,27 @@ call_setter(Setter, O, _K, V, _Mode) ->
 %% is in the way.
 inherited_setter(null, _K) ->
     none;
+%% The static Object.prototype, which this realm has not written: its only
+%% accessor is __proto__, and its data properties are writable.
+inherited_setter({'$o', 'Object.prototype'}, K) when K =/= <<"__proto__">> ->
+    case erlang:get('Object.prototype') of
+        undefined -> none;
+        R -> setter_in(R, K)
+    end;
 inherited_setter(P, K) ->
-    case raw(P) of
-        R when ?is_shaped(R) ->
-            case element(4, element(1, R)) of
-                #{K := _} -> none;
-                _ -> inherited_setter(element(2, R), K)
-            end;
-        {proxy, _, _, _, _, _} -> slow;
-        {typed_array, _, _, _, _, _} -> slow;
-        {array, _, _, _, _, _} when K =:= <<"length">> -> slow;
-        {array, Proto, _, _, Attrs, {_, Elements}} when is_integer(K) -> setter_from(maps:find(K, Elements), K, Attrs, Proto);
-        {arguments, _, _, _, _, Map} when is_map_key(K, Map) -> slow;
-        {_, Proto, Props, _, Attrs, _} -> setter_from(maps:find(K, Props), K, Attrs, Proto)
-    end.
+    setter_in(raw(P), K).
+
+setter_in(R, K) when ?is_shaped(R) ->
+    case element(4, element(1, R)) of
+        #{K := _} -> none;
+        _ -> inherited_setter(element(2, R), K)
+    end;
+setter_in({proxy, _, _, _, _, _}, _K) -> slow;
+setter_in({typed_array, _, _, _, _, _}, _K) -> slow;
+setter_in({array, _, _, _, _, _}, <<"length">>) -> slow;
+setter_in({array, Proto, _, _, Attrs, {_, Elements}}, K) when is_integer(K) -> setter_from(maps:find(K, Elements), K, Attrs, Proto);
+setter_in({arguments, _, _, _, _, Map}, K) when is_map_key(K, Map) -> slow;
+setter_in({_, Proto, Props, _, Attrs, _}, K) -> setter_from(maps:find(K, Props), K, Attrs, Proto).
 
 setter_from({ok, {'$accessor', _, Setter}}, _K, _Attrs, _Proto) ->
     {setter, Setter};

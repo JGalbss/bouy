@@ -9,9 +9,11 @@ use std::rc::Rc;
 
 use oxc::ast::AstKind;
 use oxc::ast::ast::{
-    Class, ClassElement, Expression, MethodDefinitionKind, PropertyKey, TSType, TSTypeName,
+    BindingPattern, Class, ClassElement, Expression, ForStatementLeft, MethodDefinitionKind,
+    PropertyKey, TSType, TSTypeName,
 };
 use oxc::semantic::NodeId;
+use oxc::span::GetSpan;
 
 use super::context::Lowerer;
 use super::layout::{declared_class, instance_layout};
@@ -137,14 +139,38 @@ impl<'a> Lowerer<'a, '_> {
             AstKind::FormalParameter(param) => {
                 self.type_class(&param.type_annotation.as_ref()?.type_annotation, steps)
             }
-            AstKind::VariableDeclarator(declarator) => match &declarator.type_annotation {
-                Some(annotation) => self.type_class(&annotation.type_annotation, steps),
-                // Without an annotation, TypeScript gives the variable the type of its
-                // initializer, and every later assignment must fit it.
-                None => self.instance_class(declarator.init.as_ref()?, steps),
-            },
+            AstKind::VariableDeclarator(declarator)
+                if matches!(declarator.id, BindingPattern::BindingIdentifier(_)) =>
+            {
+                match (&declarator.type_annotation, &declarator.init) {
+                    (Some(annotation), _) => self.type_class(&annotation.type_annotation, steps),
+                    // Without an annotation, TypeScript gives the variable the type of its
+                    // initializer, and every later assignment must fit it.
+                    (None, Some(init)) => self.instance_class(init, steps),
+                    (None, None) => self.for_of_element(id, steps),
+                }
+            }
             _ => None,
         }
+    }
+
+    /// The class of the elements of the array that `for (const x of array)` walks, where
+    /// the node `id` declares `x`.
+    fn for_of_element(&self, id: NodeId, steps: usize) -> Option<&'a Class<'a>> {
+        let nodes = self.semantic.nodes();
+        let declaration = nodes.parent_id(id);
+        let AstKind::ForOfStatement(statement) = nodes.parent_kind(declaration) else {
+            return None;
+        };
+        let ForStatementLeft::VariableDeclaration(left) = &statement.left else {
+            return None;
+        };
+        // A `var` declaration in the body of the loop has the loop as its parent too.
+        if statement.r#await || left.span != nodes.kind(declaration).span() {
+            return None;
+        }
+        let array = self.annotation_of(&statement.right, steps + 1)?;
+        self.element_class(array, steps + 1)
     }
 
     /// The class of the instances of a type: a class of the module, alone or with

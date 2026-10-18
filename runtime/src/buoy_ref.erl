@@ -225,7 +225,7 @@ call(V, _This, _Args) -> type_error(text([describe(V), <<" is not a function">>]
 
 %% r.k(args): the method of the receiver, called with the receiver as this.
 -spec call_method(term(), buoy_heap:key(), list()) -> term().
-call_method({'$o', _} = O, K, Args) -> invoke(buoy_heap:get(O, K), O, K, Args);
+call_method({'$o', _} = O, K, Args) -> invoke(buoy_heap:method(O, K), O, K, Args);
 call_method({'$actor', Pid}, K, Args) -> buoy_jobs:actor_call(Pid, K, Args);
 call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 
