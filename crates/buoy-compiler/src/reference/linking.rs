@@ -96,10 +96,10 @@ impl<'c> Linking<'c> {
             ]),
             None => Expr::atom("none"),
         };
-        self.module_info_with(error)
+        self.module_info_with(error, self.link.load_failed)
     }
 
-    fn module_info_with(&self, error: Expr) -> Function {
+    fn module_info_with(&self, error: Expr, load_failed: bool) -> Function {
         let unit = self.unit();
         let kind = match unit.kind {
             Kind::Esm => "esm",
@@ -143,6 +143,10 @@ impl<'c> Linking<'c> {
                     }),
                 ),
                 (Expr::atom("error"), error),
+                (
+                    Expr::atom("loaded"),
+                    Expr::atom(if load_failed { "false" } else { "true" }),
+                ),
             ]),
         )
     }
@@ -271,7 +275,7 @@ impl<'c> Linking<'c> {
             vec![Expr::atom(self.unit().name.clone())],
         );
         vec![
-            self.module_info_with(error),
+            self.module_info_with(error, true),
             constant("$namespace", Expr::List(vec![])),
             self.resolver(),
             constant("$body", broken.clone()),

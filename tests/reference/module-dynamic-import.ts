@@ -20,6 +20,12 @@ try {
 } catch (error) {
   console.log("missing", (error as { code: string }).code);
 }
+// Loading fails before linking: a request that does not resolve wins over a missing export.
+try {
+  await import("./modules/load-before-link.mjs");
+} catch (error) {
+  console.log("load before link", (error as { code: string }).code);
+}
 const order: string[] = [];
 const pending = import("./modules/locale-en.ts").then(() => order.push("import"));
 Promise.resolve().then(() => order.push("microtask"));

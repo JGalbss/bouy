@@ -10,5 +10,6 @@ lazy default object true
 en hello
 fr bonjour
 missing ERR_MODULE_NOT_FOUND
+load before link ERR_MODULE_NOT_FOUND
 order microtask,import
 eval import true

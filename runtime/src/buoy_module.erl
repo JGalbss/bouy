@@ -111,8 +111,23 @@ has_tla(M) -> info(M, async).
 %%% whose imports did not resolve throws its error here.
 
 link_graph(M) ->
+    load_graph(M, []),
     Marked = link_graph(M, []),
     lists:foreach(fun(L) -> set(L, status, linked) end, Marked).
+
+%% LoadRequestedModules: a request that did not resolve, or a module that does
+%% not parse, fails the graph before any import is linked, in the order that
+%% loading meets them.
+load_graph(M, Seen) ->
+    case lists:member(M, Seen) orelse get(M, status) =/= new of
+        true ->
+            Seen;
+        false ->
+            case {maps:get(loaded, get(M, info), true), info(M, error)} of
+                {false, {_, _, _} = Error} -> erlang:error({'$throw', link_error(Error)});
+                _ -> lists:foldl(fun load_graph/2, [M | Seen], requests(M))
+            end
+    end.
 
 link_graph(M, Marked) ->
     case get(M, status) of
