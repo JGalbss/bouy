@@ -1,15 +1,15 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "351b228387d2a73a13e0713be4fd51b9bc06b0f5",
+  "updated": "270df4186a6d5c2ef53dd1adcb44cf1181b999ee",
   "total": 4419,
   "outcomes": {
-    "pass": 1983,
+    "pass": 2012,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1722,
+    "fail": 1693,
     "timeout": 121,
     "harness_error": 0,
     "crash": 10
@@ -23,9 +23,9 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1879,
+        "pass": 1908,
         "skip": 545,
-        "fail": 1544,
+        "fail": 1515,
         "timeout": 101,
         "crash": 10
       },
@@ -41,9 +41,9 @@
         "skip": 343
       },
       "public": {
-        "pass": 1983,
+        "pass": 2012,
         "skip": 240,
-        "fail": 1722,
+        "fail": 1693,
         "timeout": 121,
         "crash": 10
       }
@@ -157,9 +157,9 @@
         "fail": 4
       },
       "other": {
-        "pass": 216,
+        "pass": 217,
         "skip": 178,
-        "fail": 207,
+        "fail": 206,
         "timeout": 13,
         "crash": 2
       },
@@ -208,9 +208,9 @@
         "skip": 2
       },
       "stream": {
-        "pass": 233,
+        "pass": 203,
         "skip": 8,
-        "fail": 22
+        "fail": 52
       },
       "string_decoder": {
         "pass": 3
@@ -273,9 +273,8 @@
         "timeout": 1
       },
       "zlib": {
-        "pass": 2,
-        "skip": 3,
-        "fail": 58
+        "pass": 60,
+        "skip": 3
       }
     },
     "skip reason": {
