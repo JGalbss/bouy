@@ -454,11 +454,20 @@ server_handshake(Realm, Id, Socket, {Listen, Options}, AlpnCallback) ->
     end;
 server_handshake(Realm, Id, Socket, Options, true) ->
     case ssl:handshake(Socket, [{handshake, hello} | Options], infinity) of
-        {ok, Hello, Ext} -> ssl:handshake_continue(Hello, alpn_select(Realm, Id, maps:get(alpn, Ext, undefined)), infinity);
+        {ok, Hello, Ext} -> ssl:handshake_continue(Hello, alpn_select(Realm, Id, alpn_wire(Ext)), infinity);
+        %% handshake/3 of an accepted socket replies with the bare map of
+        %% the ClientHello's extension records.
+        {ok, Ext} when is_map(Ext) -> ssl:handshake_continue(Socket, alpn_select(Realm, Id, alpn_wire(Ext)), infinity);
         Other -> Other
     end;
 server_handshake(_Realm, _Id, Socket, Options, false) ->
     ssl:handshake(Socket, Options, infinity).
+
+alpn_wire(Ext) ->
+    case maps:get(alpn, Ext, undefined) of
+        {alpn, Wire} -> Wire;
+        Wire -> Wire
+    end.
 
 %% The protocol that the ALPN callback chose. None makes ssl refuse the
 %% client's list with no_application_protocol, as SSL_TLSEXT_ERR_ALERT_FATAL
@@ -565,11 +574,10 @@ agent_loop(Ssl, Report, Reading) ->
             agent_loop(Ssl, Report, Reading);
         renegotiate ->
             case ssl:renegotiate(Ssl) of
-                ok -> Report(renegotiated);
-                {error, closed} -> ok;
-                {error, Reason} -> Report({error, Reason})
-            end,
-            agent_loop(Ssl, Report, Reading);
+                ok -> Report(renegotiated), agent_loop(Ssl, Report, Reading);
+                {error, closed} -> Report(cleartext_eof);
+                {error, Reason} -> Report({error, Reason}), agent_loop(Ssl, Report, Reading)
+            end;
         {export, From, Ref, Label, Context, Length} ->
             %% The secret stays for the next export (ConsumeSecret false).
             From ! {Ref, try ssl:export_key_materials(Ssl, [Label], [Context], [Length], false) catch _:_ -> error end},
@@ -647,8 +655,13 @@ event(This, S, {drained, Count}) ->
         _ ->
             ok
     end;
+%% The agent is gone with ssl's connection: the writes that it did not
+%% take are canceled, as TLSWrap's InvokeQueued cancels them.
 event(This, _S, cleartext_eof) ->
-    save(This, (state(This))#{phase := closed}),
+    #{writes := Writes} = S = state(This),
+    save(This, S#{phase := closed, writes := #{}, queued := 0}),
+    Canceled = buoy_node_socket:errno(ecanceled),
+    [buoy_node_socket:later(fun() -> complete(Req, Canceled, This) end) || {Req, _Size} <- maps:values(Writes)],
     cleartext_end(This);
 event(This, S, {written, Ref, Status}) ->
     #{writes := Writes, queued := Queued} = S,
@@ -670,7 +683,8 @@ event(This, S, {ticket, Ticket}) ->
     maps:get(session_callbacks, S) andalso
         call_js(This, <<"onnewsession">>, [buoy_node_encoding:new_buffer(<<>>),
                                           buoy_node_encoding:new_buffer(term_to_binary({tls13_ticket, Ticket}))]);
-event(This, _S, renegotiated) ->
+event(This, S, renegotiated) ->
+    save(This, S#{renegotiating => false}),
     call_js(This, <<"onhandshakedone">>, []);
 event(This, _S, {error, Reason}) ->
     call_js(This, <<"onerror">>, [handshake_error(Reason, false)]).
@@ -792,6 +806,7 @@ encrypted_in(This, eof) ->
     S = state(This),
     save(This, S#{peer_eof := true}),
     case S of
+        #{phase := open, renegotiating := true} -> pump(This);
         #{phase := open} -> poll(This);
         _ -> pump(This)
     end;
@@ -816,7 +831,8 @@ renegotiate(This) ->
     case state(This) of
         #{info := #{items := #{protocol := 'tlsv1.3'}}} ->
             erlang:error({'$throw', buoy_crypto_context:ssl_error_value(16#10A, <<"wrong ssl version">>, ssl)});
-        #{phase := open, agent := Agent} ->
+        #{phase := open, agent := Agent} = S ->
+            save(This, S#{renegotiating => true}),
             Agent ! renegotiate,
             undefined;
         _ ->
@@ -989,8 +1005,21 @@ release_flight(Id) ->
     end.
 
 %% Passes the waiting bytes to ssl while its active mode takes them.
+%% A destroyed TLSWrap, or one whose socket closed, gives ssl nothing
+%% more, as SSL is freed with it: a server that refuses a renegotiation in
+%% onhandshakestart and destroys the socket never lets ssl answer it.
 pump(This) ->
     S = state(This),
+    Closed = maps:get(phase, S) =:= closed orelse case buoy_node_socket:find(maps:get(parent, S)) of
+        {ok, #{closed := true}} -> true;
+        _ -> false
+    end,
+    case Closed of
+        true -> ok;
+        false -> pump(This, S)
+    end.
+
+pump(This, S) ->
     case S of
         #{controller := Pid, active := Active, inbox := [_ | _] = Inbox, parent := Parent} when is_pid(Pid), Active =/= false ->
             Socket = transport_socket(S),
@@ -1009,8 +1038,11 @@ pump(This) ->
         %% A closed transport tells each activation again, as gen_tcp's
         %% setopts fails on a closed socket: ssl defers a close that came
         %% while its owner did not read, until it activates the transport.
-        #{controller := Pid, active := Active, inbox := [], peer_eof := true, phase := Phase}
-          when is_pid(Pid), Active =/= false, Phase =/= open ->
+        %% An open connection keeps writing after the peer's end, so ssl
+        %% hears of the transport's end only while this side renegotiates,
+        %% which waits on the peer.
+        #{controller := Pid, active := Active, inbox := [], peer_eof := true, phase := Phase} = S1
+          when is_pid(Pid), Active =/= false, Phase =/= open orelse is_map_key(renegotiating, S1) andalso map_get(renegotiating, S1) ->
             Pid ! {buoy_tls_closed, transport_socket(S)},
             save(This, S#{active := false});
         _ ->
