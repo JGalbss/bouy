@@ -422,7 +422,7 @@ parallel/test-child-process-exit-code.js pass
 parallel/test-child-process-flush-stdio.js pass
 parallel/test-child-process-fork-abort-signal.js pass
 parallel/test-child-process-fork-advanced-header-serialization.js fail
-parallel/test-child-process-fork-and-spawn.js timeout
+parallel/test-child-process-fork-and-spawn.js pass
 parallel/test-child-process-fork-args.js pass
 parallel/test-child-process-fork-close.js pass
 parallel/test-child-process-fork-closed-channel-segfault.js fail
@@ -434,7 +434,7 @@ parallel/test-child-process-fork-getconnections.js fail
 parallel/test-child-process-fork-net-server.js fail
 parallel/test-child-process-fork-net-socket.js fail
 parallel/test-child-process-fork-net.js fail
-parallel/test-child-process-fork-no-shell.js timeout
+parallel/test-child-process-fork-no-shell.js pass
 parallel/test-child-process-fork-ref.js pass
 parallel/test-child-process-fork-ref2.js pass
 parallel/test-child-process-fork-stdio-string-variant.js fail
