@@ -6,7 +6,7 @@
 -export([binding/0, mark/1]).
 
 -define(MILESTONES, '$buoy_node_milestones').
--define(HISTOGRAM, '$buoy_histogram').
+-define(HISTOGRAM, {'#', ?MODULE, <<"histogram">>}).
 -define(INT64_MAX, 9223372036854775807).
 %% The indices of the milestones array.
 -define(TIME_ORIGIN_TIMESTAMP, 0).

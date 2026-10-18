@@ -9,7 +9,7 @@
 
 -include("buoy_ref.hrl").
 
--define(SET, '$buoy_trace_category_set').
+-define(SET, {'#', ?MODULE, <<"categories">>}).
 %% #{Group => [Uint8Array]}: the buffers of getCategoryEnabledBuffer.
 -define(BUFFERS, '$buoy_trace_buffers').
 

@@ -15,7 +15,7 @@
 -define(RESOURCES, '$buoy_node_async_resources').
 %% The async ids that wait for their destroy hooks, newest first.
 -define(DESTROY, '$buoy_node_async_destroy').
--define(WRAP, '$buoy_async_wrap').
+-define(WRAP, {'#', ?MODULE, <<"wrap">>}).
 -define(K_INIT, 0).
 -define(K_BEFORE, 1).
 -define(K_AFTER, 2).
