@@ -710,8 +710,8 @@ cipher_info(#{name := Name, nid := Nid, mode := Mode, key := Key, iv := IV, bloc
 %% publicEncrypt and the others: (key, format, type, passphrase, buffer,
 %% padding, oaepHash, oaepLabel)
 public_key_cipher(Which, Operation, Args) ->
-    {{_, K}, Rest} = buoy_crypto_keys:from_args(Args, Which),
-    [Buffer, Padding, OaepHash, OaepLabel | _] = Rest ++ [undefined, undefined, undefined, undefined],
+    %% The digest is checked before the key is parsed, as in ncrypto's Cipher.
+    OaepHash = buoy_node:arg(7, Args),
     Md = case buoy_crypto:is_string(OaepHash) of
         true ->
             case buoy_crypto_hash:digest(OaepHash) of
@@ -720,6 +720,8 @@ public_key_cipher(Which, Operation, Args) ->
             end;
         false -> sha
     end,
+    {{_, K}, Rest} = buoy_crypto_keys:from_args(Args, Which),
+    [Buffer, Padding, _, OaepLabel | _] = Rest ++ [undefined, undefined, undefined, undefined],
     Label = case OaepLabel of
         undefined -> <<>>;
         _ -> buoy_crypto:bytes(OaepLabel)
