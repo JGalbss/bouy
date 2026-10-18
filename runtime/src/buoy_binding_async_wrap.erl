@@ -27,6 +27,8 @@
 -define(K_TRIGGER_ASYNC_ID, 1).
 -define(K_ASYNC_ID_COUNTER, 2).
 -define(K_DEFAULT_TRIGGER_ASYNC_ID, 3).
+%% TRACING_CATEGORY_NODE1(async_hooks).
+-define(TRACE, <<"node,node.async_hooks">>).
 
 -spec binding() -> term().
 binding() ->
@@ -182,7 +184,11 @@ wrap(Resource, Provider) ->
                 Default when Default < 0 -> buoy_heap:get(IdFields, ?K_EXECUTION_ASYNC_ID);
                 Default -> Default
             end,
-            buoy_heap:private_put(Resource, ?WRAP, {AsyncId, TriggerId, buoy_jobs:context()}),
+            buoy_heap:private_put(Resource, ?WRAP, {AsyncId, TriggerId, buoy_jobs:context(), Provider}),
+            %% EmitTraceEventInit
+            buoy_trace:event($b, ?TRACE, Provider, trunc(AsyncId), [{<<"data">>, #{
+                <<"executionAsyncId">> => trunc(buoy_heap:get(IdFields, ?K_EXECUTION_ASYNC_ID)),
+                <<"triggerAsyncId">> => trunc(TriggerId)}}]),
             case field(HookFields, ?K_INIT) of
                 0 -> ok;
                 _ -> hook(<<"init">>, Resource, [AsyncId, Provider, TriggerId, Resource])
@@ -195,10 +201,13 @@ wrap(Resource, Provider) ->
 %% uncaught exception handler, and the call returns undefined.
 -spec make_callback(term(), term(), list()) -> term().
 make_callback(Resource, Callback, Args) ->
-    {AsyncId, TriggerId, Frame} = case buoy_heap:private_find(Resource, ?WRAP) of
+    {AsyncId, TriggerId, Frame, Provider} = case buoy_heap:private_find(Resource, ?WRAP) of
         {ok, Wrap} -> Wrap;
-        error -> {0, 0, buoy_jobs:context()}
+        error -> {0, 0, buoy_jobs:context(), none}
     end,
+    %% EmitTraceEventBefore and EmitTraceEventAfter
+    Traced = Provider =/= none andalso buoy_trace:enabled(?TRACE),
+    Traced andalso buoy_trace:event($b, ?TRACE, <<Provider/binary, "_CALLBACK">>, trunc(AsyncId), []),
     Prior = buoy_jobs:context(),
     buoy_jobs:set_context(Frame),
     push(AsyncId, TriggerId, Resource),
@@ -225,6 +234,7 @@ make_callback(Resource, Callback, Args) ->
     end,
     pop(AsyncId),
     buoy_jobs:set_context(Prior),
+    Traced andalso buoy_trace:event($e, ?TRACE, <<Provider/binary, "_CALLBACK">>, trunc(AsyncId), []),
     Result.
 
 hook_of(HookFields, Field, Name, AsyncId) ->
@@ -257,8 +267,12 @@ emit_destroy(AsyncId) when is_number(AsyncId) ->
     end;
 emit_destroy(Resource) ->
     case buoy_heap:private_find(Resource, ?WRAP) of
-        {ok, {AsyncId, _, _}} -> emit_destroy(AsyncId);
-        error -> ok
+        {ok, {AsyncId, _, _, Provider}} ->
+            %% EmitTraceEventDestroy
+            buoy_trace:event($e, ?TRACE, Provider, trunc(AsyncId), []),
+            emit_destroy(AsyncId);
+        error ->
+            ok
     end.
 
 %% DestroyAsyncIdsCallback, as a native immediate: the destroy hooks of the

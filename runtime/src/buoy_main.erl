@@ -69,6 +69,7 @@ import(Module) ->
 -spec run(module()) -> no_return().
 run(Entry) ->
     ok = start_runtime(),
+    ok = buoy_trace:start_cli(),
     _ = process_flag(trap_exit, false),
     %% Many workers reply to the top-level code at once, as in Promise.all over actor
     %% calls. Off the heap, their messages need no lock of this process.
@@ -133,6 +134,8 @@ finish(Status, Facts) ->
     catch
         _:_ -> ok
     end,
+    %% StopTracingAgent: the trace file ends before the VM does.
+    ok = buoy_trace:stop(),
     case os:getenv("BUOY_RESULT_FILE", "") of
         "" -> ok;
         Path -> _ = file:write_file(Path, json:encode(Facts#{status => Status}))

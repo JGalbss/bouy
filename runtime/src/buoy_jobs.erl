@@ -527,12 +527,15 @@ run_main(Body) ->
 %% when the heap grew enough since the last one.
 -spec run_job(fun(() -> term())) -> ok.
 run_job(Job) ->
-    try
-        _ = Job(),
-        after_job()
-    catch
-        error:Reason:Stack -> uncaught(buoy_ref:caught(Reason, Stack))
-    end,
+    %% A call into the engine from the loop is V8.Execute in Node's traces.
+    buoy_trace:complete(<<"v8">>, <<"V8.Execute">>, fun() ->
+        try
+            _ = Job(),
+            after_job()
+        catch
+            error:Reason:Stack -> uncaught(buoy_ref:caught(Reason, Stack))
+        end
+    end),
     check_unhandled(),
     maybe_gc().
 

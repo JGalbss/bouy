@@ -31,6 +31,7 @@ binding() ->
               {?V8_START, boot_ns()}, {?ENVIRONMENT, now_ns()}],
     [buoy_heap:set(Milestones, I, -1) || I <- lists:seq(0, 7)],
     [buoy_heap:set(Milestones, I, V) || {I, V} <- Starts ++ marked()],
+    [trace_milestone(I, V) || {I, V} <- Starts ++ marked(), I >= ?ENVIRONMENT],
     erlang:put(?MILESTONES, Milestones),
     Constants = [{<<"NODE_PERFORMANCE_GC_MAJOR">>, 4}, {<<"NODE_PERFORMANCE_GC_MINOR">>, 1},
                  {<<"NODE_PERFORMANCE_GC_INCREMENTAL">>, 8}, {<<"NODE_PERFORMANCE_GC_WEAKCB">>, 16},
@@ -73,11 +74,18 @@ binding() ->
 mark(loop_start) -> mark_once(?LOOP_START);
 mark(loop_exit) -> mark_once(?LOOP_EXIT);
 mark(Index) ->
+    Now = now_ns(),
     case erlang:get(?MILESTONES) of
-        undefined -> erlang:put({?MODULE, Index}, now_ns());
-        Milestones -> buoy_heap:set(Milestones, Index, now_ns())
+        undefined -> erlang:put({?MODULE, Index}, Now);
+        Milestones -> buoy_heap:set(Milestones, Index, Now), trace_milestone(Index, Now)
     end,
     ok.
+
+%% The trace event of a mark, an instant at the time of the milestone.
+trace_milestone(Index, Ns) ->
+    Names = {<<"environment">>, <<"nodeStart">>, <<"v8Start">>, <<"loopStart">>, <<"loopExit">>, <<"bootstrapComplete">>},
+    buoy_trace:instant(<<"node,node.bootstrap">>, element(Index - ?ENVIRONMENT + 1, Names),
+                       round(Ns) div 1000).
 
 mark_once(Index) ->
     Marked = case erlang:get(?MILESTONES) of

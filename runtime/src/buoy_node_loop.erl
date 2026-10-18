@@ -19,6 +19,9 @@
 
 -include("buoy_ref.hrl").
 
+%% The trace category of the phases of the loop (TRACING_CATEGORY_NODE1).
+-define(ENVIRONMENT, <<"node,node.environment">>).
+
 -compile({no_auto_import, [now/0]}).
 
 -export([has_work/0, poll_timeout/0, event/1, check/0, after_callback/0, uncaught/2, finish/0, really_exit/1]).
@@ -220,7 +223,7 @@ event({'$buoy_node_timer', Ref}) ->
     case erlang:get(?TIMER) of
         {Ref, active, Refed} ->
             erlang:put(?TIMER, {none, idle, Refed}),
-            buoy_jobs:run_job(fun run_timers/0);
+            buoy_trace:scope(?ENVIRONMENT, <<"RunTimers">>, fun() -> buoy_jobs:run_job(fun run_timers/0) end);
         _ ->
             ok
     end,
@@ -271,7 +274,14 @@ process_timers(Process, Now) ->
 %% The check phase: CheckImmediate.
 -spec check() -> ok.
 check() ->
-    _ = buoy_node:ready() andalso buoy_binding_async_wrap:destroy_queued(),
+    case buoy_node:ready() of
+        true -> buoy_trace:scope(?ENVIRONMENT, <<"CheckImmediate">>, fun check_immediate/0);
+        false -> ok
+    end.
+
+%% The native immediates first: the destroy hooks of async_hooks.
+check_immediate() ->
+    _ = buoy_trace:scope(?ENVIRONMENT, <<"RunAndClearNativeImmediates">>, fun buoy_binding_async_wrap:destroy_queued/0),
     immediates().
 
 immediates() ->
@@ -323,6 +333,7 @@ waits(TickInfo) ->
 %% Returns false when no callback is registered.
 -spec reject_hook(0 | 1, term(), term()) -> boolean().
 reject_hook(Type, Promise, Reason) ->
+    trace_rejection(Type),
     case callback(promise_reject) of
         undefined ->
             false;
@@ -330,6 +341,21 @@ reject_hook(Type, Promise, Reason) ->
             _ = buoy_heap:call(F, undefined, [Type, Promise, Reason]),
             true
     end.
+
+%% The counters of PromiseRejectCallback: the rejections without a handler,
+%% and those that got one later.
+trace_rejection(Type) ->
+    {Unhandled, HandledAfter} = case erlang:get({?MODULE, rejections}) of
+        undefined -> {0, 0};
+        Counts -> Counts
+    end,
+    Counts1 = case Type of
+        0 -> {Unhandled + 1, HandledAfter};
+        1 -> {Unhandled, HandledAfter + 1}
+    end,
+    erlang:put({?MODULE, rejections}, Counts1),
+    buoy_trace:event($C, <<"node,node.promises,node.promises.rejections">>, <<"rejections">>, none,
+                     [{<<"unhandled">>, element(1, Counts1)}, {<<"handledAfter">>, element(2, Counts1)}]).
 
 %%% Uncaught exceptions and exit
 
@@ -400,17 +426,27 @@ finish() ->
     case exiting() of
         false ->
             buoy_binding_async_wrap:destroy_queued(),
-            buoy_jobs:run_job(fun() -> emit(Process, <<"beforeExit">>, exit_code(0)) end),
+            buoy_trace:complete(?ENVIRONMENT, <<"BeforeExit">>, fun() ->
+                buoy_jobs:run_job(fun() -> emit(Process, <<"beforeExit">>, exit_code(0)) end)
+            end),
             case buoy_jobs:has_work() of
                 true ->
                     ok;
                 false ->
                     emit_exit(Process),
+                    free_environment(),
                     really_exit(exit_code(0))
             end;
         true ->
             really_exit(exit_code(0))
     end.
+
+%% FreeEnvironment after the loop ends: the cleanup hooks, the AtExit
+%% callbacks, and the end of the Environment, which process.exit() skips.
+free_environment() ->
+    buoy_trace:complete(?ENVIRONMENT, <<"RunCleanup">>, fun() -> ok end),
+    buoy_trace:scope(?ENVIRONMENT, <<"AtExit">>, fun() -> ok end),
+    buoy_trace:close_scope(?ENVIRONMENT, <<"Environment">>).
 
 exiting() ->
     case buoy_node_process:exit_info() of

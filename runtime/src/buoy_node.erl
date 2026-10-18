@@ -131,6 +131,8 @@ boot() ->
     [run(Id, [Context, Primordials, Private, PerIsolate]) || Id <- ?PER_CONTEXT, is_compiled(Id)],
     Process = buoy_node_process:create(),
     buoy_node_loop:set_process(Process),
+    buoy_trace:open_scope(<<"node,node.environment">>, <<"Environment">>, [{<<"args">>, #{
+        <<"args">> => persistent_term:get({buoy, argv}, []), <<"exec_args">> => buoy_node_process:exec_argv()}}]),
     GetLinked = fn(<<"getLinkedBinding">>, 1, fun ?MODULE:linked_binding/2),
     GetInternal = fn(<<"getInternalBinding">>, 1, fun(_, Args) -> binding(buoy_ref_realm:arg(1, Args)) end),
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
