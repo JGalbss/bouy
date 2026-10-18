@@ -74,6 +74,10 @@ method(Fun, Key, Length, Kind) ->
 %% method/4 with the place of its source text, {Module, Start, End}, for
 %% Function.prototype.toString.
 -spec method(term(), term(), non_neg_integer(), atom(), {module(), non_neg_integer(), non_neg_integer()}) -> term().
+method(Fun, Key, Length, Kind, Source) when Kind =:= normal; Kind =:= sloppy ->
+    %% The source goes into the record that the function is made with, so that
+    %% its prototype stays lazy (buoy_heap:function/5).
+    buoy_ref:named_fn(Fun, function_name(Key, <<>>), Length, {Kind, Source});
 method(Fun, Key, Length, Kind, Source) ->
     F = method(Fun, Key, Length, Kind),
     buoy_heap:set_slots(F, (buoy_heap:slots(F))#{source => Source}),

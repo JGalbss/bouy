@@ -519,7 +519,7 @@ A function value carries its Erlang fun, so a call needs no heap read. Every fun
 - `method`, `get`, `set`, and `arrow`: no `prototype`, and no construct.
 - `normal`: a `prototype` object, and new can construct it. The slots hold `kind => normal`.
 - `normal_nt`: a normal function that reads `new.target`. It compiles to `fun(This, Args, NewTarget)`, and its record holds a `construct` fun that passes new.target.
-- `sloppy`: a normal function of sloppy code, with the `caller` and `arguments` properties that V8 gives it, both `null`.
+- `sloppy`: a normal function of sloppy code, with own `caller` and `arguments` properties, as V8 gives it. `arguments` is `null`, as in V8 outside a call. `caller` is `undefined`: the engine keeps no stack of callers, and `undefined` is what test262 takes from an engine without the extension (ECMA-262 §17.1).
 - `generator` and `async_generator`: the function compiles to a maker, `fun(SelfId) -> fun(This, Args) end`, so that its body finds its own `prototype` for the generators it makes. Its `[[Prototype]]` is `%GeneratorFunction.prototype%` or `%AsyncGeneratorFunction.prototype%`, and there is no construct.
 - `async`: no `prototype`, no construct, and the `[[Prototype]]` `%AsyncFunction.prototype%`.
 

@@ -41,7 +41,7 @@
 
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
--export([function/1, function/4, call/3, construct/3, is_constructor/1]).
+-export([function/1, function/4, function/5, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
@@ -265,16 +265,39 @@ function(Fun) -> {'$f', next_id(), Fun}.
 %% A function with a record: a name, a length, and internal slots, such as the
 %% construct behaviour of a class.
 -spec function(fun((value(), list()) -> value()), binary(), value(), map()) -> value().
-function(Fun, Name, Length, Slots) ->
+function(Fun, Name, Length, Slots) -> function(Fun, Name, Length, Slots, []).
+
+%% function/4 with more own properties after name and length, each read-only
+%% and not configurable, such as the caller and arguments of a sloppy
+%% function. The slot `prototype => lazy` marks an ordinary function whose
+%% prototype object own_prototype/3 makes when code first uses a property of
+%% the function, as V8 makes it lazily: most functions are only called.
+-spec function(fun((value(), list()) -> value()), binary(), value(), map(), [{key(), value()}]) -> value().
+function(Fun, Name, Length, Slots, Fixed) ->
     Id = next_id(),
-    Props = #{<<"length">> => Length, <<"name">> => Name},
-    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
+    Props = maps:merge(#{<<"length">> => Length, <<"name">> => Name}, maps:from_list(Fixed)),
+    Attrs = maps:merge(#{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE}, maps:from_list([{K, 0} || {K, _} <- Fixed])),
+    Keys = lists:reverse([K || {K, _} <- Fixed], [<<"name">>, <<"length">>]),
     {Fun1, Slots1} = case erlang:get(?REALM_KEY) of
         undefined -> {Fun, Slots};
         N -> {buoy_ref_realm:realm_fun(N, Fun), Slots#{realm => N}}
     end,
-    erlang:put(Id, {function, function_prototype(), Props, [<<"name">>, <<"length">>], Attrs, Slots1}),
+    erlang:put(Id, {function, function_prototype(), Props, Keys, Attrs, Slots1}),
     {'$f', Id, Fun1}.
+
+%% The prototype property of an ordinary function F: an object of the realm of
+%% F whose constructor is F, writable, not enumerable, and not configurable. Its
+%% key goes after the keys that the function had when it was made.
+own_prototype(Id, F, {function, P, Props, Keys, Attrs, Slots}) ->
+    ProtoId = next_id(),
+    erlang:put(ProtoId, {object, intrinsic(maps:get(realm, Slots, 0), 'Object.prototype'), #{<<"constructor">> => F},
+                         [<<"constructor">>], #{<<"constructor">> => ?WRITABLE bor ?CONFIGURABLE}, none}),
+    Proto = {'$o', ProtoId},
+    {Added, Initial} = lists:splitwith(fun(K) -> not lists:member(K, [<<"caller">>, <<"arguments">>, <<"name">>, <<"length">>]) end, Keys),
+    R = {function, P, Props#{<<"prototype">> => Proto}, Added ++ [<<"prototype">> | Initial],
+         Attrs#{<<"prototype">> => ?WRITABLE}, maps:remove(prototype, Slots)},
+    erlang:put(Id, R),
+    R.
 
 -spec call(value(), value(), list()) -> value().
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
@@ -347,6 +370,7 @@ get({'$o', Id} = O, K, Receiver) ->
 get({'$f', Id, _} = F, K, Receiver) ->
     case erlang:get(Id) of
         undefined -> from_record(fn_record(F), K, Receiver);
+        {function, _, _, _, _, #{prototype := lazy}} = R when K =:= <<"prototype">> -> from_record(own_prototype(Id, F, R), K, Receiver);
         R -> from_record(R, K, Receiver)
     end.
 
@@ -470,7 +494,13 @@ assign({'$o', Id} = O, K, V, Mode) ->
         _ ->
             strict_set(O, K, V, Mode)
     end;
+assign({'$f', Id, _} = F, <<"prototype">> = K, V, Mode) ->
+    _ = id_for_write(F),
+    assign_function(Id, F, K, V, Mode);
 assign({'$f', Id, _} = F, K, V, Mode) ->
+    assign_function(Id, F, K, V, Mode).
+
+assign_function(Id, F, K, V, Mode) ->
     case erlang:get(Id) of
         {function, P, Props, Keys, Attrs, Slots} = R ->
             case Props of
@@ -1232,6 +1262,7 @@ fn_record({'$f', Id, _} = F) ->
         undefined when is_atom(Id) -> intrinsic_record(Id, F);
         undefined when is_tuple(Id) -> static_function_record(F);
         undefined -> {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}};
+        {function, _, _, _, _, #{prototype := lazy}} = R -> own_prototype(Id, F, R);
         R -> R
     end.
 
@@ -1250,11 +1281,11 @@ static_function_record({'$f', {builtin, Name} = Id, _}) ->
             R
     end;
 %% A module-level normal function of sloppy code is {'$f', {fn, Module, Name,
-%% Length, sloppy}, Fun}: it has the caller and arguments properties that V8
-%% gives it, both null.
+%% Length, sloppy}, Fun}: it has the caller and arguments properties of a
+%% sloppy function (buoy_ref:finish_fn/2).
 static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) ->
     Proto = new_object(?OBJECT_PROTO),
-    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => null},
+    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => undefined},
     Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE, <<"prototype">> => ?WRITABLE, <<"arguments">> => 0, <<"caller">> => 0},
     Keys = [<<"prototype">>, <<"caller">>, <<"arguments">>, <<"name">>, <<"length">>],
     Record = {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}},
@@ -1313,6 +1344,7 @@ id_for_write({'$o', Id} = O) ->
 id_for_write({'$f', Id, _} = F) ->
     case erlang:get(Id) of
         undefined -> erlang:put(Id, fn_record(F));
+        {function, _, _, _, _, #{prototype := lazy}} = R -> own_prototype(Id, F, R);
         _ -> ok
     end,
     Id.

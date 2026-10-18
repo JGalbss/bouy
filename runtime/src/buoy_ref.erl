@@ -396,7 +396,12 @@ tdz_error(Name) ->
 -type fn_kind() :: normal | sloppy | generator | async | async_generator.
 -spec named_fn(fun((term(), list()) -> term()), buoy_ref_string:js_string(), non_neg_integer(), fn_kind() | {fn_kind(), tuple()}) -> term().
 named_fn(Fun, Name, Length, Kind) ->
-    finish_fn(buoy_heap:function(Fun, Name, Length, slots(Kind)), kind(Kind)).
+    case kind(Kind) of
+        Ordinary when Ordinary =:= normal; Ordinary =:= sloppy ->
+            buoy_heap:function(Fun, Name, Length, (slots(Kind))#{prototype => lazy}, fixed(Ordinary));
+        Other ->
+            finish_fn(buoy_heap:function(Fun, Name, Length, slots(Kind)), Other)
+    end.
 
 %% The kind of named_fn may carry the place of the source text: {Kind, Source}.
 slots({Kind, Source}) -> #{kind => slot_kind(Kind), source => Source};
@@ -405,20 +410,16 @@ slots(Kind) -> #{kind => slot_kind(Kind)}.
 kind({Kind, _Source}) -> Kind;
 kind(Kind) -> Kind.
 
-%% A sloppy function is a normal one with the caller and arguments
-%% properties that V8 gives it, both null.
+%% A sloppy function is a normal one with own caller and arguments
+%% properties, as V8 gives it. arguments is null, as in V8 outside a call.
+%% caller is undefined: the engine keeps no stack of callers, and undefined
+%% is the value of an engine without the extension (ECMA-262 §17.1).
 slot_kind(sloppy) -> normal;
 slot_kind(Kind) -> Kind.
 
-finish_fn(F, sloppy) ->
-    buoy_heap:define(F, <<"arguments">>, #{value => null, writable => false, enumerable => false, configurable => false}),
-    buoy_heap:define(F, <<"caller">>, #{value => null, writable => false, enumerable => false, configurable => false}),
-    finish_fn(F, normal);
-finish_fn(F, normal) ->
-    Proto = buoy_heap:new_object(?OBJECT_PROTO),
-    buoy_heap:define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
-    buoy_heap:define(F, <<"prototype">>, #{value => Proto, writable => true, enumerable => false, configurable => false}),
-    F;
+fixed(sloppy) -> [{<<"arguments">>, null}, {<<"caller">>, undefined}];
+fixed(normal) -> [].
+
 finish_fn(F, async) ->
     buoy_heap:set_prototype_of(F, buoy_heap:intrinsic(buoy_ref_function:kind_prototype_id(async)));
 finish_fn(F, Kind) ->
