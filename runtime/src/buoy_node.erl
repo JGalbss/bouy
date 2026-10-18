@@ -118,6 +118,8 @@ ready() -> erlang:get(?STATE) =:= ready.
 
 boot() ->
     erlang:put(?STATE, booting),
+    %% The v8Start milestone of perf_hooks (buoy_binding_performance).
+    erlang:put('$buoy_node_boot_ns', erlang:monotonic_time(nanosecond)),
     persistent_term:put({buoy_node, debug}, os:getenv("BUOY_NODE_DEBUG") =/= false),
     Primordials = buoy_heap:object(null, []),
     erlang:put(?PRIMORDIALS, Primordials),

@@ -554,6 +554,7 @@ uncaught(Error) ->
 
 %% The loop, then Node's 'beforeExit', which may queue more work.
 loop_until_exit() ->
+    buoy_node_loop:enter(),
     loop(),
     case buoy_node:ready() of
         true ->
@@ -596,10 +597,12 @@ loop() ->
                 ok
             end;
         true ->
+            Poll = buoy_node_loop:poll(),
             receive
                 stop -> ok;
-                Message -> event_step(Message), buoy_node_loop:check(), loop()
+                Message -> buoy_node_loop:polled(Poll, 1), event_step(Message), buoy_node_loop:check(), loop()
             after buoy_node_loop:poll_timeout() ->
+                buoy_node_loop:polled(Poll, 0),
                 buoy_node_loop:check(),
                 loop()
             end

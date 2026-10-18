@@ -26,6 +26,8 @@ start() ->
 
 -spec boot() -> no_return().
 boot() ->
+    %% The nodeStart milestone of perf_hooks (buoy_binding_performance).
+    persistent_term:put({buoy, node_start}, erlang:monotonic_time(nanosecond)),
     %% SIGTERM ends the VM as it ends Node, with status 128 + 15 and no shutdown
     %% report, and the OTP reports that remain go to stderr, never into the output.
     ok = os:set_signal(sigterm, default),

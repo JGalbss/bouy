@@ -24,6 +24,7 @@
 -export([has_work/0, poll_timeout/0, event/1, check/0, after_callback/0, uncaught/2, finish/0, really_exit/1]).
 -export([schedule_timer/1, toggle_timer_ref/1, toggle_immediate_ref/1, now/0, set_callback/2, callback/1]).
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
+-export([enter/0, poll/0, polled/2, metrics/0, idle_time/0]).
 
 -define(TIMER, '$buoy_node_timer').
 -define(IMMEDIATE_REF, '$buoy_node_immediate_ref').
@@ -31,6 +32,9 @@
 -define(BASE, '$buoy_node_timer_base').
 -define(PROCESS, '$buoy_node_process').
 -define(EXITING, '$buoy_node_exiting').
+%% uv_metrics_info and uv_metrics_idle_time: {Iterations, Events,
+%% EventsWaiting, IdleNanoseconds}.
+-define(METRICS, '$buoy_node_metrics').
 %% The fields of immediateInfo: kCount, kRefCount, kHasOutstanding.
 -define(K_COUNT, 0).
 -define(K_REF_COUNT, 1).
@@ -140,6 +144,43 @@ toggle_immediate_ref(Ref) ->
     undefined.
 
 %%% The loop of buoy_jobs
+
+%% The loop starts after the main script, as SpinEventLoop marks it.
+-spec enter() -> ok.
+enter() -> buoy_binding_performance:mark(loop_start).
+
+%% Before a poll of the mailbox that may wait: one more iteration, and the
+%% messages that wait. Returns the time the poll starts.
+-spec poll() -> integer().
+poll() ->
+    {Iterations, Events, _, Idle} = metrics_state(),
+    {message_queue_len, Waiting} = erlang:process_info(self(), message_queue_len),
+    erlang:put(?METRICS, {Iterations + 1, Events, Waiting, Idle}),
+    erlang:monotonic_time(nanosecond).
+
+%% After the poll that started at Started, with Count events: the loop was
+%% idle while it waited.
+-spec polled(integer(), non_neg_integer()) -> ok.
+polled(Started, Count) ->
+    {Iterations, Events, Waiting, Idle} = metrics_state(),
+    erlang:put(?METRICS, {Iterations, Events + Count, Waiting, Idle + erlang:monotonic_time(nanosecond) - Started}),
+    ok.
+
+%% uv_metrics_info: {loop_count, events, events_waiting}.
+-spec metrics() -> {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
+metrics() ->
+    {Iterations, Events, Waiting, _} = metrics_state(),
+    {Iterations, Events, Waiting}.
+
+%% uv_metrics_idle_time in nanoseconds.
+-spec idle_time() -> non_neg_integer().
+idle_time() -> element(4, metrics_state()).
+
+metrics_state() ->
+    case erlang:get(?METRICS) of
+        undefined -> {0, 0, 0, 0};
+        M -> M
+    end.
 
 %% Whether the loop of Node is alive: a ref'd active timer, a ref'd
 %% immediate, or a ref'd handle.
@@ -378,6 +419,7 @@ exiting() ->
     end.
 
 emit_exit(Process) ->
+    buoy_binding_performance:mark(loop_exit),
     Fields = buoy_node_process:exit_info(),
     buoy_heap:set(Fields, 0, 1),
     buoy_jobs:run_job(fun() -> emit(Process, <<"exit">>, exit_code(0)) end).
