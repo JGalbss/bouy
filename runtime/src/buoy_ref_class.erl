@@ -16,6 +16,7 @@
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
 -export([super_get/3, super_set/4, sloppy_super_set/4]).
 -export([private_name/1, private_names/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
+-export([auto_accessor/2]).
 
 -define(UNINITIALIZED, '$uninitialized').
 -define(CONSTRUCT_ERROR, '$buoy_construct_error').
@@ -321,6 +322,17 @@ ensure_extensible(O, P) ->
         true -> ok;
         false -> buoy_ref:type_error(<<"Cannot define private field ", (key_text(P))/binary, " on a non-extensible object">>)
     end.
+
+%% The getter and the setter of `accessor Key`, which read and write the
+%% private name Storage of `this` (MakeAutoAccessorGetter, MakeAutoAccessorSetter).
+-spec auto_accessor(term(), tuple()) -> {term(), term()}.
+auto_accessor(Key, Storage) ->
+    Get = method(fun(This, _Args) -> private_get(This, Storage) end, Key, 0, get),
+    Set = method(fun(This, Args) ->
+                         private_set(This, Storage, case Args of [V | _] -> V; [] -> undefined end),
+                         undefined
+                 end, Key, 1, set),
+    {Get, Set}.
 
 %% PrivateMethodOrAccessorAdd for each method: {P, method | get | set, F}. A
 %% getter and a setter of one name make one accessor.
