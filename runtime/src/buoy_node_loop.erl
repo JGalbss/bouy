@@ -27,6 +27,7 @@
 -export([has_work/0, poll_timeout/0, event/1, check/0, after_callback/0, uncaught/2, finish/0, really_exit/1]).
 -export([schedule_timer/1, toggle_timer_ref/1, toggle_immediate_ref/1, now/0, set_callback/2, callback/1]).
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
+-export([set_immediate/1]).
 -export([enter/0, poll/0, polled/2, metrics/0, idle_time/0]).
 
 -define(TIMER, '$buoy_node_timer').
@@ -35,6 +36,7 @@
 -define(BASE, '$buoy_node_timer_base').
 -define(PROCESS, '$buoy_node_process').
 -define(EXITING, '$buoy_node_exiting').
+-define(NATIVE_IMMEDIATES, '$buoy_node_native_immediates').
 %% uv_metrics_info and uv_metrics_idle_time: {Iterations, Events,
 %% EventsWaiting, IdleNanoseconds}.
 -define(METRICS, '$buoy_node_metrics').
@@ -108,6 +110,29 @@ defer(Fun) ->
     end),
     self() ! {'$buoy_node_deferred', Ref},
     ok.
+
+%% Environment::SetImmediate: Fun runs at the start of the next check
+%% phase, before the immediates of JavaScript, and keeps the loop alive.
+-spec set_immediate(fun(() -> term())) -> ok.
+set_immediate(Fun) ->
+    erlang:put(?NATIVE_IMMEDIATES, [Fun | native_immediates()]),
+    ok.
+
+native_immediates() ->
+    case erlang:get(?NATIVE_IMMEDIATES) of
+        undefined -> [];
+        L -> L
+    end.
+
+%% RunAndClearNativeImmediates: until the queue is empty, so an immediate
+%% that one of them queues runs in the same phase.
+run_native_immediates() ->
+    case erlang:erase(?NATIVE_IMMEDIATES) of
+        undefined -> ok;
+        Funs ->
+            [buoy_jobs:run_job(F) || F <- lists:reverse(Funs)],
+            run_native_immediates()
+    end.
 
 %%% Timers
 
@@ -193,7 +218,7 @@ metrics_state() ->
 has_work() ->
     case buoy_node:ready() of
         false -> false;
-        true -> timer_alive() orelse immediates_alive() orelse handles() > 0
+        true -> timer_alive() orelse immediates_alive() orelse handles() > 0 orelse native_immediates() =/= []
     end.
 
 timer_alive() ->
@@ -208,7 +233,7 @@ immediates_alive() ->
 %% The time the poll of the mailbox may wait: none while immediates wait.
 -spec poll_timeout() -> infinity | 0.
 poll_timeout() ->
-    case buoy_node:ready() andalso immediate_field(?K_COUNT) > 0 of
+    case buoy_node:ready() andalso (immediate_field(?K_COUNT) > 0 orelse native_immediates() =/= []) of
         true -> 0;
         false -> infinity
     end.
@@ -286,9 +311,13 @@ check() ->
         false -> ok
     end.
 
-%% The native immediates first: the destroy hooks of async_hooks.
+%% The native immediates first: the destroy hooks of async_hooks, then
+%% those of set_immediate/1.
 check_immediate() ->
-    _ = buoy_trace:scope(?ENVIRONMENT, <<"RunAndClearNativeImmediates">>, fun buoy_binding_async_wrap:destroy_queued/0),
+    _ = buoy_trace:scope(?ENVIRONMENT, <<"RunAndClearNativeImmediates">>, fun() ->
+        _ = buoy_binding_async_wrap:destroy_queued(),
+        run_native_immediates()
+    end),
     immediates().
 
 immediates() ->

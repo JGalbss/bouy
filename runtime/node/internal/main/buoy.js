@@ -188,4 +188,9 @@ setupDebugEnv();
 require('internal/dns/utils').initializeDns();
 setupChildProcessIpcChannel();
 initializeClusterIPC();
+// -e and -p see the built-in modules as globals, as eval_string.js gives them.
+if (getOptionValue('[has_eval_string]')) {
+  require('internal/modules/cjs/loader').initializeCJS();
+  require('internal/modules/helpers').addBuiltinLibsToObject(globalThis, '<eval>');
+}
 require('internal/process/pre_execution').markBootstrapComplete();

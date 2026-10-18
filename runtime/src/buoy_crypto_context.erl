@@ -61,7 +61,7 @@ ticket_keys(Context) -> maps:get(ticket_keys, state(Context)).
 
 -spec is_context(term()) -> boolean().
 is_context(V) ->
-    buoy_heap:is_object(V) andalso buoy_heap:private_find(V, {'#', buoy_crypto, secure_context}) =/= error.
+    buoy_heap:is_object(V) andalso buoy_heap:private_find(V, buoy_crypto:state_key(secure_context)) =/= error.
 
 fail(Code, Message) -> buoy_crypto:fail({code, 'Error', Code, Message}).
 

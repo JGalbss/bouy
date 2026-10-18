@@ -217,15 +217,20 @@ export_job([Format, Handle | _]) ->
     {fun() -> {ok, export(Format, Data)} end, fun buoy_crypto:array_buffer/1}.
 
 export(?FORMAT_PKCS8, {private, K}) -> buoy_crypto_pkey:pkcs8(K);
+%% WebCrypto exports an EC point uncompressed, whatever form it came in.
+export(?FORMAT_SPKI, {public, #{kind := ec, pub := Pub} = K}) ->
+    buoy_crypto_pkey:spki(buoy_crypto_pkey:public(K#{pub := uncompressed(K, Pub)}));
 export(?FORMAT_SPKI, {public, K}) -> buoy_crypto_pkey:spki(buoy_crypto_pkey:public(K));
-export(?FORMAT_RAW, {public, #{kind := ec, curve := Curve, pub := Pub}}) ->
-    {ok, XY} = buoy_crypto_pkey:decode_point(Curve, Pub),
-    buoy_crypto_pkey:encode_point(Curve, XY, uncompressed);
+export(?FORMAT_RAW, {public, #{kind := ec, pub := Pub} = K}) -> uncompressed(K, Pub);
 export(?FORMAT_RAW, {public, #{pub := Pub}}) -> Pub;
 export(Format, _) when Format =:= ?FORMAT_PKCS8; Format =:= ?FORMAT_SPKI ->
     buoy_crypto:fail({message, <<"Invalid key type">>});
 export(_, _) ->
     buoy_crypto:fail({message, <<"Cipher job failed">>}).
+
+uncompressed(#{curve := Curve}, Pub) ->
+    {ok, XY} = buoy_crypto_pkey:decode_point(Curve, Pub),
+    buoy_crypto_pkey:encode_point(Curve, XY, uncompressed).
 
 %%% Numbers
 

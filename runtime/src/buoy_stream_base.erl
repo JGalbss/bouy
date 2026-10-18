@@ -10,7 +10,7 @@
 %% integer.
 -module(buoy_stream_base).
 
--export([methods/2, emit_read/2, done/3]).
+-export([methods/2, emit_read/2, done/3, push_listener/2]).
 
 -define(BYTES, {'#', ?MODULE, <<"bytes">>}).
 -define(K_READ_BYTES, 0).
@@ -116,6 +116,32 @@ onread(Handle, Arg) ->
         true -> buoy_heap:call(Onread, Handle, [Arg]);
         false -> undefined
     end.
+
+%% StreamBase::PushStreamListener for a binding that reads a handle, such
+%% as a consumed socket: OnRead gets the bytes of each read, and a read
+%% error or EOF goes to the onread of before (PassReadErrorToPreviousListener).
+%% Returns that onread, for the binding to put back.
+-spec push_listener(term(), fun((binary()) -> term())) -> term().
+push_listener(Handle, OnRead) ->
+    Prev = buoy_heap:get(Handle, <<"onread">>),
+    buoy_heap:set(Handle, <<"onread">>, buoy_node:fn(<<"onread">>, 1, fun(_, Args) ->
+        Buffer = buoy_node:arg(1, Args),
+        State = state(),
+        case trunc(buoy_heap:get(State, ?K_READ_BYTES)) of
+            N when N < 0 ->
+                case buoy_heap:is_callable(Prev) of
+                    true -> buoy_heap:call(Prev, Handle, [Buffer]);
+                    false -> undefined
+                end;
+            0 ->
+                undefined;
+            N ->
+                Offset = trunc(buoy_heap:get(State, ?K_OFFSET)),
+                <<_:Offset/binary, Bytes:N/binary, _/binary>> = buoy_ref_buffer:read(Buffer, 0, buoy_ref_buffer:byte_length(Buffer)),
+                OnRead(Bytes)
+        end
+    end)),
+    Prev.
 
 %% StreamReq::Done: req.oncomplete(status, handle, undefined).
 -spec done(term(), integer(), term()) -> term().

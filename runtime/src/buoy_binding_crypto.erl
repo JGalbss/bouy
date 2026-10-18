@@ -31,12 +31,19 @@ binding() ->
 missing(<<C, _/binary>> = Name) when C >= $A, C =< $Z -> buoy_node:missing_constructor(<<"crypto">>, Name, 0);
 missing(Name) -> buoy_node:not_implemented(<<"crypto">>, Name).
 
+%% The bytes of an argument of TimingSafeEqual, which takes only buffers.
+timing_operand(Name, V) ->
+    buoy_crypto:is_buffer_source(V) orelse
+        buoy_crypto:fail({code, 'TypeError', <<"ERR_INVALID_ARG_TYPE">>,
+                          <<"The \"", Name/binary, "\" argument must be an instance of ArrayBuffer, Buffer, TypedArray, or DataView.">>}),
+    buoy_crypto:bytes(V).
+
 %% crypto_util.cc and crypto_timing.cc.
 util() ->
     F = fun buoy_crypto:fn/3,
-    [{<<"timingSafeEqual">>, F(<<"timingSafeEqual">>, 2, fun(_, Args) ->
-        A = buoy_crypto:bytes(buoy_node:arg(1, Args)),
-        B = buoy_crypto:bytes(buoy_node:arg(2, Args)),
+    [{<<"timingSafeEqual">>, F(<<"timingSafeEqual">>, 0, fun(_, Args) ->
+        A = timing_operand(<<"buf1">>, buoy_node:arg(1, Args)),
+        B = timing_operand(<<"buf2">>, buoy_node:arg(2, Args)),
         byte_size(A) =:= byte_size(B) orelse
             buoy_crypto:fail({code, 'RangeError', <<"ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH">>,
                               <<"Input buffers must have the same byte length">>}),
@@ -47,7 +54,10 @@ util() ->
      {<<"getFipsCrypto">>, F(<<"getFipsCrypto">>, 0, fun(_, _) -> fips() end)},
      {<<"setFipsCrypto">>, F(<<"setFipsCrypto">>, 1, fun(_, Args) -> set_fips(buoy_ref:truthy(buoy_node:arg(1, Args))) end)},
      {<<"testFipsCrypto">>, F(<<"testFipsCrypto">>, 0, fun(_, _) -> crypto:info_fips() =/= not_supported end)},
-     {<<"getOpenSSLSecLevelCrypto">>, F(<<"getOpenSSLSecLevelCrypto">>, 0, fun(_, _) -> 2 end)}].
+     {<<"getOpenSSLSecLevelCrypto">>, F(<<"getOpenSSLSecLevelCrypto">>, 0, fun(_, _) -> 2 end)},
+     %% The certificates load when a context first needs them; starting
+     %% early on a thread only saves time (node_crypto.cc).
+     {<<"startLoadingCertificatesOffThread">>, F(<<"startLoadingCertificatesOffThread">>, 0, fun(_, _) -> undefined end)}].
 
 fips() ->
     case crypto:info_fips() of
