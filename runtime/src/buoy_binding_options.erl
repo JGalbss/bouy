@@ -38,11 +38,27 @@ cli_values() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
-    Values = apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())),
+    %% The oracle recorded the defaults under -e, so its code is no default.
+    Defaults = (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false},
+    Values = apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, Defaults),
     buoy_node:from_json(iolist_to_binary(json:encode(Values))).
 
-expand(Args, Expansions) ->
-    lists:append([maps:get(normalize(A), Expansions, [A]) || A <- Args]).
+%% Node's options parser expands an alias until none applies, and an alias
+%% "<option> <arg>", such as "--print <arg>", when a value follows: -p code
+%% reads as --print --eval code.
+expand([], _Expansions) ->
+    [];
+expand([A | Rest], Expansions) ->
+    Name = normalize(A),
+    case {maps:find(<<Name/binary, " <arg>">>, Expansions), Rest} of
+        {{ok, Targets}, [<<C, _/binary>> = Value | More]} when C =/= $- ->
+            lists:append([maps:get(T, Expansions, [T]) || T <- Targets]) ++ [Value | expand(More, Expansions)];
+        _ ->
+            case maps:find(Name, Expansions) of
+                {ok, Expanded} when Expanded =/= [Name] -> expand(Expanded ++ Rest, Expansions);
+                _ -> [A | expand(Rest, Expansions)]
+            end
+    end.
 
 %% --expose_gc names --expose-gc: underscores of the name are dashes.
 normalize(<<"--", _/binary>> = Arg) ->
@@ -76,10 +92,14 @@ apply_args([Arg0 | Rest], Types, Values) ->
                 {none, []} -> {<<>>, []};
                 _ -> {Inline, Rest}
             end,
-            apply_args(Remaining, Types, Values#{Name => typed(Type, Value, maps:get(Name, Values, []))});
+            apply_args(Remaining, Types, implied(Name, Values#{Name => typed(Type, Value, maps:get(Name, Values, []))}));
         _ ->
             apply_args(Rest, Types, Values)
     end.
+
+%% The implications of node_options.cc that a value of an option sets.
+implied(<<"--eval">>, Values) -> Values#{<<"[has_eval_string]">> => true};
+implied(_, Values) -> Values.
 
 %% A boolean option has a --no- twin that holds its negation.
 boolean(Name, Value, Values) ->

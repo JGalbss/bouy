@@ -157,6 +157,22 @@ function setupChildProcessIpcChannel() {
   }
 }
 
+// Node's CommonJS loader: Buoy's compiler links the program, but the REPL,
+// the code of -e, and the programs that require internal/modules/cjs/loader
+// read Module.builtinModules and the search paths, as initializeCJSLoader
+// sets them.
+function initializeCJS() {
+  require('internal/modules/cjs/loader').initializeCJS();
+}
+
+// The code of -e and -p reads each built-in module as a global, as
+// internal/main/eval_string gives it.
+function setupEvalGlobals() {
+  if (getOptionValue('--eval')) {
+    require('internal/modules/helpers').addBuiltinLibsToObject(globalThis, '<eval>');
+  }
+}
+
 // Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 loadEnvFiles();
@@ -168,4 +184,6 @@ setupNavigator();
 setupWarningHandler();
 setupDebugEnv();
 setupChildProcessIpcChannel();
+initializeCJS();
+setupEvalGlobals();
 require('internal/process/pre_execution').markBootstrapComplete();
