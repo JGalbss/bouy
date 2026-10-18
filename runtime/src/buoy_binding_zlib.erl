@@ -3,9 +3,9 @@
 %% CompressionStream, and crc32.
 %%
 %% The codecs are the NIFs of buoy_native, which run a write on a dirty CPU
-%% scheduler. write/7 runs the codec at once and reports the result to the
-%% write callback in a later macrotask, as libuv calls back from its thread
-%% pool; writeSync/7 reports it before it returns.
+%% scheduler. write/7 runs the codec in a process of its own and reports the
+%% result to the write callback in a later macrotask, as libuv calls back from
+%% its thread pool; writeSync/7 reports it before it returns.
 -module(buoy_binding_zlib).
 
 -include("buoy_ref.hrl").
@@ -159,13 +159,42 @@ write(This, Args, Mode) ->
     Out = A(5),
     OutOff = uint32(A(6)),
     save(This, State#{write_in_progress => true}),
-    {Bytes, AvailIn, AvailOut, Failure} = buoy_native:stream_write(Stream, uint32(A(1)), Input, uint32(A(7))),
-    buoy_node_encoding:view_write(Out, OutOff, Bytes),
+    Flush = uint32(A(1)),
+    OutLen = uint32(A(7)),
     case Mode of
-        sync -> after_write_sync(This, AvailIn, AvailOut, Failure);
-        async -> buoy_node_loop:defer(fun() -> after_write(This, AvailIn, AvailOut, Failure) end)
+        sync ->
+            {Bytes, AvailIn, AvailOut, Failure} = buoy_native:stream_write(Stream, Flush, Input, OutLen),
+            buoy_node_encoding:view_write(Out, OutOff, Bytes),
+            after_write_sync(This, AvailIn, AvailOut, Failure);
+        async ->
+            start_write(This, Out, OutOff, fun() -> buoy_native:stream_write(Stream, Flush, Input, OutLen) end)
     end,
     undefined.
+
+%% Runs a write in a process of its own, as Node runs it on the libuv thread
+%% pool, so the realm runs JavaScript meanwhile. The realm keeps the handle
+%% and the output buffer as roots of its heap until the result arrives.
+start_write(This, Out, OutOff, Write) ->
+    Realm = self(),
+    Key = {?MODULE, write, make_ref()},
+    erlang:put(Key, {This, Out}),
+    buoy_node_loop:ref_handle(),
+    _ = spawn(fun() ->
+        Result = try {ok, Write()} catch Class:Reason:Stack -> {raised, Class, Reason, Stack} end,
+        Realm ! {'$buoy_node_call', fun() -> finish_write(Key, OutOff, Result) end}
+    end),
+    ok.
+
+finish_write(Key, OutOff, Result) ->
+    {This, Out} = erlang:erase(Key),
+    buoy_node_loop:unref_handle(),
+    case Result of
+        {ok, {Bytes, AvailIn, AvailOut, Failure}} ->
+            buoy_node_encoding:view_write(Out, OutOff, Bytes),
+            after_write(This, AvailIn, AvailOut, Failure);
+        {raised, Class, Reason, Stack} ->
+            erlang:raise(Class, Reason, Stack)
+    end.
 
 after_write_sync(This, _AvailIn, _AvailOut, {_, _, _} = Failure) ->
     emit_error(This, Failure);
