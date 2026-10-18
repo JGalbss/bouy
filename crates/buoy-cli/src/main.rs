@@ -271,6 +271,8 @@ fn serve_eval() -> ExitCode {
         let arguments = std::iter::once("compile-eval").chain(header.split('\n'));
         let answer = if let Some(request) = header.strip_prefix("@load\n") {
             load_answer(request)
+        } else if let Some(path) = header.strip_prefix("@source\n") {
+            source_answer(path, text)
         } else {
             match Served::try_parse_from(arguments) {
                 Ok(Served { request }) => match request.compile(text) {
@@ -314,25 +316,45 @@ fn load_answer(request: &str) -> Vec<u8> {
         Ok(buoy_compiler::Loaded::Builtin(name)) => {
             [&[0], format!("builtin\n{name}").as_bytes()].concat()
         }
-        Ok(buoy_compiler::Loaded::Program(path, project)) => {
-            let mut answer = vec![0];
-            answer.extend_from_slice(format!("program\n{}\n", path.display()).as_bytes());
-            for module in &project.modules {
-                answer.extend_from_slice(
-                    format!(
-                        "{}\n{}\n{}\n",
-                        module.name,
-                        module.path.display(),
-                        module.erlang.len()
-                    )
-                    .as_bytes(),
-                );
-                answer.extend_from_slice(module.erlang.as_bytes());
-            }
-            answer
-        }
+        Ok(buoy_compiler::Loaded::Program(path, project)) => program_answer(&path, &project),
         Err((code, message)) => [&[DIAGNOSTICS], format!("{code}\t{message}").as_bytes()].concat(),
     }
+}
+
+/// The answer to `@source`, the code that a running program hands over as the entry
+/// module at `path`, such as the code of a worker that `eval: true` starts. The answer
+/// is the one of `@load` for a program.
+fn source_answer(path: &str, text: &str) -> Vec<u8> {
+    let path = Path::new(path);
+    match buoy_compiler::compile_source(path, text.to_owned()) {
+        Ok(project) => program_answer(path, &project),
+        Err(diagnostics) => {
+            let message = diagnostics
+                .first()
+                .map_or_else(String::new, |d| d.message.clone());
+            [&[DIAGNOSTICS], format!("ERR_BUOY_COMPILE\t{message}").as_bytes()].concat()
+        }
+    }
+}
+
+/// Status 0, `program` and the path of the entry, then each module as its name, its path,
+/// and the byte length of its Erlang source, one on each line, then the source.
+fn program_answer(path: &Path, project: &Project) -> Vec<u8> {
+    let mut answer = vec![0];
+    answer.extend_from_slice(format!("program\n{}\n", path.display()).as_bytes());
+    for module in &project.modules {
+        answer.extend_from_slice(
+            format!(
+                "{}\n{}\n{}\n",
+                module.name,
+                module.path.display(),
+                module.erlang.len()
+            )
+            .as_bytes(),
+        );
+        answer.extend_from_slice(module.erlang.as_bytes());
+    }
+    answer
 }
 
 fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {

@@ -14,7 +14,7 @@
 
 -include("buoy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4, load_source/2]).
 
 -import(buoy_ref, [type_error/1]).
 
@@ -340,14 +340,24 @@ serve(Port) ->
 %% or {error, Code, Message}.
 -spec load_module(binary(), binary(), binary(), require | import) -> term().
 load_module(Main, Importer, Specifier, Mode) ->
+    loaded(ask(iolist_to_binary(["@load\n", Main, "\n", Importer, "\n", Specifier, "\n", atom_to_list(Mode), "\n\n"]))).
+
+%% The program whose entry is the source text Source at Path, such as the
+%% code of a worker that eval: true starts, as load_module/4 returns it.
+-spec load_source(binary(), binary()) -> term().
+load_source(Path, Source) ->
+    loaded(ask(iolist_to_binary(["@source\n", Path, "\n\n", Source]))).
+
+ask(Request) ->
     Server = compiler(),
     Ref = erlang:monitor(process, Server),
-    Server ! {raw, self(), Ref, iolist_to_binary(["@load\n", Main, "\n", Importer, "\n", Specifier, "\n",
-                                                   atom_to_list(Mode), "\n\n"])},
-    Answer = receive
+    Server ! {raw, self(), Ref, Request},
+    receive
         {Ref, {answer, A}} -> erlang:demonitor(Ref, [flush]), A;
         {'DOWN', Ref, process, _, Reason} -> exit({compiler_down, Reason})
-    end,
+    end.
+
+loaded(Answer) ->
     case Answer of
         <<0, "builtin\n", Name/binary>> ->
             {builtin, Name};

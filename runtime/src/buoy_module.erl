@@ -13,7 +13,7 @@
 
 -include("buoy_ref.hrl").
 
--export([run/1, evaluate_dependencies/1]).
+-export([run/1, run_worker/2, graph/0, evaluate_dependencies/1]).
 -export([namespace/1, foreign_export/2, builtin_export/2, builtin_namespace/1]).
 -export([uninitialized/2, hoisted/1]).
 -export([dynamic_import/4, meta/1, require/2]).
@@ -57,6 +57,29 @@ run(Entry) ->
         {pending, _, _, _} ->
             buoy_jobs:perform_then(P, fun(_) -> undefined end, fun report_uncaught/1, undefined),
             P
+    end.
+
+%% The program of a worker realm (buoy_binding_worker) from its entry module,
+%% with Known, the graph of the realm that started the worker, so a module of
+%% that program loads without the compiler. Returns the promise of the
+%% evaluation, which the worker's main script watches.
+-spec run_worker(module(), #{term() => module()}) -> term().
+run_worker(Entry, Known) ->
+    erlang:put(?ENTRY, Entry),
+    Graph = case erlang:function_exported(Entry, '$graph', 0) of
+        true -> Entry:'$graph'();
+        false -> []
+    end,
+    erlang:put(?GRAPH, maps:merge(Known, maps:from_list(Graph))),
+    link_graph(Entry),
+    evaluate(Entry).
+
+%% The modules of the program that this realm runs, by path.
+-spec graph() -> #{term() => module()}.
+graph() ->
+    case erlang:get(?GRAPH) of
+        undefined -> #{};
+        G -> G
     end.
 
 %% A rejection of the evaluation of the program ends it, as an uncaught error.
