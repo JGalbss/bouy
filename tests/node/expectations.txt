@@ -2833,7 +2833,7 @@ parallel/test-promise-reject-callback-exception.js fail
 parallel/test-promise-unhandled-default.js pass
 parallel/test-promise-unhandled-error-with-reading-file.js fail
 parallel/test-promise-unhandled-error.js pass
-parallel/test-promise-unhandled-flag.js timeout
+parallel/test-promise-unhandled-flag.js pass
 parallel/test-promise-unhandled-issue-43655.js pass
 parallel/test-promise-unhandled-silent-no-hook.js pass
 parallel/test-promise-unhandled-silent.js pass

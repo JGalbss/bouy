@@ -113,6 +113,42 @@ const VALUE_OPTIONS: [&str; 76] = [
     "--watch-path",
 ];
 
+/// The options whose value must be one of a list, with the error of
+/// `EnvironmentOptions::CheckOptions` in node v25.9.0 for another value. An empty value
+/// passes, as Node checks only a value that is set.
+const CHOICE_OPTIONS: [(&str, &[&str], &str); 1] = [(
+    "--unhandled-rejections",
+    &["warn-with-error-code", "throw", "strict", "warn", "none"],
+    "invalid value for --unhandled-rejections",
+)];
+
+/// `ExitCode::kInvalidCommandLineArgument` of Node.
+const INVALID_COMMAND_LINE_ARGUMENT: u8 = 9;
+
+/// The error of the first option of `exec_argv` whose value Node rejects, which Node
+/// reports before any JavaScript runs.
+fn invalid_option(exec_argv: &[String]) -> Option<&'static str> {
+    let mut items = exec_argv.iter();
+    while let Some(item) = items.next() {
+        let (name, inline) = item
+            .split_once('=')
+            .map_or((item.as_str(), None), |(name, value)| (name, Some(value)));
+        let name = name.replace('_', "-");
+        let Some((_, choices, error)) =
+            CHOICE_OPTIONS.iter().find(|(option, _, _)| *option == name)
+        else {
+            continue;
+        };
+        let value = inline
+            .or_else(|| items.next().map(String::as_str))
+            .unwrap_or("");
+        if !value.is_empty() && !choices.contains(&value) {
+            return Some(error);
+        }
+    }
+    None
+}
+
 enum Entry {
     Script(String),
     Eval(String),
@@ -166,6 +202,14 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                 break;
             }
         }
+    }
+    if let Some(error) = invalid_option(&options.exec_argv) {
+        let program = env::args_os().next().map_or_else(
+            || "buoy".to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        eprintln!("{program}: {error}");
+        return ExitCode::from(INVALID_COMMAND_LINE_ARGUMENT);
     }
     let program_arguments = &arguments[index.min(arguments.len())..];
     match entry {
@@ -299,6 +343,30 @@ mod tests {
             "import x from 'y'",
             &["--input-type".to_owned(), "commonjs".to_owned()]
         ));
+    }
+
+    #[test]
+    fn rejects_a_value_that_node_rejects() {
+        let argv = |items: &[&str]| {
+            items
+                .iter()
+                .map(|item| (*item).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            invalid_option(&argv(&["--unhandled-rejections=foobar"])),
+            Some("invalid value for --unhandled-rejections")
+        );
+        assert_eq!(
+            invalid_option(&argv(&["--unhandled_rejections", "foobar"])),
+            Some("invalid value for --unhandled-rejections")
+        );
+        assert_eq!(
+            invalid_option(&argv(&["--unhandled-rejections=strict"])),
+            None
+        );
+        assert_eq!(invalid_option(&argv(&["--unhandled-rejections="])), None);
+        assert_eq!(invalid_option(&argv(&["--no-warnings"])), None);
     }
 
     #[test]
