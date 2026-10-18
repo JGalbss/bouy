@@ -341,7 +341,7 @@ start_compiler() ->
         case try register(buoy_eval_compiler, self()) catch error:badarg -> false end of
             true ->
                 buoy_eval_modules = ets:new(buoy_eval_modules, [named_table, public, {read_concurrency, true}]),
-                Port = open_port({spawn_executable, Compiler}, [{args, ["compile-eval", "--serve"]}, {packet, 4}, binary, exit_status, use_stdio, hide]),
+                Port = open_port({spawn_executable, Compiler}, [{args, ["compile-eval", "--serve" | condition_args()]}, {packet, 4}, binary, exit_status, use_stdio, hide]),
                 Parent ! {self(), started},
                 serve(Port);
             false ->
@@ -353,6 +353,21 @@ start_compiler() ->
         {Pid, taken} -> erlang:demonitor(Ref, [flush]), compiler();
         {'DOWN', Ref, process, Pid, Reason} -> type_error(buoy_ref_string:from_utf8(unicode:characters_to_binary(io_lib:format("the Buoy compiler did not start: ~0tP", [Reason, 8]))))
     end.
+
+%% The conditions of --conditions of the program, which the compiler adds to
+%% Node's own for each module that it resolves.
+condition_args() ->
+    lists:append([["--condition", binary_to_list(C)] || C <- user_conditions(buoy_node_process:exec_argv())]).
+
+user_conditions([Option | Rest]) when Option =:= <<"--conditions">>; Option =:= <<"-C">> ->
+    case Rest of
+        [Value | More] -> [Value | user_conditions(More)];
+        [] -> []
+    end;
+user_conditions([<<"--conditions=", Value/binary>> | Rest]) -> [Value | user_conditions(Rest)];
+user_conditions([<<"-C=", Value/binary>> | Rest]) -> [Value | user_conditions(Rest)];
+user_conditions([_ | Rest]) -> user_conditions(Rest);
+user_conditions([]) -> [].
 
 serve(Port) ->
     receive

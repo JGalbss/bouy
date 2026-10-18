@@ -220,6 +220,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         eprintln!("{program}: {error}");
         return ExitCode::from(INVALID_COMMAND_LINE_ARGUMENT);
     }
+    buoy_compiler::set_user_conditions(user_conditions(&options.exec_argv));
     let program_arguments = &arguments[index.min(arguments.len())..];
     match entry {
         Some(Entry::Script(script)) if script == "-" => {
@@ -264,6 +265,24 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         ),
         None => run_stdin(program_arguments, options),
     }
+}
+
+/// The values of `--conditions` and `-C`, in order.
+fn user_conditions(exec_argv: &[String]) -> Vec<String> {
+    let mut conditions = Vec::new();
+    let mut items = exec_argv.iter();
+    while let Some(item) = items.next() {
+        let (name, inline) = match item.split_once('=') {
+            Some((name, value)) => (name, Some(value.to_owned())),
+            None => (item.as_str(), None),
+        };
+        if matches!(name, "--conditions" | "-C")
+            && let Some(value) = inline.or_else(|| items.next().cloned())
+        {
+            conditions.push(value);
+        }
+    }
+    conditions
 }
 
 /// Whether the node options select the test runner, as `--test` does.

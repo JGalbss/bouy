@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 pub use diagnostic::{Code, Diagnostic};
 use graph::{module_name, project_root};
 pub use reference::{EvalContext, EvalPlace};
+pub use resolve::set_user_conditions;
 
 /// The Erlang modules of a program.
 #[derive(Debug, Clone)]

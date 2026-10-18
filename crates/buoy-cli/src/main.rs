@@ -63,6 +63,10 @@ enum Commands {
         /// Answer requests on stdin until it closes.
         #[arg(long)]
         serve: bool,
+        /// A condition of `--conditions` of the program, for the resolution of each module
+        /// that the server compiles.
+        #[arg(long = "condition")]
+        conditions: Vec<String>,
         #[command(flatten)]
         request: EvalRequest,
     },
@@ -230,7 +234,14 @@ fn main() -> ExitCode {
             }
             Err(error) => fail(&error),
         },
-        Commands::CompileEval { serve: true, .. } => serve_eval(),
+        Commands::CompileEval {
+            serve: true,
+            conditions,
+            ..
+        } => {
+            buoy_compiler::set_user_conditions(conditions);
+            serve_eval()
+        }
         Commands::CompileEval { request, .. } => compile_eval(request),
     }
 }

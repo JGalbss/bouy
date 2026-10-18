@@ -767,7 +767,21 @@ enum Resolution {
 /// Whether a condition of an `exports` or `imports` object applies: `default`, or a
 /// condition of Node for the mode.
 fn matches(mode: Mode, condition: &str) -> bool {
-    condition == "default" || conditions(mode).contains(&condition)
+    condition == "default"
+        || conditions(mode).contains(&condition)
+        || USER_CONDITIONS
+            .get()
+            .is_some_and(|user| user.iter().any(|name| name == condition))
+}
+
+/// The conditions of `--conditions` (`-C`), which hold for the whole process, as Node
+/// adds them to its default conditions for every resolution.
+static USER_CONDITIONS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Sets the conditions of `--conditions` for every resolution of the process. The first
+/// call wins.
+pub fn set_user_conditions(conditions: Vec<String>) {
+    let _ = USER_CONDITIONS.set(conditions);
 }
 
 /// The conditions of Node 25 for each mode, without `node-addons`.
