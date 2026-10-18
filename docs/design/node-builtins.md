@@ -71,7 +71,7 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 ## 6. Limits
 
 - Buoy has no OpenSSL, Intl, or inspector yet: `process.versions` has no `openssl`, and `process.config` sets no `v8_enable_i18n_support`, so the tests that need them skip.
-- The constants of the `constants`, `uv`, and `os` bindings are darwin's, as the oracle recorded them.
+- The `constants` and `uv` bindings hold the tables of darwin and of Linux, as the oracle recorded them, and another OS gets darwin's.
 - Stack traces of errors are `at <buoy>`: the engine has no JavaScript call stack yet.
 - `async_context_frame` keeps one value per realm, which promise jobs do not carry yet.
 - The engine has no call stack limit, so deep recursion grows the process until `BUOY_MAX_MEMORY` stops the VM, where V8 throws `RangeError: Maximum call stack size exceeded`. `assert.deepStrictEqual` of a cyclic value relies on that error to switch to its cycle check.
