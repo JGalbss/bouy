@@ -169,7 +169,8 @@ sloppy_set_computed(O, K, V) -> sloppy_set(O, to_property_key(K), V).
 %% `delete o[k]` in sloppy code: false for a property that cannot go.
 -spec sloppy_delete(term(), buoy_heap:key()) -> boolean().
 sloppy_delete(O, K) when ?IS_OBJECT(O) -> buoy_heap:delete_property(O, K);
-sloppy_delete(O, K) -> delete(O, K).
+sloppy_delete(O, K) when O =:= undefined; O =:= null -> delete(O, K);
+sloppy_delete(P, K) -> buoy_heap:delete_property(to_object(P), K).
 
 -spec sloppy_delete_computed(term(), term()) -> boolean().
 sloppy_delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
@@ -184,7 +185,9 @@ sloppy_this(This) -> to_object(This).
 delete(O, K) when ?IS_OBJECT(O) -> buoy_heap:delete(O, K);
 delete(undefined, K) -> type_error(text([<<"Cannot convert undefined or null to object (deleting '">>, key_text(K), <<"')">>]));
 delete(null, K) -> delete(undefined, K);
-delete(_P, _K) -> true.
+%% The wrapper of a string has its length and its indices as properties that
+%% cannot go.
+delete(P, K) -> buoy_heap:delete(to_object(P), K).
 
 -spec delete_computed(term(), term()) -> boolean().
 delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));

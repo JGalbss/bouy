@@ -108,7 +108,7 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The value of the code of a chain, or `ended` when one of its guards ends it.
-    fn end_chain(&mut self, code: Vec<Expr>, ended: &Expr) -> Expr {
+    pub fn end_chain(&mut self, code: Vec<Expr>, ended: &Expr) -> Expr {
         if code.iter().any(holds_marker) {
             // An `await` or a `yield` cannot split an Erlang `try`, so each guard of this
             // chain becomes a case whose last clause holds the rest of the chain.

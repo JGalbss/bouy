@@ -4,8 +4,8 @@
 
 use oxc::ast::ast::{
     AssignmentExpression, AssignmentTarget, BinaryExpression, ConditionalExpression, Expression,
-    IdentifierReference, LogicalExpression, SimpleAssignmentTarget, UnaryExpression,
-    UpdateExpression,
+    IdentifierReference, LogicalExpression, MemberExpression, SimpleAssignmentTarget,
+    UnaryExpression, UpdateExpression,
 };
 use oxc::span::GetSpan;
 use oxc::syntax::operator::{
@@ -596,42 +596,56 @@ impl<'a> Lowerer<'a, '_> {
                 self.effect(&unary.argument);
                 Expr::undefined()
             }
-            UnaryOperator::Delete => match strip(&unary.argument).as_member_expression() {
-                Some(member) => {
-                    let (object, key) = self.member_parts(member);
-                    if super_parts(&object).is_some() {
-                        return self.bind(Expr::call(
-                            "buoy_heap",
-                            "throw_error",
-                            vec![
-                                Expr::atom("ReferenceError"),
-                                Expr::js_string("Unsupported reference to 'super'"),
-                            ],
-                        ));
-                    }
-                    let (fixed, computed) = if self.frame.sloppy {
-                        ("sloppy_delete", "sloppy_delete_computed")
-                    } else {
-                        ("delete", "delete_computed")
-                    };
-                    let value = match key {
-                        MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key]),
-                        MemberKey::Dynamic(key) => {
-                            Expr::call("buoy_ref", computed, vec![object, key])
-                        }
-                        MemberKey::Private(_) => Expr::atom("true"),
-                    };
-                    self.bind(value)
+            UnaryOperator::Delete => match strip(&unary.argument) {
+                Expression::Identifier(ident) => self.delete_identifier(ident),
+                // `delete a?.b` deletes `b`, and is true when the chain ends early.
+                Expression::ChainExpression(chain)
+                    if chain.expression.as_member_expression().is_some() =>
+                {
+                    let code = self.branch(|me| match chain.expression.as_member_expression() {
+                        Some(member) => me.delete_member(member),
+                        None => Expr::atom("true"),
+                    });
+                    self.end_chain(code, &Expr::atom("true"))
                 }
-                None => match strip(&unary.argument) {
-                    Expression::Identifier(ident) => self.delete_identifier(ident),
-                    other => {
+                other => match other.as_member_expression() {
+                    Some(member) => self.delete_member(member),
+                    None => {
                         self.effect(other);
                         Expr::atom("true")
                     }
                 },
             },
         }
+    }
+
+    /// `delete o.k`: the delete of the property, after the guard of an optional `o?.k`.
+    fn delete_member(&mut self, member: &'a MemberExpression<'a>) -> Expr {
+        let (object, key) = self.member_parts(member);
+        if super_parts(&object).is_some() {
+            return self.bind(Expr::call(
+                "buoy_heap",
+                "throw_error",
+                vec![
+                    Expr::atom("ReferenceError"),
+                    Expr::js_string("Unsupported reference to 'super'"),
+                ],
+            ));
+        }
+        if member.optional() {
+            self.chain_guard(object.clone());
+        }
+        let (fixed, computed) = if self.frame.sloppy {
+            ("sloppy_delete", "sloppy_delete_computed")
+        } else {
+            ("delete", "delete_computed")
+        };
+        let value = match key {
+            MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key]),
+            MemberKey::Dynamic(key) => Expr::call("buoy_ref", computed, vec![object, key]),
+            MemberKey::Private(_) => Expr::atom("true"),
+        };
+        self.bind(value)
     }
 }
 
