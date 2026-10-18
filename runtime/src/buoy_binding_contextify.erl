@@ -76,6 +76,14 @@ new_script(This, Args) ->
             ok
     end,
     buoy_heap:set(This, <<"sourceMapURL">>, undefined),
+    host_defined(This, buoy_node:arg(8, Args)).
+
+%% The id symbol of the host-defined options of a script or a function,
+%% which registerModule of internal/modules/esm/utils keys the callbacks of
+%% importModuleDynamically by.
+host_defined(O, Id) ->
+    buoy_heap:define(O, buoy_node:private_symbol(<<"host_defined_option_symbol">>),
+                     #{value => Id, writable => true, enumerable => false, configurable => true}),
     undefined.
 
 %% runInContext(contextifiedObject or null, timeout, ...): the completion value
@@ -122,4 +130,5 @@ compile_function(Args) ->
         Context when Context =:= undefined; Context =:= null -> Make(undefined, undefined);
         Context -> (buoy_ref_realm:realm_fun(buoy_heap:get(Context, private()), Make))(undefined, undefined)
     end,
+    host_defined(Function, buoy_node:arg(10, Args)),
     buoy_node:object([{<<"function">>, Function}, {<<"sourceMapURL">>, undefined}]).
