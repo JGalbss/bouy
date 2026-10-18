@@ -16,7 +16,7 @@ use oxc::ast::ast::{
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::Semantic;
-use oxc::span::SourceType;
+use oxc::span::{GetSpan, SourceType};
 
 use super::analyze::Suspends;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
@@ -536,6 +536,7 @@ fn scan_as(
             facts.module(program);
         }
         let mut requests = Requests {
+            source: program.source_text,
             found: Vec::new(),
             names: Vec::new(),
             reexports: Vec::new(),
@@ -860,7 +861,9 @@ fn declared_names(declaration: &Declaration<'_>) -> Vec<String> {
 
 /// The string specifiers of `import()`, `require()`, and `require.resolve()`, and the
 /// export names of a `CommonJS` module, as Node's cjs-module-lexer finds them.
-struct Requests {
+struct Requests<'s> {
+    /// The source text, whose characters the export analysis reads as Node's lexer does.
+    source: &'s str,
     found: Vec<(String, Mode, bool)>,
     names: Vec<String>,
     reexports: Vec<String>,
@@ -869,7 +872,7 @@ struct Requests {
     required: Vec<(String, String)>,
 }
 
-impl Requests {
+impl Requests<'_> {
     /// A specifier that is not a string: a template becomes a pattern.
     fn computed(&mut self, specifier: Option<&Expression<'_>>) {
         self.dynamic.computed = true;
@@ -960,7 +963,7 @@ fn is_exports(expression: &Expression<'_>) -> bool {
     }
 }
 
-impl<'a> Visit<'a> for Requests {
+impl<'a> Visit<'a> for Requests<'_> {
     fn visit_import_expression(&mut self, it: &ImportExpression<'a>) {
         match string_of(&it.source) {
             Some(specifier) => self.found.push((specifier, Mode::Import, false)),
@@ -1093,7 +1096,7 @@ impl<'a> Visit<'a> for Requests {
     }
 }
 
-impl Requests {
+impl Requests<'_> {
     /// `module.exports = { a, b: c, ...require('x') }` and `module.exports = require('x')`.
     fn module_exports(&mut self, value: &Expression<'_>) {
         if let Some(specifier) = required(value) {
@@ -1103,25 +1106,71 @@ impl Requests {
         let Expression::ObjectExpression(object) = value.without_parentheses() else {
             return;
         };
+        // cjs-module-lexer reads a key only when an identifier starts its value, and
+        // stops at the first property that it cannot read: `{ a, b: c }` exports a and b,
+        // `{ a: f(), b }` exports a, and `{ a: 'x', b }` exports nothing.
         for property in &object.properties {
             match property {
                 ObjectPropertyKind::ObjectProperty(property) if !property.computed => {
                     let name = match &property.key {
-                        PropertyKey::StaticIdentifier(ident) => Some(ident.name.to_string()),
-                        PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
-                        _ => None,
+                        PropertyKey::StaticIdentifier(ident) => ident.name.to_string(),
+                        PropertyKey::StringLiteral(literal) => {
+                            match decoded(literal.value.as_str(), literal.lone_surrogates) {
+                                Some(name) => name,
+                                None => return,
+                            }
+                        }
+                        _ => return,
                     };
-                    if let Some(name) = name {
+                    if property.shorthand || matches!(property.value, Expression::Identifier(_)) {
+                        self.name(&name);
+                        continue;
+                    }
+                    let start = property.value.span().start as usize;
+                    if self
+                        .source
+                        .get(start..)
+                        .and_then(|rest| rest.chars().next())
+                        .is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$')
+                    {
                         self.name(&name);
                     }
+                    return;
                 }
                 ObjectPropertyKind::SpreadProperty(spread) => {
                     if let Some(specifier) = required(&spread.argument) {
                         self.reexports.push(specifier);
+                    } else if !matches!(spread.argument, Expression::Identifier(_)) {
+                        return;
                     }
                 }
-                ObjectPropertyKind::ObjectProperty(_) => {}
+                ObjectPropertyKind::ObjectProperty(_) => return,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cjs_lexer;
+
+    fn names(source: &str) -> Vec<String> {
+        cjs_lexer(source.to_owned())
+            .map(|(names, _)| names)
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn reads_object_exports_as_cjs_module_lexer_does() {
+        assert_eq!(names("module.exports = { a, b: c, ...d };"), ["a", "b"]);
+        assert_eq!(names("module.exports = { a: f(), b };"), ["a"]);
+        assert_eq!(
+            names("module.exports = { a: 'x', b };"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            names("exports['\\u{D83C}\\u{DF10}'] = 1; exports['\\u{D83C}'] = 2;"),
+            ["🌐"]
+        );
     }
 }
