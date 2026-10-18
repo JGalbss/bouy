@@ -435,6 +435,7 @@ run(Entry) ->
             Words = Base + trunc(lists:sum(Set) * ?MB / erlang:system_info(wordsize)),
             erlang:process_flag(max_heap_size, #{size => Words, kill => true, error_logger => false})
     end,
+    ok = buoy_node_process:preload(),
     P = buoy_module:run_worker(Entry, Known),
     buoy_jobs:set_main_result(P),
     %% A module that throws as it runs throws here, as an uncaught exception;

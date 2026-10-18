@@ -11,7 +11,7 @@
 
 -export([exec_argv/0, create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
 -export([getenv/1, environ/0, node_options/0]).
--export([version_pairs/0, initial_title/0]).
+-export([version_pairs/0, initial_title/0, preload/0]).
 
 -define(VERSION, <<"v25.9.0">>).
 %% The fields of Environment::ExitInfoField: kExiting, kExitCode, kHasExitCode.
@@ -119,6 +119,43 @@ vm_exec_argv() ->
             end;
         _ ->
             []
+    end.
+
+%% loadPreloadModules: the modules of --require (-r) run before the main
+%% module, each required as a module of the working directory requires it.
+-spec preload() -> ok.
+preload() ->
+    case preload_requests(node_options() ++ exec_argv()) of
+        [] ->
+            ok;
+        Requests ->
+            {ok, Cwd} = file:get_cwd(),
+            Importer = unicode:characters_to_binary(filename:join(Cwd, "[preload]")),
+            lists:foreach(fun(Request) -> run_preload(Importer, Request) end, Requests)
+    end.
+
+preload_requests([Flag, Request | Rest]) when Flag =:= <<"-r">>; Flag =:= <<"--require">> ->
+    [Request | preload_requests(Rest)];
+preload_requests([<<"--require=", Request/binary>> | Rest]) ->
+    [Request | preload_requests(Rest)];
+preload_requests([_ | Rest]) ->
+    preload_requests(Rest);
+preload_requests([]) ->
+    [].
+
+run_preload(Importer, Request) ->
+    case buoy_ref_eval:load_module(Importer, Importer, Request, require) of
+        {program, _Path, Entry, _Graph} ->
+            P = buoy_module:run_worker(Entry, buoy_module:graph()),
+            case buoy_heap:slots(P) of
+                {rejected, Reason, _} -> erlang:error({'$throw', Reason});
+                _ -> ok
+            end;
+        {builtin, Name} ->
+            _ = buoy_node:require(Name),
+            ok;
+        {error, Code, Message} ->
+            buoy_module:throw_load(Code, buoy_ref_string:from_utf8(Message))
     end.
 
 %% The options of NODE_OPTIONS, which apply as the options of the command

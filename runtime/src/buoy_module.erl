@@ -40,6 +40,7 @@
 %% graph that does not await throws, as an uncaught exception.
 -spec run(module()) -> term().
 run(Entry) ->
+    ok = buoy_node_process:preload(),
     erlang:put(?ENTRY, Entry),
     Graph = case erlang:function_exported(Entry, '$graph', 0) of
         true -> Entry:'$graph'();
