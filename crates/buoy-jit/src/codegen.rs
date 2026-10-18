@@ -28,6 +28,7 @@ use cranelift_codegen::ir::{
     AbiParam, Block, BlockArg, FuncRef, InstBuilder, MemFlagsData, Signature, TrapCode, Value,
     types,
 };
+use cranelift_codegen::isa::CallConv;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Switch, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId as ModuleFuncId, Linkage, Module, default_libcall_names};
@@ -149,7 +150,7 @@ fn helpers() -> [Helper; 8] {
             name: "buoy_tick",
             address: run::buoy_tick as *const u8,
             params: &[I64],
-            returns: &[],
+            returns: &[I64],
         },
         Helper {
             name: "buoy_bail",
@@ -208,8 +209,13 @@ const MATH: usize = 7;
 /// Compiles every function of `program` and the trampolines of its entries.
 pub fn compile(program: &Program) -> Result<Code, Error> {
     check_program(program)?;
-    let mut builder = JITBuilder::with_flags(&[("opt_level", "speed")], default_libcall_names())
-        .map_err(|error| error.to_string())?;
+    // The fuel lives in the pinned register (x21 on aarch64, r15 on x86_64), so spending it
+    // is a subtraction, not a load and a store through memory at every call and loop turn.
+    let mut builder = JITBuilder::with_flags(
+        &[("opt_level", "speed"), ("enable_pinned_reg", "true")],
+        default_libcall_names(),
+    )
+    .map_err(|error| error.to_string())?;
     let helpers = helpers();
     for helper in &helpers {
         builder.symbol(helper.name, helper.address);
@@ -249,6 +255,7 @@ fn define_all(
             .map_err(|error| error.to_string())?;
         helper_ids.push(id);
     }
+    helper_ids[TICK] = define_tick(module, helper_ids[TICK])?;
     let mut ids = Vec::with_capacity(program.functions.len());
     for (index, function) in program.functions.iter().enumerate() {
         let id = module
@@ -263,15 +270,21 @@ fn define_all(
     let mut context = module.make_context();
     let mut builder_context = FunctionBuilderContext::new();
     let target = module.target_config();
+    // `BUOY_JIT_DUMP=1` prints the machine code of each function to stderr.
+    let dump = std::env::var_os("BUOY_JIT_DUMP").is_some();
     for (index, function) in program.functions.iter().enumerate() {
         context.func.signature = signature_of(function, call_conv);
         let builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
         let mut generator = Gen::new(program, function, builder, module, &ids, &helper_ids);
         generator.body()?;
         generator.b.finalize(target);
+        context.set_disasm(dump);
         module
             .define_function(ids[index], &mut context)
             .map_err(|error| format!("function {}: {error:?}", function.name))?;
+        if let Some(code) = context.compiled_code().and_then(|code| code.vcode.as_ref()) {
+            eprintln!("buoy jit: f{index} {}\n{code}", function.name);
+        }
         module.clear_context(&mut context);
     }
     let mut entries = Vec::with_capacity(program.entries.len());
@@ -316,6 +329,37 @@ fn define_all(
     Ok(entries)
 }
 
+/// The function that the code calls when its fuel is gone: it calls [`run::buoy_tick`]
+/// and puts the new fuel in the pinned register. It saves every register it uses, so a
+/// loop whose turns spend fuel keeps its values in registers across the call, which the
+/// code makes only once in thousands of turns.
+fn define_tick(module: &mut JITModule, tick: ModuleFuncId) -> Result<ModuleFuncId, Error> {
+    let mut signature = Signature::new(CallConv::PreserveAll);
+    signature.params.push(AbiParam::new(types::I64));
+    let id = module
+        .declare_function("tick", Linkage::Local, &signature)
+        .map_err(|error| error.to_string())?;
+    let mut context = module.make_context();
+    context.func.signature = signature;
+    let mut builder_context = FunctionBuilderContext::new();
+    let mut b = FunctionBuilder::new(&mut context.func, &mut builder_context);
+    let block = b.create_block();
+    b.append_block_params_for_function_params(block);
+    b.switch_to_block(block);
+    let frame = b.block_params(block)[0];
+    let callee = module.declare_func_in_func(tick, b.func);
+    let call = b.ins().call(callee, &[frame]);
+    let fuel = b.inst_results(call)[0];
+    b.ins().set_pinned_reg(fuel);
+    b.ins().return_(&[]);
+    b.seal_all_blocks();
+    b.finalize(module.target_config());
+    module
+        .define_function(id, &mut context)
+        .map_err(|error| format!("tick: {error:?}"))?;
+    Ok(id)
+}
+
 /// `fn(frame, words)`: stores the address of the globals in the frame, reads the
 /// arguments, calls the entry, and stores its result.
 fn trampoline(
@@ -334,6 +378,10 @@ fn trampoline(
     let params = function.params as usize;
     let globals_at = b.ins().iadd_imm_s(words, offset(params)?);
     b.ins().store(flags, globals_at, frame, frame::GLOBALS);
+    // The caller, Rust code, keeps a value of its own in the pinned register.
+    let saved = b.ins().get_pinned_reg(types::I64);
+    let fuel = b.ins().load(types::I64, flags, frame, frame::FUEL);
+    b.ins().set_pinned_reg(fuel);
     let _ = globals;
     let mut args = vec![frame];
     for (index, ty) in function.locals[..params].iter().enumerate() {
@@ -348,6 +396,7 @@ fn trampoline(
     let callee = module.declare_func_in_func(target, b.func);
     let call = b.ins().call(callee, &args);
     let results = b.inst_results(call).to_vec();
+    b.ins().set_pinned_reg(saved);
     match (&function.result, results.first()) {
         (Ty::Num | Ty::Bool, Some(value)) => {
             b.ins().store(flags, *value, frame, frame::RESULT);
@@ -380,7 +429,7 @@ fn repr(ty: &Ty) -> Option<types::Type> {
     }
 }
 
-fn signature_of(function: &Function, call_conv: cranelift_codegen::isa::CallConv) -> Signature {
+fn signature_of(function: &Function, call_conv: CallConv) -> Signature {
     let mut signature = Signature::new(call_conv);
     signature.params.push(AbiParam::new(types::I64));
     for ty in function.locals.iter().take(function.params as usize) {
@@ -608,6 +657,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         let entry = self.b.create_block();
         self.b.append_block_params_for_function_params(entry);
         self.b.switch_to_block(entry);
+        self.b.seal_block(entry);
         let params: Vec<Value> = self.b.block_params(entry).to_vec();
         self.frame = params[0];
         if self.function.receiver
@@ -675,6 +725,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn unreachable(&mut self) {
         let block = self.b.create_block();
         self.b.switch_to_block(block);
+        self.b.seal_block(block);
     }
 
     fn helper(&mut self, index: usize) -> FuncRef {
@@ -726,6 +777,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         let next = self.b.create_block();
         self.b.ins().brif(condition, target, &[], next, &[]);
         self.b.switch_to_block(next);
+        self.b.seal_block(next);
     }
 
     fn stack_check(&mut self) {
@@ -740,25 +792,24 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.bail_if(low, Bail::Stack);
     }
 
-    /// Spends one unit of fuel, and calls the tick when it is gone.
+    /// Spends one unit of the fuel in the pinned register, and calls the tick, which
+    /// refills it, when it is gone.
     fn fuel(&mut self) {
-        let flags = MemFlagsData::trusted();
-        let fuel = self
-            .b
-            .ins()
-            .load(types::I64, flags, self.frame, frame::FUEL);
+        let fuel = self.b.ins().get_pinned_reg(types::I64);
         let left = self.b.ins().iadd_imm_s(fuel, -1);
-        self.b.ins().store(flags, left, self.frame, frame::FUEL);
+        self.b.ins().set_pinned_reg(left);
         let empty = self.b.ins().icmp_imm_s(IntCC::SignedLessThan, left, 0);
         let tick = self.b.create_block();
         let next = self.b.create_block();
         self.b.set_cold_block(tick);
         self.b.ins().brif(empty, tick, &[], next, &[]);
         self.b.switch_to_block(tick);
+        self.b.seal_block(tick);
         let frame = self.frame;
         self.call_helper(TICK, &[frame]);
         self.b.ins().jump(next, &[]);
         self.b.switch_to_block(next);
+        self.b.seal_block(next);
     }
 
     fn stmts(&mut self, stmts: &[Stmt]) -> Result<(), Error> {
@@ -776,64 +827,13 @@ impl<'a, 'm> Gen<'a, 'm> {
             Stmt::Expr(expr) => {
                 self.expr(expr)?;
             }
-            Stmt::If(test, then, otherwise) => {
-                let condition = self.boolean(test)?;
-                let then_block = self.b.create_block();
-                let else_block = self.b.create_block();
-                let merge = self.b.create_block();
-                self.b
-                    .ins()
-                    .brif(condition, then_block, &[], else_block, &[]);
-                self.b.switch_to_block(then_block);
-                self.stmts(then)?;
-                if !self.is_filled() {
-                    self.b.ins().jump(merge, &[]);
-                }
-                self.b.switch_to_block(else_block);
-                self.stmts(otherwise)?;
-                if !self.is_filled() {
-                    self.b.ins().jump(merge, &[]);
-                }
-                self.b.switch_to_block(merge);
-            }
+            Stmt::If(test, then, otherwise) => self.if_stmt(test, then, otherwise)?,
             Stmt::Loop {
                 cond,
                 body,
                 update,
                 test_after,
-            } => {
-                let header = self.b.create_block();
-                let body_block = self.b.create_block();
-                let update_block = self.b.create_block();
-                let exit = self.b.create_block();
-                self.b
-                    .ins()
-                    .jump(if *test_after { body_block } else { header }, &[]);
-                self.b.switch_to_block(header);
-                self.fuel();
-                match cond {
-                    Some(cond) => {
-                        let condition = self.boolean(cond)?;
-                        self.b.ins().brif(condition, body_block, &[], exit, &[]);
-                    }
-                    None => {
-                        self.b.ins().jump(body_block, &[]);
-                    }
-                }
-                self.b.switch_to_block(body_block);
-                self.loops.push((update_block, exit));
-                self.stmts(body)?;
-                if !self.is_filled() {
-                    self.b.ins().jump(update_block, &[]);
-                }
-                self.b.switch_to_block(update_block);
-                self.stmts(update)?;
-                self.loops.pop();
-                if !self.is_filled() {
-                    self.b.ins().jump(header, &[]);
-                }
-                self.b.switch_to_block(exit);
-            }
+            } => self.loop_stmt(cond.as_ref(), body, update, *test_after)?,
             Stmt::Break(depth) | Stmt::Continue(depth) => {
                 let index = self
                     .loops
@@ -848,32 +848,99 @@ impl<'a, 'm> Gen<'a, 'm> {
                 };
                 self.b.ins().jump(target, &[]);
             }
-            Stmt::Return(value) => {
-                let result = self.function.result.clone();
-                let value = match value {
-                    Some(value) => {
-                        let (value, ty) = self.expr(value)?;
-                        self.expect(&ty, &result)?;
-                        value
-                    }
-                    None if result == Ty::Void => None,
-                    None => {
-                        self.bail(Bail::Undefined);
-                        return Ok(());
-                    }
-                };
-                match self.exit {
-                    Some(exit) => {
-                        let args: Vec<BlockArg> = value.into_iter().map(BlockArg::Value).collect();
-                        self.b.ins().jump(exit, &args);
-                    }
-                    None => {
-                        let values: Vec<Value> = value.into_iter().collect();
-                        self.b.ins().return_(&values);
-                    }
-                }
-            }
+            Stmt::Return(value) => self.return_stmt(value.as_ref())?,
             Stmt::Bail(reason) => self.bail(*reason),
+        }
+        Ok(())
+    }
+
+    fn if_stmt(&mut self, test: &Expr, then: &[Stmt], otherwise: &[Stmt]) -> Result<(), Error> {
+        let condition = self.boolean(test)?;
+        let then_block = self.b.create_block();
+        let else_block = self.b.create_block();
+        let merge = self.b.create_block();
+        self.b
+            .ins()
+            .brif(condition, then_block, &[], else_block, &[]);
+        self.b.seal_block(then_block);
+        self.b.seal_block(else_block);
+        self.b.switch_to_block(then_block);
+        self.stmts(then)?;
+        if !self.is_filled() {
+            self.b.ins().jump(merge, &[]);
+        }
+        self.b.switch_to_block(else_block);
+        self.stmts(otherwise)?;
+        if !self.is_filled() {
+            self.b.ins().jump(merge, &[]);
+        }
+        self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
+        Ok(())
+    }
+
+    fn loop_stmt(
+        &mut self,
+        cond: Option<&Expr>,
+        body: &[Stmt],
+        update: &[Stmt],
+        test_after: bool,
+    ) -> Result<(), Error> {
+        let header = self.b.create_block();
+        let body_block = self.b.create_block();
+        let update_block = self.b.create_block();
+        let exit = self.b.create_block();
+        self.b
+            .ins()
+            .jump(if test_after { body_block } else { header }, &[]);
+        self.b.switch_to_block(header);
+        self.fuel();
+        if let Some(cond) = cond {
+            let condition = self.boolean(cond)?;
+            self.b.ins().brif(condition, body_block, &[], exit, &[]);
+        } else {
+            self.b.ins().jump(body_block, &[]);
+        }
+        self.b.switch_to_block(body_block);
+        self.b.seal_block(body_block);
+        self.loops.push((update_block, exit));
+        self.stmts(body)?;
+        if !self.is_filled() {
+            self.b.ins().jump(update_block, &[]);
+        }
+        self.b.switch_to_block(update_block);
+        self.b.seal_block(update_block);
+        self.stmts(update)?;
+        self.loops.pop();
+        if !self.is_filled() {
+            self.b.ins().jump(header, &[]);
+        }
+        self.b.seal_block(header);
+        self.b.switch_to_block(exit);
+        self.b.seal_block(exit);
+        Ok(())
+    }
+
+    fn return_stmt(&mut self, value: Option<&Expr>) -> Result<(), Error> {
+        let result = self.function.result.clone();
+        let value = match value {
+            Some(value) => {
+                let (value, ty) = self.expr(value)?;
+                self.expect(&ty, &result)?;
+                value
+            }
+            None if result == Ty::Void => None,
+            None => {
+                self.bail(Bail::Undefined);
+                return Ok(());
+            }
+        };
+        if let Some(exit) = self.exit {
+            let args: Vec<BlockArg> = value.into_iter().map(BlockArg::Value).collect();
+            self.b.ins().jump(exit, &args);
+        } else {
+            let values: Vec<Value> = value.into_iter().collect();
+            self.b.ins().return_(&values);
         }
         Ok(())
     }
@@ -1111,11 +1178,13 @@ impl<'a, 'm> Gen<'a, 'm> {
             .brif(condition, then_block, &[], else_block, &[]);
         for (block, branch) in [(then_block, then), (else_block, otherwise)] {
             self.b.switch_to_block(block);
+            self.b.seal_block(block);
             let (value, value_ty) = self.value(branch)?;
             self.expect(&value_ty, ty)?;
             self.b.ins().jump(merge, &[BlockArg::Value(value)]);
         }
         self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
         Ok((Some(result), ty.clone()))
     }
 
@@ -1209,6 +1278,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         let result = self.b.append_block_param(merge, types::I32);
         self.b.set_cold_block(slow);
         self.b.ins().brif(small, fast, &[], slow, &[]);
+        self.b.seal_block(fast);
+        self.b.seal_block(slow);
         self.b.switch_to_block(fast);
         let wide = self.b.ins().fcvt_to_sint_sat(types::I64, value);
         let narrow = self.b.ins().ireduce(types::I32, wide);
@@ -1219,6 +1290,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .unwrap_or_else(|| self.b.ins().iconst(types::I32, 0));
         self.b.ins().jump(merge, &[BlockArg::Value(converted)]);
         self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
         result
     }
 
@@ -1315,9 +1387,11 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .brif(first, merge, &[BlockArg::Value(first)], rest, &[]);
         }
         self.b.switch_to_block(rest);
+        self.b.seal_block(rest);
         let second = self.boolean(right)?;
         self.b.ins().jump(merge, &[BlockArg::Value(second)]);
         self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
         Ok((Some(result), Ty::Bool))
     }
 
@@ -1363,6 +1437,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         let merge = self.b.create_block();
         let result = self.b.append_block_param(merge, repr);
         self.b.ins().brif(found, read, &[], outside, &[]);
+        self.b.seal_block(read);
+        self.b.seal_block(outside);
         self.b.switch_to_block(read);
         let address = self.element_address(array, integer);
         let value = self.b.ins().load(repr, MemFlagsData::trusted(), address, 0);
@@ -1375,6 +1451,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.bail(Bail::Index);
         }
         self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
         Ok((Some(result), element))
     }
 
@@ -1401,6 +1478,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         let append = self.b.create_block();
         let merge = self.b.create_block();
         self.b.ins().brif(inside, write, &[], append, &[]);
+        self.b.seal_block(write);
+        self.b.seal_block(append);
         self.b.switch_to_block(write);
         let address = self.element_address(array_value, integer);
         self.b
@@ -1414,6 +1493,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.push(array_value, value);
         self.b.ins().jump(merge, &[]);
         self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
         Ok((Some(value), *element))
     }
 
@@ -1428,10 +1508,12 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.b.set_cold_block(grow);
         self.b.ins().brif(full, grow, &[], store, &[]);
         self.b.switch_to_block(grow);
+        self.b.seal_block(grow);
         let frame = self.frame;
         self.call_helper(GROW, &[frame, array]);
         self.b.ins().jump(store, &[]);
         self.b.switch_to_block(store);
+        self.b.seal_block(store);
         let address = self.element_address(array, length);
         self.b.ins().store(flags, value, address, 0);
         let longer = self.b.ins().iadd_imm_s(length, 1);
@@ -1482,12 +1564,15 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.b.switch_to_block(header);
         let more = self.b.ins().icmp(IntCC::SignedLessThan, index, count);
         self.b.ins().brif(more, body, &[], exit, &[]);
+        self.b.seal_block(body);
+        self.b.seal_block(exit);
         self.b.switch_to_block(body);
         let offset = self.b.ins().ishl_imm_u(index, 3);
         let address = self.b.ins().iadd(data, offset);
         self.b.ins().store(flags, value, address, 0);
         let next = self.b.ins().iadd_imm_s(index, 1);
         self.b.ins().jump(header, &[BlockArg::Value(next)]);
+        self.b.seal_block(header);
         self.b.switch_to_block(exit);
         array
     }
@@ -1511,6 +1596,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         let result = self.b.append_block_param(merge, types::I64);
         self.b.set_cold_block(slow);
         self.b.ins().brif(over, slow, &[], fast, &[]);
+        self.b.seal_block(fast);
+        self.b.seal_block(slow);
         self.b.switch_to_block(fast);
         self.b.ins().store(flags, end, self.frame, frame::HEAP_NEXT);
         self.b.ins().jump(merge, &[BlockArg::Value(next)]);
@@ -1521,6 +1608,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .unwrap_or_else(|| self.b.ins().iconst(types::I64, 0));
         self.b.ins().jump(merge, &[BlockArg::Value(fresh)]);
         self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
         result
     }
 
@@ -1623,6 +1711,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.function = saved_function;
         emitted?;
         self.b.switch_to_block(exit);
+        self.b.seal_block(exit);
         Ok(result)
     }
 
@@ -1749,6 +1838,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         ordered.sort_by_key(|(id, _)| *id);
         for (function_id, block) in ordered {
             self.b.switch_to_block(block);
+            self.b.seal_block(block);
             let mut call_args = vec![receiver];
             call_args.extend(&values);
             match (merged, self.invoke(function_id, call_args)?) {
@@ -1761,6 +1851,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
         }
         self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
         Ok((merged, result.clone()))
     }
 

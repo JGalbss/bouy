@@ -653,6 +653,12 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
         }
         let ty = self.global_type(symbol)?;
         let index = self.island.global(symbol, ty.clone());
+        // The entry still reads a constant, which throws before its declaration runs.
+        if ty == T::Num
+            && let Some(value) = constant(self.island, symbol, 0)
+        {
+            return Ok((ir::Expr::Num(value), ty));
+        }
         Ok((ir::Expr::Global(index), ty))
     }
 
@@ -1457,6 +1463,70 @@ fn primitive_type(init: &Expression<'_>) -> Checked<T> {
         }
         _ => reject("a variable outside the island whose type is unknown"),
     }
+}
+
+/// The number of a `const` whose initializer is an expression of number literals and other
+/// such constants, which the code may use in place of a read of the variable.
+fn constant(island: &Island<'_, '_>, symbol: SymbolId, depth: u32) -> Option<f64> {
+    let nodes = island.semantic.nodes();
+    let node = island.semantic.scoping().symbol_declaration(symbol);
+    let AstKind::VariableDeclarator(declarator) = nodes.kind(node) else {
+        return None;
+    };
+    let AstKind::VariableDeclaration(declaration) = nodes.parent_kind(node) else {
+        return None;
+    };
+    if declaration.kind != VariableDeclarationKind::Const || depth > 8 {
+        return None;
+    }
+    fold(island, declarator.init.as_ref()?, depth)
+}
+
+/// The number of a constant expression, with the operators of ECMA-262 §13.
+fn fold(island: &Island<'_, '_>, expression: &Expression<'_>, depth: u32) -> Option<f64> {
+    let int = ir::to_int32;
+    let uint = |value: f64| ir::to_int32(value).cast_unsigned();
+    Some(match expression {
+        Expression::NumericLiteral(literal) => literal.value,
+        Expression::ParenthesizedExpression(inner) => fold(island, &inner.expression, depth)?,
+        Expression::Identifier(ident) => {
+            let symbol = island
+                .semantic
+                .scoping()
+                .get_reference(ident.reference_id())
+                .symbol_id()?;
+            constant(island, symbol, depth + 1)?
+        }
+        Expression::UnaryExpression(unary) => {
+            let value = fold(island, &unary.argument, depth)?;
+            match unary.operator {
+                UnaryOperator::UnaryNegation => -value,
+                UnaryOperator::UnaryPlus => value,
+                UnaryOperator::BitwiseNot => f64::from(!int(value)),
+                _ => return None,
+            }
+        }
+        Expression::BinaryExpression(binary) => {
+            let a = fold(island, &binary.left, depth)?;
+            let b = fold(island, &binary.right, depth)?;
+            let shift = uint(b) & 31;
+            match binary.operator {
+                BinaryOperator::Addition => a + b,
+                BinaryOperator::Subtraction => a - b,
+                BinaryOperator::Multiplication => a * b,
+                BinaryOperator::Division => a / b,
+                BinaryOperator::Remainder => a % b,
+                BinaryOperator::BitwiseOR => f64::from(int(a) | int(b)),
+                BinaryOperator::BitwiseAnd => f64::from(int(a) & int(b)),
+                BinaryOperator::BitwiseXOR => f64::from(int(a) ^ int(b)),
+                BinaryOperator::ShiftLeft => f64::from(int(a).wrapping_shl(shift)),
+                BinaryOperator::ShiftRight => f64::from(int(a) >> shift),
+                BinaryOperator::ShiftRightZeroFill => f64::from(uint(a) >> shift),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    })
 }
 
 /// Whether the expression reads `this`, outside nested functions.

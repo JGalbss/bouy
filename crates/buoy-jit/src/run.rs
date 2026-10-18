@@ -291,15 +291,15 @@ unsafe fn suspend(frame: *mut Frame, event: Event) {
     }
 }
 
-/// Refills the fuel, and yields when the slice is spent.
-pub extern "C" fn buoy_tick(frame: *mut Frame) {
+/// Yields when the slice is spent, and returns the new fuel.
+pub extern "C" fn buoy_tick(frame: *mut Frame) -> i64 {
     // SAFETY: the machine code passes the frame of its run.
     unsafe {
-        (*frame).fuel = FUEL;
         if (*frame).slice_start.elapsed() >= SLICE {
             suspend(frame, Event::Slice);
         }
     }
+    FUEL
 }
 
 /// Ends the run with a bail. It never returns.
