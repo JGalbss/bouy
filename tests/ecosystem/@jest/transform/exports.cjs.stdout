@@ -1,0 +1,5 @@
+module.exports: object
+  createScriptTransformer: function/1
+  createTranspilingRequire: function/1
+  handlePotentialSyntaxError: function/1
+  shouldInstrument: function/4

@@ -1,0 +1,5 @@
+module.exports: object
+  load: function/0
+  onExit: function/2
+  signals: object Array
+  unload: function/0

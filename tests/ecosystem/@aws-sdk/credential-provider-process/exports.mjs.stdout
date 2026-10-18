@@ -1,0 +1,6 @@
+namespace: object Module
+  default: object
+    fromProcess: function/0
+  fromProcess: function/0
+  module.exports: object
+    fromProcess: function/0

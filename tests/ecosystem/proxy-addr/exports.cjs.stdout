@@ -1,0 +1,3 @@
+module.exports: function/2
+  all: function/2
+  compile: function/1

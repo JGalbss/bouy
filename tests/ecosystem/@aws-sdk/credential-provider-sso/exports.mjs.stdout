@@ -1,0 +1,12 @@
+namespace: object Module
+  default: object
+    fromSSO: function/0
+    isSsoProfile: function/1
+    validateSsoProfile: function/2
+  fromSSO: function/0
+  isSsoProfile: function/1 (undefined, object, number, false, string, false, false, false, false)
+  module.exports: object
+    fromSSO: function/0
+    isSsoProfile: function/1
+    validateSsoProfile: function/2
+  validateSsoProfile: function/2

@@ -1,0 +1,12 @@
+namespace: object Module
+  GenMapping: function/0
+  addMapping: function/2
+  addSegment: function/8
+  allMappings: function/1
+  fromMap: function/1
+  maybeAddMapping: function/2
+  maybeAddSegment: function/8
+  setIgnore: function/2
+  setSourceContent: function/3
+  toDecodedMap: function/1
+  toEncodedMap: function/1

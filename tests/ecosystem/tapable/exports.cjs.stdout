@@ -1,0 +1,14 @@
+module.exports: object
+  AsyncParallelBailHook: function/0
+  AsyncParallelHook: function/0
+  AsyncSeriesBailHook: function/0
+  AsyncSeriesHook: function/0
+  AsyncSeriesLoopHook: function/0
+  AsyncSeriesWaterfallHook: function/0
+  HookMap: class/1 {for, get, intercept, tap, tapAsync, tapPromise}
+  MultiHook: class/1 {intercept, isUsed, tap, tapAsync, tapPromise, withOptions}
+  SyncBailHook: function/0
+  SyncHook: function/0
+  SyncLoopHook: function/0
+  SyncWaterfallHook: function/0
+  __esModule: boolean

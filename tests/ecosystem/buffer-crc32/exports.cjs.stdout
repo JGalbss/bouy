@@ -1,0 +1,3 @@
+module.exports: function/0
+  signed: function/0
+  unsigned: function/0

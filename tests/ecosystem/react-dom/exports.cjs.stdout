@@ -1,0 +1,19 @@
+module.exports: object
+  __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: object
+    d: object
+    findDOMNode: null
+    p: number
+  browser: function/1
+  createPortal: function/2
+  flushSync: function/1
+  preconnect: function/2
+  prefetchDNS: function/1
+  preinit: function/2
+  preinitModule: function/2
+  preload: function/2
+  preloadModule: function/2
+  requestFormReset: function/1
+  unstable_batchedUpdates: function/2
+  useFormState: function/3
+  useFormStatus: function/0
+  version: string

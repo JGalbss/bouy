@@ -1,0 +1,6 @@
+namespace: object Module
+  SnapshotClient: class/0 {assert, assertRaw, clear, clearTest, finish, getSnapshotState, match, matchDomain, pollMatchDomain, setup, skipTest}
+  SnapshotState: class/4 {_addSnapshot, _inferInlineSnapshotStack, _reconcile, _resolveInlineStack, _resolveKey, added, clearTest, environment, getUncheckedCount, getUncheckedKeys, markSnapshotsAsCheckedForTest, match, matched, pack, probeExpectedSnapshot, processDomainSnapshot, removeUncheckedKeys, save, snapshotUpdateState, unmatched, updated}
+  addSerializer: function/1
+  getSerializers: function/0
+  stripSnapshotIndentation: function/1

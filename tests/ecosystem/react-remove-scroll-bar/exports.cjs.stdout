@@ -1,0 +1,7 @@
+module.exports: object
+  RemoveScrollBar: function/1
+  fullWidthClassName: string
+  getGapWidth: function/1
+  noScrollbarsClassName: string
+  removedBarSizeVariable: string
+  zeroRightClassName: string

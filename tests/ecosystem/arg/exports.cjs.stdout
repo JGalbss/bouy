@@ -1,0 +1,4 @@
+module.exports: function/1
+  ArgError: function/2
+  COUNT: function/3
+  flag: function/1

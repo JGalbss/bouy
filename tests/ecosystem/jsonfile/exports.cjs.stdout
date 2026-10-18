@@ -1,0 +1,5 @@
+module.exports: object
+  readFile: function/0
+  readFileSync: function/1
+  writeFile: function/0
+  writeFileSync: function/2

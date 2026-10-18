@@ -1,0 +1,3 @@
+module.exports: object
+  create: function/3
+  createFromFile: function/2

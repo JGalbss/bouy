@@ -1,0 +1,3 @@
+module.exports: function/3
+  JSONParseError: class/4 {name}
+  noExceptions: function/2

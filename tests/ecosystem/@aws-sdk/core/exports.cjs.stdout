@@ -1,0 +1,50 @@
+module.exports: object
+  AWSSDKSigV4Signer: class/0 {errorHandler, sign, successHandler}
+  AwsEc2QueryProtocol: class/1 {getShapeId, useNestedResult}
+  AwsJson1_0Protocol: class/1 {getDefaultContentType, getJsonRpcVersion, getShapeId}
+  AwsJson1_1Protocol: class/1 {getDefaultContentType, getJsonRpcVersion, getShapeId}
+  AwsJsonRpcProtocol: class/1 {getPayloadCodec, handleError, serializeRequest}
+  AwsQueryProtocol: class/1 {deserializeResponse, getDefaultContentType, getPayloadCodec, getShapeId, handleError, loadQueryError, loadQueryErrorCode, loadQueryErrorMessage, serializeRequest, setSerdeContext, useNestedResult}
+  AwsRestJsonProtocol: class/1 {deserializeResponse, getDefaultContentType, getPayloadCodec, getShapeId, handleError, serializeRequest, setSerdeContext}
+  AwsRestXmlProtocol: class/1 {deserializeResponse, getDefaultContentType, getPayloadCodec, getShapeId, handleError, hasUnstructuredPayloadBinding, serializeRequest}
+  AwsSdkSigV4ASigner: class/0 {sign}
+  AwsSdkSigV4Signer: class/0 {errorHandler, sign, successHandler}
+  AwsSmithyRpcV2CborProtocol: class/1 {handleError, serializeRequest}
+  JsonCodec: class/1 {createDeserializer, createSerializer}
+  JsonShapeDeserializer: class/1 {_read, read, readObject}
+  JsonShapeSerializer: class/1 {_write, flush, write, writeDiscriminatedDocument}
+  NODE_AUTH_SCHEME_PREFERENCE_OPTIONS: object
+    configFileSelector: function/1
+    default: object Array
+    environmentVariableSelector: function/2
+  NODE_SIGV4A_CONFIG_OPTIONS: object
+    configFileSelector: function/1
+    default: undefined
+    environmentVariableSelector: function/1
+  QueryShapeSerializer: class/1 {flush, getKey, write, writeKey, writeValue}
+  XmlCodec: class/1 {createDeserializer, createSerializer}
+  XmlShapeDeserializer: class/1 {parseXml, read, readSchema, setSerdeContext}
+  XmlShapeSerializer: class/1 {flush, getXmlnsAttribute, write, writeList, writeMap, writeSimple, writeSimpleInto, writeStruct}
+  _toBool: function/1
+  _toNum: function/1
+  _toStr: function/1
+  awsExpectUnion: function/1
+  emitWarningIfUnsupportedVersion: function/1
+  getBearerTokenEnvKey: function/1
+  getLongPollPlugin: function/1
+  loadJsonRpcErrorCode: function/2
+  loadRestJsonErrorCode: function/2
+  loadRestXmlErrorCode: function/2
+  parseJsonBody: function/3
+  parseJsonErrorBody: function/2
+  parseXmlBody: function/2
+  parseXmlErrorBody: function/2
+  resolveAWSSDKSigV4Config: function/1
+  resolveAwsSdkSigV4AConfig: function/1
+  resolveAwsSdkSigV4Config: function/1
+  setCredentialFeature: function/3
+  setFeature: function/3
+  setTokenFeature: function/3
+  state: object
+    warningEmitted: boolean
+  validateSigningProperties: function/1

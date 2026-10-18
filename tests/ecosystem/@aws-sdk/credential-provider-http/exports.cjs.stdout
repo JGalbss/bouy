@@ -1,0 +1,2 @@
+module.exports: object
+  fromHttp: function/0

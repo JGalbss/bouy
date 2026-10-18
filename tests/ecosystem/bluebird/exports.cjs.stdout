@@ -1,0 +1,108 @@
+module.exports: class/1 {__isCancelled, _addCallbacks, _attachCancellationCallback, _attachExtraTrace, _boundValue, _branchHasCancelled, _cancel, _cancelBranched, _cancelBy, _cancelPromises, _captureStackTrace, _clearCallbackDataAtIndex, _clearCancellationData, _dereferenceTrace, _doInvokeOnCancel, _enoughBranchesHaveCancelled, _ensurePossibleRejectionHandled, _execute, _fireEvent, _followee, _fulfill, _fulfillPromises, _fulfillmentHandlerAt, _getDisposer, _invokeInternalOnCancel, _invokeOnCancel, _isBound, _isCancellable, _isCancelled, _isDisposable, _isFateSealed, _isFinal, _isFollowing, _isRejectionUnhandled, _isUnhandledRejectionNotified, _length, _migrateCallback0, _migrateCallbackAt, _notifyUnhandledRejection, _notifyUnhandledRejectionIsHandled, _onCancel, _passThrough, _peekContext, _popContext, _promiseAt, _promiseCreated, _propagateFrom, _proxy, _pushContext, _reason, _receiverAt, _reject, _rejectCallback, _rejectPromises, _rejectionHandlerAt, _resolveCallback, _resolveFromExecutor, _resolveFromSyncValue, _resultCancelled, _returnedNonUndefined, _setAsyncGuaranteed, _setBoundTo, _setCancelled, _setDisposable, _setFollowee, _setFollowing, _setFulfilled, _setIsFinal, _setLength, _setNoAsyncGuarantee, _setOnCancel, _setRejected, _setRejectionIsUnhandled, _setReturnedNonUndefined, _setUnhandledRejectionIsNotified, _setWillBeCancelled, _settlePromise, _settlePromise0, _settlePromiseCtx, _settlePromiseFromHandler, _settlePromiseLateCancellationObserver, _settlePromises, _settledValue, _target, _then, _unsetCancelled, _unsetDisposable, _unsetOnCancel, _unsetRejectionIsUnhandled, _unsetUnhandledRejectionIsNotified, _value, _warn, all, any, asCallback, bind, break, call, cancel, catch, catchReturn, catchThrow, caught, delay, disposer, done, each, error, filter, finally, get, isCancellable, isCancelled, isFulfilled, isPending, isRejected, isResolved, lastly, map, mapSeries, nodeify, props, race, reason, reduce, reflect, return, settle, some, spread, suppressUnhandledRejections, tap, tapCatch, then, thenReturn, thenThrow, throw, timeout, toJSON, toString, value}
+  AggregateError: class/1 {constructor$, every, filter, forEach, indexOf, isOperational, join, lastIndexOf, length, map, pop, push, reduce, reduceRight, reverse, shift, slice, some, sort, toString, unshift}
+  CancellationError: class/1 {constructor$}
+  OperationalError: class/1 {constructor$}
+  Promise: class/1 {__isCancelled, _addCallbacks, _attachCancellationCallback, _attachExtraTrace, _boundValue, _branchHasCancelled, _cancel, _cancelBranched, _cancelBy, _cancelPromises, _captureStackTrace, _clearCallbackDataAtIndex, _clearCancellationData, _dereferenceTrace, _doInvokeOnCancel, _enoughBranchesHaveCancelled, _ensurePossibleRejectionHandled, _execute, _fireEvent, _followee, _fulfill, _fulfillPromises, _fulfillmentHandlerAt, _getDisposer, _invokeInternalOnCancel, _invokeOnCancel, _isBound, _isCancellable, _isCancelled, _isDisposable, _isFateSealed, _isFinal, _isFollowing, _isRejectionUnhandled, _isUnhandledRejectionNotified, _length, _migrateCallback0, _migrateCallbackAt, _notifyUnhandledRejection, _notifyUnhandledRejectionIsHandled, _onCancel, _passThrough, _peekContext, _popContext, _promiseAt, _promiseCreated, _propagateFrom, _proxy, _pushContext, _reason, _receiverAt, _reject, _rejectCallback, _rejectPromises, _rejectionHandlerAt, _resolveCallback, _resolveFromExecutor, _resolveFromSyncValue, _resultCancelled, _returnedNonUndefined, _setAsyncGuaranteed, _setBoundTo, _setCancelled, _setDisposable, _setFollowee, _setFollowing, _setFulfilled, _setIsFinal, _setLength, _setNoAsyncGuarantee, _setOnCancel, _setRejected, _setRejectionIsUnhandled, _setReturnedNonUndefined, _setUnhandledRejectionIsNotified, _setWillBeCancelled, _settlePromise, _settlePromise0, _settlePromiseCtx, _settlePromiseFromHandler, _settlePromiseLateCancellationObserver, _settlePromises, _settledValue, _target, _then, _unsetCancelled, _unsetDisposable, _unsetOnCancel, _unsetRejectionIsUnhandled, _unsetUnhandledRejectionIsNotified, _value, _warn, all, any, asCallback, bind, break, call, cancel, catch, catchReturn, catchThrow, caught, delay, disposer, done, each, error, filter, finally, get, isCancellable, isCancelled, isFulfilled, isPending, isRejected, isResolved, lastly, map, mapSeries, nodeify, props, race, reason, reduce, reflect, return, settle, some, spread, suppressUnhandledRejections, tap, tapCatch, then, thenReturn, thenThrow, throw, timeout, toJSON, toString, value}
+    AggregateError: class/1 {constructor$, every, filter, forEach, indexOf, isOperational, join, lastIndexOf, length, map, pop, push, reduce, reduceRight, reverse, shift, slice, some, sort, toString, unshift}
+    CancellationError: class/1 {constructor$}
+    OperationalError: class/1 {constructor$}
+    Promise: class/1 {__isCancelled, _addCallbacks, _attachCancellationCallback, _attachExtraTrace, _boundValue, _branchHasCancelled, _cancel, _cancelBranched, _cancelBy, _cancelPromises, _captureStackTrace, _clearCallbackDataAtIndex, _clearCancellationData, _dereferenceTrace, _doInvokeOnCancel, _enoughBranchesHaveCancelled, _ensurePossibleRejectionHandled, _execute, _fireEvent, _followee, _fulfill, _fulfillPromises, _fulfillmentHandlerAt, _getDisposer, _invokeInternalOnCancel, _invokeOnCancel, _isBound, _isCancellable, _isCancelled, _isDisposable, _isFateSealed, _isFinal, _isFollowing, _isRejectionUnhandled, _isUnhandledRejectionNotified, _length, _migrateCallback0, _migrateCallbackAt, _notifyUnhandledRejection, _notifyUnhandledRejectionIsHandled, _onCancel, _passThrough, _peekContext, _popContext, _promiseAt, _promiseCreated, _propagateFrom, _proxy, _pushContext, _reason, _receiverAt, _reject, _rejectCallback, _rejectPromises, _rejectionHandlerAt, _resolveCallback, _resolveFromExecutor, _resolveFromSyncValue, _resultCancelled, _returnedNonUndefined, _setAsyncGuaranteed, _setBoundTo, _setCancelled, _setDisposable, _setFollowee, _setFollowing, _setFulfilled, _setIsFinal, _setLength, _setNoAsyncGuarantee, _setOnCancel, _setRejected, _setRejectionIsUnhandled, _setReturnedNonUndefined, _setUnhandledRejectionIsNotified, _setWillBeCancelled, _settlePromise, _settlePromise0, _settlePromiseCtx, _settlePromiseFromHandler, _settlePromiseLateCancellationObserver, _settlePromises, _settledValue, _target, _then, _unsetCancelled, _unsetDisposable, _unsetOnCancel, _unsetRejectionIsUnhandled, _unsetUnhandledRejectionIsNotified, _value, _warn, all, any, asCallback, bind, break, call, cancel, catch, catchReturn, catchThrow, caught, delay, disposer, done, each, error, filter, finally, get, isCancellable, isCancelled, isFulfilled, isPending, isRejected, isResolved, lastly, map, mapSeries, nodeify, props, race, reason, reduce, reflect, return, settle, some, spread, suppressUnhandledRejections, tap, tapCatch, then, thenReturn, thenThrow, throw, timeout, toJSON, toString, value}
+    PromiseInspection: class/1 {_settledValue, error, isCancelled, isFulfilled, isPending, isRejected, isResolved, reason, value}
+    RangeError: class/1 {message, name}
+    RejectionError: class/1 {constructor$}
+    TimeoutError: class/1 {constructor$}
+    TypeError: class/1 {message, name}
+    _SomePromiseArray: class/1 {_addFulfilled, _addRejected, _canPossiblyFulfill, _cancel$, _checkOutcome, _fulfilled, _getRangeError, _init, _init$, _isResolved$, _iterate$, _promiseCancelled, _promiseCancelled$, _promiseFulfilled, _promiseFulfilled$, _promiseRejected, _promiseRejected$, _reject$, _rejected, _resolve$, _resolveEmptyArray, _resultCancelled$, constructor$, getActualLength$, howMany, init, length$, promise$, setHowMany, setUnwrap, shouldCopyValues$}
+    _peekContext: function/0
+    all: function/1
+    allSettled: function/1
+    any: function/1
+    attempt: function/1
+    bind: function/2
+    cast: function/1
+    config: function/1
+    coroutine: function/2
+    defer: function/0
+    delay: function/2
+    each: function/2
+    filter: function/3
+    fromCallback: function/1
+    fromNode: function/1
+    fulfilled: function/1
+    getNewLibraryCopy: function/0
+    hasLongStackTraces: function/0
+    is: function/1
+    join: function/0
+    longStackTraces: function/0
+    map: function/4
+    mapSeries: function/2
+    method: function/1
+    noConflict: function/0
+    onPossiblyUnhandledRejection: function/1
+    onUnhandledRejectionHandled: function/1
+    pending: function/0
+    promisify: function/2
+    promisifyAll: function/2
+    props: function/1
+    race: function/1
+    reduce: function/4
+    reject: function/1
+    rejected: function/1
+    resolve: function/1
+    setScheduler: function/1
+    settle: function/1
+    some: function/2
+    spawn: function/1
+    try: function/1
+    using: function/0
+    version: string
+  PromiseInspection: class/1 {_settledValue, error, isCancelled, isFulfilled, isPending, isRejected, isResolved, reason, value}
+  RangeError: class/1 {message, name}
+  RejectionError: class/1 {constructor$}
+  TimeoutError: class/1 {constructor$}
+  TypeError: class/1 {message, name}
+  _SomePromiseArray: class/1 {_addFulfilled, _addRejected, _canPossiblyFulfill, _cancel$, _checkOutcome, _fulfilled, _getRangeError, _init, _init$, _isResolved$, _iterate$, _promiseCancelled, _promiseCancelled$, _promiseFulfilled, _promiseFulfilled$, _promiseRejected, _promiseRejected$, _reject$, _rejected, _resolve$, _resolveEmptyArray, _resultCancelled$, constructor$, getActualLength$, howMany, init, length$, promise$, setHowMany, setUnwrap, shouldCopyValues$}
+  _peekContext: function/0
+  all: function/1
+  allSettled: function/1
+  any: function/1
+  attempt: function/1
+  bind: function/2
+  cast: function/1
+  config: function/1
+  coroutine: function/2
+    addYieldHandler: function/1
+  defer: function/0
+  delay: function/2
+  each: function/2
+  filter: function/3
+  fromCallback: function/1
+  fromNode: function/1
+  fulfilled: function/1
+  getNewLibraryCopy: function/0
+  hasLongStackTraces: function/0
+  is: function/1
+  join: function/0
+  longStackTraces: function/0
+  map: function/4
+  mapSeries: function/2
+  method: function/1
+  noConflict: function/0
+  onPossiblyUnhandledRejection: function/1
+  onUnhandledRejectionHandled: function/1
+  pending: function/0
+  promisify: function/2
+  promisifyAll: function/2
+  props: function/1
+  race: function/1
+  reduce: function/4
+  reject: function/1
+  rejected: function/1
+  resolve: function/1
+  setScheduler: function/1
+  settle: function/1
+  some: function/2
+  spawn: function/1
+  try: function/1
+  using: function/0
+  version: string

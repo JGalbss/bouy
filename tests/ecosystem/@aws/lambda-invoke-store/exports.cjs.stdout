@@ -1,0 +1,6 @@
+module.exports: object
+  InvokeStore: object
+    _testing: undefined
+    getInstanceAsync: function/1
+  InvokeStoreBase: class/0 {getBaggage, getRequestId, getTenantId, getTraceparent, getTracestate, getXRayTraceId, isProtectedKey}
+    PROTECTED_KEYS: object

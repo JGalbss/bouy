@@ -1,0 +1,2 @@
+namespace: object Module
+  useIsHydrated: function/0

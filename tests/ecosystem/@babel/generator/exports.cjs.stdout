@@ -1,0 +1,4 @@
+module.exports: object
+  CodeGenerator: class/1 {generate}
+  default: function/1
+  generate: function/1

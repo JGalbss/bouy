@@ -1,0 +1,9 @@
+namespace: object Module
+  default: object
+    fromArrayBuffer: function/1
+    fromString: function/2
+  fromArrayBuffer: function/1
+  fromString: function/2
+  module.exports: object
+    fromArrayBuffer: function/1
+    fromString: function/2

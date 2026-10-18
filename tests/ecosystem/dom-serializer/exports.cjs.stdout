@@ -1,0 +1,3 @@
+module.exports: object
+  default: function/2
+  render: function/2

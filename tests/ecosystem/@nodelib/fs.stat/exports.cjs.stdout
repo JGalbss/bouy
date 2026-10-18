@@ -1,0 +1,4 @@
+module.exports: object
+  Settings: class/0 {_getValue}
+  stat: function/3
+  statSync: function/2

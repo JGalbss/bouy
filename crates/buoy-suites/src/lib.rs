@@ -10,6 +10,7 @@ pub mod compat;
 pub mod expectations;
 pub mod fake_server;
 pub mod node;
+pub mod node_bindings;
 pub mod node_surface;
 pub mod outcome;
 pub mod packages;
@@ -495,6 +496,91 @@ pub fn parallel<T: Sync, R: Send>(
     std::iter::once(first)
         .chain(results.into_iter().map(|(_, result)| result))
         .collect()
+}
+
+/// A shallow checkout of `reference`, a commit or a tag, of the git repository at `url`, in
+/// `$XDG_CACHE_HOME/buoy/<name>`, with only the paths of `sparse` when it names any. The first
+/// use fetches into a partial directory and renames it, so the cache never holds a partial
+/// checkout. Returns the checkout and the commit of its `HEAD`.
+///
+/// # Errors
+///
+/// When neither `HOME` nor `XDG_CACHE_HOME` is set, or a git command fails.
+pub fn cached_checkout(
+    name: &str,
+    url: &str,
+    reference: &str,
+    sparse: &[&str],
+) -> Result<(PathBuf, String), String> {
+    let cache = env::var_os("XDG_CACHE_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .ok_or("set HOME or XDG_CACHE_HOME for the cache of the upstream sources")?
+        .join("buoy");
+    let checkout = cache.join(name);
+    let git = |directory: &Path, args: &[&str]| -> Result<String, String> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args(args)
+            .output()
+            .map_err(|error| format!("cannot run git: {error}"))?;
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned());
+        }
+        Err(format!(
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    };
+    if checkout.is_dir() {
+        return Ok((checkout.clone(), git(&checkout, &["rev-parse", "HEAD"])?));
+    }
+    let partial = cache.join(format!("{name}.partial-{}", std::process::id()));
+    fs::create_dir_all(&partial).map_err(|error| format!("{}: {error}", partial.display()))?;
+    eprintln!("buoy-suites: fetching {url} at {reference}");
+    let mut sparse_args = vec!["sparse-checkout", "set", "--no-cone"];
+    sparse_args.extend(sparse);
+    let fetched = git(&partial, &["init", "-q"])
+        .and_then(|_| git(&partial, &["remote", "add", "origin", url]))
+        .and_then(|_| {
+            if sparse.is_empty() {
+                return Ok(String::new());
+            }
+            git(&partial, &sparse_args)
+        })
+        .and_then(|_| {
+            let mut fetch = vec!["fetch", "-q", "--depth", "1"];
+            if !sparse.is_empty() {
+                fetch.push("--filter=blob:none");
+            }
+            fetch.extend(["origin", reference]);
+            git(&partial, &fetch)
+        })
+        .and_then(|_| {
+            git(
+                &partial,
+                &[
+                    "-c",
+                    "advice.detachedHead=false",
+                    "checkout",
+                    "-q",
+                    "FETCH_HEAD",
+                ],
+            )
+        })
+        .and_then(|_| git(&partial, &["rev-parse", "HEAD"]))
+        .and_then(|head| {
+            fs::rename(&partial, &checkout)
+                .map(|()| head)
+                .map_err(|error| format!("{}: {error}", checkout.display()))
+        });
+    if fetched.is_err() {
+        let _ = fs::remove_dir_all(&partial);
+    }
+    fetched.map(|head| (checkout, head))
 }
 
 pub(crate) fn write(path: &Path, contents: &str) -> Result<(), String> {

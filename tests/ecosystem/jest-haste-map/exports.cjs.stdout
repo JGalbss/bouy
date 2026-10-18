@@ -1,0 +1,6 @@
+module.exports: object
+  DuplicateError: function/2
+  ModuleMap: class/1 {_assertNoDuplicates, _getModuleMetadata, getMockModule, getModule, getPackage, getRawModuleMap, toJSON}
+    DuplicateHasteCandidatesError: function/4
+  default: class/1 {_buildFileMap, _buildHasteMap, _cleanup, _crawl, _createEmptyMap, _getWorker, _ignore, _persist, _processFile, _recoverDuplicates, _shouldUseWatchman, _watch, build, end, getCacheFilePath, read, readModuleMap, setupCachePath}
+    H: object

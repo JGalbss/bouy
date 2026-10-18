@@ -1,0 +1,80 @@
+namespace: object Module
+  AtRule: class/1 {append, prepend}
+    default: class/1 {append, prepend}
+  Comment: function/1
+    default: function/1
+  Container: class/0 {append, cleanRaws, each, every, first, getIterator, getProxyProcessor, index, insertAfter, insertBefore, last, normalize, prepend, push, removeAll, removeChild, replaceValues, some, walk, walkAtRules, walkComments, walkDecls, walkRules}
+    default: class/0 {append, cleanRaws, each, every, first, getIterator, getProxyProcessor, index, insertAfter, insertBefore, last, normalize, prepend, push, removeAll, removeChild, replaceValues, some, walk, walkAtRules, walkComments, walkDecls, walkRules}
+    rebuild: function/1
+    registerAtRule: function/1
+    registerParse: function/1
+    registerRoot: function/1
+    registerRule: function/1
+  CssSyntaxError: class/6 {setMessage, showSourceCode, toString}
+    default: class/6 {setMessage, showSourceCode, toString}
+  Declaration: class/1 {variable}
+    default: class/1 {variable}
+  Document: class/1 {toResult}
+    default: class/1 {toResult}
+    registerLazyResult: function/1
+    registerProcessor: function/1
+  Input: class/1 {error, from, fromLineAndColumn, fromOffset, mapResolve, origin, toJSON}
+    default: class/1 {error, from, fromLineAndColumn, fromOffset, mapResolve, origin, toJSON}
+  Node: class/0 {addToError, after, assign, before, cleanRaws, clone, cloneAfter, cloneBefore, error, getProxyProcessor, markClean, markDirty, next, positionBy, positionInside, prev, proxyOf, rangeBy, raw, remove, replaceWith, root, toJSON, toProxy, toString, warn}
+    default: class/0 {addToError, after, assign, before, cleanRaws, clone, cloneAfter, cloneBefore, error, getProxyProcessor, markClean, markDirty, next, positionBy, positionInside, prev, proxyOf, rangeBy, raw, remove, replaceWith, root, toJSON, toProxy, toString, warn}
+  Processor: class/0 {normalize, process, use}
+    default: class/0 {normalize, process, use}
+  Result: class/3 {content, toString, warn, warnings}
+    default: class/3 {content, toString, warn, warnings}
+  Root: class/1 {normalize, removeChild, toResult}
+    default: class/1 {normalize, removeChild, toResult}
+    registerLazyResult: function/1
+    registerProcessor: function/1
+  Rule: class/1 {selectors}
+    default: class/1 {selectors}
+  Warning: class/1 {toString}
+    default: class/1 {toString}
+  atRule: function/1
+  comment: function/1
+  decl: function/1
+  default: function/0
+    AtRule: class/1 {append, prepend}
+    Comment: function/1
+    Container: class/0 {append, cleanRaws, each, every, first, getIterator, getProxyProcessor, index, insertAfter, insertBefore, last, normalize, prepend, push, removeAll, removeChild, replaceValues, some, walk, walkAtRules, walkComments, walkDecls, walkRules}
+    CssSyntaxError: class/6 {setMessage, showSourceCode, toString}
+    Declaration: class/1 {variable}
+    Document: class/1 {toResult}
+    Input: class/1 {error, from, fromLineAndColumn, fromOffset, mapResolve, origin, toJSON}
+    Node: class/0 {addToError, after, assign, before, cleanRaws, clone, cloneAfter, cloneBefore, error, getProxyProcessor, markClean, markDirty, next, positionBy, positionInside, prev, proxyOf, rangeBy, raw, remove, replaceWith, root, toJSON, toProxy, toString, warn}
+    Processor: class/0 {normalize, process, use}
+    Result: class/3 {content, toString, warn, warnings}
+    Root: class/1 {normalize, removeChild, toResult}
+    Rule: class/1 {selectors}
+    Warning: class/1 {toString}
+    atRule: function/1
+    comment: function/1
+    decl: function/1
+    default: function/0
+    document: function/1
+    fromJSON: function/2
+    list: object
+    parse: function/2
+    plugin: function/2
+    root: function/1
+    rule: function/1
+    stringify: function/2
+  document: function/1
+  fromJSON: function/2
+    default: function/2
+  list: object
+    comma: function/1
+    default: object
+    space: function/1
+    split: function/3
+  parse: function/2
+    default: function/2
+  plugin: function/2
+  root: function/1
+  rule: function/1
+  stringify: function/2
+    default: function/2

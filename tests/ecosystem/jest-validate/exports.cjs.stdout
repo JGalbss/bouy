@@ -1,0 +1,8 @@
+module.exports: object
+  ValidationError: function/3
+  createDidYouMeanMessage: function/2
+  format: function/1
+  logValidationWarning: function/3
+  multipleValidOptions: function/0
+  validate: function/2
+  validateCLIOptions: function/1
