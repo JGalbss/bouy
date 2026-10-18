@@ -28,7 +28,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3]).
--export([read/3, write/3]).
+-export([read/3, write/3, size/1, memory_handle/1]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 
@@ -934,6 +934,18 @@ read(H, Offset, Count) -> reply(command({memory_read, H, Offset, Count}), <<>>).
 write(H, Offset, Bytes) ->
     _ = reply(command({memory_write, H, Offset, Bytes}), <<>>),
     ok.
+
+%% The bytes of the memory H.
+-spec size(non_neg_integer()) -> non_neg_integer().
+size(H) -> reply(command({memory_size, H}), <<>>).
+
+%% The handle of a WebAssembly.Memory, or none for another value.
+-spec memory_handle(term()) -> non_neg_integer() | none.
+memory_handle(M) ->
+    case is_class(M, wasm_memory) of
+        true -> element(1, buoy_heap:slots(M));
+        false -> none
+    end.
 
 %%% The sections of a module
 
