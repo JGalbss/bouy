@@ -330,7 +330,8 @@ open(Args) ->
 %% Opens Path with Node's flags. prim_file adds O_CREAT to each open for
 %% writing and O_TRUNC to an open for writing only, so an open without them
 %% checks first or opens for reading too; Access keeps the mode that the
-%% program asked for.
+%% program asked for. Each check is a call on a dirty I/O scheduler, so an
+%% open makes only the checks that its flags and mode need.
 open_path(Path, Flags, Mode) ->
     Access = case Flags band 3 of
         0 -> read;
@@ -338,15 +339,28 @@ open_path(Path, Flags, Mode) ->
         _ -> read_write
     end,
     Create = Flags band ?O_CREAT =/= 0,
-    IsLink = is_symlink(Path),
-    Existed = element(1, prim_file:read_file_info(Path)) =:= ok,
+    IsLink = Flags band (?O_NOFOLLOW bor ?O_SYMLINK) =/= 0 andalso is_symlink(Path),
     Flags band ?O_NOFOLLOW =/= 0 andalso IsLink andalso uv_error(eloop, <<"open">>, Path),
-    not Create andalso not Existed andalso not IsLink andalso Access =/= read andalso
+    not Create andalso Access =/= read andalso not IsLink andalso not is_present(Path) andalso
         uv_error(check_missing(Path), <<"open">>, Path),
     case Flags band ?O_SYMLINK =/= 0 andalso IsLink of
         true -> {link_handle(), link};
-        false -> open_file(Path, Flags, Mode, Access, Create, Existed)
+        false -> {open_file(Path, Flags, Access, new_mode(Path, Create, Mode)), Access}
     end.
+
+%% The mode that an open which creates Path must set: keep when the file
+%% exists or prim_file creates it with that mode.
+new_mode(Path, true, Mode) ->
+    case created_mode(Mode, 8#666) of
+        keep -> keep;
+        Wanted ->
+            case is_present(Path) of
+                true -> keep;
+                false -> Wanted
+            end
+    end;
+new_mode(_, false, _) ->
+    keep.
 
 %% O_SYMLINK opens a symlink itself, which prim_file cannot: the descriptor
 %% of /dev/null holds the number, and the calls on it act on the path.
@@ -354,7 +368,8 @@ link_handle() ->
     {ok, File} = file:open(<<"/dev/null">>, [raw, binary, read]),
     File.
 
-open_file(Path, Flags, Mode, Access, Create, Existed) ->
+open_file(Path, Flags, Access, NewMode) ->
+    Create = Flags band ?O_CREAT =/= 0,
     Truncate = Flags band ?O_TRUNC =/= 0,
     Base = case {Access, Flags band ?O_APPEND =/= 0} of
         {read, _} -> [read];
@@ -373,8 +388,8 @@ open_file(Path, Flags, Mode, Access, Create, Existed) ->
         {error, Reason} -> uv_error(Reason, <<"open">>, Path)
     end,
     Truncate andalso Access =/= read andalso Base =/= [write] andalso file:truncate(File),
-    Existed orelse not Create orelse created(Path, Mode, 8#666),
-    {File, Access}.
+    NewMode =:= keep orelse change(Path, #file_info{mode = NewMode}),
+    File.
 
 %% The reason that opening a missing path without O_CREAT fails.
 check_missing(Path) ->
@@ -385,17 +400,26 @@ check_missing(Path) ->
     end.
 
 %% Gives a file or directory that a call created the mode that the program
-%% asked for, after the umask of the realm; prim_file creates it with the
-%% default mode under the umask of the OS process.
+%% asked for, after the umask of the realm.
 created(Path, Mode, Default) ->
+    case created_mode(Mode, Default) of
+        keep -> true;
+        Wanted -> change(Path, #file_info{mode = Wanted}), true
+    end.
+
+%% The mode of a new file or directory after the umask of the realm, or keep
+%% when prim_file gives it that mode under the umask of the OS process.
+created_mode(Mode, Default) ->
     Mask = case erlang:get('$buoy_node_umask') of
         undefined -> 8#022;
         M -> M
     end,
-    Wanted = Mode band (bnot Mask) band 8#7777,
-    Wanted =:= Default band (bnot 8#022) orelse
-        change(Path, #file_info{mode = Wanted}),
-    true.
+    case Mode band (bnot Mask) band 8#7777 of
+        Wanted when Wanted =:= Default band (bnot 8#022) -> keep;
+        Wanted -> Wanted
+    end.
+
+is_present(Path) -> element(1, prim_file:read_file_info(Path)) =:= ok.
 
 close(Args) ->
     Fd = fd(buoy_node:arg(1, Args)),

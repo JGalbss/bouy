@@ -6,8 +6,11 @@
 %% file, or the entries of a directory and, when recursive, of its
 %% subdirectories) and reports each difference as libuv would, 'rename' for
 %% an entry that appeared, vanished, or changed inode, and 'change' for one
-%% whose stat changed. prim_file gives whole seconds, so two writes of the
-%% same size within one second look the same. Bun watches with kqueue,
+%% whose stat changed. An entry that came and went between two polls leaves
+%% only the times of the directory changed, which gives 'rename' with a null
+%% filename, as libuv reports an event that it cannot name. prim_file gives
+%% whole seconds, so two writes of the same size within one second look the
+%% same. Bun watches with kqueue,
 %% inotify, and FSEvents; a NIF of crates/buoy-nif that registers the
 %% watch with enif_select brings that here.
 -module(buoy_binding_fs_event_wrap).
@@ -123,18 +126,22 @@ emit(_This, _Token, [], _Encoding) ->
 emit(This, Token, [{Event, Name} | Rest], Encoding) ->
     case state(This) of
         #{active := true, token := Token} ->
-            Filename = buoy_binding_fs:encoded(Name, Encoding),
+            Filename = case Name of
+                null -> null;
+                _ -> buoy_binding_fs:encoded(Name, Encoding)
+            end,
             buoy_heap:call(buoy_heap:get(This, <<"onchange">>), This, [0, Event, Filename]),
             emit(This, Token, Rest, Encoding);
         _ ->
             ok
     end.
 
-%% The state of a watched path: {file, Key} for a file, {dir, Entries} for
-%% a directory, with Entries from relative name to key, and {error, Reason}.
+%% The state of a watched path: {file, Key} for a file, {dir, Times,
+%% Entries} for a directory, with Entries from relative name to key, and
+%% {error, Reason}.
 snapshot(Path, Recursive) ->
     case buoy_binding_fs:read_info(Path, follow) of
-        {ok, #file_info{type = directory}} -> {dir, entries(Path, <<>>, Recursive, #{})};
+        {ok, #file_info{type = directory, mtime = M, ctime = C}} -> {dir, {M, C}, entries(Path, <<>>, Recursive, #{})};
         {ok, Info} -> {file, key(Info)};
         {error, Reason} -> {error, Reason}
     end.
@@ -169,10 +176,13 @@ key(#file_info{} = I) ->
 events({file, Key}, {file, Key}, _) -> [];
 events({file, {Inode, _, _, _, _, _, _}}, {file, {Inode, _, _, _, _, _, _}}, Base) -> [{<<"change">>, Base}];
 events({file, _}, _, Base) -> [{<<"rename">>, Base}];
-events({dir, Old}, {dir, New}, _) ->
+events({dir, OldTimes, Old}, {dir, NewTimes, New}, _) ->
     Names = lists:usort(maps:keys(Old) ++ maps:keys(New)),
-    [{Event, Name} || Name <- Names, Event <- entry_event(maps:find(Name, Old), maps:find(Name, New))];
-events({dir, _}, {error, _}, Base) -> [{<<"rename">>, Base}];
+    case [{Event, Name} || Name <- Names, Event <- entry_event(maps:find(Name, Old), maps:find(Name, New))] of
+        [] when OldTimes =/= NewTimes -> [{<<"rename">>, null}];
+        Events -> Events
+    end;
+events({dir, _, _}, {error, _}, Base) -> [{<<"rename">>, Base}];
 events({error, _}, {error, _}, _) -> [];
 events(_, _, Base) -> [{<<"rename">>, Base}].
 
