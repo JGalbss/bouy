@@ -1,0 +1,5 @@
+module.exports: function/0
+  json: function/1
+  raw: function/1
+  text: function/1
+  urlencoded: function/1

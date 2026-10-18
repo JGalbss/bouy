@@ -1,0 +1,6 @@
+module.exports: function/2
+  apps: object
+    chrome: string
+    edge: string
+    firefox: string
+  openApp: function/2

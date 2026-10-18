@@ -1,0 +1,7 @@
+namespace: object Module
+  canUseDOM: boolean
+  composeEventHandlers: function/2
+  getActiveElement: function/1
+  getOwnerDocument: function/1
+  getOwnerWindow: function/1
+  isFrame: function/1 (throws, throws, false, false, false, false, false, false, false)

@@ -1,0 +1,9 @@
+namespace: object Module
+  ParseError: function/3
+  ParseErrorMessage: object
+    UnexpectedAdditionOfDimensionOrPercentageWithNumber: string
+    UnexpectedSubtractionOfDimensionOrPercentageWithNumber: string
+  ParseErrorWithComponentValues: function/2
+  calc: function/2
+  calcFromComponentValues: function/2
+  mathFunctionNames: object Set

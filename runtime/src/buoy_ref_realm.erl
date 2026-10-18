@@ -513,8 +513,8 @@ intrinsics() -> [].
 -spec globals() -> [{binary(), term()} | {binary(), term(), 0..7}].
 globals() ->
     [{<<"globalThis">>, {'$o', 'globalThis'}}, {<<"undefined">>, undefined}]
-    ++ ?METHODS(<<"globalThis">>, [<<"setTimeout">>, <<"setInterval">>, <<"clearTimeout">>, <<"clearInterval">>,
-                                   <<"queueMicrotask">>, <<"structuredClone">>])
+    ++ ?METHODS(<<"globalThis">>, [{<<"setTimeout">>, 2}, {<<"setInterval">>, 2}, {<<"clearTimeout">>, 1},
+                                   {<<"clearInterval">>, 1}, {<<"queueMicrotask">>, 1}, {<<"structuredClone">>, 2}])
     ++ [node_global(Name) || Name <- buoy_node:lazy_globals()].
 
 %% A global of Node, such as process: an accessor that runs Node's bootstrap
@@ -525,13 +525,34 @@ node_global(Name) ->
     {Name, {'$accessor', Get, Set}, 4}.
 
 -spec method(binary(), binary(), term(), list()) -> term().
-method(<<"globalThis">>, <<"setTimeout">>, _This, Args) -> buoy_jobs:set_timer(arg(1, Args), arg(2, Args), rest(3, Args), false);
-method(<<"globalThis">>, <<"setInterval">>, _This, Args) -> buoy_jobs:set_timer(arg(1, Args), arg(2, Args), rest(3, Args), true);
-method(<<"globalThis">>, <<"clearTimeout">>, _This, Args) -> buoy_jobs:clear_timer(arg(1, Args));
-method(<<"globalThis">>, <<"clearInterval">>, _This, Args) -> buoy_jobs:clear_timer(arg(1, Args));
+method(<<"globalThis">>, <<"setTimeout">>, This, Args) -> node_timer(<<"setTimeout">>, This, Args);
+method(<<"globalThis">>, <<"setInterval">>, This, Args) -> node_timer(<<"setInterval">>, This, Args);
+method(<<"globalThis">>, <<"clearTimeout">>, This, Args) -> node_clear(<<"clearTimeout">>, This, Args);
+method(<<"globalThis">>, <<"clearInterval">>, This, Args) -> node_clear(<<"clearInterval">>, This, Args);
 method(<<"globalThis">>, <<"queueMicrotask">>, _This, Args) ->
     F = arg(1, Args),
     buoy_heap:is_callable(F) orelse buoy_ref:type_error(<<"The \"callback\" argument must be of type function">>),
     buoy_jobs:enqueue(fun() -> buoy_ref:call(F, undefined, []) end),
     undefined;
 method(<<"globalThis">>, <<"structuredClone">>, _This, Args) -> buoy_heap:clone_in(buoy_heap:clone_out(arg(1, Args))).
+
+%% The timers are Node's: the first setTimeout or setInterval runs Node's
+%% bootstrap, which replaces these globals, and goes on with Node's function,
+%% so a timer is a Timeout with ref, unref, and refresh, as in Node. While the
+%% bootstrap runs, the timer is the realm's own.
+node_timer(Name, This, Args) ->
+    buoy_node:ensure(),
+    case buoy_heap:get({'$o', 'globalThis'}, Name) of
+        {'$f', {builtin, <<"globalThis.", Name/binary>>}, _} ->
+            buoy_jobs:set_timer(arg(1, Args), arg(2, Args), rest(3, Args), Name =:= <<"setInterval">>);
+        F ->
+            buoy_heap:call(F, This, Args)
+    end.
+
+%% Before the bootstrap no timer of Node exists, so there is none to clear.
+node_clear(Name, This, Args) ->
+    case buoy_node:ready() andalso buoy_heap:get({'$o', 'globalThis'}, Name) of
+        false -> buoy_jobs:clear_timer(arg(1, Args));
+        {'$f', {builtin, <<"globalThis.", Name/binary>>}, _} -> buoy_jobs:clear_timer(arg(1, Args));
+        F -> buoy_heap:call(F, This, Args)
+    end.

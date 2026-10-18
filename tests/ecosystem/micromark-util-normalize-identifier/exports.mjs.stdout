@@ -1,0 +1,2 @@
+namespace: object Module
+  normalizeIdentifier: function/1

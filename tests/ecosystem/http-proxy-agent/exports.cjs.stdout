@@ -1,0 +1,3 @@
+module.exports: object
+  HttpProxyAgent: class/2 {addRequest, connect, setRequestProps}
+    protocols: object Array

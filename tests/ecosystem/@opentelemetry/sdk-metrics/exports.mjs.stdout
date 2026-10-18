@@ -1,0 +1,71 @@
+namespace: object Module
+  AggregationTemporality: object
+    0: string
+    1: string
+    CUMULATIVE: number
+    DELTA: number
+  AggregationType: object
+    0: string
+    1: string
+    2: string
+    3: string
+    4: string
+    5: string
+    DEFAULT: number
+    DROP: number
+    EXPLICIT_BUCKET_HISTOGRAM: number
+    EXPONENTIAL_HISTOGRAM: number
+    LAST_VALUE: number
+    SUM: number
+  ConsoleMetricExporter: class/1 {export, forceFlush, selectAggregationTemporality, shutdown}
+  DataPointType: object
+    0: string
+    1: string
+    2: string
+    3: string
+    EXPONENTIAL_HISTOGRAM: number
+    GAUGE: number
+    HISTOGRAM: number
+    SUM: number
+  InMemoryMetricExporter: class/1 {export, forceFlush, getMetrics, reset, selectAggregationTemporality, shutdown}
+  InstrumentType: object
+    COUNTER: string
+    GAUGE: string
+    HISTOGRAM: string
+    OBSERVABLE_COUNTER: string
+    OBSERVABLE_GAUGE: string
+    OBSERVABLE_UP_DOWN_COUNTER: string
+    UP_DOWN_COUNTER: string
+  MeterProvider: class/1 {forceFlush, getMeter, shutdown}
+  MetricReader: class/1 {_setSelfObsMeterProvider, collect, forceFlush, onInitialized, selectAggregation, selectAggregationTemporality, selectCardinalityLimit, setMetricProducer, shutdown}
+  PeriodicExportingMetricReader: class/1 {_awaitOngoingExport, _doRun, _runOnce, onForceFlush, onInitialized, onShutdown}
+  TimeoutError: function/1
+  __esModule: boolean
+  createAllowListAttributesProcessor: function/1
+  createDenyListAttributesProcessor: function/1
+  default: object
+    AggregationTemporality: object
+    AggregationType: object
+    ConsoleMetricExporter: class/1 {export, forceFlush, selectAggregationTemporality, shutdown}
+    DataPointType: object
+    InMemoryMetricExporter: class/1 {export, forceFlush, getMetrics, reset, selectAggregationTemporality, shutdown}
+    InstrumentType: object
+    MeterProvider: class/1 {forceFlush, getMeter, shutdown}
+    MetricReader: class/1 {_setSelfObsMeterProvider, collect, forceFlush, onInitialized, selectAggregation, selectAggregationTemporality, selectCardinalityLimit, setMetricProducer, shutdown}
+    PeriodicExportingMetricReader: class/1 {_awaitOngoingExport, _doRun, _runOnce, onForceFlush, onInitialized, onShutdown}
+    TimeoutError: function/1
+    createAllowListAttributesProcessor: function/1
+    createDenyListAttributesProcessor: function/1
+  module.exports: object
+    AggregationTemporality: object
+    AggregationType: object
+    ConsoleMetricExporter: class/1 {export, forceFlush, selectAggregationTemporality, shutdown}
+    DataPointType: object
+    InMemoryMetricExporter: class/1 {export, forceFlush, getMetrics, reset, selectAggregationTemporality, shutdown}
+    InstrumentType: object
+    MeterProvider: class/1 {forceFlush, getMeter, shutdown}
+    MetricReader: class/1 {_setSelfObsMeterProvider, collect, forceFlush, onInitialized, selectAggregation, selectAggregationTemporality, selectCardinalityLimit, setMetricProducer, shutdown}
+    PeriodicExportingMetricReader: class/1 {_awaitOngoingExport, _doRun, _runOnce, onForceFlush, onInitialized, onShutdown}
+    TimeoutError: function/1
+    createAllowListAttributesProcessor: function/1
+    createDenyListAttributesProcessor: function/1

@@ -1,0 +1,3 @@
+module.exports: object
+  falseFunc: function/0
+  trueFunc: function/0

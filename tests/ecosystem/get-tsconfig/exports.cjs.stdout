@@ -1,0 +1,6 @@
+module.exports: object
+  createFilesMatcher: function/1
+  createPathsMatcher: function/1
+  findTsconfig: function/0
+  getTsconfig: function/0
+  parseTsconfig: function/1

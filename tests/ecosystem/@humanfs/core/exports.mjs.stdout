@@ -1,0 +1,7 @@
+namespace: object Module
+  DirectoryError: function/1
+  Hfs: class/1 {append, arrayBuffer, bytes, copy, copyAll, createDirectory, delete, deleteAll, isBaseImpl, isDirectory, isFile, json, lastModified, list, logEnd, logStart, move, moveAll, resetImpl, setImpl, size, text, walk, write}
+  NotEmptyError: function/1
+  NotFoundError: function/1
+  Path: class/0 {name, pop, push, size, steps, toString}
+  PermissionError: function/1

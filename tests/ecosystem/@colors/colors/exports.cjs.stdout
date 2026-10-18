@@ -1,0 +1,72 @@
+module.exports: object
+  america: function/1
+  disable: function/0
+  enable: function/0
+  enabled: boolean
+  maps: object
+    america: function/3
+    rainbow: function/3
+    random: function/3
+    zebra: function/3
+  rainbow: function/1
+  random: function/1
+  setTheme: function/1
+  strip: function/1
+  stripColors: function/1
+  styles: object
+    bgBlack: object Array
+    bgBlue: object Array
+    bgBrightBlue: object Array
+    bgBrightCyan: object Array
+    bgBrightGreen: object Array
+    bgBrightMagenta: object Array
+    bgBrightRed: object Array
+    bgBrightWhite: object Array
+    bgBrightYellow: object Array
+    bgCyan: object Array
+    bgGray: object Array
+    bgGreen: object Array
+    bgGrey: object Array
+    bgMagenta: object Array
+    bgRed: object Array
+    bgWhite: object Array
+    bgYellow: object Array
+    black: object Array
+    blackBG: object Array
+    blue: object Array
+    blueBG: object Array
+    bold: object Array
+    brightBlue: object Array
+    brightCyan: object Array
+    brightGreen: object Array
+    brightMagenta: object Array
+    brightRed: object Array
+    brightWhite: object Array
+    brightYellow: object Array
+    cyan: object Array
+    cyanBG: object Array
+    dim: object Array
+    gray: object Array
+    green: object Array
+    greenBG: object Array
+    grey: object Array
+    hidden: object Array
+    inverse: object Array
+    italic: object Array
+    magenta: object Array
+    magentaBG: object Array
+    red: object Array
+    redBG: object Array
+    reset: object Array
+    strikethrough: object Array
+    underline: object Array
+    white: object Array
+    whiteBG: object Array
+    yellow: object Array
+    yellowBG: object Array
+  stylize: function/2
+  supportsColor: function/1
+  themes: object
+  trap: function/2
+  zalgo: function/2
+  zebra: function/1

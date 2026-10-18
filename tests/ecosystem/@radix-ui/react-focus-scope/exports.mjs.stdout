@@ -1,0 +1,10 @@
+namespace: object Module
+  FocusScope: object
+    $$typeof: symbol
+    render: function/2
+  FocusScopeBranchProvider: function/1
+  Root: object
+    $$typeof: symbol
+    render: function/2
+  useFocusScopeBranch: function/1
+  useFocusScopeBranchRegistry: function/0

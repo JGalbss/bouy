@@ -1,0 +1,2 @@
+module.exports: object
+  useCallbackRef: function/1

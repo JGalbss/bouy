@@ -1,0 +1,3 @@
+module.exports: function/0
+  getParser: function/3
+  parse: function/2

@@ -1,0 +1,4 @@
+module.exports: object
+  init: function/0
+  initSync: function/0
+  parse: function/1

@@ -15,6 +15,7 @@
 -export([new_promise/0, new_promise/1, capability/0, promise_resolve/1, perform_then/4, is_promise/1]).
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
 -export([await/3, async_call/1, enqueue/1, drain/0]).
+-export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1, quiet_capability/0]).
 -export([set_timer/4, clear_timer/1]).
 -export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
@@ -34,14 +35,28 @@
 -define(PROMISE_PROTO, {'$o', 'Promise.prototype'}).
 -define(MAX_DELAY, 2147483647).
 -define(GC_MIN, 20000).
+%% The continuation-preserved embedder data of V8: the value that each job
+%% restores from the moment it was queued, as AsyncLocalStorage needs.
+-define(CONTEXT, '$buoy_node_cped').
+%% The promise hooks of v8::Context::SetPromiseHooks: {Init, Before, After,
+%% Settled}, or undefined.
+-define(HOOKS, '$buoy_promise_hooks').
+%% The promise of the async function that runs, while promise hooks are set.
+-define(OUTER, '$buoy_async_outer').
 
 %%% Microtasks
+%%
+%% An entry of the queue is {Context, Job}: the job runs with the context
+%% that was current when it was queued, and the context is cleared after it,
+%% as V8 runs a microtask.
 
 -spec enqueue(fun(() -> term())) -> ok.
-enqueue(Job) ->
+enqueue(Job) -> push({erlang:get(?CONTEXT), Job}).
+
+push(Entry) ->
     case erlang:get(?QUEUE) of
-        undefined -> erlang:put(?QUEUE, {[Job], []});
-        {In, Out} -> erlang:put(?QUEUE, {[Job | In], Out})
+        undefined -> erlang:put(?QUEUE, {[Entry], []});
+        {In, Out} -> erlang:put(?QUEUE, {[Entry | In], Out})
     end,
     ok.
 
@@ -50,9 +65,11 @@ enqueue(Job) ->
 -spec drain() -> ok.
 drain() ->
     case erlang:get(?QUEUE) of
-        {In, [Job | Out]} ->
+        {In, [{Context, Job} | Out]} ->
             erlang:put(?QUEUE, {In, Out}),
+            erlang:put(?CONTEXT, Context),
             Job(),
+            erlang:put(?CONTEXT, undefined),
             drain();
         {[_ | _] = In, []} ->
             erlang:put(?QUEUE, {[], lists:reverse(In)}),
@@ -60,6 +77,15 @@ drain() ->
         _ ->
             ok
     end.
+
+%% getContinuationPreservedEmbedderData and its setter.
+-spec context() -> term().
+context() -> erlang:get(?CONTEXT).
+
+-spec set_context(term()) -> ok.
+set_context(Value) ->
+    erlang:put(?CONTEXT, Value),
+    ok.
 
 %%% Promises
 %%
@@ -75,7 +101,13 @@ new_promise() -> new_promise(?PROMISE_PROTO).
 
 %% A pending promise whose prototype is Proto, as for a subclass.
 -spec new_promise(term()) -> term().
-new_promise(Proto) -> buoy_heap:new_exotic(promise, Proto, {pending, [], [], false}).
+new_promise(Proto) -> new_promise(Proto, undefined).
+
+%% Parent is the promise that `then` was called on, for the init hook.
+new_promise(Proto, Parent) ->
+    P = buoy_heap:new_exotic(promise, Proto, {pending, [], [], false}),
+    hook(1, [P, Parent]),
+    P.
 
 -spec is_promise(term()) -> boolean().
 is_promise({'$o', _} = V) -> buoy_heap:class_of(V) =:= promise;
@@ -83,8 +115,12 @@ is_promise(_) -> false.
 
 %% NewPromiseCapability(%Promise%).
 -spec capability() -> {term(), fun((term()) -> term()), fun((term()) -> term())}.
-capability() ->
-    P = new_promise(),
+capability() -> capability(undefined).
+
+%% The capability of the promise that `Parent.then` derives.
+-spec capability(term()) -> {term(), fun((term()) -> term()), fun((term()) -> term())}.
+capability(Parent) ->
+    P = new_promise(?PROMISE_PROTO, Parent),
     {Resolve, Reject} = resolving_functions(P),
     {P, Resolve, Reject}.
 
@@ -118,7 +154,7 @@ resolve_promise(P, V) ->
             try buoy_heap:get(V, <<"then">>) of
                 Then ->
                     case buoy_heap:is_callable(Then) of
-                        true -> enqueue(fun() -> resolve_thenable_job(P, V, Then) end);
+                        true -> enqueue(fun() -> thenable_job(P, V, Then) end);
                         false -> fulfill(P, V)
                     end
             catch
@@ -126,7 +162,12 @@ resolve_promise(P, V) ->
             end
     end.
 
-%% NewPromiseResolveThenableJob.
+%% NewPromiseResolveThenableJob, between the hooks of P.
+thenable_job(P, Thenable, Then) ->
+    promise_hook(2, P),
+    resolve_thenable_job(P, Thenable, Then),
+    promise_hook(3, P).
+
 resolve_thenable_job(P, Thenable, Then) ->
     {Resolve, Reject} = resolving_functions(P),
     try buoy_heap:call(Then, Thenable, [js_function(Resolve), js_function(Reject)]) of
@@ -145,24 +186,43 @@ arg([V | _]) -> V;
 arg([]) -> undefined.
 
 fulfill(P, V) ->
+    hook(4, [P]),
     {pending, Fulfill, _, Handled} = buoy_heap:slots(P),
     buoy_heap:set_slots(P, {fulfilled, V, Handled}),
     trigger(Fulfill, V).
 
 -spec reject_promise(term(), term()) -> ok.
 reject_promise(P, Reason) ->
+    hook(4, [P]),
     {pending, _, Reject, Handled} = buoy_heap:slots(P),
     buoy_heap:set_slots(P, {rejected, Reason, Handled}),
     Handled orelse track(P),
     trigger(Reject, Reason).
 
 trigger(Reactions, Argument) ->
-    lists:foreach(fun(Reaction) -> enqueue(fun() -> reaction_job(Reaction, Argument) end) end, lists:reverse(Reactions)).
+    lists:foreach(fun(Reaction) -> push(reaction(Reaction, Argument)) end, lists:reverse(Reactions)).
 
-%% PromiseReactionJob.
-reaction_job({_Kind, undefined, Handler}, Argument) ->
+%% The queue entry of a reaction: the job, with the context of its `then`.
+reaction({_, _, _, Context} = Reaction, Argument) ->
+    {Context, fun() -> reaction_job(Reaction, Argument) end}.
+
+%% PromiseReactionJob. An await that runs while promise hooks are set has a
+%% throwaway promise for the hooks, as V8 makes one.
+reaction_job({_Kind, undefined, Handler, _}, Argument) ->
     invoke(Handler, Argument);
-reaction_job({Kind, {_, Resolve, Reject}, Handler}, Argument) ->
+reaction_job({_Kind, {await, Throwaway, Outer}, Handler, _}, Argument) ->
+    hook(2, [Throwaway]),
+    Prior = erlang:put(?OUTER, Outer),
+    _ = invoke(Handler, Argument),
+    erlang:put(?OUTER, Prior),
+    fulfill(Throwaway, undefined),
+    hook(3, [Throwaway]);
+reaction_job({_, {P, _, _}, _, _} = Reaction, Argument) ->
+    promise_hook(2, P),
+    settle_reaction(Reaction, Argument),
+    promise_hook(3, P).
+
+settle_reaction({Kind, {_, Resolve, Reject}, Handler, _}, Argument) ->
     Outcome = case Handler of
         undefined when Kind =:= fulfill -> {ok, Argument};
         undefined -> {error, Argument};
@@ -186,18 +246,19 @@ invoke(F, Argument) -> buoy_heap:call(F, undefined, [Argument]).
 
 -spec perform_then(term(), term(), term(), undefined | tuple()) -> ok.
 perform_then(P, OnFulfilled, OnRejected, Capability) ->
-    FulfillReaction = {fulfill, Capability, handler(OnFulfilled)},
-    RejectReaction = {reject, Capability, handler(OnRejected)},
+    Context = erlang:get(?CONTEXT),
+    FulfillReaction = {fulfill, Capability, handler(OnFulfilled), Context},
+    RejectReaction = {reject, Capability, handler(OnRejected), Context},
     case buoy_heap:slots(P) of
         {pending, Fulfill, Reject, _} ->
             buoy_heap:set_slots(P, {pending, [FulfillReaction | Fulfill], [RejectReaction | Reject], true});
         {fulfilled, V, _} ->
             buoy_heap:set_slots(P, {fulfilled, V, true}),
-            enqueue(fun() -> reaction_job(FulfillReaction, V) end);
+            push(reaction(FulfillReaction, V));
         {rejected, R, Handled} ->
             Handled orelse untrack(P),
             buoy_heap:set_slots(P, {rejected, R, true}),
-            enqueue(fun() -> reaction_job(RejectReaction, R) end)
+            push(reaction(RejectReaction, R))
     end,
     ok.
 
@@ -208,12 +269,14 @@ handler(_) -> undefined.
 %% PromiseResolve(%Promise%, V): a promise of the intrinsic constructor is
 %% itself, anything else a new promise resolved with V.
 -spec promise_resolve(term()) -> term().
-promise_resolve(V) ->
+promise_resolve(V) -> promise_resolve(V, undefined).
+
+promise_resolve(V, Parent) ->
     case is_promise(V) andalso buoy_heap:get(V, <<"constructor">>) =:= buoy_ref_promise:constructor() of
         true ->
             V;
         false ->
-            {P, Resolve, _} = capability(),
+            {P, Resolve, _} = capability(Parent),
             Resolve(V),
             P
     end.
@@ -231,19 +294,94 @@ rejected(Reason) ->
 %% argument. The function goes on in a later microtask.
 -spec await(term(), fun((term()) -> term()), fun((term()) -> term())) -> ok.
 await(V, OnFulfilled, OnRejected) ->
-    perform_then(promise_resolve(V), OnFulfilled, OnRejected, undefined).
+    case erlang:get(?HOOKS) of
+        undefined ->
+            perform_then(promise_resolve(V), OnFulfilled, OnRejected, undefined);
+        _ ->
+            %% As V8 awaits with hooks: the promise of a value that is no
+            %% promise derives from the async function's promise, and a
+            %% throwaway promise from the awaited one.
+            Outer = erlang:get(?OUTER),
+            Awaited = promise_resolve(V, Outer),
+            Throwaway = new_promise(?PROMISE_PROTO, Awaited),
+            buoy_heap:set_slots(Throwaway, {pending, [], [], true}),
+            perform_then(Awaited, OnFulfilled, OnRejected, {await, Throwaway, Outer})
+    end.
 
 %% The body of an async function: Body(Resolve, Reject) runs until its first
 %% await, and the call returns the promise of the function.
 -spec async_call(fun((fun((term()) -> term()), fun((term()) -> term())) -> term())) -> term().
 async_call(Body) ->
     {P, Resolve, Reject} = capability(),
+    Prior = case erlang:get(?HOOKS) of
+        undefined -> none;
+        _ -> {outer, erlang:put(?OUTER, P)}
+    end,
     try Body(Resolve, Reject) of
         _ -> ok
     catch
         error:Reason:Stack -> Reject(buoy_ref:caught(Reason, Stack))
     end,
+    case Prior of
+        none -> ok;
+        {outer, Outer} -> erlang:put(?OUTER, Outer)
+    end,
     P.
+
+%%% Promise hooks (v8::Context::SetPromiseHooks), which async_hooks and
+%%% v8.promiseHooks set.
+
+-spec promise_hooks() -> undefined | {term(), term(), term(), term()}.
+promise_hooks() -> erlang:get(?HOOKS).
+
+-spec set_promise_hooks({term(), term(), term(), term()}) -> ok.
+set_promise_hooks({undefined, undefined, undefined, undefined}) ->
+    erlang:erase(?HOOKS),
+    ok;
+set_promise_hooks(Hooks) ->
+    erlang:put(?HOOKS, Hooks),
+    ok.
+
+%% Calls hook I (1 init, 2 before, 3 after, 4 settled). An exception of a
+%% hook is uncaught, as V8 reports it, and the operation goes on.
+hook(I, Args) ->
+    case erlang:get(?HOOKS) of
+        undefined ->
+            ok;
+        Hooks ->
+            case element(I, Hooks) of
+                undefined ->
+                    ok;
+                F ->
+                    try buoy_heap:call(F, undefined, Args) of
+                        _ -> ok
+                    catch
+                        error:Reason:Stack -> _ = uncaught(buoy_ref:caught(Reason, Stack)), ok
+                    end
+            end
+    end.
+
+%% The before or after hook of the job of P. V8 has no hooks for the
+%% promise of a capability of another class. Each hook is checked when it is
+%% due, so a hook that the job enables runs after it, as in V8.
+promise_hook(I, P) ->
+    case erlang:get(?HOOKS) =/= undefined andalso is_promise(P) of
+        true -> hook(I, [P]);
+        false -> ok
+    end.
+
+%% A capability of the engine that no code observes, such as the promise of
+%% a module evaluation: its promise and its settlement run no promise hook.
+-spec quiet_capability() -> {term(), fun((term()) -> term()), fun((term()) -> term())}.
+quiet_capability() ->
+    {P, Resolve, Reject} = quiet(fun capability/0),
+    {P, fun(V) -> quiet(fun() -> Resolve(V) end) end, fun(E) -> quiet(fun() -> Reject(E) end) end}.
+
+quiet(Fun) ->
+    case erlang:erase(?HOOKS) of
+        undefined -> Fun();
+        Hooks -> try Fun() after erlang:put(?HOOKS, Hooks) end
+    end.
 
 %% A promise that fulfills when every promise of the list has, or rejects
 %% with the first rejection. Module evaluation waits for its async
@@ -394,12 +532,15 @@ run_main(Body) ->
 %% when the heap grew enough since the last one.
 -spec run_job(fun(() -> term())) -> ok.
 run_job(Job) ->
-    try
-        _ = Job(),
-        after_job()
-    catch
-        error:Reason:Stack -> uncaught(buoy_ref:caught(Reason, Stack))
-    end,
+    %% A call into the engine from the loop is V8.Execute in Node's traces.
+    buoy_trace:complete(<<"v8">>, <<"V8.Execute">>, fun() ->
+        try
+            _ = Job(),
+            after_job()
+        catch
+            error:Reason:Stack -> uncaught(buoy_ref:caught(Reason, Stack))
+        end
+    end),
     check_unhandled(),
     maybe_gc().
 
@@ -421,6 +562,7 @@ uncaught(Error) ->
 
 %% The loop, then Node's 'beforeExit', which may queue more work.
 loop_until_exit() ->
+    buoy_node_loop:enter(),
     loop(),
     case buoy_node:ready() of
         true ->
@@ -450,21 +592,25 @@ maybe_gc() ->
 %% Waits for messages while the realm has work: timers, replies it waits
 %% for, or, in an actor, always. Without work, it still takes the messages
 %% that have arrived, such as the wake of an async wait that the realm
-%% notified itself.
+%% notified itself, but not the timer of Node: its timers are unref'd then,
+%% and libuv runs no timer of a loop that is not alive.
 -spec loop() -> ok.
 loop() ->
     case has_work() of
         false ->
             receive
-                Message -> event_step(Message), loop()
+                Message when not is_tuple(Message); element(1, Message) =/= '$buoy_node_timer' ->
+                    event_step(Message), loop()
             after 0 ->
                 ok
             end;
         true ->
+            Poll = buoy_node_loop:poll(),
             receive
                 stop -> ok;
-                Message -> event_step(Message), buoy_node_loop:check(), loop()
+                Message -> buoy_node_loop:polled(Poll, 1), event_step(Message), buoy_node_loop:check(), loop()
             after buoy_node_loop:poll_timeout() ->
+                buoy_node_loop:polled(Poll, 0),
                 buoy_node_loop:check(),
                 loop()
             end

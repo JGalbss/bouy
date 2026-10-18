@@ -1,0 +1,5 @@
+module.exports: object
+  RemoveScroll: object
+    $$typeof: symbol
+    classNames: object
+    render: function/2

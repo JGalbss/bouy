@@ -1,0 +1,211 @@
+module.exports: object
+  charset: function/1
+  charsets: object
+    lookup: function/1
+  contentType: function/1
+  extension: function/1
+  extensions: object
+    application/andrew-inset: object Array
+    application/applixware: object Array
+    application/atom+xml: object Array
+    application/atomcat+xml: object Array
+    application/atomdeleted+xml: object Array
+    application/atomsvc+xml: object Array
+    application/atsc-dwd+xml: object Array
+    application/atsc-held+xml: object Array
+    application/atsc-rsat+xml: object Array
+    application/bdoc: object Array
+    application/calendar+xml: object Array
+    application/ccxml+xml: object Array
+    application/cdfx+xml: object Array
+    application/cdmi-capability: object Array
+    application/cdmi-container: object Array
+    application/cdmi-domain: object Array
+    application/cdmi-object: object Array
+    application/cdmi-queue: object Array
+    application/cpl+xml: object Array
+    application/cu-seeme: object Array
+    application/dash+xml: object Array
+    application/dash-patch+xml: object Array
+    application/davmount+xml: object Array
+    application/docbook+xml: object Array
+    application/dssc+der: object Array
+    application/dssc+xml: object Array
+    application/ecmascript: object Array
+    application/emma+xml: object Array
+    application/emotionml+xml: object Array
+    application/epub+zip: object Array
+    application/exi: object Array
+    application/express: object Array
+    application/fdt+xml: object Array
+    application/font-tdpfr: object Array
+    application/geo+json: object Array
+    application/gml+xml: object Array
+    application/gpx+xml: object Array
+    application/gxf: object Array
+    application/gzip: object Array
+    application/hjson: object Array
+    application/hyperstudio: object Array
+    application/inkml+xml: object Array
+    application/ipfix: object Array
+    application/its+xml: object Array
+    application/java-archive: object Array
+    application/java-serialized-object: object Array
+    application/java-vm: object Array
+    application/javascript: object Array
+    application/json: object Array
+    application/json5: object Array
+    application/jsonml+json: object Array
+    application/ld+json: object Array
+    application/lgr+xml: object Array
+    application/lost+xml: object Array
+    application/mac-binhex40: object Array
+    application/mac-compactpro: object Array
+    application/mads+xml: object Array
+    application/manifest+json: object Array
+    application/marc: object Array
+    application/marcxml+xml: object Array
+    application/mathematica: object Array
+    application/mathml+xml: object Array
+    application/mbox: object Array
+    application/media-policy-dataset+xml: object Array
+    application/mediaservercontrol+xml: object Array
+    application/metalink+xml: object Array
+    application/metalink4+xml: object Array
+    application/mets+xml: object Array
+    application/mmt-aei+xml: object Array
+    application/mmt-usd+xml: object Array
+    application/mods+xml: object Array
+    application/mp21: object Array
+    application/mp4: object Array
+    application/msword: object Array
+    application/mxf: object Array
+    application/n-quads: object Array
+    application/n-triples: object Array
+    application/node: object Array
+    application/octet-stream: object Array
+    application/oda: object Array
+    application/oebps-package+xml: object Array
+    application/ogg: object Array
+    application/omdoc+xml: object Array
+    application/onenote: object Array
+    application/oxps: object Array
+    application/p2p-overlay+xml: object Array
+    application/patch-ops-error+xml: object Array
+    application/pdf: object Array
+    application/pgp-encrypted: object Array
+    application/pgp-keys: object Array
+    application/pgp-signature: object Array
+    application/pics-rules: object Array
+    application/pkcs10: object Array
+    application/pkcs7-mime: object Array
+    application/pkcs7-signature: object Array
+    application/pkcs8: object Array
+    application/pkix-attr-cert: object Array
+    application/pkix-cert: object Array
+    application/pkix-crl: object Array
+    application/pkix-pkipath: object Array
+    ... 865 more keys
+  lookup: function/1
+  types: object
+    123: string
+    1km: string
+    3dml: string
+    3ds: string
+    3g2: string
+    3gp: string
+    3gpp: string
+    3mf: string
+    7z: string
+    aab: string
+    aac: string
+    aam: string
+    aas: string
+    abw: string
+    ac: string
+    acc: string
+    ace: string
+    acu: string
+    acutc: string
+    adp: string
+    aep: string
+    afm: string
+    afp: string
+    age: string
+    ahead: string
+    ai: string
+    aif: string
+    aifc: string
+    aiff: string
+    air: string
+    ait: string
+    ami: string
+    amr: string
+    apk: string
+    apng: string
+    appcache: string
+    application: string
+    apr: string
+    arc: string
+    arj: string
+    asc: string
+    asf: string
+    asm: string
+    aso: string
+    asx: string
+    atc: string
+    atom: string
+    atomcat: string
+    atomdeleted: string
+    atomsvc: string
+    atx: string
+    au: string
+    avci: string
+    avcs: string
+    avi: string
+    avif: string
+    aw: string
+    azf: string
+    azs: string
+    azv: string
+    azw: string
+    b16: string
+    bat: string
+    bcpio: string
+    bdf: string
+    bdm: string
+    bdoc: string
+    bed: string
+    bh2: string
+    bin: string
+    blb: string
+    blorb: string
+    bmi: string
+    bmml: string
+    bmp: string
+    book: string
+    box: string
+    boz: string
+    bpk: string
+    bsp: string
+    btif: string
+    buffer: string
+    bz: string
+    bz2: string
+    c: string
+    c11amc: string
+    c11amz: string
+    c4d: string
+    c4f: string
+    c4g: string
+    c4p: string
+    c4u: string
+    cab: string
+    caf: string
+    cap: string
+    car: string
+    cat: string
+    cb7: string
+    cba: string
+    cbr: string
+    ... 1080 more keys

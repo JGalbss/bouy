@@ -1,0 +1,4 @@
+module.exports: object
+  cva: function/2
+  cx: function/0
+    clsx: function/0

@@ -1,0 +1,66 @@
+module.exports: function/1
+  coerce: function/1
+  colors: object Array
+  debug: function/1
+    coerce: function/1
+    colors: object Array
+    debug: function/1
+    default: function/1
+    destroy: function/0
+    disable: function/0
+    enable: function/1
+    enabled: function/1
+    formatArgs: function/1
+    formatters: object
+    humanize: function/2
+    init: function/1
+    inspectOpts: object
+    load: function/0
+    log: function/0
+    names: object Array
+    namespaces: undefined
+    save: function/1
+    selectColor: function/1
+    skips: object Array
+    useColors: function/0
+  default: function/1
+    coerce: function/1
+    colors: object Array
+    debug: function/1
+    default: function/1
+    destroy: function/0
+    disable: function/0
+    enable: function/1
+    enabled: function/1
+    formatArgs: function/1
+    formatters: object
+    humanize: function/2
+    init: function/1
+    inspectOpts: object
+    load: function/0
+    log: function/0
+    names: object Array
+    namespaces: undefined
+    save: function/1
+    selectColor: function/1
+    skips: object Array
+    useColors: function/0
+  destroy: function/0
+  disable: function/0
+  enable: function/1
+  enabled: function/1
+  formatArgs: function/1
+  formatters: object
+    O: function/1
+    o: function/1
+  humanize: function/2
+  init: function/1
+  inspectOpts: object
+  load: function/0
+  log: function/0
+  names: object Array
+  namespaces: undefined
+  save: function/1
+  selectColor: function/1
+  skips: object Array
+  useColors: function/0

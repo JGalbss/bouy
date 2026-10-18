@@ -1,0 +1,23 @@
+namespace: object Module
+  AbortPromptError: function/1
+  CancelPromptError: function/0
+  ExitPromptError: function/0
+  HookError: function/0
+  Separator: function/1
+  ValidationError: function/0
+  createPrompt: function/1
+  isBackspaceKey: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDownKey: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isEnterKey: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isNumberKey: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isSpaceKey: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isTabKey: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isUpKey: function/1 (throws, throws, false, false, false, false, false, false, false)
+  makeTheme: function/0
+  useEffect: function/2
+  useKeypress: function/1
+  useMemo: function/2
+  usePagination: function/1
+  usePrefix: function/1
+  useRef: function/1
+  useState: function/1

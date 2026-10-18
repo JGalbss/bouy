@@ -1,0 +1,7 @@
+module.exports: object
+  Label: object
+    $$typeof: symbol
+    render: function/2
+  Root: object
+    $$typeof: symbol
+    render: function/2

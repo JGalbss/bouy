@@ -1,0 +1,7 @@
+module.exports: function/4
+  __getRegExpFlags: function/1
+  __isArray: function/1
+  __isDate: function/1
+  __isRegExp: function/1
+  __objToStr: function/1
+  clonePrototype: function/1

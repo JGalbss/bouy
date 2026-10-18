@@ -1,0 +1,6 @@
+module.exports: object Module
+  initialEnv: undefined
+  loadEnvConfig: function/2
+  processEnv: function/2
+  resetEnv: function/0
+  updateInitialEnv: function/1

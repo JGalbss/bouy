@@ -1,0 +1,156 @@
+module.exports: object
+  BufferReader: class/1 {_slice, string}
+    _configure: function/0
+  BufferWriter: class/0 {bytes, string}
+    _configure: function/0
+    alloc: function/1
+    writeBytesBuffer: function/3
+  Enum: class/6 {_resolveFeatures, add, isReservedId, isReservedName, remove, toJSON}
+    className: string
+    fromJSON: function/2
+  Field: class/7 {_inferLegacyProtoFeatures, _resolveFeatures, delimited, hasPresence, optional, packed, required, resolve, setOption, toJSON}
+    _configure: function/1
+    className: string
+    d: function/4
+    fromJSON: function/2
+  MapField: class/6 {resolve, toJSON}
+    className: string
+    d: function/3
+    fromJSON: function/2
+  Message: class/1 {toJSON}
+    create: function/1
+    decode: function/1
+    decodeDelimited: function/1
+    encode: function/2
+    encodeDelimited: function/2
+    fromObject: function/1
+    toObject: function/2
+    verify: function/1
+  Method: class/9 {resolve, toJSON}
+    className: string
+    fromJSON: function/2
+  Namespace: class/2 {_lookupImpl, _resolveFeaturesRecursive, add, addJSON, define, get, getEnum, lookup, lookupEnum, lookupService, lookupType, lookupTypeOrEnum, nestedArray, remove, resolveAll, toJSON}
+    _configure: function/3
+    arrayToJSON: function/2
+    className: string
+    fromJSON: function/3
+    isReservedId: function/2
+    isReservedName: function/2
+  OneOf: class/4 {add, isProto3Optional, onAdd, onRemove, remove, toJSON}
+    className: string
+    d: function/0
+    fromJSON: function/2
+  Reader: class/1 {_slice, bool, bytes, double, fixed32, fixed64, float, int32, int64, sfixed32, sfixed64, sint32, sint64, skip, skipType, string, uint32, uint64}
+    _configure: function/1
+    create: function/1
+    recursionLimit: number
+  ReflectionObject: class/2 {_editionToJSON, _inferLegacyProtoFeatures, _resolveFeatures, _resolveFeaturesRecursive, fullName, getOption, onAdd, onRemove, resolve, root, setOption, setOptions, setParsedOption, toJSON, toString}
+    _configure: function/1
+    className: string
+  Root: class/1 {_handleAdd, _handleRemove, fetch, load, loadSync, resolveAll, resolvePath}
+    _configure: function/3
+    className: string
+    fromJSON: function/3
+  Service: class/2 {_resolveFeaturesRecursive, add, create, get, methodsArray, remove, resolveAll, toJSON}
+    className: string
+    fromJSON: function/3
+  Type: class/2 {_resolveFeaturesRecursive, add, create, ctor, decode, decodeDelimited, encode, encodeDelimited, fieldsArray, fieldsById, fromObject, get, isReservedId, isReservedName, oneofsArray, remove, resolveAll, setup, toJSON, toObject, verify}
+    className: string
+    d: function/1
+    fromJSON: function/3
+    generateConstructor: function/1
+  Writer: class/0 {_push, bool, bytes, double, finish, fixed32, fixed64, float, fork, int32, int64, ldelim, reset, sfixed32, sfixed64, sint32, sint64, string, uint32, uint64}
+    _configure: function/1
+    alloc: function/1
+    create: function/0
+  build: string
+  common: function/2
+    get: function/1
+    google/protobuf/any.proto: object
+    google/protobuf/duration.proto: object
+    google/protobuf/empty.proto: object
+    google/protobuf/field_mask.proto: object
+    google/protobuf/struct.proto: object
+    google/protobuf/timestamp.proto: object
+    google/protobuf/wrappers.proto: object
+  configure: function/0
+  converter: object
+    fromObject: function/1
+    toObject: function/1
+  decoder: function/1
+  encoder: function/1
+  load: function/3
+  loadSync: function/2
+  parse: function/3
+    defaults: object
+    filename: null
+  roots: object
+  rpc: object
+    Service: class/3 {end, rpcCall}
+  tokenize: function/2
+    unescape: function/1
+  types: object
+    basic: object
+    defaults: object
+    long: object
+    mapKey: object
+    packed: object
+  util: object
+    Array: class/3 {BYTES_PER_ELEMENT, setFromBase64, setFromHex, toBase64, toHex}
+    Buffer: class/3 {asciiSlice, asciiWrite, base64Slice, base64Write, base64urlSlice, base64urlWrite, compare, copy, equals, fill, hexSlice, hexWrite, includes, indexOf, inspect, lastIndexOf, latin1Slice, latin1Write, offset, parent, readBigInt64BE, readBigInt64LE, readBigUInt64BE, readBigUInt64LE, readBigUint64BE, readBigUint64LE, readDoubleBE, readDoubleLE, readFloatBE, readFloatLE, readInt16BE, readInt16LE, readInt32BE, readInt32LE, readInt8, readIntBE, readIntLE, readUInt16BE, readUInt16LE, readUInt32BE, readUInt32LE, readUInt8, readUIntBE, readUIntLE, readUint16BE, readUint16LE, readUint32BE, readUint32LE, readUint8, readUintBE, readUintLE, slice, subarray, swap16, swap32, swap64, toJSON, toLocaleString, toString, ucs2Slice, ucs2Write, utf8Slice, utf8Write, write, writeBigInt64BE, writeBigInt64LE, writeBigUInt64BE, writeBigUInt64LE, writeBigUint64BE, writeBigUint64LE, writeDoubleBE, writeDoubleLE, writeFloatBE, writeFloatLE, writeInt16BE, writeInt16LE, writeInt32BE, writeInt32LE, writeInt8, writeIntBE, writeIntLE, writeUInt16BE, writeUInt16LE, writeUInt32BE, writeUInt32LE, writeUInt8, writeUIntBE, writeUIntLE, writeUint16BE, writeUint16LE, writeUint32BE, writeUint32LE, writeUint8, writeUintBE, writeUintLE}
+    EventEmitter: class/0 {emit, off, on}
+    Long: class/3 {__isLong__, add, and, clz, comp, compare, countLeadingZeros, countTrailingZeros, ctz, div, divide, eq, equals, eqz, ge, getHighBits, getHighBitsUnsigned, getLowBits, getLowBitsUnsigned, getNumBitsAbs, greaterThan, greaterThanOrEqual, gt, gte, isEven, isNegative, isOdd, isPositive, isSafeInteger, isZero, le, lessThan, lessThanOrEqual, lt, lte, mod, modulo, mul, multiply, ne, neg, negate, neq, not, notEquals, or, rem, rotateLeft, rotateRight, rotl, rotr, shiftLeft, shiftRight, shiftRightUnsigned, shl, shr, shr_u, shru, sub, subtract, toBigInt, toBytes, toBytesBE, toBytesLE, toInt, toNumber, toSigned, toString, toUnsigned, xor}
+    LongBits: class/2 {length, toHash, toLong, toNumber, zzDecode, zzEncode}
+    ProtocolError: class/2 {name, toString}
+    _Buffer_allocUnsafe: function/1
+    _Buffer_from: function/3
+    _configure: function/0
+    asPromise: function/2
+    base64: object
+    camelCase: function/1
+    checkDepth: function/1
+    codegen: function/2
+    compareFieldsById: function/2
+    decorateEnum: function/1
+    decorateType: function/2
+    emptyArray: object Array
+    emptyObject: object
+    fetch: function/3
+    float: function/1
+    fs: object
+    global: object global
+    isInteger: function/1
+    isNode: boolean
+    isObject: function/1
+    isReserved: function/1
+    isSet: function/2
+    isString: function/1
+    isUnsafeProperty: function/1
+    isset: function/2
+    key2Re: object RegExp
+    key32Re: object RegExp
+    key64Re: object RegExp
+    lcFirst: function/1
+    longFromHash: function/2
+    longToHash: function/1
+    makeProp: function/2
+    merge: function/1
+    nestingLimit: number
+    newBuffer: function/1
+    newError: function/1
+    oneOfGetter: function/1
+    oneOfSetter: function/1
+    path: object
+    patterns: object
+    pool: function/3
+    recursionLimit: number
+    safeProp: function/1
+    setProperty: function/4
+    toArray: function/1
+    toJSONOptions: object
+    toObject: function/1
+    ucFirst: function/1
+    utf8: object
+  verifier: function/1
+  wrappers: object
+    .google.protobuf.Any: object

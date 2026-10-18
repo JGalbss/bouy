@@ -1,0 +1,15 @@
+module.exports: object
+  CachedSource: class/2 {_getCachedSource, _getMapFromCacheEntry, _getOrCreateCachedMaps, buffer, buffers, clearCache, getCachedData, map, original, originalLazy, size, source, sourceAndMap, streamChunks, updateHash}
+  CompatSource: class/1 {buffer, buffers, clearCache, map, size, source, sourceAndMap, updateHash}
+  ConcatSource: class/0 {_optimize, add, addAllSkipOptimizing, buffer, buffers, clearCache, getChildren, map, size, source, sourceAndMap, streamChunks, updateHash}
+  OriginalSource: class/3 {buffer, clearCache, getName, map, size, source, sourceAndMap, streamChunks, updateHash}
+  PrefixSource: class/2 {clearCache, getPrefix, map, original, source, sourceAndMap, streamChunks, updateHash}
+  RawSource: class/1 {buffer, clearCache, isBuffer, map, size, source, streamChunks, updateHash}
+  ReplaceSource: class/2 {_sortReplacements, buffer, buffers, clearCache, getName, getReplacements, insert, map, original, replace, source, sourceAndMap, streamChunks, updateHash}
+    Replacement: function/4
+  SizeOnlySource: class/1 {_error, buffer, buffers, map, size, source, updateHash}
+  Source: class/0 {buffer, buffers, clearCache, map, size, source, sourceAndMap, updateHash}
+  SourceMapSource: class/6 {_innerSourceMapBuffer, _innerSourceMapObject, _innerSourceMapString, _originalSourceBuffer, _originalSourceString, _sourceMapBuffer, _sourceMapObject, _sourceMapString, buffer, clearCache, getArgsAsBuffers, map, size, source, sourceAndMap, streamChunks, updateHash}
+  util: object
+    scopes: object
+    stringBufferUtils: object

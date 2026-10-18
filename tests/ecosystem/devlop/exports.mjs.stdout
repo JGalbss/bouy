@@ -1,0 +1,5 @@
+namespace: object Module
+  deprecate: function/1
+  equal: function/0
+  ok: function/0
+  unreachable: function/0

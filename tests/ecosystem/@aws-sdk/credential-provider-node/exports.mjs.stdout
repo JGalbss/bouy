@@ -1,0 +1,12 @@
+namespace: object Module
+  credentialsTreatedAsExpired: function/1
+  credentialsWillNeedRefresh: function/1
+  default: object
+    credentialsTreatedAsExpired: function/1
+    credentialsWillNeedRefresh: function/1
+    defaultProvider: function/0
+  defaultProvider: function/0
+  module.exports: object
+    credentialsTreatedAsExpired: function/1
+    credentialsWillNeedRefresh: function/1
+    defaultProvider: function/0

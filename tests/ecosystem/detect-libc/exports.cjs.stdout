@@ -1,0 +1,9 @@
+module.exports: object
+  GLIBC: string
+  MUSL: string
+  family: function/0
+  familySync: function/0
+  isNonGlibcLinux: function/0 (promise, promise, promise, promise, promise, promise, promise, promise, promise)
+  isNonGlibcLinuxSync: function/0 (false, false, false, false, false, false, false, false, false)
+  version: function/0
+  versionSync: function/0

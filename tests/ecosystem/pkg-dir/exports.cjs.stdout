@@ -1,0 +1,5 @@
+module.exports: function/1
+  default: function/1
+    default: function/1
+    sync: function/1
+  sync: function/1
