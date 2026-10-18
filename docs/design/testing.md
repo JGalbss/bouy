@@ -102,6 +102,7 @@ language/statements/with/12.10-0-1.js rejected
 
 - The outcome is the last word of the line, so an id can hold spaces. The writer escapes a newline and a backslash in an id.
 - The modes of test262 are `nonstrict`, `strict`, and `module`, in that order of names. A line holds one outcome when every mode has it. A file counts as the outcome of its mode with the highest rank.
+- Node's tests run on Linux and macOS, and one file holds both, as Bun's `test/expectations.txt` holds its platform lines. When the outcome of a file differs by platform, its line names each platform, as `parallel/test-x.js linux=fail,macos=pass`. A run compares with the outcome of its own platform, and the file counts the worst one. `--update` follows a change to the code, so it gives a line that names no platform the outcome of the run on every platform. The file that a run without `--update` writes to `target/suites/node`, such as the artifact of CI, keeps the outcome of the other platform, so that file records a platform difference.
 - A line holds no message and no error code, so a reworded message changes no line. `results.json` keeps the details.
 - `.gitattributes` marks the files `linguist-generated=true`.
 

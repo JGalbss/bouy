@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 
 use crate::comparison::{self, Comparison, Origin, Selection};
-use crate::expectations::{self, Entry, Expectations};
+use crate::expectations::{self, Entry, Expectations, PLATFORM};
 use crate::outcome::{Facts, Outcome, RunResult, classify};
 use crate::summary::{self, Counts, Destination, Results, Summary, TestResult};
 use crate::{SKIP_REASONS, buoy_env};
@@ -413,9 +413,15 @@ pub fn run(options: &Options) -> Result<Report, String> {
     let tests = load_tests(&options.directory.join(SUITE_DIRECTORY), &config)?;
     durations_ms.insert("load".to_owned(), started.elapsed().as_millis());
 
-    let expected = expectations::read(&options.directory.join("expectations.txt"))?;
+    // A line whose outcome differs by platform names each one, and a run compares with
+    // the outcome of its own.
+    let recorded = expectations::read(&options.directory.join("expectations.txt"))?;
+    let expected = expectations::on_platform(&recorded, PLATFORM);
     let base = match &options.base {
-        Some(path) if path.is_file() => Some(expectations::read(path)?),
+        Some(path) if path.is_file() => Some(expectations::on_platform(
+            &expectations::read(path)?,
+            PLATFORM,
+        )),
         _ => None,
     };
     let started = Instant::now();
@@ -435,11 +441,18 @@ pub fn run(options: &Options) -> Result<Report, String> {
         })
         .map(|(_, execution)| execution.report.clone())
         .collect();
-    let mut entries: Expectations = expected
+    let mut entries: Expectations = recorded
         .into_iter()
         .filter(|(id, _)| ids.contains(id))
         .collect();
-    entries.extend(run.clone());
+    for (test, execution) in &ran {
+        let entry = entries
+            .get(&test.id)
+            .map_or(Entry::Same(execution.outcome), |line| {
+                line.with_platform(PLATFORM, execution.outcome, options.update)
+            });
+        entries.insert(test.id.clone(), entry);
+    }
     let blocked: Vec<&Vec<String>> = ran
         .iter()
         .map(|(_, execution)| &execution.blockers)
