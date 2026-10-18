@@ -1,9 +1,15 @@
-//! Annex B, Runtime Errors for Function Call Assignment Targets: in sloppy code, a call
-//! as the target of an assignment, an update, or the head of a `for-in` or `for-of`
-//! loop is no early error. The call runs, then a `ReferenceError` ends the assignment.
-//! oxc rejects such a target, so the parser rewrites `f()` to `f()[SENTINEL]` and parses
-//! again, and the lowering throws where the key reads the sentinel, as V8 rewrites the
-//! target to `f()[throw ReferenceError]` (`RewriteInvalidReferenceExpression`).
+//! Source that JavaScript allows and oxc rejects. The parser rewrites each such place that
+//! oxc reports into source with the same meaning that oxc accepts, then parses again.
+//!
+//! - Annex B, Runtime Errors for Function Call Assignment Targets: in sloppy code, a call
+//!   as the target of an assignment, an update, or the head of a `for-in` or `for-of`
+//!   loop is no early error. The call runs, then a `ReferenceError` ends the assignment.
+//!   `f()` becomes `f()[SENTINEL]`, and the lowering throws where the key reads the
+//!   sentinel, as V8 rewrites the target to `f()[throw ReferenceError]`
+//!   (`RewriteInvalidReferenceExpression`).
+//! - A label named `let` in sloppy code, `let: x`, which oxc reads as the start of a
+//!   declaration. `let` becomes `l\u0065t`, the same name, which oxc reads as a label and
+//!   still rejects in strict code.
 
 use oxc::allocator::Allocator;
 use oxc::ast::AstKind;
@@ -23,30 +29,52 @@ pub const SENTINEL: &str = "__buoy_invalid_assignment_target";
 /// The message of a `ReferenceError` from a rewritten target.
 pub const MESSAGE: &str = "Invalid left-hand side in assignment";
 
-/// The source with `[SENTINEL]` after each call that oxc rejects as an assignment
-/// target, or `None` when another error remains. A source that names the sentinel
-/// itself must not be rewritten (`is_free`).
+/// The source with each place that oxc reported rewritten, or `None` when an error is no
+/// such place. A source that names the sentinel itself must not be rewritten
+/// (`is_free`).
 pub fn rewrite(source: &str, diagnostics: &Diagnostics) -> Option<String> {
-    let mut ends = Vec::new();
+    let mut edits = Vec::new();
     for error in diagnostics.errors() {
-        if error.message != "Cannot assign to this expression" {
-            return None;
-        }
         let label = error.labels.first()?;
         let start = label.offset() as usize;
         let end = start + label.len() as usize;
-        if !is_call(source.get(start..end)?) || is_logical_target(&source[end..]) {
-            return None;
-        }
-        ends.push(end);
+        let edit = match error.message.as_ref() {
+            "Cannot assign to this expression" => call_target(source, start, end)?,
+            _ => let_label(source, start)?,
+        };
+        edits.push(edit);
     }
-    ends.sort_unstable();
-    ends.dedup();
+    edits.sort_unstable();
+    edits.dedup();
     let mut rewritten = source.to_owned();
-    for end in ends.iter().rev() {
-        rewritten.insert_str(*end, &format!("[{SENTINEL}]"));
+    for (at, removed, text) in edits.iter().rev() {
+        rewritten.replace_range(*at..*at + *removed, text);
     }
     Some(rewritten)
+}
+
+/// The edit `(offset, removed length, text)` that makes the call at `start..end` a
+/// member target whose key throws.
+fn call_target(source: &str, start: usize, end: usize) -> Option<(usize, usize, String)> {
+    let is_target = is_call(source.get(start..end)?) && !is_logical_target(&source[end..]);
+    is_target.then(|| (end, 0, format!("[{SENTINEL}]")))
+}
+
+/// The edit that escapes the `let` before the colon at or after `at`, when the error is
+/// oxc's reading of a `let` label as a declaration.
+fn let_label(source: &str, at: usize) -> Option<(usize, usize, String)> {
+    let rest = source.get(at..)?;
+    let colon = at + rest.len() - rest.trim_start().len();
+    if !source[colon..].starts_with(':') {
+        return None;
+    }
+    let before = source[..colon].trim_end();
+    let word = before.strip_suffix("let")?;
+    let separate = !word
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '\\');
+    separate.then(|| (word.len(), 3, "l\\u0065t".to_owned()))
 }
 
 /// Whether `source` leaves the sentinel free for a rewrite.
@@ -114,6 +142,13 @@ mod tests {
         );
         assert_eq!(rewritten("f() &&= 1;"), None);
         assert_eq!(rewritten("f`x` = 1;"), None);
+    }
+
+    #[test]
+    fn escapes_a_let_label() {
+        assert_eq!(rewritten("let: 42").as_deref(), Some("l\\u0065t: 42"));
+        assert_eq!(rewritten("while (0) let \n : 1").as_deref(), Some("while (0) l\\u0065t \n : 1"));
+        assert_eq!(rewritten("x = 1 2;"), None);
     }
 }
 

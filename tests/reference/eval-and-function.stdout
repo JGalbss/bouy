@@ -9,3 +9,4 @@ SyntaxError SyntaxError
 [ 6, 'undefined', 61 ]
 undefined 1
 [ [ 'ReferenceError', 1 ], 'ReferenceError', 'SyntaxError' ]
+[ 42, 43, 'SyntaxError' ]

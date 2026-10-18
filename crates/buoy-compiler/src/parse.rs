@@ -10,7 +10,7 @@ use oxc::semantic::{Semantic, SemanticBuilder};
 use oxc::span::SourceType;
 
 use crate::Goal;
-use crate::call_targets;
+use crate::oxc_gaps;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 
 /// The source type that `path` parses with under `goal`.
@@ -99,13 +99,12 @@ fn parse_filtered<R>(
     allowed: &dyn Fn(&Program<'_>, &str, usize) -> bool,
     use_program: impl for<'a> FnOnce(&Program<'a>, &Semantic<'a>) -> R,
 ) -> Result<R, Vec<Diagnostic>> {
-    // Annex B: a call as the target of an assignment in sloppy code throws a
-    // ReferenceError when it runs. Each pass rewrites the calls that oxc reported, which
-    // reports one such target at a time, into member targets whose key throws, as V8 does
-    // (RewriteInvalidReferenceExpression); the errors of the source stand otherwise.
+    // Source that JavaScript allows and oxc rejects (`oxc_gaps`): each pass rewrites the
+    // places that oxc reported, which it reports one at a time, and parses again. The
+    // errors of the source stand when a place is no such gap.
     let mut rewritten: Option<String> = None;
     let mut errors = Vec::new();
-    for _ in 0..=MAX_CALL_TARGETS {
+    for _ in 0..=MAX_REWRITES {
         let text = rewritten.as_deref().unwrap_or(source);
         let next = {
             let allocator = Allocator::default();
@@ -113,7 +112,7 @@ fn parse_filtered<R>(
             if !parsed.fatal_error && !parsed.diagnostics.has_errors() {
                 return match (analyze(&parsed.program, allowed), rewritten.is_some()) {
                     (Ok(built), false) => Ok(use_program(&parsed.program, &built.semantic)),
-                    (Ok(built), true) if call_targets::are_sloppy(&built.semantic) => {
+                    (Ok(built), true) if oxc_gaps::are_sloppy(&built.semantic) => {
                         Ok(use_program(&parsed.program, &built.semantic))
                     }
                     (Err(diagnostics), false) => {
@@ -125,8 +124,8 @@ fn parse_filtered<R>(
             if rewritten.is_none() {
                 errors = syntax_errors(path, source, &parsed.diagnostics, effect_hint);
             }
-            call_targets::rewrite(text, &parsed.diagnostics)
-                .filter(|_| call_targets::is_free(source))
+            oxc_gaps::rewrite(text, &parsed.diagnostics)
+                .filter(|_| oxc_gaps::is_free(source))
         };
         match next {
             Some(next) => rewritten = Some(next),
@@ -136,8 +135,8 @@ fn parse_filtered<R>(
     Err(errors)
 }
 
-/// The most call targets that the parser rewrites in one source.
-const MAX_CALL_TARGETS: usize = 64;
+/// The most passes of `oxc_gaps` rewrites over one source.
+const MAX_REWRITES: usize = 64;
 
 /// Parses `source` and drops each error that `allowed` permits.
 fn parse_allowing<'a>(

@@ -10,13 +10,13 @@ use crate::erlang::Expr;
 
 impl<'a> Lowerer<'a, '_> {
     pub fn identifier(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
-        if ident.name == crate::call_targets::SENTINEL {
+        if ident.name == crate::oxc_gaps::SENTINEL {
             return self.bind(Expr::call(
                 "buoy_heap",
                 "throw_error",
                 vec![
                     Expr::atom("ReferenceError"),
-                    Expr::js_string(crate::call_targets::MESSAGE),
+                    Expr::js_string(crate::oxc_gaps::MESSAGE),
                 ],
             ));
         }

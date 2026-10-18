@@ -4,12 +4,12 @@
 //! (section 2), the value representation (section 3), and the lowering of each construct
 //! (sections 4 to 12).
 
-mod call_targets;
 mod diagnostic;
 mod erlang;
 mod graph;
 mod library;
 mod lower;
+mod oxc_gaps;
 mod parse;
 mod reference;
 mod resolve;

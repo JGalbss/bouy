@@ -53,3 +53,12 @@ const callTargets = [
   }
 });
 console.log(callTargets);
+// `let` is a label in sloppy code, and a reserved word in strict code.
+const letLabels = ["let: 42", "l\\u0065t: 43", "'use strict'; let: 44"].map((source) => {
+  try {
+    return (0, eval)(source);
+  } catch (error) {
+    return (error as Error).name;
+  }
+});
+console.log(letLabels);
