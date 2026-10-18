@@ -26,6 +26,8 @@
 -define(K_ASYNC, 3).
 -define(UV_EOF, -4095).
 -define(INBOX_LIMIT, 1048576).
+%% The random of a HelloRetryRequest, SHA-256 of "HelloRetryRequest".
+-define(HRR_RANDOM, 16#CF21AD74E59A6111BE1D8C021E65B891C2A211167ABB8C5E079E09E2C8A8339C).
 
 -spec binding() -> term().
 binding() ->
@@ -53,9 +55,9 @@ binding() ->
         {<<"enableKeylogCallback">>, fun(This, _) -> put(This, keylog, true) end},
         {<<"enableTrace">>, fun(_, _) -> undefined end},
         {<<"enableCertCb">>, fun(This, _) -> put(This, cert_cb, true) end},
-        {<<"enableALPNCb">>, fun(_, _) -> undefined end},
+        {<<"enableALPNCb">>, fun(This, _) -> put(This, alpn_cb, true) end},
         {<<"enablePskCallback">>, fun(_, _) -> undefined end},
-        {<<"setPskIdentityHint">>, fun(_, _) -> undefined end},
+        {<<"setPskIdentityHint">>, fun(This, Args) -> set_psk_identity_hint(This, A(1, Args)) end},
         {<<"setALPNProtocols">>, fun(This, Args) -> put(This, alpn, alpn_list(buoy_node_encoding:view_bytes(A(1, Args)))) end},
         {<<"getALPNNegotiatedProtocol">>, fun(This, _) -> info(This, alpn, false) end},
         {<<"setServername">>, fun(This, Args) -> put(This, servername, text(A(1, Args))) end},
@@ -79,14 +81,14 @@ binding() ->
         {<<"getEphemeralKeyInfo">>, fun(This, _) -> ephemeral_key(This) end},
         {<<"exportKeyingMaterial">>, fun(This, Args) -> export_keying_material(This, A(1, Args), A(2, Args), A(3, Args)) end},
         {<<"verifyError">>, fun(This, _) -> verify_error(This) end},
-        {<<"renegotiate">>, fun(_, _) -> false end},
+        {<<"renegotiate">>, fun(This, _) -> renegotiate(This) end},
         {<<"destroySSL">>, fun(This, _) -> destroy(This), undefined end},
         {<<"setOCSPResponse">>, fun(_, _) -> undefined end},
         {<<"requestOCSP">>, fun(_, _) -> undefined end},
         %% SSL_set_max_send_fragment takes 512 to 16384; ssl keeps its own
         %% record size.
         {<<"setMaxSendFragment">>, fun(_, Args) -> Size = buoy_ref:to_number(A(1, Args)), Size >= 512 andalso Size =< 16384 end},
-        {<<"setKeyCert">>, fun(_, _) -> undefined end},
+        {<<"setKeyCert">>, fun(This, Args) -> put(This, key_cert, A(1, Args)) end},
         {<<"certCbDone">>, fun(This, _) -> cert_cb_done(This) end},
         {<<"receive">>, fun(This, Args) -> encrypted_in(This, {data, buoy_node_encoding:view_bytes(A(1, Args))}), undefined end},
         {<<"writesIssuedByPrevListenerDone">>, fun(_, _) -> undefined end}],
@@ -104,6 +106,20 @@ binding() ->
         {<<"TLSWrap">>, Class}]).
 
 text(V) -> buoy_ref_string:to_utf8(buoy_ref:to_string(V)).
+
+%% SSL_use_psk_identity_hint refuses a hint past PSK_MAX_IDENTITY_LEN, and
+%% TLSWrap reports it through onerror.
+set_psk_identity_hint(This, Hint) ->
+    case byte_size(text(Hint)) > 256 of
+        true ->
+            Message = <<"Failed to set PSK identity hint">>,
+            E = buoy_heap:error_object('Error', Message, <<"Error: ", Message/binary>>),
+            buoy_heap:set(E, <<"code">>, <<"ERR_TLS_PSK_SET_IDENTITY_HINT_FAILED">>),
+            call_js(This, <<"onerror">>, [E]),
+            undefined;
+        false ->
+            undefined
+    end.
 
 %%% State
 
@@ -140,6 +156,8 @@ wrap(Parent, Context, Server) ->
                  reading => false, cleartext => [], eof => false, pending => [], writes => #{}, queued => 0,
                  shutdown => none, controller => none, active => false, inbox => [], inbox_size => 0,
                  peer_eof => false, info => #{}, read => 0, written => 0,
+                 flight => case Server of true -> off; false -> {sniff, <<>>} end, reneg => off,
+                 kex => case Server of true -> off; false -> {scan, <<>>} end,
                  async_id => new_async_id()}),
     Reading = listen(Parent, Id),
     put(This, reading, Reading),
@@ -246,7 +264,8 @@ ssl_options(S, Role, Agent) ->
     Tickets = [O || O <- Resume, Tls13 orelse not lists:member(element(1, O), [session_tickets, use_ticket, stateless_tickets_seed]),
                     Older orelse not lists:member(element(1, O), [reuse_sessions, reuse_session])],
     [{cb_info, buoy_tls_transport:cb_info()}, {log_level, none}, {handshake, full}]
-        ++ Verify ++ Sni ++ AlpnOption ++ Tickets ++ SniFun ++ Keylog ++ Base.
+        ++ Verify ++ Sni ++ AlpnOption ++ Tickets ++ SniFun ++ Keylog
+        ++ [{buoy_alpn_cb, true} || Role =:= server, maps:get(alpn_cb, S, false)] ++ Base.
 
 self_realm() -> self().
 
@@ -363,13 +382,15 @@ keylog(Id, Lines) ->
 
 %%% The agent
 
-agent(Realm, Id, Role, Options) ->
+agent(Realm, Id, Role, Options0) ->
     erlang:monitor(process, Realm),
     Socket = buoy_tls_transport:socket(Realm, Id),
+    AlpnCallback = proplists:get_bool(buoy_alpn_cb, Options0),
+    Options = proplists:delete(buoy_alpn_cb, Options0),
     Result = try
         case Role of
             client -> ssl:connect(Socket, Options, infinity);
-            server -> ssl:handshake(Socket, Options, infinity)
+            server -> server_handshake(Realm, Id, Socket, Options, AlpnCallback)
         end
     catch
         Class:Reason -> {error, {Class, Reason}}
@@ -383,6 +404,48 @@ agent(Realm, Id, Role, Options) ->
         {error, Reason2} ->
             Report({handshake, {error, Reason2}})
     end.
+
+%% A server stops after the ClientHello, where Node's ALPN callback picks a
+%% protocol of the client's list, and goes on.
+server_handshake(Realm, Id, Socket, Options, true) ->
+    case ssl:handshake(Socket, [{handshake, hello} | proplists:delete(handshake, Options)], infinity) of
+        {ok, Hello, Ext} -> ssl:handshake_continue(Hello, alpn_select(Realm, Id, maps:get(alpn, Ext, undefined)), infinity);
+        Other -> Other
+    end;
+server_handshake(_Realm, _Id, Socket, Options, false) ->
+    ssl:handshake(Socket, Options, infinity).
+
+%% The protocol that the ALPN callback chose. None makes ssl refuse the
+%% client's list with no_application_protocol, as SSL_TLSEXT_ERR_ALERT_FATAL
+%% does; OpenSSL calls no callback when the client offers no ALPN.
+alpn_select(Realm, Id, Wire) when is_binary(Wire) ->
+    Self = self(),
+    buoy_node_stream:call(Realm, fun() -> alpn_callback(Id, Wire, Self) end),
+    receive
+        {'$buoy_tls_alpn', Protocol, KeyCert} -> [{alpn_preferred_protocols, [Protocol]} | KeyCert]
+    after 60000 ->
+        []
+    end;
+alpn_select(_Realm, _Id, _None) ->
+    [].
+
+%% setKeyCert in the callback gives this connection the key and the
+%% certificate of another context, as SSL_use_certificate does.
+alpn_callback(Id, Wire, Agent) ->
+    {Offset, KeyCert} = case by_id(Id) of
+        undefined ->
+            {none, []};
+        This ->
+            Chosen = call_js(This, <<"ALPNCallback">>, [buoy_node_encoding:new_buffer(Wire)]),
+            Context = maps:get(key_cert, state(This), undefined),
+            {Chosen, [O || buoy_crypto_context:is_context(Context),
+                           {certs_keys, _} = O <- buoy_crypto_context:options(Context, server)]}
+    end,
+    Protocol = case is_number(Offset) andalso Wire of
+        <<_:(trunc(Offset))/binary, Length, Chosen1:Length/binary, _/binary>> -> Chosen1;
+        _ -> <<0>>
+    end,
+    Agent ! {'$buoy_tls_alpn', Protocol, KeyCert}.
 
 %% The verification messages that ssl's process sent before the handshake
 %% ended: they are in the mailbox before ssl's reply.
@@ -446,11 +509,20 @@ agent_loop(Ssl, Report, Reading, Armed) ->
             Report({error, Reason}),
             agent_loop(Ssl, Report, Reading, Armed);
         {shutdown, Ref} ->
-            Status = case ssl:shutdown(Ssl, write) of
+            %% ssl sends close_notify only for read_write; ssl still reads
+            %% after it, and the transport ends only the parent's write side.
+            Status = case ssl:shutdown(Ssl, read_write) of
                 ok -> ok;
                 {error, Reason} -> {error, Reason}
             end,
             Report({shutdown, Ref, Status}),
+            agent_loop(Ssl, Report, Reading, Armed);
+        renegotiate ->
+            case ssl:renegotiate(Ssl) of
+                ok -> Report(renegotiated);
+                {error, closed} -> ok;
+                {error, Reason} -> Report({error, Reason})
+            end,
             agent_loop(Ssl, Report, Reading, Armed);
         {export, From, Ref, Label, Context, Length} ->
             %% The secret stays for the next export (ConsumeSecret false).
@@ -489,10 +561,14 @@ event(This, S, {handshake, {ok, Info}}) ->
     save(This, (state(This))#{pending := []}),
     Reading andalso (Agent ! {reading, true}),
     Shutdown =/= none andalso (Agent ! {shutdown, Shutdown}),
+    Server andalso maps:get(protocol, maps:get(items, Info, #{}), 'tlsv1.3') =/= 'tlsv1.3'
+        andalso put(This, reneg, #{in => {header, <<>>}, out => {header, <<>>}, phase => idle}),
     call_js(This, <<"onhandshakedone">>, []),
+    release_flight(maps:get(id, S)),
     Server =:= false andalso maps:get(session_callbacks, S) andalso tls12_session(This, Info);
 event(This, S, {handshake, {error, Reason}}) ->
     save(This, S#{phase := failed}),
+    release_flight(maps:get(id, S)),
     buoy_node_loop:unref_handle(),
     case Reason of
         closed -> cleartext_end(This);
@@ -526,6 +602,8 @@ event(This, S, {ticket, Ticket}) ->
     maps:get(session_callbacks, S) andalso
         call_js(This, <<"onnewsession">>, [buoy_node_encoding:new_buffer(<<>>),
                                           buoy_node_encoding:new_buffer(term_to_binary({tls13_ticket, Ticket}))]);
+event(This, _S, renegotiated) ->
+    call_js(This, <<"onhandshakedone">>, []);
 event(This, _S, {error, Reason}) ->
     call_js(This, <<"onerror">>, [handshake_error(Reason, false)]).
 
@@ -553,7 +631,10 @@ transport(Id, Event) ->
     end,
     ok.
 
-transport_event(_This, S, {send, Data}) ->
+transport_event(This, #{flight := {hold, Held}} = S, {send, Data}) ->
+    save(This, S#{flight := {hold, [Data | Held]}});
+transport_event(This, S, {send, Data}) ->
+    renegotiation(This, out, Data),
     parent_write(maps:get(parent, S), Data);
 transport_event(This, S, {active, Caller, Mode}) ->
     save(This, S#{controller := Caller, active := Mode}),
@@ -632,6 +713,9 @@ parent_event(Id, Event) ->
     end.
 
 encrypted_in(This, {data, Data}) ->
+    sniff(This, Data),
+    key_exchange(This, Data),
+    renegotiation(This, in, Data),
     #{inbox := Inbox, inbox_size := Size, parent := Parent} = S = state(This),
     save(This, S#{inbox := [Data | Inbox], inbox_size := Size + byte_size(Data)}),
     Size + byte_size(Data) > ?INBOX_LIMIT andalso parent_read(Parent, false),
@@ -651,6 +735,168 @@ encrypted_in(This, {error, Status}) ->
     call_js(This, <<"onread">>, [undefined]).
 
 transport_socket(#{id := Id}) -> buoy_tls_transport:socket(self(), Id).
+
+%%% Renegotiation
+
+%% renegotiate(): TLS 1.3 has none, as SSL_renegotiate refuses it; ssl
+%% renegotiates an older session, and onhandshakedone follows.
+renegotiate(This) ->
+    case state(This) of
+        #{info := #{items := #{protocol := 'tlsv1.3'}}} ->
+            erlang:error({'$throw', buoy_crypto_context:ssl_error_value(16#10A, <<"wrong ssl version">>, ssl)});
+        #{phase := open, agent := Agent} ->
+            Agent ! renegotiate,
+            undefined;
+        _ ->
+            undefined
+    end.
+
+%% A TLS 1.2 server sees a renegotiation in its records, whose content type
+%% stays visible: a handshake record after the handshake starts one, as
+%% SSL_CB_HANDSHAKE_START reports, and the Finished that follows each
+%% side's change cipher spec ends it, as SSL_CB_HANDSHAKE_DONE reports.
+renegotiation(This, Direction, Data) ->
+    case state(This) of
+        #{reneg := #{phase := Phase} = R} = S ->
+            {Types, Scan} = record_types(Data, maps:get(Direction, R)),
+            Next = lists:foldl(fun(Type, P) -> reneg_step(Direction, Type, P) end, Phase, Types),
+            save(This, S#{reneg := R#{Direction := Scan, phase := reneg_phase(Next)}}),
+            Phase =:= idle andalso Next =/= idle andalso call_js(This, <<"onhandshakestart">>, [buoy_node_loop:now()]),
+            Next =:= done andalso call_js(This, <<"onhandshakedone">>, []),
+            ok;
+        _ ->
+            ok
+    end.
+
+reneg_step(in, 22, idle) -> #{in_ccs => false, out_ccs => false, in_fin => false, out_fin => false};
+reneg_step(_, _, idle) -> idle;
+reneg_step(_, _, done) -> done;
+reneg_step(in, 20, P) -> P#{in_ccs := true};
+reneg_step(out, 20, P) -> P#{out_ccs := true};
+reneg_step(in, 22, #{in_ccs := true} = P) -> finished(P#{in_fin := true});
+reneg_step(out, 22, #{out_ccs := true} = P) -> finished(P#{out_fin := true});
+reneg_step(_, _, P) -> P.
+
+finished(#{in_fin := true, out_fin := true}) -> done;
+finished(P) -> P.
+
+reneg_phase(done) -> idle;
+reneg_phase(P) -> P.
+
+%% The content types of the records that Data starts, with the scan state
+%% of a record header split across reads or a body left to skip.
+record_types(Data, Scan) -> record_types(Data, Scan, []).
+
+record_types(<<>>, Scan, Acc) -> {lists:reverse(Acc), Scan};
+record_types(Data, {skip, N}, Acc) when byte_size(Data) =< N -> {lists:reverse(Acc), {skip, N - byte_size(Data)}};
+record_types(Data, {skip, N}, Acc) ->
+    <<_:N/binary, Rest/binary>> = Data,
+    record_types(Rest, {header, <<>>}, Acc);
+record_types(Data, {header, Seen}, Acc) ->
+    case <<Seen/binary, Data/binary>> of
+        <<Type, _:16, Length:16, Rest/binary>> -> record_types(Rest, {skip, Length}, [Type | Acc]);
+        Short -> {lists:reverse(Acc), {header, Short}}
+    end.
+
+%%% The server's key exchange
+
+%% A TLS 1.2 client sees the server's first flight in the clear. It keeps
+%% the body of the ServerKeyExchange, whose DH prime gives the size that
+%% getEphemeralKeyInfo reports and ssl does not. The scan ends at
+%% ServerHelloDone, at a record that is no handshake, or past 64 KiB.
+key_exchange(This, Data) ->
+    case state(This) of
+        #{kex := {scan, Seen}} = S ->
+            All = <<Seen/binary, Data/binary>>,
+            {Handshake, Rest} = handshake_bytes(All, <<>>),
+            Messages = handshake_messages(Handshake),
+            Kex = case lists:keyfind(12, 1, Messages) of
+                {12, Body} -> {params, binary:copy(Body)};
+                false ->
+                    Ended = lists:keymember(14, 1, Messages) orelse not handshake_tail(Rest)
+                        orelse byte_size(All) > 65536,
+                    case Ended of true -> off; false -> {scan, All} end
+            end,
+            save(This, S#{kex := Kex});
+        _ ->
+            ok
+    end.
+
+handshake_bytes(<<22, _:16, Length:16, Record:Length/binary, Rest/binary>>, Acc) ->
+    handshake_bytes(Rest, <<Acc/binary, Record/binary>>);
+handshake_bytes(Rest, Acc) ->
+    {Acc, Rest}.
+
+handshake_messages(<<Type, Length:24, Body:Length/binary, Rest/binary>>) -> [{Type, Body} | handshake_messages(Rest)];
+handshake_messages(_) -> [].
+
+%% The rest of a read: nothing, or the start of a handshake record.
+handshake_tail(<<>>) -> true;
+handshake_tail(<<22, _/binary>>) -> true;
+handshake_tail(_) -> false.
+
+%%% The client's last flight
+
+%% A TLS 1.3 client completes its handshake as it sends its Finished, and
+%% Node's client runs onhandshakedone, where tls.js rejects an unverified
+%% server, before TLSWrap writes that flight out: the server then never
+%% completes. So a client holds what ssl sends after a TLS 1.3 ServerHello
+%% until onhandshakedone has run, and drops it if tls.js destroyed the
+%% socket. A TLS 1.2 client sends its Finished before the server's, so it
+%% holds nothing.
+sniff(This, Data) ->
+    case state(This) of
+        #{flight := {sniff, Seen}} = S ->
+            Flight = case server_hello(<<Seen/binary, Data/binary>>) of
+                more -> {sniff, <<Seen/binary, Data/binary>>};
+                tls13 -> {hold, []};
+                other -> off
+            end,
+            save(This, S#{flight := Flight});
+        _ ->
+            ok
+    end.
+
+%% The version of the server's first flight: tls13 for a ServerHello with
+%% supported_versions 0x0304, more until its record is whole. A change
+%% cipher spec record and a HelloRetryRequest come before the ServerHello.
+server_hello(<<20, _:16, Length:16, _:Length/binary, Rest/binary>>) ->
+    server_hello(Rest);
+server_hello(<<22, _:16, Length:16, Record:Length/binary, Rest/binary>>) ->
+    case Record of
+        <<2, _:24, _:16, ?HRR_RANDOM:256, _/binary>> -> server_hello(Rest);
+        <<2, _:24, _:16, _:32/binary, IdLength, _:IdLength/binary, _:16, _, ExtLength:16, Extensions:ExtLength/binary, _/binary>> ->
+            case supports_tls13(Extensions) of
+                true -> tls13;
+                false -> other
+            end;
+        _ ->
+            other
+    end;
+server_hello(<<22, _/binary>> = Partial) when byte_size(Partial) < 5 -> more;
+server_hello(<<22, _:16, Length:16, Rest/binary>>) when byte_size(Rest) < Length -> more;
+server_hello(<<20, _/binary>>) -> more;
+server_hello(<<>>) -> more;
+server_hello(_) -> other.
+
+supports_tls13(<<43:16, 2:16, 16#0304:16, _/binary>>) -> true;
+supports_tls13(<<_:16, Length:16, _:Length/binary, Rest/binary>>) -> supports_tls13(Rest);
+supports_tls13(_) -> false.
+
+%% After onhandshakedone: the held flight goes out unless tls.js destroyed
+%% the socket.
+release_flight(Id) ->
+    case by_id(Id) of
+        undefined ->
+            ok;
+        This ->
+            S = state(This),
+            case S of
+                #{flight := {hold, Held}} -> [parent_write(maps:get(parent, S), D) || D <- lists:reverse(Held)];
+                _ -> ok
+            end,
+            save(This, (state(This))#{flight := off})
+    end.
 
 %% Passes the waiting bytes to ssl while its active mode takes them.
 pump(This) ->
@@ -801,6 +1047,11 @@ destroy(This) ->
         #{sni_waiting := Waiting} when is_pid(Waiting) -> Waiting ! {'$buoy_tls_sni', []};
         _ -> ok
     end,
+    %% TLSWrap::Destroy cancels the writes that wait (InvokeQueued).
+    #{writes := Writes} = state(This),
+    save(This, (state(This))#{writes := #{}, pending := [], queued := 0}),
+    Canceled = buoy_node_socket:errno(ecanceled),
+    [buoy_node_socket:later(fun() -> complete(Req, Canceled, This) end) || {Req, _Size} <- maps:values(Writes)],
     case state(This) of
         #{agent := Agent, phase := Phase, id := Id} = S when is_pid(Agent) ->
             Agent ! close,
@@ -890,10 +1141,14 @@ ephemeral_key(This) ->
                 #{ecc := {named_curve, Curve}} -> curve_name(Curve);
                 _ -> undefined
             end,
-            case {Kex, group(Group)} of
-                {rsa, _} -> buoy_node:object([]);
-                {_, {dh, Size}} -> buoy_node:object([{<<"type">>, <<"DH">>}, {<<"size">>, Size}]);
-                {_, {ecdh, Name, Size}} -> buoy_node:object([{<<"type">>, <<"ECDH">>}, {<<"name">>, Name}, {<<"size">>, Size}]);
+            case {Kex, group(Group), maps:get(kex, state(This), off)} of
+                {rsa, _, _} -> buoy_node:object([]);
+                {_, none, {params, <<Length:16, Prime:Length/binary, _/binary>>}}
+                  when Kex =:= dhe_rsa; Kex =:= dhe_dss; Kex =:= dhe_psk; Kex =:= dh_anon ->
+                    Size = length(integer_to_list(binary:decode_unsigned(Prime), 2)),
+                    buoy_node:object([{<<"type">>, <<"DH">>}, {<<"size">>, Size}]);
+                {_, {dh, Size}, _} -> buoy_node:object([{<<"type">>, <<"DH">>}, {<<"size">>, Size}]);
+                {_, {ecdh, Name, Size}, _} -> buoy_node:object([{<<"type">>, <<"ECDH">>}, {<<"name">>, Name}, {<<"size">>, Size}]);
                 _ -> buoy_node:object([])
             end;
         _ -> buoy_node:object([])
