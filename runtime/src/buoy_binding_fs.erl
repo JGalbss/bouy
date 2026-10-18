@@ -275,7 +275,8 @@ uv_error(Reason, Syscall, Path, Dest) ->
     Props = [{<<"errno">>, Errno}, {<<"code">>, buoy_ref_string:from_utf8(Code)}, {<<"syscall">>, Syscall}]
             ++ [{<<"path">>, buoy_ref_string:from_utf8(Path)} || Path =/= undefined]
             ++ [{<<"dest">>, buoy_ref_string:from_utf8(Dest)} || Dest =/= undefined],
-    [buoy_heap:define(E, K, #{value => V, writable => true, enumerable => true, configurable => true}) || {K, V} <- Props],
+    %% Object::Set, as UVException uses: a setter on Object.prototype runs.
+    [buoy_heap:set(E, K, V) || {K, V} <- Props],
     erlang:error({'$throw', E}).
 
 %% The libuv errno, code, and message of a reason of prim_file. A reason
@@ -392,7 +393,7 @@ created(Path, Mode, Default) ->
     end,
     Wanted = Mode band (bnot Mask) band 8#7777,
     Wanted =:= Default band (bnot 8#022) orelse
-        prim_file:write_file_info(Path, #file_info{mode = Wanted}),
+        change(Path, #file_info{mode = Wanted}),
     true.
 
 close(Args) ->
@@ -704,8 +705,7 @@ df(Path) ->
 
 %% The numbers of the row of df for one path, from a directory that exists.
 df_row(Args) ->
-    Port = open_port({spawn_executable, "/bin/df"}, [{args, Args}, {cd, "/"}, binary, exit_status, use_stdio]),
-    {_, Output} = collect_status(Port, []),
+    {_, Output} = run_tool("df", Args),
     [_Header, Row | _] = binary:split(Output, <<"\n">>, [global]),
     [binary_to_integer(T) || T <- binary:split(Row, [<<" ">>, <<"\t">>, <<"%">>], [global, trim_all]),
                              re:run(T, <<"^[0-9]+$">>) =/= nomatch].
@@ -1077,14 +1077,14 @@ copy_to(Source, To, Exclusive) ->
 
 chmod(Args) ->
     Path = path(buoy_node:arg(1, Args)),
-    check(prim_file:write_file_info(Path, #file_info{mode = int(buoy_node:arg(2, Args))}), <<"chmod">>, Path),
+    check(change(Path, #file_info{mode = int(buoy_node:arg(2, Args))}), <<"chmod">>, Path),
     undefined.
 
 fchmod(Args) ->
     Mode = int(buoy_node:arg(2, Args)),
     case file(fd(buoy_node:arg(1, Args)), <<"fchmod">>) of
         {_, Path, link} -> tool("chmod", ["-h", integer_to_list(Mode band 8#7777, 8), Path], <<"fchmod">>, undefined);
-        {_, Path, _} -> check(prim_file:write_file_info(Path, #file_info{mode = Mode}), <<"fchmod">>, undefined)
+        {_, Path, _} -> check(change(Path, #file_info{mode = Mode}), <<"fchmod">>, undefined)
     end,
     undefined.
 
@@ -1120,8 +1120,20 @@ link_owner(Path, Args, Syscall, ErrorPath) ->
 
 set_owner(Path, Args, Syscall, ErrorPath) ->
     Info = #file_info{uid = owner_id(buoy_node:arg(2, Args)), gid = owner_id(buoy_node:arg(3, Args))},
-    check(prim_file:write_file_info(Path, Info), Syscall, ErrorPath),
+    check(change(Path, Info), Syscall, ErrorPath),
     undefined.
+
+%% prim_file:write_file_info sets atime and mtime too, to now when the
+%% record leaves them undefined, so a change of mode or owner passes the
+%% current times back; they keep whole seconds.
+-spec change(binary(), #file_info{}) -> ok | {error, atom()}.
+change(Path, Change) ->
+    case prim_file:read_file_info(Path, [{time, posix}]) of
+        {ok, #file_info{atime = A, mtime = M}} ->
+            prim_file:write_file_info(Path, Change#file_info{atime = A, mtime = M}, [{time, posix}]);
+        Error ->
+            Error
+    end.
 
 %% -1, or 2^32 - 1, keeps the owner, as chown(2) reads (uid_t)-1.
 owner_id(V) ->
@@ -1170,15 +1182,20 @@ link_times(Path, Args, Syscall, ErrorPath) ->
 %% and lutimes run chmod, chown, and touch with -h, one process each. A NIF
 %% of crates/buoy-nif with lchmod, lchown, and lutimes replaces them.
 tool(Name, Args, Syscall, ErrorPath) ->
+    case run_tool(Name, Args) of
+        {0, _} -> ok;
+        {_, Output} -> uv_error(tool_reason(Output), Syscall, ErrorPath)
+    end.
+
+%% The exit status and the output of a tool of the system, run from "/" so
+%% that a working directory that was removed does not stop it.
+run_tool(Name, Args) ->
     Exe = hd([P || Dir <- ["/bin", "/usr/bin", "/usr/sbin"], P <- [Dir ++ "/" ++ Name],
                    element(1, prim_file:read_file_info(P)) =:= ok] ++ [Name]),
     Port = open_port({spawn_executable, Exe},
                      [{args, [absolute_arg(A) || A <- Args]}, {cd, "/"}, binary, exit_status, stderr_to_stdout,
                       use_stdio]),
-    case collect_status(Port, []) of
-        {0, _} -> ok;
-        {_, Output} -> uv_error(tool_reason(Output), Syscall, ErrorPath)
-    end.
+    collect_status(Port, []).
 
 absolute_arg(Arg) when is_binary(Arg) -> absolute(Arg);
 absolute_arg(Arg) -> Arg.
@@ -1255,10 +1272,10 @@ executable(#file_info{mode = Mode, uid = Uid}) ->
 uid() ->
     case persistent_term:get({?MODULE, uid}, undefined) of
         undefined ->
-            %% os:cmd fails when the working directory is gone.
-            Uid = try list_to_integer(string:trim(os:cmd("id -u")))
-                  catch _:_ -> -1
-                  end,
+            Uid = case run_tool("id", ["-u"]) of
+                {0, Output} -> binary_to_integer(string:trim(Output));
+                _ -> -1
+            end,
             persistent_term:put({?MODULE, uid}, Uid),
             Uid;
         Uid ->
