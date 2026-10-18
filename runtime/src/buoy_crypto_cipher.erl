@@ -797,15 +797,16 @@ aes_job([CipherMode, KeyHandle, Data, Variant | Rest]) ->
         kw ->
             fun() -> aes_kw(Bits, Key, In, Encrypt) end;
         _ ->
-            [IVV, TagBits, AADV | _] = Rest ++ [undefined, undefined, undefined],
+            %% lib/internal/crypto/aes.js passes the tag length in bytes.
+            [IVV, TagLen, AADV | _] = Rest ++ [undefined, undefined, undefined],
             IV = buoy_crypto:bytes(IVV),
-            (is_integer(TagBits) andalso TagBits >= 0 andalso TagBits =< 128) orelse
+            (is_integer(TagLen) andalso TagLen >= 0 andalso TagLen =< 16) orelse
                 buoy_crypto:fail_code(<<"ERR_CRYPTO_INVALID_TAG_LENGTH">>),
             AAD = case buoy_crypto:is_buffer_source(AADV) of
                 true -> buoy_crypto:bytes(AADV);
                 false -> <<>>
             end,
-            fun() -> aes_aead(Mode, Bits, Key, IV, TagBits div 8, AAD, In, Encrypt) end
+            fun() -> aes_aead(Mode, Bits, Key, IV, TagLen, AAD, In, Encrypt) end
     end,
     {fun() -> {ok, Work()} end, fun buoy_crypto:array_buffer/1}.
 
