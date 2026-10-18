@@ -5,7 +5,7 @@
 %% reads them, and an error is the one that OpenSSL gives.
 -module(buoy_crypto_context).
 
--export([members/0, options/2, is_context/1, ssl_error/3, ssl_error_value/3, version_atom/1]).
+-export([members/0, options/2, is_context/1, ssl_error/3, ssl_error_value/3, version_atom/1, ticket_keys/1]).
 
 -include_lib("public_key/include/public_key.hrl").
 
@@ -55,6 +55,9 @@ initial() ->
 state(This) -> buoy_crypto:state(This, secure_context).
 
 update(This, Fun) -> buoy_crypto:put_state(This, {secure_context, Fun(state(This))}).
+
+-spec ticket_keys(term()) -> binary().
+ticket_keys(Context) -> maps:get(ticket_keys, state(Context)).
 
 -spec is_context(term()) -> boolean().
 is_context(V) ->

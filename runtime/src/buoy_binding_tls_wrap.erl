@@ -189,6 +189,8 @@ start_ssl() ->
     case persistent_term:get({?MODULE, ssl}, false) of
         true -> ok;
         false ->
+            %% OpenSSL's server sends two TLS 1.3 tickets.
+            application:set_env(ssl, server_session_tickets_amount, 2),
             {ok, _} = application:ensure_all_started(ssl),
             persistent_term:put({?MODULE, ssl}, true),
             ok
@@ -222,7 +224,8 @@ ssl_options(S, Role, Agent) ->
                 {tls12, SessionId, Data} -> [{session_tickets, manual}, {reuse_session, {SessionId, Data}}];
                 _ -> [{session_tickets, manual}, {reuse_sessions, false}]
             end;
-        {server, _} -> [{session_tickets, stateless}]
+        %% Servers that share ticketKeys resume each other's tickets.
+        {server, _} -> [{session_tickets, stateless}, {stateless_tickets_seed, buoy_crypto_context:ticket_keys(Context)}]
     end,
     SniFun = case {Role, maps:get(cert_cb, S)} of
         {server, true} -> [{sni_fun, sni_fun(self_realm(), maps:get(id, S))}];
@@ -791,6 +794,9 @@ servername(This) ->
 session(This) ->
     case state(This) of
         #{ticket := Ticket} -> buoy_node_encoding:new_buffer(term_to_binary({tls13_ticket, Ticket}));
+        %% Before its first ticket, a TLS 1.3 session cannot resume, and
+        %% OpenSSL gives such a session.
+        #{info := #{items := #{protocol := 'tlsv1.3'}}} -> buoy_node_encoding:new_buffer(term_to_binary(tls13_without_ticket));
         #{info := #{items := #{protocol := P, session_id := Id, session_data := Data}}} when P =/= 'tlsv1.3', Id =/= <<>> ->
             buoy_node_encoding:new_buffer(term_to_binary({tls12, Id, Data}));
         _ -> undefined
