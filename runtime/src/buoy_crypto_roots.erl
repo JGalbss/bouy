@@ -4,7 +4,7 @@
 %% store that tls.setDefaultCACertificates sets.
 -module(buoy_crypto_roots).
 
--export([members/0, user_roots/0]).
+-export([members/0, user_roots/0, default_extras/0]).
 
 -spec members() -> [{binary(), term()}].
 members() ->
@@ -30,6 +30,14 @@ system() ->
     catch
         error:_ -> []
     end.
+
+%% What the default store adds to the bundled roots: the system store
+%% under --use-system-ca or NODE_USE_SYSTEM_CA=1, then NODE_EXTRA_CA_CERTS.
+-spec default_extras() -> [binary()].
+default_extras() ->
+    System = lists:member(<<"--use-system-ca">>, buoy_node_process:exec_argv())
+        orelse os:getenv("NODE_USE_SYSTEM_CA") =:= "1",
+    [D || System, D <- system()] ++ extra().
 
 %% The certificates of the file that NODE_EXTRA_CA_CERTS names.
 extra() ->

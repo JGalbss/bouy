@@ -545,14 +545,16 @@ cacerts(#{cas := none, roots := true}) -> roots();
 cacerts(#{cas := none}) -> roots();
 cacerts(#{cas := Cas}) -> Cas.
 
-%% Node's root store: the store that tls.setDefaultCACertificates set, or
-%% the bundled roots, with NODE_EXTRA_CA_CERTS. Parsed once per VM.
+%% Node's root store (NewRootCertStore): the store that
+%% tls.setDefaultCACertificates set, or the bundled roots, with the system
+%% store under --use-system-ca and NODE_EXTRA_CA_CERTS. Parsed once per VM.
 roots() ->
     case buoy_crypto_roots:user_roots() of
         none ->
             case persistent_term:get({?MODULE, roots}, none) of
                 none ->
-                    Ders = [Der || Pem <- buoy_crypto_root_certs:pems(), {'Certificate', Der, _} <- public_key:pem_decode(Pem)],
+                    Bundled = [Der || Pem <- buoy_crypto_root_certs:pems(), {'Certificate', Der, _} <- public_key:pem_decode(Pem)],
+                    Ders = Bundled ++ buoy_crypto_roots:default_extras(),
                     persistent_term:put({?MODULE, roots}, Ders),
                     Ders;
                 Ders -> Ders
