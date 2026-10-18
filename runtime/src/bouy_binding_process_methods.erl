@@ -138,8 +138,8 @@ load_env_file(Path) ->
                 end
             end, bouy_heap:enumerable_keys(Vars)),
             undefined;
-        {error, _} ->
-            bouy_node:throw_code('Error', <<"ENOENT">>, bouy_ref_string:from_utf8(<<"ENOENT: no such file or directory, open '", File/binary, "'">>))
+        {error, Reason} ->
+            bouy_binding_fs:uv_error(Reason, <<"open">>, File)
     end.
 
 %% reallyExit(code): ends the program after process.exit ran its handlers.

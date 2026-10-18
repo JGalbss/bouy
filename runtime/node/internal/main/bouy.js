@@ -129,8 +129,24 @@ function setupEventsource() {
   }
 }
 
+// --env-file and --env-file-if-exists, which node reads in C++ before the
+// bootstrap: a variable of the environment wins over the file.
+function loadEnvFiles() {
+  for (const file of getOptionValue('--env-file')) {
+    process.loadEnvFile(file);
+  }
+  for (const file of getOptionValue('--env-file-if-exists')) {
+    try {
+      process.loadEnvFile(file);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+}
+
 // Web Storage needs SQLite, which Bouy lacks, as a node built without it does.
 patchProcessObject();
+loadEnvFiles();
 setupWebsocket();
 setupEventsource();
 initializeReport();
