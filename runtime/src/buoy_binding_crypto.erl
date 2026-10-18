@@ -36,7 +36,10 @@ util() ->
      {<<"getFipsCrypto">>, F(<<"getFipsCrypto">>, 0, fun(_, _) -> fips() end)},
      {<<"setFipsCrypto">>, F(<<"setFipsCrypto">>, 1, fun(_, Args) -> set_fips(buoy_ref:truthy(buoy_node:arg(1, Args))) end)},
      {<<"testFipsCrypto">>, F(<<"testFipsCrypto">>, 0, fun(_, _) -> crypto:info_fips() =/= not_supported end)},
-     {<<"getOpenSSLSecLevelCrypto">>, F(<<"getOpenSSLSecLevelCrypto">>, 0, fun(_, _) -> 2 end)}].
+     {<<"getOpenSSLSecLevelCrypto">>, F(<<"getOpenSSLSecLevelCrypto">>, 0, fun(_, _) -> 2 end)},
+     %% The certificates load when a context first needs them; starting
+     %% early on a thread only saves time (node_crypto.cc).
+     {<<"startLoadingCertificatesOffThread">>, F(<<"startLoadingCertificatesOffThread">>, 0, fun(_, _) -> undefined end)}].
 
 fips() ->
     case crypto:info_fips() of
