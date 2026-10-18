@@ -126,6 +126,8 @@ fn reference_lowering_names_unsupported_syntax() {
         .collect();
     assert_eq!(
         messages,
-        ["`accessor` fields is not supported by the reference-semantics prototype"]
+        [
+            "`spawn` of a value that is not a module-level class is not supported by the reference-semantics prototype"
+        ]
     );
 }

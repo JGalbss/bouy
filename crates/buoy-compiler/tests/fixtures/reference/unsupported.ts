@@ -1,4 +1,5 @@
-class Box {
-  accessor value = 1;
-}
-console.log(new Box().value);
+import { spawn } from "buoy";
+
+class Store {}
+const pick = (): typeof Store => Store;
+spawn(pick());
