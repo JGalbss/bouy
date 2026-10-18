@@ -267,10 +267,10 @@ gather_async(M, Found, Seen) ->
             {Found, Seen};
         false ->
             Seen1 = [M | Seen],
-            case kind(M) =:= esm andalso get(M, status) of
-                S when S =:= evaluating; S =:= evaluated; S =:= evaluating_async; S =:= false ->
+            case kind(M) =/= esm orelse get(M, status) =:= evaluating orelse scc_evaluated(M) of
+                true ->
                     {Found, Seen1};
-                _ ->
+                false ->
                     case has_tla(M) of
                         true ->
                             {add_new([M], Found), Seen1};
@@ -492,13 +492,17 @@ ready_for_sync(M, Seen) ->
         true ->
             true;
         false ->
-            case get(M, status) of
-                evaluated -> true;
+            case scc_evaluated(M) orelse get(M, status) of
+                true -> true;
                 evaluating -> false;
                 evaluating_async -> false;
                 _ -> not has_tla(M) andalso lists:all(fun(R) -> ready_for_sync(R, [M | Seen]) end, requests(M))
             end
     end.
+
+%% IsModuleSCCEvaluated: a module of a cycle is done when the root of its
+%% cycle is, which awaits after the other modules of the cycle evaluated.
+scc_evaluated(M) -> get(get(M, cycle_root), status) =:= evaluated.
 
 %% [[DefineOwnProperty]] of a namespace: it succeeds only when it changes nothing.
 -spec define_namespace(term(), term(), map()) -> boolean().
