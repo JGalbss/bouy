@@ -1,0 +1,24 @@
+[package]
+name = "buoy-nif"
+description = "The native built-ins of the Buoy runtime: NIFs in safe Rust that run in time slices."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+# The VM loads the library with erlang:load_nif/2. crates/buoy-cli/build.rs builds it and
+# embeds it in the buoy binary. On Linux a test binary cannot link the enif_* symbols, which
+# only the VM provides, so the programs of tests/conformance test the library through buoy.
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+memchr = "2"
+rustler = { version = "0.39", default-features = false, features = ["nif_version_2_15"] }
+
+[lints]
+workspace = true

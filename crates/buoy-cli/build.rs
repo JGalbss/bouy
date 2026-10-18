@@ -5,9 +5,12 @@
 //! `buoy_temporal.erl`, with the reference compiler (see `temporal_module`), and each Node
 //! built-in of `runtime/node/builtins.txt` into a runtime source `buoy_node@<id>.erl` (see
 //! `node_modules`).
+//!
+//! It builds the NIF library of `crates/buoy-nif` and embeds it too (see `nif_library`).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::{env, fs};
 
 fn main() {
@@ -53,6 +56,54 @@ fn main() {
     }
     table.push_str("];\n");
     fs::write(out.join("runtime_sources.rs"), table).expect("OUT_DIR is writable");
+    nif_library(&manifest, &out);
+}
+
+/// Builds the NIF library of `crates/buoy-nif` for the target of this build, with a cargo
+/// of its own and a target directory in `OUT_DIR`, and writes `nif_library.rs`: its bytes
+/// and their FNV-1a hash. A cdylib cannot be a dependency of a binary on stable cargo, so
+/// the build script builds it, as Substrate's wasm-builder builds its runtime. It is
+/// always an optimized build, because the library is the fast path of the built-ins.
+fn nif_library(manifest: &Path, out: &Path) {
+    let workspace = manifest.join("../..");
+    let crate_dir = workspace.join("crates/buoy-nif");
+    println!("cargo:rerun-if-changed={}", crate_dir.display());
+    let target = env::var("TARGET").expect("cargo sets TARGET");
+    let target_dir = out.join("nif");
+    let status = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+        .args([
+            "build",
+            "--release",
+            "--package",
+            "buoy-nif",
+            "--target",
+            &target,
+        ])
+        .arg("--manifest-path")
+        .arg(workspace.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target_dir)
+        // Under `cargo clippy` the wrapper is clippy-driver, which this build must not run.
+        .env_remove("RUSTC_WORKSPACE_WRAPPER")
+        .status()
+        .unwrap_or_else(|error| panic!("cannot run cargo to build crates/buoy-nif: {error}"));
+    assert!(status.success(), "cargo could not build crates/buoy-nif");
+    let release = target_dir.join(&target).join("release");
+    let library = ["libbuoy_nif.so", "libbuoy_nif.dylib"]
+        .iter()
+        .map(|name| release.join(name))
+        .find(|path| path.is_file())
+        .unwrap_or_else(|| panic!("{} holds no libbuoy_nif", release.display()));
+    let bytes = fs::read(&library).unwrap_or_else(|error| panic!("{}: {error}", library.display()));
+    let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+    });
+    let module = format!(
+        "/// The NIF library of crates/buoy-nif.\npub const NIF: &[u8] = include_bytes!({:?});\n\
+         /// The FNV-1a hash of `NIF`.\npub const NIF_HASH: u64 = {hash:#018x};\n",
+        library.display().to_string()
+    );
+    fs::write(out.join("nif_library.rs"), module).expect("OUT_DIR is writable");
 }
 
 /// `*.erl`, `*.hrl`, and `*.app.src`.

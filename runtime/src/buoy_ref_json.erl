@@ -30,9 +30,7 @@ method(<<"JSON">>, <<"parse">>, _This, Args) ->
             {Value, Record} = parse_text(Text, true),
             Root = buoy_heap:object(?OBJECT_PROTO, [{<<>>, Value}]),
             internalize(Root, <<>>, Reviver, Record);
-        _ ->
-            {Value, _} = parse_text(Text, false),
-            Value
+        _ -> parse(Text)
     end;
 method(<<"JSON">>, <<"rawJSON">>, _This, Args) -> raw_json(buoy_ref:to_string(arg(1, Args)));
 method(<<"JSON">>, <<"isRawJSON">>, _This, Args) ->
@@ -43,8 +41,37 @@ method(<<"JSON">>, <<"isRawJSON">>, _This, Args) ->
 
 -spec parse(buoy_ref_string:js_string()) -> term().
 parse(Text) ->
-    {Value, _} = parse_text(Text, false),
-    Value.
+    case native_parse(Text) of
+        {ok, Value} -> Value;
+        error ->
+            {Value, _} = parse_text(Text, false),
+            Value
+    end.
+
+%% The parser of buoy_nif, which makes the records of the objects and arrays, or error
+%% for text that is not JSON. It runs in time slices, and each slice gives the records
+%% that it closed.
+native_parse(Text) ->
+    case buoy_nif:available() of
+        true ->
+            {Bytes, Wide} = case Text of
+                {'$u16', B} -> {B, true};
+                B -> {B, false}
+            end,
+            native_parse(Bytes, Wide, {?OBJECT_PROTO, buoy_heap:intrinsic('Array.prototype')}, start);
+        false -> error
+    end.
+
+native_parse(Bytes, Wide, Protos, State) ->
+    case buoy_nif:json_parse(Bytes, Wide, Protos, buoy_heap:first_free(), State) of
+        {done, Value, Ids, Records, Next} ->
+            buoy_heap:adopt(Ids, Records, Next),
+            {ok, Value};
+        {more, Paused, Ids, Records, Next} ->
+            buoy_heap:adopt(Ids, Records, Next),
+            native_parse(Bytes, Wide, Protos, Paused);
+        error -> error
+    end.
 
 %% The value of the text, and with Records, the parse record of each value:
 %% {Value, Source} for a primitive, {Value, [Record]} for an array, and
@@ -55,10 +82,10 @@ parse_text(Text, Records) ->
         B -> {8, B}
     end,
     State = #{width => Width, text => Text, records => Records},
-    {Value, Record, Rest, Pos} = parse_value(skip(Bytes, Width), State, offset(Bytes, Bytes, Width)),
+    {Value, Record, Rest, _} = parse_value(skip(Bytes, Width), State, offset(Bytes, Bytes, Width)),
     case skip(Rest, Width) of
         <<>> -> {Value, Record};
-        Trailing -> at(<<"Unexpected non-whitespace character after JSON">>, Trailing, State, Pos)
+        Trailing -> located(<<"Unexpected non-whitespace character after JSON">>, State, position(Trailing, State))
     end.
 
 offset(All, Rest, Width) -> (byte_size(All) - byte_size(Rest)) * 8 div Width.
@@ -289,11 +316,15 @@ expected(What, Bin, State) -> at(<<"Expected ", What/binary>>, Bin, State).
 at(Message, Bin, State) -> at(Message, Bin, State, position(Bin, State)).
 
 -spec at(binary(), binary(), map(), non_neg_integer()) -> no_return().
-at(Message, _Bin, #{text := Text}, Pos) ->
+at(Message, _Bin, State, Pos) -> located(<<Message/binary, " in JSON">>, State, Pos).
+
+%% A message with a position in the text, and its line and column, as V8 writes it.
+-spec located(binary(), map(), non_neg_integer()) -> no_return().
+located(Message, #{text := Text}, Pos) ->
     Before = buoy_ref_string:units(buoy_ref_string:slice(Text, 0, Pos)),
     Line = 1 + length([U || U <- Before, U =:= $\n]),
     Column = 1 + length(lists:takewhile(fun(U) -> U =/= $\n end, lists:reverse(Before))),
-    syntax_error(iolist_to_binary([Message, <<" in JSON at position ">>, integer_to_binary(Pos), <<" (line ">>,
+    syntax_error(iolist_to_binary([Message, <<" at position ">>, integer_to_binary(Pos), <<" (line ">>,
                                    integer_to_binary(Line), <<" column ">>, integer_to_binary(Column), <<")">>])).
 
 -spec end_of_input() -> no_return().

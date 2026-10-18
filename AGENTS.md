@@ -3,6 +3,7 @@
 ## Layout
 
 - `crates/buoy-compiler`: the Rust compiler. oxc parses each TypeScript module, and the compiler lowers it to one Erlang module.
+- `crates/buoy-nif`: the native built-ins, NIFs in safe Rust that run in time slices. `crates/buoy-cli/build.rs` builds the library and embeds it.
 - `crates/buoy-cli`: the `buoy` command. It embeds the runtime sources, writes the generated Erlang, and starts one BEAM VM.
 - `runtime`: the `buoy` OTP application in Erlang: the JavaScript value core, actors, supervision, and the library modules. rebar3 builds and tests it.
 - `crates/buoy-bench`: the benchmark harness. It runs each suite in `bench/programs` with Buoy, Node, and Bun, and records the results in `bench/results`. `buoy-bench compare` checks the nightly runs against the limits of `bench/thresholds.json`.

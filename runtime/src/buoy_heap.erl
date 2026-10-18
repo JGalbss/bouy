@@ -50,7 +50,7 @@
 -export([symbol/1, symbol_for/1, well_known/1]).
 -export([to_key/1, key_to_value/1]).
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
--export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
+-export([gc/1, gc_stats/0, heap_size/0, allocated/0, first_free/0, adopt/3]).
 -export([clone_out/1, clone_in/1]).
 -export([private_find/2, private_put/3, set_failed/2]).
 
@@ -109,6 +109,31 @@ size_heap(Entries) ->
 
 bit_length(0, N) -> N;
 bit_length(W, N) -> bit_length(W bsr 1, N + 1).
+
+%% The id that next_id/0 hands out next.
+-spec first_free() -> pos_integer().
+first_free() ->
+    case erlang:get(?NEXT) of
+        undefined -> 1;
+        Id -> Id
+    end.
+
+%% Stores records that native code made (buoy_nif) under the ids that it gave them, from
+%% first_free() up to Next - 1, and hands out ids from Next on.
+-spec adopt([pos_integer()], [tuple()], pos_integer()) -> ok.
+adopt(Ids, Records, Next) ->
+    First = first_free(),
+    put_records(Ids, Records),
+    erlang:put(?NEXT, Next),
+    case (First - 1) bsr 12 =:= (Next - 1) bsr 12 of
+        true -> ok;
+        false -> grow(Next)
+    end.
+
+put_records([Id | Ids], [Record | Records]) ->
+    erlang:put(Id, Record),
+    put_records(Ids, Records);
+put_records([], []) -> ok.
 
 %% How many ids the realm has handed out. The jobs loop compares it with the
 %% count at the last collection to decide when to collect.

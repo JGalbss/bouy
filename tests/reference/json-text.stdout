@@ -23,3 +23,17 @@ SyntaxError: Exponent part is missing a number in JSON at position 2 (line 1 col
 SyntaxError: Bad escaped character in JSON at position 2 (line 1 column 3)
 SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
 TypeError
+[ '1', '2', 'b', 'a', '01', '4294967295', '__proto__' ] 7 true 1
+0 0 100 0.01 0.1 12345678901234567000 9007199254740992 Infinity -Infinity -1.5e-7 true
+5 4 2 8 ["é€😀\ud800","café","中文","\"\\/\b\f\n\r\t"]
+[ '€', 'plain' ] {"€":["é",1,{"kéy":"中"}],"plain":"x"}
+20000 item 19999 1543.125 é777 true
+9999
+SyntaxError: Expected ',' or ']' after array element in JSON at position 3 (line 1 column 4)
+SyntaxError: Expected double-quoted property name in JSON at position 7 (line 1 column 8)
+SyntaxError: Unexpected end of JSON input
+SyntaxError: Unexpected end of JSON input
+SyntaxError: Unexpected non-whitespace character after JSON at position 3 (line 1 column 4)
+SyntaxError: Bad Unicode escape in JSON at position 5 (line 1 column 6)
+SyntaxError: Bad control character in string literal in JSON at position 1 (line 1 column 2)
+SyntaxError: Unexpected end of JSON input
