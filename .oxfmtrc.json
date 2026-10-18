@@ -16,6 +16,7 @@
     "tests/ecosystem/",
     "tests/fuzz/",
     "tests/node/test/",
+    "tests/node/bindings.json",
     "tests/node/surface.json",
     "tests/reference/modules/"
   ]
