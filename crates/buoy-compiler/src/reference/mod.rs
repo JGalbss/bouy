@@ -107,6 +107,9 @@ pub struct EvalContext {
     /// variables of its function: a block function of the eval code does not reach a
     /// name that one of them shadows (Annex B.3.3.3).
     pub lexical: Vec<String>,
+    /// The code is the source text of `CreateDynamicFunction`, one function expression:
+    /// its name, `anonymous`, binds nothing inside it.
+    pub dynamic_function: bool,
 }
 
 /// Where a direct eval is called, which decides what its code may use.
@@ -259,6 +262,7 @@ pub fn lower_eval(
     }
     let context = EvalContext {
         lexical: lexical.to_vec(),
+        dynamic_function: function,
         ..context.clone()
     };
     lower_one_script(path, name, source, Some((strict, &context)), scope)

@@ -124,6 +124,7 @@ impl EvalRequest {
             privates: self.private,
             internal: false,
             lexical: Vec::new(),
+            dynamic_function: false,
         };
         let compiled = if self.script {
             buoy_compiler::compile_eval_script(text, &module)

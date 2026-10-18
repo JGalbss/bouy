@@ -36,3 +36,5 @@ function locals(a: number): unknown[] {
   return [x, eval("typeof hidden"), inner()];
 }
 console.log(locals(5));
+const Made = Function("function f() { this.p = 1; } return f")() as new () => { p: number };
+console.log(Function("return typeof anonymous")(), new Made().p);

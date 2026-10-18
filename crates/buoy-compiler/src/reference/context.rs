@@ -286,11 +286,28 @@ impl Lowerer<'_, '_> {
     pub fn symbol_of(&self, reference: Option<oxc::semantic::ReferenceId>) -> Option<SymbolId> {
         let id = reference?;
         let symbol = self.semantic.scoping().get_reference(id).symbol_id()?;
+        if self.is_dynamic_function_name(symbol) {
+            return None;
+        }
         // A reference outside the block of a block function that Annex B does not hoist.
         if self.is_hidden_reference(symbol, id) {
             return self.outer_binding(symbol);
         }
         Some(symbol)
+    }
+
+    /// Whether `symbol` is the name of the function of `CreateDynamicFunction`, which the
+    /// function's code reads as a global (ECMA-262 §20.2.1.1.1): the one function
+    /// expression of the program, whose own scope holds its name.
+    fn is_dynamic_function_name(&self, symbol: SymbolId) -> bool {
+        let scoping = self.semantic.scoping();
+        self.eval_context.dynamic_function
+            && matches!(
+                self.semantic.nodes().kind(scoping.symbol_declaration(symbol)),
+                oxc::ast::AstKind::Function(function) if function.is_expression()
+            )
+            && scoping.scope_parent_id(scoping.symbol_scope_id(symbol))
+                == Some(scoping.root_scope_id())
     }
 
     /// The current value of a variable: its version, or the read of its cell.
