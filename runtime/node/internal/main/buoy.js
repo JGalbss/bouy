@@ -201,6 +201,16 @@ function setupTraceCategoryState() {
   toggleTraceCategoryState(isTraceCategoryEnabled('node.async_hooks'));
 }
 
+// As initializeHeapSnapshotSignalHandlers: the signal of --heapsnapshot-signal
+// writes a heap snapshot, which the binding names in --diagnostic-dir.
+function initializeHeapSnapshotSignalHandlers() {
+  const signal = getOptionValue('--heapsnapshot-signal');
+  if (!signal) return;
+  require('internal/validators').validateSignalName(signal);
+  const { writeHeapSnapshot } = require('v8');
+  process.on(signal, () => writeHeapSnapshot());
+}
+
 // Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 setupTraceCategoryState();
@@ -213,6 +223,7 @@ setupNavigator();
 setupWarningHandler();
 setupDebugEnv();
 setupChildProcessIpcChannel();
+initializeHeapSnapshotSignalHandlers();
 setupVmModules();
 initializeCJS();
 initializeESM();
