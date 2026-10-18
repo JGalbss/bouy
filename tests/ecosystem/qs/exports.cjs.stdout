@@ -1,0 +1,8 @@
+module.exports: object
+  formats: object
+    RFC1738: string
+    RFC3986: string
+    default: string
+    formatters: object
+  parse: function/2
+  stringify: function/2

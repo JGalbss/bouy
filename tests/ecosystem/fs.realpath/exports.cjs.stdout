@@ -1,0 +1,11 @@
+module.exports: function/3
+  monkeypatch: function/0
+  realpath: function/3
+    monkeypatch: function/0
+    realpath: function/3
+    realpathSync: function/2
+    sync: function/2
+    unmonkeypatch: function/0
+  realpathSync: function/2
+  sync: function/2
+  unmonkeypatch: function/0

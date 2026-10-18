@@ -1,0 +1,11 @@
+namespace: object Module
+  default: function/1
+    parse: function/1
+    parseIntoClientConfig: function/1
+    toClientConfig: function/1
+  parse: function/1
+    parse: function/1
+    parseIntoClientConfig: function/1
+    toClientConfig: function/1
+  parseIntoClientConfig: function/1
+  toClientConfig: function/1

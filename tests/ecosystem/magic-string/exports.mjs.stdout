@@ -1,0 +1,4 @@
+namespace: object Module
+  Bundle: class/0 {addSource, append, clone, generateDecodedMap, generateMap, getIndentString, indent, isEmpty, length, prepend, toString, trim, trimEnd, trimLines, trimStart}
+  SourceMap: class/1 {toString, toUrl}
+  default: class/1 {_ensureindentStr, _getRawIndentString, _replaceAllString, _replaceRegexp, _replaceString, _split, _splitChunk, addSourcemapLocation, append, appendLeft, appendRight, clone, generateDecodedMap, generateMap, getIndentString, hasChanged, indent, insert, insertLeft, insertRight, isEmpty, lastChar, lastLine, length, move, overwrite, prepend, prependLeft, prependRight, remove, replace, replaceAll, reset, slice, snip, toString, trim, trimEnd, trimEndAborted, trimLines, trimStart, trimStartAborted, update}

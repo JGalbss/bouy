@@ -1,0 +1,15 @@
+module.exports: object
+  createInstrumenter: function/1
+  defaultOpts: object
+    autoWrap: boolean
+    compact: boolean
+    coverageGlobalScope: string
+    coverageGlobalScopeFunc: boolean
+    coverageVariable: string
+    esModules: boolean
+    ignoreClassMethods: object Array
+    parserPlugins: object Array
+    preserveComments: boolean
+    produceSourceMap: boolean
+  programVisitor: function/1
+  readInitialCoverage: function/1

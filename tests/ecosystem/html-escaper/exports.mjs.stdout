@@ -1,0 +1,9 @@
+namespace: object Module
+  default: object
+    escape: function/1
+    unescape: function/1
+  escape: function/1
+  module.exports: object
+    escape: function/1
+    unescape: function/1
+  unescape: function/1

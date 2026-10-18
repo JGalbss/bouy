@@ -1,0 +1,20 @@
+namespace: object Module
+  CDATA: class/0 {nodeType}
+  Comment: class/0 {nodeType}
+  DataNode: class/1 {nodeValue}
+  Document: class/0 {nodeType}
+  DomHandler: class/3 {addNode, handleCallback, oncdataend, oncdatastart, onclosetag, oncomment, oncommentend, onend, onerror, onopentag, onparserinit, onprocessinginstruction, onreset, ontext}
+  Element: class/2 {attributes, nodeType, tagName}
+  Node: class/0 {cloneNode, nextSibling, parentNode, previousSibling}
+  NodeWithChildren: class/1 {childNodes, firstChild, lastChild}
+  ProcessingInstruction: class/2 {nodeType}
+  Text: class/0 {nodeType}
+  cloneNode: function/1
+  default: class/3 {addNode, handleCallback, oncdataend, oncdatastart, onclosetag, oncomment, oncommentend, onend, onerror, onopentag, onparserinit, onprocessinginstruction, onreset, ontext}
+  hasChildren: function/1
+  isCDATA: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isComment: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDirective: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isDocument: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isTag: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isText: function/1 (throws, throws, false, false, false, false, false, false, false)

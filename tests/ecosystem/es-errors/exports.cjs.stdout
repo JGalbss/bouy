@@ -1,0 +1,2 @@
+module.exports: class/1 {message, name, toString}
+  stackTraceLimit: number

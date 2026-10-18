@@ -1,0 +1,6 @@
+namespace: object Module
+  compile: function/1
+  default: function/1
+  generate: function/1
+  parse: function/1
+  sequence: function/1

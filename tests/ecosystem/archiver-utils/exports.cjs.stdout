@@ -1,0 +1,16 @@
+module.exports: object
+  collectStream: function/2
+  dateify: function/1
+  defaults: function/3
+  file: object
+    exists: function/0
+    expand: function/0
+    expandMapping: function/3
+    normalizeFilesArray: function/1
+  isStream: function/1 (false, false, false, false, false, false, false, false, false)
+  lazyReadStream: function/1
+  normalizeInputSource: function/1
+  sanitizePath: function/1
+  trailingSlashIt: function/1
+  unixifyPath: function/1
+  walkdir: function/3

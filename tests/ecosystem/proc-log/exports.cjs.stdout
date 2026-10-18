@@ -1,0 +1,33 @@
+module.exports: object
+  META: symbol
+  input: object
+    KEYS: object
+    LEVELS: object Array
+    end: function/0
+    read: function/0
+    start: function/0
+  log: object
+    KEYS: object
+    LEVELS: object Array
+    error: function/0
+    http: function/0
+    info: function/0
+    notice: function/0
+    pause: function/0
+    resume: function/0
+    silly: function/0
+    timing: function/0
+    verbose: function/0
+    warn: function/0
+  output: object
+    KEYS: object
+    LEVELS: object Array
+    buffer: function/0
+    error: function/0
+    flush: function/0
+    standard: function/0
+  time: object
+    KEYS: object
+    LEVELS: object Array
+    end: function/1
+    start: function/2

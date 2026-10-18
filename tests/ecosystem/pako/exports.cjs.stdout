@@ -1,0 +1,36 @@
+module.exports: object
+  Deflate: class/1 {onData, onEnd, push}
+  Inflate: class/1 {onData, onEnd, push}
+  Z_BEST_COMPRESSION: number
+  Z_BEST_SPEED: number
+  Z_BINARY: number
+  Z_BLOCK: number
+  Z_BUF_ERROR: number
+  Z_DATA_ERROR: number
+  Z_DEFAULT_COMPRESSION: number
+  Z_DEFAULT_STRATEGY: number
+  Z_DEFLATED: number
+  Z_ERRNO: number
+  Z_FILTERED: number
+  Z_FINISH: number
+  Z_FIXED: number
+  Z_FULL_FLUSH: number
+  Z_HUFFMAN_ONLY: number
+  Z_NEED_DICT: number
+  Z_NO_COMPRESSION: number
+  Z_NO_FLUSH: number
+  Z_OK: number
+  Z_PARTIAL_FLUSH: number
+  Z_RLE: number
+  Z_STREAM_END: number
+  Z_STREAM_ERROR: number
+  Z_SYNC_FLUSH: number
+  Z_TEXT: number
+  Z_TREES: number
+  Z_UNKNOWN: number
+  deflate: function/2
+  deflateRaw: function/2
+  gzip: function/2
+  inflate: function/2
+  inflateRaw: function/2
+  ungzip: function/2

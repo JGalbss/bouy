@@ -1,0 +1,18 @@
+namespace: object Module
+  AnyMap: function/2
+  FlattenMap: function/2
+  GREATEST_LOWER_BOUND: number
+  LEAST_UPPER_BOUND: number
+  TraceMap: function/2
+  allGeneratedPositionsFor: function/2
+  decodedMap: function/1
+  decodedMappings: function/1
+  eachMapping: function/2
+  encodedMap: function/1
+  encodedMappings: function/1
+  generatedPositionFor: function/2
+  isIgnored: function/2 (throws, throws, false, false, false, false, false, false, false)
+  originalPositionFor: function/2
+  presortedDecodedMap: function/2
+  sourceContentFor: function/2
+  traceSegment: function/3

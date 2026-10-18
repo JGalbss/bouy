@@ -1,0 +1,13 @@
+namespace: object Module
+  parseINI: function/2
+  parseJSON: function/2
+  parseJSON5: function/2
+  parseJSONC: function/2
+  parseTOML: function/1
+  parseYAML: function/2
+  stringifyINI: function/2
+  stringifyJSON: function/2
+  stringifyJSON5: function/2
+  stringifyJSONC: function/2
+  stringifyTOML: function/1
+  stringifyYAML: function/2

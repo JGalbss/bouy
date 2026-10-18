@@ -1,0 +1,3 @@
+module.exports: object
+  findPackageJson: function/1
+  loadPackageJson: function/1

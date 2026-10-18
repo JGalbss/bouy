@@ -1,0 +1,29 @@
+module.exports: object
+  ContextConsumer: symbol
+  ContextProvider: symbol
+  Element: symbol
+  ForwardRef: symbol
+  Fragment: symbol
+  Lazy: symbol
+  Memo: symbol
+  Portal: symbol
+  Profiler: symbol
+  StrictMode: symbol
+  Suspense: symbol
+  SuspenseList: symbol
+  isAsyncMode: function/1 (false, false, false, false, false, false, false, false, false)
+  isConcurrentMode: function/1 (false, false, false, false, false, false, false, false, false)
+  isContextConsumer: function/1 (false, false, false, false, false, false, false, false, false)
+  isContextProvider: function/1 (false, false, false, false, false, false, false, false, false)
+  isElement: function/1 (false, false, false, false, false, false, false, false, false)
+  isForwardRef: function/1 (false, false, false, false, false, false, false, false, false)
+  isFragment: function/1 (false, false, false, false, false, false, false, false, false)
+  isLazy: function/1 (false, false, false, false, false, false, false, false, false)
+  isMemo: function/1 (false, false, false, false, false, false, false, false, false)
+  isPortal: function/1 (false, false, false, false, false, false, false, false, false)
+  isProfiler: function/1 (false, false, false, false, false, false, false, false, false)
+  isStrictMode: function/1 (false, false, false, false, false, false, false, false, false)
+  isSuspense: function/1 (false, false, false, false, false, false, false, false, false)
+  isSuspenseList: function/1 (false, false, false, false, false, false, false, false, false)
+  isValidElementType: function/1 (false, false, false, false, true, true, false, false, false)
+  typeOf: function/1

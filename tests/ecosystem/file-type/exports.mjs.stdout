@@ -1,0 +1,10 @@
+namespace: object Module
+  FileTypeParser: class/0 {fromFile, fromStream, toDetectionStream}
+  fileTypeFromBlob: function/2
+  fileTypeFromBuffer: function/2
+  fileTypeFromFile: function/2
+  fileTypeFromStream: function/2
+  fileTypeFromTokenizer: function/2
+  fileTypeStream: function/1
+  supportedExtensions: object Set
+  supportedMimeTypes: object Set

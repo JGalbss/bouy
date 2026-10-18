@@ -1,0 +1,13 @@
+namespace: object Module
+  asciiAlpha: function/1
+  asciiAlphanumeric: function/1
+  asciiAtext: function/1
+  asciiControl: function/1
+  asciiDigit: function/1
+  asciiHexDigit: function/1
+  asciiPunctuation: function/1
+  markdownLineEnding: function/1
+  markdownLineEndingOrSpace: function/1
+  markdownSpace: function/1
+  unicodePunctuation: function/1
+  unicodeWhitespace: function/1

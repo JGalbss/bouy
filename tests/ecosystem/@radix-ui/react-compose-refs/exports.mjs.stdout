@@ -1,0 +1,3 @@
+namespace: object Module
+  composeRefs: function/0
+  useComposedRefs: function/0

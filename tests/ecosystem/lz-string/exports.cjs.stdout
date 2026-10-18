@@ -1,0 +1,13 @@
+module.exports: object
+  _compress: function/3
+  _decompress: function/3
+  compress: function/1
+  compressToBase64: function/1
+  compressToEncodedURIComponent: function/1
+  compressToUTF16: function/1
+  compressToUint8Array: function/1
+  decompress: function/1
+  decompressFromBase64: function/1
+  decompressFromEncodedURIComponent: function/1
+  decompressFromUTF16: function/1
+  decompressFromUint8Array: function/1

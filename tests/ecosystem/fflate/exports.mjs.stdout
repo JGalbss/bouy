@@ -1,0 +1,68 @@
+namespace: object Module
+  AsyncCompress: function/2
+  AsyncDecompress: class/2 {i, push}
+  AsyncDeflate: function/2
+  AsyncGunzip: function/2
+  AsyncGzip: function/2
+  AsyncInflate: function/2
+  AsyncUnzipInflate: class/2 {push}
+    compression: number
+  AsyncUnzlib: function/2
+  AsyncZipDeflate: class/2 {process, push}
+  AsyncZlib: function/2
+  Compress: class/2 {flush, p, push}
+  DecodeUTF8: class/1 {push}
+  Decompress: class/2 {i, push}
+  Deflate: class/2 {flush, p, push}
+  EncodeUTF8: class/1 {push}
+  FlateErrorCode: object
+    ExtraFieldTooLong: number
+    FilenameTooLong: number
+    InvalidBlockType: number
+    InvalidDate: number
+    InvalidDistance: number
+    InvalidHeader: number
+    InvalidLengthLiteral: number
+    InvalidUTF8: number
+    InvalidZipData: number
+    NoCallback: number
+    NoStreamHandler: number
+    StreamFinished: number
+    StreamFinishing: number
+    UnexpectedEOF: number
+    UnknownCompressionMethod: number
+  Gunzip: class/2 {push}
+  Gzip: class/2 {flush, p, push}
+  Inflate: class/2 {c, e, push}
+  Unzip: class/1 {push, register}
+  UnzipInflate: class/0 {push}
+    compression: number
+  UnzipPassThrough: class/0 {push}
+    compression: number
+  Unzlib: class/2 {push}
+  Zip: class/1 {add, e, end, terminate}
+  ZipDeflate: class/2 {process, push}
+  ZipPassThrough: class/1 {process, push}
+  Zlib: class/2 {flush, p, push}
+  compress: function/3
+  compressSync: function/2
+  decompress: function/3
+  decompressSync: function/2
+  deflate: function/3
+  deflateSync: function/2
+  gunzip: function/3
+  gunzipSync: function/2
+  gzip: function/3
+  gzipSync: function/2
+  inflate: function/3
+  inflateSync: function/2
+  strFromU8: function/2
+  strToU8: function/2
+  unzip: function/3
+  unzipSync: function/2
+  unzlib: function/3
+  unzlibSync: function/2
+  zip: function/3
+  zipSync: function/2
+  zlib: function/3
+  zlibSync: function/2

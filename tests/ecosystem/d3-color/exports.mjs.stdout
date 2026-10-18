@@ -1,0 +1,9 @@
+namespace: object Module
+  color: class/1 {copy, displayable, formatHex, formatHex8, formatHsl, formatRgb, hex, toString}
+  cubehelix: class/4 {brighter, darker, rgb}
+  gray: function/2
+  hcl: class/4 {brighter, darker, rgb}
+  hsl: class/4 {brighter, clamp, darker, displayable, formatHsl, rgb}
+  lab: class/4 {brighter, darker, rgb}
+  lch: function/4
+  rgb: class/4 {brighter, clamp, darker, displayable, formatHex, formatHex8, formatRgb, hex, rgb, toString}

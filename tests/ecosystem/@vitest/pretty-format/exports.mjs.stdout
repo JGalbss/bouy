@@ -1,0 +1,27 @@
+namespace: object Module
+  DEFAULT_OPTIONS: object
+    callToJSON: boolean
+    compareKeys: undefined
+    escapeRegex: boolean
+    escapeString: boolean
+    highlight: boolean
+    indent: number
+    maxDepth: number
+    maxOutputLength: number
+    maxWidth: number
+    min: boolean
+    plugins: object Array
+    printBasicPrototype: boolean
+    printFunctionName: boolean
+    printShadowRoot: boolean
+    theme: object
+  createDOMElementFilter: function/1
+  format: function/2
+  plugins: object
+    AsymmetricMatcher: object
+    DOMCollection: object
+    DOMElement: object
+    Error: object
+    Immutable: object
+    ReactElement: object
+    ReactTestComponent: object

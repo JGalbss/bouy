@@ -1,0 +1,10 @@
+module.exports: object
+  URL: class/1 {hash, host, hostname, href, origin, password, pathname, port, protocol, search, toJSON, toString, username}
+  basicURLParse: function/2
+  parseURL: function/2
+  serializeHost: function/1
+  serializeInteger: function/1
+  serializeURL: function/2
+  serializeURLOrigin: function/1
+  setThePassword: function/2
+  setTheUsername: function/2

@@ -1,0 +1,3 @@
+module.exports: object
+  SourceMapConsumer: class/2 {allGeneratedPositionsFor, destroy, eachMapping, generatedPositionFor, hasContentsOfAllSources, mappings, originalPositionFor, sourceContentFor}
+  SourceMapGenerator: class/1 {addMapping, setSourceContent, toDecodedMap, toJSON, toString}

@@ -1,0 +1,3 @@
+module.exports: class/1 {_error, _generateBoundary, _getContentDisposition, _getContentType, _lastBoundary, _lengthRetriever, _multiPartFooter, _multiPartHeader, _trackLength, append, getBoundary, getBuffer, getHeaders, getLength, getLengthSync, hasKnownLength, setBoundary, submit, toString}
+  DEFAULT_CONTENT_TYPE: string
+  LINE_BREAK: string

@@ -3,7 +3,7 @@
 %% Buoy honors no option yet, so every value is Node 25.9.0's default.
 -module(buoy_binding_options).
 
--export([binding/0]).
+-export([binding/0, value/1]).
 
 -spec binding() -> term().
 binding() ->
@@ -35,13 +35,20 @@ info() ->
 %% --name or --no-name, and another option takes --name=value or
 %% --name value, a list option once for each.
 cli_values() ->
+    buoy_node:from_json(iolist_to_binary(json:encode(values_map()))).
+
+%% The value of the option Name after the command line, for the native side,
+%% such as the tracing agent, which reads its options before any realm does.
+-spec value(binary()) -> term().
+value(Name) -> maps:get(Name, values_map()).
+
+values_map() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
     %% The oracle recorded the values under its own -e.
     Defaults = (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false},
-    Values = apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, Defaults),
-    buoy_node:from_json(iolist_to_binary(json:encode(Values))).
+    apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, Defaults).
 
 %% An alias of the name, or of `name <arg>` when an argument follows, so
 %% -p code reads as --print --eval code. The depth bounds a cycle of aliases.

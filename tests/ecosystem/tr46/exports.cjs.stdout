@@ -1,0 +1,6 @@
+module.exports: object
+  PROCESSING_OPTIONS: object
+    NONTRANSITIONAL: number
+    TRANSITIONAL: number
+  toASCII: function/4
+  toUnicode: function/2

@@ -1,0 +1,6 @@
+module.exports: function/1
+  tokTypes: object
+    jsxName: object
+    jsxTagEnd: object
+    jsxTagStart: object
+    jsxText: object

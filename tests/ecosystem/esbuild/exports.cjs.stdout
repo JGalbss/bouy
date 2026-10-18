@@ -1,0 +1,27 @@
+module.exports: object
+  analyzeMetafile: function/2
+  analyzeMetafileSync: function/2
+  build: function/1
+  buildSync: function/1
+  context: function/1
+  default: object
+    analyzeMetafile: function/2
+    analyzeMetafileSync: function/2
+    build: function/1
+    buildSync: function/1
+    context: function/1
+    default: object
+    formatMessages: function/2
+    formatMessagesSync: function/2
+    initialize: function/1
+    stop: function/0
+    transform: function/2
+    transformSync: function/2
+    version: string
+  formatMessages: function/2
+  formatMessagesSync: function/2
+  initialize: function/1
+  stop: function/0
+  transform: function/2
+  transformSync: function/2
+  version: string

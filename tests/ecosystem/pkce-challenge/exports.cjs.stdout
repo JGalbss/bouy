@@ -1,0 +1,4 @@
+module.exports: object
+  default: function/1
+  generateChallenge: function/1
+  verifyChallenge: function/2

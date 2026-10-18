@@ -1,0 +1,135 @@
+module.exports: object
+  configs: object
+    all: object
+    base: object
+    disable-type-checked: object
+    eslint-recommended: object
+    flat/all: object Array
+    flat/base: object
+    flat/disable-type-checked: object
+    flat/eslint-recommended: object
+    flat/recommended: object Array
+    flat/recommended-type-checked: object Array
+    flat/recommended-type-checked-only: object Array
+    flat/strict: object Array
+    flat/strict-type-checked: object Array
+    flat/strict-type-checked-only: object Array
+    flat/stylistic: object Array
+    flat/stylistic-type-checked: object Array
+    flat/stylistic-type-checked-only: object Array
+    recommended: object
+    recommended-requiring-type-checking: object
+    recommended-type-checked: object
+    recommended-type-checked-only: object
+    strict: object
+    strict-type-checked: object
+    strict-type-checked-only: object
+    stylistic: object
+    stylistic-type-checked: object
+    stylistic-type-checked-only: object
+  meta: object
+    name: string
+    namespace: string
+    version: string
+  rules: object
+    adjacent-overload-signatures: object
+    array-type: object
+    await-thenable: object
+    ban-ts-comment: object
+    ban-tslint-comment: object
+    class-literal-property-style: object
+    class-methods-use-this: object
+    consistent-generic-constructors: object
+    consistent-indexed-object-style: object
+    consistent-return: object
+    consistent-type-assertions: object
+    consistent-type-definitions: object
+    consistent-type-exports: object
+    consistent-type-imports: object
+    default-param-last: object
+    dot-notation: object
+    explicit-function-return-type: object
+    explicit-member-accessibility: object
+    explicit-module-boundary-types: object
+    init-declarations: object
+    max-params: object
+    member-ordering: object
+    method-signature-style: object
+    naming-convention: object
+    no-array-constructor: object
+    no-array-delete: object
+    no-base-to-string: object
+    no-confusing-non-null-assertion: object
+    no-confusing-void-expression: object
+    no-deprecated: object
+    no-dupe-class-members: object
+    no-duplicate-enum-values: object
+    no-duplicate-type-constituents: object
+    no-dynamic-delete: object
+    no-empty-function: object
+    no-empty-interface: object
+    no-empty-object-type: object
+    no-explicit-any: object
+    no-extra-non-null-assertion: object
+    no-extraneous-class: object
+    no-floating-promises: object
+    no-for-in-array: object
+    no-generated-empty-object-type: object
+    no-implied-eval: object
+    no-import-type-side-effects: object
+    no-inferrable-types: object
+    no-invalid-this: object
+    no-invalid-void-type: object
+    no-loop-func: object
+    no-loss-of-precision: object
+    no-magic-numbers: object
+    no-meaningless-void-operator: object
+    no-misused-new: object
+    no-misused-promises: object
+    no-misused-spread: object
+    no-mixed-enums: object
+    no-namespace: object
+    no-non-null-asserted-nullish-coalescing: object
+    no-non-null-asserted-optional-chain: object
+    no-non-null-assertion: object
+    no-redeclare: object
+    no-redundant-type-constituents: object
+    no-require-imports: object
+    no-restricted-imports: object
+    no-restricted-types: object
+    no-shadow: object
+    no-this-alias: object
+    no-type-alias: object
+    no-unnecessary-boolean-literal-compare: object
+    no-unnecessary-condition: object
+    no-unnecessary-parameter-property-assignment: object
+    no-unnecessary-qualifier: object
+    no-unnecessary-template-expression: object
+    no-unnecessary-type-arguments: object
+    no-unnecessary-type-assertion: object
+    no-unnecessary-type-constraint: object
+    no-unnecessary-type-conversion: object
+    no-unnecessary-type-parameters: object
+    no-unsafe-argument: object
+    no-unsafe-assignment: object
+    no-unsafe-call: object
+    no-unsafe-declaration-merging: object
+    no-unsafe-enum-assignment: object
+    no-unsafe-enum-comparison: object
+    no-unsafe-function-type: object
+    no-unsafe-member-access: object
+    no-unsafe-return: object
+    no-unsafe-type-assertion: object
+    no-unsafe-unary-minus: object
+    no-unused-expressions: object
+    no-unused-private-class-members: object
+    no-unused-vars: object
+    no-use-before-define: object
+    no-useless-constructor: object
+    no-useless-default-assignment: object
+    no-useless-empty-export: object
+    no-var-requires: object
+    no-wrapper-object-types: object
+    non-nullable-type-assertion-style: object
+    only-throw-error: object
+    ... 36 more keys
