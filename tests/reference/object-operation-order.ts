@@ -240,3 +240,22 @@ console.log(
   powOrder.join(","),
   (Math.pow as (x: number) => number)(2),
 );
+// A species must be a constructor: `true` is not one, and a proxy of a constructor is.
+const speciesOutcomes: string[] = [];
+for (const species of [true, false]) {
+  const source = [1, 2] as unknown as { constructor: unknown; map: (f: (x: number) => number) => unknown };
+  source.constructor = { [Symbol.species]: species };
+  try {
+    source.map((x) => x);
+    speciesOutcomes.push("made");
+  } catch (error) {
+    speciesOutcomes.push((error as Error).name);
+  }
+}
+const proxiedBuffer = new ArrayBuffer(8) as ArrayBuffer & { constructor: unknown };
+proxiedBuffer.constructor = {
+  [Symbol.species]: new Proxy(function (length: number) {
+    return new ArrayBuffer(length);
+  }, {}),
+};
+console.log(speciesOutcomes.join(","), proxiedBuffer.slice(2, 6).byteLength);

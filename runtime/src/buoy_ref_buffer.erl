@@ -536,16 +536,17 @@ relative(V, Len, _Default) ->
         I -> min(I, Len)
     end.
 
-%% SpeciesConstructor(O, Default).
+%% SpeciesConstructor(O, Default), where Default is the intrinsic of realm 0
+%% and the result is its twin in the current realm.
 -spec species_constructor(term(), term()) -> term().
 species_constructor(O, Default) ->
     case buoy_ref:get(O, <<"constructor">>) of
-        undefined -> Default;
+        undefined -> buoy_ref_realm:current(Default);
         C when ?IS_OBJECT(C) ->
             case buoy_ref:get(C, ?SYM(species)) of
-                S when S =:= undefined; S =:= null -> Default;
+                S when S =:= undefined; S =:= null -> buoy_ref_realm:current(Default);
                 S ->
-                    buoy_ref_array:is_constructor(S) orelse buoy_ref:type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
+                    buoy_heap:is_constructor(S) orelse buoy_ref:type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
                     S
             end;
         _ -> buoy_ref:type_error(<<"The .constructor property is not an object">>)

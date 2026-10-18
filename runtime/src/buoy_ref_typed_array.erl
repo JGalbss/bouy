@@ -355,25 +355,12 @@ up(From, To, F) ->
 %% TypedArraySpeciesCreate.
 species_create(Exemplar, Args, Name) ->
     {Kind, _, _, _} = slots(Exemplar),
-    C = buoy_ref_buffer_species(Exemplar, constructor(Kind)),
+    C = buoy_ref_buffer:species_constructor(Exemplar, constructor(Kind)),
     Result = create_from_constructor(C, Args, Name),
     {ResultKind, _, _, _} = slots(Result),
     buoy_ref_buffer:is_big_int_kind(ResultKind) =:= buoy_ref_buffer:is_big_int_kind(Kind) orelse
         type_error(<<"Content type of the new typed array does not match">>),
     Result.
-
-buoy_ref_buffer_species(O, Default) ->
-    case buoy_ref:get(O, <<"constructor">>) of
-        undefined -> Default;
-        C when ?IS_OBJECT(C) ->
-            case buoy_ref:get(C, ?SYM(species)) of
-                S when S =:= undefined; S =:= null -> Default;
-                S ->
-                    buoy_ref_array:is_constructor(S) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
-                    S
-            end;
-        _ -> type_error(<<"The .constructor property is not an object">>)
-    end.
 
 %% TypedArrayCreateFromConstructor.
 create_from_constructor(C, Args, Name) ->

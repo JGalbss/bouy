@@ -602,26 +602,8 @@ iterator_step(O, {R, S, Global, Unicode, false}) ->
     end.
 
 %% SpeciesConstructor(R, %RegExp%).
-species_constructor(R) ->
-    case buoy_ref:get(R, <<"constructor">>) of
-        undefined -> constructor();
-        C when ?IS_OBJECT(C) ->
-            case buoy_ref:get(C, ?SYM(species)) of
-                Species when Species =:= undefined; Species =:= null -> constructor();
-                Species ->
-                    is_constructor(Species) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
-                    Species
-            end;
-        _ -> type_error(<<"The .constructor property is not an object">>)
-    end.
+species_constructor(R) -> buoy_ref_buffer:species_constructor(R, constructor()).
 
-is_constructor({'$f', _, _} = F) ->
-    case buoy_heap:slots(F) of
-        #{construct := _} -> true;
-        #{kind := normal} -> true;
-        _ -> false
-    end;
-is_constructor(_) -> false.
 
 symbol_replace(R, S, ReplaceValue) ->
     Length = buoy_ref_string:length_of(S),

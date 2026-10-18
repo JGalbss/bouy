@@ -124,15 +124,9 @@ to_length(V) ->
 -spec is_array(term()) -> boolean().
 is_array(V) -> buoy_ref_object:is_array(V).
 
-%% IsConstructor: a function with a [[Construct]].
+%% IsConstructor: a function with a [[Construct]], or a proxy of one.
 -spec is_constructor(term()) -> boolean().
-is_constructor({'$f', _, _} = F) ->
-    case buoy_heap:slots(F) of
-        #{construct := _} -> true;
-        #{kind := normal} -> true;
-        _ -> false
-    end;
-is_constructor(_) -> false.
+is_constructor(F) -> buoy_heap:is_constructor(F).
 
 %% ArrayCreate with %Array.prototype%.
 -spec array_create(non_neg_integer()) -> term().
@@ -158,10 +152,9 @@ species(O, Len) ->
         true ->
             C = case buoy_ref:get(O, <<"constructor">>) of
                 C0 when ?IS_OBJECT(C0) ->
-                    case foreign_array(C0) orelse buoy_ref:get(C0, ?SYM(species)) of
+                    case foreign_array(C0) of
                         true -> undefined;
-                        null -> undefined;
-                        S -> S
+                        false -> species_of(C0)
                     end;
                 C0 -> C0
             end,
@@ -173,6 +166,13 @@ species(O, Len) ->
                     is_constructor(C) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
                     {object, buoy_ref:construct(C, [Len])}
             end
+    end.
+
+%% C[@@species], where null means the default constructor.
+species_of(C) ->
+    case buoy_ref:get(C, ?SYM(species)) of
+        null -> undefined;
+        S -> S
     end.
 
 %% Whether C is %Array% of a realm other than the current one, which
