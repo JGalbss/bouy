@@ -44,7 +44,7 @@ binding() ->
         {<<"readStart">>, fun(This, _) -> set_reading(This, true), 0 end},
         {<<"readStop">>, fun(This, _) -> set_reading(This, false), 0 end},
         {<<"shutdown">>, fun(This, Args) -> shutdown(This, A(1, Args)) end},
-        {<<"useUserBuffer">>, fun(_, _) -> undefined end},
+        {<<"useUserBuffer">>, fun(This, Args) -> put(This, user_buffer, A(1, Args)) end},
         {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This)) end},
         {<<"getProviderType">>, fun(_, _) -> 0 end},
         {<<"start">>, fun(This, _) -> start(This), undefined end},
@@ -702,15 +702,31 @@ drain(This) ->
             ok
     end.
 
+%% Cleartext to onread, through the user's buffer when net set one; what
+%% does not fit is the next read, and onread returns the next buffer of a
+%% generator, as CustomBufferJSListener takes it.
 deliver(This, Data) ->
     S = state(This),
-    save(This, S#{read := maps:get(read, S) + byte_size(Data)}),
     State = stream_state(),
-    buoy_heap:set(State, ?K_READ_BYTES, byte_size(Data)),
-    buoy_heap:set(State, ?K_OFFSET, 0),
-    Buffer = buoy_ref_buffer:allocate(byte_size(Data)),
-    buoy_ref_buffer:write(Buffer, 0, Data),
-    call_js(This, <<"onread">>, [Buffer]).
+    case maps:get(user_buffer, S, none) of
+        none ->
+            save(This, S#{read := maps:get(read, S) + byte_size(Data)}),
+            buoy_heap:set(State, ?K_READ_BYTES, byte_size(Data)),
+            buoy_heap:set(State, ?K_OFFSET, 0),
+            Buffer = buoy_ref_buffer:allocate(byte_size(Data)),
+            buoy_ref_buffer:write(Buffer, 0, Data),
+            call_js(This, <<"onread">>, [Buffer]);
+        User ->
+            Size = min(byte_size(Data), buoy_node_encoding:view_length(User)),
+            <<Chunk:Size/binary, Rest/binary>> = Data,
+            buoy_node_encoding:view_write(User, 0, Chunk),
+            Waiting = case Rest of <<>> -> maps:get(cleartext, S); _ -> [Rest | maps:get(cleartext, S)] end,
+            save(This, S#{read := maps:get(read, S) + Size, cleartext := Waiting}),
+            buoy_heap:set(State, ?K_READ_BYTES, Size),
+            Next = call_js(This, <<"onread">>, [undefined]),
+            buoy_heap:is_object(Next) andalso put(This, user_buffer, Next),
+            Rest =/= <<>> andalso buoy_node_socket:later(fun() -> drain(This) end)
+    end.
 
 cleartext_end(This) ->
     case state(This) of

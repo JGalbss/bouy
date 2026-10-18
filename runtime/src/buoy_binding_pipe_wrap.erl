@@ -43,7 +43,7 @@ local(Handle) ->
 
 bind(This, Name) ->
     local(This),
-    buoy_node_socket:bind(This, #{family => local, path => path(Name)}, []).
+    buoy_node_socket:bind(This, #{family => local, path => local_path(Name)}, []).
 
 listen(This, Backlog) ->
     case buoy_node_socket:find(This) of
@@ -55,18 +55,36 @@ listen(This, Backlog) ->
 %% through the request.
 connect(This, Req, Name) ->
     local(This),
-    buoy_node_socket:connect(This, Req, #{family => local, path => path(Name)}, all).
+    buoy_node_socket:connect(This, Req, #{family => local, path => local_path(Name)}, all).
 
-fchmod(This, Mode) ->
+%% fchmod(flags): uv_pipe_chmod gives everyone read (UV_READABLE) and
+%% write (UV_WRITABLE) on top of the socket file's mode.
+fchmod(This, Flags) ->
+    Bits = trunc(buoy_ref:to_number(Flags)),
+    Add = (case Bits band 1 of 0 -> 0; _ -> 8#444 end) bor (case Bits band 2 of 0 -> 0; _ -> 8#222 end),
     case buoy_node_socket:find(This) of
-        {ok, #{path := Path}} when Path =/= none ->
-            case file:change_mode(Path, trunc(buoy_ref:to_number(Mode))) of
-                ok -> 0;
-                {error, Reason} -> buoy_node_socket:errno(Reason)
+        {ok, #{path := Path}} when Path =/= none, Add =/= 0 ->
+            case file:read_file_info(Path) of
+                {ok, Info} ->
+                    case file:change_mode(Path, (element(8, Info) band 8#7777) bor Add) of
+                        ok -> 0;
+                        {error, Reason} -> buoy_node_socket:errno(Reason)
+                    end;
+                {error, Reason} ->
+                    buoy_node_socket:errno(Reason)
             end;
+        {ok, _} ->
+            ?UV_EINVAL;
         _ ->
             ?UV_EBADF
     end.
+
+%% libuv truncates a socket path to the room of sun_path (uv_pipe_bind2
+%% without UV_PIPE_NO_TRUNCATE), so bind and connect agree on a long one.
+local_path(V) ->
+    Path = path(V),
+    Room = case os:type() of {unix, darwin} -> 103; _ -> 107 end,
+    binary:part(Path, 0, min(byte_size(Path), Room)).
 
 %% open(fd): a channel process owns a port on the descriptor; the handle stays
 %% a root of the heap until the channel ends.
