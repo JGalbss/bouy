@@ -308,6 +308,19 @@ Phase 5 of [ADR 0003](../adr/0003-run-typescript-on-beam.md) plans shapes with s
 
 Steps 2 and 3 can run in parallel, because they touch different code.
 
+## Step 2 in the runtime
+
+Branch `node-perf-builtins` built step 2 into the runtime as `crates/buoy-nif` (section 17.10 of [the contract](../design/beam-runtime.md)): `JSON.parse` and the RegExp matcher in safe Rust, in slices of about 100 µs, with the Erlang code as the fallback. `JSON.stringify` stayed in Erlang with a fast path for plain records. [`bench/speed/results/2026-10-18-apple-m5-pro.jsonl`](../../bench/speed/results/2026-10-18-apple-m5-pro.jsonl) holds 3 rounds of the four library kernels, with the build before the branch (`engine-base`) and the branch (`engine-native-builtins`) next to Bun and Node. The load average was 165 to 1019, more than 10 times that of the spike, so the times are slower and noisier than the tables above and only the ratios inside one kernel compare. Medians in ms per unit:
+
+| Kernel  | Engine before | Engine after | Bun 1.3.14 | After ÷ Bun |
+| ------- | ------------: | -----------: | ---------: | ----------: |
+| json    |        1549.3 |        244.5 |        6.4 |        38.5 |
+| regex   |        5601.4 |        521.7 |       50.4 |        10.4 |
+| strings |        3922.8 |       2741.9 |     1073.8 |         2.6 |
+| mapset  |        7881.0 |       8326.2 |      198.6 |        41.9 |
+
+The built-ins gave 6.3 times on json and 10.7 times on regex. Strings and mapset did not change beyond the noise: what their kernels spend goes to the method calls and the property reads around the built-ins, which step 3 addresses, not to the built-ins themselves.
+
 ## Limits of this spike
 
 - The machine was shared. The load average was 14.8 to 53.7 on 18 cores, so the absolute times are higher and noisier than on an idle machine. The tiers of a kernel ran in turn in each round, so the load reached all of them.
