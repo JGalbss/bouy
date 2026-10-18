@@ -1019,7 +1019,7 @@ parallel/test-domain-no-error-handler-abort-on-uncaught-6.js fail
 parallel/test-domain-no-error-handler-abort-on-uncaught-7.js fail
 parallel/test-domain-no-error-handler-abort-on-uncaught-8.js fail
 parallel/test-domain-no-error-handler-abort-on-uncaught-9.js fail
-parallel/test-domain-promise.js fail
+parallel/test-domain-promise.js pass
 parallel/test-domain-run.js pass
 parallel/test-domain-safe-exit.js pass
 parallel/test-domain-set-uncaught-exception-capture-after-load.js pass
@@ -1028,8 +1028,8 @@ parallel/test-domain-stack.js pass
 parallel/test-domain-throw-error-then-throw-from-uncaught-exception-handler.js fail
 parallel/test-domain-thrown-error-handler-stack.js pass
 parallel/test-domain-timer.js pass
-parallel/test-domain-timers-uncaught-exception.js fail
-parallel/test-domain-timers.js fail
+parallel/test-domain-timers-uncaught-exception.js pass
+parallel/test-domain-timers.js pass
 parallel/test-domain-top-level-error-handler-clears-stack.js pass
 parallel/test-domain-top-level-error-handler-throw.js timeout
 parallel/test-domain-uncaught-exception.js timeout
@@ -1528,7 +1528,7 @@ parallel/test-global-webstreams.js pass
 parallel/test-global.js fail
 parallel/test-h2-large-header-cause-client-to-hangup.js pass
 parallel/test-h2leak-destroy-session-on-socket-ended.js skip
-parallel/test-handle-wrap-close-abort.js fail
+parallel/test-handle-wrap-close-abort.js pass
 parallel/test-handle-wrap-hasref.js skip
 parallel/test-hash-seed.mjs fail
 parallel/test-heap-prof-basic.js pass
