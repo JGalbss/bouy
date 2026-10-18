@@ -58,3 +58,21 @@ try {
 } catch (error) {
   console.log((error as Error).name + ": " + (error as Error).message);
 }
+// The legacy forms of Date.parse, as V8 reads them.
+console.log(
+  [
+    "1997-3-8 1:1:1.01",
+    "+001997-03-8 11:19:20",
+    "1997-03-08 11:19:10-07",
+    "1997-03-08T11:19:10-07",
+    "1997-3-8T11:19:20",
+    "June 10, 49",
+    "10 June 50",
+    "1/2",
+    "Jan 1 2000 10:00 GMT-08:30",
+    "1/1/2000 12:30 pm",
+    "(note) Jan 1 2000 (more (nested)) 10:00 Z",
+    "2000 foo",
+    "Tue, 01 Mar 2016 10:00:00 PST",
+  ].map((text) => Date.parse(text)),
+);
