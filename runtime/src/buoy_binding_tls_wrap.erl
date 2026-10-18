@@ -582,6 +582,8 @@ agent_loop(Ssl, Report, Reading) ->
 
 %% Takes the cleartext that ssl holds while the stream reads, then reports
 %% that delivery Count is drained. A connection that ended is gone.
+agent_poll(Ssl, Report, Reading, skip) ->
+    agent_loop(Ssl, Report, Reading);
 agent_poll(Ssl, Report, false, _Count) ->
     agent_loop(Ssl, Report, false);
 agent_poll(Ssl, Report, true, Count) ->
@@ -616,8 +618,8 @@ event(This, S, {handshake, {ok, Info}}) ->
     save(This, (state(This))#{pending := []}),
     Reading andalso (Agent ! {reading, true, maps:get(delivered, S)}),
     Shutdown =/= none andalso (Agent ! {shutdown, Shutdown}),
-    Server andalso maps:get(protocol, maps:get(items, Info, #{}), 'tlsv1.3') =/= 'tlsv1.3'
-        andalso put(This, reneg, #{in => {header, <<>>}, out => {header, <<>>}, phase => idle}),
+    maps:get(protocol, maps:get(items, Info, #{}), 'tlsv1.3') =/= 'tlsv1.3'
+        andalso put(This, reneg, #{in => {header, <<>>}, out => {header, <<>>}, phase => idle, notify => Server}),
     call_js(This, <<"onhandshakedone">>, []),
     release_flight(maps:get(id, S)),
     Server =:= false andalso maps:get(session_callbacks, S) andalso tls12_session(This, Info);
@@ -790,7 +792,7 @@ encrypted_in(This, eof) ->
     S = state(This),
     save(This, S#{peer_eof := true}),
     case S of
-        #{phase := open, agent := Agent, delivered := Count} -> Agent ! {poll, Count};
+        #{phase := open} -> poll(This);
         _ -> pump(This)
     end;
 encrypted_in(This, {error, Status}) ->
@@ -821,18 +823,36 @@ renegotiate(This) ->
             undefined
     end.
 
-%% A TLS 1.2 server sees a renegotiation in its records, whose content type
-%% stays visible: a handshake record after the handshake starts one, as
-%% SSL_CB_HANDSHAKE_START reports, and the Finished that follows each
-%% side's change cipher spec ends it, as SSL_CB_HANDSHAKE_DONE reports.
+%% A TLS 1.2 connection sees a renegotiation in its records, whose content
+%% type stays visible: a handshake record from the peer after the handshake
+%% starts one, and the Finished that follows each side's change cipher spec
+%% ends it. A server reports them as SSL_CB_HANDSHAKE_START and _DONE do.
+%% The agent takes no cleartext meanwhile: a receive that times out during
+%% ssl's renegotiation leaves an event that ssl later fails with
+%% unexpected_message. The end of one polls.
 renegotiation(This, Direction, Data) ->
     case state(This) of
-        #{reneg := #{phase := Phase} = R} = S ->
+        #{reneg := #{phase := Phase, notify := Notify} = R} = S ->
             {Types, Scan} = record_types(Data, maps:get(Direction, R)),
             Next = lists:foldl(fun(Type, P) -> reneg_step(Direction, Type, P) end, Phase, Types),
             save(This, S#{reneg := R#{Direction := Scan, phase := reneg_phase(Next)}}),
-            Phase =:= idle andalso Next =/= idle andalso call_js(This, <<"onhandshakestart">>, [buoy_node_loop:now()]),
-            Next =:= done andalso call_js(This, <<"onhandshakedone">>, []),
+            Notify andalso Phase =:= idle andalso Next =/= idle andalso call_js(This, <<"onhandshakestart">>, [buoy_node_loop:now()]),
+            Notify andalso Next =:= done andalso call_js(This, <<"onhandshakedone">>, []),
+            Next =:= done andalso poll(This),
+            ok;
+        _ ->
+            ok
+    end.
+
+renegotiating(#{reneg := #{phase := Phase}}) -> Phase =/= idle;
+renegotiating(_) -> false.
+
+%% Asks the agent of an open connection to take the cleartext of the
+%% deliveries so far, unless ssl renegotiates.
+poll(This) ->
+    case state(This) of
+        #{phase := open, agent := Agent, delivered := Count} = S when is_pid(Agent) ->
+            renegotiating(S) orelse (Agent ! {poll, Count}),
             ok;
         _ ->
             ok
@@ -984,10 +1004,7 @@ pump(This) ->
             Count = maps:get(delivered, S) + 1,
             save(This, S#{inbox := [], inbox_size := 0, active := Next, delivered := Count}),
             maps:get(inbox_size, S) > ?INBOX_LIMIT andalso parent_read(Parent, true),
-            case S of
-                #{phase := open, agent := Agent} -> Agent ! {poll, Count};
-                _ -> ok
-            end,
+            poll(This),
             ok;
         %% A closed transport tells each activation again, as gen_tcp's
         %% setopts fails on a closed socket: ssl defers a close that came
@@ -1010,7 +1027,8 @@ set_reading(This, Reading) ->
     save(This, S#{reading := Reading}),
     case {S, Reading} of
         {#{phase := idle, server := true}, true} -> begin_handshake(This, server);
-        {#{phase := open, agent := Agent, delivered := Count}, _} -> Agent ! {reading, Reading, Count};
+        {#{phase := open, agent := Agent, delivered := Count}, _} ->
+            Agent ! {reading, Reading, case renegotiating(S) of true -> skip; false -> Count end};
         _ -> ok
     end,
     case Reading of
