@@ -3853,7 +3853,7 @@ parallel/test-vm-access-process-env.js pass
 parallel/test-vm-api-handles-getter-errors.js pass
 parallel/test-vm-attributes-property-not-on-sandbox.js pass
 parallel/test-vm-basic.js fail
-parallel/test-vm-cached-data.js fail
+parallel/test-vm-cached-data.js pass
 parallel/test-vm-codegen.js fail
 parallel/test-vm-context-async-script.js pass
 parallel/test-vm-context-dont-contextify.js pass
@@ -3876,7 +3876,7 @@ parallel/test-vm-global-configurable-properties.js pass
 parallel/test-vm-global-define-property.js pass
 parallel/test-vm-global-get-own.js pass
 parallel/test-vm-global-identity.js pass
-parallel/test-vm-global-non-writable-properties.js fail
+parallel/test-vm-global-non-writable-properties.js pass
 parallel/test-vm-global-property-enumerator.js pass
 parallel/test-vm-global-property-interceptors.js pass
 parallel/test-vm-global-property-prototype.js pass
@@ -3933,9 +3933,9 @@ parallel/test-vm-set-property-proxy.js pass
 parallel/test-vm-set-proto-null-on-globalthis.js pass
 parallel/test-vm-sigint-existing-handler.js timeout
 parallel/test-vm-sigint.js timeout
-parallel/test-vm-source-map-url.js fail
+parallel/test-vm-source-map-url.js pass
 parallel/test-vm-static-this.js pass
-parallel/test-vm-strict-assign.js fail
+parallel/test-vm-strict-assign.js pass
 parallel/test-vm-strict-mode.js pass
 parallel/test-vm-symbols.js pass
 parallel/test-vm-syntax-error-message.js pass

@@ -45,8 +45,9 @@ binding() ->
     buoy_heap:define(Proto, <<"runInContext">>, #{value => F(<<"runInContext">>, 0, fun(This, Args) ->
         run_in_context(This, A(1, Args), A(2, Args))
     end), writable => true, enumerable => true, configurable => true}),
-    buoy_heap:define(Proto, <<"createCachedData">>, #{value => F(<<"createCachedData">>, 0, fun(_, _) ->
-        buoy_node_encoding:new_buffer(<<>>)
+    buoy_heap:define(Proto, <<"createCachedData">>, #{value => F(<<"createCachedData">>, 0, fun(This, _) ->
+        {ok, Source} = buoy_heap:private_find(This, ?SOURCE),
+        buoy_node_encoding:new_buffer(cached_data(Source))
     end), writable => true, enumerable => true, configurable => true}),
     buoy_node:object([
         {<<"ContextifyScript">>, Script},
@@ -114,19 +115,37 @@ new_script(This, Args) ->
     Module = buoy_ref_eval:compile_script(Code),
     buoy_heap:private_put(This, ?SCRIPT, Module),
     buoy_heap:private_put(This, ?SOURCE, Code),
-    case buoy_node:arg(5, Args) of
-        undefined -> ok;
-        _ -> buoy_heap:set(This, <<"cachedDataRejected">>, false)
-    end,
-    case buoy_ref:truthy(buoy_node:arg(6, Args)) of
-        true ->
-            buoy_heap:set(This, <<"cachedDataProduced">>, true),
-            buoy_heap:set(This, <<"cachedData">>, buoy_node_encoding:new_buffer(<<>>));
-        false ->
-            ok
-    end,
-    buoy_heap:set(This, <<"sourceMapURL">>, undefined),
+    [buoy_heap:set(This, K, V) || {K, V} <- cache_fields(Code, Args) ++ [{<<"sourceMapURL">>, source_map_url(Code)}]],
     undefined.
+
+%% The fields of a code cache of Code that the arguments ask for: whether a
+%% given cache was rejected, and a new one.
+cache_fields(Code, Args) ->
+    Rejected = case buoy_node:arg(5, Args) of
+        undefined -> [];
+        Data -> [{<<"cachedDataRejected">>, buoy_node_encoding:view_bytes(Data) =/= cached_data(Code)}]
+    end,
+    Produced = case buoy_ref:truthy(buoy_node:arg(6, Args)) of
+        true -> [{<<"cachedDataProduced">>, true}, {<<"cachedData">>, buoy_node_encoding:new_buffer(cached_data(Code))}];
+        false -> []
+    end,
+    Rejected ++ Produced.
+
+%% The code cache of a source text. The compiled module lives in the VM, so
+%% the cache only identifies it, as V8's checks its source hash and flags: a
+%% cache of another source or of another runtime is rejected.
+cached_data(Code) ->
+    Tag = buoy_binding_v8:version_tag(),
+    <<"BUOY", Tag:32, (erlang:md5(buoy_ref_string:to_utf8(buoy_ref:to_string(Code))))/binary>>.
+
+%% The URL of the last `//# sourceMappingURL=` comment of the code, as V8's
+%% scanner reads the magic comment, or undefined.
+source_map_url(Code) ->
+    Text = buoy_ref_string:to_utf8(buoy_ref:to_string(Code)),
+    case re:run(Text, <<"//[#@][ \\t]sourceMappingURL=([^\\s'\"]+)[ \\t]*(?:\\r|\\n|$)">>, [global, {capture, all_but_first, binary}, unicode]) of
+        {match, Matches} -> buoy_node:string(lists:last(lists:last(Matches)));
+        nomatch -> undefined
+    end.
 
 %% runInContext(contextifiedObject or null, timeout, ...): the completion value
 %% of the script in the realm of the context, or in this realm for null. A
@@ -169,7 +188,7 @@ compile_function(Args) ->
         Context when Context =:= undefined; Context =:= null -> Make(undefined, undefined);
         Context -> (buoy_ref_realm:realm_fun(realm_of(Context), Make))(undefined, undefined)
     end,
-    buoy_node:object([{<<"function">>, Function}, {<<"sourceMapURL">>, undefined}]).
+    buoy_node:object([{<<"function">>, Function}, {<<"sourceMapURL">>, source_map_url(Code)}] ++ cache_fields(Code, Args)).
 
 %%% The interceptors of the global proxy. Sandbox is the contextified object
 %%% and Global the realm's own global object.

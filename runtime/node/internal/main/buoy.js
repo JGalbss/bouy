@@ -26,7 +26,9 @@ function patchProcessObject() {
   process._exiting = false;
   process.argv[0] = process.execPath;
 
-  if (process.argv[1] && process.argv[1][0] !== '-') {
+  // As expandArgv1 of run_main_module: the code of -e and -p has no script.
+  const expandArgv1 = !getOptionValue('[has_eval_string]') && !getOptionValue('--print');
+  if (expandArgv1 && process.argv[1] && process.argv[1][0] !== '-') {
     process.argv[1] = require('path').resolve(process.argv[1]);
   }
 

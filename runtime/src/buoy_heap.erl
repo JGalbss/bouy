@@ -553,8 +553,15 @@ failed(_O, _K, V, sloppy) -> V.
 -spec set_failed(value(), key()) -> no_return().
 set_failed(O, K) ->
     Found = case record_of(O) of
-        %% A host proxy, such as the global proxy of a node:vm context, defines what it sets.
-        {proxy, _, _, _, _, {_, {host, _, _}}} -> host;
+        %% A host proxy, such as the global proxy of a node:vm context, fails on a
+        %% read-only property of its target as an object does, and else on the
+        %% definition that its interceptor refused.
+        {proxy, _, _, _, _, {Target, {host, _, _}}} ->
+            case find_property(Target, K) of
+                {_, _, _} = P -> P;
+                {_, _, _, _} = P -> P;
+                _ -> host
+            end;
         _ -> find_property(O, K)
     end,
     Message = case Found of

@@ -6,7 +6,7 @@
 %% mark and sweep of buoy_heap.
 -module(buoy_binding_v8).
 
--export([binding/0]).
+-export([binding/0, version_tag/0]).
 
 %% The fields of heapStatisticsBuffer, heapSpaceStatisticsBuffer, and
 %% heapCodeStatisticsBuffer, in the order of node_v8.cc.
@@ -82,6 +82,7 @@ flags() ->
     end.
 
 %% V8 derives the tag of its code cache from its version and its flags.
+-spec version_tag() -> non_neg_integer().
 version_tag() ->
     erlang:phash2({erlang:system_info(otp_release), erlang:system_info(version), flags()}, 1 bsl 32).
 
