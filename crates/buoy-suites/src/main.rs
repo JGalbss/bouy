@@ -100,6 +100,10 @@ struct Packages {
     /// The worker threads. Defaults to the number of cores, at most 8.
     #[arg(long)]
     jobs: Option<usize>,
+    /// The seconds that one run may take. Defaults to 20, and to 120 for the ecosystem, whose
+    /// first run of a package compiles all of it.
+    #[arg(long)]
+    deadline: Option<u64>,
 }
 
 #[derive(Debug, Args)]
@@ -351,6 +355,7 @@ fn run_packages(arguments: Packages, ecosystem: bool) -> ExitCode {
         filter,
         buoy,
         jobs,
+        deadline,
     } = arguments;
     let Some(buoy) = buoy_under_test(buoy) else {
         return ExitCode::from(2);
@@ -363,7 +368,7 @@ fn run_packages(arguments: Packages, ecosystem: bool) -> ExitCode {
         filter,
         update,
         jobs: jobs.unwrap_or_else(buoy_suites::default_jobs),
-        deadline: Duration::from_secs(20),
+        deadline: Duration::from_secs(deadline.unwrap_or(if ecosystem { 120 } else { 20 })),
     };
     let run = if ecosystem {
         packages::run_ecosystem
