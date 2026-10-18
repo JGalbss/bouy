@@ -2972,16 +2972,16 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "242d926",
+      "updated": "aa461f8",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 1889,
+        "pass": 1890,
         "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 1880,
+        "fail": 1879,
         "timeout": 55,
         "harness_error": 0,
         "crash": 12
@@ -2995,9 +2995,9 @@
             "timeout": 1
           },
           "parallel": {
-            "pass": 1790,
+            "pass": 1791,
             "skip": 545,
-            "fail": 1683,
+            "fail": 1682,
             "timeout": 49,
             "crash": 12
           },
@@ -3013,9 +3013,9 @@
             "skip": 343
           },
           "public": {
-            "pass": 1889,
+            "pass": 1890,
             "skip": 240,
-            "fail": 1880,
+            "fail": 1879,
             "timeout": 55,
             "crash": 12
           }
@@ -3028,9 +3028,9 @@
             "crash": 2
           },
           "async_hooks": {
-            "pass": 29,
+            "pass": 30,
             "skip": 11,
-            "fail": 16
+            "fail": 15
           },
           "buffer": {
             "pass": 58,

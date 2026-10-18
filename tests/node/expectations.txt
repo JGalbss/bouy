@@ -301,7 +301,7 @@ parallel/test-async-wrap-pop-id-during-load.js fail
 parallel/test-async-wrap-promise-after-enabled.js pass
 parallel/test-async-wrap-tlssocket-asyncreset.js pass
 parallel/test-async-wrap-trigger-id.js pass
-parallel/test-async-wrap-uncaughtexception.js fail
+parallel/test-async-wrap-uncaughtexception.js pass
 parallel/test-asyncresource-bind.js pass
 parallel/test-atomics-wake.js pass
 parallel/test-bad-unicode.js pass
