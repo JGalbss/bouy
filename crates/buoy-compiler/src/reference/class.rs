@@ -137,6 +137,8 @@ impl<'a> Lowerer<'a, '_> {
             None => (None, None),
         };
         self.declare_privates(class);
+        // All parts of a class are strict code, its heritage and computed keys too.
+        let sloppy = std::mem::replace(&mut self.frame.sloppy, false);
         let binding = class.id.as_ref().and_then(|id| id.symbol_id.get());
         // The binding outside the class, which the code after the class sees again.
         let saved = binding.map(|symbol| {
@@ -177,12 +179,21 @@ impl<'a> Lowerer<'a, '_> {
             self.pre
                 .push(Expr::call("erlang", "put", vec![key, Expr::var(c.clone())]));
         }
-        if let Some(cell) = &inner {
+        // A computed key runs before the class binding has its value, so a key that reads
+        // the binding reads a cell in its dead zone (ECMA-262 §15.7.14, step 29).
+        let keyed = binding.filter(|&symbol| self.reads_within(symbol, &computed_keys(class)));
+        let inner = match (inner, keyed) {
+            (None, Some(symbol)) => self.class_binding_cell(symbol),
+            (inner, _) => inner,
+        };
+        if let Some(cell) = inner.as_ref().filter(|_| keyed.is_none()) {
             self.pre.push(cell_set(cell, Expr::var(c.clone())));
         }
         // The class binding inside the body is the class itself.
         if let Some(symbol) = binding {
-            self.frame.env.insert(symbol, Local::Var(c.clone()));
+            if keyed.is_none() {
+                self.frame.env.insert(symbol, Local::Var(c.clone()));
+            }
             self.class_bindings.push(symbol);
         }
         let Elements {
@@ -191,6 +202,10 @@ impl<'a> Lowerer<'a, '_> {
             private_methods,
             static_private_methods,
         } = self.class_elements(class, &c, &proto);
+        if let (Some(symbol), Some(cell)) = (keyed, &inner) {
+            self.pre.push(cell_set(cell, Expr::var(c.clone())));
+            self.frame.env.insert(symbol, Local::Var(c.clone()));
+        }
         let init = self.init_fun(&c, &proto, private_methods, instance);
         let frame = ClassFrame {
             home: proto.clone(),
@@ -232,6 +247,7 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         self.privates.pop();
+        self.frame.sloppy = sloppy;
         Expr::var(c)
     }
 
@@ -833,4 +849,23 @@ pub fn method_kind(is_async: bool, generator: bool) -> &'static str {
 
 fn int(value: usize) -> Expr {
     Expr::Integer(i64::try_from(value).unwrap_or(0))
+}
+
+/// The spans of the computed keys of the elements of `class`.
+fn computed_keys(class: &Class<'_>) -> Vec<oxc::span::Span> {
+    class
+        .body
+        .body
+        .iter()
+        .filter_map(|element| match element {
+            ClassElement::MethodDefinition(method) if method.computed => Some(method.key.span()),
+            ClassElement::PropertyDefinition(property) if property.computed => {
+                Some(property.key.span())
+            }
+            ClassElement::AccessorProperty(accessor) if accessor.computed => {
+                Some(accessor.key.span())
+            }
+            _ => None,
+        })
+        .collect()
 }
