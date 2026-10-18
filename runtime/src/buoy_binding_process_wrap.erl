@@ -61,8 +61,26 @@ spawn_child(This, Options) ->
     Stdio = [stdio(S) || S <- items(get(Options, <<"stdio">>))] ++ lists:duplicate(3, ignore),
     case {filelib:is_dir(Cwd), buoy_binding_spawn_sync:executable(File, Cwd, Env)} of
         {true, {ok, Path}} -> start(This, Path, Args, Cwd, Env, Stdio);
-        {false, _} -> -2;
-        _ -> -2
+        _ -> unstarted(Stdio)
+    end.
+
+%% uv_spawn opens the parent's end of each stdio pipe even when the child
+%% fails to start, so each pipe reads its end at once and a write fails with
+%% EPIPE: the streams close, and nothing keeps the loop alive.
+unstarted(Stdio) ->
+    Realm = self(),
+    [begin
+         buoy_node_stream:attach(Handle, spawn(fun() -> closed_pipe(monitor(process, Realm)) end)),
+         buoy_node_loop:defer(fun() -> buoy_node_stream:deliver(Handle, eof) end)
+     end || {pipe, Handle} <- Stdio],
+    -2.
+
+closed_pipe(Monitor) ->
+    receive
+        {write, _, From, Ref} -> report(From, Ref, {error, epipe}), closed_pipe(Monitor);
+        close -> ok;
+        {'DOWN', Monitor, _, _, _} -> ok;
+        _ -> closed_pipe(Monitor)
     end.
 
 stdio(S) ->
@@ -125,7 +143,8 @@ start(This, Path, Args, Cwd, Env, [In, Out, Err | More]) ->
             erlang:demonitor(Monitor, [flush]),
             started(This, Manager, OsPid, Handles, Extras);
         {'DOWN', Monitor, process, Manager, _} ->
-            -2
+            [exit(Channel, kill) || {_, _, Channel} <- Extras],
+            unstarted([In, Out, Err | More])
     end.
 
 %% The CLI boots the kernel with `-mode minimal`, which leaves out inet_db,
