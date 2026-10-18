@@ -9,9 +9,9 @@
 
 -export([socket/2, cb_info/0]).
 -export([send/2, setopts/2, getopts/2, getstat/2, peername/1, sockname/1, port/1, controlling_process/2]).
--export([close/1, shutdown/2, recv/2, recv/3]).
+-export([close/1, shutdown/2, recv/2, recv/3, listen/2, accept/2]).
 
--type socket() :: {buoy_tls_transport, pid(), reference()}.
+-type socket() :: {buoy_tls_transport, pid(), reference()} | socket:socket().
 -export_type([socket/0]).
 
 -spec socket(pid(), reference()) -> socket().
@@ -24,12 +24,24 @@ cb_info() -> {?MODULE, buoy_tls, buoy_tls_closed, buoy_tls_error, buoy_tls_passi
 tell({buoy_tls_transport, Realm, Id}, Event) ->
     buoy_node_stream:call(Realm, fun() -> buoy_binding_tls_wrap:transport(Id, Event) end).
 
+%% The listen socket of a realm's ssl listener is an unbound UDP socket of
+%% OTP's socket module, which ssl's trackers monitor and nothing reads.
+%% accept hands out the connection socket that the accepting process put
+%% under buoy_tls_accept.
+-spec listen(inet:port_number(), list()) -> {ok, socket:socket()} | {error, term()}.
+listen(_Port, _Options) -> socket:open(inet, dgram, udp).
+
+-spec accept(socket:socket(), timeout()) -> {ok, socket()}.
+accept(_Listen, _Timeout) -> {ok, erlang:erase(buoy_tls_accept)}.
+
 -spec send(socket(), iodata()) -> ok.
 send(Socket, Data) ->
     tell(Socket, {send, iolist_to_binary(Data)}),
     ok.
 
 -spec setopts(socket(), list()) -> ok.
+setopts({'$socket', _}, _Options) ->
+    ok;
 setopts(Socket, Options) ->
     Caller = self(),
     [tell(Socket, {active, Caller, Mode}) || {active, Mode} <- Options],
@@ -59,11 +71,16 @@ sockname(_Socket) -> {ok, {{127, 0, 0, 1}, 0}}.
 port(_Socket) -> {ok, 0}.
 
 -spec controlling_process(socket(), pid()) -> ok.
+controlling_process({'$socket', _}, _Pid) ->
+    ok;
 controlling_process(Socket, Pid) ->
     tell(Socket, {controller, Pid}),
     ok.
 
 -spec close(socket()) -> ok.
+close({'$socket', _} = Listen) ->
+    _ = socket:close(Listen),
+    ok;
 close(Socket) ->
     tell(Socket, close),
     ok.
