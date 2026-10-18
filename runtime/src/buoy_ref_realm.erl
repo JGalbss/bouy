@@ -59,6 +59,7 @@ families() ->
      buoy_ref_weak,
      buoy_ref_eval,
      buoy_ref_temporal,
+     buoy_ref_wasm,
      ?MODULE].
 
 %%% Installation

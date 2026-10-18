@@ -16,7 +16,7 @@ Buoy runs Node's own JavaScript for the built-in modules, as ADR 0003 chooses: t
 | `runtime/src/buoy_node_encoding.erl`  | The byte encodings of Buffer, and the bytes of typed arrays.                                                                 |
 | `runtime/src/buoy_binding_<name>.erl` | `internalBinding('<name>')`. Its `binding/0` returns the binding object.                                                     |
 | `runtime/src/buoy_node_stubs.erl`     | The bindings that have no `buoy_binding_<name>.erl` yet, with Node's shape.                                                  |
-| `crates/buoy-native`                  | The NIF library `buoy_native`: native code in Rust that a binding needs, such as the codecs of `zlib`.                       |
+| `crates/buoy-native`                  | The NIF library `buoy_native`: native code in Rust that a binding needs, such as the codecs of `zlib`, and WebAssembly.      |
 | `runtime/src/buoy_native.erl`         | Loads the NIF library and declares its functions.                                                                            |
 
 build.rs compiles each id with the reference compiler into the runtime module `buoy_node@<id>`, with `/` as `@` and `-` as `_`. Its `'__eval__'/3` returns the function that Node wraps around the code: `(exports, require, module, process, internalBinding, primordials)` for a module, and the parameters of `src/builtin_info.h` for the bootstrap and per-context scripts. The CLI caches each compiled `.beam` by the hash of its source, so a change to one id compiles one module.
@@ -83,4 +83,5 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 - `process.title` keeps the value that a program sets, but the OS process keeps its name. Signals that OTP cannot catch, such as SIGINT, reach `process.on` only when the program sends them to itself.
 - The `tcp_wrap`, `udp_wrap`, `tty_wrap` handle, `cares_wrap`, `url_pattern`, `worker`, and `webstorage` bindings are stubs: net, dgram, an interactive terminal, dns, URLPattern, worker_threads, and Web Storage, which needs SQLite, do not work yet.
 - `zlib` compresses with zlib-rs, brotli-rs, and libzstd 1.5.7. A deflate stream can differ in a few bytes from the one of Node's Chromium zlib, and stays valid. A brotli encoder with a dictionary uses the dictionary only within its window. libzstd allocates outside `BUOY_MAX_MEMORY`.
+- WebAssembly keeps one store for each process, so the memory of an instance lives until the process ends. A `WebAssembly.Exception` does not cross into WebAssembly yet, and an `anyref`, `exnref`, or `v128` value cannot cross into JavaScript.
 - `node:vm` contexts copy the sandbox's properties into the context's realm before a run and back after it, where V8 intercepts each access.

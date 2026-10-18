@@ -14,6 +14,8 @@ mod brotli;
 // The NIF glue links against the VM's `enif_*` symbols, which a test binary lacks.
 #[cfg(not(test))]
 mod nif;
+#[cfg(not(test))]
+mod wasm;
 mod zlib;
 mod zstd;
 

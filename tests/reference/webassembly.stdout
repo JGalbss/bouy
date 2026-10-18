@@ -1,0 +1,37 @@
+object [object WebAssembly]
+true false
+[{"module":"js","name":"log","kind":"function"},{"module":"js","name":"pair","kind":"function"},{"module":"js","name":"mem","kind":"memory"},{"module":"js","name":"seed","kind":"global"}]
+[{"name":"g","kind":"global"},{"name":"tbl","kind":"table"},{"name":"add","kind":"function"},{"name":"callLog","kind":"function"},{"name":"load","kind":"function"},{"name":"store","kind":"function"},{"name":"trap","kind":"function"},{"name":"divide","kind":"function"},{"name":"big","kind":"function"},{"name":"half","kind":"function"},{"name":"sumPair","kind":"function"},{"name":"grow","kind":"function"},{"name":"spin","kind":"function"}]
+1
+g,tbl,add,callLog,load,store,trap,divide,big,half,sumPair,grow,spin
+null true
+5 2 2 true
+-2147483647 5
+[ 105 ]
+42n 1.5 15n
+big of a number threw TypeError true
+77 65536
+44 44
+1 0 131072 true
+2 196608
+grow past maximum threw RangeError true
+7 true
+9 9
+7n
+immutable global threw TypeError true
+2 true null
+true 2 4
+set a plain function threw TypeError true
+trap threw RuntimeError true
+true unreachable
+divide by zero
+missing import threw TypeError true
+bad import threw LinkError true
+bad bytes threw CompileError true
+CompileError true
+200000
+RangeError from js
+true 42
+true
+rejected CompileError
+80
