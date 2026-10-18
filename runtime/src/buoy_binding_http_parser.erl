@@ -2,9 +2,11 @@
 %% buoy_llhttp, and ConnectionsList, which the server's timeouts read.
 %%
 %% Bun ports this file over its vendored llhttp (src/jsc/bindings/node/http/
-%% NodeHTTPParser.cpp), and like Bun, consume() leaves the socket in
-%% JavaScript: the bytes reach execute() through the socket's 'data' events,
-%% so kOnExecute never runs.
+%% NodeHTTPParser.cpp) and leaves a consumed socket in JavaScript, so its
+%% parser runs inside the socket's 'data' events. Here consume() makes the
+%% parser the listener of the handle, as Node does: each callback of a read
+%% is a top-level MakeCallback, so the ticks run between kOnHeadersComplete
+%% and kOnBody, which a server's request relies on to start reading.
 %%
 %% The state of a parser lives in its private slot. A callback can call back
 %% into the parser (remove, pause, or initialize a reused parser), so each
@@ -16,6 +18,8 @@
 -define(STATE, {'#', ?MODULE, <<"parser">>}).
 -define(LIST, {'#', ?MODULE, <<"connections">>}).
 -define(MAX_HEADER_SIZE, {?MODULE, max_http_header_size}).
+%% Set while a consumed read runs the parser outside JavaScript.
+-define(TOP_LEVEL, {?MODULE, top_level}).
 
 -define(K_ON_MESSAGE_BEGIN, 0).
 -define(K_ON_HEADERS, 1).
@@ -61,8 +65,8 @@ parser_class() ->
                     {<<"initialize">>, fun(This, Args) -> initialize(This, Args) end},
                     {<<"pause">>, fun(This, _) -> with_parser(This, fun buoy_llhttp:pause/1) end},
                     {<<"resume">>, fun(This, _) -> with_parser(This, fun buoy_llhttp:resume/1) end},
-                    {<<"consume">>, fun(_, _) -> undefined end},
-                    {<<"unconsume">>, fun(_, _) -> undefined end},
+                    {<<"consume">>, fun(This, Args) -> consume(This, A(1, Args)) end},
+                    {<<"unconsume">>, fun(This, _) -> unconsume(This) end},
                     {<<"getCurrentBuffer">>, fun(This, _) -> current_buffer(This) end}]),
     Class.
 
@@ -164,6 +168,38 @@ execute(This, View) ->
     case state(This) of
         #{ll := _, closed := false} = S -> run(This, S, buoy_node_encoding:view_bytes(View));
         _ -> undefined
+    end.
+
+%% Parser::Consume: the parser reads the stream itself.
+consume(This, Handle) ->
+    Prev = buoy_stream_base:push_listener(Handle, fun(Bytes) -> stream_read(This, Bytes) end),
+    update(This, fun(S) -> S#{consumed => {Handle, Prev}} end).
+
+unconsume(This) ->
+    case maps:get(consumed, state(This), none) of
+        {Handle, Prev} ->
+            buoy_heap:set(Handle, <<"onread">>, Prev),
+            update(This, fun(S) -> maps:remove(consumed, S) end);
+        none ->
+            undefined
+    end.
+
+%% Parser::OnStreamRead: Execute, then kOnExecute with its result while
+%% getCurrentBuffer() returns the bytes.
+stream_read(This, Bytes) ->
+    case state(This) of
+        #{ll := _, closed := false} = S ->
+            erlang:put(?TOP_LEVEL, true),
+            Ret = try run(This, S, Bytes) after erlang:erase(?TOP_LEVEL) end,
+            update(This, fun(St) -> St#{current => Bytes} end),
+            _ = call(This, ?K_ON_EXECUTE, [Ret], true),
+            update(This, fun(St) -> St#{current => undefined} end),
+            case take_exception(This) of
+                {Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack);
+                none -> undefined
+            end;
+        _ ->
+            undefined
     end.
 
 finish(This) ->
@@ -385,14 +421,22 @@ is_callback(This, Key) ->
 
 %% Calls this[Key](...Args): {ok, Result}, skipped when it is no function,
 %% or error when it throws, keeping the exception for execute() to throw.
+%% In a consumed read, the call is a MakeCallback of its own: the
+%% microtasks and ticks run after it (InternalCallbackScope::Close).
 call(This, Key, Args) ->
+    Top = erlang:erase(?TOP_LEVEL) =:= true,
+    try call(This, Key, Args, Top) after Top andalso erlang:put(?TOP_LEVEL, true) end.
+
+call(This, Key, Args, Top) ->
     F = buoy_heap:get(This, Key),
     case buoy_heap:is_callable(F) of
         false ->
             skipped;
         true ->
             try
-                {ok, buoy_heap:call(F, This, Args)}
+                Result = buoy_heap:call(F, This, Args),
+                Top andalso buoy_node_loop:after_callback(),
+                {ok, Result}
             catch
                 Class:Reason:Stack ->
                     buoy_heap:private_put(This, {'#', ?MODULE, <<"exception">>}, {Class, Reason, Stack}),

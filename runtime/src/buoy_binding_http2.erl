@@ -249,28 +249,10 @@ maybe_schedule_write(This) ->
 
 %% consume(handle): the session reads and writes the socket's handle.
 consume(This, Handle) ->
-    Prev = buoy_heap:get(Handle, <<"onread">>),
-    update(This, fun(S) -> S#{socket => Handle, prev_onread => Prev} end),
-    Onread = buoy_node:fn(<<"onread">>, 1, fun(_, Args) -> on_socket_read(This, Handle, buoy_node:arg(1, Args)) end),
-    buoy_heap:set(Handle, <<"onread">>, Onread),
+    update(This, fun(S) -> S#{socket => Handle} end),
+    Prev = buoy_stream_base:push_listener(Handle, fun(Bytes) -> on_stream_read(This, Bytes) end),
+    update(This, fun(S) -> S#{prev_onread => Prev} end),
     undefined.
-
-on_socket_read(This, Handle, Buffer) ->
-    State = buoy_heap:get(buoy_node:binding(<<"stream_wrap">>), <<"streamBaseState">>),
-    case trunc(buoy_heap:get(State, 0)) of
-        N when N < 0 ->
-            %% PassReadErrorToPreviousListener: the socket hears its EOF.
-            case maps:get(prev_onread, session(This), undefined) of
-                Prev when Prev =/= undefined -> buoy_heap:call(Prev, Handle, [Buffer]);
-                _ -> undefined
-            end;
-        0 ->
-            undefined;
-        N ->
-            Offset = trunc(buoy_heap:get(State, 1)),
-            <<_:Offset/binary, Bytes:N/binary, _/binary>> = buoy_ref_buffer:read(Buffer, 0, buoy_ref_buffer:byte_length(Buffer)),
-            on_stream_read(This, Bytes)
-    end.
 
 %% Http2Session::OnStreamRead and ConsumeHTTP2Data.
 on_stream_read(This, Bytes) ->
