@@ -215,8 +215,9 @@ impl Resolver {
             return finish_esm(PathBuf::from(decode(path)), importer);
         }
         if is_path(specifier) {
+            // A relative specifier is a URL: `./a%2ejs` names `./a.js`.
             let base = importer.parent().unwrap_or(Path::new("/"));
-            return finish_esm(normalize(&base.join(specifier)), importer);
+            return finish_esm(normalize(&base.join(decode(specifier))), importer);
         }
         if specifier.starts_with('#') {
             let target = self.imports_resolve(specifier, importer, Mode::Import)?;
