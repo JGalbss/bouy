@@ -20,3 +20,4 @@ thisValue true
 callThis true
 undefined outer
 6
+[ 42, 'g', 'undefined' ] [ [ true, false ], 'function' ]

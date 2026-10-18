@@ -422,9 +422,13 @@ impl Lowerer<'_, '_> {
     }
 }
 
-/// The name of a scope entry of a direct eval, without the `!` of an immutable binding.
+/// The name of a scope entry of a direct eval, without the `!` of an immutable binding or
+/// the `?` of a catch parameter.
 pub fn binding_name(entry: &str) -> &str {
-    entry.strip_prefix('!').unwrap_or(entry)
+    entry
+        .strip_prefix('!')
+        .or_else(|| entry.strip_prefix('?'))
+        .unwrap_or(entry)
 }
 
 pub fn cell_get(name: &str) -> Expr {

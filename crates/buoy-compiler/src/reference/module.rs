@@ -793,11 +793,14 @@ impl<'a> Lowerer<'a, '_> {
             }
             return std::mem::replace(&mut self.pre, saved);
         }
-        // The caller's own bindings come before the object of its variables.
+        // The caller's own bindings come before the object of its variables. A catch
+        // parameter is no such binding: a `var` of its name is a variable of the function,
+        // and the initializer writes the parameter (Annex B.3.4).
         let own: Vec<(String, String)> = self
             .eval_bindings
             .iter()
             .take_while(|(name, _)| name != "@vars")
+            .filter(|(name, _)| !name.starts_with('?'))
             .cloned()
             .collect();
         let target = self

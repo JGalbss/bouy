@@ -318,7 +318,11 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 // An immutable binding, such as the name of a class or of a function
                 // expression, reaches the eval as a copy, marked with `!`.
+                // A catch parameter, marked with `?`, is no home for a `var` of the eval
+                // code, which goes to the function's variables (Annex B.3.4).
+                let catch = scoping.symbol_flags(*symbol).is_catch_variable();
                 let (entry, cell) = match self.frame.env.get(symbol).cloned() {
+                    Some(Local::Cell(cell)) if catch => (format!("?{name}"), Expr::var(cell)),
                     Some(Local::Cell(cell)) if self.class_bindings.contains(symbol) => (
                         format!("!{name}"),
                         self.bind(Expr::call("buoy_heap", "cell", vec![cell_get(&cell)])),

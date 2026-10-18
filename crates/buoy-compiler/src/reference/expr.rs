@@ -354,9 +354,11 @@ impl<'a> Lowerer<'a, '_> {
                 !(ident.name == "arguments" && self.frame.arguments.is_some())
                     && self.eval_binding(ident.name.as_str()).is_none()
             }
+            // The binding of a block function in its block is lexical: delete is false.
             Some(symbol) => {
                 !self.frame.env.contains_key(&symbol)
                     && matches!(self.tops.get(&symbol), Some(Top::Global(_)))
+                    && self.block_binding(symbol, ident.span).is_none()
             }
         };
         if !global {

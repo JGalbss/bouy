@@ -52,3 +52,12 @@ for (const [name, run] of Object.entries(scopes)) {
 }
 console.log(typeof (globalThis as Record<string, unknown>).x, outer);
 console.log((0, eval)("var g = 6; function readG() { return g; } readG()"));
+// A `var` of eval code in a catch clause of the same name is a variable of the function,
+// and its initializer writes the catch parameter. In a block of eval code, the block's
+// function is a lexical binding, which delete keeps.
+console.log(
+  Function(
+    "var log = []; try { throw 8; } catch (x) { eval('var x = 42;'); log.push(x); } x = 'g'; log.push(x, typeof globalThis.x); return log;",
+  )(),
+  Function("var log = []; eval('log.push(delete q); { function q() {} log.push(delete q); }'); return [log, typeof q];")(),
+);
