@@ -252,18 +252,41 @@ self_realm() -> self().
 verify_fun(Agent, Cas) ->
     Fun = fun
         (_Cert, {bad_cert, hostname_check_failed}, State) -> {valid, State};
-        (Cert, {bad_cert, Reason}, State) ->
-            Der = der(Cert),
-            %% A self-signed certificate that the store holds is trusted,
-            %% as OpenSSL trusts it.
-            Agent ! {verify_chain, Der},
-            Reason =:= selfsigned_peer andalso lists:member(Der, Cas) orelse (Agent ! {verify_error, Reason, Der}),
-            {valid, State};
         (_Cert, {extension, _}, State) -> {unknown, State};
-        (Cert, valid, State) -> Agent ! {verify_chain, der(Cert)}, {valid, State};
-        (Cert, valid_peer, State) -> Agent ! {verify_chain, der(Cert)}, {valid, State}
+        (Cert, Event, State) ->
+            Der = der(Cert),
+            %% ssl verifies from the top of the chain down and never shows
+            %% the anchor of the store; the peer's chain ends with it.
+            State =:= [] andalso anchor(Cert, Cas, Agent),
+            Agent ! {verify_chain, Der},
+            case Event of
+                %% A self-signed certificate that the store holds is
+                %% trusted, as OpenSSL trusts it.
+                {bad_cert, selfsigned_peer} ->
+                    lists:member(Der, Cas) orelse (Agent ! {verify_error, selfsigned_peer, Der});
+                {bad_cert, Reason} ->
+                    Agent ! {verify_error, Reason, Der};
+                _ ->
+                    ok
+            end,
+            {valid, started}
     end,
     {Fun, []}.
+
+anchor(Cert, Cas, Agent) ->
+    case public_key:pkix_is_self_signed(Cert) of
+        true -> ok;
+        false ->
+            case [Ca || Ca <- Cas, is_issuer(Cert, Ca)] of
+                [Ca | _] -> Agent ! {verify_chain, Ca};
+                [] -> ok
+            end
+    end.
+
+is_issuer(Cert, Ca) ->
+    try public_key:pkix_is_issuer(Cert, Ca)
+    catch _:_ -> false
+    end.
 
 der(Cert) ->
     try public_key:pkix_encode('OTPCertificate', Cert, otp)
@@ -872,7 +895,9 @@ group(_) -> none.
 peer_certificate(This, Detailed) ->
     case state(This) of
         #{info := #{peer := Der} = Info} when is_binary(Der) ->
-            Chain = [D || D <- lists:reverse(maps:get(chain, Info, [])), D =/= Der],
+            %% ssl verifies from the anchor down; the list holds the
+            %% leaf's issuer first.
+            Chain = [D || D <- maps:get(chain, Info, []), D =/= Der],
             Leaf = legacy(Der),
             Detailed andalso link_issuers(Leaf, Chain),
             Leaf;
