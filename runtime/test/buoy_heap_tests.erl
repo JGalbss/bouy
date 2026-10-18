@@ -332,7 +332,7 @@ weak_map_drops_dead_keys_test() ->
                   buoy_heap:gc([M, Kept]),
                   %% The live key keeps its value, which nothing else holds; the dead key goes.
                   ?assertEqual(#{Kept => Value}, buoy_heap:slots(M)),
-                  ?assertMatch({object, _, _, _, _, _}, erlang:get(element(2, Value))),
+                  ?assertEqual(object, buoy_heap:class_of(Value)),
                   ?assertEqual(undefined, erlang:get(element(2, Dead)))
           end).
 
@@ -370,3 +370,115 @@ load(Id) ->
     Record = {object, ?P, #{<<"x">> => 1}, [<<"x">>], #{}, none},
     put(Id, Record),
     Record.
+
+%% An object that gains plain data properties keeps a shape: its record holds
+%% the values in a tuple, and objects with the same keys in the same order
+%% share the shape.
+shapes_share_test() ->
+    realm(fun() ->
+                  A = buoy_heap:new_object(?P),
+                  B = buoy_heap:new_object(?P),
+                  [buoy_heap:set(O, K, V) || O <- [A, B], {K, V} <- [{<<"x">>, 1}, {<<"y">>, 2}]],
+                  {'$o', IdA} = A,
+                  {'$o', IdB} = B,
+                  ?assertMatch({{'$shape', _, {<<"x">>, <<"y">>}, _}, ?P, 1, 2}, erlang:get(IdA)),
+                  ?assertEqual(element(1, erlang:get(IdA)), element(1, erlang:get(IdB))),
+                  buoy_heap:set(A, <<"x">>, 10),
+                  ?assertEqual(10, buoy_heap:get(A, <<"x">>)),
+                  ?assertEqual(1, buoy_heap:get(B, <<"x">>)),
+                  ?assertEqual([<<"x">>, <<"y">>], buoy_heap:own_keys(A)),
+                  ?assertEqual({data, 2, 7}, buoy_heap:get_own(A, <<"y">>)),
+                  ?assert(buoy_heap:has(A, <<"y">>)),
+                  ?assertEqual(object, buoy_heap:class_of(A)),
+                  ?assertEqual(none, buoy_heap:slots(A))
+          end).
+
+%% A delete, an accessor, an attribute, an index key, or a frozen object
+%% leaves the shape for the record of every other object, with the same
+%% properties in the same order.
+shapes_leave_test() ->
+    realm(fun() ->
+                  Changes = [fun(O) -> buoy_heap:delete(O, <<"a">>) end,
+                             fun(O) -> buoy_heap:define(O, <<"g">>, #{get => undefined, enumerable => true, configurable => true}) end,
+                             fun(O) -> buoy_heap:define(O, <<"a">>, #{enumerable => false}) end,
+                             fun(O) -> buoy_heap:set(O, 0, zero) end,
+                             fun(O) -> buoy_heap:set(O, buoy_heap:well_known(iterator), it) end,
+                             fun(O) -> buoy_heap:freeze(O) end,
+                             fun(O) -> buoy_heap:prevent_extensions(O) end],
+                  Results = [begin
+                                 O = buoy_heap:new_object(?P),
+                                 buoy_heap:set(O, <<"a">>, 1),
+                                 buoy_heap:set(O, <<"b">>, 2),
+                                 _ = Change(O),
+                                 {'$o', Id} = O,
+                                 {element(1, erlang:get(Id)), buoy_heap:own_keys(O), buoy_heap:enumerable_keys(O)}
+                             end || Change <- Changes],
+                  ?assertEqual([{object, [<<"b">>], [<<"b">>]},
+                                {object, [<<"a">>, <<"b">>, <<"g">>], [<<"a">>, <<"b">>, <<"g">>]},
+                                {object, [<<"a">>, <<"b">>], [<<"b">>]},
+                                {object, [0, <<"a">>, <<"b">>], [0, <<"a">>, <<"b">>]},
+                                {object, [<<"a">>, <<"b">>, buoy_heap:well_known(iterator)], [<<"a">>, <<"b">>]},
+                                {object, [<<"a">>, <<"b">>], [<<"a">>, <<"b">>]},
+                                {object, [<<"a">>, <<"b">>], [<<"a">>, <<"b">>]}], Results)
+          end).
+
+%% A new key of a shaped object still meets a setter or a read-only property
+%% up the prototype chain.
+shapes_inherited_setter_test() ->
+    realm(fun() ->
+                  Self = self(),
+                  Proto = buoy_heap:new_object(?P),
+                  Setter = buoy_heap:function(fun(This, [V]) -> Self ! {set, This, V}, undefined end),
+                  buoy_heap:define(Proto, <<"s">>, #{set => Setter, configurable => true}),
+                  buoy_heap:define(Proto, <<"r">>, #{value => 1, writable => false}),
+                  O = buoy_heap:new_object(Proto),
+                  buoy_heap:set(O, <<"s">>, 5),
+                  ?assertEqual(ok, receive {set, O, 5} -> ok after 0 -> missing end),
+                  ?assertError({'$throw', _}, buoy_heap:set(O, <<"r">>, 2)),
+                  ?assertEqual([], buoy_heap:own_keys(O))
+          end).
+
+%% get_slot/3 and set_slot/4 read and write the slot when the key is at the
+%% expected position, and fall back to [[Get]] and [[Set]] otherwise.
+slots_test() ->
+    realm(fun() ->
+                  O = buoy_heap:literal_shaped({<<"a">>, <<"b">>}, {'_', ?P, 1, 2}),
+                  ?assertEqual(2, buoy_heap:get_slot(O, <<"b">>, 2)),
+                  ?assertEqual(2, buoy_heap:get_slot(O, <<"b">>, 1)),
+                  ?assertEqual(2, buoy_heap:get_slot(O, <<"b">>, 9)),
+                  ?assertEqual(undefined, buoy_heap:get_slot(O, <<"c">>, 1)),
+                  ?assertEqual(3, buoy_heap:set_slot(O, <<"b">>, 3, 2)),
+                  ?assertEqual(4, buoy_heap:set_slot(O, <<"c">>, 4, 3)),
+                  ?assertEqual([<<"a">>, <<"b">>, <<"c">>], buoy_heap:own_keys(O)),
+                  ?assertEqual({3, 4}, {buoy_heap:get(O, <<"b">>), buoy_heap:get(O, <<"c">>)}),
+                  buoy_heap:delete(O, <<"a">>),
+                  ?assertEqual(3, buoy_heap:get_slot(O, <<"b">>, 2)),
+                  ?assertEqual(5, buoy_heap:set_slot(O, <<"b">>, 5, 2)),
+                  ?assertEqual(5, buoy_heap:get(O, <<"b">>)),
+                  ?assertError({'$throw', _}, buoy_heap:get_slot(undefined, <<"b">>, 1)),
+                  ?assertEqual(undefined, buoy_heap:get_slot(7, <<"b">>, 1))
+          end).
+
+%% The collector marks the values of a shaped record.
+gc_traces_shaped_values_test() ->
+    realm(fun() ->
+                  Child = buoy_heap:new_object(?P),
+                  Holder = buoy_heap:new_object(?P),
+                  [buoy_heap:set(Holder, K, Child) || K <- [<<"a">>, <<"b">>, <<"c">>, <<"d">>]],
+                  [buoy_heap:new_object(?P) || _ <- lists:seq(1, 5)],
+                  ?assertMatch(#{live := 2, freed := 5}, buoy_heap:gc([Holder])),
+                  ?assertEqual([], buoy_heap:own_keys(buoy_heap:get(Holder, <<"d">>)))
+          end).
+
+%% A shape has at most 64 keys: the next key moves the object out of shapes.
+shape_size_limit_test() ->
+    realm(fun() ->
+                  O = buoy_heap:new_object(?P),
+                  Keys = [integer_to_binary(I) || I <- lists:seq(1, 70)],
+                  Named = [<<"k", K/binary>> || K <- Keys],
+                  [buoy_heap:set(O, K, K) || K <- Named],
+                  ?assertEqual(Named, buoy_heap:own_keys(O)),
+                  ?assertEqual(<<"k70">>, buoy_heap:get(O, <<"k70">>)),
+                  {'$o', Id} = O,
+                  ?assertEqual(object, element(1, erlang:get(Id)))
+          end).

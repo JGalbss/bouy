@@ -146,7 +146,7 @@ impl<'a> Lowerer<'a, '_> {
             let key = self.fix_key(key);
             let method = self.get(object.clone(), key.clone());
             let args = self.args(&call.arguments);
-            let MemberKey::Static(key) = key else {
+            let (MemberKey::Static(key) | MemberKey::Slot(key, _)) = key else {
                 return Expr::undefined();
             };
             return self.bind(Expr::call(
@@ -157,7 +157,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         let args = self.args(&call.arguments);
         let value = match key {
-            MemberKey::Static(key) => {
+            MemberKey::Static(key) | MemberKey::Slot(key, _) => {
                 Expr::call("buoy_ref", "call_method", vec![object, key, args])
             }
             MemberKey::Dynamic(key) => {

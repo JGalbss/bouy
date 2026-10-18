@@ -23,10 +23,16 @@ query_objects(Proto) ->
         false ->
             undefined;
         true ->
-            Ids = [Id || {Id, {Class, Parent, _, _, _, _}} <- erlang:get(), is_integer(Id), is_atom(Class),
-                         Class =/= function, chain_has(Parent, Proto)],
+            Ids = [Id || {Id, R} <- erlang:get(), is_integer(Id), is_object_record(R),
+                         buoy_heap:class_of({'$o', Id}) =/= function, chain_has(element(2, R), Proto)],
             buoy_heap:new_array([{'$o', Id} || Id <- lists:sort(Ids)])
     end.
+
+%% An object record: {Class, Proto, ...} with six elements, or a shaped record
+%% (buoy_heap). A cell holds a JavaScript value, which is neither.
+is_object_record({Class, _, _, _, _, _}) when is_atom(Class) -> true;
+is_object_record(R) when is_tuple(R), tuple_size(R) >= 2, is_tuple(element(1, R)) -> element(1, element(1, R)) =:= '$shape';
+is_object_record(_) -> false.
 
 chain_has(null, _) -> false;
 chain_has(Value, Proto) ->

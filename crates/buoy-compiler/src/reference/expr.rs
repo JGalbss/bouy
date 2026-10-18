@@ -495,6 +495,7 @@ impl<'a> Lowerer<'a, '_> {
     fn member_key_of(&mut self, object: &Expr, key: MemberKey) -> MemberKey {
         match key {
             MemberKey::Static(key) => MemberKey::Static(key),
+            MemberKey::Slot(key, position) => MemberKey::Slot(key, position),
             MemberKey::Private(key) => MemberKey::Private(key),
             MemberKey::Dynamic(value) => MemberKey::Static(self.bind(Expr::call(
                 "buoy_ref",
@@ -615,7 +616,9 @@ impl<'a> Lowerer<'a, '_> {
                         ("delete", "delete_computed")
                     };
                     let value = match key {
-                        MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key]),
+                        MemberKey::Static(key) | MemberKey::Slot(key, _) => {
+                            Expr::call("buoy_ref", fixed, vec![object, key])
+                        }
                         MemberKey::Dynamic(key) => {
                             Expr::call("buoy_ref", computed, vec![object, key])
                         }

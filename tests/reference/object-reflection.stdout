@@ -5,3 +5,7 @@ TypeError
 1 true
 { base: true, a: 1, b: 2 } { k: 'v' }
 false 2
+[ 'y', 'x' ] [ 'y', 'x', 'z' ] {"y":2,"x":4} {"y":2,"x":1,"z":3}
+79 k0,k1,k2,k3,k4,k6 79
+{ the: 3, cat: 1, and: 2, hat: 1, bat: 1 } 5
+[ 'a', 'c' ] 2 [ 'a', 'b', 'c' ]

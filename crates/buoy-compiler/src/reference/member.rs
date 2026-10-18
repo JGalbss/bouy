@@ -20,6 +20,8 @@ pub enum MemberKey {
     Static(Expr),
     Dynamic(Expr),
     Private(Expr),
+    /// A static key that `layout` expects at this position of the object's shape.
+    Slot(Expr, i64),
 }
 
 /// The object of a `super.k` member expression: the prototype of the home object, read
@@ -120,10 +122,21 @@ impl<'a> Lowerer<'a, '_> {
         if member.optional {
             self.chain_guard(object.clone());
         }
-        self.get(
-            object,
-            MemberKey::Static(static_key(member.property.name.as_str())),
-        )
+        let key = self.static_member_key(&member.object, member.property.name.as_str());
+        self.get(object, key)
+    }
+
+    /// The key `o.name`: a slot when the class of `o` expects `name` at a position of
+    /// its shape (`types`).
+    fn static_member_key(&mut self, object: &'a Expression<'a>, name: &str) -> MemberKey {
+        let key = static_key(name);
+        // A string past Latin-1 is a two-byte string, which no shape holds.
+        let one_byte =
+            matches!(&key, Expr::JsString(units) if units.iter().all(|unit| *unit < 256));
+        match one_byte.then(|| self.slot_position(object, name)).flatten() {
+            Some(position) => MemberKey::Slot(key, position),
+            None => MemberKey::Static(key),
+        }
     }
 
     pub fn computed_member(&mut self, member: &'a ComputedMemberExpression<'a>) -> Expr {
@@ -171,7 +184,7 @@ impl<'a> Lowerer<'a, '_> {
     pub fn member_key(&mut self, member: &'a oxc::ast::ast::MemberExpression<'a>) -> MemberKey {
         match member {
             oxc::ast::ast::MemberExpression::StaticMemberExpression(member) => {
-                MemberKey::Static(static_key(member.property.name.as_str()))
+                self.static_member_key(&member.object, member.property.name.as_str())
             }
             oxc::ast::ast::MemberExpression::ComputedMemberExpression(member) => {
                 self.computed_key(&member.expression)
@@ -211,7 +224,7 @@ impl<'a> Lowerer<'a, '_> {
     pub fn get(&mut self, object: Expr, key: MemberKey) -> Expr {
         if let Some((base, this)) = super_parts(&object) {
             let key = match key {
-                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Static(key) | MemberKey::Private(key) | MemberKey::Slot(key, _) => key,
                 MemberKey::Dynamic(value) => Expr::call("buoy_ref", "to_property_key", vec![value]),
             };
             return self.bind(Expr::call(
@@ -222,6 +235,11 @@ impl<'a> Lowerer<'a, '_> {
         }
         let value = match key {
             MemberKey::Static(key) => Expr::call("buoy_ref", "get", vec![object, key]),
+            MemberKey::Slot(key, position) => Expr::call(
+                "buoy_heap",
+                "get_slot",
+                vec![object, key, Expr::Integer(position)],
+            ),
             MemberKey::Dynamic(key) => Expr::call("buoy_ref", "get_computed", vec![object, key]),
             MemberKey::Private(key) => {
                 Expr::call("buoy_ref_class", "private_get", vec![object, key])
@@ -239,7 +257,7 @@ impl<'a> Lowerer<'a, '_> {
         };
         if let Some((base, this)) = super_parts(&object) {
             let key = match key {
-                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Static(key) | MemberKey::Private(key) | MemberKey::Slot(key, _) => key,
                 MemberKey::Dynamic(value) => {
                     self.bind(Expr::call("buoy_ref", "to_property_key", vec![value]))
                 }
@@ -252,7 +270,14 @@ impl<'a> Lowerer<'a, '_> {
             return;
         }
         let call = match key {
-            MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key, value]),
+            MemberKey::Slot(key, position) if !self.frame.sloppy => Expr::call(
+                "buoy_heap",
+                "set_slot",
+                vec![object, key, value, Expr::Integer(position)],
+            ),
+            MemberKey::Static(key) | MemberKey::Slot(key, _) => {
+                Expr::call("buoy_ref", fixed, vec![object, key, value])
+            }
             MemberKey::Dynamic(key) => Expr::call("buoy_ref", computed, vec![object, key, value]),
             MemberKey::Private(key) => {
                 Expr::call("buoy_ref_class", "private_set", vec![object, key, value])

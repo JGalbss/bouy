@@ -171,24 +171,7 @@ impl<'a> Lowerer<'a, '_> {
     pub fn object(&mut self, object: &'a ObjectExpression<'a>) -> Expr {
         let proto = intrinsic(OBJECT_PROTO);
         if let Some(keys) = literal_keys(object) {
-            let mut entries = Vec::new();
-            for (property, key) in object.properties.iter().zip(&keys) {
-                if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    let name = Expr::js_string(key);
-                    let value = if property.method {
-                        self.method_value(&property.value, name, "method", None, property.span)
-                    } else {
-                        self.named_expr(&property.value, Some(name))
-                    };
-                    entries.push((Expr::js_string(key), value));
-                }
-            }
-            let order = keys.iter().rev().map(|key| Expr::js_string(key)).collect();
-            return self.bind(Expr::call(
-                "buoy_heap",
-                "literal",
-                vec![proto, Expr::Map(entries), Expr::List(order)],
-            ));
+            return self.known_object(object, &keys);
         }
         let target = self.bind(Expr::call("buoy_heap", "new_object", vec![proto]));
         for property in &object.properties {
@@ -260,6 +243,43 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         target
+    }
+
+    /// An object literal whose keys `literal_keys` knows, built at once: a shaped object for
+    /// at most 64 one-byte keys (`buoy_heap`), else a record with a map.
+    fn known_object(&mut self, object: &'a ObjectExpression<'a>, keys: &[String]) -> Expr {
+        let proto = intrinsic(OBJECT_PROTO);
+        let mut entries = Vec::new();
+        for (property, key) in object.properties.iter().zip(keys) {
+            if let ObjectPropertyKind::ObjectProperty(property) = property {
+                let name = Expr::js_string(key);
+                let value = if property.method {
+                    self.method_value(&property.value, name, "method", None, property.span)
+                } else {
+                    self.named_expr(&property.value, Some(name))
+                };
+                entries.push((Expr::js_string(key), value));
+            }
+        }
+        let one_byte = keys
+            .iter()
+            .all(|key| key.chars().all(|c| u32::from(c) < 256));
+        if keys.len() <= 64 && one_byte {
+            let names = keys.iter().map(|key| Expr::js_string(key)).collect();
+            let mut record = vec![Expr::atom("_"), proto];
+            record.extend(entries.into_iter().map(|(_, value)| value));
+            return self.bind(Expr::call(
+                "buoy_heap",
+                "literal_shaped",
+                vec![Expr::Tuple(names), Expr::Tuple(record)],
+            ));
+        }
+        let order = keys.iter().rev().map(|key| Expr::js_string(key)).collect();
+        self.bind(Expr::call(
+            "buoy_heap",
+            "literal",
+            vec![proto, Expr::Map(entries), Expr::List(order)],
+        ))
     }
 }
 

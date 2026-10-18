@@ -2,3 +2,7 @@
 [Bit makes a sound and barks softly] [ 'sit' ]
 true true true false
 true true
+[ 5, 14, 32 ] [ 'x', 'y', 'z', 'label' ]
+61 Pair { y: 5, x: 7 }
+50 3 [ 'x', 'y', 'extra' ]
+81 [ 'x', 'y' ]

@@ -51,7 +51,7 @@ load(?NAMESPACE = Id) ->
         Clock = buoy_ref_realm:builtin(<<"Temporal.nowNanoseconds">>, fun(_, _) -> {'$bigint', erlang:system_time(nanosecond)} end),
         Host = buoy_heap:object(?OBJECT_PROTO, [{<<"Intl">>, Intl}, {<<"nowNanoseconds">>, Clock}]),
         {'$o', Made} = Module:'__eval__'(Host, [], #{}),
-        Record = erlang:get(Made),
+        Record = buoy_heap:record({'$o', Made}),
         erlang:put(Id, Record),
         erlang:put({?MODULE, instant}, maps:get(<<"Instant">>, element(3, Record))),
         Record

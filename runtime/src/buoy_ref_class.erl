@@ -121,6 +121,12 @@ cannot_redefine(K) ->
 %% A public class field: CreateDataPropertyOrThrow.
 -spec define_field(term(), term(), term()) -> term().
 define_field(O, K, V) ->
+    case buoy_heap:add_field(O, K, V) of
+        true -> V;
+        false -> define_slow(O, K, V)
+    end.
+
+define_slow(O, K, V) ->
     case buoy_heap:get_own(O, K) of
         {data, _, Bits} when Bits band 4 =:= 0 -> cannot_define(K);
         {accessor, _, _, Bits} when Bits band 4 =:= 0 -> cannot_define(K);

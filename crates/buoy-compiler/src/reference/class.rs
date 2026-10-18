@@ -13,7 +13,7 @@ use oxc::ast::ast::{
     PropertyDefinition, PropertyDefinitionType, PropertyKey, StaticBlock,
 };
 use oxc::ast_visit::Visit;
-use oxc::semantic::SymbolId;
+use oxc::semantic::{NodeId, SymbolId};
 use oxc::span::GetSpan;
 
 use super::analyze::VarDeclarations;
@@ -182,11 +182,12 @@ impl<'a> Lowerer<'a, '_> {
             private_methods,
             static_private_methods,
         } = self.class_elements(class, &c, &proto);
-        let init = self.init_fun(&c, &proto, private_methods, instance);
+        let init = self.init_fun(&c, &proto, private_methods, instance, class.node_id.get());
         let frame = ClassFrame {
             home: proto.clone(),
             class: Some(c.clone()),
             init,
+            instance: Some(class.node_id.get()),
         };
         let construct = self.construct_fun(constructor, &frame, parent.is_some());
         self.pre.push(Expr::call(
@@ -203,11 +204,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         for element in statics {
             let this = self.fresh("This");
-            let frame = ClassFrame {
-                home: c.clone(),
-                class: Some(c.clone()),
-                init: None,
-            };
+            let frame = ClassFrame::statics(&c);
             let fun = self.class_closure(&this, frame, |me| me.deferred(&this, element));
             self.pre
                 .push(Expr::Apply(Box::new(fun), vec![Expr::var(c.clone())]));
@@ -243,8 +240,13 @@ impl<'a> Lowerer<'a, '_> {
                     {
                         continue;
                     }
-                    let home = if method.r#static { c } else { proto };
-                    if let Some(private) = self.define_method(method, home, c) {
+                    // `this` in an instance method is an instance of the class (`types`).
+                    let (home, instance) = if method.r#static {
+                        (c, None)
+                    } else {
+                        (proto, Some(class.node_id.get()))
+                    };
+                    if let Some(private) = self.define_method(method, home, c, instance) {
                         if method.r#static {
                             elements.static_private_methods.push(private);
                         } else {
@@ -387,6 +389,7 @@ impl<'a> Lowerer<'a, '_> {
         method: &'a MethodDefinition<'a>,
         home: &str,
         class: &str,
+        instance: Option<NodeId>,
     ) -> Option<Expr> {
         let private = matches!(method.key, PropertyKey::PrivateIdentifier(_));
         let key = self.property_key(&method.key, method.computed);
@@ -394,6 +397,7 @@ impl<'a> Lowerer<'a, '_> {
             home: home.to_owned(),
             class: Some(class.to_owned()),
             init: None,
+            instance,
         };
         let kind = match method.kind {
             MethodDefinitionKind::Get => "get",
@@ -436,6 +440,7 @@ impl<'a> Lowerer<'a, '_> {
         proto: &str,
         private_methods: Vec<Expr>,
         fields: Vec<Deferred<'a>>,
+        instance: NodeId,
     ) -> Option<String> {
         if private_methods.is_empty() && fields.is_empty() {
             return None;
@@ -445,6 +450,7 @@ impl<'a> Lowerer<'a, '_> {
             home: proto.to_owned(),
             class: Some(class.to_owned()),
             init: None,
+            instance: Some(instance),
         };
         let fun = self.class_closure(&this, frame, |me| {
             let mut code = Vec::new();

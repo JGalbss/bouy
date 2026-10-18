@@ -502,6 +502,7 @@ impl<'a> Lowerer<'a, '_> {
             home,
             class: None,
             init: None,
+            instance: None,
         });
         let fun = self.function_fun(function, Callee::Method(frame));
         let kind = match kind {

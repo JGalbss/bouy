@@ -492,7 +492,8 @@ keep(New, _Old) -> New.
 %% A class field: CreateDataPropertyOrThrow, which ignores setters.
 -spec define_field(term(), buoy_heap:key(), term()) -> term().
 define_field(O, K, V) ->
-    buoy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true}),
+    _ = buoy_heap:add_field(O, K, V)
+        orelse buoy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true}),
     V.
 
 %%% Literals

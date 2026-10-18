@@ -32,6 +32,22 @@
 %% array, where Elements maps each index to its value and a missing index is
 %% a hole.
 %%
+%% An ordinary object whose own properties are all writable, enumerable, and
+%% configurable data properties with string keys, and that is extensible, may
+%% have a shaped record instead (a hidden class):
+%%
+%%   {Shape, Proto, V1, ..., Vn}
+%%
+%% Shape is {'$shape', ShapeId, Keys, Index}: Keys is the tuple of its keys in
+%% insertion order, and Index maps each key to its position. The value of the
+%% key at position I is element I + 2 of the record. Every object that gains
+%% the same keys in the same order shares one shape, through the transitions
+%% that the realm keeps under {'$shape', ShapeId, Key}. Any other change, such
+%% as a delete, an accessor, or an attribute, turns the record into the one
+%% above for good, as JavaScriptCore turns a structure into a dictionary. Only
+%% this module reads a record: raw/1 gives either form, record_of/1 the one
+%% above.
+%%
 %% The heap collects garbage with gc/1, a mark and sweep that the owner runs
 %% when its stack is empty, between jobs. Every pdict entry whose key is not
 %% an integer is a root, and so is each term that the caller passes.
@@ -53,6 +69,7 @@
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
 -export([clone_out/1, clone_in/1]).
 -export([private_find/2, private_put/3, set_failed/2]).
+-export([literal_shaped/2, add_field/3, get_slot/3, set_slot/4, record/1]).
 
 -export_type([value/0, key/0, property/0]).
 
@@ -73,6 +90,13 @@
 -define(EMPTY, {object, null, #{}, [], #{}, none}).
 -define(ARRAY_PROTO, {'$o', 'Array.prototype'}).
 -define(is_obj(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
+%% A shaped record (see the top of this module); R is a record or undefined.
+-define(is_shaped(R), is_tuple(element(1, R))).
+-define(EMPTY_SHAPE, {'$shape', 0, {}, #{}}).
+%% A shape has at most this many keys, and a realm at most this many shapes.
+-define(MAX_SHAPE_KEYS, 64).
+-define(MAX_SHAPES, 10000).
+-define(SHAPES, '$buoy_shapes').
 
 %%% Allocation
 
@@ -122,7 +146,7 @@ allocated() ->
 -spec new_object(value()) -> value().
 new_object(Proto) ->
     Id = next_id(),
-    erlang:put(Id, {object, Proto, #{}, [], #{}, none}),
+    erlang:put(Id, {?EMPTY_SHAPE, Proto}),
     {'$o', Id}.
 
 %% An object from {Key, Value} pairs in source order. A repeated key keeps its
@@ -141,6 +165,124 @@ literal(Proto, Props, Keys) ->
     Id = next_id(),
     erlang:put(Id, {object, Proto, Props, Keys, #{}, none}),
     {'$o', Id}.
+
+%% An object literal whose keys the compiler knows: Keys is the tuple of its
+%% keys in order, and Record is {_, Proto, V1, ..., Vn}, the shaped record but
+%% for its shape.
+-spec literal_shaped(tuple(), tuple()) -> value().
+literal_shaped(Keys, Record) ->
+    Id = next_id(),
+    case shape_of(Keys) of
+        none ->
+            [_, Proto | Values] = tuple_to_list(Record),
+            List = tuple_to_list(Keys),
+            erlang:put(Id, {object, Proto, maps:from_list(lists:zip(List, Values)), lists:reverse(List), #{}, none});
+        Shape ->
+            erlang:put(Id, setelement(1, Record, Shape))
+    end,
+    {'$o', Id}.
+
+%%% Shapes
+
+%% The shape with the keys Keys, from the empty shape, or none past the limits.
+shape_of(Keys) ->
+    case erlang:get({?SHAPES, Keys}) of
+        undefined ->
+            Shape = lists:foldl(fun(K, S) when is_tuple(S) -> next_shape(S, K); (_, none) -> none end,
+                                ?EMPTY_SHAPE, tuple_to_list(Keys)),
+            is_tuple(Shape) andalso erlang:put({?SHAPES, Keys}, Shape),
+            Shape;
+        Shape ->
+            Shape
+    end.
+
+%% The shape of Shape with the new key K appended, or none: K is not a string
+%% key, or the shape or the realm has no room.
+next_shape({'$shape', Id, Keys, Index}, K) when is_binary(K), tuple_size(Keys) < ?MAX_SHAPE_KEYS ->
+    case erlang:get({'$shape', Id, K}) of
+        undefined -> new_shape(Id, Keys, Index, K);
+        Shape -> Shape
+    end;
+next_shape(_Shape, _K) ->
+    none.
+
+new_shape(Parent, Keys, Index, K) ->
+    case erlang:get(?SHAPES) of
+        Count when is_integer(Count), Count >= ?MAX_SHAPES ->
+            none;
+        Count ->
+            Next = case Count of
+                undefined -> 1;
+                _ -> Count + 1
+            end,
+            erlang:put(?SHAPES, Next),
+            Shape = {'$shape', Next, erlang:append_element(Keys, K), Index#{K => tuple_size(Keys) + 1}},
+            erlang:put({'$shape', Parent, K}, Shape),
+            Shape
+    end.
+
+%% The record of a shaped object in the form of every other object.
+expand(R) when ?is_shaped(R) ->
+    [{'$shape', _, Keys, _}, Proto | Values] = tuple_to_list(R),
+    List = tuple_to_list(Keys),
+    {object, Proto, maps:from_list(lists:zip(List, Values)), lists:reverse(List), #{}, none};
+expand(R) ->
+    R.
+
+%% The own property K of a shaped record: its value, or none.
+shaped_value(R, K) ->
+    case element(4, element(1, R)) of
+        #{K := I} -> {data, element(I + 2, R), ?ALL};
+        _ -> none
+    end.
+
+%% A read of `o.k`, where the compiler expects the key K at position I of a
+%% shaped object. Any other object or position takes the ordinary [[Get]].
+-spec get_slot(value(), key(), pos_integer()) -> value().
+get_slot({'$o', Id} = O, K, I) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R), element(I, element(3, element(1, R))) =:= K -> element(I + 2, R);
+        _ -> buoy_ref:get(O, K)
+    end;
+get_slot(O, K, _I) ->
+    buoy_ref:get(O, K).
+
+%% A write of `o.k = v`, with the same expectation as get_slot/3.
+-spec set_slot(value(), key(), value(), pos_integer()) -> value().
+set_slot({'$o', Id} = O, K, V, I) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R), element(I, element(3, element(1, R))) =:= K ->
+            erlang:put(Id, setelement(I + 2, R, V)),
+            V;
+        _ ->
+            buoy_ref:set(O, K, V)
+    end;
+set_slot(O, K, V, _I) ->
+    buoy_ref:set(O, K, V).
+
+%% CreateDataProperty of a class field or an object literal on a shaped object
+%% that lacks K or has it: true when done, false when the caller must take the
+%% ordinary path.
+-spec add_field(value(), key(), value()) -> boolean().
+add_field({'$o', Id}, K, V) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R) ->
+            Shape = element(1, R),
+            case element(4, Shape) of
+                #{K := I} ->
+                    erlang:put(Id, setelement(I + 2, R, V)),
+                    true;
+                _ ->
+                    case next_shape(Shape, K) of
+                        none -> false;
+                        Next -> erlang:put(Id, erlang:append_element(setelement(1, R, Next), V)), true
+                    end
+            end;
+        _ ->
+            false
+    end;
+add_field(_O, _K, _V) ->
+    false.
 
 -spec new_array([value()]) -> value().
 new_array(Items) -> new_array(Items, intrinsic('Array.prototype')).
@@ -350,6 +492,11 @@ get({'$f', Id, _} = F, K, Receiver) ->
         R -> from_record(R, K, Receiver)
     end.
 
+from_record(R, K, Receiver) when ?is_shaped(R) ->
+    case element(4, element(1, R)) of
+        #{K := I} -> element(I + 2, R);
+        _ -> inherited(element(2, R), K, Receiver)
+    end;
 from_record({array, Proto, _, _, _, {_, Elements}}, K, Receiver) when is_integer(K) ->
     case Elements of
         #{K := {'$accessor', _, _} = A} -> resolve(A, Receiver);
@@ -422,6 +569,15 @@ sloppy_set(O, K, V) -> assign(O, K, V, sloppy).
 
 assign({'$o', Id} = O, K, V, Mode) ->
     case erlang:get(Id) of
+        R when ?is_shaped(R) ->
+            Shape = element(1, R),
+            case element(4, Shape) of
+                #{K := I} ->
+                    erlang:put(Id, setelement(I + 2, R, V)),
+                    V;
+                _ ->
+                    add_shaped(Id, R, Shape, K, V, O, Mode)
+            end;
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K), map_size(Attrs) =:= 0 ->
             case Elements of
                 #{K := {'$accessor', _, _}} ->
@@ -491,6 +647,25 @@ assign({'$f', Id, _} = F, K, V, Mode) ->
             strict_set(F, K, V, Mode)
     end.
 
+%% A new own key K of a shaped object: as add/6, and the object keeps a shape
+%% when there is one for K.
+add_shaped(Id, R, Shape, K, V, O, Mode) ->
+    case inherited_setter(element(2, R), K) of
+        none ->
+            case next_shape(Shape, K) of
+                none ->
+                    {Class, P, Props, Keys, Attrs, Slots} = expand(R),
+                    erlang:put(Id, {Class, P, Props#{K => V}, add_key(K, Props, Keys), Attrs, Slots});
+                Next ->
+                    erlang:put(Id, erlang:append_element(setelement(1, R, Next), V))
+            end,
+            V;
+        {setter, Setter} ->
+            call_setter(Setter, O, K, V, Mode);
+        _ ->
+            strict_set(O, K, V, Mode)
+    end.
+
 %% A new own key K: a setter or a read-only property up the prototype chain
 %% decides, else the object must be extensible.
 add(Id, {Class, P, Props, Keys, Attrs, Slots}, K, V, O, Mode) ->
@@ -521,7 +696,12 @@ call_setter(Setter, O, _K, V, _Mode) ->
 inherited_setter(null, _K) ->
     none;
 inherited_setter(P, K) ->
-    case record_of(P) of
+    case raw(P) of
+        R when ?is_shaped(R) ->
+            case element(4, element(1, R)) of
+                #{K := _} -> none;
+                _ -> inherited_setter(element(2, R), K)
+            end;
         {proxy, _, _, _, _, _} -> slow;
         {typed_array, _, _, _, _, _} -> slow;
         {array, _, _, _, _, _} when K =:= <<"length">> -> slow;
@@ -575,7 +755,7 @@ find_property(O, K) ->
 %% [[Set]] (OrdinarySet, §10.1.9): true when the write happened.
 -spec set(value(), key(), value(), value()) -> boolean().
 set(O, K, V, Receiver) ->
-    case record_of(O) of
+    case raw(O) of
         {proxy, _, _, _, _, _} when element(1, K) =:= '#' ->
             put_own(O, K, V, ?ALL),
             true;
@@ -669,7 +849,7 @@ resize(_, NewLength) ->
 %% [[HasProperty]]: the `in` operator.
 -spec has(value(), key()) -> boolean().
 has(O, K) ->
-    case record_of(O) of
+    case raw(O) of
         {proxy, _, _, _, _, Handler} ->
             buoy_ref_proxy:has(Handler, K);
         %% [[HasProperty]] of a namespace does not read the binding.
@@ -736,7 +916,7 @@ ordinary_delete(O, R, K) ->
 
 remove_own(O, K) ->
     Id = id_for_write(O),
-    case erlang:get(Id) of
+    case expand(erlang:get(Id)) of
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K) ->
             erlang:put(Id, {array, P, Props, Keys, maps:remove(K, Attrs), {Length, maps:remove(K, Elements)}});
         {arguments, P, Props, Keys, Attrs, Map} when is_map(Map) ->
@@ -781,7 +961,8 @@ receiver_name(O, Depth) ->
 %% length is its first string key. Private names are not keys.
 -spec own_keys(value()) -> [key()].
 own_keys(O) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) -> tuple_to_list(element(3, element(1, R)));
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:own_keys(Handler);
         {deferred_namespace, _, _, _, _, M} = R -> ok = buoy_module:ensure_deferred(M), record_keys(R);
         {typed_array, _, _, _, _, _} = R -> buoy_ref_typed_array:index_keys(O) ++ record_keys(R);
@@ -802,7 +983,9 @@ record_keys({Class, _, Props, Keys, _, Slots}) ->
 %% The enumerable own string keys, for Object.keys, for-in, spread, and JSON.
 -spec enumerable_keys(value()) -> [key()].
 enumerable_keys(O) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) ->
+            tuple_to_list(element(3, element(1, R)));
         {proxy, _, _, _, _, _} ->
             [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), is_enumerable(get_own(O, K))];
         %% Each key of a namespace reads its binding, as [[GetOwnProperty]] does.
@@ -958,9 +1141,17 @@ is_accessor_descriptor(Desc) -> is_map_key(get, Desc) orelse is_map_key(set, Des
 is_data_descriptor(Desc) -> is_map_key(value, Desc) orelse is_map_key(writable, Desc).
 
 %% Writes the own property K with its value or accessor and its bits.
+put_own(O, K, Slot, ?ALL) when is_binary(K), not (is_tuple(Slot) andalso tuple_size(Slot) =:= 3 andalso element(1, Slot) =:= '$accessor') ->
+    case add_field(O, K, Slot) of
+        true -> ok;
+        false -> put_classic(O, K, Slot, ?ALL)
+    end;
 put_own(O, K, Slot, Bits) ->
+    put_classic(O, K, Slot, Bits).
+
+put_classic(O, K, Slot, Bits) ->
     Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    {Class, P, Props, Keys, Attrs, Slots} = expand(erlang:get(Id)),
     case Class of
         array when is_integer(K) ->
             {Length, Elements} = Slots,
@@ -1059,7 +1250,8 @@ unmap(O, K) ->
 %% [[GetOwnProperty]]: {data, Value, Bits}, {accessor, Get, Set, Bits}, or none.
 -spec get_own(value(), key()) -> property().
 get_own(O, K) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) -> shaped_value(R, K);
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:get_own_property(Handler, K);
         {deferred_namespace, _, _, _, _, M} = R ->
             case deferred_key(M, K) of
@@ -1078,6 +1270,8 @@ get_own(O, K) ->
         R -> own_of(R, K)
     end.
 
+own_of(R, K) when ?is_shaped(R) ->
+    shaped_value(R, K);
 own_of({array, _, _, _, Attrs, {_, Elements}}, K) when is_integer(K) ->
     found(maps:find(K, Elements), own_bits(K, Attrs));
 own_of({array, _, _, _, Attrs, {Length, _}}, <<"length">>) ->
@@ -1100,7 +1294,7 @@ found(error, _Bits) -> none.
 %% [[GetPrototypeOf]].
 -spec prototype_of(value()) -> value().
 prototype_of(O) ->
-    case record_of(O) of
+    case raw(O) of
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:get_prototype_of(Handler);
         R -> element(2, R)
     end.
@@ -1138,7 +1332,7 @@ immutable_prototype(_) -> false.
 in_chain(null, _O) -> false;
 in_chain(O, O) -> true;
 in_chain(P, O) ->
-    case record_of(P) of
+    case raw(P) of
         {proxy, _, _, _, _, _} -> false;
         R -> in_chain(element(2, R), O)
     end.
@@ -1146,7 +1340,8 @@ in_chain(P, O) ->
 %% [[IsExtensible]].
 -spec is_extensible(value()) -> boolean().
 is_extensible(O) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) -> true;
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:is_extensible(Handler);
         {_, _, _, _, Attrs, _} -> extensible(Attrs)
     end.
@@ -1166,7 +1361,7 @@ prevent_extensions(O) ->
 
 ordinary_prevent_extensions(O) ->
     Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    {Class, P, Props, Keys, Attrs, Slots} = expand(erlang:get(Id)),
     erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
     true.
 
@@ -1177,7 +1372,7 @@ freeze(O) ->
     class_of(O) =:= namespace andalso own_keys(O) =/= [] andalso
         throw_error('TypeError', <<"Cannot freeze a module namespace object">>),
     Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    {Class, P, Props, Keys, Attrs, Slots} = expand(erlang:get(Id)),
     erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$frozen' => true}, Slots}),
     O.
 
@@ -1199,10 +1394,18 @@ private_put(O, P, Slot) ->
     ok.
 
 -spec class_of(value()) -> atom().
-class_of(O) -> element(1, record_of(O)).
+class_of(O) ->
+    case raw(O) of
+        R when ?is_shaped(R) -> object;
+        R -> element(1, R)
+    end.
 
 -spec slots(value()) -> term().
-slots(O) -> element(6, record_of(O)).
+slots(O) ->
+    case raw(O) of
+        R when ?is_shaped(R) -> none;
+        R -> element(6, R)
+    end.
 
 -spec set_slots(value(), term()) -> ok.
 set_slots(O, Slots) ->
@@ -1219,12 +1422,19 @@ is_object(_) -> false.
 is_callable({'$f', _, _}) -> true;
 is_callable(_) -> false.
 
-record_of({'$o', Id} = O) ->
+%% The record of an object, in the form of a record that has no shape.
+-spec record(value()) -> tuple().
+record(O) -> record_of(O).
+
+record_of(O) -> expand(raw(O)).
+
+%% The record of an object as it is: shaped or not.
+raw({'$o', Id} = O) ->
     case erlang:get(Id) of
         undefined -> intrinsic_record(Id, O);
         R -> R
     end;
-record_of({'$f', _, _} = F) ->
+raw({'$f', _, _} = F) ->
     fn_record(F).
 
 fn_record({'$f', Id, _} = F) ->
@@ -1549,6 +1759,9 @@ mark([_ | Rest], Chunks, Live, Weak) ->
 %% The terms of a record that can hold references: the prototype, the
 %% values, and the slots. Keys and attributes hold none. A weak container
 %% gives only what it holds strongly: a registry's callback and held values.
+record_terms(R, _Id, Rest, Weak) when ?is_shaped(R) ->
+    [_ | Terms] = tuple_to_list(R),
+    {Terms ++ Rest, Weak};
 record_terms({Class, Proto, Props, _, _, Slots}, Id, Rest, Weak)
   when Class =:= weakmap; Class =:= weakset; Class =:= weak_ref; Class =:= finalization_registry ->
     Strong = case {Class, Slots} of
