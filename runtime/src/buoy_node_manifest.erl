@@ -2,13 +2,14 @@
 %% `cargo run --release -p buoy-suites -- node-bindings`.
 %%
 %% The functions and classes that src/ of Node v25.9.0 sets on each binding object
-%% on every platform. buoy_node:binding/1 gives a binding a stub that throws
+%% on every platform, each class with the methods of its prototype.
+%% buoy_node:binding/1 gives a binding a stub that throws
 %% ERR_BUOY_NOT_IMPLEMENTED for each one that it lacks.
 -module(buoy_node_manifest).
 
 -export([members/1]).
 
--spec members(binary()) -> [{binary(), function | class}].
+-spec members(binary()) -> [{binary(), function | {class, [binary()]}}].
 members(<<"async_wrap">>) ->
     [{<<"clearAsyncIdStack">>, function},
      {<<"executionAsyncResource">>, function},
@@ -28,8 +29,8 @@ members(<<"blob">>) ->
      {<<"revokeObjectURL">>, function},
      {<<"storeDataObject">>, function}];
 members(<<"block_list">>) ->
-    [{<<"BlockList">>, class},
-     {<<"SocketAddress">>, class}];
+    [{<<"BlockList">>, {class, []}},
+     {<<"SocketAddress">>, {class, []}}];
 members(<<"buffer">>) ->
     [{<<"asciiSlice">>, function},
      {<<"asciiWriteStatic">>, function},
@@ -71,10 +72,10 @@ members(<<"builtins">>) ->
      {<<"importBuiltinSourceTextModule">>, function},
      {<<"setInternalLoaders">>, function}];
 members(<<"cares_wrap">>) ->
-    [{<<"ChannelWrap">>, class},
-     {<<"GetAddrInfoReqWrap">>, class},
-     {<<"GetNameInfoReqWrap">>, class},
-     {<<"QueryReqWrap">>, class},
+    [{<<"ChannelWrap">>, {class, [<<"cancel">>, <<"getHostByAddr">>, <<"getServers">>, <<"queryA">>, <<"queryAaaa">>, <<"queryAny">>, <<"queryCaa">>, <<"queryCname">>, <<"queryMx">>, <<"queryNaptr">>, <<"queryNs">>, <<"queryPtr">>, <<"querySoa">>, <<"querySrv">>, <<"queryTlsa">>, <<"queryTxt">>, <<"setLocalAddress">>, <<"setServers">>]}},
+     {<<"GetAddrInfoReqWrap">>, {class, []}},
+     {<<"GetNameInfoReqWrap">>, {class, []}},
+     {<<"QueryReqWrap">>, {class, []}},
      {<<"canonicalizeIP">>, function},
      {<<"convertIpv6StringToBuffer">>, function},
      {<<"getaddrinfo">>, function},
@@ -85,7 +86,7 @@ members(<<"cjs_lexer">>) ->
 members(<<"config">>) ->
     [{<<"getDefaultLocale">>, function}];
 members(<<"contextify">>) ->
-    [{<<"ContextifyScript">>, class},
+    [{<<"ContextifyScript">>, {class, [<<"createCachedData">>, <<"runInContext">>]}},
      {<<"compileFunction">>, function},
      {<<"compileFunctionForCJSLoader">>, function},
      {<<"containsModuleSyntax">>, function},
@@ -98,43 +99,43 @@ members(<<"credentials">>) ->
     [{<<"getTempDir">>, function},
      {<<"safeGetenv">>, function}];
 members(<<"crypto">>) ->
-    [{<<"AESCipherJob">>, class},
-     {<<"Argon2Job">>, class},
-     {<<"ChaCha20Poly1305CipherJob">>, class},
-     {<<"CheckPrimeJob">>, class},
-     {<<"CipherBase">>, class},
-     {<<"DHBitsJob">>, class},
-     {<<"DHKeyExportJob">>, class},
-     {<<"DhKeyPairGenJob">>, class},
-     {<<"DsaKeyPairGenJob">>, class},
-     {<<"ECDH">>, class},
-     {<<"ECDHBitsJob">>, class},
+    [{<<"AESCipherJob">>, {class, [<<"run">>]}},
+     {<<"Argon2Job">>, {class, [<<"run">>]}},
+     {<<"ChaCha20Poly1305CipherJob">>, {class, [<<"run">>]}},
+     {<<"CheckPrimeJob">>, {class, [<<"run">>]}},
+     {<<"CipherBase">>, {class, [<<"final">>, <<"getAuthTag">>, <<"setAAD">>, <<"setAuthTag">>, <<"setAutoPadding">>, <<"update">>]}},
+     {<<"DHBitsJob">>, {class, [<<"run">>]}},
+     {<<"DHKeyExportJob">>, {class, [<<"run">>]}},
+     {<<"DhKeyPairGenJob">>, {class, [<<"run">>]}},
+     {<<"DsaKeyPairGenJob">>, {class, [<<"run">>]}},
+     {<<"ECDH">>, {class, [<<"computeSecret">>, <<"generateKeys">>, <<"getPrivateKey">>, <<"getPublicKey">>, <<"setPrivateKey">>, <<"setPublicKey">>]}},
+     {<<"ECDHBitsJob">>, {class, [<<"run">>]}},
      {<<"ECDHConvertKey">>, function},
-     {<<"ECKeyExportJob">>, class},
-     {<<"EcKeyPairGenJob">>, class},
-     {<<"HKDFJob">>, class},
-     {<<"Hash">>, class},
-     {<<"HashJob">>, class},
-     {<<"Hmac">>, class},
-     {<<"HmacJob">>, class},
-     {<<"KEMDecapsulateJob">>, class},
-     {<<"KEMEncapsulateJob">>, class},
-     {<<"KangarooTwelveJob">>, class},
-     {<<"KmacJob">>, class},
-     {<<"NidKeyPairGenJob">>, class},
-     {<<"PBKDF2Job">>, class},
-     {<<"RSACipherJob">>, class},
-     {<<"RSAKeyExportJob">>, class},
-     {<<"RandomBytesJob">>, class},
-     {<<"RandomPrimeJob">>, class},
-     {<<"RsaKeyPairGenJob">>, class},
-     {<<"ScryptJob">>, class},
-     {<<"SecretKeyGenJob">>, class},
-     {<<"SecureContext">>, class},
-     {<<"Sign">>, class},
-     {<<"SignJob">>, class},
-     {<<"TurboShakeJob">>, class},
-     {<<"Verify">>, class},
+     {<<"ECKeyExportJob">>, {class, [<<"run">>]}},
+     {<<"EcKeyPairGenJob">>, {class, [<<"run">>]}},
+     {<<"HKDFJob">>, {class, [<<"run">>]}},
+     {<<"Hash">>, {class, [<<"digest">>, <<"update">>]}},
+     {<<"HashJob">>, {class, [<<"run">>]}},
+     {<<"Hmac">>, {class, [<<"digest">>, <<"init">>, <<"update">>]}},
+     {<<"HmacJob">>, {class, [<<"run">>]}},
+     {<<"KEMDecapsulateJob">>, {class, [<<"run">>]}},
+     {<<"KEMEncapsulateJob">>, {class, [<<"run">>]}},
+     {<<"KangarooTwelveJob">>, {class, [<<"run">>]}},
+     {<<"KmacJob">>, {class, [<<"run">>]}},
+     {<<"NidKeyPairGenJob">>, {class, [<<"run">>]}},
+     {<<"PBKDF2Job">>, {class, [<<"run">>]}},
+     {<<"RSACipherJob">>, {class, [<<"run">>]}},
+     {<<"RSAKeyExportJob">>, {class, [<<"run">>]}},
+     {<<"RandomBytesJob">>, {class, [<<"run">>]}},
+     {<<"RandomPrimeJob">>, {class, [<<"run">>]}},
+     {<<"RsaKeyPairGenJob">>, {class, [<<"run">>]}},
+     {<<"ScryptJob">>, {class, [<<"run">>]}},
+     {<<"SecretKeyGenJob">>, {class, [<<"run">>]}},
+     {<<"SecureContext">>, {class, []}},
+     {<<"Sign">>, {class, [<<"init">>, <<"sign">>, <<"update">>]}},
+     {<<"SignJob">>, {class, [<<"run">>]}},
+     {<<"TurboShakeJob">>, {class, [<<"run">>]}},
+     {<<"Verify">>, {class, [<<"init">>, <<"update">>, <<"verify">>]}},
      {<<"certExportChallenge">>, function},
      {<<"certExportPublicKey">>, function},
      {<<"certVerifySpkac">>, function},
@@ -183,9 +184,9 @@ members(<<"errors">>) ->
      {<<"setSourceMapsEnabled">>, function},
      {<<"triggerUncaughtException">>, function}];
 members(<<"fs">>) ->
-    [{<<"FSReqCallback">>, class},
-     {<<"FileHandle">>, class},
-     {<<"StatWatcher">>, class},
+    [{<<"FSReqCallback">>, {class, []}},
+     {<<"FileHandle">>, {class, [<<"close">>, <<"closeSync">>, <<"releaseFD">>]}},
+     {<<"StatWatcher">>, {class, [<<"start">>]}},
      {<<"access">>, function},
      {<<"chmod">>, function},
      {<<"chown">>, function},
@@ -232,25 +233,25 @@ members(<<"fs">>) ->
      {<<"writeFileUtf8">>, function},
      {<<"writeString">>, function}];
 members(<<"fs_dir">>) ->
-    [{<<"DirHandle">>, class},
+    [{<<"DirHandle">>, {class, [<<"close">>, <<"read">>]}},
      {<<"opendir">>, function},
      {<<"opendirSync">>, function}];
 members(<<"fs_event_wrap">>) ->
-    [{<<"FSEvent">>, class}];
+    [{<<"FSEvent">>, {class, [<<"start">>]}}];
 members(<<"heap_utils">>) ->
     [{<<"buildEmbedderGraph">>, function},
      {<<"createHeapSnapshotStream">>, function},
      {<<"triggerHeapSnapshot">>, function}];
 members(<<"http2">>) ->
-    [{<<"Http2Session">>, class},
-     {<<"Http2Stream">>, class},
+    [{<<"Http2Session">>, {class, [<<"altsvc">>, <<"consume">>, <<"destroy">>, <<"goaway">>, <<"hasPendingData">>, <<"localSettings">>, <<"origin">>, <<"ping">>, <<"receive">>, <<"refreshState">>, <<"remoteSettings">>, <<"request">>, <<"setGracefulClose">>, <<"setLocalWindowSize">>, <<"setNextStreamID">>, <<"settings">>, <<"updateChunksSent">>]}},
+     {<<"Http2Stream">>, {class, [<<"destroy">>, <<"id">>, <<"info">>, <<"priority">>, <<"pushPromise">>, <<"refreshState">>, <<"respond">>, <<"rstStream">>, <<"trailers">>]}},
      {<<"nghttp2ErrorString">>, function},
      {<<"packSettings">>, function},
      {<<"refreshDefaultSettings">>, function},
      {<<"setCallbackFunctions">>, function}];
 members(<<"http_parser">>) ->
-    [{<<"ConnectionsList">>, class},
-     {<<"HTTPParser">>, class}];
+    [{<<"ConnectionsList">>, {class, [<<"active">>, <<"all">>, <<"expired">>, <<"idle">>]}},
+     {<<"HTTPParser">>, {class, [<<"close">>, <<"consume">>, <<"execute">>, <<"finish">>, <<"free">>, <<"getCurrentBuffer">>, <<"initialize">>, <<"pause">>, <<"remove">>, <<"resume">>, <<"unconsume">>]}}];
 members(<<"icu">>) ->
     [{<<"decode">>, function},
      {<<"getConverter">>, function},
@@ -264,7 +265,7 @@ members(<<"inspector">>) ->
      {<<"asyncTaskScheduled">>, function},
      {<<"asyncTaskStarted">>, function},
      {<<"callAndPauseOnStart">>, function},
-     {<<"consoleCall">>, class},
+     {<<"consoleCall">>, {class, []}},
      {<<"emitProtocolEvent">>, function},
      {<<"isEnabled">>, function},
      {<<"open">>, function},
@@ -277,15 +278,15 @@ members(<<"inspector">>) ->
 members(<<"internal_only_v8">>) ->
     [{<<"queryObjects">>, function}];
 members(<<"js_stream">>) ->
-    [{<<"JSStream">>, class}];
+    [{<<"JSStream">>, {class, [<<"emitEOF">>, <<"finishShutdown">>, <<"finishWrite">>, <<"readBuffer">>]}}];
 members(<<"js_udp_wrap">>) ->
-    [{<<"JSUDPWrap">>, class}];
+    [{<<"JSUDPWrap">>, {class, [<<"emitReceived">>, <<"onAfterBind">>, <<"onSendDone">>, <<"recvStart">>, <<"recvStop">>]}}];
 members(<<"locks">>) ->
     [{<<"query">>, function},
      {<<"request">>, function}];
 members(<<"messaging">>) ->
-    [{<<"MessageChannel">>, class},
-     {<<"MessagePort">>, class},
+    [{<<"MessageChannel">>, {class, []}},
+     {<<"MessagePort">>, {class, []}},
      {<<"broadcastChannel">>, function},
      {<<"drainMessagePort">>, function},
      {<<"exposeLazyDOMExceptionProperty">>, function},
@@ -301,7 +302,7 @@ members(<<"mksnapshot">>) ->
      {<<"setDeserializeMainFunction">>, function},
      {<<"setSerializeCallback">>, function}];
 members(<<"module_wrap">>) ->
-    [{<<"ModuleWrap">>, class},
+    [{<<"ModuleWrap">>, {class, [<<"createCachedData">>, <<"evaluate">>, <<"evaluateSync">>, <<"getError">>, <<"getModuleRequests">>, <<"getModuleSourceObject">>, <<"getNamespace">>, <<"getStatus">>, <<"instantiate">>, <<"link">>, <<"setExport">>, <<"setModuleSourceObject">>]}},
      {<<"createRequiredModuleFacade">>, function},
      {<<"setImportMetaResolveInitializer">>, function},
      {<<"setImportModuleDynamicallyCallback">>, function},
@@ -340,7 +341,7 @@ members(<<"os">>) ->
      {<<"getUserInfo">>, function},
      {<<"setPriority">>, function}];
 members(<<"performance">>) ->
-    [{<<"Histogram">>, class},
+    [{<<"Histogram">>, {class, []}},
      {<<"createELDHistogram">>, function},
      {<<"installGarbageCollectionTracking">>, function},
      {<<"loopIdleTime">>, function},
@@ -353,8 +354,8 @@ members(<<"performance">>) ->
 members(<<"permission">>) ->
     [{<<"has">>, function}];
 members(<<"pipe_wrap">>) ->
-    [{<<"Pipe">>, class},
-     {<<"PipeConnectWrap">>, class}];
+    [{<<"Pipe">>, {class, [<<"bind">>, <<"connect">>, <<"fchmod">>, <<"listen">>, <<"open">>, <<"setPendingInstances">>]}},
+     {<<"PipeConnectWrap">>, {class, []}}];
 members(<<"process_methods">>) ->
     [{<<"_debugEnd">>, function},
      {<<"_debugProcess">>, function},
@@ -384,7 +385,7 @@ members(<<"process_methods">>) ->
      {<<"umask">>, function},
      {<<"uptime">>, function}];
 members(<<"process_wrap">>) ->
-    [{<<"Process">>, class}];
+    [{<<"Process">>, {class, [<<"kill">>, <<"spawn">>]}}];
 members(<<"profiler">>) ->
     [{<<"endCoverage">>, function},
      {<<"setCoverageDirectory">>, function},
@@ -392,8 +393,8 @@ members(<<"profiler">>) ->
      {<<"stopCoverage">>, function},
      {<<"takeCoverage">>, function}];
 members(<<"quic">>) ->
-    [{<<"Endpoint">>, class},
-     {<<"Http3Application">>, class},
+    [{<<"Endpoint">>, {class, []}},
+     {<<"Http3Application">>, {class, []}},
      {<<"flushPacketFreelist">>, function},
      {<<"setCallbacks">>, function}];
 members(<<"report">>) ->
@@ -423,21 +424,21 @@ members(<<"sea">>) ->
      {<<"isExperimentalSeaWarningNeeded">>, function},
      {<<"isSea">>, function}];
 members(<<"serdes">>) ->
-    [{<<"Deserializer">>, class},
-     {<<"Serializer">>, class}];
+    [{<<"Deserializer">>, {class, [<<"_readRawBytes">>, <<"getWireFormatVersion">>, <<"readDouble">>, <<"readHeader">>, <<"readUint32">>, <<"readUint64">>, <<"readValue">>, <<"transferArrayBuffer">>]}},
+     {<<"Serializer">>, {class, [<<"_setTreatArrayBufferViewsAsHostObjects">>, <<"releaseBuffer">>, <<"transferArrayBuffer">>, <<"writeDouble">>, <<"writeHeader">>, <<"writeRawBytes">>, <<"writeUint32">>, <<"writeUint64">>, <<"writeValue">>]}}];
 members(<<"signal_wrap">>) ->
-    [{<<"Signal">>, class}];
+    [{<<"Signal">>, {class, [<<"start">>, <<"stop">>]}}];
 members(<<"spawn_sync">>) ->
     [{<<"spawn">>, function}];
 members(<<"sqlite">>) ->
-    [{<<"DatabaseSync">>, class},
-     {<<"Session">>, class},
-     {<<"StatementSync">>, class}];
+    [{<<"DatabaseSync">>, {class, [<<"aggregate">>, <<"applyChangeset">>, <<"close">>, <<"createSession">>, <<"createTagStore">>, <<"enableDefensive">>, <<"enableLoadExtension">>, <<"exec">>, <<"function">>, <<"loadExtension">>, <<"location">>, <<"open">>, <<"prepare">>, <<"setAuthorizer">>]}},
+     {<<"Session">>, {class, []}},
+     {<<"StatementSync">>, {class, []}}];
 members(<<"stream_pipe">>) ->
-    [{<<"StreamPipe">>, class}];
+    [{<<"StreamPipe">>, {class, [<<"isClosed">>, <<"pendingWrites">>, <<"start">>, <<"unpipe">>]}}];
 members(<<"stream_wrap">>) ->
-    [{<<"ShutdownWrap">>, class},
-     {<<"WriteWrap">>, class}];
+    [{<<"ShutdownWrap">>, {class, []}},
+     {<<"WriteWrap">>, {class, []}}];
 members(<<"string_decoder">>) ->
     [{<<"decode">>, function},
      {<<"flush">>, function}];
@@ -447,8 +448,8 @@ members(<<"task_queue">>) ->
      {<<"setPromiseRejectCallback">>, function},
      {<<"setTickCallback">>, function}];
 members(<<"tcp_wrap">>) ->
-    [{<<"TCP">>, class},
-     {<<"TCPConnectWrap">>, class}];
+    [{<<"TCP">>, {class, [<<"bind">>, <<"bind6">>, <<"connect">>, <<"connect6">>, <<"getTypeOfService">>, <<"getpeername">>, <<"getsockname">>, <<"listen">>, <<"open">>, <<"reset">>, <<"setKeepAlive">>, <<"setNoDelay">>, <<"setSimultaneousAccepts">>, <<"setTypeOfService">>]}},
+     {<<"TCPConnectWrap">>, {class, []}}];
 members(<<"timers">>) ->
     [{<<"getLibuvNow">>, function},
      {<<"scheduleTimer">>, function},
@@ -458,12 +459,13 @@ members(<<"timers">>) ->
 members(<<"tls_wrap">>) ->
     [{<<"wrap">>, function}];
 members(<<"trace_events">>) ->
-    [{<<"CategorySet">>, class},
+    [{<<"CategorySet">>, {class, [<<"disable">>, <<"enable">>]}},
      {<<"getCategoryEnabledBuffer">>, function},
      {<<"getEnabledCategories">>, function},
      {<<"setTraceCategoryStateUpdateHandler">>, function}];
 members(<<"tty_wrap">>) ->
-    [{<<"isTTY">>, function}];
+    [{<<"TTY">>, {class, [<<"getWindowSize">>, <<"setRawMode">>]}},
+     {<<"isTTY">>, function}];
 members(<<"types">>) ->
     [{<<"isAnyArrayBuffer">>, function},
      {<<"isArgumentsObject">>, function},
@@ -493,8 +495,8 @@ members(<<"types">>) ->
      {<<"isWeakMap">>, function},
      {<<"isWeakSet">>, function}];
 members(<<"udp_wrap">>) ->
-    [{<<"SendWrap">>, class},
-     {<<"UDP">>, class}];
+    [{<<"SendWrap">>, {class, []}},
+     {<<"UDP">>, {class, [<<"addMembership">>, <<"addSourceSpecificMembership">>, <<"bind">>, <<"bind6">>, <<"bufferSize">>, <<"connect">>, <<"connect6">>, <<"disconnect">>, <<"dropMembership">>, <<"dropSourceSpecificMembership">>, <<"getSendQueueCount">>, <<"getSendQueueSize">>, <<"getpeername">>, <<"getsockname">>, <<"open">>, <<"recvStart">>, <<"recvStop">>, <<"send">>, <<"send6">>, <<"setBroadcast">>, <<"setMulticastInterface">>, <<"setMulticastLoopback">>, <<"setMulticastTTL">>, <<"setTTL">>]}}];
 members(<<"url">>) ->
     [{<<"canParse">>, function},
      {<<"domainToASCII">>, function},
@@ -505,7 +507,7 @@ members(<<"url">>) ->
      {<<"pathToFileURL">>, function},
      {<<"update">>, function}];
 members(<<"url_pattern">>) ->
-    [{<<"URLPattern">>, class}];
+    [{<<"URLPattern">>, {class, [<<"exec">>, <<"test">>]}}];
 members(<<"util">>) ->
     [{<<"arrayBufferViewHasBuffer">>, function},
      {<<"constructSharedArrayBuffer">>, function},
@@ -523,11 +525,11 @@ members(<<"util">>) ->
      {<<"previewEntries">>, function},
      {<<"sleep">>, function}];
 members(<<"uv">>) ->
-    [{<<"errname">>, class},
+    [{<<"errname">>, {class, []}},
      {<<"getErrorMap">>, function},
      {<<"getErrorMessage">>, function}];
 members(<<"v8">>) ->
-    [{<<"GCProfiler">>, class},
+    [{<<"GCProfiler">>, {class, [<<"start">>, <<"stop">>]}},
      {<<"cachedDataVersionTag">>, function},
      {<<"getCppHeapStatistics">>, function},
      {<<"getHashSeed">>, function},
@@ -541,22 +543,22 @@ members(<<"v8">>) ->
      {<<"updateHeapSpaceStatisticsBuffer">>, function},
      {<<"updateHeapStatisticsBuffer">>, function}];
 members(<<"wasi">>) ->
-    [{<<"WASI">>, class}];
+    [{<<"WASI">>, {class, []}}];
 members(<<"wasm_web_api">>) ->
     [{<<"setImplementation">>, function}];
 members(<<"watchdog">>) ->
-    [{<<"TraceSigintWatchdog">>, class}];
+    [{<<"TraceSigintWatchdog">>, {class, [<<"start">>, <<"stop">>]}}];
 members(<<"webstorage">>) ->
-    [{<<"Storage">>, class}];
+    [{<<"Storage">>, {class, [<<"clear">>, <<"getItem">>, <<"key">>, <<"removeItem">>, <<"setItem">>]}}];
 members(<<"worker">>) ->
-    [{<<"Worker">>, class},
+    [{<<"Worker">>, {class, [<<"cpuUsage">>, <<"getHeapStatistics">>, <<"getResourceLimits">>, <<"hasRef">>, <<"loopIdleTime">>, <<"loopStartTime">>, <<"ref">>, <<"startCpuProfile">>, <<"startHeapProfile">>, <<"startThread">>, <<"stopCpuProfile">>, <<"stopHeapProfile">>, <<"stopThread">>, <<"takeHeapSnapshot">>, <<"unref">>]}},
      {<<"getEnvMessagePort">>, function}];
 members(<<"zlib">>) ->
-    [{<<"BrotliDecoder">>, class},
-     {<<"BrotliEncoder">>, class},
-     {<<"Zlib">>, class},
-     {<<"ZstdCompress">>, class},
-     {<<"ZstdDecompress">>, class},
+    [{<<"BrotliDecoder">>, {class, [<<"close">>, <<"init">>, <<"params">>, <<"reset">>, <<"write">>, <<"writeSync">>]}},
+     {<<"BrotliEncoder">>, {class, [<<"close">>, <<"init">>, <<"params">>, <<"reset">>, <<"write">>, <<"writeSync">>]}},
+     {<<"Zlib">>, {class, [<<"close">>, <<"init">>, <<"params">>, <<"reset">>, <<"write">>, <<"writeSync">>]}},
+     {<<"ZstdCompress">>, {class, [<<"close">>, <<"init">>, <<"params">>, <<"reset">>, <<"write">>, <<"writeSync">>]}},
+     {<<"ZstdDecompress">>, {class, [<<"close">>, <<"init">>, <<"params">>, <<"reset">>, <<"write">>, <<"writeSync">>]}},
      {<<"crc32">>, function}];
 members(_) ->
     [].

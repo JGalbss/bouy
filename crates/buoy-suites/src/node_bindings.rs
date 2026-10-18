@@ -102,6 +102,9 @@ pub struct Member {
     /// The methods of the prototype of a class.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub prototype: BTreeSet<String>,
+    /// The other properties of the prototype of a class: accessors and values.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub accessors: BTreeSet<String>,
     /// The members of an object, or the static members of a class.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub members: BTreeMap<String, Member>,
@@ -176,11 +179,12 @@ pub fn erlang(manifest: &Manifest) -> String {
          %% `{COMMAND}`.\n\
          %%\n\
          %% The functions and classes that src/ of Node {} sets on each binding object\n\
-         %% on every platform. buoy_node:binding/1 gives a binding a stub that throws\n\
+         %% on every platform, each class with the methods of its prototype.\n\
+         %% buoy_node:binding/1 gives a binding a stub that throws\n\
          %% ERR_BUOY_NOT_IMPLEMENTED for each one that it lacks.\n\
          -module(buoy_node_manifest).\n\n\
          -export([members/1]).\n\n\
-         -spec members(binary()) -> [{{binary(), function | class}}].\n",
+         -spec members(binary()) -> [{{binary(), function | {{class, [binary()]}}}}].\n",
         manifest.node
     );
     for (name, binding) in &manifest.bindings {
@@ -191,12 +195,12 @@ pub fn erlang(manifest: &Manifest) -> String {
                 !member.conditional && matches!(member.kind, Kind::Function | Kind::Class)
             })
             .map(|(key, member)| {
-                let kind = if member.kind == Kind::Class {
-                    "class"
-                } else {
-                    "function"
-                };
-                format!("{{{}, {kind}}}", binary(key))
+                if member.kind == Kind::Function {
+                    return format!("{{{}, function}}", binary(key));
+                }
+                let methods: Vec<String> =
+                    member.prototype.iter().map(|name| binary(name)).collect();
+                format!("{{{}, {{class, [{}]}}}}", binary(key), methods.join(", "))
             })
             .collect();
         if members.is_empty() {
@@ -1412,6 +1416,7 @@ fn always(places: &[&[(usize, usize)]], groups: &[Group]) -> bool {
 struct Node {
     members: BTreeMap<String, Slot>,
     prototype: BTreeSet<String>,
+    accessors: BTreeSet<String>,
     template: bool,
 }
 
@@ -1526,6 +1531,7 @@ impl<'a> Reader<'a> {
             let mut place = prefix.to_vec();
             place.extend(tokens[index].branches.iter().skip(base));
             self.declaration(tokens, index, &mut scope);
+            Self::to_local(tokens, index, &mut scope);
             self.setter(tokens, index, &scope, &place);
             self.call(unit, class.as_deref(), tokens, index, &scope, &place);
         }
@@ -1585,6 +1591,30 @@ impl<'a> Reader<'a> {
             None => {
                 scope.remove(name);
             }
+        }
+    }
+
+    /// `t->GetFunction(context).ToLocal(&name)` at `index`: `name` holds the function of the
+    /// template `t`.
+    fn to_local(tokens: &[Tok], index: usize, scope: &mut Scope) {
+        let Some(Value::Node(node)) = tokens[index].ident().and_then(|name| scope.get(name)) else {
+            return;
+        };
+        let node = *node;
+        let is = |at: usize, word: &str| tokens.get(at).is_some_and(|token| token.is(word));
+        if !(is(index + 1, "->") && is(index + 2, "GetFunction") && is(index + 3, "(")) {
+            return;
+        }
+        let Some(close) = matching(tokens, index + 3) else {
+            return;
+        };
+        let local = close + 1;
+        if !(is(local, ".") && is(local + 1, "ToLocal") && is(local + 2, "(") && is(local + 3, "&"))
+        {
+            return;
+        }
+        if let Some(name) = tokens.get(local + 4).and_then(Tok::ident) {
+            scope.insert(name.to_owned(), Value::Node(node));
         }
     }
 
@@ -1838,16 +1868,20 @@ impl<'a> Reader<'a> {
         else {
             return;
         };
-        if prototype {
-            self.nodes[node].prototype.insert(name);
-            return;
-        }
         let (kind, child) = if accessor {
             (Kind::Value, None)
         } else {
             self.classify(args.get(at + 1).copied().unwrap_or_default(), scope)
         };
-        self.add(node, name, kind, place, child);
+        match (prototype, kind) {
+            (true, Kind::Function) => {
+                self.nodes[node].prototype.insert(name);
+            }
+            (true, _) => {
+                self.nodes[node].accessors.insert(name);
+            }
+            (false, _) => self.add(node, name, kind, place, child),
+        }
     }
 
     /// The kind of a member from the expression of its value.
@@ -2038,6 +2072,9 @@ impl<'a> Reader<'a> {
                     prototype: child
                         .map(|child| self.nodes[child].prototype.clone())
                         .unwrap_or_default(),
+                    accessors: child
+                        .map(|child| self.nodes[child].accessors.clone())
+                        .unwrap_or_default(),
                     members: child
                         .map(|child| self.members(child, groups, level + 1))
                         .unwrap_or_default(),
@@ -2115,6 +2152,12 @@ void Initialize(Local<Object> target, Local<Value> unused, Local<Context> contex
   (target)->DefineOwnProperty(context, FIXED_ONE_BYTE_STRING(isolate, "isBigEndian"), True(isolate)).Check();
   Helper(env, target);
   MakeClass<Stream>::Make(env, target, "Zlib");
+  Local<FunctionTemplate> w = NewFunctionTemplate(isolate, NewWindow);
+  SetProtoMethod(isolate, w, "resize", Resize);
+  Local<Value> func;
+  if (w->GetFunction(context).ToLocal(&func) &&
+      target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Window"), func).IsJust()) {
+  }
 }
 }
 NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
@@ -2133,6 +2176,7 @@ NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
             kinds,
             [
                 ("Handle", Kind::Class, false),
+                ("Window", Kind::Class, false),
                 ("Zlib", Kind::Class, false),
                 ("constants", Kind::Object, false),
                 ("fromHelper", Kind::Function, false),
@@ -2150,7 +2194,10 @@ NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
         );
         assert!(demo.members["constants"].members.contains_key("O_RDONLY"));
         let erlang = erlang(&manifest);
-        assert!(erlang.contains("{<<\"Handle\">>, class}"), "{erlang}");
+        assert!(
+            erlang.contains("{<<\"Handle\">>, {class, [<<\"close\">>]}}"),
+            "{erlang}"
+        );
         assert!(!erlang.contains("linuxOnly"), "{erlang}");
     }
 

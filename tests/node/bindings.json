@@ -3509,8 +3509,10 @@
         "FSEvent": {
           "kind": "class",
           "prototype": [
-            "initialized",
             "start"
+          ],
+          "accessors": [
+            "initialized"
           ]
         }
       }
@@ -6299,7 +6301,11 @@
       ],
       "members": {
         "TTY": {
-          "kind": "value"
+          "kind": "class",
+          "prototype": [
+            "getWindowSize",
+            "setRawMode"
+          ]
         },
         "isTTY": {
           "kind": "function"
@@ -6415,7 +6421,6 @@
             "disconnect",
             "dropMembership",
             "dropSourceSpecificMembership",
-            "fd",
             "getSendQueueCount",
             "getSendQueueSize",
             "getpeername",
@@ -6430,6 +6435,9 @@
             "setMulticastLoopback",
             "setMulticastTTL",
             "setTTL"
+          ],
+          "accessors": [
+            "fd"
           ]
         },
         "constants": {
@@ -6870,9 +6878,11 @@
             "clear",
             "getItem",
             "key",
-            "length",
             "removeItem",
             "setItem"
+          ],
+          "accessors": [
+            "length"
           ]
         },
         "kConstructorKey": {

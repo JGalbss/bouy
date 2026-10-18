@@ -241,14 +241,36 @@ binding(Name) ->
     end.
 
 %% Gives Binding a stub for each function and class that src/ of Node sets on
-%% it and that Buoy lacks, so a call of missing native code names itself.
+%% it and that Buoy lacks, and each class of Binding a stub for each method of
+%% its prototype that it lacks, so a call of missing native code names itself.
 complete(Name, Binding) ->
-    [buoy_heap:define(Binding, Key, #{value => missing_member(Name, Key, Kind), writable => true, enumerable => true, configurable => true})
-     || {Key, Kind} <- buoy_node_manifest:members(Name), not buoy_heap:has_own(Binding, Key)],
+    [complete(Name, Binding, Key, Kind) || {Key, Kind} <- buoy_node_manifest:members(Name)],
     ok.
 
-missing_member(Name, Key, function) -> not_implemented(Name, Key);
-missing_member(Name, Key, class) -> missing_constructor(Name, Key, 0).
+complete(Name, Binding, Key, Kind) ->
+    case {buoy_heap:has_own(Binding, Key), Kind} of
+        {false, function} -> stub(Binding, Key, not_implemented(Name, Key), true);
+        {false, {class, _}} -> stub(Binding, Key, missing_constructor(Name, Key, 0), true);
+        {true, {class, Methods}} -> complete_prototype(Name, Key, buoy_heap:get(buoy_heap:get(Binding, Key), <<"prototype">>), Methods);
+        {true, function} -> ok
+    end.
+
+complete_prototype(Name, Class, Prototype, Methods) ->
+    case buoy_heap:is_object(Prototype) of
+        true ->
+            Missing = [M || M <- Methods, not buoy_heap:has(Prototype, M)],
+            [stub(Prototype, M, missing_method(Name, Class, M), false) || M <- Missing],
+            ok;
+        false ->
+            ok
+    end.
+
+stub(Object, Key, Value, Enumerable) ->
+    buoy_heap:define(Object, Key, #{value => Value, writable => true, enumerable => Enumerable, configurable => true}).
+
+missing_method(Name, Class, Method) ->
+    Message = <<"internalBinding('", Name/binary, "').", Class/binary, ".prototype.", Method/binary, " is not implemented on Buoy">>,
+    buoy_heap:function(fun(_, _) -> missing(Message) end, Method, 0, #{}).
 
 binding_module(Name) when is_binary(Name) ->
     case lists:member(Name, (index()):bindings()) of
