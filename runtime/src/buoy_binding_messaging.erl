@@ -37,13 +37,7 @@ binding() ->
     DOMException = buoy_heap:get(buoy_node:context(), <<"DOMException">>),
     Port = buoy_node:constructor(<<"MessagePort">>, 0, fun ?MODULE:construct_invalid/2),
     Proto = buoy_heap:get(Port, <<"prototype">>),
-    [buoy_heap:define(Proto, Name, #{value => F(Name, Length, Fun), writable => true, enumerable => true, configurable => true})
-     || {Name, Length, Fun} <- [{<<"postMessage">>, 1, fun post_message/2},
-                                {<<"start">>, 0, fun(This, _) -> start(This) end},
-                                {<<"close">>, 0, fun(This, _) -> close(This), undefined end},
-                                {<<"ref">>, 0, fun(This, _) -> set_ref(This, true) end},
-                                {<<"unref">>, 0, fun(This, _) -> set_ref(This, false) end},
-                                {<<"hasRef">>, 0, fun(This, _) -> has_ref(This) end}]],
+    define_methods(Proto),
     erlang:put(?PROTO, Proto),
     Channel = buoy_node:constructor(<<"MessageChannel">>, 0, fun new_channel/2),
     buoy_node:object([
@@ -56,7 +50,7 @@ binding() ->
         {<<"stopMessagePort">>, F(<<"stopMessagePort">>, 1, fun(_, Args) -> stop(A(1, Args)) end)},
         {<<"drainMessagePort">>, F(<<"drainMessagePort">>, 1, fun(_, Args) -> drain(A(1, Args)) end)},
         {<<"receiveMessageOnPort">>, F(<<"receiveMessageOnPort">>, 1, fun(_, Args) -> receive_message(A(1, Args)) end)},
-        {<<"moveMessagePortToContext">>, F(<<"moveMessagePortToContext">>, 2, fun(_, Args) -> move_to_context(A(1, Args)) end)},
+        {<<"moveMessagePortToContext">>, F(<<"moveMessagePortToContext">>, 2, fun(_, Args) -> move_to_context(A(1, Args), A(2, Args)) end)},
         {<<"setDeserializerCreateObjectFunction">>, F(<<"setDeserializerCreateObjectFunction">>, 1, fun(_, Args) ->
             erlang:put(?CREATE, A(1, Args)),
             undefined
@@ -64,6 +58,19 @@ binding() ->
         {<<"broadcastChannel">>, F(<<"broadcastChannel">>, 1, fun(_, Args) -> broadcast_channel(A(1, Args)) end)},
         {<<"structuredClone">>, F(<<"structuredClone">>, 2, fun(_, Args) -> structured_clone(A(1, Args), A(2, Args)) end)},
         {<<"DOMException">>, DOMException}]).
+
+%% The native methods of MessagePort.prototype, as its FunctionTemplate has
+%% them in every context.
+define_methods(Proto) ->
+    [buoy_heap:define(Proto, Name, #{value => buoy_node:fn(Name, Length, Fun), writable => true, enumerable => true,
+                                     configurable => true})
+     || {Name, Length, Fun} <- [{<<"postMessage">>, 1, fun post_message/2},
+                                {<<"start">>, 0, fun(This, _) -> start(This) end},
+                                {<<"close">>, 0, fun(This, _) -> close(This), undefined end},
+                                {<<"ref">>, 0, fun(This, _) -> set_ref(This, true) end},
+                                {<<"unref">>, 0, fun(This, _) -> set_ref(This, false) end},
+                                {<<"hasRef">>, 0, fun(This, _) -> has_ref(This) end}]],
+    ok.
 
 %% new MessagePort(): ports come only from MessageChannel and transfers.
 -spec construct_invalid(term(), list()) -> no_return().
@@ -91,10 +98,15 @@ pipe() ->
 %% that it carried from another realm. Like MessagePort::New, it calls the
 %% oninit of the prototype, which unrefs it.
 -spec new_port(pid(), term(), [term()]) -> term().
-new_port(Pipe, Side, Queue) ->
-    Port = buoy_node:object(erlang:get(?PROTO), []),
+new_port(Pipe, Side, Queue) -> new_port(0, Pipe, Side, Queue).
+
+%% The port of the realm Realm: a vm context's port has the prototype of
+%% that context, whose lib adds no oninit, so the port stays ref'd.
+new_port(Realm, Pipe, Side, Queue) ->
+    Port = buoy_node:object(port_prototype(Realm), []),
     buoy_heap:private_put(Port, ?STATE, #{pipe => Pipe, side => Side, queue => Queue, started => false,
-                                          refed => false, state => open, seq => erlang:unique_integer([monotonic])}),
+                                          refed => false, state => open, realm => Realm,
+                                          seq => erlang:unique_integer([monotonic])}),
     %% The init hook sees the port before its handle refs and before oninit, as in HandleWrap.
     AsyncId = buoy_binding_async_wrap:emit_init(Port, <<"MESSAGEPORT">>),
     update(Port, fun(S) -> S#{async_id => AsyncId} end),
@@ -305,14 +317,19 @@ dispatch(Port, Limit) ->
             ok
     end.
 
+%% The message goes to the emitMessage of the port's context, which
+%% deserializes it in that realm.
 emit(Port, Message) ->
-    Emit = buoy_heap:get(buoy_node:context(), <<"emitMessage">>),
-    case deserialize(Message) of
-        {ok, Value, Ports} ->
-            buoy_heap:call(Emit, Port, [Value, buoy_heap:new_array(Ports), <<"message">>]);
-        {error, Error} ->
-            buoy_heap:call(Emit, Port, [Error, buoy_heap:new_array([]), <<"messageerror">>])
-    end,
+    Realm = port_realm(Port),
+    in_realm(Realm, fun() ->
+        Emit = buoy_heap:get(context_exports(Realm), <<"emitMessage">>),
+        case deserialize(Message, Realm) of
+            {ok, Value, Ports} ->
+                buoy_heap:call(Emit, Port, [Value, buoy_heap:new_array(Ports), <<"message">>]);
+            {error, Error} ->
+                buoy_heap:call(Emit, Port, [Error, buoy_heap:new_array([]), <<"messageerror">>])
+        end
+    end),
     ok.
 
 %% drainMessagePort(port): emits every message that waits, now.
@@ -354,7 +371,7 @@ receive_message(Port) ->
                     NoMessage;
                 #{queue := [Message | Rest]} = S ->
                     save(Port, S#{queue := Rest}),
-                    case deserialize(Message) of
+                    case in_realm(port_realm(Port), fun() -> deserialize(Message, port_realm(Port)) end) of
                         {ok, Value, _} -> Value;
                         {error, Error} -> erlang:error({'$throw', Error})
                     end;
@@ -365,14 +382,72 @@ receive_message(Port) ->
             NoMessage
     end.
 
-%% moveMessagePortToContext(port, context): Buoy's contexts share the realm,
-%% so the port stays itself.
-move_to_context(Port) ->
+%% moveMessagePortToContext(port, context): as MessagePort::MoveToContext,
+%% the side of the pipe leaves Port, which stays detached, for a new port of
+%% the realm of the context.
+move_to_context(Port, Context) ->
     case is_message_port(Port) andalso port_side(Port) of
         false -> buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>, <<"The \"port\" argument must be a MessagePort instance">>);
         closed -> buoy_node:throw_code('Error', <<"ERR_CLOSED_MESSAGE_PORT">>, <<"Cannot send data on closed MessagePort">>);
-        _ -> Port
+        _ -> ok
+    end,
+    Realm = case buoy_heap:is_object(Context) andalso
+                 buoy_heap:get(Context, buoy_node:private_symbol(<<"contextify_context_private_symbol">>)) of
+        N when is_integer(N) -> N;
+        _ -> buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>, <<"Invalid context argument">>)
+    end,
+    #{pipe := Pipe, side := Side, queue := Queue} = state(Port),
+    ok = detach(Pipe, Side),
+    set_ref(Port, false),
+    update(Port, fun(S) -> S#{state := detached, queue := []} end),
+    erlang:erase(?PORTS(Pipe, Side)),
+    in_realm(Realm, fun() -> new_port(Realm, Pipe, Side, Queue) end).
+
+port_realm(Port) -> maps:get(realm, state(Port), 0).
+
+port_prototype(0) ->
+    erlang:get(?PROTO);
+port_prototype(Realm) ->
+    case erlang:get({?PROTO, Realm}) of
+        undefined ->
+            Proto = in_realm(Realm, fun() ->
+                Port = buoy_heap:function(fun ?MODULE:construct_invalid/2, <<"MessagePort">>, 0, #{kind => normal}),
+                P = buoy_heap:object(buoy_heap:intrinsic('Object.prototype'), []),
+                buoy_heap:define(P, <<"constructor">>, #{value => Port, writable => true, enumerable => false, configurable => true}),
+                buoy_heap:define(Port, <<"prototype">>, #{value => P, writable => true, enumerable => false, configurable => false}),
+                define_methods(P),
+                P
+            end),
+            erlang:put({?PROTO, Realm}, Proto),
+            Proto;
+        Proto ->
+            Proto
     end.
+
+%% The per-context exports of a realm: the primordials, DOMException, and
+%% emitMessage. A vm context runs the per-context scripts of lib when its
+%% first port needs them, as Node runs them in each new context.
+context_exports(0) ->
+    buoy_node:context();
+context_exports(Realm) ->
+    case erlang:get({?MODULE, context, Realm}) of
+        undefined ->
+            Exports = in_realm(Realm, fun() ->
+                Primordials = buoy_heap:object(null, []),
+                E = buoy_heap:object(buoy_heap:intrinsic('Object.prototype'), [{<<"primordials">>, Primordials}]),
+                [buoy_heap:call(buoy_node:compile(<<"internal/per_context/", Id/binary>>), undefined,
+                                [E, Primordials, buoy_node:private_symbols(), buoy_node:per_isolate_object()])
+                 || Id <- [<<"primordials">>, <<"domexception">>, <<"messageport">>]],
+                E
+            end),
+            erlang:put({?MODULE, context, Realm}, Exports),
+            Exports;
+        Exports ->
+            Exports
+    end.
+
+in_realm(0, Fun) -> Fun();
+in_realm(Realm, Fun) -> (buoy_ref_realm:realm_fun(Realm, fun(_, _) -> Fun() end))(undefined, undefined).
 
 %% broadcastChannel(name): a port of the pipe of the name, which every realm
 %% of the VM shares.
@@ -628,8 +703,9 @@ detach(Pipe, Side) ->
 clone_error(Message) ->
     erlang:error({'$throw', dom_exception(Message, <<"DataCloneError">>)}).
 
+%% The DOMException of the current realm, whose builtins throw it.
 dom_exception(Message, Name) ->
-    DOMException = buoy_heap:get(buoy_node:context(), <<"DOMException">>),
+    DOMException = buoy_heap:get(context_exports(buoy_heap:realm()), <<"DOMException">>),
     buoy_heap:construct(DOMException, [Message, Name], DOMException).
 
 %% The engine's DataCloneError becomes Node's DOMException.
@@ -641,9 +717,15 @@ dom_clone_error(E) ->
 
 %% The value of a message in this realm, with a port for each that it
 %% carries, or {error, Error} when a JS transferable cannot be made.
-deserialize({message, Payload, Carried}) ->
-    Ports = [new_port(Pipe, Side, Queue) || {Pipe, Side, Queue} <- Carried],
+deserialize(Message) -> deserialize(Message, 0).
+
+%% A native object or a JS transferable needs the classes of Node's lib, which
+%% only the realm of the environment has: a vm context refuses it, as each
+%% TransferData::Deserialize checks the context.
+deserialize({message, Payload, Carried}, Realm) ->
+    Ports = [new_port(Realm, Pipe, Side, Queue) || {Pipe, Side, Queue} <- Carried],
     Hook = fun({{port, I}, _}) -> lists:nth(I + 1, Ports);
+              (_) when Realm =/= 0 -> context_unavailable();
               ({{native, Module}, Data}) -> Module:from_clone(Data);
               ({{js, Info}, Data}) -> js_object(Info, Data)
            end,
@@ -652,6 +734,11 @@ deserialize({message, Payload, Carried}) ->
     catch
         error:{'$throw', E} -> {error, E}
     end.
+
+-spec context_unavailable() -> no_return().
+context_unavailable() ->
+    buoy_node:throw_code('Error', <<"ERR_MESSAGE_TARGET_CONTEXT_UNAVAILABLE">>,
+                         <<"A message object could not be deserialized successfully in the target vm.Context">>).
 
 js_object(Info, Data) ->
     Create = erlang:get(?CREATE),
