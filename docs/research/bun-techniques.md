@@ -2,11 +2,11 @@
 
 This note is the guide for agents who build Node built-ins, the event loop, native code, startup, and the test runners of Buoy. It explains how Bun gets its speed and its Node compatibility, and it gives the Buoy equivalent of each technique with a priority. Read the section of your area before you design anything, then read the Bun files that it names.
 
-[goal.md](../goal.md) requirement 11 makes Bun the bar for speed and recovery, and the owner said: "learn from shit bun did".
+[goal.md](../goal.md) requirement 11 makes Bun the bar for speed and recovery. The owner's amendment: "it needsto be more performant and better recovery then bun".
 
 ## How to read this note
 
-- **Bun source.** Paths such as `src/js/node/fs.ts` are relative to [oven-sh/bun at `5667cd6`](https://github.com/oven-sh/bun/tree/5667cd6c0ad4c9f3343237c08661cd9e1f710692) (2026-10-17, Bun 1.4.3). A shallow clone of that commit is in `/tmp/bun-ref` on the build machine. Never edit it.
+- **Bun source.** Paths such as `src/js/node/fs.ts` are relative to [oven-sh/bun at `5667cd6`](https://github.com/oven-sh/bun/tree/5667cd6c0ad4c9f3343237c08661cd9e1f710692) (2026-10-17, Bun 1.4.3). Read them in a shallow clone: `git clone --depth 1 https://github.com/oven-sh/bun`.
 - **Numbers about Bun** are Bun's own claims, from the post or document that each sentence links. No Buoy benchmark has reproduced them.
 - **Numbers about Buoy** come from `bench/` through [ADR 0003](../adr/0003-run-typescript-on-beam.md) evidence E1 and [speed-ceiling.md](speed-ceiling.md), as AGENTS.md requires.
 - **Priorities:**
@@ -24,7 +24,7 @@ This note is the guide for agents who build Node built-ins, the event loop, nati
 | 3   | uWebSockets: native parser, corking, cached Date, lazy JS objects    | `tcp_wrap` on the `socket` module, owned by the actor; writes batched as an iolist; llhttp in a NIF        | P0, P1   | 4       |
 | 4   | uSockets loop on epoll and kqueue; files on a thread pool            | ERTS poll threads and the mailbox; bounded work per turn; dirty I/O schedulers for files                   | P0, P1   | 5       |
 | 5   | Lazy builtins, transpiler cache, bytecode cache                      | Measure first; a shared compile cache keyed by compiler version; a snapshot of the bootstrapped Node realm | P1       | 6       |
-| 6   | JavaScriptCore's WebAssembly tiers                                   | A WebAssembly engine in a NIF that yields; Node's own `fetch` needs it                                     | P0       | 7       |
+| 6   | JavaScriptCore's WebAssembly tiers; Node-API built from scratch      | A WebAssembly engine in a NIF that yields, which Node's `fetch` needs; addons in a helper OS process       | P0, P2   | 7       |
 | 7   | Native fetch on an HTTP thread; native web streams                   | Node's undici over fast `net`, WebAssembly, and buffers; backpressure from the socket up                   | P0, P1   | 8       |
 | 8   | mimalloc, GC paced by allocation, idle GC                            | Per-actor heaps; JS collection paced by growth and run once when idle; hibernation; copy-on-write buffers  | P1       | 9       |
 | 9   | One process for `bun test`; `--isolate` and `--parallel`             | One actor per test file in one VM, on all schedulers                                                       | P1       | 10      |
@@ -68,14 +68,15 @@ Byte-heavy members need native code. BEAM has no mutable byte array, and the Arr
 
 ### The Buoy design
 
-1. **One NIF crate, P0.** Put Rust NIFs in one crate, for example `crates/buoy-native`, with one module for each Node binding that it serves (`encoding.rs`, `llhttp.rs`, `wasm.rs`), as Bun keeps `node_<name>_binding.rs`. `crates/buoy-cli/build.rs` builds it for the target, the CLI embeds the library next to the runtime sources and writes it into `runtime-<hash>/priv/`, and `buoy_native.erl` loads it. Keep one implementation of each member. Do not keep an Erlang twin of a NIF.
+1. **One NIF crate, P0.** Put Rust NIFs in one crate, for example `crates/buoy-native`, with one module for each Node binding that it serves (`encoding.rs`, `llhttp.rs`, `wasm.rs`), as Bun keeps `node_<name>_binding.rs`. The build of the CLI makes the library for the target and embeds it next to the runtime sources. The CLI writes it into `runtime-<hash>/priv/`, and `buoy_native.erl` loads it. Keep one implementation of each member. Do not keep an Erlang twin of a NIF.
 2. **The rules for every NIF.** A NIF crash ends the whole VM ([ADR 0003](../adr/0003-run-typescript-on-beam.md) §2.2), so the NIF is the one place where Buoy can lose its recovery advantage over Bun.
    - Return within 1 ms ([erl_nif](https://www.erlang.org/doc/apps/erts/erl_nif.html), "Long-running NIFs"). For longer work, count the time with `enif_consume_timeslice` and continue through `enif_schedule_nif`, as `bench/speed/native/src/lib.rs` does. Use a dirty scheduler only for a blocking system call.
    - Catch every panic at the NIF boundary and raise an Erlang exception. The spike crate builds with `panic = "abort"`, which ends the VM on a panic. Production code must not.
    - A NIF reads and writes bytes and numbers. It never reads the JavaScript heap of an actor.
    - Cross the boundary once for each operation, with whole binaries. Write into the final destination, and count the copies (Bun's rule in `.claude/docs/landing-prs.md`).
-   - Fuzz every parser in a NIF, and keep `unsafe` in the FFI layer only. The workspace lints deny `unsafe`, so the crate states its own exception, as `bench/speed/native/Cargo.toml` does.
-3. **Primordials as intrinsics, P1.** Node's `lib/` calls `ArrayPrototypePush(list, x)` and `FunctionPrototypeCall(fn, self)` from the frozen `primordials` object. V8 inlines these calls, and Bun gets the same effect from `$` intrinsics. On Buoy each one is a call through `uncurryThis`. The compiler can lower a call through a name that a built-in module takes from its `primordials` parameter to a direct call of the runtime function. Count the primordial calls on a hot path, such as a stream write, before you build it.
+   - Fuzz every parser in a NIF.
+   - The workspace lints deny `unsafe_code`. Keep `unsafe` in one FFI module, with an `allow` and a comment that names the invariant, or use rustler, which keeps it in its own crate. The spike avoided the lint with a separate workspace (`bench/speed/native/Cargo.toml`). Name the choice in the commit body for review.
+3. **Primordials as intrinsics, P1.** Node's `lib/` calls `ArrayPrototypePush(list, x)` and `FunctionPrototypeCall(fn, self)` from the frozen `primordials` object. Bun avoids such wrappers with `$` intrinsics that compile to direct calls. On Buoy each primordial call goes through a bound function that `uncurryThis` made (`lib/internal/per_context/primordials.js`). The compiler can lower a call through a name that a built-in module takes from its `primordials` parameter to a direct call of the runtime function. Count the primordial calls on a hot path, such as a stream write, before you build it.
 4. **The NIF candidates, in order.** Each needs its benchmark first.
 
 | Member                                                                           | Native code                        | Priority | Why                                                                                  |
@@ -95,6 +96,7 @@ Byte-heavy members need native code. BEAM has no mutable byte array, and the Arr
 - **Some modules are ports of Node's JavaScript.** `src/js/internal/streams/*`, `node:events`, `node:readline`, `internal/validators`, and `internal/fixed_queue` follow Node's `lib/`. Bun 1.4 replaced the `node:http` client, which had been a shim over `fetch()`, with "a direct port of Node's `_http_client.js`", and it replaced a REPL stub with "a working port of Node v26.3.0's REPL" ([Bun 1.4](https://bun.com/blog/bun-v1.4)). `src/js/node/_http_client.ts` links the Node file at v26.3.0.
 - **`util.inspect` is a third copy.** Bun vendors node-inspect-extracted, a copy of Node's `inspect.js`, and its header says "TODO: delete this file. It is too much JavaScript" (`src/js/internal/util/inspect.js`). Bun's `console` uses a native formatter instead, so "replacing `process.stdout.write` does not capture the output, and object layout differs from `util.inspect`" ([Bun Node.js compatibility](https://bun.com/docs/runtime/nodejs-compat)).
 - **No `internalBinding`.** Bun has no binding layer that matches Node's. `process.binding` is partial.
+- **More native than Node in places.** `node:path` calls native code (`src/js/node/path.ts`, `src/runtime/node/path.rs`), most of `Buffer` is C++ (`src/jsc/bindings/JSBuffer.cpp`), and `console` formats in native code. Node writes these in JavaScript over a few binding members.
 - **The direction.** Each release moves Bun closer to Node's own JavaScript and Node's own tests. Bun 1.2 says that fixing bugs from issue reports was "too much of a 'wack-a-mole' approach" and started to run Node's test suite on every change ([Bun 1.2](https://bun.com/blog/bun-v1.2)).
 
 ### The Buoy design
@@ -109,6 +111,7 @@ Buoy already runs Node's `lib/` byte for byte on Node's binding contract ([node-
    - Match the whole error contract: the `ERR_*` code, the class, the message, the properties (`syscall`, `errno`, `path`), the order of the checks, and the channel (a throw, an `'error'` event, or a rejection).
    - The whole observable surface is the API, including property attributes, `constructor.name`, and underscore internals such as `_writableState`.
    - Port the whole behavior, with every sibling form (sync, callback, promise), and not only the case that a test names.
+5. **Where Bun is more native than Node, make the engine faster.** Node's `path.js` and most of `buffer.js` are JavaScript, so Buoy runs them as they are. When a profile shows one of them hot, speed up the engine (shapes, strings, primordials) or the binding members under it. Do not override the module.
 
 ## 4. HTTP servers: Bun.serve and uWebSockets
 
@@ -154,7 +157,7 @@ BEAM already has the parts of a loop. The ERTS poll threads watch kqueue or epol
 1. **Bound the work of each turn, P1.** Run at most a fixed count of mailbox messages and `'$buoy_node_call'` jobs before the loop checks its timers and immediates again. This is Bun's bounded drain.
 2. **No message to self for each immediate, P1.** Run the immediates in the loop while `immediateInfo` counts any. A message for each one is Bun's `eventfd` mistake on BEAM.
 3. **The actor owns its I/O, P0.** Sockets, pipes, and TTYs belong to the realm process (section 4). A process between the socket and the realm adds a hop to each read. Binaries over 64 bytes are reference-counted and are not copied by a send, but the hop still adds latency.
-4. **Files.** `file:open/2` with `raw` uses `prim_file`, which runs on the dirty I/O schedulers (10 on the build machine), so a slow disk blocks only the calling actor. Node lets one process run many file operations at once on libuv's pool, and Bun uses `WorkPool`. When a test needs several file operations of one realm to overlap, run each asynchronous request in a short-lived process and deliver the result with `buoy_node_stream:call/2`. P2.
+4. **Files.** `file:open/2` with `raw` uses `prim_file`, which runs on the dirty I/O schedulers (10 by default), so a slow disk blocks only the calling actor. Node lets one process run many file operations at once on libuv's pool, and Bun uses `WorkPool`. When a test needs several file operations of one realm to overlap, run each asynchronous request in a short-lived process and deliver the result with `buoy_node_stream:call/2`. P2.
 5. **DNS, P1.** `dns.lookup()` is `getaddrinfo` on libuv's pool in Node. On BEAM, `inet:getaddrs/2` asks the `inet_gethost` port program, which calls the system resolver outside the VM. The resolver methods of `cares_wrap` can use `inet_res`, a DNS client in Erlang.
 6. **Child processes, P2.** Bun spawns with `posix_spawn` and file actions (`src/spawn_sys/posix_spawn.rs`). Buoy starts children through `/bin/bash` and loopback sockets (node-builtins.md §6). A small spawn helper that maps file descriptors as Node does removes that limit.
 7. **No Linux-only system call without a fallback.** This is the io_uring lesson. The release must run on the Linux kernels and containers of goal.md requirement 13.
@@ -173,7 +176,7 @@ Bun 1.4 reports 5.1 ms for a hello-world program on Linux, against 27.2 ms for N
 
 ### The Buoy design
 
-ADR 0003 evidence E1 measured Buoy's startup at 199.7 ms against 100.6 ms for Node (`bench/results/2026-10-16-apple-m5-pro.json`), before the Node bootstrap existed.
+ADR 0003 evidence E1 measured the startup of the value-semantics runtime at commit `cabaaa9`: 199.7 ms against 100.6 ms for Node (`bench/results/2026-10-16-apple-m5-pro.json`). No results file splits the startup of the reference engine into its parts yet.
 
 1. **Measure where the time goes, P0.** Split the startup suite into: the VM boot, the start of the runtime application, the loading of modules, the Node bootstrap, and the program. Each later step names the part that it cuts.
 2. **A shared compile cache, P1.** Today `buoy_main` caches each `.beam` in `<project>/.buoy/build/ebin/` under an MD5 of the generated Erlang and the OTP release, and the CLI still runs the TypeScript compiler on every module. Copy Bun's cache:
@@ -184,7 +187,7 @@ ADR 0003 evidence E1 measured Buoy's startup at 199.7 ms against 100.6 ms for No
 4. **Lazy intrinsics, P2.** The `{lazy, Module}` record of contract §17.2, used for `Temporal`, can cover other large families of intrinsics, as JSC does with `LazyProperty`.
 5. **Keep code loading lazy.** The VM loads each `buoy_node@<id>` module on its first call. Do not switch to a mode that loads every module at boot. A release (goal.md requirement 13) can preload the hot modules into its boot script, which is the BEAM form of `bun build --compile`.
 
-## 7. WebAssembly
+## 7. WebAssembly and native addons
 
 ### What Bun does
 
@@ -196,11 +199,21 @@ Buoy has no `WebAssembly` global: `buoy -e 'console.log(typeof WebAssembly)'` pr
 
 ### The Buoy design
 
-1. **An engine in the NIF crate.** Code compiled to Erlang would loop over bytes at the speed that [speed-ceiling.md](speed-ceiling.md) measured for typed Erlang, which is too slow. The engine must resume after a slice, so a long WebAssembly call yields to the scheduler. Two candidates:
+1. **An engine in the NIF crate.** Code compiled to Erlang would loop over bytes at the speed that [speed-ceiling.md](speed-ceiling.md) measured for typed Erlang, which is too slow. The engine must resume after a slice, so a long WebAssembly call yields to the scheduler.
+2. **A spike picks the engine.** It runs the llhttp module of undici and one large package build on each candidate:
    - wasmtime, which compiles with Cranelift and can yield on an epoch deadline in its async mode.
    - wasmi, an interpreter in Rust with fuel metering.
-     A spike decides between them on the llhttp module of undici and on one large package build.
-2. **Linear memory is an ArrayBuffer.** `memory.buffer` is an `ArrayBuffer` over the same bytes. So the engine's memory and the native buffers of section 9 must be one design.
+3. **Linear memory is an ArrayBuffer.** `memory.buffer` is an `ArrayBuffer` over the same bytes. So the engine's memory and the native buffers of section 9 must be one design.
+
+### Native addons
+
+Bun implements Node-API from scratch on JSC (`src/jsc/bindings/napi.cpp`, `src/runtime/napi/`), with Node's own headers, and runs Node's addon tests (`test/napi/node-napi-tests`). It also implements part of V8's C++ API for addons built with `nan` (`src/jsc/bindings/v8/`), and [#4290](https://github.com/oven-sh/bun/issues/4290) is still open. An addon runs in Bun's process, so an addon crash ends Bun.
+
+On BEAM this is harder. An addon calls `napi_*` functions synchronously, and each call reads or writes the JavaScript heap. Buoy's heap is Erlang terms that only the actor's process can touch, and a NIF cannot call Erlang code.
+
+1. **A stable error first, P1.** Loading a `.node` file fails with a Buoy error code that names the alternative, as goal.md requirement 2 asks. The general source of that alternative is the package metadata, for example a `*-wasm32-wasi` package among the `optionalDependencies`, which is the convention of napi-rs.
+2. **An addon host outside the VM, P2.** Run the addon in a helper OS process that Buoy starts as a port. Each `napi_*` call becomes a message to the actor, which serves it on its heap and replies while the addon waits. An addon crash then ends only the helper, and the supervisor restarts the actor, where Bun loses the process. The cost is a round trip for each `napi_*` call. Measure it on a real addon before you choose a thread in the VM instead.
+3. **The measure.** Node's `test/js-native-api` and `test/node-api` need addons built with node-gyp, so `tests/node` does not hold them yet. Bun builds them (`test/napi/node-napi-tests`).
 
 ## 8. fetch and streams
 
@@ -261,7 +274,7 @@ BEAM collects each process on its own, so one actor's collection never stops ano
 
 ### The Buoy design
 
-1. **One actor for each test file, P1.** `buoy test` (goal.md requirement 8) runs each file as its own realm in one VM, on all schedulers. Each file gets a fresh global object, as with `--isolate`, and the files run in parallel, as with `--parallel`, with no OS process for each one. When the actor exits, BEAM releases its timers, ports, and sockets, so Bun's leaks cannot happen there.
+1. **One actor for each test file, P1.** `buoy test` (goal.md requirement 8) runs each file as its own realm in one VM, on all schedulers. Each file gets a fresh global object, as with `--isolate`, and the files run in parallel, as with `--parallel`, with no OS process for each one. When the actor exits, BEAM cancels its timers and closes its ports and sockets. An OS child process can outlive the actor, so the runner kills the children of each file.
 2. **VM-wide state.** The working directory (`file:set_cwd/1`), the environment, and the umask belong to the whole VM. The runner must keep them for each realm, or `process.chdir()` leaks between files as it did in Bun.
 3. **One compile cache for all files** (section 6). Each shared module compiles once.
 4. **Longest files first in `buoy-suites`, P2.** Record the time of each file of Node's tests and start the slowest first, as Bun does with `expected-durations.json`. Keep the limits of AGENTS.md: `BUOY_MAX_MEMORY=1G` for each VM, and at most 8 VMs at once.
