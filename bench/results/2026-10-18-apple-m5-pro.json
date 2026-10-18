@@ -1,0 +1,877 @@
+{
+  "date": "2026-10-18",
+  "host": {
+    "name": "apple-m5-pro",
+    "cpu": "Apple M5 Pro",
+    "cores": 18,
+    "os": "Darwin 25.6.0 arm64"
+  },
+  "tools": {
+    "commit": "be1b516a",
+    "buoy": "buoy 0.1.0",
+    "otp": "29.1.1 (erts 17.1)",
+    "node": "v25.9.0",
+    "bun": "1.3.14"
+  },
+  "runs": 5,
+  "load_1m": {
+    "median": 498.14,
+    "min": 430.78,
+    "max": 535.54
+  },
+  "suites": [
+    {
+      "name": "startup",
+      "programs": [
+        {
+          "runtime": "buoy",
+          "failed": 0,
+          "summary": {
+            "peak_rss_mib": {
+              "median": 76.828125,
+              "min": 75.953125,
+              "max": 77.828125
+            },
+            "wall_ms": {
+              "median": 8436.753417,
+              "min": 5093.644459,
+              "max": 22396.34875
+            }
+          },
+          "runs": [
+            {
+              "load_before": [534.81, 507.7, 490.43],
+              "load_after": [535.54, 508.31, 490.74],
+              "outcome": "measured",
+              "wall_ms": 6747.185916,
+              "peak_rss_kib": 78608,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [527.09, 507.01, 490.39],
+              "load_after": [528.61, 507.65, 490.71],
+              "outcome": "measured",
+              "wall_ms": 5093.644459,
+              "peak_rss_kib": 79696,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [528.61, 507.65, 490.71],
+              "load_after": [509.03, 504.22, 489.7],
+              "outcome": "measured",
+              "wall_ms": 12890.561625,
+              "peak_rss_kib": 78672,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [495.98, 501.59, 488.85],
+              "load_after": [495.49, 501.34, 488.91],
+              "outcome": "measured",
+              "wall_ms": 8436.753417,
+              "peak_rss_kib": 79120,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [495.49, 501.34, 488.91],
+              "load_after": [502.64, 502.41, 489.57],
+              "outcome": "measured",
+              "wall_ms": 22396.34875,
+              "peak_rss_kib": 77776,
+              "result": {
+                "hello": "world"
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "node",
+          "failed": 0,
+          "summary": {
+            "peak_rss_mib": {
+              "median": 71.328125,
+              "min": 69.015625,
+              "max": 72.671875
+            },
+            "wall_ms": {
+              "median": 466.761542,
+              "min": 429.359875,
+              "max": 974.033167
+            }
+          },
+          "runs": [
+            {
+              "load_before": [535.54, 508.31, 490.74],
+              "load_after": [535.54, 508.31, 490.74],
+              "outcome": "measured",
+              "wall_ms": 445.851333,
+              "peak_rss_kib": 73232,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [528.61, 507.65, 490.71],
+              "load_after": [528.61, 507.65, 490.71],
+              "outcome": "measured",
+              "wall_ms": 466.761542,
+              "peak_rss_kib": 72480,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [509.03, 504.22, 489.7],
+              "load_after": [495.98, 501.59, 488.85],
+              "outcome": "measured",
+              "wall_ms": 974.033167,
+              "peak_rss_kib": 74416,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [495.49, 501.34, 488.91],
+              "load_after": [495.49, 501.34, 488.91],
+              "outcome": "measured",
+              "wall_ms": 595.444541,
+              "peak_rss_kib": 70672,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [502.64, 502.41, 489.57],
+              "load_after": [509.71, 503.88, 490.17],
+              "outcome": "measured",
+              "wall_ms": 429.359875,
+              "peak_rss_kib": 73040,
+              "result": {
+                "hello": "world"
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "bun",
+          "failed": 0,
+          "summary": {
+            "peak_rss_mib": {
+              "median": 22.46875,
+              "min": 22.4375,
+              "max": 22.5625
+            },
+            "wall_ms": {
+              "median": 434.772875,
+              "min": 315.18645899999996,
+              "max": 513.958208
+            }
+          },
+          "runs": [
+            {
+              "load_before": [535.54, 508.31, 490.74],
+              "load_after": [527.09, 507.01, 490.39],
+              "outcome": "measured",
+              "wall_ms": 387.6405,
+              "peak_rss_kib": 22992,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [528.61, 507.65, 490.71],
+              "load_after": [528.61, 507.65, 490.71],
+              "outcome": "measured",
+              "wall_ms": 434.772875,
+              "peak_rss_kib": 23008,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [495.98, 501.59, 488.85],
+              "load_after": [495.98, 501.59, 488.85],
+              "outcome": "measured",
+              "wall_ms": 513.958208,
+              "peak_rss_kib": 23024,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [495.49, 501.34, 488.91],
+              "load_after": [495.49, 501.34, 488.91],
+              "outcome": "measured",
+              "wall_ms": 449.873375,
+              "peak_rss_kib": 23104,
+              "result": {
+                "hello": "world"
+              }
+            },
+            {
+              "load_before": [509.71, 503.88, 490.17],
+              "load_after": [509.71, 503.88, 490.17],
+              "outcome": "measured",
+              "wall_ms": 315.18645899999996,
+              "peak_rss_kib": 22976,
+              "result": {
+                "hello": "world"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "payload",
+      "programs": [
+        {
+          "runtime": "buoy",
+          "failed": 0,
+          "summary": {
+            "messages_per_s": {
+              "median": 456621.0,
+              "min": 72780.0,
+              "max": 645161.0
+            },
+            "payload_bytes": {
+              "median": 990.0,
+              "min": 990.0,
+              "max": 990.0
+            },
+            "peak_rss_mib": {
+              "median": 87.9375,
+              "min": 84.84375,
+              "max": 88.5625
+            },
+            "wall_ms": {
+              "median": 6131.1780420000005,
+              "min": 5723.070334,
+              "max": 20388.062166
+            }
+          },
+          "runs": [
+            {
+              "load_before": [508.44, 503.9, 490.42],
+              "load_after": [484.43, 498.84, 488.92],
+              "outcome": "measured",
+              "wall_ms": 20388.062166,
+              "peak_rss_kib": 90688,
+              "result": {
+                "messages_per_s": 446429,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [473.67, 496.06, 488.05],
+              "load_after": [476.34, 496.24, 488.16],
+              "outcome": "measured",
+              "wall_ms": 5723.070334,
+              "peak_rss_kib": 87632,
+              "result": {
+                "messages_per_s": 456621,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [483.44, 497.38, 488.61],
+              "load_after": [500.86, 500.63, 489.87],
+              "outcome": "measured",
+              "wall_ms": 5900.8631669999995,
+              "peak_rss_kib": 86880,
+              "result": {
+                "messages_per_s": 645161,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [508.4, 502.2, 490.48],
+              "load_after": [498.14, 500.27, 489.94],
+              "outcome": "measured",
+              "wall_ms": 6131.1780420000005,
+              "peak_rss_kib": 90512,
+              "result": {
+                "messages_per_s": 515464,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [499.41, 500.5, 490.08],
+              "load_after": [502.45, 501.11, 490.42],
+              "outcome": "measured",
+              "wall_ms": 9264.024375,
+              "peak_rss_kib": 90048,
+              "result": {
+                "messages_per_s": 72780,
+                "payload_bytes": 990
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "node",
+          "failed": 0,
+          "summary": {
+            "messages_per_s": {
+              "median": 1021890.0,
+              "min": 739044.0,
+              "max": 6601786.0
+            },
+            "payload_bytes": {
+              "median": 990.0,
+              "min": 990.0,
+              "max": 990.0
+            },
+            "peak_rss_mib": {
+              "median": 88.21875,
+              "min": 87.65625,
+              "max": 92.0
+            },
+            "wall_ms": {
+              "median": 867.961958,
+              "min": 465.505958,
+              "max": 1433.676334
+            }
+          },
+          "runs": [
+            {
+              "load_before": [484.43, 498.84, 488.92],
+              "load_after": [484.43, 498.84, 488.92],
+              "outcome": "measured",
+              "wall_ms": 981.7745,
+              "peak_rss_kib": 89760,
+              "result": {
+                "messages_per_s": 1021890,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [476.34, 496.24, 488.16],
+              "load_after": [476.34, 496.24, 488.16],
+              "outcome": "measured",
+              "wall_ms": 465.505958,
+              "peak_rss_kib": 92384,
+              "result": {
+                "messages_per_s": 4607746,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [500.86, 500.63, 489.87],
+              "load_after": [500.86, 500.63, 489.87],
+              "outcome": "measured",
+              "wall_ms": 867.961958,
+              "peak_rss_kib": 89840,
+              "result": {
+                "messages_per_s": 751197,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [498.14, 500.27, 489.94],
+              "load_after": [498.14, 500.27, 489.94],
+              "outcome": "measured",
+              "wall_ms": 684.5255,
+              "peak_rss_kib": 94208,
+              "result": {
+                "messages_per_s": 6601786,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [502.45, 501.11, 490.42],
+              "load_after": [502.45, 501.11, 490.42],
+              "outcome": "measured",
+              "wall_ms": 1433.676334,
+              "peak_rss_kib": 90336,
+              "result": {
+                "messages_per_s": 739044,
+                "payload_bytes": 990
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "bun",
+          "failed": 0,
+          "summary": {
+            "messages_per_s": {
+              "median": 694867.0,
+              "min": 409840.0,
+              "max": 5447179.0
+            },
+            "payload_bytes": {
+              "median": 990.0,
+              "min": 990.0,
+              "max": 990.0
+            },
+            "peak_rss_mib": {
+              "median": 47.828125,
+              "min": 47.359375,
+              "max": 49.09375
+            },
+            "wall_ms": {
+              "median": 553.9137910000001,
+              "min": 471.4015409999999,
+              "max": 809.2758749999999
+            }
+          },
+          "runs": [
+            {
+              "load_before": [484.43, 498.84, 488.92],
+              "load_after": [478.95, 497.46, 488.49],
+              "outcome": "measured",
+              "wall_ms": 478.42883400000005,
+              "peak_rss_kib": 49296,
+              "result": {
+                "messages_per_s": 5447179,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [476.34, 496.24, 488.16],
+              "load_after": [476.34, 496.24, 488.16],
+              "outcome": "measured",
+              "wall_ms": 553.9137910000001,
+              "peak_rss_kib": 50272,
+              "result": {
+                "messages_per_s": 515794,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [500.86, 500.63, 489.87],
+              "load_after": [500.86, 500.63, 489.87],
+              "outcome": "measured",
+              "wall_ms": 809.2758749999999,
+              "peak_rss_kib": 48496,
+              "result": {
+                "messages_per_s": 409840,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [498.14, 500.27, 489.94],
+              "load_after": [498.14, 500.27, 489.94],
+              "outcome": "measured",
+              "wall_ms": 471.4015409999999,
+              "peak_rss_kib": 48496,
+              "result": {
+                "messages_per_s": 1995145,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [502.45, 501.11, 490.42],
+              "load_after": [507.06, 502.08, 490.82],
+              "outcome": "measured",
+              "wall_ms": 603.831875,
+              "peak_rss_kib": 48976,
+              "result": {
+                "messages_per_s": 694867,
+                "payload_bytes": 990
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "node-isolated",
+          "failed": 0,
+          "summary": {
+            "messages_per_s": {
+              "median": 60353.0,
+              "min": 31122.0,
+              "max": 102807.0
+            },
+            "payload_bytes": {
+              "median": 990.0,
+              "min": 990.0,
+              "max": 990.0
+            },
+            "peak_rss_mib": {
+              "median": 194.40625,
+              "min": 180.390625,
+              "max": 200.890625
+            },
+            "wall_ms": {
+              "median": 2167.999292,
+              "min": 1881.998916,
+              "max": 4040.288958
+            }
+          },
+          "runs": [
+            {
+              "load_before": [478.95, 497.46, 488.49],
+              "load_after": [478.95, 497.46, 488.49],
+              "outcome": "measured",
+              "wall_ms": 1881.998916,
+              "peak_rss_kib": 199072,
+              "result": {
+                "messages_per_s": 102807,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [476.34, 496.24, 488.16],
+              "load_after": [483.44, 497.38, 488.61],
+              "outcome": "measured",
+              "wall_ms": 1934.229542,
+              "peak_rss_kib": 184720,
+              "result": {
+                "messages_per_s": 63885,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [500.86, 500.63, 489.87],
+              "load_after": [508.4, 502.2, 490.48],
+              "outcome": "measured",
+              "wall_ms": 2167.999292,
+              "peak_rss_kib": 199184,
+              "result": {
+                "messages_per_s": 60353,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [498.14, 500.27, 489.94],
+              "load_after": [498.14, 500.27, 489.94],
+              "outcome": "measured",
+              "wall_ms": 2533.166459,
+              "peak_rss_kib": 190528,
+              "result": {
+                "messages_per_s": 57992,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [507.06, 502.08, 490.82],
+              "load_after": [507.06, 502.08, 490.82],
+              "outcome": "measured",
+              "wall_ms": 4040.288958,
+              "peak_rss_kib": 205712,
+              "result": {
+                "messages_per_s": 31122,
+                "payload_bytes": 990
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "bun-isolated",
+          "failed": 0,
+          "summary": {
+            "messages_per_s": {
+              "median": 30766.0,
+              "min": 25854.0,
+              "max": 34653.0
+            },
+            "payload_bytes": {
+              "median": 990.0,
+              "min": 990.0,
+              "max": 990.0
+            },
+            "peak_rss_mib": {
+              "median": 196.609375,
+              "min": 129.734375,
+              "max": 219.625
+            },
+            "wall_ms": {
+              "median": 3948.768375,
+              "min": 3525.177,
+              "max": 5278.623583
+            }
+          },
+          "runs": [
+            {
+              "load_before": [478.95, 497.46, 488.49],
+              "load_after": [473.67, 496.06, 488.05],
+              "outcome": "measured",
+              "wall_ms": 3908.12,
+              "peak_rss_kib": 224896,
+              "result": {
+                "messages_per_s": 31527,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [483.44, 497.38, 488.61],
+              "load_after": [483.44, 497.38, 488.61],
+              "outcome": "measured",
+              "wall_ms": 3948.768375,
+              "peak_rss_kib": 210320,
+              "result": {
+                "messages_per_s": 28987,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [508.4, 502.2, 490.48],
+              "load_after": [508.4, 502.2, 490.48],
+              "outcome": "measured",
+              "wall_ms": 3525.177,
+              "peak_rss_kib": 201328,
+              "result": {
+                "messages_per_s": 34653,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [498.14, 500.27, 489.94],
+              "load_after": [499.41, 500.5, 490.08],
+              "outcome": "measured",
+              "wall_ms": 4169.296125,
+              "peak_rss_kib": 132848,
+              "result": {
+                "messages_per_s": 30766,
+                "payload_bytes": 990
+              }
+            },
+            {
+              "load_before": [507.06, 502.08, 490.82],
+              "load_after": [516.13, 504.16, 491.69],
+              "outcome": "measured",
+              "wall_ms": 5278.623583,
+              "peak_rss_kib": 196992,
+              "result": {
+                "messages_per_s": 25854,
+                "payload_bytes": 990
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compute",
+      "programs": [
+        {
+          "runtime": "buoy",
+          "failed": 0,
+          "summary": {
+            "fib_ms": {
+              "median": 8.1,
+              "min": 6.7,
+              "max": 12.0
+            },
+            "peak_rss_mib": {
+              "median": 83.59375,
+              "min": 76.84375,
+              "max": 84.515625
+            },
+            "wall_ms": {
+              "median": 5349.745917,
+              "min": 4756.357834,
+              "max": 6237.287792
+            }
+          },
+          "runs": [
+            {
+              "load_before": [515.16, 504.16, 491.76],
+              "load_after": [514.9, 504.29, 491.88],
+              "outcome": "measured",
+              "wall_ms": 5305.818125,
+              "peak_rss_kib": 78688,
+              "result": {
+                "fib_ms": 12
+              }
+            },
+            {
+              "load_before": [502.5, 501.89, 491.11],
+              "load_after": [488.44, 498.99, 490.15],
+              "outcome": "measured",
+              "wall_ms": 5349.745917,
+              "peak_rss_kib": 85600,
+              "result": {
+                "fib_ms": 8.1
+              }
+            },
+            {
+              "load_before": [488.44, 498.99, 490.15],
+              "load_after": [461.48, 492.89, 488.09],
+              "outcome": "measured",
+              "wall_ms": 5376.747625,
+              "peak_rss_kib": 85440,
+              "result": {
+                "fib_ms": 7.75
+              }
+            },
+            {
+              "load_before": [461.48, 492.89, 488.09],
+              "load_after": [450.71, 490.14, 487.14],
+              "outcome": "measured",
+              "wall_ms": 6237.287792,
+              "peak_rss_kib": 86128,
+              "result": {
+                "fib_ms": 8.9
+              }
+            },
+            {
+              "load_before": [439.21, 487.1, 486.09],
+              "load_after": [439.21, 487.1, 486.09],
+              "outcome": "measured",
+              "wall_ms": 4756.357834,
+              "peak_rss_kib": 86544,
+              "result": {
+                "fib_ms": 6.7
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "node",
+          "failed": 0,
+          "summary": {
+            "fib_ms": {
+              "median": 2.6153499999999994,
+              "min": 1.8455666500000008,
+              "max": 4.897856249999995
+            },
+            "peak_rss_mib": {
+              "median": 74.265625,
+              "min": 73.3125,
+              "max": 75.09375
+            },
+            "wall_ms": {
+              "median": 736.1104160000001,
+              "min": 618.320208,
+              "max": 1332.412458
+            }
+          },
+          "runs": [
+            {
+              "load_before": [514.9, 504.29, 491.88],
+              "load_after": [502.5, 501.89, 491.11],
+              "outcome": "measured",
+              "wall_ms": 736.1104160000001,
+              "peak_rss_kib": 76896,
+              "result": {
+                "fib_ms": 1.8455666500000008
+              }
+            },
+            {
+              "load_before": [488.44, 498.99, 490.15],
+              "load_after": [488.44, 498.99, 490.15],
+              "outcome": "measured",
+              "wall_ms": 1332.412458,
+              "peak_rss_kib": 76448,
+              "result": {
+                "fib_ms": 4.897856249999995
+              }
+            },
+            {
+              "load_before": [461.48, 492.89, 488.09],
+              "load_after": [461.48, 492.89, 488.09],
+              "outcome": "measured",
+              "wall_ms": 937.737083,
+              "peak_rss_kib": 76048,
+              "result": {
+                "fib_ms": 2.346085400000001
+              }
+            },
+            {
+              "load_before": [450.71, 490.14, 487.14],
+              "load_after": [450.71, 490.14, 487.14],
+              "outcome": "measured",
+              "wall_ms": 648.1448330000001,
+              "peak_rss_kib": 75072,
+              "result": {
+                "fib_ms": 2.6153499999999994
+              }
+            },
+            {
+              "load_before": [430.78, 484.55, 485.19],
+              "load_after": [430.78, 484.55, 485.19],
+              "outcome": "measured",
+              "wall_ms": 618.320208,
+              "peak_rss_kib": 75824,
+              "result": {
+                "fib_ms": 2.7771520499999993
+              }
+            }
+          ]
+        },
+        {
+          "runtime": "bun",
+          "failed": 0,
+          "summary": {
+            "fib_ms": {
+              "median": 2.6715770500000007,
+              "min": 1.61059585,
+              "max": 5.7817875
+            },
+            "peak_rss_mib": {
+              "median": 31.25,
+              "min": 31.15625,
+              "max": 31.296875
+            },
+            "wall_ms": {
+              "median": 519.033375,
+              "min": 450.935541,
+              "max": 521.429041
+            }
+          },
+          "runs": [
+            {
+              "load_before": [502.5, 501.89, 491.11],
+              "load_after": [502.5, 501.89, 491.11],
+              "outcome": "measured",
+              "wall_ms": 501.2952499999999,
+              "peak_rss_kib": 31904,
+              "result": {
+                "fib_ms": 3.86173125
+              }
+            },
+            {
+              "load_before": [488.44, 498.99, 490.15],
+              "load_after": [488.44, 498.99, 490.15],
+              "outcome": "measured",
+              "wall_ms": 521.297042,
+              "peak_rss_kib": 31936,
+              "result": {
+                "fib_ms": 2.6715770500000007
+              }
+            },
+            {
+              "load_before": [461.48, 492.89, 488.09],
+              "load_after": [461.48, 492.89, 488.09],
+              "outcome": "measured",
+              "wall_ms": 521.429041,
+              "peak_rss_kib": 32048,
+              "result": {
+                "fib_ms": 2.09939375
+              }
+            },
+            {
+              "load_before": [450.71, 490.14, 487.14],
+              "load_after": [439.21, 487.1, 486.09],
+              "outcome": "measured",
+              "wall_ms": 519.033375,
+              "peak_rss_kib": 32032,
+              "result": {
+                "fib_ms": 5.7817875
+              }
+            },
+            {
+              "load_before": [430.78, 484.55, 485.19],
+              "load_after": [430.78, 484.55, 485.19],
+              "outcome": "measured",
+              "wall_ms": 450.935541,
+              "peak_rss_kib": 32000,
+              "result": {
+                "fib_ms": 1.61059585
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
