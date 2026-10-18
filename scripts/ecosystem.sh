@@ -22,7 +22,7 @@
 # summary.json.
 #
 # Usage: scripts/ecosystem.sh. It needs jq, pnpm, perl, and the node of .node-version, and it
-# takes about half an hour. `scripts/ecosystem.sh install` only installs the locked packages.
+# takes about an hour. `scripts/ecosystem.sh install` only installs the locked packages.
 
 set -eu
 
