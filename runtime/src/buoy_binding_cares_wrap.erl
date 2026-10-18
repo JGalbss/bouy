@@ -24,7 +24,7 @@ binding() ->
     F = fun buoy_node:fn/3,
     A = fun buoy_node:arg/2,
     Request = fun(Name) -> buoy_node:constructor(Name, 0, fun(_, _) -> undefined end) end,
-    Channel = buoy_node:constructor(<<"ChannelWrap">>, 3, fun(This, Args) -> channel(This, A(1, Args), A(2, Args)) end),
+    Channel = buoy_node:constructor(<<"ChannelWrap">>, 3, fun(This, Args) -> channel(This, A(1, Args), A(2, Args), A(3, Args)) end),
     Proto = buoy_heap:get(Channel, <<"prototype">>),
     Queries = [{<<"queryAny">>, any}, {<<"queryA">>, a}, {<<"queryAaaa">>, aaaa}, {<<"queryCaa">>, caa},
                {<<"queryCname">>, cname}, {<<"queryMx">>, mx}, {<<"queryNs">>, ns}, {<<"queryTlsa">>, tlsa},
@@ -172,16 +172,23 @@ ipv6_buffer(V) ->
 
 %%% ChannelWrap
 
-channel(This, Timeout, Tries) ->
+%% ChannelWrap(timeout, tries, maxTimeout): c-ares's defaults are a
+%% 2000 ms timeout that doubles at each of 4 tries, up to maxTimeout.
+channel(This, Timeout, Tries, MaxTimeout) ->
     Ms = case buoy_ref:to_number(Timeout) of
         T when is_number(T), T > 0 -> trunc(T);
-        _ -> 5000
+        _ -> 2000
     end,
     Retry = case buoy_ref:to_number(Tries) of
         N when is_number(N), N >= 1 -> trunc(N);
         _ -> 4
     end,
-    buoy_heap:private_put(This, ?CHANNEL, #{servers => default_servers(), timeout => Ms, tries => Retry, pending => []}),
+    Max = case buoy_ref:to_number(MaxTimeout) of
+        M when is_number(M), M > 0 -> trunc(M);
+        _ -> infinity
+    end,
+    buoy_heap:private_put(This, ?CHANNEL, #{servers => default_servers(), timeout => Ms, tries => Retry,
+                                            max_timeout => Max, pending => []}),
     undefined.
 
 channel_state(This) ->
@@ -231,22 +238,29 @@ cancel(This) ->
 %% A query of the channel: 0, then req.oncomplete(0, result[, ttls]) or
 %% req.oncomplete(code), with the code of c-ares, such as 'ENOTFOUND'.
 query(This, Type, Req, Name) ->
-    #{servers := Servers, timeout := Timeout, tries := Tries, pending := Pending} = S = channel_state(This),
-    Options = [{nameservers, Servers}, {timeout, Timeout}, {retry, Tries}],
+    #{servers := Servers, timeout := Timeout, tries := Tries, max_timeout := Max, pending := Pending} = S = channel_state(This),
+    %% Each try waits twice as long as the one before, up to maxTimeout.
+    Waits = [min(Timeout bsl I, Max) || I <- lists:seq(0, Tries - 1)],
     {Question, Kind} = case Type of
         reverse -> {reverse_name(Name), ptr};
         tlsa -> {Name, 52};
         _ -> {Name, Type}
     end,
-    Work = fun() -> resolve(Question, Kind, Options) end,
+    Work = fun() -> resolve(Question, Kind, Servers, Waits) end,
     Ref = start(Req, Work, fun(Result) -> answer(This, Req, Type, Result) end),
     Live = [P || {R, _} = P <- Pending, erlang:get({?MODULE, pending, R}) =/= undefined],
     buoy_heap:private_put(This, ?CHANNEL, S#{pending := [{Ref, Req} | Live]}),
     0.
 
-resolve(_Question, _Kind, []) ->
+resolve(_Question, _Kind, [], _Waits) ->
     {error, econnrefused};
-resolve(Question, Kind, Options) ->
+resolve(Question, Kind, Servers, [Wait | Rest]) ->
+    case resolve_once(Question, Kind, [{nameservers, Servers}, {timeout, Wait}, {retry, 1}]) of
+        {error, timeout} when Rest =/= [] -> resolve(Question, Kind, Servers, Rest);
+        Result -> Result
+    end.
+
+resolve_once(Question, Kind, Options) ->
     case inet_res:resolve(Question, in, Kind, Options) of
         {ok, Msg} -> {ok, [{inet_dns:rr(RR, type), inet_dns:rr(RR, ttl), inet_dns:rr(RR, data)} || RR <- inet_dns:msg(Msg, anlist)]};
         %% A reply that does not decode is formerr; a FORMERR rcode is qfmterror.

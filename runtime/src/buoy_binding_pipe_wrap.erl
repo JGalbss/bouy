@@ -43,7 +43,10 @@ local(Handle) ->
 
 bind(This, Name) ->
     local(This),
-    buoy_node_socket:bind(This, #{family => local, path => local_path(Name)}, []).
+    case local_path(Name) of
+        {ok, Path} -> buoy_node_socket:bind(This, #{family => local, path => Path}, []);
+        error -> ?UV_EINVAL
+    end.
 
 listen(This, Backlog) ->
     case buoy_node_socket:find(This) of
@@ -55,7 +58,10 @@ listen(This, Backlog) ->
 %% through the request.
 connect(This, Req, Name) ->
     local(This),
-    buoy_node_socket:connect(This, Req, #{family => local, path => local_path(Name)}, all).
+    case local_path(Name) of
+        {ok, Path} -> buoy_node_socket:connect(This, Req, #{family => local, path => Path}, all);
+        error -> ?UV_EINVAL
+    end.
 
 %% fchmod(flags): uv_pipe_chmod gives everyone read (UV_READABLE) and
 %% write (UV_WRITABLE) on top of the socket file's mode.
@@ -79,12 +85,18 @@ fchmod(This, Flags) ->
             ?UV_EBADF
     end.
 
-%% libuv truncates a socket path to the room of sun_path (uv_pipe_bind2
-%% without UV_PIPE_NO_TRUNCATE), so bind and connect agree on a long one.
+%% A socket path longer than sun_path is EINVAL, as pipe_wrap passes
+%% UV_PIPE_NO_TRUNCATE. libuv takes one that fills sun_path with no NUL,
+%% which the socket module refuses, so such a path loses its last byte, in
+%% bind and in connect alike.
 local_path(V) ->
     Path = path(V),
-    Room = case os:type() of {unix, darwin} -> 103; _ -> 107 end,
-    binary:part(Path, 0, min(byte_size(Path), Room)).
+    Room = case os:type() of {unix, darwin} -> 104; _ -> 108 end,
+    case byte_size(Path) of
+        Size when Size > Room -> error;
+        Room -> {ok, binary:part(Path, 0, Room - 1)};
+        _ -> {ok, Path}
+    end.
 
 %% open(fd): a channel process owns a port on the descriptor; the handle stays
 %% a root of the heap until the channel ends.
