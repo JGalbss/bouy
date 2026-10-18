@@ -744,6 +744,9 @@ delete_property(O, K) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             buoy_ref_proxy:delete_property(Handler, K);
+        %% [[Delete]] of a namespace fails for an export and does not read its binding.
+        {namespace, _, Props, _, _, _} when not is_tuple(K); element(1, K) =/= '$sym' ->
+            not is_map_key(K, Props);
         {deferred_namespace, _, _, _, _, M} = R ->
             deferred_key(M, K),
             own_of(R, K) =:= none;
