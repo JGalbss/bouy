@@ -28,6 +28,7 @@
 -export([schedule_timer/1, toggle_timer_ref/1, toggle_immediate_ref/1, now/0, set_callback/2, callback/1]).
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
 -export([enter/0, poll/0, polled/2, metrics/0, idle_time/0]).
+-export([add_cleanup_hook/1]).
 
 -define(TIMER, '$buoy_node_timer').
 -define(IMMEDIATE_REF, '$buoy_node_immediate_ref').
@@ -35,6 +36,7 @@
 -define(BASE, '$buoy_node_timer_base').
 -define(PROCESS, '$buoy_node_process').
 -define(EXITING, '$buoy_node_exiting').
+-define(CLEANUP, '$buoy_node_cleanup_hooks').
 %% uv_metrics_info and uv_metrics_idle_time: {Iterations, Events,
 %% EventsWaiting, IdleNanoseconds}.
 -define(METRICS, '$buoy_node_metrics').
@@ -462,10 +464,29 @@ finish() ->
             really_exit(exit_code(0))
     end.
 
+%% Environment::AddCleanupHook: Fun runs when the environment is freed after
+%% the loop ends, the newest hook first, as the destructor of a native object
+%% does, such as a Storage that closes its database.
+-spec add_cleanup_hook(fun(() -> term())) -> ok.
+add_cleanup_hook(Fun) ->
+    Hooks = case erlang:get(?CLEANUP) of
+        undefined -> [];
+        H -> H
+    end,
+    erlang:put(?CLEANUP, [Fun | Hooks]),
+    ok.
+
+run_cleanup() ->
+    Hooks = case erlang:erase(?CLEANUP) of
+        undefined -> [];
+        H -> H
+    end,
+    lists:foreach(fun(Hook) -> try Hook() catch _:_ -> ok end end, Hooks).
+
 %% FreeEnvironment after the loop ends: the cleanup hooks, the AtExit
 %% callbacks, and the end of the Environment, which process.exit() skips.
 free_environment() ->
-    buoy_trace:complete(?ENVIRONMENT, <<"RunCleanup">>, fun() -> ok end),
+    buoy_trace:complete(?ENVIRONMENT, <<"RunCleanup">>, fun run_cleanup/0),
     buoy_trace:scope(?ENVIRONMENT, <<"AtExit">>, fun() -> ok end),
     buoy_trace:close_scope(?ENVIRONMENT, <<"Environment">>).
 

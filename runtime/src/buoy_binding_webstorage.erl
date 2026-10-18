@@ -269,6 +269,9 @@ conn(Storage) ->
                 Call({exec, <<"UPDATE nodejs_webstorage_state SET schema_version = ",
                               (integer_to_binary(?SCHEMA_VERSION))/binary, ";">>}),
             save(Storage, State#{conn => Conn, statements => #{}}),
+            %% ~Storage closes the database when the environment ends, which checkpoints
+            %% the WAL and removes its -wal and -shm files.
+            buoy_node_loop:add_cleanup_hook(fun() -> buoy_binding_sqlite:command(Conn, close) end),
             Conn;
         #{conn := Conn} ->
             Conn
