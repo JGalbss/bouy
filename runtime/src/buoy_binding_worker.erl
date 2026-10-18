@@ -38,7 +38,8 @@ binding() ->
                {<<"stopThread">>, fun(This, _) -> stop_thread(This) end},
                {<<"ref">>, fun(This, _) -> set_ref(This, true) end},
                {<<"unref">>, fun(This, _) -> set_ref(This, false) end},
-               {<<"hasRef">>, fun(This, _) -> maps:get(refed, state(This), false) end},
+               {<<"hasRef">>, fun(This, _) -> has_ref(This) end},
+               {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This), -1) end},
                {<<"getResourceLimits">>, fun(This, _) -> limits_array(maps:get(limits, state(This))) end},
                {<<"loopStartTime">>, fun(This, _) -> maps:get(loop_start, state(This), -1) end},
                {<<"loopIdleTime">>, fun(_, _) -> 0 end},
@@ -132,13 +133,15 @@ new_worker(This, Args) ->
         N -> buoy_ref:to_string(N)
     end,
     ThreadId = next_thread_id(),
+    save(This, #{status => created, refed => false, limits => [-1, -1, -1, -1]}),
+    AsyncId = buoy_binding_async_wrap:emit_init(This, <<"WORKER">>),
     Pipe = buoy_binding_messaging:pipe(),
     Port = buoy_binding_messaging:new_port(Pipe, 1, []),
     buoy_heap:set(This, <<"messagePort">>, Port),
     buoy_heap:set(This, <<"threadId">>, ThreadId),
     buoy_heap:set(This, <<"threadName">>, Name),
     save(This, #{thread_id => ThreadId, name => Name, pipe => Pipe, env => Env, exec_argv => ExecArgv,
-                 limits => Limits, url => A(1), refed => false, status => created}),
+                 limits => Limits, url => A(1), refed => false, status => created, async_id => AsyncId}),
     undefined.
 
 %% The env of the worker: a copy of this realm's (null), this realm's own
@@ -262,6 +265,13 @@ stop_thread(This) ->
     end,
     undefined.
 
+%% HandleWrap::HasRef: undefined once the handle closed after the exit.
+has_ref(This) ->
+    case state(This) of
+        #{status := closed} -> undefined;
+        #{refed := Refed} -> Refed
+    end.
+
 set_ref(This, Refed) ->
     S = state(This),
     Old = maps:get(refed, S, false),
@@ -292,11 +302,15 @@ exited(Key, Reason) ->
         undefined ->
             ok;
         This ->
-            set_ref(This, false),
-            save(This, (state(This))#{status => exited}),
+            %% The handle stays ref'd while onexit runs, then closes in a later macrotask.
             {Code, Error, Why} = exit_code(Reason),
             OnExit = buoy_heap:get(This, <<"onexit">>),
-            buoy_heap:is_callable(OnExit) andalso buoy_heap:call(OnExit, This, [Code, Error, Why]),
+            try buoy_heap:is_callable(OnExit) andalso buoy_heap:call(OnExit, This, [Code, Error, Why])
+            after
+                set_ref(This, false),
+                save(This, (state(This))#{status => exited}),
+                buoy_node_loop:defer(fun() -> save(This, (state(This))#{status => closed}) end)
+            end,
             ok
     end.
 

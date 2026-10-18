@@ -94,6 +94,9 @@ new_port(Pipe, Side, Queue) ->
     Port = buoy_node:object(erlang:get(?PROTO), []),
     buoy_heap:private_put(Port, ?STATE, #{pipe => Pipe, side => Side, queue => Queue, started => false,
                                           refed => false, state => open, seq => erlang:unique_integer([monotonic])}),
+    %% The init hook sees the port before its handle refs and before oninit, as in HandleWrap.
+    AsyncId = buoy_binding_async_wrap:emit_init(Port, <<"MESSAGEPORT">>),
+    update(Port, fun(S) -> S#{async_id => AsyncId} end),
     erlang:put(?PORTS(Pipe, Side), Port),
     Pipe ! {attach, Side, self()},
     set_ref(Port, true),

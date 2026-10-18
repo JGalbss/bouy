@@ -4,7 +4,7 @@
 %% keeps.
 -module(buoy_binding_async_wrap).
 
--export([binding/0]).
+-export([binding/0, emit_init/2]).
 
 -define(STACK, '$buoy_node_async_stack').
 -define(K_EXECUTION_ASYNC_ID, 0).
@@ -53,6 +53,28 @@ binding() ->
             {<<"kStackLength">>, 7}])},
         {<<"Providers">>, buoy_node:object(
                                             [{P, I} || {I, P} <- lists:enumerate(0, providers())])}]).
+
+%% AsyncWrap::AsyncReset for a native resource of the provider Type, such as
+%% <<"MESSAGEPORT">>: a new async id, triggered by the default trigger id or
+%% the current execution, and the init hooks when one is enabled
+%% (EmitAsyncInit).
+-spec emit_init(term(), binary()) -> number().
+emit_init(Resource, Type) ->
+    Binding = buoy_node:binding(<<"async_wrap">>),
+    Ids = buoy_heap:get(Binding, <<"async_id_fields">>),
+    Hooks = buoy_heap:get(Binding, <<"async_hook_fields">>),
+    Id = buoy_heap:get(Ids, 2) + 1,
+    buoy_heap:set(Ids, 2, Id),
+    Trigger = case buoy_heap:get(Ids, 3) of
+        D when D >= 0 -> D;
+        _ -> buoy_heap:get(Ids, ?K_EXECUTION_ASYNC_ID)
+    end,
+    case buoy_heap:get(Hooks, 0) > 0 andalso buoy_node_loop:callback(async_hooks) of
+        false -> ok;
+        undefined -> ok;
+        Native -> buoy_heap:call(buoy_heap:get(Native, <<"init">>), undefined, [Id, Type, Trigger, Resource])
+    end,
+    Id.
 
 push(HookFields, IdFields, AsyncId, TriggerId) ->
     Old = {buoy_heap:get(IdFields, ?K_EXECUTION_ASYNC_ID), buoy_heap:get(IdFields, ?K_TRIGGER_ASYNC_ID)},
