@@ -104,12 +104,17 @@ fn native_library(workspace: &Path, out: &Path) -> String {
     let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
     });
+    let digits = format!("{hash:016x}");
     format!(
         "/// The NIF library `buoy_native.so` that `buoy_native.erl` loads.\n\
          pub const NATIVE: &[u8] = include_bytes!({:?});\n\
          /// The FNV-1a hash of `NATIVE`.\n\
-         pub const NATIVE_HASH: u64 = {hash:#x};\n",
-        library.display().to_string()
+         pub const NATIVE_HASH: u64 = 0x{}_{}_{}_{};\n",
+        library.display().to_string(),
+        &digits[..4],
+        &digits[4..8],
+        &digits[8..12],
+        &digits[12..]
     )
 }
 

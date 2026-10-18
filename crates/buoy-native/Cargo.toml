@@ -16,7 +16,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Allocations go through enif_alloc, so erlang:memory and BUOY_MAX_MEMORY count them.
-rustler = { version = "0.39", default-features = false, features = ["allocator", "nif_version_2_15"] }
+rustler = { version = "0.39", default-features = false, features = [
+  "allocator",
+  "nif_version_2_15",
+] }
 # zlib in safe Rust, with zlib's C API, messages, and flush modes.
 libz-rs-sys = { version = "=0.6.8", default-features = false, features = ["std", "rust-allocator"] }
 # Brotli in safe Rust.
