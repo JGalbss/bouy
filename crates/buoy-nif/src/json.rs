@@ -12,9 +12,11 @@
 //! `JavaScriptCore`'s `LiteralParser`, which Bun runs, makes the same three choices: it
 //! reads 8-bit text without widening it, it makes a string without escapes from its span
 //! of the source in one copy, and it caches the keys it has made, so an array of records
-//! shares one term for each key. Text that is not JSON gives `error`. The Erlang parser of
-//! `buoy_ref_json` then reads it again and throws the `SyntaxError` with V8's message, so
-//! the messages have one source.
+//! shares one term for each key. Text that is not JSON gives `error`, and so does a
+//! document too large for the native stacks (`MAX_PENDING`). The Erlang parser of
+//! `buoy_ref_json` then reads it again: it throws the `SyntaxError` with V8's message, so
+//! the messages have one source, or it parses the document under the memory limit of the
+//! process.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -82,7 +84,7 @@ fn json_parse<'a>(
     let ids = out.ids.encode(env);
     let records = out.records.encode(env);
     match step {
-        Err(Malformed) => Ok(atoms::error().encode(env)),
+        Err(Fallback) => Ok(atoms::error().encode(env)),
         Ok(Progress::Done(root)) => {
             let value = if wide {
                 value_term(&Wide(bytes), &out, &root)
@@ -99,9 +101,15 @@ fn json_parse<'a>(
     }
 }
 
-/// Text that is not JSON.
+/// Text for the Erlang parser: text that is not JSON, or a document that keeps more than
+/// `MAX_PENDING` values open, whose native copies would cost more memory than the VM's
+/// limit can see.
 #[derive(Debug)]
-struct Malformed;
+struct Fallback;
+
+/// The most keys and values that the open objects and arrays may hold at once, about
+/// 400 MB of native memory.
+const MAX_PENDING: usize = 16_000_000;
 
 #[derive(Debug)]
 enum Progress {
@@ -178,11 +186,14 @@ impl Parser {
         input: &U,
         out: &mut Out<'a>,
         slice: &mut Slice,
-    ) -> Result<Progress, Malformed> {
+    ) -> Result<Progress, Fallback> {
         loop {
             let before = self.at;
             if let Some(root) = self.step(input, out)? {
                 return Ok(Progress::Done(root));
+            }
+            if self.values.len() + self.keys.len() > MAX_PENDING {
+                return Err(Fallback);
             }
             if slice.is_over(out.env, self.at - before + 1) {
                 return Ok(Progress::Paused);
@@ -195,11 +206,11 @@ impl Parser {
         &mut self,
         input: &U,
         out: &mut Out<'a>,
-    ) -> Result<Option<Value>, Malformed> {
+    ) -> Result<Option<Value>, Fallback> {
         self.skip_space(input);
         let unit = input.at(self.at);
         match (self.expect, unit) {
-            (Expect::End, None) => return self.root.take().map(Some).ok_or(Malformed),
+            (Expect::End, None) => return self.root.take().map(Some).ok_or(Fallback),
             (Expect::Value, Some(unit)) => self.value(input, unit)?,
             (Expect::FirstKey, Some(0x7D)) | (Expect::FirstItem, Some(0x5D)) => {
                 self.at += 1;
@@ -218,13 +229,13 @@ impl Parser {
             (Expect::FirstItem, Some(_)) => self.expect = Expect::Value,
             (Expect::Next, Some(unit)) => self.after_member(input, out, unit)?,
             (Expect::End | Expect::FirstKey | Expect::Key | Expect::Colon, Some(_)) | (_, None) => {
-                return Err(Malformed);
+                return Err(Fallback);
             }
         }
         Ok(None)
     }
 
-    fn value<'a, U: Units<'a>>(&mut self, input: &U, unit: u16) -> Result<(), Malformed> {
+    fn value<'a, U: Units<'a>>(&mut self, input: &U, unit: u16) -> Result<(), Fallback> {
         let value = match unit {
             0x7B | 0x5B => {
                 self.at += 1;
@@ -251,7 +262,7 @@ impl Parser {
             0x66 => self.word(input, b"false", Value::False)?,
             0x6E => self.word(input, b"null", Value::Null)?,
             0x2D | 0x30..=0x39 => self.number(input)?,
-            _ => return Err(Malformed),
+            _ => return Err(Fallback),
         };
         self.complete(value);
         Ok(())
@@ -263,7 +274,7 @@ impl Parser {
         input: &U,
         out: &mut Out<'a>,
         unit: u16,
-    ) -> Result<(), Malformed> {
+    ) -> Result<(), Fallback> {
         let is_object = self.frames.last().is_some_and(|frame| frame.is_object);
         match (unit, is_object) {
             (0x2C, true) => self.expect = Expect::Key,
@@ -273,7 +284,7 @@ impl Parser {
                 self.close(input, out);
                 return Ok(());
             }
-            _ => return Err(Malformed),
+            _ => return Err(Fallback),
         }
         self.at += 1;
         Ok(())
@@ -317,20 +328,20 @@ impl Parser {
         input: &U,
         word: &[u8],
         value: Value,
-    ) -> Result<Value, Malformed> {
+    ) -> Result<Value, Fallback> {
         let matches = word
             .iter()
             .enumerate()
             .all(|(offset, &byte)| input.at(self.at + offset) == Some(u16::from(byte)));
         if !matches {
-            return Err(Malformed);
+            return Err(Fallback);
         }
         self.at += word.len();
         Ok(value)
     }
 
     /// A string after its opening quote, up to and past its closing quote.
-    fn string<'a, U: Units<'a>>(&mut self, input: &U) -> Result<Text, Malformed> {
+    fn string<'a, U: Units<'a>>(&mut self, input: &U) -> Result<Text, Fallback> {
         let start = self.at;
         if let Some(end) = input.plain_string(start) {
             self.at = end + 1;
@@ -339,7 +350,7 @@ impl Parser {
         let mut units = Vec::new();
         let mut at = start;
         loop {
-            match input.at(at).ok_or(Malformed)? {
+            match input.at(at).ok_or(Fallback)? {
                 0x22 => {
                     self.at = at + 1;
                     return Ok(Text::Units(units));
@@ -349,7 +360,7 @@ impl Parser {
                     units.push(unit);
                     at += 1 + length;
                 }
-                unit if unit < 0x20 => return Err(Malformed),
+                unit if unit < 0x20 => return Err(Fallback),
                 unit => {
                     units.push(unit);
                     at += 1;
@@ -359,14 +370,14 @@ impl Parser {
     }
 
     /// -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?
-    fn number<'a, U: Units<'a>>(&mut self, input: &U) -> Result<Value, Malformed> {
+    fn number<'a, U: Units<'a>>(&mut self, input: &U) -> Result<Value, Fallback> {
         let start = self.at;
         let negative = input.at(start) == Some(0x2D);
         let first = start + usize::from(negative);
         let digits_end = match input.at(first) {
             Some(0x30) => first + 1,
             Some(0x31..=0x39) => digits(input, first),
-            _ => return Err(Malformed),
+            _ => return Err(Fallback),
         };
         let mut end = digits_end;
         if input.at(end) == Some(0x2E) {
@@ -387,7 +398,7 @@ impl Parser {
                 (false, magnitude) => Value::Int(magnitude),
             });
         }
-        let number: f64 = input.ascii(start, end).parse().map_err(|_| Malformed)?;
+        let number: f64 = input.ascii(start, end).parse().map_err(|_| Fallback)?;
         Ok(canonical(number))
     }
 }
@@ -424,14 +435,14 @@ fn digits<'a, U: Units<'a>>(input: &U, mut at: usize) -> usize {
 }
 
 /// The end of a run of at least one digit from `at`.
-fn some_digits<'a, U: Units<'a>>(input: &U, at: usize) -> Result<usize, Malformed> {
+fn some_digits<'a, U: Units<'a>>(input: &U, at: usize) -> Result<usize, Fallback> {
     let end = digits(input, at);
-    if end == at { Err(Malformed) } else { Ok(end) }
+    if end == at { Err(Fallback) } else { Ok(end) }
 }
 
 /// The code unit of the escape after a backslash at `at`, and the units it takes.
-fn escape<'a, U: Units<'a>>(input: &U, at: usize) -> Result<(u16, usize), Malformed> {
-    let unit = match input.at(at).ok_or(Malformed)? {
+fn escape<'a, U: Units<'a>>(input: &U, at: usize) -> Result<(u16, usize), Fallback> {
+    let unit = match input.at(at).ok_or(Fallback)? {
         0x22 => 0x22,
         0x5C => 0x5C,
         0x2F => 0x2F,
@@ -448,9 +459,9 @@ fn escape<'a, U: Units<'a>>(input: &U, at: usize) -> Result<(u16, usize), Malfor
                 let value = u16::try_from(digit.to_digit(16)?).ok()?;
                 Some(acc * 16 + value)
             });
-            return unit.map(|unit| (unit, 5)).ok_or(Malformed);
+            return unit.map(|unit| (unit, 5)).ok_or(Fallback);
         }
-        _ => return Err(Malformed),
+        _ => return Err(Fallback),
     };
     Ok((unit, 1))
 }

@@ -29,8 +29,9 @@ mod atoms {
     }
 }
 
-/// The deepest tree that the compiler takes; a deeper one runs on the Erlang closures.
-const MAX_DEPTH: usize = 500;
+/// The deepest tree that the compiler takes; a deeper one runs on the Erlang closures. The
+/// compiler recurses on a scheduler thread, whose stack is about 1 MB.
+const MAX_DEPTH: usize = 200;
 
 /// The most entries of the backtracking stack: past it, the search is a `RangeError`, as
 /// V8 limits the stack of its regular expressions.
