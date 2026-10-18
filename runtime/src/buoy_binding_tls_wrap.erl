@@ -310,6 +310,11 @@ verify_fun(Agent, Cas) ->
                 %% trusted, as OpenSSL trusts it.
                 {bad_cert, selfsigned_peer} ->
                     lists:member(Der, Cas) orelse (Agent ! {verify_error, selfsigned_peer, Der});
+                %% OpenSSL takes an intermediate of the store as trusted and
+                %% then misses its issuer (UNABLE_TO_GET_ISSUER_CERT).
+                {bad_cert, unknown_ca} ->
+                    Reason = case lists:member(Der, Cas) of true -> stored_issuer_missing; false -> unknown_ca end,
+                    Agent ! {verify_error, Reason, Der};
                 {bad_cert, Reason} ->
                     Agent ! {verify_error, Reason, Der};
                 _ ->
@@ -1353,6 +1358,7 @@ x509_error(cert_expired, Der, _) ->
     end;
 x509_error(invalid_signature, _, _) -> {<<"CERT_SIGNATURE_FAILURE">>, <<"certificate signature failure">>};
 x509_error(invalid_issuer, _, _) -> {<<"UNABLE_TO_GET_ISSUER_CERT">>, <<"unable to get issuer certificate">>};
+x509_error(stored_issuer_missing, _, _) -> {<<"UNABLE_TO_GET_ISSUER_CERT">>, <<"unable to get issuer certificate">>};
 x509_error(missing_basic_constraint, _, _) -> {<<"INVALID_CA">>, <<"invalid CA certificate">>};
 x509_error(invalid_key_usage, _, _) -> {<<"INVALID_PURPOSE">>, <<"unsupported certificate purpose">>};
 x509_error({revoked, _}, _, _) -> {<<"CERT_REVOKED">>, <<"certificate revoked">>};
