@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "25d078a04ed87b1fbb93eb859ca662e9a3b74758",
+  "updated": "276cf062088ee77470e094494f8e20e16a31c1d9",
   "total": 4419,
   "outcomes": {
-    "pass": 1950,
+    "pass": 2146,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1755,
-    "timeout": 121,
+    "fail": 1549,
+    "timeout": 131,
     "harness_error": 0,
     "crash": 10
   },
@@ -23,17 +23,17 @@
         "timeout": 13
       },
       "parallel": {
-        "pass": 1846,
+        "pass": 2041,
         "skip": 545,
-        "fail": 1577,
-        "timeout": 101,
+        "fail": 1374,
+        "timeout": 109,
         "crash": 10
       },
       "sequential": {
-        "pass": 39,
+        "pass": 40,
         "skip": 22,
-        "fail": 50,
-        "timeout": 7
+        "fail": 47,
+        "timeout": 9
       }
     },
     "kind": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 1950,
+        "pass": 2146,
         "skip": 240,
-        "fail": 1755,
-        "timeout": 121,
+        "fail": 1549,
+        "timeout": 131,
         "crash": 10
       }
     },
@@ -117,10 +117,10 @@
         "skip": 6
       },
       "fs": {
-        "pass": 99,
+        "pass": 295,
         "skip": 20,
-        "fail": 218,
-        "timeout": 6
+        "fail": 12,
+        "timeout": 16
       },
       "http": {
         "pass": 37,
