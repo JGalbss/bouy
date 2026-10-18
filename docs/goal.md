@@ -7,7 +7,7 @@ This file is the objective and the definition of done. The owner sets it, and ev
 ## Requirements
 
 1. **TypeScript first.** Developers write ordinary TypeScript and keep their tools.
-2. **Every npm package works unchanged.** Pure-JavaScript packages, ESM and CommonJS, load from `node_modules`. Packages that use Node built-ins work through Bouy's implementations of those APIs on BEAM. Native `.node` addons are the one exception: the error names the WebAssembly or pure-JavaScript alternative.
+2. **Every npm package works unchanged, through general correctness.** Pure-JavaScript packages, ESM and CommonJS, load from `node_modules`. Packages that use Node built-ins work through Bouy's implementations of those APIs on BEAM. The target is 99% of the most-downloaded npm packages, measured by a suite that runs a large sample against Node as the oracle. Compatibility comes from correct JavaScript, Node, and web semantics and from general mechanisms such as WebAssembly fallbacks, never from code that special-cases one package. Native `.node` addons work through a general mechanism or fail with an error that names the alternative.
 3. **No Node, no V8, and no global JavaScript event loop.** Bouy compiles to Erlang and runs on BEAM. Each actor is a BEAM process with its own JavaScript heap and promise queue.
 4. **Actors by default.** Each actor has isolated state, a mailbox, a lifecycle, and a supervisor. The runtime gives bounded mailboxes, preemptive fair scheduling, cancellation, streaming, monitoring, and a path to durable execution and to distribution across machines.
 5. **Effect TS works,** and the examples use it.
@@ -18,20 +18,31 @@ This file is the objective and the definition of done. The owner sets it, and ev
 10. **Examples** that draw on the best agent and actor examples online.
 11. **Faster than Bun, and better recovery than Bun.** Bun is the bar. Bouy must beat it on speed, measured on single-thread and concurrent suites, through type-directed compilation, native built-ins, a native tier for hot typed code that still yields to the BEAM scheduler, and all cores by default. Bouy must also recover better: a crash, a runaway loop, a memory leak, or a stuck call in one agent never stops the others, and a supervisor restarts that agent within milliseconds. `bench/` measures speed and recovery against Bun and Node.
 12. **Durable execution built in.** Long-running workflows survive crashes and restarts on Bouy's own runtime: durable timers, retries with backoff, signals, cancellation, and replay or snapshots, with no external workflow server. Code written against Temporal's TypeScript SDK runs on it without the Temporal server.
-13. **Flagship: a real production codebase.** The owner's company monorepo, a large multi-service TypeScript app that runs on Bun today and uses Temporal, builds and runs on Bouy on the owner's machine out of the box, faster than on Bun, with Bouy's durable runtime in place of Temporal. Its name and code stay out of this public repository.
+13. **Production ready.** Teams can run Bouy in production: a self-contained release with the Erlang runtime inside, so the machine needs no Erlang install; Linux x86-64 and arm64 builds and a container image; OpenTelemetry tracing, metrics, and logs that work with existing Node instrumentation; soak, chaos, and memory tests that run for hours without a leak or a crash; a security review of the compiler, the runtime, and the native code; and versioned releases with a changelog.
+
+## Launch gate
+
+Nobody announces Bouy publicly until every line below holds. The owner: "ya this needs to be production grade so if i post on twitter i dont get clowned".
+
+1. **Every claim has proof.** Each claim in the README and the docs links to a test, a row of `docs/COMPAT.md`, or a results file in `bench/results`. The benchmarks show Bouy's losses next to its wins. Nothing says "all of Node" or "all of npm" before the dashboard says 100%.
+2. **The quick start works on a clean machine.** On a fresh macOS machine and a fresh Linux container, the install command and the README quick start work when pasted, in under 5 minutes. CI runs this on every release.
+3. **One command reproduces the headline numbers,** and each results file records the hardware, the load, and the versions.
+4. **A real demo.** The examples run, and a recorded demo shows a real agent app on Bouy surviving a crashed, a looping, and a leaking agent while the others keep serving.
+5. **No known crash on the common path.** The fuzz corpus has no open silent mismatch, a 24-hour soak test passes, and every error that a new user can hit names its fix.
+6. **A clean public repository.** No private data and no absolute local paths. A license, `CONTRIBUTING.md`, `SECURITY.md`, an honest status and limitations section, and green CI on Linux and macOS.
 
 ## Definition of done
 
 - `bouy run example.ts` runs TypeScript.
 - Several agents run as isolated actors, exchange messages, and call asynchronous operations.
 - An actor can fail and restart without stopping unrelated agents.
-- Real npm packages run unchanged, and the compatibility dashboard states the pass rate for each tier.
+- Real npm packages run unchanged: at least 99% of the sampled top npm packages pass, with no per-package special case in the engine, and the dashboard states each tier's rate.
 - Every Node built-in module reaches 100% on both Node coverage numbers, apart from the named `never` entries.
 - The compiler implements actor-aware lowering.
 - The end-to-end tests pass, and the benchmarks against equivalent Node and Bun programs are reproducible.
 - `bench/results` shows Bouy faster than Bun on the speed suites, and the recovery suites show each fault contained to one agent and restarted, where Bun loses the process or stalls.
 - The documents state the limitations and the next milestones.
-- The owner's production monorepo runs on Bouy unchanged, faster than on Bun, with its Temporal workflows on Bouy's durable runtime.
+- A production release ships for Linux and macOS with the runtime inside, and the soak and chaos suites pass.
 - Tests prove each invariant: fault isolation, state isolation, message ordering, supervision recovery, cancellation, bounded mailboxes, npm equivalence, and stability under load.
 
 ## Amendments
@@ -48,4 +59,6 @@ The owner added these on 2026-10-16, in order:
 - "we need complete coverage of node and like a verifiable way to have that with tests"
 - "shoudlnt this also be super fast", then "we shold i think be able to make it fast as hell"
 - "it needsto be more performant and better recovery then bun"
-- "like a sick goal would be, being able to build [the owner's production repo] on my computer and have it work on our runtime more performantly out of the box with swapping out temporal probs for just default runtime"
+- "we need 100% node coverage", "if this is going to be used in prod"
+- "ya this needs to be production grade so if i post on twitter i dont get clowned"
+- "also like we need to be compatible with like 99% of lbis on npm and shit", then "liek we dont do 1 offs"

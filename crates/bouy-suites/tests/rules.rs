@@ -26,8 +26,9 @@ const UPSTREAM: [&str; 2] = ["tests/node/test/", "runtime/vendor/node/"];
 
 /// The files that may name node as a program: the oracle tools, the test that checks that
 /// the `node` shim answers, and this file, which names the patterns.
-const ORACLE_TOOLS: [&str; 6] = [
+const ORACLE_TOOLS: [&str; 7] = [
     "scripts/freeze-expectations.sh",
+    "bench/reference/",
     "scripts/node-surface.sh",
     "crates/bouy-bench/",
     "crates/bouy-fuzz/",

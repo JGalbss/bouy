@@ -15,6 +15,7 @@
     "docs/COMPAT.md",
     "tests/fuzz/",
     "tests/node/test/",
-    "tests/node/surface.json"
+    "tests/node/surface.json",
+    "tests/reference/modules/"
   ]
 }
