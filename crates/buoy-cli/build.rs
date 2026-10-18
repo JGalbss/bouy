@@ -78,6 +78,8 @@ fn nif_library(manifest: &Path, out: &Path) {
             "buoy-nif",
             "--target",
             &target,
+            // The outer build has resolved the workspace, so the lock file is complete.
+            "--locked",
         ])
         .arg("--manifest-path")
         .arg(workspace.join("Cargo.toml"))
