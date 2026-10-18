@@ -43,6 +43,51 @@ pub struct Failure {
     pub message: String,
 }
 
+/// The request of `PACKAGE_TARGET_RESOLVE`: the key of `exports` or `imports` that
+/// matched, the module that imports it, which map it reads, and the mode.
+#[derive(Clone, Copy)]
+struct Lookup<'a> {
+    key: &'a str,
+    importer: &'a Path,
+    is_imports: bool,
+    mode: Mode,
+}
+
+impl Lookup<'_> {
+    /// `ERR_INVALID_PACKAGE_TARGET`, with the message of Node's `invalidPackageTarget`.
+    fn invalid_target(&self, package_dir: &Path, target: &str) -> Failure {
+        let config = package_dir.join("package.json");
+        let relative = !self.is_imports && !target.is_empty() && !target.starts_with("./");
+        let field = if self.is_imports {
+            "imports"
+        } else {
+            "exports"
+        };
+        let quoted = serde_json::to_string(target).unwrap_or_default();
+        let defined = if self.key == "." {
+            format!("Invalid \"{field}\" main target {quoted} defined")
+        } else {
+            format!(
+                "Invalid \"{field}\" target {quoted} defined for '{}'",
+                self.key
+            )
+        };
+        Failure {
+            code: "ERR_INVALID_PACKAGE_TARGET",
+            message: format!(
+                "{defined} in the package config {} imported from {}{}",
+                config.display(),
+                self.importer.display(),
+                if relative {
+                    "; targets must start with \"./\""
+                } else {
+                    ""
+                }
+            ),
+        }
+    }
+}
+
 /// The format of a module file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -381,11 +426,19 @@ impl Resolver {
                 other => Some(other),
             };
             match main {
-                Some(main) => self.target_resolve(package_dir, main, None, false, mode)?,
+                Some(main) => {
+                    let lookup = Lookup {
+                        key: ".",
+                        importer,
+                        is_imports: false,
+                        mode,
+                    };
+                    self.target_resolve(package_dir, main, None, &lookup)?
+                }
                 None => Resolution::Null,
             }
         } else if let (Value::Object(map), true) = (exports, dotted) {
-            self.match_resolve(subpath, map, package_dir, false, mode)?
+            self.match_resolve(subpath, map, package_dir, false, mode, importer)?
         } else {
             Resolution::Null
         };
@@ -395,8 +448,9 @@ impl Resolver {
                 code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
                 message: if subpath == "." {
                     format!(
-                        "No \"exports\" main defined in {}",
-                        package_dir.join("package.json").display()
+                        "No \"exports\" main defined in {} imported from {}",
+                        package_dir.join("package.json").display(),
+                        importer.display()
                     )
                 } else {
                     format!(
@@ -416,10 +470,14 @@ impl Resolver {
         importer: &Path,
         mode: Mode,
     ) -> Result<Target, Failure> {
-        let not_defined = || Failure {
+        let not_defined = |package: Option<&Path>| Failure {
             code: "ERR_PACKAGE_IMPORT_NOT_DEFINED",
             message: format!(
-                "Package import specifier \"{specifier}\" is not defined imported from {}",
+                "Package import specifier \"{specifier}\" is not defined{} imported from {}",
+                package.map_or_else(String::new, |dir| format!(
+                    " in package {}",
+                    dir.join("package.json").display()
+                )),
                 importer.display()
             ),
         };
@@ -432,13 +490,13 @@ impl Resolver {
                 ),
             });
         }
-        let package = self.scope(importer).ok_or_else(not_defined)?;
+        let package = self.scope(importer).ok_or_else(|| not_defined(None))?;
         let Some(Value::Object(imports)) = &package.imports else {
-            return Err(not_defined());
+            return Err(not_defined(Some(&package.dir)));
         };
-        match self.match_resolve(specifier, imports, &package.dir, true, mode)? {
+        match self.match_resolve(specifier, imports, &package.dir, true, mode, importer)? {
             Resolution::Found(target) => Ok(target),
-            _ => Err(not_defined()),
+            _ => Err(not_defined(Some(&package.dir))),
         }
     }
 
@@ -450,11 +508,18 @@ impl Resolver {
         package_dir: &Path,
         is_imports: bool,
         mode: Mode,
+        importer: &Path,
     ) -> Result<Resolution, Failure> {
         if !key.contains('*')
             && let Some(target) = map.get(key)
         {
-            return self.target_resolve(package_dir, target, None, is_imports, mode);
+            let lookup = Lookup {
+                key,
+                importer,
+                is_imports,
+                mode,
+            };
+            return self.target_resolve(package_dir, target, None, &lookup);
         }
         let mut patterns: Vec<&String> = map
             .keys()
@@ -470,12 +535,17 @@ impl Resolver {
                 && (trailer.is_empty() || (key.ends_with(trailer) && key.len() >= pattern.len()))
             {
                 let matched = &key[base.len()..key.len() - trailer.len()];
+                let lookup = Lookup {
+                    key: pattern,
+                    importer,
+                    is_imports,
+                    mode,
+                };
                 return self.target_resolve(
                     package_dir,
                     &map[pattern.as_str()],
                     Some(matched),
-                    is_imports,
-                    mode,
+                    &lookup,
                 );
             }
         }
@@ -488,17 +558,12 @@ impl Resolver {
         package_dir: &Path,
         target: &Value,
         pattern: Option<&str>,
-        is_imports: bool,
-        mode: Mode,
+        lookup: &Lookup<'_>,
     ) -> Result<Resolution, Failure> {
-        let invalid = |target: &str| Failure {
-            code: "ERR_INVALID_PACKAGE_TARGET",
-            message: format!(
-                "Invalid \"{}\" target \"{target}\" defined in the package config {}",
-                if is_imports { "imports" } else { "exports" },
-                package_dir.join("package.json").display()
-            ),
-        };
+        let Lookup {
+            is_imports, mode, ..
+        } = *lookup;
+        let invalid = |target: &str| lookup.invalid_target(package_dir, target);
         match target {
             Value::String(text) => {
                 if !text.starts_with("./") {
@@ -543,7 +608,7 @@ impl Resolver {
             Value::Object(map) => {
                 for (condition, value) in map {
                     if matches(mode, condition) {
-                        match self.target_resolve(package_dir, value, pattern, is_imports, mode)? {
+                        match self.target_resolve(package_dir, value, pattern, lookup)? {
                             Resolution::Undefined => {}
                             found => return Ok(found),
                         }
@@ -554,7 +619,7 @@ impl Resolver {
             Value::Array(items) => {
                 let mut last = Ok(Resolution::Null);
                 for item in items {
-                    match self.target_resolve(package_dir, item, pattern, is_imports, mode) {
+                    match self.target_resolve(package_dir, item, pattern, lookup) {
                         Ok(Resolution::Found(target)) => return Ok(Resolution::Found(target)),
                         Ok(Resolution::Undefined) => {}
                         other => last = other,
