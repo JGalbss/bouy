@@ -103,9 +103,11 @@ defer(Fun) ->
 -spec schedule_timer(term()) -> undefined.
 schedule_timer(Ms) ->
     Delay = max(1, trunc(buoy_ref:to_number(Ms))),
+    %% The timer handle starts unref'd, as Environment::InitializeLibuv
+    %% leaves it; toggleTimerRef refs it for the first ref'd Timeout.
     Refed = case erlang:get(?TIMER) of
         {_, _, R} -> R;
-        undefined -> true
+        undefined -> false
     end,
     cancel_timer(),
     Ref = make_ref(),
