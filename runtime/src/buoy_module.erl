@@ -707,14 +707,49 @@ import_traced(From, Specifier, Options, Phase) ->
         Phase =:= source andalso
             buoy_heap:throw_error('SyntaxError', buoy_ref_string:concat([<<"Source phase import object is not defined for module '">>, Text, <<"'">>])),
         case target(From, Text, import) of
-            {_Path, Module} when is_atom(Module), Module =/= none -> import_target(Module, Phase, Resolve, Reject);
-            {builtin, Name} -> import_target({builtin, Name}, Phase, Resolve, Reject);
-            _ -> node_import(From, Specifier, Options, Phase, Resolve, Reject)
+            {_Path, Module} when is_atom(Module), Module =/= none ->
+                validate_attributes(Module, Options),
+                import_target(Module, Phase, Resolve, Reject);
+            {builtin, Name} ->
+                validate_attributes({builtin, Name}, Options),
+                import_target({builtin, Name}, Phase, Resolve, Reject);
+            _ ->
+                node_import(From, Specifier, Options, Phase, Resolve, Reject)
         end
     catch
         error:Reason:Stack -> Reject(buoy_ref:caught(Reason, Stack))
     end,
     P.
+
+%% The import attributes of import() against the format of the target, as
+%% Node's ESM loader checks them with validateAttributes: a JSON module needs
+%% `type: 'json'`, and another module takes none. An import of a module that
+%% is no JSON without attributes needs no check.
+validate_attributes(Target, Options) ->
+    Attributes = import_attributes(Options),
+    Format = case Target of
+        {builtin, _} -> <<"builtin">>;
+        M -> atom_to_binary(kind(M))
+    end,
+    case Format =/= <<"json">> andalso buoy_heap:own_keys(Attributes) =:= [] of
+        true ->
+            ok;
+        false ->
+            ok = buoy_node:ensure(),
+            {_, Require} = buoy_node:loaders(),
+            Assert = buoy_heap:call(Require, undefined, [<<"internal/modules/esm/assert">>]),
+            Url = case Target of
+                {builtin, Name} -> buoy_ref_string:concat(<<"node:">>, Name);
+                _ -> file_url(info(Target, path))
+            end,
+            NodeFormat = case Format of
+                <<"esm">> -> <<"module">>;
+                <<"cjs">> -> <<"commonjs">>;
+                Other -> Other
+            end,
+            buoy_heap:call(buoy_heap:get(Assert, <<"validateAttributes">>), Assert, [Url, NodeFormat, Attributes]),
+            ok
+    end.
 
 import_target(Target, Phase, Resolve, Reject) ->
     Loaded = case {Phase, Target} of
