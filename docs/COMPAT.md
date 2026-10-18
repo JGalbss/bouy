@@ -9,8 +9,8 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 2,299 | 4,419 | 52.0% | 1,525 | 12 | d143387 | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 3,463 | 4,460 | 77.6% | 997 | 0 | d143387 | `tests/node/surface/expectations.txt` |
+| node | node | v25.9.0 | 2,297 | 4,419 | 52.0% | 1,527 | 12 | 04d1005 | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,461 | 4,460 | 77.6% | 999 | 0 | 04d1005 | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
@@ -951,15 +951,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at 04d1005. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 2,299 | 52.0% | 0 | 0 | 583 | 0 | 1,472 | 53 | 0 | 12 |
+| every test | 4,419 | 2,297 | 52.0% | 0 | 0 | 583 | 0 | 1,473 | 54 | 0 | 12 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 2,299 | 56.4% | 0 | 0 | 240 | 0 | 1,472 | 53 | 0 | 12 |
+| kind: public | 4,076 | 2,297 | 56.4% | 0 | 0 | 240 | 0 | 1,473 | 54 | 0 | 12 |
 
 ### By module
 
@@ -971,7 +971,7 @@ node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
 | async_hooks | 56 | 30 | 53.6% | 0 | 0 | 11 | 0 | 15 | 0 | 0 | 0 |
 | buffer | 69 | 58 | 84.1% | 0 | 0 | 6 | 0 | 5 | 0 | 0 | 0 |
 | child_process | 114 | 76 | 66.7% | 0 | 0 | 7 | 0 | 24 | 7 | 0 | 0 |
-| cluster | 88 | 25 | 28.4% | 0 | 0 | 2 | 0 | 50 | 11 | 0 | 0 |
+| cluster | 88 | 23 | 26.1% | 0 | 0 | 2 | 0 | 52 | 11 | 0 | 0 |
 | console | 22 | 17 | 77.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 3 |
 | constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | crypto | 161 | 152 | 94.4% | 0 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
@@ -1002,7 +1002,7 @@ node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
 | stream | 263 | 204 | 77.6% | 0 | 0 | 8 | 0 | 51 | 0 | 0 | 0 |
 | string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| test | 65 | 27 | 41.5% | 0 | 0 | 5 | 0 | 27 | 6 | 0 | 0 |
+| test | 65 | 27 | 41.5% | 0 | 0 | 5 | 0 | 26 | 7 | 0 | 0 |
 | timers | 60 | 46 | 76.7% | 0 | 0 | 12 | 0 | 2 | 0 | 0 | 0 |
 | tls | 220 | 204 | 92.7% | 0 | 0 | 15 | 0 | 0 | 1 | 0 | 0 |
 | trace_events | 29 | 16 | 55.2% | 0 | 0 | 3 | 0 | 10 | 0 | 0 | 0 |
@@ -1031,7 +1031,7 @@ node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | es-module | 222 | 66 | 29.7% | 0 | 0 | 16 | 0 | 139 | 1 | 0 | 0 |
-| parallel | 4,079 | 2,190 | 53.7% | 0 | 0 | 545 | 0 | 1,285 | 47 | 0 | 12 |
+| parallel | 4,079 | 2,188 | 53.6% | 0 | 0 | 545 | 0 | 1,286 | 48 | 0 | 12 |
 | sequential | 118 | 43 | 36.4% | 0 | 0 | 22 | 0 | 48 | 5 | 0 | 0 |
 
 ### Blockers
@@ -1043,19 +1043,19 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at d143387. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 3,463 | 77.6% | 0 | 0 | 0 | 0 | 997 | 0 | 0 | 0 |
+| every test | 4,460 | 3,461 | 77.6% | 0 | 0 | 0 | 0 | 999 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| deprecated | 129 | 100 | 77.5% | 0 | 0 | 0 | 0 | 29 | 0 | 0 | 0 |
+| deprecated | 129 | 98 | 76.0% | 0 | 0 | 0 | 0 | 31 | 0 | 0 | 0 |
 | documented | 4,331 | 3,363 | 77.6% | 0 | 0 | 0 | 0 | 968 | 0 | 0 | 0 |
 
 ### By module
@@ -1147,7 +1147,7 @@ node-surface at v25.9.0, updated at d143387. Evidence: `tests/node/surface/expec
 | node:dns/promises | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
 | node:domain | 27 | 27 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:events | 49 | 49 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:fs | 241 | 241 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:fs | 241 | 239 | 99.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | node:fs/promises | 34 | 34 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:http | 318 | 318 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:http2 | 112 | 0 | 0.0% | 0 | 0 | 0 | 0 | 112 | 0 | 0 | 0 |
