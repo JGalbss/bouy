@@ -4896,5 +4896,403 @@
       "groups": {},
       "blockers": []
     }
+  ],
+  "bindings": [
+    {
+      "binding": "async_context_frame",
+      "members": 2,
+      "implemented": 2,
+      "module": "runtime/src/buoy_binding_async_context_frame.erl"
+    },
+    {
+      "binding": "async_wrap",
+      "members": 16,
+      "implemented": 16,
+      "module": "runtime/src/buoy_binding_async_wrap.erl"
+    },
+    {
+      "binding": "blob",
+      "members": 6,
+      "implemented": 0
+    },
+    {
+      "binding": "block_list",
+      "members": 4,
+      "implemented": 0
+    },
+    {
+      "binding": "buffer",
+      "members": 35,
+      "implemented": 35,
+      "module": "runtime/src/buoy_binding_buffer.erl"
+    },
+    {
+      "binding": "builtins",
+      "members": 9,
+      "implemented": 7,
+      "module": "runtime/src/buoy_binding_builtins.erl"
+    },
+    {
+      "binding": "cares_wrap",
+      "members": 18,
+      "implemented": 0
+    },
+    {
+      "binding": "cjs_lexer",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "config",
+      "members": 12,
+      "implemented": 11,
+      "module": "runtime/src/buoy_binding_config.erl"
+    },
+    {
+      "binding": "constants",
+      "members": 6,
+      "implemented": 0,
+      "module": "runtime/src/buoy_binding_constants.erl"
+    },
+    {
+      "binding": "contextify",
+      "members": 10,
+      "implemented": 8,
+      "module": "runtime/src/buoy_binding_contextify.erl"
+    },
+    {
+      "binding": "credentials",
+      "members": 14,
+      "implemented": 14,
+      "module": "runtime/src/buoy_binding_credentials.erl"
+    },
+    {
+      "binding": "crypto",
+      "condition": "HAVE_OPENSSL",
+      "members": 144,
+      "implemented": 0
+    },
+    {
+      "binding": "diagnostics_channel",
+      "members": 3,
+      "implemented": 3,
+      "module": "runtime/src/buoy_binding_diagnostics_channel.erl"
+    },
+    {
+      "binding": "encoding_binding",
+      "members": 6,
+      "implemented": 6,
+      "module": "runtime/src/buoy_binding_encoding_binding.erl"
+    },
+    {
+      "binding": "errors",
+      "members": 9,
+      "implemented": 9,
+      "module": "runtime/src/buoy_binding_errors.erl"
+    },
+    {
+      "binding": "fs",
+      "members": 54,
+      "implemented": 44,
+      "module": "runtime/src/buoy_binding_fs.erl"
+    },
+    {
+      "binding": "fs_dir",
+      "members": 3,
+      "implemented": 0
+    },
+    {
+      "binding": "fs_event_wrap",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "heap_utils",
+      "members": 3,
+      "implemented": 0
+    },
+    {
+      "binding": "http2",
+      "members": 24,
+      "implemented": 0
+    },
+    {
+      "binding": "http_parser",
+      "members": 4,
+      "implemented": 0
+    },
+    {
+      "binding": "icu",
+      "condition": "NODE_HAVE_I18N_SUPPORT",
+      "members": 6,
+      "implemented": 0
+    },
+    {
+      "binding": "inspector",
+      "members": 16,
+      "implemented": 0
+    },
+    {
+      "binding": "internal_only_v8",
+      "members": 1,
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_internal_only_v8.erl"
+    },
+    {
+      "binding": "js_stream",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "js_udp_wrap",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "locks",
+      "members": 5,
+      "implemented": 0
+    },
+    {
+      "binding": "messaging",
+      "members": 11,
+      "implemented": 6,
+      "module": "runtime/src/buoy_binding_messaging.erl"
+    },
+    {
+      "binding": "mksnapshot",
+      "members": 7,
+      "implemented": 5,
+      "module": "runtime/src/buoy_binding_mksnapshot.erl"
+    },
+    {
+      "binding": "module_wrap",
+      "members": 14,
+      "implemented": 12,
+      "module": "runtime/src/buoy_binding_module_wrap.erl"
+    },
+    {
+      "binding": "modules",
+      "members": 13,
+      "implemented": 0
+    },
+    {
+      "binding": "options",
+      "members": 8,
+      "implemented": 8,
+      "module": "runtime/src/buoy_binding_options.erl"
+    },
+    {
+      "binding": "os",
+      "members": 14,
+      "implemented": 14,
+      "module": "runtime/src/buoy_binding_os.erl"
+    },
+    {
+      "binding": "performance",
+      "members": 13,
+      "implemented": 12,
+      "module": "runtime/src/buoy_binding_performance.erl"
+    },
+    {
+      "binding": "permission",
+      "members": 1,
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_permission.erl"
+    },
+    {
+      "binding": "pipe_wrap",
+      "members": 3,
+      "implemented": 3,
+      "module": "runtime/src/buoy_binding_pipe_wrap.erl"
+    },
+    {
+      "binding": "process_methods",
+      "members": 29,
+      "implemented": 26,
+      "module": "runtime/src/buoy_binding_process_methods.erl"
+    },
+    {
+      "binding": "process_wrap",
+      "members": 1,
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_process_wrap.erl"
+    },
+    {
+      "binding": "profiler",
+      "condition": "HAVE_INSPECTOR",
+      "members": 5,
+      "implemented": 0
+    },
+    {
+      "binding": "quic",
+      "condition": "HAVE_OPENSSL && OPENSSL_NO_QUIC != 1",
+      "members": 135,
+      "implemented": 0
+    },
+    {
+      "binding": "report",
+      "members": 20,
+      "implemented": 0,
+      "module": "runtime/src/buoy_binding_report.erl"
+    },
+    {
+      "binding": "sea",
+      "members": 4,
+      "implemented": 0
+    },
+    {
+      "binding": "serdes",
+      "members": 2,
+      "implemented": 2,
+      "module": "runtime/src/buoy_binding_serdes.erl"
+    },
+    {
+      "binding": "signal_wrap",
+      "members": 1,
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_signal_wrap.erl"
+    },
+    {
+      "binding": "spawn_sync",
+      "members": 1,
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_spawn_sync.erl"
+    },
+    {
+      "binding": "sqlite",
+      "condition": "HAVE_SQLITE",
+      "members": 5,
+      "implemented": 0
+    },
+    {
+      "binding": "stream_pipe",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "stream_wrap",
+      "members": 7,
+      "implemented": 7,
+      "module": "runtime/src/buoy_binding_stream_wrap.erl"
+    },
+    {
+      "binding": "string_decoder",
+      "members": 10,
+      "implemented": 10,
+      "module": "runtime/src/buoy_binding_string_decoder.erl"
+    },
+    {
+      "binding": "symbols",
+      "members": 23,
+      "implemented": 0,
+      "module": "runtime/src/buoy_binding_symbols.erl"
+    },
+    {
+      "binding": "task_queue",
+      "members": 6,
+      "implemented": 6,
+      "module": "runtime/src/buoy_binding_task_queue.erl"
+    },
+    {
+      "binding": "tcp_wrap",
+      "members": 3,
+      "implemented": 0
+    },
+    {
+      "binding": "timers",
+      "members": 7,
+      "implemented": 7,
+      "module": "runtime/src/buoy_binding_timers.erl"
+    },
+    {
+      "binding": "tls_wrap",
+      "condition": "HAVE_OPENSSL",
+      "members": 3,
+      "implemented": 0
+    },
+    {
+      "binding": "trace_events",
+      "members": 6,
+      "implemented": 6,
+      "module": "runtime/src/buoy_binding_trace_events.erl"
+    },
+    {
+      "binding": "tty_wrap",
+      "members": 2,
+      "implemented": 1,
+      "module": "runtime/src/buoy_binding_tty_wrap.erl"
+    },
+    {
+      "binding": "types",
+      "members": 27,
+      "implemented": 27,
+      "module": "runtime/src/buoy_binding_types.erl"
+    },
+    {
+      "binding": "udp_wrap",
+      "members": 3,
+      "implemented": 0
+    },
+    {
+      "binding": "url",
+      "members": 9,
+      "implemented": 9,
+      "module": "runtime/src/buoy_binding_url.erl"
+    },
+    {
+      "binding": "url_pattern",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "util",
+      "members": 18,
+      "implemented": 18,
+      "module": "runtime/src/buoy_binding_util.erl"
+    },
+    {
+      "binding": "uv",
+      "members": 3,
+      "implemented": 3,
+      "module": "runtime/src/buoy_binding_uv.erl"
+    },
+    {
+      "binding": "v8",
+      "members": 40,
+      "implemented": 0
+    },
+    {
+      "binding": "wasi",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "wasm_web_api",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "watchdog",
+      "members": 1,
+      "implemented": 0
+    },
+    {
+      "binding": "webstorage",
+      "condition": "HAVE_SQLITE",
+      "members": 2,
+      "implemented": 0
+    },
+    {
+      "binding": "worker",
+      "members": 13,
+      "implemented": 12,
+      "module": "runtime/src/buoy_binding_worker.erl"
+    },
+    {
+      "binding": "zlib",
+      "members": 7,
+      "implemented": 0
+    }
   ]
 }

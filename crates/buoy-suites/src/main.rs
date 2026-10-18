@@ -41,6 +41,9 @@ enum Suite {
     /// Read Node's src/ at the tag of .node-version and write tests/node/bindings.json and
     /// `runtime/src/buoy_node_manifest.erl`.
     NodeBindings,
+    /// The top npm packages of tests/ecosystem, which scripts/ecosystem.sh generates and
+    /// installs, run in the node form of the CLI.
+    Ecosystem(Packages),
     /// The ecosystem tier: tests/npm, tests/packages, and the areas of tests/equivalence
     /// that have an expectation file.
     Packages(Packages),
@@ -84,7 +87,7 @@ struct Upstream {
 
 #[derive(Debug, Args)]
 struct Packages {
-    /// Rewrite each expectation file and tests/packages/summary.json from a run of every
+    /// Rewrite each expectation file and the summary.json of the tier from a run of every
     /// program.
     #[arg(long)]
     update: bool,
@@ -143,7 +146,8 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Suite::Compat { check } => write_compat(check),
-        Suite::Packages(arguments) => run_packages(arguments),
+        Suite::Packages(arguments) => run_packages(arguments, false),
+        Suite::Ecosystem(arguments) => run_packages(arguments, true),
         Suite::Node(upstream) => run_node(upstream),
         Suite::NodeSurface(arguments) => run_node_surface(arguments),
         Suite::NodeBindings => write_node_bindings(),
@@ -341,7 +345,7 @@ fn buoy_under_test(buoy: Option<PathBuf>) -> Option<PathBuf> {
     None
 }
 
-fn run_packages(arguments: Packages) -> ExitCode {
+fn run_packages(arguments: Packages, ecosystem: bool) -> ExitCode {
     let Packages {
         update,
         filter,
@@ -351,16 +355,22 @@ fn run_packages(arguments: Packages) -> ExitCode {
     let Some(buoy) = buoy_under_test(buoy) else {
         return ExitCode::from(2);
     };
+    let tier = if ecosystem { "ecosystem" } else { "packages" };
     let options = packages::Options {
         root: buoy_suites::repository(),
-        output: target().join("suites/packages"),
+        output: target().join("suites").join(tier),
         buoy,
         filter,
         update,
         jobs: jobs.unwrap_or_else(buoy_suites::default_jobs),
         deadline: Duration::from_secs(20),
     };
-    let report = match packages::run(&options) {
+    let run = if ecosystem {
+        packages::run_ecosystem
+    } else {
+        packages::run
+    };
+    let report = match run(&options) {
         Ok(report) => report,
         Err(error) => {
             eprintln!("buoy-suites: {error}");
@@ -370,7 +380,7 @@ fn run_packages(arguments: Packages) -> ExitCode {
     print!("{}", report.text());
     println!("wrote {}", options.output.display());
     if update {
-        println!("updated the expectation files and tests/packages/summary.json");
+        println!("updated the expectation files and tests/{tier}/summary.json");
         return ExitCode::SUCCESS;
     }
     if report.fails() {

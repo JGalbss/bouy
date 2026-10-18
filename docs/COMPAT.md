@@ -1349,6 +1349,91 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 | `BUOY201` | 196 | 196 |
 | `BUOY206` | 99 | 99 |
 
+## Top npm packages
+
+Not measured yet. Phase 3 of section 11 of [testing.md](design/testing.md) builds this suite.
+
+## Node native bindings
+
+Buoy implements 354 of the 895 members that src/ of Node sets on its 70 `internalBinding` objects (39.6%). `cargo run --release -p buoy-suites -- node-bindings` reads them from Node's source into `tests/node/bindings.json`. A member counts when the module of its binding names it and passes it to no stub helper, so a module that builds its names, such as the accessors of `report`, counts low. Each function and class that a binding lacks throws `ERR_BUOY_NOT_IMPLEMENTED` with its name.
+
+<details><summary>70 groups</summary>
+
+| Binding | Members | Implemented | Rate | Module | Build condition |
+| --- | --- | --- | --- | --- | --- |
+| `async_context_frame` | 2 | 2 | 100.0% | `runtime/src/buoy_binding_async_context_frame.erl` |  |
+| `async_wrap` | 16 | 16 | 100.0% | `runtime/src/buoy_binding_async_wrap.erl` |  |
+| `blob` | 6 | 0 | 0.0% | stub |  |
+| `block_list` | 4 | 0 | 0.0% | stub |  |
+| `buffer` | 35 | 35 | 100.0% | `runtime/src/buoy_binding_buffer.erl` |  |
+| `builtins` | 9 | 7 | 77.8% | `runtime/src/buoy_binding_builtins.erl` |  |
+| `cares_wrap` | 18 | 0 | 0.0% | stub |  |
+| `cjs_lexer` | 1 | 0 | 0.0% | stub |  |
+| `config` | 12 | 11 | 91.7% | `runtime/src/buoy_binding_config.erl` |  |
+| `constants` | 6 | 0 | 0.0% | `runtime/src/buoy_binding_constants.erl` |  |
+| `contextify` | 10 | 8 | 80.0% | `runtime/src/buoy_binding_contextify.erl` |  |
+| `credentials` | 14 | 14 | 100.0% | `runtime/src/buoy_binding_credentials.erl` |  |
+| `crypto` | 144 | 0 | 0.0% | stub | HAVE_OPENSSL |
+| `diagnostics_channel` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_diagnostics_channel.erl` |  |
+| `encoding_binding` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_encoding_binding.erl` |  |
+| `errors` | 9 | 9 | 100.0% | `runtime/src/buoy_binding_errors.erl` |  |
+| `fs` | 54 | 44 | 81.5% | `runtime/src/buoy_binding_fs.erl` |  |
+| `fs_dir` | 3 | 0 | 0.0% | stub |  |
+| `fs_event_wrap` | 1 | 0 | 0.0% | stub |  |
+| `heap_utils` | 3 | 0 | 0.0% | stub |  |
+| `http2` | 24 | 0 | 0.0% | stub |  |
+| `http_parser` | 4 | 0 | 0.0% | stub |  |
+| `icu` | 6 | 0 | 0.0% | stub | NODE_HAVE_I18N_SUPPORT |
+| `inspector` | 16 | 0 | 0.0% | stub |  |
+| `internal_only_v8` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_internal_only_v8.erl` |  |
+| `js_stream` | 1 | 0 | 0.0% | stub |  |
+| `js_udp_wrap` | 1 | 0 | 0.0% | stub |  |
+| `locks` | 5 | 0 | 0.0% | stub |  |
+| `messaging` | 11 | 6 | 54.5% | `runtime/src/buoy_binding_messaging.erl` |  |
+| `mksnapshot` | 7 | 5 | 71.4% | `runtime/src/buoy_binding_mksnapshot.erl` |  |
+| `module_wrap` | 14 | 12 | 85.7% | `runtime/src/buoy_binding_module_wrap.erl` |  |
+| `modules` | 13 | 0 | 0.0% | stub |  |
+| `options` | 8 | 8 | 100.0% | `runtime/src/buoy_binding_options.erl` |  |
+| `os` | 14 | 14 | 100.0% | `runtime/src/buoy_binding_os.erl` |  |
+| `performance` | 13 | 12 | 92.3% | `runtime/src/buoy_binding_performance.erl` |  |
+| `permission` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_permission.erl` |  |
+| `pipe_wrap` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_pipe_wrap.erl` |  |
+| `process_methods` | 29 | 26 | 89.7% | `runtime/src/buoy_binding_process_methods.erl` |  |
+| `process_wrap` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_process_wrap.erl` |  |
+| `profiler` | 5 | 0 | 0.0% | stub | HAVE_INSPECTOR |
+| `quic` | 135 | 0 | 0.0% | stub | HAVE_OPENSSL && OPENSSL_NO_QUIC != 1 |
+| `report` | 20 | 0 | 0.0% | `runtime/src/buoy_binding_report.erl` |  |
+| `sea` | 4 | 0 | 0.0% | stub |  |
+| `serdes` | 2 | 2 | 100.0% | `runtime/src/buoy_binding_serdes.erl` |  |
+| `signal_wrap` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_signal_wrap.erl` |  |
+| `spawn_sync` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_spawn_sync.erl` |  |
+| `sqlite` | 5 | 0 | 0.0% | stub | HAVE_SQLITE |
+| `stream_pipe` | 1 | 0 | 0.0% | stub |  |
+| `stream_wrap` | 7 | 7 | 100.0% | `runtime/src/buoy_binding_stream_wrap.erl` |  |
+| `string_decoder` | 10 | 10 | 100.0% | `runtime/src/buoy_binding_string_decoder.erl` |  |
+| `symbols` | 23 | 0 | 0.0% | `runtime/src/buoy_binding_symbols.erl` |  |
+| `task_queue` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_task_queue.erl` |  |
+| `tcp_wrap` | 3 | 0 | 0.0% | stub |  |
+| `timers` | 7 | 7 | 100.0% | `runtime/src/buoy_binding_timers.erl` |  |
+| `tls_wrap` | 3 | 0 | 0.0% | stub | HAVE_OPENSSL |
+| `trace_events` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_trace_events.erl` |  |
+| `tty_wrap` | 2 | 1 | 50.0% | `runtime/src/buoy_binding_tty_wrap.erl` |  |
+| `types` | 27 | 27 | 100.0% | `runtime/src/buoy_binding_types.erl` |  |
+| `udp_wrap` | 3 | 0 | 0.0% | stub |  |
+| `url` | 9 | 9 | 100.0% | `runtime/src/buoy_binding_url.erl` |  |
+| `url_pattern` | 1 | 0 | 0.0% | stub |  |
+| `util` | 18 | 18 | 100.0% | `runtime/src/buoy_binding_util.erl` |  |
+| `uv` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_uv.erl` |  |
+| `v8` | 40 | 0 | 0.0% | stub |  |
+| `wasi` | 1 | 0 | 0.0% | stub |  |
+| `wasm_web_api` | 1 | 0 | 0.0% | stub |  |
+| `watchdog` | 1 | 0 | 0.0% | stub |  |
+| `webstorage` | 2 | 0 | 0.0% | stub | HAVE_SQLITE |
+| `worker` | 13 | 12 | 92.3% | `runtime/src/buoy_binding_worker.erl` |  |
+| `zlib` | 7 | 0 | 0.0% | stub |  |
+
+</details>
+
 ## Buoy corpora
 
 The test of each corpus fails when a program breaks its rule, so these counts hold on every commit that passes `pnpm check`.
