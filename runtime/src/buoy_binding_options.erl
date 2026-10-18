@@ -5,6 +5,9 @@
 
 -export([binding/0, value/1]).
 
+%% The boolean options that node_options.cc stores in one field.
+-define(SHARED_FIELDS, [{<<"experimental-require-module">>, <<"require-module">>}]).
+
 -spec binding() -> term().
 binding() ->
     F = fun buoy_node:fn/3,
@@ -141,9 +144,14 @@ apply_args([Arg0 | Rest], Types, Values) ->
 implied(<<"--eval">>, Values) -> Values#{<<"[has_eval_string]">> => true};
 implied(_, Values) -> Values.
 
-%% A boolean option has a --no- twin that holds its negation.
+%% A boolean option has a --no- twin that holds its negation. Two options of
+%% node_options.cc that store one field set each other.
 boolean(Name, Value, Values) ->
-    Values#{<<"--", Name/binary>> => Value, <<"--no-", Name/binary>> => not Value}.
+    Set = fun(N, Vs) -> Vs#{<<"--", N/binary>> => Value, <<"--no-", N/binary>> => not Value} end,
+    case lists:keyfind(Name, 1, ?SHARED_FIELDS ++ [{B, A} || {A, B} <- ?SHARED_FIELDS]) of
+        {_, Other} -> Set(Other, Set(Name, Values));
+        false -> Set(Name, Values)
+    end.
 
 typed(Type, Value, _Old) when Type =:= 3; Type =:= 4 ->
     try binary_to_integer(Value) catch _:_ -> 0 end;
