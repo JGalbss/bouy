@@ -2169,26 +2169,6 @@ mod tests {
                     r#"
 #define LIST(V) V(Alpha) V(Beta)
 namespace node {
-void AddMethods(Environment* env, Local<FunctionTemplate> t) {
-  AddMethods(env->isolate_data(), t);
-}
-void AddMethods(IsolateData* data, Local<FunctionTemplate> t) {
-  SetProtoMethod(isolate, t, "readStart", ReadStart);
-}
-Local<FunctionTemplate> Lock::GetConstructorTemplate(Environment* env) {
-  Local<FunctionTemplate> tmpl = NewFunctionTemplate(isolate, NewLock);
-  SetProtoMethod(isolate, tmpl, "release", Release);
-  AddMethods(env, tmpl);
-  return tmpl;
-}
-Local<Function> MakeKey(Environment* env) {
-  auto templ = env->key_constructor();
-  if (templ.IsEmpty()) {
-    templ = NewFunctionTemplate(isolate, NewKey);
-    SetProtoMethod(isolate, templ, "export", Export);
-  }
-  return templ->GetFunction(env->context()).ToLocalChecked();
-}
 static void Helper(Environment* env, Local<Object> obj) {
   SetMethod(env->context(), obj, "fromHelper", Fn);
 }
@@ -2222,17 +2202,6 @@ void Initialize(Local<Object> target, Local<Value> unused, Local<Context> contex
   (target)->DefineOwnProperty(context, FIXED_ONE_BYTE_STRING(isolate, "isBigEndian"), True(isolate)).Check();
   Helper(env, target);
   MakeClass<Stream>::Make(env, target, "Zlib");
-  Local<FunctionTemplate> w = NewFunctionTemplate(isolate, NewWindow);
-  SetProtoMethod(isolate, w, "resize", Resize);
-  target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Key"), MakeKey(env)).Check();
-  SetConstructorFunction(context, target, "Lock", Lock::GetConstructorTemplate(env));
-  Local<FunctionTemplate> s = NewFunctionTemplate(isolate, NewSocket);
-  Local<Function> fn = s->GetFunction(context).ToLocalChecked();
-  target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Socket"), fn).Check();
-  Local<Value> func;
-  if (w->GetFunction(context).ToLocal(&func) &&
-      target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Window"), func).IsJust()) {
-  }
 }
 }
 NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
@@ -2251,10 +2220,6 @@ NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
             kinds,
             [
                 ("Handle", Kind::Class, false),
-                ("Key", Kind::Class, false),
-                ("Lock", Kind::Class, false),
-                ("Socket", Kind::Class, false),
-                ("Window", Kind::Class, false),
                 ("Zlib", Kind::Class, false),
                 ("constants", Kind::Object, false),
                 ("fromHelper", Kind::Function, false),
@@ -2269,14 +2234,6 @@ NODE_BINDING_CONTEXT_AWARE_INTERNAL(demo, node::Initialize)
         assert_eq!(
             demo.members["Handle"].prototype,
             BTreeSet::from(["close".to_owned()])
-        );
-        assert_eq!(
-            demo.members["Key"].prototype,
-            BTreeSet::from(["export".to_owned()])
-        );
-        assert_eq!(
-            demo.members["Lock"].prototype,
-            BTreeSet::from(["readStart".to_owned(), "release".to_owned()])
         );
         assert!(demo.members["constants"].members.contains_key("O_RDONLY"));
         let erlang = erlang(&manifest);
@@ -2317,6 +2274,71 @@ NODE_BINDING_CONTEXT_AWARE_INTERNAL(jobs, node::Initialize)
         );
         let members: Vec<&String> = manifest.bindings["jobs"].members.keys().collect();
         assert_eq!(members, ["HashJob"]);
+    }
+
+    #[test]
+    fn the_templates_that_calls_return_are_classes() {
+        let manifest = read(
+            "returned",
+            &[(
+                "returned.cc",
+                r#"
+namespace node {
+void AddMethods(Environment* env, Local<FunctionTemplate> t) {
+  AddMethods(env->isolate_data(), t);
+}
+void AddMethods(IsolateData* data, Local<FunctionTemplate> t) {
+  SetProtoMethod(isolate, t, "readStart", ReadStart);
+}
+Local<FunctionTemplate> Lock::GetConstructorTemplate(Environment* env) {
+  Local<FunctionTemplate> tmpl = NewFunctionTemplate(isolate, NewLock);
+  SetProtoMethod(isolate, tmpl, "release", Release);
+  AddMethods(env, tmpl);
+  return tmpl;
+}
+Local<Function> MakeKey(Environment* env) {
+  auto templ = env->key_constructor();
+  if (templ.IsEmpty()) {
+    templ = NewFunctionTemplate(isolate, NewKey);
+    SetProtoMethod(isolate, templ, "export", Export);
+  }
+  return templ->GetFunction(env->context()).ToLocalChecked();
+}
+void Initialize(Local<Object> target, Local<Value> unused, Local<Context> context, void* priv) {
+  target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Key"), MakeKey(env)).Check();
+  SetConstructorFunction(context, target, "Lock", Lock::GetConstructorTemplate(env));
+  Local<FunctionTemplate> s = NewFunctionTemplate(isolate, NewSocket);
+  Local<Function> fn = s->GetFunction(context).ToLocalChecked();
+  target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Socket"), fn).Check();
+  Local<FunctionTemplate> w = NewFunctionTemplate(isolate, NewWindow);
+  SetProtoMethod(isolate, w, "resize", Resize);
+  Local<Value> func;
+  if (w->GetFunction(context).ToLocal(&func) &&
+      target->Set(context, FIXED_ONE_BYTE_STRING(isolate, "Window"), func).IsJust()) {
+  }
+}
+}
+NODE_BINDING_CONTEXT_AWARE_INTERNAL(returned, node::Initialize)
+"#,
+            )],
+        );
+        let classes: Vec<(&str, Kind, Vec<&str>)> = manifest.bindings["returned"]
+            .members
+            .iter()
+            .map(|(name, member)| {
+                let methods = member.prototype.iter().map(String::as_str).collect();
+                (name.as_str(), member.kind, methods)
+            })
+            .collect();
+        assert_eq!(
+            classes,
+            [
+                ("Key", Kind::Class, vec!["export"]),
+                ("Lock", Kind::Class, vec!["readStart", "release"]),
+                ("Socket", Kind::Class, vec![]),
+                ("Window", Kind::Class, vec!["resize"]),
+            ]
+        );
     }
 
     #[test]
