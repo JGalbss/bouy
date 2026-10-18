@@ -17,7 +17,7 @@
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
 -export([arguments_object/1, throw_type_error/2, named_fn/3, named_fn/4, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
--export([array/1, array_holes/1, array_spread/1, array_spread_internal/1, chunk/1, object_spread/2, object_rest/2, template/1, template_object/3]).
+-export([array/1, array_holes/1, array_tree/1, array_spread/1, array_spread_internal/1, chunk/1, object_spread/2, object_rest/2, template/1, template_object/3]).
 -export([add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1, plus/1]).
 -export([bit_and/2, bit_or/2, bit_xor/2, bit_not/1, shift_left/2, shift_right/2, shift_right_unsigned/2]).
 -export([strict_eq/2, loose_eq/2, lt/2, le/2, gt/2, ge/2, typeof/1, instance_of/2, truthy/1]).
@@ -530,6 +530,12 @@ array_holes(Items) ->
     A = buoy_heap:new_array(Items),
     [buoy_heap:delete(A, I) || {I, '$hole'} <- lists:enumerate(0, Items)],
     A.
+
+%% An array literal of literals that nests arrays, as one term:
+%% {'$array', Items} is an array, and '$hole' an elision.
+-spec array_tree({'$array', list()}) -> term().
+array_tree({'$array', Items}) ->
+    array_holes([case I of {'$array', _} -> array_tree(I); _ -> I end || I <- Items]).
 
 %% [a, ...b]: Parts are {item, V}, {spread, Iterable}, and hole.
 -spec array_spread(list()) -> term().
