@@ -879,10 +879,15 @@ primitive_or_fail(R) -> R.
 describe(undefined) -> <<"undefined">>;
 describe(null) -> <<"null">>;
 describe(V) when ?IS_STRING(V) -> text([<<"\"">>, V, <<"\"">>]);
+%% The own data property `name` of a function, read without running a getter or a
+%% Proxy trap, as V8 names a function in its messages.
 describe({'$f', _, _} = F) ->
-    case get(F, <<"name">>) of
-        <<>> -> <<"function">>;
-        Name when ?IS_STRING(Name) -> Name;
+    Own = case buoy_heap:class_of(F) of
+        proxy -> none;
+        _ -> buoy_heap:get_own(F, <<"name">>)
+    end,
+    case Own of
+        {data, Name, _} when ?IS_STRING(Name), Name =/= <<>> -> Name;
         _ -> <<"function">>
     end;
 describe({'$o', _}) -> <<"#<Object>">>;

@@ -18,6 +18,7 @@
 -export([private_name/1, private_names/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
 
 -define(UNINITIALIZED, '$uninitialized').
+-define(CONSTRUCT_ERROR, '$buoy_construct_error').
 
 %%% Class definition
 
@@ -53,17 +54,14 @@ set_construct(C, Construct) ->
         #{realm := N} -> buoy_ref_realm:realm_fun(N, Construct);
         _ -> Construct
     end,
-    buoy_heap:set_slots(C, Slots#{construct => Construct1}).
+    buoy_heap:set_slots(C, Slots#{construct => fun(NewTarget, Args) -> constructed(Construct1(NewTarget, Args)) end}).
 
-is_constructor({'$f', _, _} = F) ->
-    case buoy_heap:slots(F) of
-        #{construct := _} -> true;
-        #{kind := normal} -> true;
-        #{kind := class} -> true;
-        _ -> false
-    end;
-is_constructor(_) ->
-    false.
+%% [[Construct]] throws the errors of a derived constructor's result after it
+%% leaves the constructor, so in the realm of the caller (ECMA-262 §10.2.2).
+constructed({?CONSTRUCT_ERROR, Name, Message}) -> buoy_heap:throw_error(Name, Message);
+constructed(V) -> V.
+
+is_constructor(F) -> buoy_heap:is_constructor(F).
 
 %% The function object of a method, an accessor, or another function that
 %% NamedEvaluation names from a property key. Kind is method, get, set,
@@ -191,10 +189,15 @@ base_return(_This, V) when ?IS_OBJECT(V) -> V;
 base_return(This, _V) -> This.
 
 %% The result of a derived constructor that returns V.
+%% The errors are values here, which constructed/1 throws in the caller's realm.
 -spec derived_return({'$c', pos_integer()}, term()) -> term().
 derived_return(_Cell, V) when ?IS_OBJECT(V) -> V;
-derived_return(Cell, undefined) -> this_of(Cell);
-derived_return(_Cell, _V) -> buoy_ref:type_error(<<"Derived constructors may only return object or undefined">>).
+derived_return(Cell, undefined) ->
+    case buoy_heap:cell_get(Cell) of
+        ?UNINITIALIZED -> {?CONSTRUCT_ERROR, 'ReferenceError', <<"Must call super constructor in derived class before accessing 'this' or returning from derived constructor">>};
+        This -> This
+    end;
+derived_return(_Cell, _V) -> {?CONSTRUCT_ERROR, 'TypeError', <<"Derived constructors may only return object or undefined">>}.
 
 %% The [[Construct]] of a function that reads new.target: Body takes it as a
 %% third argument.
