@@ -10,7 +10,7 @@
 -define(TITLE, '$buoy_process_title').
 
 -export([exec_argv/0, create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
--export([getenv/1, environ/0]).
+-export([getenv/1, environ/0, node_options/0]).
 
 -define(VERSION, <<"v25.9.0">>).
 %% The fields of Environment::ExitInfoField: kExiting, kExitCode, kHasExitCode.
@@ -51,7 +51,7 @@ exit_info() -> erlang:get(?EXIT_INFO).
 -spec patch(term()) -> undefined.
 patch(Process) ->
     %% The title starts as --title gives it, or node; the VM cannot rename its OS process.
-    erlang:put(?TITLE, title(exec_argv())),
+    erlang:put(?TITLE, title(node_options() ++ exec_argv())),
     Title = buoy_node:fn(<<"get title">>, 0, fun(_, _) -> erlang:get(?TITLE) end),
     SetTitle = buoy_node:fn(<<"set title">>, 1, fun(_, A) -> erlang:put(?TITLE, buoy_ref:to_string(buoy_node:arg(1, A))), undefined end),
     buoy_heap:define(Process, <<"title">>, #{get => Title, set => SetTitle, enumerable => true, configurable => true}),
@@ -69,8 +69,15 @@ patch(Process) ->
     Ppid = buoy_node:fn(<<"get ppid">>, 0, fun(_, _) -> parent_pid() end),
     buoy_heap:define(Process, <<"ppid">>, #{get => Ppid, enumerable => true, configurable => true}),
     buoy_heap:set(Process, <<"execPath">>, exec_path()),
-    Port = buoy_node:fn(<<"get debugPort">>, 0, fun(_, _) -> 9229 end),
-    buoy_heap:define(Process, <<"debugPort">>, #{get => Port, set => buoy_node:fn(<<"set debugPort">>, 1, fun(_, _) -> undefined end),
+    %% The port of the inspector, which Buoy does not have: a program may set it.
+    Port = buoy_node:fn(<<"get debugPort">>, 0, fun(_, _) ->
+        case erlang:get('$buoy_debug_port') of undefined -> 9229; P -> P end
+    end),
+    SetPort = buoy_node:fn(<<"set debugPort">>, 1, fun(_, A) ->
+        erlang:put('$buoy_debug_port', buoy_ref_number:to_uint32(buoy_ref:to_number(buoy_node:arg(1, A))) band 16#FFFF),
+        undefined
+    end),
+    buoy_heap:define(Process, <<"debugPort">>, #{get => Port, set => SetPort,
                                                  enumerable => true, configurable => true}),
     undefined.
 
@@ -100,6 +107,30 @@ vm_exec_argv() ->
         _ ->
             []
     end.
+
+%% The options of NODE_OPTIONS, which apply as the options of the command
+%% line do but stay out of process.execArgv: words split at spaces, where a
+%% word may be "quoted", with \" and \\ inside, as ParseNodeOptionsEnvVar
+%% reads them.
+-spec node_options() -> [binary()].
+node_options() ->
+    case getenv("NODE_OPTIONS") of
+        false -> [];
+        Text -> [unicode:characters_to_binary(W) || W <- words(Text, none, [])]
+    end.
+
+words([], none, Acc) -> lists:reverse(Acc);
+words([], Word, Acc) -> lists:reverse([lists:reverse(Word) | Acc]);
+words([$\s | Rest], none, Acc) -> words(Rest, none, Acc);
+words([$\s | Rest], Word, Acc) -> words(Rest, none, [lists:reverse(Word) | Acc]);
+words([$" | Rest], Word, Acc) -> quoted(Rest, case Word of none -> []; _ -> Word end, Acc);
+words([C | Rest], none, Acc) -> words(Rest, [C], Acc);
+words([C | Rest], Word, Acc) -> words(Rest, [C | Word], Acc).
+
+quoted([$\\, C | Rest], Word, Acc) -> quoted(Rest, [C | Word], Acc);
+quoted([$" | Rest], Word, Acc) -> words(Rest, Word, Acc);
+quoted([C | Rest], Word, Acc) -> quoted(Rest, [C | Word], Acc);
+quoted([], Word, Acc) -> words([], Word, Acc).
 
 %% The path of the buoy binary, which Node's tests start as process.execPath.
 -spec exec_path() -> term().

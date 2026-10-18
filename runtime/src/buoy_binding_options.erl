@@ -38,7 +38,8 @@ cli_values() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
-    Values = apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())),
+    Args = buoy_node_process:node_options() ++ buoy_node_process:exec_argv(),
+    Values = apply_args(expand(Args, Expansions), Types, json:decode(values())),
     buoy_node:from_json(iolist_to_binary(json:encode(Values))).
 
 expand(Args, Expansions) ->
