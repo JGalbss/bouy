@@ -7,6 +7,8 @@
 #   single     each kernel on every runtime, in turns, ROUNDS times
 #   multicore  N copies of Richards and of NBody at once, N = the core count
 #   preempt    the preemption proof on a VM with one scheduler
+#   gc         each kernel of KERNELS on BUOY_ENGINE with gc_share.erl, which records
+#              the time of BEAM's garbage collections in the run
 #
 # Environment:
 #   SPEED_JS      the JavaScript baselines as name=path pairs, such as
@@ -18,18 +20,19 @@
 #   ENGINE_LABEL  the runtime name of BUOY_ENGINE in the results, "engine" by default, so
 #                 two builds can be compared in one file
 #   KERNELS       the kernels of the single mode, all eight by default
-#   ROUNDS        rounds of the single mode, 5 by default
+#   ROUNDS        rounds of the single and gc modes, 5 by default
+#   GC_RUNS       the timed runs of each engine kernel in the gc mode, 3 by default
 #   ERL, ERLC     the OTP tools, erl and erlc on PATH by default
 #
 # Every VM gets +hmax of 4 GiB, so a runaway process dies and not the machine, and the
 # script starts one VM at a time.
 #
-# Usage: bench/speed/run.sh single|multicore|preempt <results.jsonl>
+# Usage: bench/speed/run.sh single|multicore|preempt|gc <results.jsonl>
 
 set -eu
 
-mode=${1:?usage: run.sh single|multicore|preempt <results.jsonl>}
-out=${2:?usage: run.sh single|multicore|preempt <results.jsonl>}
+mode=${1:?usage: run.sh single|multicore|preempt|gc <results.jsonl>}
+out=${2:?usage: run.sh single|multicore|preempt|gc <results.jsonl>}
 here=$(cd "$(dirname "$0")" && pwd)
 build=${TMPDIR:-/tmp}/buoy-speed-build
 rounds=${ROUNDS:-5}
@@ -134,6 +137,22 @@ preempt() {
         record native "$round" "$erl" +S 1 +hmax 536870912 -noshell -pa "$build/ebin" -run preempt main native-richards 100000
         record erlang:nbody_flat "$round" "$erl" +S 1 +hmax 536870912 -noshell -pa "$build/ebin" -run preempt main erlang-nbody 4000000
         record blocking "$round" "$erl" +S 1 +hmax 536870912 -noshell -pa "$build/ebin" -run preempt main blocking-nbody 30000000
+    done
+}
+
+# The engine copy of each kernel runs to its end, with one warm-up and GC_RUNS timed runs;
+# the record is the last line that gc_share wrote, about every 200 ms.
+gc() {
+    runs=${GC_RUNS:-3}
+    for round in $(seq 1 "$rounds"); do
+        for kernel in ${KERNELS:-json strings regex mapset}; do
+            engine_copy "$kernel"
+            rm -f "$build/gc.json"
+            ERL_AFLAGS="-pa $build/ebin -eval gc_share:start()" GC_SHARE_OUT="$build/gc.json" \
+                GC_SHARE_KERNEL="$kernel" GC_SHARE_RUNS="$runs" \
+                "$BUOY_ENGINE" run --semantics reference "$build/engine/$kernel.ts" 1 "$runs" >/dev/null 2>&1 || true
+            record "${ENGINE_LABEL:-engine}" "$round" cat "$build/gc.json"
+        done
     done
 }
 
