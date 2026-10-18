@@ -93,7 +93,21 @@ has_async_graph_property(This, M) ->
     end),
     buoy_heap:define(This, <<"hasAsyncGraph">>, #{get => Get, enumerable => true, configurable => true}).
 
+new_source_text(This, Url, 0, Source, Last) ->
+    case buoy_module:program_module(Url) of
+        {ok, M} ->
+            has_async_graph_property(This, M),
+            [buoy_heap:set(This, K, V) || {K, V} <- [{<<"hasTopLevelAwait">>, buoy_module:has_top_level_await(M)},
+                                                    {<<"sourceURL">>, undefined}, {<<"sourceMapURL">>, undefined},
+                                                    {<<"synthetic">>, false}]],
+            M;
+        none ->
+            compile_source_text(This, Url, 0, Source, Last)
+    end;
 new_source_text(This, Url, Realm, Source, Last) ->
+    compile_source_text(This, Url, Realm, Source, Last).
+
+compile_source_text(This, Url, Realm, Source, Last) ->
     Text = buoy_ref:to_string(Source),
     Option = case Last of
         {'$sym', _, _} -> Last;

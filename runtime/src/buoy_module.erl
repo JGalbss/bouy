@@ -16,11 +16,11 @@
 -export([run/1, evaluate_dependencies/1]).
 -export([namespace/1, foreign_export/2, builtin_export/2, builtin_namespace/1]).
 -export([uninitialized/2, hoisted/1]).
--export([dynamic_import/4, meta/1, require/2, compiled_wrapper/1]).
+-export([dynamic_import/4, meta/1, compiled_wrapper/1]).
 -export([define_namespace/3, broken/1]).
 -export([deferred_namespace/1, ensure_deferred/1]).
 -export([hosted_import/3, new_synthetic/3, set_synthetic_export/3, link_requests/2, instantiate/1, evaluate/1]).
--export([set_realm_host/2, status/1, error_of/1, has_async_graph/1, has_top_level_await/1, requests_of/1, set_host/3, required_facade/1]).
+-export([program_module/1, set_realm_host/2, status/1, error_of/1, has_async_graph/1, has_top_level_await/1, requests_of/1, set_host/3, required_facade/1]).
 
 -define(RECORD(M), {'$buoy_module', M}).
 -define(NAMESPACE(M), {'$buoy_namespace', M}).
@@ -30,7 +30,6 @@
 -define(GRAPH, '$buoy_graph').
 -define(ASYNC_ORDER, '$buoy_async_order').
 -define(CACHE, '$buoy_require_cache').
--define(MAIN_MODULE, '$buoy_main_module').
 -define(ACTOR, '$buoy_actor_realm').
 -define(SYNTHETIC(M, Name), {'$buoy_synthetic', M, Name}).
 %% The host of a module that module_wrap made, or of a script of node:vm:
@@ -707,23 +706,37 @@ import_traced(From, Specifier, Options, Phase) ->
         check_options(Options),
         Phase =:= source andalso
             buoy_heap:throw_error('SyntaxError', buoy_ref_string:concat([<<"Source phase import object is not defined for module '">>, Text, <<"'">>])),
-        Target = case target(From, Text, import) of
-            {_Path, Module} when is_atom(Module), Module =/= none -> Module;
-            {builtin, Name} -> {builtin, Name};
-            {error, Code, Message} -> throw_coded('Error', Code, Message);
-            _ -> throw_coded('Error', <<"ERR_MODULE_NOT_FOUND">>,
-                             buoy_ref_string:concat([<<"Cannot find module '">>, Text, <<"' imported from ">>, info(From, path)]))
-        end,
-        Loaded = case {Phase, Target} of
-            {defer, {builtin, _}} -> Target;
-            {defer, _} -> {defer, Target};
-            _ -> Target
-        end,
-        buoy_jobs:enqueue(fun() -> load_dynamic(Loaded, Resolve, Reject) end)
+        case target(From, Text, import) of
+            {_Path, Module} when is_atom(Module), Module =/= none -> import_target(Module, Phase, Resolve, Reject);
+            {builtin, Name} -> import_target({builtin, Name}, Phase, Resolve, Reject);
+            _ -> node_import(From, Specifier, Options, Phase, Resolve, Reject)
+        end
     catch
         error:Reason:Stack -> Reject(buoy_ref:caught(Reason, Stack))
     end,
     P.
+
+import_target(Target, Phase, Resolve, Reject) ->
+    Loaded = case {Phase, Target} of
+        {defer, {builtin, _}} -> Target;
+        {defer, _} -> {defer, Target};
+        _ -> Target
+    end,
+    buoy_jobs:enqueue(fun() -> load_dynamic(Loaded, Resolve, Reject) end).
+
+%% A specifier that the compiler cannot resolve, such as a data: URL or a
+%% file that the program writes, goes to Node's ESM loader, as Node imports
+%% from a CommonJS module or an ES module of the program. The loader wraps
+%% the modules of the program that it reaches (program_module/1).
+node_import(From, Specifier, Options, Phase, Resolve, Reject) ->
+    ok = buoy_node:ensure(),
+    Symbols = buoy_node:per_isolate_symbols(),
+    {Option, Referrer} = case kind(From) of
+        esm -> {element(2, lists:keyfind(<<"source_text_module_default_hdo">>, 1, Symbols)), file_url(info(From, path))};
+        _ -> {element(2, lists:keyfind(<<"vm_dynamic_import_default_internal">>, 1, Symbols)), info(From, path)}
+    end,
+    P = host_import({0, Referrer, Option}, Specifier, Options, Phase),
+    buoy_jobs:perform_then(P, Resolve, Reject, undefined).
 
 %% ContinueDynamicImport
 load_dynamic(Target, Resolve, Reject) ->
@@ -914,7 +927,7 @@ encode_byte(B) ->
 %% snapshot of its exports that an import reads.
 load_foreign(M) ->
     Exports = case kind(M) of
-        cjs -> buoy_heap:get(load_cjs(M), <<"exports">>);
+        cjs -> cjs_exports(M);
         json -> buoy_heap:get(load_json(M), <<"exports">>)
     end,
     Snapshot = maps:from_list([{Name, snapshot_value(Name, Exports)} || {Name, _} <- M:'$namespace'()]),
@@ -939,40 +952,29 @@ cache() ->
             C
     end.
 
-%% The Module object of a CommonJS module in this realm, loading it when
-%% require.cache holds none.
-load_cjs(M) ->
+%% The exports of a CommonJS module of the program. Node's CommonJS loader
+%% loads it, as Module._load does, so Module._cache, require.extensions,
+%% Module.wrapper, and the hooks of node:module apply. The compiled wrapper
+%% of the module is the code cache that compileFunctionForCJSLoader hands the
+%% loader. The code of -e and of stdin has no file, so it runs as a Module of
+%% its own, as Node's evalScript runs it.
+cjs_exports(M) ->
     Path = info(M, path),
-    Cache = cache(),
-    case buoy_heap:has_own(Cache, Path) of
-        true ->
-            buoy_heap:get(Cache, Path);
-        false ->
-            Exports = buoy_heap:new_object(?OBJECT_PROTO),
-            Main = erlang:get(?ENTRY) =:= M,
-            Module = buoy_heap:object(?OBJECT_PROTO,
-                                      [{<<"id">>, case Main of true -> <<".">>; false -> Path end},
-                                       {<<"path">>, dirname(Path)},
-                                       {<<"exports">>, Exports},
-                                       {<<"filename">>, Path},
-                                       {<<"loaded">>, false},
-                                       {<<"children">>, buoy_heap:new_array([])},
-                                       {<<"paths">>, buoy_heap:new_array(module_paths(Path))}]),
-            Main andalso erlang:put(?MAIN_MODULE, Module),
-            Require = make_require(M, Module),
-            buoy_heap:set(Module, <<"require">>, Require),
-            buoy_heap:set(Cache, Path, Module),
-            Wrapper = M:'$cjs'(),
-            try buoy_heap:call(Wrapper, Exports, [Exports, Require, Module, Path, dirname(Path)]) of
-                _ -> ok
-            catch
-                Class:Reason:Stack ->
-                    buoy_heap:delete(Cache, Path),
-                    erlang:raise(Class, Reason, Stack)
-            end,
-            buoy_heap:set(Module, <<"loaded">>, true),
-            Module
+    ok = buoy_node:ensure(),
+    {ok, Module} = builtin(<<"module">>),
+    case filelib:is_regular(buoy_ref_string:to_utf8(Path)) of
+        true -> buoy_heap:call(buoy_heap:get(Module, <<"_load">>), Module, [Path, null, erlang:get(?ENTRY) =:= M]);
+        false -> eval_exports(Module, Path)
     end.
+
+eval_exports(Module, Path) ->
+    Instance = buoy_heap:construct(Module, [Path], Module),
+    Paths = buoy_heap:call(buoy_heap:get(Module, <<"_nodeModulePaths">>), Module, [dirname(Path)]),
+    [buoy_heap:set(Instance, K, V) || {K, V} <- [{<<"filename">>, Path}, {<<"paths">>, Paths}]],
+    buoy_heap:set(buoy_heap:get(Module, <<"_cache">>), Path, Instance),
+    buoy_heap:call(buoy_heap:get(Instance, <<"_compile">>), Instance, [<<>>, Path]),
+    buoy_heap:set(Instance, <<"loaded">>, true),
+    buoy_heap:get(Instance, <<"exports">>).
 
 %% A JSON module, as require loads it: a Module whose exports is the value.
 load_json(M) ->
@@ -995,31 +997,6 @@ load_json(M) ->
             Module
     end.
 
-%% node_modules directories from the module's directory up to the root.
-module_paths(Path) ->
-    Dir = filename:dirname(buoy_ref_string:to_utf8(Path)),
-    Parts = binary:split(Dir, <<"/">>, [global, trim_all]),
-    Dirs = [lists:sublist(Parts, N) || N <- lists:seq(length(Parts), 0, -1)],
-    [buoy_ref_string:from_utf8(iolist_to_binary([[<<"/">>, P] || P <- D] ++ [<<"/node_modules">>]))
-     || D <- Dirs, lists:last([<<>> | D]) =/= <<"node_modules">>].
-
-%% The require function of module M.
-make_require(M, Module) ->
-    Require = buoy_heap:function(fun(_This, Args) -> require(M, buoy_ref_realm:arg(1, Args)) end,
-                                 <<"require">>, 1, #{}),
-    ResolveFn = buoy_heap:function(fun(_This, Args) -> require_resolve(M, buoy_ref_realm:arg(1, Args)) end,
-                                   <<"resolve">>, 2, #{}),
-    Paths = buoy_heap:function(fun(_This, Args) -> resolve_paths(M, buoy_ref_realm:arg(1, Args)) end,
-                               <<"paths">>, 1, #{}),
-    buoy_heap:set(ResolveFn, <<"paths">>, Paths),
-    buoy_heap:set(Require, <<"resolve">>, ResolveFn),
-    buoy_heap:set(Require, <<"main">>, case erlang:get(?MAIN_MODULE) of undefined -> undefined; Main -> Main end),
-    Extensions = buoy_heap:object(null, [{E, buoy_heap:function(fun(_, _) -> undefined end)} || E <- [<<".js">>, <<".json">>, <<".node">>]]),
-    buoy_heap:set(Require, <<"extensions">>, Extensions),
-    buoy_heap:set(Require, <<"cache">>, cache()),
-    _ = Module,
-    Require.
-
 %% The compiled wrapper of the CommonJS module of the program at Path, which
 %% Node's CommonJS loader runs in place of a new compilation of the file.
 -spec compiled_wrapper(term()) -> {ok, term()} | none.
@@ -1033,69 +1010,6 @@ compiled_wrapper(Path) ->
             end;
         _ ->
             none
-    end.
-
-%% require(Specifier) from module M.
--spec require(module(), term()) -> term().
-require(M, Specifier) ->
-    ?IS_STRING(Specifier) orelse throw_coded('TypeError', <<"ERR_INVALID_ARG_TYPE">>,
-                                             buoy_ref_string:concat([<<"The \"id\" argument must be of type string. Received ">>, buoy_ref:describe(Specifier)])),
-    Specifier =:= <<>> andalso throw_coded('TypeError', <<"ERR_INVALID_ARG_VALUE">>,
-                                           <<"The argument 'id' must be a non-empty string. Received ''">>),
-    %% Node's require publishes to the tracing channel module.require.
-    buoy_binding_diagnostics_channel:trace_sync(<<"module.require">>, fun() -> [{<<"parentFilename">>, info(M, path)}, {<<"id">>, Specifier}] end,
-                                                fun() -> require_traced(M, Specifier) end).
-
-require_traced(M, Specifier) ->
-    %% --expose-internals lets require load the internal ids of Node's lib,
-    %% with or without node:, as BuiltinModule.normalizeRequirableId reads them.
-    Id = case Specifier of <<"node:", Rest/binary>> -> Rest; _ -> Specifier end,
-    Internal = lists:member(<<"--expose-internals">>, buoy_node_process:exec_argv())
-        andalso lists:member(Id, buoy_node:ids()),
-    case target(M, Specifier, require) of
-        {builtin, Name} ->
-            builtin_exports(Name);
-        _ when Internal ->
-            builtin_exports(Specifier);
-        {error, Code, Message} ->
-            throw_coded('Error', Code, Message);
-        {_Path, Target} when is_atom(Target), Target =/= none ->
-            require_module(Target);
-        _ ->
-            not_found(M, Specifier)
-    end.
-
--spec not_found(module(), term()) -> no_return().
-not_found(M, Specifier) ->
-    throw_coded('Error', <<"MODULE_NOT_FOUND">>,
-                buoy_ref_string:concat([<<"Cannot find module '">>, Specifier, <<"'\nRequire stack:\n- ">>, info(M, path)])).
-
-require_module(Target) ->
-    case kind(Target) of
-        cjs -> buoy_heap:get(load_cjs(Target), <<"exports">>);
-        json -> buoy_heap:get(load_json(Target), <<"exports">>);
-        esm -> require_esm(Target)
-    end.
-
-%% require(esm): the namespace, or its 'module.exports' export. A graph that
-%% awaits cannot load synchronously.
-require_esm(M) ->
-    link_graph(M),
-    P = evaluate(M),
-    case buoy_heap:slots(P) of
-        {fulfilled, _, _} ->
-            NS = namespace(M),
-            case buoy_heap:has_own(NS, <<"module.exports">>) of
-                true -> buoy_heap:get(NS, <<"module.exports">>);
-                false -> required_namespace(M, NS)
-            end;
-        {rejected, Reason, _} ->
-            buoy_jobs:perform_then(P, fun(_) -> undefined end, fun(_) -> undefined end, undefined),
-            erlang:error({'$throw', Reason});
-        {pending, _, _, _} ->
-            buoy_jobs:perform_then(P, fun(_) -> undefined end, fun(_) -> undefined end, undefined),
-            throw_coded('Error', <<"ERR_REQUIRE_ASYNC_MODULE">>,
-                        <<"require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --experimental-print-required-tla.">>)
     end.
 
 %% The namespace that require(esm) returns: with a default export, Node adds
@@ -1115,23 +1029,6 @@ required_namespace(M, NS) ->
                 Facade ->
                     Facade
             end
-    end.
-
-require_resolve(M, Specifier) ->
-    ?IS_STRING(Specifier) orelse throw_coded('TypeError', <<"ERR_INVALID_ARG_TYPE">>,
-                                             <<"The \"request\" argument must be of type string">>),
-    case target(M, Specifier, require) of
-        {builtin, Name} -> Name;
-        {error, Code, Message} -> throw_coded('Error', Code, Message);
-        {Path, _} -> Path;
-        none -> throw_coded('Error', <<"MODULE_NOT_FOUND">>,
-                            buoy_ref_string:concat([<<"Cannot find module '">>, Specifier, <<"'\nRequire stack:\n- ">>, info(M, path)]))
-    end.
-
-resolve_paths(M, Specifier) ->
-    case is_builtin(Specifier) orelse relative(buoy_ref_string:to_utf8(Specifier)) of
-        true -> null;
-        false -> buoy_heap:new_array(module_paths(info(M, path)))
     end.
 
 -spec throw_coded(atom(), term(), term()) -> no_return().
@@ -1177,10 +1074,33 @@ link_requests(M, Targets) ->
 %% module must have its requests linked first.
 -spec instantiate(module()) -> ok.
 instantiate(M) ->
-    kind(M) =:= synthetic orelse is_map_key(linked, get(M, info)) orelse
+    %% A module of the program has no host: the compiler linked it.
+    kind(M) =:= synthetic orelse erlang:get(?HOST(M)) =:= undefined orelse is_map_key(linked, get(M, info)) orelse
         throw_coded('Error', <<"ERR_VM_MODULE_LINK_FAILURE">>, <<"module is not linked">>),
     link_graph(M),
     ok.
+
+%% The ES module of the program at the file URL Url, which Node's ESM loader
+%% wraps in place of a new compilation, so that the program and the loader
+%% share one instance of each module. The compiler linked its requests.
+-spec program_module(term()) -> {ok, module()} | none.
+program_module(Url) ->
+    Graph = case erlang:get(?GRAPH) of undefined -> #{}; G -> G end,
+    case buoy_ref_string:to_utf8(Url) of
+        <<"file://", Rest/binary>> ->
+            Path = buoy_ref_string:from_utf8(uri_string:percent_decode(hd(binary:split(Rest, [<<"?">>, <<"#">>])))),
+            case maps:find(Path, Graph) of
+                {ok, M} when is_atom(M), M =/= none ->
+                    case kind(M) of
+                        esm -> {ok, M};
+                        _ -> none
+                    end;
+                _ ->
+                    none
+            end;
+        _ ->
+            none
+    end.
 
 %% Records the realm of a module and the referrer and host-defined option
 %% that import() and import.meta of its code pass to the callbacks of
