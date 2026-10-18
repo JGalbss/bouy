@@ -28,7 +28,7 @@
 -export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, write_kick/1, later/1, js/1, event/1]).
 -export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
 -export([sockaddr/3, address_text/1, scope/1, open_inherited/2]).
--export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1]).
+-export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1, buffer_bytes/1]).
 -export_type([kind/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -113,6 +113,15 @@ js(Fun) -> buoy_jobs:run_job(Fun).
 
 %%% The methods
 
+%% StreamBase::WriteBuffer takes a Uint8Array, such as a Buffer, only.
+-spec buffer_bytes(term()) -> binary().
+buffer_bytes(V) ->
+    case buoy_heap:is_object(V) andalso buoy_heap:class_of(V) =:= typed_array andalso element(1, buoy_heap:slots(V)) of
+        uint8 -> buoy_node_encoding:view_bytes(V);
+        _ -> buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>, <<"Second argument must be a buffer">>)
+    end.
+
+
 %% Defines the methods of HandleWrap and StreamBase on Proto. A handle with
 %% no state of this module, such as a Pipe that process_wrap binds to a
 %% channel, takes the method that Proto had before.
@@ -121,7 +130,7 @@ methods(Proto) ->
     A = fun buoy_node:arg/2,
     Write = fun(Encode) -> fun(This, Args) -> write(This, A(1, Args), Encode(A(2, Args))) end end,
     Methods = [
-        {<<"writeBuffer">>, Write(fun buoy_node_encoding:view_bytes/1)},
+        {<<"writeBuffer">>, Write(fun ?MODULE:buffer_bytes/1)},
         {<<"writeUtf8String">>, Write(fun(V) -> buoy_node_encoding:encode(utf8, V) end)},
         {<<"writeAsciiString">>, Write(fun(V) -> buoy_node_encoding:encode(latin1, V) end)},
         {<<"writeLatin1String">>, Write(fun(V) -> buoy_node_encoding:encode(latin1, V) end)},
