@@ -235,11 +235,21 @@ impl<'a> Lowerer<'a, '_> {
         }
         let value = match key {
             MemberKey::Static(key) => Expr::call("buoy_ref", "get", vec![object, key]),
-            MemberKey::Slot(key, position) => Expr::call(
-                "buoy_heap",
-                "get_slot",
-                vec![object, key, Expr::Integer(position)],
-            ),
+            MemberKey::Slot(key, position) => {
+                let object = self.bind(object);
+                let miss = Expr::call(
+                    "buoy_heap",
+                    "get_slot",
+                    vec![object.clone(), key.clone(), Expr::Integer(position)],
+                );
+                self.slot_case(
+                    object,
+                    key,
+                    position,
+                    |_, record| vec![element(position + 2, record)],
+                    miss,
+                )
+            }
             MemberKey::Dynamic(key) => Expr::call("buoy_ref", "get_computed", vec![object, key]),
             MemberKey::Private(key) => {
                 Expr::call("buoy_ref_class", "private_get", vec![object, key])
@@ -270,11 +280,35 @@ impl<'a> Lowerer<'a, '_> {
             return;
         }
         let call = match key {
-            MemberKey::Slot(key, position) if !self.frame.sloppy => Expr::call(
-                "buoy_heap",
-                "set_slot",
-                vec![object, key, value, Expr::Integer(position)],
-            ),
+            MemberKey::Slot(key, position) if !self.frame.sloppy => {
+                let object = self.bind(object);
+                let value = self.bind(value);
+                let miss = Expr::call(
+                    "buoy_heap",
+                    "set_slot",
+                    vec![
+                        object.clone(),
+                        key.clone(),
+                        value.clone(),
+                        Expr::Integer(position),
+                    ],
+                );
+                let stored = value.clone();
+                self.slot_case(
+                    object,
+                    key,
+                    position,
+                    |id, record| {
+                        let written = Expr::call(
+                            "erlang",
+                            "setelement",
+                            vec![Expr::Integer(position + 2), record, stored.clone()],
+                        );
+                        vec![Expr::call("erlang", "put", vec![id, written]), stored]
+                    },
+                    miss,
+                )
+            }
             MemberKey::Static(key) | MemberKey::Slot(key, _) => {
                 Expr::call("buoy_ref", fixed, vec![object, key, value])
             }
@@ -285,6 +319,50 @@ impl<'a> Lowerer<'a, '_> {
         };
         self.pre.push(call);
     }
+}
+
+impl Lowerer<'_, '_> {
+    /// The inline cache of a slot access: `hit` runs on the entry `{Shape, Proto, V1, ...}`
+    /// of a shaped object whose shape holds `key` at `position`, the check of
+    /// `buoy_heap:get_slot/3`, and `miss` runs otherwise. JSC compares the structure at
+    /// each access site; here the guard compares the key, so a subclass instance hits too.
+    fn slot_case(
+        &mut self,
+        object: Expr,
+        key: Expr,
+        position: i64,
+        hit: impl FnOnce(Expr, Expr) -> Vec<Expr>,
+        miss: Expr,
+    ) -> Expr {
+        let id = Expr::var(self.fresh("Id"));
+        let record = Expr::var(self.fresh("R"));
+        let shape = element(1, record.clone());
+        let keys = element(3, shape.clone());
+        let guard = Expr::op(
+            "andalso",
+            Expr::call("erlang", "is_tuple", vec![shape]),
+            Expr::op("=:=", element(position, keys), key),
+        );
+        let lookup = Expr::case(
+            Expr::call("erlang", "get", vec![id.clone()]),
+            vec![
+                Clause::guarded(record.clone(), vec![guard], hit(id.clone(), record)),
+                Clause::new(Expr::var("_"), vec![miss.clone()]),
+            ],
+        );
+        Expr::case(
+            object,
+            vec![
+                Clause::new(Expr::Tuple(vec![Expr::atom("$o"), id]), vec![lookup]),
+                Clause::new(Expr::var("_"), vec![miss]),
+            ],
+        )
+    }
+}
+
+/// `erlang:element(Index, Tuple)`.
+fn element(index: i64, tuple: Expr) -> Expr {
+    Expr::call("erlang", "element", vec![Expr::Integer(index), tuple])
 }
 
 /// A property key known at compile time: an array index is an integer.
