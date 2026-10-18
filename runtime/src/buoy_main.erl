@@ -26,6 +26,10 @@ start() ->
 
 -spec boot() -> no_return().
 boot() ->
+    %% The facts go to the file of this VM alone. A child process would inherit the
+    %% variable and write its own facts over them, after this VM has exited.
+    persistent_term:put({buoy, result_file}, os:getenv("BUOY_RESULT_FILE", "")),
+    true = os:unsetenv("BUOY_RESULT_FILE"),
     %% SIGTERM ends the VM as it ends Node, with status 128 + 15 and no shutdown
     %% report, and the OTP reports that remain go to stderr, never into the output.
     ok = os:set_signal(sigterm, default),
@@ -131,7 +135,7 @@ finish(Status, Facts) ->
     catch
         _:_ -> ok
     end,
-    case os:getenv("BUOY_RESULT_FILE", "") of
+    case persistent_term:get({buoy, result_file}, os:getenv("BUOY_RESULT_FILE", "")) of
         "" -> ok;
         Path -> _ = file:write_file(Path, json:encode(Facts#{status => Status}))
     end,
