@@ -80,6 +80,16 @@ fn connect_local(spec: &str) -> Result<(), String> {
     };
     let fd: RawFd = fd.parse().map_err(|_| format!("bad descriptor {fd}"))?;
     let socket = OwnedFd::from(UnixStream::connect(path).map_err(|error| format!("{path}: {error}"))?);
+    // Rust's runtime opens /dev/null on a closed standard descriptor, so those take dup2.
+    let standard = match fd {
+        0 => Some(nix::unistd::dup2_stdin(&socket)),
+        1 => Some(nix::unistd::dup2_stdout(&socket)),
+        2 => Some(nix::unistd::dup2_stderr(&socket)),
+        _ => None,
+    };
+    if let Some(result) = standard {
+        return result.map_err(|error| format!("dup2: {error}"));
+    }
     if socket.as_raw_fd() == fd {
         fcntl(&socket, FcntlArg::F_SETFD(FdFlag::empty())).map_err(|error| format!("fcntl: {error}"))?;
         let _ = socket.into_raw_fd();
