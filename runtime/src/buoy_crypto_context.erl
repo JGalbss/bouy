@@ -26,7 +26,7 @@ members() ->
         {<<"addCACert">>, 1, fun(This, Args) -> add_ca(This, A(1, Args)) end},
         {<<"addCRL">>, 1, fun(This, Args) -> add_crl(This, A(1, Args)) end},
         {<<"addRootCerts">>, 0, Set(roots, fun(_) -> true end)},
-        {<<"setCipherSuites">>, 1, Set(suites, fun(Args) -> buoy_crypto:string(A(1, Args)) end)},
+        {<<"setCipherSuites">>, 1, fun(This, Args) -> set_suites(This, buoy_crypto:string(A(1, Args))) end},
         {<<"setCiphers">>, 1, fun(This, Args) -> set_ciphers(This, buoy_crypto:string(A(1, Args))) end},
         {<<"setSigalgs">>, 1, Set(sigalgs, fun(Args) -> buoy_crypto:string(A(1, Args)) end)},
         {<<"setECDHCurve">>, 1, fun(This, Args) -> set_curve(This, buoy_crypto:string(A(1, Args))) end},
@@ -196,6 +196,17 @@ set_ciphers(This, List) ->
     end,
     undefined.
 
+%% setCipherSuites(list): TLS 1.3 suites, each one known, as
+%% SSL_CTX_set_ciphersuites requires.
+set_suites(This, List) ->
+    Names = binary:split(List, <<":">>, [global, trim_all]),
+    Known = [N || N <- Names, [C || #{key_exchange := any} = C <- suites(N, 'tlsv1.3')] =/= []],
+    case List =:= <<>> orelse length(Known) =:= length(Names) of
+        true -> update(This, fun(S) -> S#{suites := List} end);
+        false -> erlang:error({'$throw', ssl_error_value(16#B9, <<"no cipher match">>, ssl)})
+    end,
+    undefined.
+
 %% The suites of an OpenSSL cipher string, as SSL_CTX_set_cipher_list reads
 %% it: names and aliases joined with +, each one added, or removed with -,
 %% banned with !, or moved to the end with +; @ directives such as
@@ -244,13 +255,15 @@ matching(Word, Universe) ->
     Parts = binary:split(Word, <<"+">>, [global, trim_all]),
     lists:foldl(fun(Part, Acc) -> [C || C <- Acc, matches_part(Part, C)] end, Universe, Parts).
 
+%% A name matches as OpenSSL compares it, case and all: its OpenSSL or
+%% IANA name.
 matches_part(Part, Suite) ->
     case cipher_alias(Part) of
         {ok, Test} -> Test(Suite);
         error ->
-            try ssl:str_to_suite(binary_to_list(Part)) =:= Suite
-            catch _:_ -> false
-            end
+            Name = binary_to_list(Part),
+            (try ssl:suite_to_openssl_str(Suite) catch _:_ -> none end) =:= Name
+                orelse (try ssl:suite_to_str(Suite) catch _:_ -> none end) =:= Name
     end.
 
 kex(#{key_exchange := K}) -> K.

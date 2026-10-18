@@ -83,7 +83,9 @@ binding() ->
         {<<"destroySSL">>, fun(This, _) -> destroy(This), undefined end},
         {<<"setOCSPResponse">>, fun(_, _) -> undefined end},
         {<<"requestOCSP">>, fun(_, _) -> undefined end},
-        {<<"setMaxSendFragment">>, fun(_, _) -> true end},
+        %% SSL_set_max_send_fragment takes 512 to 16384; ssl keeps its own
+        %% record size.
+        {<<"setMaxSendFragment">>, fun(_, Args) -> Size = buoy_ref:to_number(A(1, Args)), Size >= 512 andalso Size =< 16384 end},
         {<<"setKeyCert">>, fun(_, _) -> undefined end},
         {<<"certCbDone">>, fun(This, _) -> cert_cb_done(This) end},
         {<<"receive">>, fun(This, Args) -> encrypted_in(This, {data, buoy_node_encoding:view_bytes(A(1, Args))}), undefined end},
@@ -932,10 +934,24 @@ legacy(Der) ->
     Handle = buoy_crypto_x509:certificate(Der),
     buoy_heap:call(buoy_heap:get(Handle, <<"toLegacy">>), Handle, []).
 
+%% getPeerX509Certificate(): the peer's certificate, whose issuer is the
+%% next one of the chain that the peer sent, as X509Certificate.from the
+%% SSL session links one level.
 peer_x509(This) ->
     case state(This) of
-        #{info := #{peer := Der}} when is_binary(Der) -> buoy_crypto_x509:certificate(Der);
-        _ -> undefined
+        #{info := #{peer := Der} = Info} when is_binary(Der) ->
+            Leaf = buoy_crypto_x509:certificate(Der),
+            case [D || D <- maps:get(chain, Info, []), D =/= Der] of
+                [IssuerDer | _] ->
+                    Issuer = buoy_crypto_x509:certificate(IssuerDer),
+                    buoy_heap:define(Leaf, <<"getIssuerCert">>, #{value => buoy_node:fn(<<"getIssuerCert">>, 0, fun(_, _) -> Issuer end),
+                                                                   writable => true, enumerable => false, configurable => true});
+                [] ->
+                    ok
+            end,
+            Leaf;
+        _ ->
+            undefined
     end.
 
 own_certificate(This, Form) ->
