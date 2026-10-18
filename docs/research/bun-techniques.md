@@ -110,7 +110,7 @@ Buoy already runs Node's `lib/` byte for byte on Node's binding contract ([node-
    - Real Node's observed behavior is the spec. Port it bug for bug, and do not modernize a message.
    - Match the whole error contract: the `ERR_*` code, the class, the message, the properties (`syscall`, `errno`, `path`), the order of the checks, and the channel (a throw, an `'error'` event, or a rejection).
    - The whole observable surface is the API, including property attributes, `constructor.name`, and underscore internals such as `_writableState`.
-   - Port the whole behavior, with every sibling form (sync, callback, promise), and not only the case that a test names.
+   - Port the whole behavior: every sibling form (sync, callback, promise), beyond the case that a test names.
 5. **Where Bun is more native than Node, make the engine faster.** Node's `path.js` and most of `buffer.js` are JavaScript, so Buoy runs them as they are. When a profile shows one of them hot, speed up the engine (shapes, strings, primordials) or the binding members under it. Do not override the module.
 
 ## 4. HTTP servers: Bun.serve and uWebSockets
@@ -134,7 +134,7 @@ On Buoy, `http.createServer` is Node's `_http_server.js` over the `tcp_wrap`, `s
 1. **`tcp_wrap` on the `socket` module, P0.** The `socket` module is a NIF over the ERTS poll set (kqueue or epoll). The realm process owns each socket, and readiness arrives in its mailbox as a `select` message. No relay process stands between the socket and the JavaScript, as Bun keeps I/O on its main thread (`src/io/lib.rs`: "Most I/O happens on the main thread"). `readStart` and `readStop` arm and disarm the read, so a socket without a reader does not fill memory.
 2. **Corking, P1.** Node already corks in JavaScript (`res.cork()`, `writev` of `stream_wrap`). The binding sends the chunks of one `writev` as one iolist in one send. A write during a job joins a queue that the loop flushes after the job, as Bun's `DeferredTaskQueue` flushes buffered response writes (`src/event_loop/README.md`).
 3. **llhttp for `http_parser`, P1.** Node's tests check llhttp's error codes (`HPE_*`) and its lenient flags. ERTS has an HTTP parser in C (`erlang:decode_packet/3` with `http_bin`), but its errors and limits differ, so it cannot back `HTTPParser`. Bun made the same choice: it vendors llhttp for `node:http`.
-4. **All cores, P2.** One `http.Server` lives in one realm, so its JavaScript runs on one scheduler, as in Node and in Bun. Bun scales with `reusePort` and `node:cluster` processes. Buoy can run the workers of `node:cluster` as actors in the same VM and hand each one accepted sockets, since a socket can change its owner process. This beats Bun's process model on memory and recovery. Measure it against Bun with `reusePort`.
+4. **All cores, P2.** One `http.Server` lives in one realm, so its JavaScript runs on one scheduler, as in Node and in Bun. Bun scales with `reusePort` and `node:cluster` processes. Buoy can run the workers of `node:cluster` as actors in the same VM and hand each one accepted sockets, since a socket can change its owner process. A crash then stays inside one actor. Measure the memory and the throughput against Bun with `reusePort` before you claim a gain.
 5. **WebSocket fan-out, P2.** An actor API for topics can use `pg` process groups, the BEAM form of `TopicTree.h`.
 
 ## 5. I/O and the event loop
@@ -303,7 +303,7 @@ BEAM collects each process on its own, so one actor's collection never stops ano
 ## 12. What not to copy
 
 - **Replacing npm packages.** Bun's resolver maps the npm names `undici`, `ws`, `node-fetch`, `isomorphic-fetch`, and `@vercel/fetch` to its own modules (`src/resolve_builtins/HardcodedModule.rs`, `src/js/thirdparty/`). That is a special case for each package, which goal.md requirement 2 forbids: "liek we dont do 1 offs". Buoy runs the package from `node_modules`.
-- **Rewriting `node:*` in TypeScript.** Bun spends each release porting Node's JavaScript back (section 3). Buoy runs `lib/`.
+- **Rewriting `node:*` in TypeScript.** Bun has ported Node's JavaScript back in several releases (section 3). Buoy runs `lib/`.
 - **A second formatter for `console`,** and a third copy of `util.inspect`.
 - **Edits to Node's tests,** and quarantine of whole files.
 - **JSC syntax.** The `$` intrinsics are JSC bytecode. Buoy's form is the compiler lowering of primordials (section 2).
