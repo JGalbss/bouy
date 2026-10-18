@@ -16,6 +16,8 @@ Buoy runs Node's own JavaScript for the built-in modules, as ADR 0003 chooses: t
 | `runtime/src/buoy_node_encoding.erl`  | The byte encodings of Buffer, and the bytes of typed arrays.                                                                 |
 | `runtime/src/buoy_binding_<name>.erl` | `internalBinding('<name>')`. Its `binding/0` returns the binding object.                                                     |
 | `runtime/src/buoy_node_stubs.erl`     | The bindings that have no `buoy_binding_<name>.erl` yet, with Node's shape.                                                  |
+| `crates/buoy-native`                  | The NIF library `buoy_native`: native code in Rust that a binding needs, such as the codecs of `zlib`.                       |
+| `runtime/src/buoy_native.erl`         | Loads the NIF library and declares its functions.                                                                            |
 
 build.rs compiles each id with the reference compiler into the runtime module `buoy_node@<id>`, with `/` as `@` and `-` as `_`. Its `'__eval__'/3` returns the function that Node wraps around the code: `(exports, require, module, process, internalBinding, primordials)` for a module, and the parameters of `src/builtin_info.h` for the bootstrap and per-context scripts. The CLI caches each compiled `.beam` by the hash of its source, so a change to one id compiles one module.
 
@@ -45,6 +47,8 @@ The helpers in `buoy_node`:
 - A process of a binding runs a callback in the realm with `buoy_node_stream:call(Realm, Fun)`, the message `{'$buoy_node_call', Fun}`, which the loop runs as a job. A JavaScript value that only such a callback names must stay a root of the heap, in the process dictionary under a key that is no integer, until the callback has run.
 - `buoy_node_stream` gives a stream handle the StreamBase methods of `src/stream_base.cc` (`readStart`, `writeBuffer`, `shutdown`, `close`, and the others) over a channel process; `attach/2` binds a handle and `deliver/2` hands it data or `eof`. The pipes of `process_wrap` use it.
 - `buoy_node_url` is the WHATWG URL parser of ada, and `buoy_binding_spawn_sync` and `buoy_binding_process_wrap` start child processes through `/bin/sh`, which wires their stdio.
+
+A binding that needs native code calls a NIF of `buoy_native`. The NIF library is Rust in `crates/buoy-native`, one module for each subsystem, ported from the `src/*.cc` file of Node. A call that can take more than a millisecond runs on a dirty CPU scheduler, as Node runs it on the libuv thread pool. A NIF that crashes stops every actor of the VM, so the code is safe Rust where a Rust port of the library exists. Its allocations go through `enif_alloc`, so `BUOY_MAX_MEMORY` counts them.
 
 A binding function that only throws must call a function, such as `buoy_node:throw_code/3`, through a named fun (`fun ?MODULE:name/2`), or dialyzer reports the created fun.
 
@@ -78,4 +82,5 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 - Child processes start through `/bin/bash`, which connects their piped stdin, stderr, and extra pipes as loopback sockets (`/dev/tcp`). Handles cannot pass over an IPC channel yet, and `process.execve` cannot replace the VM.
 - `process.title` keeps the value that a program sets, but the OS process keeps its name. Signals that OTP cannot catch, such as SIGINT, reach `process.on` only when the program sends them to itself.
 - The `tcp_wrap`, `udp_wrap`, `tty_wrap` handle, `cares_wrap`, `url_pattern`, `worker`, and `webstorage` bindings are stubs: net, dgram, an interactive terminal, dns, URLPattern, worker_threads, and Web Storage, which needs SQLite, do not work yet.
+- `zlib` compresses with zlib-rs, brotli-rs, and libzstd 1.5.7. A deflate stream can differ in a few bytes from the one of Node's Chromium zlib, and stays valid. A brotli encoder with a dictionary uses the dictionary only within its window. libzstd allocates outside `BUOY_MAX_MEMORY`.
 - `node:vm` contexts copy the sandbox's properties into the context's realm before a run and back after it, where V8 intercepts each access.
