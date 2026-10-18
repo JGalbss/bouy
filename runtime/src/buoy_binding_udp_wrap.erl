@@ -40,7 +40,7 @@ binding() ->
         {<<"setMulticastInterface">>, fun(This, Args) -> multicast_interface(This, A(1, Args)) end},
         {<<"setMulticastTTL">>, fun(This, Args) -> ttl(This, multicast_ttl, multicast_hops, A(1, Args)) end},
         {<<"setMulticastLoopback">>, fun(This, Args) -> option(This, {ip, multicast_loop}, {ipv6, multicast_loop}, buoy_ref:truthy(A(1, Args))) end},
-        {<<"setBroadcast">>, fun(This, Args) -> buoy_node_socket:setopt(This, {socket, broadcast}, buoy_ref:truthy(A(1, Args))) end},
+        {<<"setBroadcast">>, fun(This, Args) -> setopt(This, {socket, broadcast}, buoy_ref:truthy(A(1, Args))) end},
         {<<"setTTL">>, fun(This, Args) -> ttl(This, ttl, unicast_hops, A(1, Args)) end},
         {<<"bufferSize">>, fun(This, Args) -> buffer_size(This, A(1, Args), buoy_ref:truthy(A(2, Args)), A(3, Args)) end},
         {<<"getSendQueueSize">>, fun(This, _) -> maps:get(queued, buoy_node_socket:state(This)) end},
@@ -71,11 +71,7 @@ ip(Family, Address) ->
     end,
     Parse(text(Address)).
 
-sockaddr(Family, Address, Port) ->
-    case ip(Family, Address) of
-        {ok, Addr} -> {ok, #{family => Family, addr => Addr, port => int(Port)}};
-        {error, _} -> error
-    end.
+sockaddr(Family, Address, Port) -> buoy_node_socket:sockaddr(Family, Address, Port).
 
 family(Handle) ->
     case buoy_node_socket:state(Handle) of
@@ -157,8 +153,8 @@ send(Handle, Family, Args) ->
             errno(einval);
         {_, 0} ->
             #{socket := Socket, queue := Queue} = S = buoy_node_socket:state(Handle),
-            case Queue of
-                [] ->
+            case Queue =:= [] andalso not no_try_send() of
+                true ->
                     case transmit(Socket, Target, Bytes) of
                         ok ->
                             byte_size(Bytes) + 1;
@@ -168,14 +164,20 @@ send(Handle, Family, Args) ->
                         {error, Reason} ->
                             errno(Reason)
                     end;
-                _ ->
+                false ->
                     buoy_node_socket:save(Handle, S#{queue := Queue ++ [{Req, {Target, Bytes}}],
                                                      queued := maps:get(queued, S) + byte_size(Bytes)}),
+                    Queue =:= [] andalso maps:get(wsel, S) =:= none andalso
+                        buoy_node_socket:later(fun() -> send_ready(Handle) end),
                     0
             end;
         {_, Errno} ->
             Errno
     end.
+
+%% --test-udp-no-try-send queues every send, as uv_udp_send does.
+no_try_send() ->
+    lists:member(<<"--test-udp-no-try-send">>, buoy_node_process:exec_argv()).
 
 transmit(Socket, Target, Bytes) ->
     Result = case Target of
@@ -251,18 +253,25 @@ onmessage(Handle, Args) ->
     F = buoy_heap:get(Handle, <<"onmessage">>),
     buoy_heap:is_callable(F) andalso buoy_heap:call(F, Handle, Args).
 
-rinfo(#{family := Family, addr := Addr, port := Port}) ->
-    buoy_node:object([{<<"address">>, buoy_node:string(inet:ntoa(Addr))},
+rinfo(#{family := Family, port := Port} = Source) ->
+    buoy_node:object([{<<"address">>, buoy_node_socket:address_text(Source)},
                       {<<"family">>, case Family of inet -> <<"IPv4">>; inet6 -> <<"IPv6">> end},
                       {<<"port">>, Port}]);
 rinfo(_) ->
     buoy_node:object([]).
 
+%% An option of a socket: EBADF before the handle has one, as libuv.
+setopt(Handle, Option, Value) ->
+    case buoy_node_socket:state(Handle) of
+        #{socket := none} -> errno(ebadf);
+        _ -> buoy_node_socket:setopt(Handle, Option, Value)
+    end.
+
 %% An option of the IPv4 or the IPv6 level, by the family of the socket.
 option(Handle, V4, V6, Value) ->
     case family(Handle) of
-        inet -> buoy_node_socket:setopt(Handle, V4, Value);
-        inet6 -> buoy_node_socket:setopt(Handle, V6, Value)
+        inet -> setopt(Handle, V4, Value);
+        inet6 -> setopt(Handle, V6, Value)
     end.
 
 %% setTTL and setMulticastTTL: 1 to 255, as uv_udp_set_ttl checks.
@@ -287,10 +296,9 @@ membership(Handle, Op, Group, Interface) ->
     Family = family(Handle),
     case {ip(Family, Group), interface(Family, Interface)} of
         {{ok, Multiaddr}, {ok, If}} when Family =:= inet ->
-            buoy_node_socket:setopt(Handle, {ip, Op}, #{multiaddr => Multiaddr, interface => If});
+            setopt(Handle, {ip, Op}, #{multiaddr => Multiaddr, interface => If});
         {{ok, Multiaddr}, _} when Family =:= inet6 ->
-            Op6 = case Op of add_membership -> add_membership; drop_membership -> drop_membership end,
-            buoy_node_socket:setopt(Handle, {ipv6, Op6}, #{multiaddr => Multiaddr, interface => 0});
+            setopt(Handle, {ipv6, Op}, #{multiaddr => Multiaddr, interface => 0});
         _ ->
             errno(einval)
     end.
@@ -299,17 +307,19 @@ source_membership(Handle, Op, Args) ->
     [Source, Group, Interface] = [buoy_node:arg(N, Args) || N <- [1, 2, 3]],
     case {ip(inet, Source), ip(inet, Group), interface(inet, Interface)} of
         {{ok, S}, {ok, G}, {ok, If}} ->
-            buoy_node_socket:setopt(Handle, {ip, Op}, #{multiaddr => G, interface => If, sourceaddr => S});
+            setopt(Handle, {ip, Op}, #{multiaddr => G, interface => If, sourceaddr => S});
         _ ->
             errno(einval)
     end.
 
+%% setMulticastInterface(address): an IPv4 address sets IP_MULTICAST_IF, and
+%% an IPv6 one, with a scope such as %lo0, sets IPV6_MULTICAST_IF to the
+%% scope's interface, as uv_udp_set_multicast_interface parses it.
 multicast_interface(Handle, Address) ->
-    Family = family(Handle),
-    case interface(Family, Address) of
-        {ok, If} when Family =:= inet -> buoy_node_socket:setopt(Handle, {ip, multicast_if}, If);
-        {ok, _} -> buoy_node_socket:setopt(Handle, {ipv6, multicast_if}, 0);
-        error -> errno(einval)
+    case {inet:parse_ipv4strict_address(text(Address)), sockaddr(inet6, Address, 0)} of
+        {{ok, V4}, _} -> setopt(Handle, {ip, multicast_if}, V4);
+        {_, {ok, #{scope_id := Index}}} -> setopt(Handle, {ipv6, multicast_if}, Index);
+        _ -> errno(einval)
     end.
 
 %% bufferSize(size, isRecv, ctx): the size of the kernel buffer, set first

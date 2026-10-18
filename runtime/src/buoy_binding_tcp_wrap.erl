@@ -49,18 +49,7 @@ int(V) ->
         _ -> 0
     end.
 
-text(V) -> unicode:characters_to_list(buoy_ref_string:to_utf8(buoy_ref:to_string(V))).
-
-%% The sockaddr of an address string and a port, or error.
-sockaddr(Family, Address, Port) ->
-    Parse = case Family of
-        inet -> fun inet:parse_ipv4strict_address/1;
-        inet6 -> fun inet:parse_ipv6strict_address/1
-    end,
-    case Parse(text(Address)) of
-        {ok, Addr} -> {ok, #{family => Family, addr => Addr, port => int(Port)}};
-        {error, _} -> error
-    end.
+sockaddr(Family, Address, Port) -> buoy_node_socket:sockaddr(Family, Address, Port).
 
 %% bind and bind6: libuv sets SO_REUSEADDR on each TCP socket that binds,
 %% and an IPv6 socket takes IPv4 too unless UV_TCP_IPV6ONLY.

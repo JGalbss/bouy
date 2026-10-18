@@ -22,6 +22,7 @@
 
 -export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, later/1, event/1]).
 -export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
+-export([sockaddr/3, address_text/1, scope/1]).
 -export_type([kind/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -569,8 +570,8 @@ address(Handle, Out, Get) ->
             errno(ebadf);
         #{socket := Socket} ->
             case Get(Socket) of
-                {ok, #{family := Family, addr := Addr, port := Port}} when Family =:= inet; Family =:= inet6 ->
-                    buoy_heap:set(Out, <<"address">>, buoy_node:string(inet:ntoa(Addr))),
+                {ok, #{family := Family, port := Port} = Sockaddr} when Family =:= inet; Family =:= inet6 ->
+                    buoy_heap:set(Out, <<"address">>, address_text(Sockaddr)),
                     buoy_heap:set(Out, <<"family">>, case Family of inet -> <<"IPv4">>; inet6 -> <<"IPv6">> end),
                     buoy_heap:set(Out, <<"port">>, Port),
                     0;
@@ -580,6 +581,55 @@ address(Handle, Out, Get) ->
                     errno(Reason)
             end
     end.
+
+%% The sockaddr of an address text and a port: an IPv6 address may end in
+%% %<interface> or %<index>, its scope, as uv_ip6_addr reads it.
+-spec sockaddr(inet | inet6, term(), term()) -> {ok, map()} | error.
+sockaddr(inet, Address, Port) ->
+    case inet:parse_ipv4strict_address(text(Address)) of
+        {ok, Addr} -> {ok, #{family => inet, addr => Addr, port => port(Port)}};
+        {error, _} -> error
+    end;
+sockaddr(inet6, Address, Port) ->
+    {Text, Scope} = case string:split(text(Address), "%") of
+        [A, S] -> {A, S};
+        [A] -> {A, ""}
+    end,
+    case inet:parse_ipv6strict_address(Text) of
+        {ok, Addr} -> {ok, #{family => inet6, addr => Addr, port => port(Port), flowinfo => 0, scope_id => scope(Scope)}};
+        {error, _} -> error
+    end.
+
+%% The index of an interface name or number, or 0.
+-spec scope(string()) -> non_neg_integer().
+scope("") -> 0;
+scope(Scope) ->
+    case {string:to_integer(Scope), net:if_name2index(Scope)} of
+        {{N, ""}, _} when is_integer(N), N >= 0 -> N;
+        {_, {ok, Index}} -> Index;
+        _ -> 0
+    end.
+
+text(V) -> unicode:characters_to_list(buoy_ref_string:to_utf8(buoy_ref:to_string(V))).
+
+port(V) ->
+    case buoy_ref:to_number(V) of
+        N when is_integer(N) -> N;
+        F when is_float(F), F == trunc(F) -> trunc(F);
+        _ -> 0
+    end.
+
+%% The text of a sockaddr's address, with the %<interface> of a scoped IPv6
+%% address, as Node's AddressToJS writes it.
+-spec address_text(map()) -> term().
+address_text(#{family := inet6, addr := Addr, scope_id := Scope}) when Scope > 0 ->
+    Name = case net:if_index2name(Scope) of
+        {ok, N} -> N;
+        _ -> integer_to_list(Scope)
+    end,
+    buoy_node:string([inet:ntoa(Addr), "%", Name]);
+address_text(#{addr := Addr}) ->
+    buoy_node:string(inet:ntoa(Addr)).
 
 %% Sets an option of the handle's socket: 0 or a negative errno.
 -spec setopt(term(), socket:socket_option(), term()) -> integer().

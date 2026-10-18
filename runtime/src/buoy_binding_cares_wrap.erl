@@ -33,7 +33,7 @@ binding() ->
     Methods = [{Name, fun(This, Args) -> query(This, Type, A(1, Args), text(A(2, Args))) end} || {Name, Type} <- Queries]
         ++ [{<<"getServers">>, fun(This, _) -> get_servers(This) end},
             {<<"setServers">>, fun(This, Args) -> set_servers(This, A(1, Args)) end},
-            {<<"setLocalAddress">>, fun(_, _) -> undefined end},
+            {<<"setLocalAddress">>, fun(_, Args) -> set_local_address(A(1, Args), A(2, Args)) end},
             {<<"cancel">>, fun(This, _) -> cancel(This) end}],
     [buoy_heap:define(Proto, Name, #{value => F(Name, 2, Fun), writable => true, enumerable => true, configurable => true})
      || {Name, Fun} <- Methods],
@@ -133,15 +133,17 @@ getnameinfo(Req, Host, Port) ->
     Work = fun() ->
         case inet:parse_address(Host) of
             {ok, Address} ->
-                Name = case inet:gethostbyaddr(Address) of
-                    {ok, {hostent, N, _, _, _, _}} -> N;
-                    {error, _} -> inet:ntoa(Address)
-                end,
-                Service = case inet:getservbyport(PortNumber, tcp) of
-                    {ok, S} -> S;
-                    {error, _} -> integer_to_list(PortNumber)
-                end,
-                {ok, Name, Service};
+                %% NI_NAMEREQD: an address with no name fails.
+                case inet:gethostbyaddr(Address) of
+                    {ok, {hostent, Name, _, _, _, _}} ->
+                        Service = case inet:getservbyport(PortNumber, tcp) of
+                            {ok, S} -> S;
+                            {error, _} -> integer_to_list(PortNumber)
+                        end,
+                        {ok, Name, Service};
+                    {error, Reason} ->
+                        {error, Reason}
+                end;
             {error, Reason} ->
                 {error, Reason}
         end
@@ -197,8 +199,15 @@ get_servers(This) ->
     #{servers := Servers} = channel_state(This),
     buoy_heap:new_array([buoy_heap:new_array([buoy_node:string(inet:ntoa(IP)), Port]) || {IP, Port} <- Servers]).
 
-%% setServers([[family, ip, port], ...]): 0, or the c-ares error ARES_EBADSTR.
+%% setServers([[family, ip, port], ...]): 0, DNS_ESETSRVPENDING while a
+%% query waits, or the c-ares error ARES_EBADSTR.
 set_servers(This, List) ->
+    case [R || {R, _} <- maps:get(pending, channel_state(This)), erlang:get({?MODULE, pending, R}) =/= undefined] of
+        [] -> replace_servers(This, List);
+        _ -> -1000
+    end.
+
+replace_servers(This, List) ->
     Parsed = [begin
                   [_Family, IP, Port] = buoy_heap:array_items(Item),
                   {inet:parse_strict_address(text(IP)), trunc(buoy_ref:to_number(Port))}
@@ -216,7 +225,7 @@ cancel(This) ->
     #{pending := Pending} = S = channel_state(This),
     buoy_heap:private_put(This, ?CHANNEL, S#{pending := []}),
     [finish(Ref, fun(_) -> oncomplete(Req, [buoy_node:string("ECANCELLED")]) end, cancelled)
-     || {Ref, Req} <- Pending, erlang:get({?MODULE, pending, Ref}) =/= undefined],
+     || {Ref, Req} <- lists:reverse(Pending), erlang:get({?MODULE, pending, Ref}) =/= undefined],
     undefined.
 
 %% A query of the channel: 0, then req.oncomplete(0, result[, ttls]) or
@@ -240,6 +249,9 @@ resolve(_Question, _Kind, []) ->
 resolve(Question, Kind, Options) ->
     case inet_res:resolve(Question, in, Kind, Options) of
         {ok, Msg} -> {ok, [{inet_dns:rr(RR, type), inet_dns:rr(RR, ttl), inet_dns:rr(RR, data)} || RR <- inet_dns:msg(Msg, anlist)]};
+        %% A reply that does not decode is formerr; a FORMERR rcode is qfmterror.
+        {error, formerr} -> {error, badresp};
+        {error, {qfmterror, _Msg}} -> {error, formerr};
         {error, {Reason, _Msg}} -> {error, Reason};
         {error, Reason} -> {error, Reason}
     end.
@@ -275,7 +287,7 @@ code(nxdomain) -> "ENOTFOUND";
 code(timeout) -> "ETIMEOUT";
 code(servfail) -> "ESERVFAIL";
 code(formerr) -> "EFORMERR";
-code(qfmterror) -> "EBADQUERY";
+code(badresp) -> "EBADRESP";
 code(notimp) -> "ENOTIMP";
 code(refused) -> "EREFUSED";
 code(econnrefused) -> "ECONNREFUSED";
@@ -287,13 +299,49 @@ code(_) -> "EBADRESP".
 records(any, Records) ->
     [Value || {Type, Ttl, Data} <- Records, Value <- [any_record(Type, Ttl, Data)], Value =/= skip];
 records(a, Records) -> [{ntoa(D), Ttl} || {a, Ttl, D} <- Records];
-records(aaaa, Records) -> [{ntoa(D), Ttl} || {aaaa, Ttl, D} <- Records];
+records(aaaa, Records) -> [{ntoa6(D), Ttl} || {aaaa, Ttl, D} <- Records];
 records(reverse, Records) -> [str(D) || {ptr, _, D} <- Records];
 records(Type, Records) ->
     Kind = case Type of tlsa -> 52; _ -> Type end,
     [record(Type, D) || {K, _, D} <- Records, K =:= Kind].
 
 ntoa(Address) -> buoy_node:string(inet:ntoa(Address)).
+
+%% An IPv6 address as ares_inet_ntop writes it: the longest run of zero
+%% groups as ::, and the IPv4 form only for ::a.b.c.d with six zero groups
+%% and for ::ffff:a.b.c.d. inet:ntoa writes ::0.0.0.66 for ::42.
+ntoa6({0, 0, 0, 0, 0, W6, _, _} = A) when W6 =:= 0; W6 =:= 16#ffff ->
+    case A of
+        {0, 0, 0, 0, 0, 0, 0, _} -> buoy_node:string(compress(A));
+        _ -> ntoa(A)
+    end;
+ntoa6(A) ->
+    buoy_node:string(compress(A)).
+
+compress(A) ->
+    Words = tuple_to_list(A),
+    {Start, Length} = longest_zeros(Words),
+    Hex = [integer_to_list(W, 16) || W <- Words],
+    Text = case Length >= 2 of
+        true ->
+            {Before, Rest} = lists:split(Start, Hex),
+            After = lists:nthtail(Length, Rest),
+            lists:join(":", Before) ++ "::" ++ lists:join(":", After);
+        false ->
+            lists:join(":", Hex)
+    end,
+    string:lowercase(lists:flatten(Text)).
+
+%% The first longest run of zero groups: {start, length}.
+longest_zeros(Words) ->
+    {_, _, Best} = lists:foldl(fun
+        (0, {I, Run, Best}) -> {I + 1, Run + 1, better({I - Run, Run + 1}, Best)};
+        (_, {I, _, Best}) -> {I + 1, 0, Best}
+    end, {0, 0, {0, 0}}, Words),
+    Best.
+
+better({_, L} = New, {_, B}) when L > B -> New;
+better(_, Best) -> Best.
 
 str(S) -> buoy_node:string(S).
 
@@ -326,7 +374,7 @@ with_type(Object, Type) ->
     Object.
 
 any_record(a, Ttl, D) -> obj([{<<"address">>, ntoa(D)}, {<<"ttl">>, Ttl}, {<<"type">>, str("A")}]);
-any_record(aaaa, Ttl, D) -> obj([{<<"address">>, ntoa(D)}, {<<"ttl">>, Ttl}, {<<"type">>, str("AAAA")}]);
+any_record(aaaa, Ttl, D) -> obj([{<<"address">>, ntoa6(D)}, {<<"ttl">>, Ttl}, {<<"type">>, str("AAAA")}]);
 any_record(cname, _, D) -> obj([{<<"value">>, str(D)}, {<<"type">>, str("CNAME")}]);
 any_record(ns, _, D) -> obj([{<<"value">>, str(D)}, {<<"type">>, str("NS")}]);
 any_record(ptr, _, D) -> obj([{<<"value">>, str(D)}, {<<"type">>, str("PTR")}]);
@@ -339,7 +387,28 @@ any_record(caa, _, D) -> with_type(record(caa, D), "CAA");
 any_record(52, _, D) -> with_type(record(tlsa, D), "TLSA");
 any_record(_, _, _) -> skip.
 
-%% ares_strerror.
+%% setLocalAddress(ip[, ip]): an IPv4 and an IPv6 address, in either order.
+set_local_address(First, Second) ->
+    Family = fun(V) ->
+        case inet:parse_strict_address(text(V)) of
+            {ok, {_, _, _, _}} -> 4;
+            {ok, _} -> 6;
+            {error, _} -> none
+        end
+    end,
+    case {Family(First), Second =/= undefined andalso Family(Second)} of
+        {none, _} -> invalid(<<"Invalid IP address.">>);
+        {4, Other} when Other =/= false, Other =/= 6 -> invalid(<<"Invalid IPv6 address.">>);
+        {6, Other} when Other =/= false, Other =/= 4 -> invalid(<<"Invalid IPv4 address.">>);
+        _ -> undefined
+    end.
+
+invalid(Message) ->
+    buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_VALUE">>, Message).
+
+%% ares_strerror, and Node's DNS_ESETSRVPENDING.
+strerror(-1000) ->
+    buoy_node:string("There are pending queries.");
 strerror(Code) ->
     Messages = ["Successful completion", "DNS server returned answer with no data", "DNS server claims query was misformatted",
                 "DNS server returned general failure", "Domain name not found", "DNS server does not implement requested operation",
