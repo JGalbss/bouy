@@ -239,8 +239,7 @@ cancel(This) ->
 %% req.oncomplete(code), with the code of c-ares, such as 'ENOTFOUND'.
 query(This, Type, Req, Name) ->
     #{servers := Servers, timeout := Timeout, tries := Tries, max_timeout := Max, pending := Pending} = S = channel_state(This),
-    %% Each try waits twice as long as the one before, up to maxTimeout.
-    Waits = [min(Timeout bsl I, Max) || I <- lists:seq(0, Tries - 1)],
+    Waits = [try_wait(Timeout, Max, I) || I <- lists:seq(0, Tries - 1)],
     {Question, Kind} = case Type of
         reverse -> {reverse_name(Name), ptr};
         tlsa -> {Name, 52};
@@ -252,11 +251,32 @@ query(This, Type, Req, Name) ->
     buoy_heap:private_put(This, ?CHANNEL, S#{pending := [{Ref, Req} | Live]}),
     0.
 
-resolve(_Question, _Kind, [], _Waits) ->
+%% The wait of try Round, as ares_calc_query_timeout computes it: the
+%% timeout, at least 250 ms and at most maxTimeout or 5000 ms, doubles
+%% each round up to maxTimeout, and a retry waits a random 50% to 100% of
+%% that, but never less than the timeout.
+try_wait(Timeout, Max, Round) ->
+    Cap = case Max of infinity -> 5000; _ -> Max end,
+    Base = min(max(Timeout, 250), Cap),
+    Doubled = min(Base bsl Round, Max),
+    Jittered = case Round of
+        0 -> Doubled;
+        _ -> Doubled - trunc(Doubled * rand:uniform() / 2)
+    end,
+    max(Jittered, Timeout).
+
+%% RFC 7686: c-ares answers a .onion name NXDOMAIN and sends no query.
+resolve(Question, Kind, Servers, Waits) ->
+    case lists:suffix(".onion", string:lowercase(string:trim(Question, trailing, "."))) of
+        true -> {error, nxdomain};
+        false -> resolve_servers(Question, Kind, Servers, Waits)
+    end.
+
+resolve_servers(_Question, _Kind, [], _Waits) ->
     {error, econnrefused};
-resolve(Question, Kind, Servers, [Wait | Rest]) ->
+resolve_servers(Question, Kind, Servers, [Wait | Rest]) ->
     case resolve_once(Question, Kind, [{nameservers, Servers}, {timeout, Wait}, {retry, 1}]) of
-        {error, timeout} when Rest =/= [] -> resolve(Question, Kind, Servers, Rest);
+        {error, timeout} when Rest =/= [] -> resolve_servers(Question, Kind, Servers, Rest);
         Result -> Result
     end.
 
