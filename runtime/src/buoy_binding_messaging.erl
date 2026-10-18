@@ -185,12 +185,15 @@ close(This) ->
 %% and emits 'close' later.
 closed(Port) ->
     set_ref(Port, false),
-    #{pipe := Pipe, side := Side, queue := Queue} = state(Port),
-    update(Port, fun(S) -> S#{state := closing, queue := []} end),
-    close_carried(Queue),
+    #{pipe := Pipe, side := Side} = state(Port),
+    update(Port, fun(S) -> S#{state := closing} end),
     erlang:erase(?PORTS(Pipe, Side)),
+    %% A dispatch that runs still emits the messages that its queue holds, as
+    %% MessagePort::OnMessage goes on until OnClose detaches the data.
     buoy_node_loop:defer(fun() ->
-        update(Port, fun(S) -> S#{state := closed} end),
+        #{queue := Queue} = state(Port),
+        close_carried(Queue),
+        update(Port, fun(S) -> S#{state := closed, queue := []} end),
         OnClose = buoy_heap:get(Port, symbol(<<"handle_onclose">>)),
         buoy_heap:is_callable(OnClose) andalso buoy_heap:call(OnClose, Port, [])
     end),
@@ -283,7 +286,7 @@ dispatch(Port, Limit) ->
     case state(Port) of
         #{state := open, queue := [close | _]} ->
             close(Port);
-        #{state := open, started := true, queue := [Message | Rest]} = S ->
+        #{state := Open, started := true, queue := [Message | Rest]} = S when Open =:= open; Open =:= closing ->
             save(Port, S#{queue := Rest}),
             try emit(Port, Message)
             catch Class:Reason:Stack ->
