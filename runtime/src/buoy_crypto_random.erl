@@ -13,8 +13,9 @@ members() ->
      {<<"secureBuffer">>, buoy_node:fn(<<"secureBuffer">>, 1, fun(_, Args) ->
          buoy_node:typed_array(<<"Uint8Array">>, buoy_crypto:to_uint32(buoy_node:arg(1, Args)))
      end)},
-     %% Buoy keeps no secure heap, as Node without --secure-heap.
-     {<<"secureHeapUsed">>, buoy_node:fn(<<"secureHeapUsed">>, 0, fun(_, _) -> {'$bigint', 0} end)}].
+     %% undefined while no secure heap is initialized (CRYPTO_secure_malloc_initialized):
+     %% Buoy keeps none, as Node without --secure-heap.
+     {<<"secureHeapUsed">>, buoy_node:fn(<<"secureHeapUsed">>, 0, fun(_, _) -> undefined end)}].
 
 %% new RandomBytesJob(mode, buffer, offset, size): the bytes go into the
 %% buffer when the job is done.
