@@ -98,9 +98,16 @@ fn nif_library(manifest: &Path, out: &Path) {
     let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
     });
+    let hash = format!(
+        "0x{:04x}_{:04x}_{:04x}_{:04x}",
+        hash >> 48,
+        (hash >> 32) & 0xffff,
+        (hash >> 16) & 0xffff,
+        hash & 0xffff
+    );
     let module = format!(
         "/// The NIF library of crates/buoy-nif.\npub const NIF: &[u8] = include_bytes!({:?});\n\
-         /// The FNV-1a hash of `NIF`.\npub const NIF_HASH: u64 = {hash:#018x};\n",
+         /// The FNV-1a hash of `NIF`.\npub const NIF_HASH: u64 = {hash};\n",
         library.display().to_string()
     );
     fs::write(out.join("nif_library.rs"), module).expect("OUT_DIR is writable");

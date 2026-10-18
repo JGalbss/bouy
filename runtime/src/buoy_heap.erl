@@ -39,7 +39,7 @@
 
 -include("buoy_ref.hrl").
 
--export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
+-export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_with/3, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
 -export([function/1, function/4, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
@@ -175,6 +175,16 @@ new_array(Items, Proto) ->
     Elements = maps:from_list(lists:enumerate(0, Items)),
     Id = next_id(),
     erlang:put(Id, {array, Proto, #{}, [], #{}, {map_size(Elements), Elements}}),
+    {'$o', Id}.
+
+%% An array of Items with more data properties, each writable, enumerable, and
+%% configurable, as CreateDataPropertyOrThrow leaves them on a new array: Props maps each
+%% key to its value, and Keys holds the keys newest first.
+-spec array_with([value()], #{key() => value()}, [key()]) -> value().
+array_with(Items, Props, Keys) ->
+    Elements = maps:from_list(lists:enumerate(0, Items)),
+    Id = next_id(),
+    erlang:put(Id, {array, intrinsic('Array.prototype'), Props, Keys, #{}, {map_size(Elements), Elements}}),
     {'$o', Id}.
 
 %% A proxy (buoy_ref_proxy): a function value when Target is callable.

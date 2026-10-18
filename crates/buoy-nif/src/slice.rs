@@ -11,7 +11,7 @@ use rustler::Env;
 use rustler::schedule::consume_timeslice;
 
 /// The units of work between two reads of the clock.
-const CHECK: usize = 2048;
+const CHECK: usize = 1024;
 
 /// The time and work of one NIF call.
 #[derive(Debug)]
@@ -35,8 +35,9 @@ impl Slice {
             return false;
         }
         self.work = 0;
-        // A slice is 1 ms, so each 10 µs is 1 percent of it.
-        let percent = self.since.elapsed().as_micros() / 10;
+        // A process slice of Erlang code is about 4,000 reductions, well under 1 ms, so a
+        // NIF counts each microsecond as 1 percent and yields after about 100 µs.
+        let percent = self.since.elapsed().as_micros();
         if percent == 0 {
             return false;
         }

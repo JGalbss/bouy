@@ -6,6 +6,7 @@
 //! is safe Rust over rustler's API.
 
 mod json;
+mod regexp;
 mod slice;
 
 rustler::init!("buoy_nif");
