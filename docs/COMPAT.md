@@ -12,7 +12,7 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | node | node | v25.9.0 | 1,950 | 4,419 | 44.1% | 1,876 | 10 | 25d078a | `tests/node/expectations.txt` |
 | node api surface | node-surface | v25.9.0 | 3,450 | 4,460 | 77.4% | 1,010 | 0 | 25d078a | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
-| top npm packages | ecosystem | Node 25.9.0 | 774 | 1,000 | 77.4% | 135 | 15 | 7964efd | `tests/ecosystem/expectations.txt` |
+| top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/equivalence.rs` |
 | corpora | equivalence/ai | Node 25.9.0 | 7 | 7 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/ai.rs` |
@@ -1352,15 +1352,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Top npm packages
 
-Top npm packages: 774 of 1,000 match Node. `scripts/ecosystem.sh` generates a program for each package that imports it and prints the shape of its exports, and `tests/ecosystem/packages.json` gives the reason of each skip.
+Top npm packages: 779 of 1,000 match Node. `scripts/ecosystem.sh` generates a program for each package that imports it and prints the shape of its exports, and `tests/ecosystem/packages.json` gives the reason of each skip.
 
-ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expectations.txt`.
+ecosystem at Node 25.9.0, updated at cc5c3a5. Evidence: `tests/ecosystem/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 1,000 | 774 | 77.4% | 0 | 0 | 76 | 0 | 81 | 54 | 0 | 15 |
+| every test | 1,000 | 779 | 77.9% | 0 | 0 | 76 | 0 | 86 | 28 | 0 | 31 |
 
 ### By package
 
@@ -1371,8 +1371,8 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `@adobe/css-tools` | pass | pass |
 | `@ai-sdk/provider` | pass | pass |
 | `@alloc/quick-lru` | pass |  |
-| `@asamuzakjp/css-color` | timeout | timeout |
-| `@aws-sdk/core` | timeout | timeout |
+| `@asamuzakjp/css-color` | pass | pass |
+| `@aws-sdk/core` | fail | fail |
 | `@aws-sdk/credential-provider-env` | fail | fail |
 | `@aws-sdk/credential-provider-http` | fail | fail |
 | `@aws-sdk/credential-provider-ini` | fail | fail |
@@ -1387,31 +1387,31 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `@aws-sdk/xml-builder` | pass | pass |
 | `@aws/lambda-invoke-store` | pass | pass |
 | `@babel/code-frame` | pass |  |
-| `@babel/core` | timeout |  |
-| `@babel/generator` | timeout |  |
-| `@babel/helper-annotate-as-pure` | timeout |  |
+| `@babel/core` | crash |  |
+| `@babel/generator` | crash |  |
+| `@babel/helper-annotate-as-pure` | crash |  |
 | `@babel/helper-compilation-targets` | crash |  |
-| `@babel/helper-create-class-features-plugin` | timeout |  |
+| `@babel/helper-create-class-features-plugin` | crash |  |
 | `@babel/helper-member-expression-to-functions` | crash |  |
 | `@babel/helper-module-imports` | crash |  |
-| `@babel/helper-module-transforms` | timeout |  |
+| `@babel/helper-module-transforms` | crash |  |
 | `@babel/helper-optimise-call-expression` | crash |  |
 | `@babel/helper-plugin-utils` | pass |  |
-| `@babel/helper-replace-supers` | timeout |  |
+| `@babel/helper-replace-supers` | crash |  |
 | `@babel/helper-skip-transparent-expression-wrappers` | crash |  |
 | `@babel/helper-string-parser` | pass |  |
 | `@babel/helper-validator-identifier` | pass |  |
 | `@babel/helper-validator-option` | pass |  |
-| `@babel/helpers` | timeout |  |
-| `@babel/parser` | timeout |  |
+| `@babel/helpers` | crash |  |
+| `@babel/parser` | pass |  |
 | `@babel/plugin-syntax-import-attributes` | pass |  |
 | `@babel/plugin-syntax-jsx` | pass |  |
 | `@babel/plugin-syntax-typescript` | pass |  |
-| `@babel/plugin-transform-modules-commonjs` | timeout |  |
-| `@babel/plugin-transform-react-jsx-self` | timeout |  |
-| `@babel/plugin-transform-react-jsx-source` | timeout |  |
-| `@babel/template` | timeout |  |
-| `@babel/traverse` | timeout |  |
+| `@babel/plugin-transform-modules-commonjs` | crash |  |
+| `@babel/plugin-transform-react-jsx-self` | crash |  |
+| `@babel/plugin-transform-react-jsx-source` | crash |  |
+| `@babel/template` | crash |  |
+| `@babel/traverse` | crash |  |
 | `@babel/types` | crash |  |
 | `@bcoe/v8-coverage` | pass |  |
 | `@colors/colors` | pass |  |
@@ -1450,7 +1450,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `@isaacs/cliui` | pass | pass |
 | `@istanbuljs/schema` | pass |  |
 | `@jest/schemas` | pass | pass |
-| `@jest/transform` | timeout |  |
+| `@jest/transform` | crash |  |
 | `@jest/types` | pass |  |
 | `@jridgewell/gen-mapping` | pass | pass |
 | `@jridgewell/remapping` | pass | pass |
@@ -1521,7 +1521,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `@radix-ui/rect` | pass | pass |
 | `@rolldown/pluginutils` |  | pass |
 | `@rollup/pluginutils` | pass | pass |
-| `@sentry/core` | timeout | timeout |
+| `@sentry/core` | fail | timeout |
 | `@sinclair/typebox` | pass |  |
 | `@sindresorhus/is` |  | fail |
 | `@sinonjs/fake-timers` | fail |  |
@@ -1555,7 +1555,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `@typescript-eslint/utils` | timeout |  |
 | `@typescript-eslint/visitor-keys` | pass |  |
 | `@ungap/structured-clone` |  | pass |
-| `@vitejs/plugin-react` |  | timeout |
+| `@vitejs/plugin-react` |  | fail |
 | `@vitest/expect` |  | pass |
 | `@vitest/mocker` |  | pass |
 | `@vitest/pretty-format` |  | pass |
@@ -1602,7 +1602,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `axe-core` | timeout |  |
 | `axios` | fail | fail |
 | `axobject-query` | pass |  |
-| `babel-plugin-polyfill-corejs3` | timeout | timeout |
+| `babel-plugin-polyfill-corejs3` | crash | crash |
 | `bail` |  | pass |
 | `balanced-match` | pass |  |
 | `base64-js` | pass |  |
@@ -1731,7 +1731,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `entities` | pass | pass |
 | `env-paths` | pass |  |
 | `error-ex` | pass |  |
-| `es-abstract` | timeout |  |
+| `es-abstract` | pass |  |
 | `es-define-property` | pass |  |
 | `es-errors` | pass |  |
 | `es-iterator-helpers` | pass |  |
@@ -1751,7 +1751,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `eslint-import-resolver-node` | pass |  |
 | `eslint-plugin-import` | timeout |  |
 | `eslint-plugin-react` | pass |  |
-| `eslint-plugin-react-hooks` | timeout |  |
+| `eslint-plugin-react-hooks` | crash |  |
 | `eslint-scope` | pass | pass |
 | `eslint-visitor-keys` | pass | pass |
 | `espree` | pass | pass |
@@ -2042,7 +2042,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `optionator` | pass |  |
 | `ora` | pass |  |
 | `own-keys` | pass |  |
-| `oxc-parser` |  | timeout |
+| `oxc-parser` |  | fail |
 | `p-limit` | pass |  |
 | `p-locate` | pass |  |
 | `p-map` |  | pass |
@@ -2119,7 +2119,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `readable-stream` | pass |  |
 | `readdirp` | pass |  |
 | `real-require` | pass |  |
-| `recharts` | timeout | timeout |
+| `recharts` | pass | pass |
 | `redent` | pass |  |
 | `reflect.getprototypeof` | pass |  |
 | `regenerator-runtime` | pass |  |
@@ -2137,7 +2137,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `reusify` | pass |  |
 | `rimraf` | pass |  |
 | `rolldown` |  | fail |
-| `rollup` | timeout | timeout |
+| `rollup` | timeout | crash |
 | `router` | fail |  |
 | `run-applescript` |  | pass |
 | `run-parallel` | pass |  |
@@ -2201,12 +2201,12 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `supports-preserve-symlinks-flag` | pass |  |
 | `symbol-tree` | pass |  |
 | `tailwind-merge` | pass | pass |
-| `tailwindcss` | timeout | timeout |
+| `tailwindcss` | timeout | pass |
 | `tapable` | pass |  |
-| `tar` | fail | timeout |
+| `tar` | fail | pass |
 | `tar-fs` | pass |  |
 | `tar-stream` | pass |  |
-| `terser` | timeout | timeout |
+| `terser` | timeout | pass |
 | `test-exclude` | pass |  |
 | `tiny-invariant` | pass | pass |
 | `tinybench` | pass | pass |
@@ -2235,7 +2235,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `typescript` | timeout |  |
 | `typescript-eslint` | timeout |  |
 | `unbox-primitive` | pass |  |
-| `undici` | timeout |  |
+| `undici` | fail |  |
 | `unicorn-magic` |  | pass |
 | `unified` |  | pass |
 | `unist-util-is` |  | pass |
@@ -2288,7 +2288,7 @@ ecosystem at Node 25.9.0, updated at 7964efd. Evidence: `tests/ecosystem/expecta
 | `yargs` | pass | pass |
 | `yargs-parser` | pass | pass |
 | `yocto-queue` | pass |  |
-| `zod` | pass | timeout |
+| `zod` | pass | pass |
 | `zod-to-json-schema` | pass | pass |
 | `zustand` | pass | pass |
 | `zwitch` |  | pass |
