@@ -185,20 +185,14 @@ constructor_name(O, Depth) ->
 
 %% guessHandleType(fd): the index of the type in the handleTypes of
 %% internal/util (TCP, TTY, UDP, FILE, PIPE, UNKNOWN). Stdio reads as a file,
-%% so that process.stdout is a SyncWriteStream, unless the VM's device is a
+%% so that process.stdout is a SyncWriteStream, unless the descriptor is a
 %% terminal.
 handle_type(Fd) ->
     case buoy_ref:to_number(Fd) of
         N when N =:= 0; N =:= 1; N =:= 2 ->
-            Device = case N of 2 -> standard_error; _ -> standard_io end,
-            case try io:getopts(Device) catch _:_ -> error end of
-                Options when is_list(Options) ->
-                    case proplists:get_value(terminal, Options, false) of
-                        true -> 1;
-                        _ -> 3
-                    end;
-                _ ->
-                    3
+            case buoy_binding_tty_wrap:is_tty(N) of
+                true -> 1;
+                false -> 3
             end;
         N when is_integer(N), N > 2 ->
             3;

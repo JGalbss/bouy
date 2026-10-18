@@ -125,6 +125,7 @@ format(Term) ->
 %% and the status there as one JSON object.
 -spec finish(non_neg_integer(), map()) -> no_return().
 finish(Status, Facts) ->
+    buoy_binding_tty_wrap:reset_mode(),
     %% An actor prints its crash line without waiting (buoy_actor), so the VM waits
     %% for the standard_error server to write the lines that reached it first.
     try io:put_chars(standard_error, <<>>)

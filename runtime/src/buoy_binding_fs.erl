@@ -18,6 +18,7 @@
 -compile({no_auto_import, [link/1, unlink/1]}).
 
 -export([binding/0, uv_error/3, uv_error/4]).
+-export([put_bytes/2]).
 
 -define(FDS, '$buoy_node_fds').
 -define(NEXT_FD, '$buoy_node_next_fd').
@@ -283,6 +284,7 @@ write_bytes(Fd, Bytes, Position) ->
 
 %% The device is in unicode mode: valid UTF-8 goes through as text, and
 %% other bytes as latin1 characters in a latin1 window.
+-spec put_bytes(io:device(), binary()) -> non_neg_integer().
 put_bytes(Device, Bytes) ->
     case unicode:characters_to_list(Bytes, utf8) of
         L when is_list(L) ->
