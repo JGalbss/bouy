@@ -1001,18 +1001,21 @@ load_json(M) ->
 %% Content, which Node's CommonJS loader runs in place of a new compilation,
 %% as V8 takes a function from its code cache. The compiler compiled the
 %% file, so the cache holds only while Content is the text of the file: a
-%% hook of require.extensions may hand _compile other text. A file that the
-%% static graph did not reach compiles now and joins the graph.
+%% hook of require.extensions may hand _compile other text. The code of -e
+%% and stdin has no file, and its module runs whatever the text. A file that
+%% the static graph did not reach compiles now and joins the graph.
 -spec compiled_wrapper(term(), term()) -> {ok, term()} | none.
 compiled_wrapper(Path, Content) ->
     File = buoy_ref_string:to_utf8(Path),
-    case file:read_file(File) =:= {ok, buoy_ref_string:to_utf8(Content)} of
-        true ->
-            case graph_module(Path) of
-                {ok, M} -> cjs_wrapper(M);
-                none -> compile_file(File)
+    case {file:read_file(File), graph_module(Path)} of
+        {{error, enoent}, {ok, M}} -> cjs_wrapper(M);
+        {{ok, Text}, Graph} ->
+            case {Text =:= buoy_ref_string:to_utf8(Content), Graph} of
+                {true, {ok, M}} -> cjs_wrapper(M);
+                {true, none} -> compile_file(File);
+                {false, _} -> none
             end;
-        false ->
+        _ ->
             none
     end.
 

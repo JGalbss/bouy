@@ -281,6 +281,8 @@ fn serve_eval() -> ExitCode {
         let arguments = std::iter::once("compile-eval").chain(header.split('\n'));
         let answer = if let Some(request) = header.strip_prefix("@load\n") {
             load_answer(request)
+        } else if header == "@cjs-lexer" {
+            cjs_lexer_answer(text)
         } else {
             match Served::try_parse_from(arguments) {
                 Ok(Served { request }) => match request.compile(text) {
@@ -300,6 +302,14 @@ fn serve_eval() -> ExitCode {
             return ExitCode::SUCCESS;
         }
     }
+}
+
+/// The answer to `@cjs-lexer`, the export names of `CommonJS` source text: status 0, the
+/// names one on each line, an empty line, and the re-exported specifiers one on each line.
+/// Text that does not parse has none.
+fn cjs_lexer_answer(text: &str) -> Vec<u8> {
+    let (names, reexports) = buoy_compiler::cjs_lexer(text).unwrap_or_default();
+    [&[0], format!("{}\n\n{}", names.join("\n"), reexports.join("\n")).as_bytes()].concat()
 }
 
 /// The answer to `@load`, a module that a running program loads at run time. The request

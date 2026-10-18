@@ -14,7 +14,7 @@
 
 -include("buoy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4, cjs_lexer/1]).
 -export([interrupt/0, run_until/2]).
 
 -import(buoy_ref, [type_error/1]).
@@ -409,6 +409,28 @@ load_module(Main, Importer, Specifier, Mode) ->
         <<_, Output/binary>> ->
             {error, <<"ERR_BUOY_COMPILE">>, Output}
     end.
+
+%% The export names and the re-exported specifiers of CommonJS source text,
+%% as the compiler's analysis of Node's cjs-module-lexer finds them.
+-spec cjs_lexer(term()) -> {[binary()], [binary()]}.
+cjs_lexer(Source) ->
+    Server = compiler(),
+    Ref = erlang:monitor(process, Server),
+    Server ! {raw, self(), Ref, iolist_to_binary(["@cjs-lexer\n\n", buoy_ref_string:to_utf8(Source)])},
+    receive
+        {Ref, {answer, <<0, Answer/binary>>}} ->
+            erlang:demonitor(Ref, [flush]),
+            [Names, Reexports] = binary:split(Answer, <<"\n\n">>),
+            {lines(Names), lines(Reexports)};
+        {Ref, {answer, _}} ->
+            erlang:demonitor(Ref, [flush]),
+            {[], []};
+        {'DOWN', Ref, process, _, Reason} ->
+            exit({compiler_down, Reason})
+    end.
+
+lines(<<>>) -> [];
+lines(Text) -> binary:split(Text, <<"\n">>, [global]).
 
 load_modules(<<>>, Acc) ->
     lists:reverse(Acc);

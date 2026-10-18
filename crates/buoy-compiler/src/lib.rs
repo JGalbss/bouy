@@ -302,6 +302,13 @@ pub fn compile_hosted_module(
     reference::lower_hosted_module(source.to_owned(), name, PathBuf::from(identifier))
 }
 
+/// The export names and the re-exported specifiers of `CommonJS` source text, as Node's
+/// cjs-module-lexer finds them: `None` for text that does not parse.
+#[must_use]
+pub fn cjs_lexer(source: &str) -> Option<(Vec<String>, Vec<String>)> {
+    reference::graph::cjs_lexer(source.to_owned()).ok()
+}
+
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
     path.canonicalize().map_err(|error| {
         vec![Diagnostic {

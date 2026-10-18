@@ -248,6 +248,13 @@ pub fn hosted(text: String, name: &str, path: PathBuf) -> Result<Graph, Vec<Diag
     })
 }
 
+/// The export names and the re-exported specifiers of `CommonJS` source text, as Node's
+/// cjs-module-lexer finds them for `internalBinding('cjs_lexer').parse`.
+pub fn cjs_lexer(text: String) -> Result<(Vec<String>, Vec<String>), Vec<Diagnostic>> {
+    let scanned = scan_as(Path::new("[cjs].cjs"), text, Kind::CommonJs, false)?;
+    Ok((scanned.record.cjs_names, scanned.record.cjs_reexports))
+}
+
 /// The requests of a module: its string specifiers, then the bare strings that a
 /// computed specifier may be. It queues the files of the program that they name.
 fn requests_of(
