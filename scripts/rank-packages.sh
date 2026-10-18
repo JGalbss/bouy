@@ -22,6 +22,10 @@
 # the second group was a dependency of a package of the first group at its latest version.
 # Review the list each quarter, when this script runs again.
 #
+# RANK_TOP, RANK_PAGES, and RANK_OUTPUT change the kept packages, the candidate pages, and the
+# file. scripts/ecosystem.sh writes tests/ecosystem/ranking.json with
+# RANK_TOP=1000 RANK_PAGES=15 RANK_OUTPUT=tests/ecosystem/ranking.json.
+#
 # Usage: scripts/rank-packages.sh. It needs curl and jq, and it takes a few minutes.
 
 set -eu
@@ -85,9 +89,9 @@ execa
 '
 
 # The candidates: ecosyste.ms pages of 100 packages each.
-pages=10
+pages=${RANK_PAGES:-10}
 # The packages that the file keeps, apart from the AI tier.
-top=500
+top=${RANK_TOP:-500}
 # The share of the weekly downloads that a major version needs.
 share=0.2
 # The parallel requests. The npm APIs answer HTTP 429 to more.
@@ -152,47 +156,18 @@ while read -r name; do
     echo "https://api.npmjs.org/versions/$(path_of "$name")/last-week $work/versions/$(file_of "$name").json"
 done <"$work/kept" | fetch_all
 
-jq -s '
-    map({key: .name, value: {
-        version,
-        platform: ((.os // []) + (.cpu // []) | length > 0),
-        type: (.type // "commonjs"),
-        main: (.main // null),
-        module: (.module // null),
-        types: (.types // .typings // null),
-        exports: (.exports // null)
-    }}) | from_entries' "$work"/latest/*.json >"$work/latest.json"
+jq -L "$root/scripts" -s 'include "package-entry";
+    map({key: .name, value: ({version} + entry)}) | from_entries' "$work"/latest/*.json >"$work/latest.json"
 jq -s 'map({key: .package, value: .downloads}) | from_entries' "$work"/versions/*.json \
     >"$work/versions.json"
 
-jq --argjson share "$share" --slurpfile ai "$work/ai.json" \
+jq -L "$root/scripts" --argjson share "$share" --slurpfile ai "$work/ai.json" \
     --slurpfile latest "$work/latest.json" --slurpfile versions "$work/versions.json" '
+    include "package-entry";
     # The major of a version: its major number, or 0.<minor> for a major of 0.
     def major: split("-")[0] | split(".") | if .[0] == "0" then "0.\(.[1])" else .[0] end;
     def release: test("^[0-9]+\\.[0-9]+\\.[0-9]+$");
     def numbers: split("-")[0] | split(".") | map(tonumber);
-    # The (condition path, target) pairs of an exports field.
-    def targets:
-        if type == "string" then [{path: [], target: .}]
-        else [paths(type == "string") as $path | {path: $path, target: getpath($path)}] end;
-    def declaration: test("\\.d\\.[cm]?ts$");
-    def kind:
-        if .platform then "platform-binary"
-        else
-            ([.main, .module] + (if .exports == null then [] else (.exports | targets | map(.target)) end)
-                | map(select(. != null and . != "" and (declaration | not)))) as $code
-            | if ($code | length) == 0 and .types != null and (.exports != null or .main == "")
-              then "types-only" else "program" end
-        end;
-    def format:
-        (if .exports == null then [] else (.exports | targets) end) as $targets
-        | ($targets | map(select(.target | declaration | not))) as $code
-        | (($code | any(.path | index("require") != null) or any(.target | test("\\.cjs$")))
-            or (.main // "" | test("\\.cjs$"))) as $require
-        | (($code | any(.path | index("import") != null) or any(.target | test("\\.mjs$")))
-            or .module != null) as $import
-        | if .type == "module" then (if $require then "dual" else "esm" end)
-          else (if $import then "dual" else "cjs" end) end;
     def chosen($latest):
         (to_entries | map(.value) | add) as $total
         | to_entries
@@ -243,6 +218,7 @@ if [ -n "$missing" ]; then
     echo "$0: the registry has no metadata for these packages of the AI tier: $missing" >&2
     exit 1
 fi
-mkdir -p "$root/tests/packages"
-mv "$work/ranking.json" "$root/tests/packages/ranking.json"
-echo "wrote tests/packages/ranking.json: $(jq '.packages | length' "$root/tests/packages/ranking.json") packages, $(jq '.ai_tier' "$root/tests/packages/ranking.json") in the AI tier"
+output=${RANK_OUTPUT:-tests/packages/ranking.json}
+mkdir -p "$(dirname "$root/$output")"
+mv "$work/ranking.json" "$root/$output"
+echo "wrote $output: $(jq '.packages | length' "$root/$output") packages, $(jq '.ai_tier' "$root/$output") in the AI tier"

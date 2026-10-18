@@ -1,0 +1,4 @@
+module.exports: object
+  readCodePoint: function/6
+  readInt: function/10
+  readStringContents: function/6

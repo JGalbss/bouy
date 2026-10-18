@@ -1,0 +1,82 @@
+module.exports: object
+  Lexer: class/3 {addAtrule_, addProperty_, addType_, checkAtruleDescriptorName, checkAtruleName, checkAtrulePrelude, checkPropertyName, checkStructure, createDescriptor, dump, findAllFragments, findDeclarationValueFragments, findValueFragments, getAtrule, getAtruleDescriptor, getAtrulePrelude, getProperty, getType, match, matchAtruleDescriptor, matchAtrulePrelude, matchDeclaration, matchProperty, matchType, toString, validate}
+  List: class/0 {allocateCursor, append, appendData, appendList, clear, copy, createItem, filter, first, forEach, forEachRight, fromArray, insert, insertData, insertList, isEmpty, last, map, nextUntil, pop, prepend, prependData, prependList, prevUntil, push, reduce, reduceRight, releaseCursor, remove, replace, shift, size, some, toArray, toJSON, unshift, updateCursors}
+  OffsetToLocation: class/4 {getLocation, getLocationRange, setSource}
+  TokenStream: class/2 {dump, forEachToken, getBlockTokenPairIndex, getTokenEnd, getTokenStart, getTokenType, isBalanceEdge, isBlockCloserTokenType, isBlockOpenerTokenType, isDelim, lookupOffset, lookupOffsetNonSC, lookupType, lookupTypeNonSC, lookupValue, next, reset, setSource, skip, skipSC, skipUntilBalanced, substrToCursor}
+  clone: function/1
+  createLexer: function/1
+  createSyntax: function/1
+  definitionSyntax: object
+    SyntaxError: function/3
+    generate: function/2
+    parse: function/1
+    walk: function/3
+  find: function/2
+  findAll: function/2
+  findLast: function/2
+  fork: function/1
+  fromPlainObject: function/1
+  generate: function/2
+  ident: object
+    decode: function/1
+    encode: function/1
+  isCustomProperty: function/2 (throws, throws, false, false, false, false, false, false, false)
+  keyword: function/1
+  lexer: object
+    atrules: object
+    cssWideKeywords: object Array
+    cssWideKeywordsSyntax: object
+    generic: boolean
+    properties: object
+    structure: object
+    syntax: object
+    types: object
+    units: object
+  parse: function/2
+    SyntaxError: function/5
+    config: object
+  property: function/1
+  string: object
+    decode: function/1
+    encode: function/2
+  toPlainObject: function/1
+  tokenNames: object Array
+  tokenTypes: object
+    AtKeyword: number
+    BadString: number
+    BadUrl: number
+    CDC: number
+    CDO: number
+    Colon: number
+    Comma: number
+    Comment: number
+    Delim: number
+    Dimension: number
+    EOF: number
+    Function: number
+    Hash: number
+    Ident: number
+    LeftCurlyBracket: number
+    LeftParenthesis: number
+    LeftSquareBracket: number
+    Number: number
+    Percentage: number
+    RightCurlyBracket: number
+    RightParenthesis: number
+    RightSquareBracket: number
+    Semicolon: number
+    String: number
+    Url: number
+    WhiteSpace: number
+  tokenize: function/2
+  url: object
+    decode: function/1
+    encode: function/1
+  vendorPrefix: function/2
+  version: string
+  walk: function/2
+    break: symbol
+    find: function/2
+    findAll: function/2
+    findLast: function/2
+    skip: symbol

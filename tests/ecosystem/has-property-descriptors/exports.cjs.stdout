@@ -1,0 +1,2 @@
+module.exports: function/0
+  hasArrayLengthDefineBug: function/0

@@ -1,0 +1,2 @@
+module.exports: object
+  createSourceMapStore: function/1

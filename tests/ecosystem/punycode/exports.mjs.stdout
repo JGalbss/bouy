@@ -1,0 +1,16 @@
+namespace: object Module
+  decode: function/1
+  default: object
+    decode: function/1
+    encode: function/1
+    toASCII: function/1
+    toUnicode: function/1
+    ucs2: object
+    version: string
+  encode: function/1
+  toASCII: function/1
+  toUnicode: function/1
+  ucs2: object
+    decode: function/1
+    encode: function/1
+  version: string

@@ -36,8 +36,8 @@ methods(Proto) ->
         {<<"readStop">>, fun(This, _) -> read_stop(This) end},
         {<<"shutdown">>, fun(This, _) -> send(This, shutdown), 1 end},
         {<<"close">>, fun(This, Args) -> close(This, A(1, Args)) end},
-        {<<"ref">>, fun(This, _) -> set_ref(This, true) end},
-        {<<"unref">>, fun(This, _) -> set_ref(This, false) end},
+        {<<"ref">>, fun(This, _) -> update(This, fun(S) -> S#{unrefed => false} end), set_ref(This, true) end},
+        {<<"unref">>, fun(This, _) -> update(This, fun(S) -> S#{unrefed => true} end), set_ref(This, false) end},
         {<<"hasRef">>, fun(This, _) -> maps:get(refed, state(This), false) end},
         {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This), -1) end},
         {<<"useUserBuffer">>, fun(_, _) -> undefined end},
@@ -152,7 +152,13 @@ read_start(_Handle, true) ->
     -22;
 read_start(Handle, false) ->
     update(Handle, fun(S) -> S#{reading := true} end),
-    set_ref(Handle, true),
+    %% uv_read_start makes the handle active, which keeps the loop alive only
+    %% while the handle is ref'd, so the unref'd IPC pipe of a forked child
+    %% lets the child exit.
+    case maps:get(unrefed, state(Handle), false) of
+        true -> ok;
+        false -> set_ref(Handle, true)
+    end,
     case state(Handle) of
         #{pending := [_ | _] = Pending} ->
             update(Handle, fun(S) -> S#{pending := []} end),

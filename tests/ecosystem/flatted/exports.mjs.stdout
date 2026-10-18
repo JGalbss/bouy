@@ -1,0 +1,5 @@
+namespace: object Module
+  fromJSON: function/1
+  parse: function/2
+  stringify: function/3
+  toJSON: function/1

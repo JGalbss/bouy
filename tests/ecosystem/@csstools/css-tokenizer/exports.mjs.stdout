@@ -1,0 +1,84 @@
+namespace: object Module
+  HashType: object
+    ID: string
+    Unrestricted: string
+  NumberType: object
+    Integer: string
+    Number: string
+  ParseError: function/4
+  ParseErrorMessage: object
+    InvalidEscapeSequenceAfterBackslash: string
+    InvalidEscapeSequenceInURL: string
+    UnexpectedCharacterInURL: string
+    UnexpectedEOFInComment: string
+    UnexpectedEOFInEscapedCodePoint: string
+    UnexpectedEOFInString: string
+    UnexpectedEOFInURL: string
+    UnexpectedNewLineInString: string
+  ParseErrorWithToken: function/5
+  TokenType: object
+    AtKeyword: string
+    BadString: string
+    BadURL: string
+    CDC: string
+    CDO: string
+    CloseCurly: string
+    CloseParen: string
+    CloseSquare: string
+    Colon: string
+    Comma: string
+    Comment: string
+    Delim: string
+    Dimension: string
+    EOF: string
+    Function: string
+    Hash: string
+    Ident: string
+    Number: string
+    OpenCurly: string
+    OpenParen: string
+    OpenSquare: string
+    Percentage: string
+    Semicolon: string
+    String: string
+    URL: string
+    UnicodeRange: string
+    Whitespace: string
+  cloneTokens: function/1
+  isToken: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenAtKeyword: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenBadString: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenBadURL: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenCDC: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenCDO: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenCloseCurly: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenCloseParen: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenCloseSquare: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenColon: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenComma: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenComment: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenDelim: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenDimension: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenEOF: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenFunction: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenHash: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenIdent: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenNumber: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenNumeric: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenOpenCurly: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenOpenParen: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenOpenSquare: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenPercentage: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenSemicolon: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenString: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenURL: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenUnicodeRange: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenWhiteSpaceOrComment: function/1 (false, false, false, false, false, false, false, false, false)
+  isTokenWhitespace: function/1 (false, false, false, false, false, false, false, false, false)
+  mirrorVariant: function/1
+  mirrorVariantType: function/1
+  mutateIdent: function/2
+  mutateUnit: function/2
+  stringify: function/0
+  tokenize: function/2
+  tokenizer: function/2

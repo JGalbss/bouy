@@ -1,0 +1,5 @@
+module.exports: object
+  Minipass: class/0 {aborted, addListener, async, bufferLength, collect, concat, destroy, destroyed, emit, emittedEnd, encoding, end, flowing, objectMode, off, on, pause, paused, pipe, promise, read, removeAllListeners, removeListener, resume, setEncoding, unpipe, write}
+  isReadable: function/1 (false, false, false, false, false, false, false, false, false)
+  isStream: function/1 (false, false, false, false, false, false, false, false, false)
+  isWritable: function/1 (false, false, false, false, false, false, false, false, false)

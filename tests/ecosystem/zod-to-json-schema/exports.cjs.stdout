@@ -1,0 +1,86 @@
+module.exports: object
+  addErrorMessage: function/4
+  default: function/2
+  defaultOptions: object
+    $refStrategy: string
+    allowedAdditionalProperties: boolean
+    applyRegexFlags: boolean
+    base64Strategy: string
+    basePath: object Array
+    dateStrategy: string
+    definitionPath: string
+    definitions: object
+    effectStrategy: string
+    emailStrategy: string
+    errorMessages: boolean
+    mapStrategy: string
+    markdownDescription: boolean
+    name: undefined
+    nameStrategy: string
+    openAiAnyTypeName: string
+    patternStrategy: string
+    pipeStrategy: string
+    rejectedAdditionalProperties: boolean
+    removeAdditionalStrategy: string
+    strictUnions: boolean
+    target: string
+  getDefaultOptions: function/1
+  getRefs: function/1
+  getRelativePath: function/2
+  ignoreOverride: symbol
+  jsonDescription: function/2
+  parseAnyDef: function/1
+  parseArrayDef: function/2
+  parseBigintDef: function/2
+  parseBooleanDef: function/0
+  parseBrandedDef: function/2
+  parseCatchDef: function/2
+  parseDateDef: function/3
+  parseDef: function/2
+  parseDefaultDef: function/2
+  parseEffectsDef: function/2
+  parseEnumDef: function/1
+  parseIntersectionDef: function/2
+  parseLiteralDef: function/2
+  parseMapDef: function/2
+  parseNativeEnumDef: function/1
+  parseNeverDef: function/1
+  parseNullDef: function/1
+  parseNullableDef: function/2
+  parseNumberDef: function/2
+  parseObjectDef: function/2
+  parseOptionalDef: function/2
+  parsePipelineDef: function/2
+  parsePromiseDef: function/2
+  parseReadonlyDef: function/2
+  parseRecordDef: function/2
+  parseSetDef: function/2
+  parseStringDef: function/2
+  parseTupleDef: function/2
+  parseUndefinedDef: function/1
+  parseUnionDef: function/2
+  parseUnknownDef: function/1
+  primitiveMappings: object
+    ZodBigInt: string
+    ZodBoolean: string
+    ZodNull: string
+    ZodNumber: string
+    ZodString: string
+  selectParser: function/3
+  setResponseValueAndErrors: function/5
+  zodPatterns: object
+    base64: object RegExp
+    base64url: object RegExp
+    cuid: object RegExp
+    cuid2: object RegExp
+    email: object RegExp
+    emoji: function/0
+    ipv4: object RegExp
+    ipv4Cidr: object RegExp
+    ipv6: object RegExp
+    ipv6Cidr: object RegExp
+    jwt: object RegExp
+    nanoid: object RegExp
+    ulid: object RegExp
+    uuid: object RegExp
+  zodToJsonSchema: function/2

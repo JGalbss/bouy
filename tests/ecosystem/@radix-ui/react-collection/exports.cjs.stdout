@@ -1,0 +1,3 @@
+module.exports: object
+  createCollection: function/1
+  unstable_createCollection: function/1

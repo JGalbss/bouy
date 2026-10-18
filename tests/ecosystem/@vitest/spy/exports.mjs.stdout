@@ -1,0 +1,8 @@
+namespace: object Module
+  clearAllMocks: function/0
+  createMockInstance: function/0
+  fn: function/1
+  isMockFunction: function/1 (false, false, false, false, false, false, false, false, false)
+  resetAllMocks: function/0
+  restoreAllMocks: function/0
+  spyOn: function/3

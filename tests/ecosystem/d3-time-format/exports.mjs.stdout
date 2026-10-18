@@ -1,0 +1,9 @@
+namespace: object Module
+  isoFormat: function/1
+  isoParse: function/1
+  timeFormat: function/1
+  timeFormatDefaultLocale: function/1
+  timeFormatLocale: function/1
+  timeParse: function/1
+  utcFormat: function/1
+  utcParse: function/1

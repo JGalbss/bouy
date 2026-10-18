@@ -1,0 +1,3 @@
+module.exports: object
+  extract: function/1
+  pack: function/1

@@ -1,0 +1,6 @@
+module.exports: object
+  clearAll: function/1
+  clearCacheById: function/2
+  create: function/2
+  createFromFile: function/1
+  load: function/2

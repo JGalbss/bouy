@@ -5,6 +5,11 @@
 //! outcome of each program on Buoy. These are Buoy corpora (section 3.3), so a move from a
 //! loud outcome to a silent one is a regression. `tests/packages/summary.json` feeds the
 //! Packages section of the dashboard.
+//!
+//! `run_ecosystem` runs the generated tier of the top npm packages, `tests/ecosystem`, which
+//! `scripts/ecosystem.sh` writes and installs. Its summary counts packages, not programs: a
+//! package passes when each of its programs passes, and a package that the script excluded
+//! is a skip with its reason.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -13,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+
+use serde::Deserialize;
 
 use crate::comparison::{self, Comparison, Origin};
 use crate::expectations::{self, Entry, Expectations};
@@ -23,6 +30,13 @@ use crate::{buoy_env, fake_server};
 /// The command that rewrites the expectation files and the summary.
 pub const UPDATE: &str =
     "cargo build --release -p buoy-cli && cargo run --release -p buoy-suites -- packages --update";
+
+/// The generated tier of the top npm packages.
+pub const ECOSYSTEM: &str = "tests/ecosystem";
+
+/// The command that rewrites the expectation file and the summary of `ECOSYSTEM`.
+const ECOSYSTEM_UPDATE: &str =
+    "cargo build --release -p buoy-cli && cargo run --release -p buoy-suites -- ecosystem --update";
 
 /// The areas of `tests/equivalence` whose every program passes, so they have no expectation
 /// file: `equivalence.rs` and `ai.rs` check them.
@@ -73,6 +87,19 @@ struct Corpus {
     /// The directory under the root, such as `tests/npm`.
     directory: String,
     layout: Layout,
+    /// The programs run as `buoy <program>`, the node form of the CLI, as a Node project
+    /// runs them, and not as `buoy run <program>`.
+    node_form: bool,
+}
+
+impl Corpus {
+    fn update_command(&self) -> &'static str {
+        if self.directory == ECOSYSTEM {
+            ECOSYSTEM_UPDATE
+        } else {
+            UPDATE
+        }
+    }
 }
 
 /// What one run of the tier found.
@@ -87,6 +114,7 @@ pub struct Report {
 #[derive(Debug)]
 pub struct CorpusRun {
     pub directory: String,
+    update: &'static str,
     pub programs: usize,
     /// The entry of each program that ran.
     pub run: Expectations,
@@ -126,7 +154,7 @@ impl Report {
                 corpus.run.len(),
                 corpus.programs
             );
-            text.push_str(&corpus.comparison.report(UPDATE, REPORT_LINES));
+            text.push_str(&corpus.comparison.report(corpus.update, REPORT_LINES));
             for report in corpus.reports.iter().take(REPORTED_RUNS) {
                 text.push_str(report);
             }
@@ -136,7 +164,7 @@ impl Report {
                 .iter()
                 .map(|outcome| format!("{outcome} {}", summary.outcomes.get(*outcome)))
                 .collect();
-            let _ = writeln!(text, "tests/packages: {}", outcomes.join(", "));
+            let _ = writeln!(text, "{} summary: {}", summary.suite, outcomes.join(", "));
         }
         text
     }
@@ -149,6 +177,29 @@ impl Report {
 /// When a program has no recorded output, an output has no program, a file cannot be read
 /// or written, or the fake server cannot start.
 pub fn run(options: &Options) -> Result<Report, String> {
+    run_corpora(options, corpora_of(&options.root)?)
+}
+
+/// Runs the programs of `ECOSYSTEM` and compares the run with its expectation file.
+///
+/// # Errors
+///
+/// As `run`, and when the packages of the tier are not installed.
+pub fn run_ecosystem(options: &Options) -> Result<Report, String> {
+    if !options.root.join(ECOSYSTEM).join("node_modules").is_dir() {
+        return Err(format!(
+            "{ECOSYSTEM}/node_modules is missing; run scripts/ecosystem.sh install"
+        ));
+    }
+    let corpus = Corpus {
+        directory: ECOSYSTEM.to_owned(),
+        layout: Layout::Tree,
+        node_form: true,
+    };
+    run_corpora(options, vec![corpus])
+}
+
+fn run_corpora(options: &Options, corpora: Vec<Corpus>) -> Result<Report, String> {
     if options.update && options.filter.is_some() {
         return Err("--update runs every program, so it takes no --filter".to_owned());
     }
@@ -159,18 +210,22 @@ pub fn run(options: &Options) -> Result<Report, String> {
         summary: None,
     };
     let mut results = BTreeMap::new();
-    for corpus in corpora_of(&options.root)? {
+    let mut summary_file = None;
+    for corpus in corpora {
         let ran = run_corpus(options, &corpus, &scratch)?;
         report.corpora.push(ran.corpus);
-        report.summary = report.summary.or(ran.summary);
+        if ran.summary.is_some() {
+            report.summary = ran.summary;
+            summary_file = Some(format!("{}/summary.json", corpus.directory));
+        }
         results.extend(ran.results);
     }
     let _ = fs::remove_dir_all(&scratch);
-    if let Some(summary) = &report.summary {
+    if let (Some(summary), Some(file)) = (&report.summary, summary_file) {
         let text = crate::json(summary)?;
         crate::write(&options.output.join("summary.json"), &text)?;
         if options.update {
-            crate::write(&options.root.join("tests/packages/summary.json"), &text)?;
+            crate::write(&options.root.join(file), &text)?;
         }
     }
     let results = Results {
@@ -233,8 +288,13 @@ fn run_corpus(options: &Options, corpus: &Corpus, scratch: &Path) -> Result<Ran,
         .map(|(id, entry)| (id.clone(), entry.clone()))
         .collect();
     entries.extend(run.clone());
+    let command = if corpus.directory == ECOSYSTEM {
+        "ecosystem"
+    } else {
+        "packages"
+    };
     let header = [format!(
-        "Generated by `buoy-suites packages --update`. Do not edit. {} programs of {}.",
+        "Generated by `buoy-suites {command} --update`. Do not edit. {} programs of {}.",
         programs.len(),
         corpus.directory
     )];
@@ -249,10 +309,11 @@ fn run_corpus(options: &Options, corpus: &Corpus, scratch: &Path) -> Result<Ran,
     if options.update {
         crate::write(&path, &file)?;
     }
-    let summary = if corpus.directory == "tests/packages" && options.filter.is_none() {
-        Some(summarize(&options.root, &programs, &entries, &executions)?)
-    } else {
-        None
+    let summary = match corpus.directory.as_str() {
+        _ if options.filter.is_some() => None,
+        "tests/packages" => Some(summarize(&options.root, &programs, &entries, &executions)?),
+        ECOSYSTEM => Some(summarize_ecosystem(&options.root, &entries, &executions)?),
+        _ => None,
     };
     // An update records each outcome, so it reports no program.
     let reports = selected
@@ -278,6 +339,7 @@ fn run_corpus(options: &Options, corpus: &Corpus, scratch: &Path) -> Result<Ran,
     Ok(Ran {
         corpus: CorpusRun {
             directory: corpus.directory.clone(),
+            update: corpus.update_command(),
             programs: programs.len(),
             run,
             comparison,
@@ -295,15 +357,18 @@ fn corpora_of(root: &Path) -> Result<Vec<Corpus>, String> {
         Corpus {
             directory: "tests/npm".to_owned(),
             layout: Layout::Tree,
+            node_form: false,
         },
         Corpus {
             directory: "tests/packages".to_owned(),
             layout: Layout::Tree,
+            node_form: false,
         },
     ];
     corpora.extend(scenario_areas(root)?.into_iter().map(|area| Corpus {
         directory: format!("tests/equivalence/{area}"),
         layout: Layout::Scenarios,
+        node_form: false,
     }));
     Ok(corpora)
 }
@@ -446,10 +511,11 @@ fn execute(
     fs::create_dir_all(&temporary).map_err(|error| format!("{}: {error}", temporary.display()))?;
     let program = format!("{}/{id}", corpus.directory);
     let mut command = Command::new(&options.buoy);
-    buoy_env(&mut command, &temporary)
-        .current_dir(&options.root)
-        .arg("run")
-        .arg(&program);
+    buoy_env(&mut command, &temporary).current_dir(&options.root);
+    if !corpus.node_form {
+        command.arg("run");
+    }
+    command.arg(&program);
     if corpus.layout == Layout::Scenarios {
         fake_server::point(&mut command)?;
     }
@@ -506,6 +572,84 @@ fn summarize(
         updated: String::new(),
         total: programs.len(),
         outcomes: Counts::every(entries.values()),
+        groups,
+        blockers: summary::blockers(&blocked),
+    }
+    .updated_since(&path))
+}
+
+/// `tests/ecosystem/packages.json`, which `scripts/ecosystem.sh` writes.
+#[derive(Debug, Deserialize)]
+struct Ranked {
+    packages: Vec<RankedPackage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RankedPackage {
+    name: String,
+    #[serde(default)]
+    programs: Vec<String>,
+    /// Why the package has no program.
+    excluded: Option<String>,
+}
+
+/// The summary of `ECOSYSTEM`, one count for each ranked package: the outcome of its program
+/// of the highest rank, as for the modes of a test, or a skip for an excluded package, grouped by its reason. The `program`
+/// groups hold the outcome of each program for the table of the dashboard.
+fn summarize_ecosystem(
+    root: &Path,
+    entries: &Expectations,
+    executions: &[Execution],
+) -> Result<Summary, String> {
+    let file = format!("{ECOSYSTEM}/packages.json");
+    let text = fs::read_to_string(root.join(&file)).map_err(|error| format!("{file}: {error}"))?;
+    let ranked: Ranked = serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?;
+    let mut outcomes = Counts::every([]);
+    let mut groups: BTreeMap<String, BTreeMap<String, Counts>> = BTreeMap::new();
+    for package in &ranked.packages {
+        if let Some(reason) = &package.excluded {
+            let skip = Entry::Same(Outcome::Skip);
+            outcomes.add(&skip);
+            // The kind of the reason: the text before its first colon.
+            let kind = reason.split(':').next().unwrap_or(reason);
+            groups
+                .entry("skip reason".to_owned())
+                .or_default()
+                .entry(kind.to_owned())
+                .or_default()
+                .add(&skip);
+            continue;
+        }
+        let mut worst = Outcome::Pass;
+        for program in &package.programs {
+            let id = format!("{}/{program}", package.name);
+            let entry = entries
+                .get(&id)
+                .ok_or_else(|| format!("{file}: {id} has no line in the expectation file"))?;
+            if entry.outcome().rank() > worst.rank() {
+                worst = entry.outcome();
+            }
+            groups
+                .entry("program".to_owned())
+                .or_default()
+                .entry(id)
+                .or_default()
+                .add(entry);
+        }
+        outcomes.add(&Entry::Same(worst));
+    }
+    let blocked: Vec<Vec<String>> = executions
+        .iter()
+        .filter(|execution| !execution.blockers.is_empty())
+        .map(|execution| execution.blockers.clone())
+        .collect();
+    let path = root.join(ECOSYSTEM).join("summary.json");
+    Ok(Summary {
+        suite: "ecosystem".to_owned(),
+        version: format!("Node {}", node_version(root)?),
+        updated: String::new(),
+        total: ranked.packages.len(),
+        outcomes,
         groups,
         blockers: summary::blockers(&blocked),
     }

@@ -1,0 +1,6 @@
+module.exports: function/3
+  defaults: object
+    extensions: object Array
+    recurse: boolean
+    rename: function/1
+    visit: function/1

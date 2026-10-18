@@ -1,0 +1,6 @@
+namespace: object Module
+  default: object
+    fromLoginCredentials: function/1
+  fromLoginCredentials: function/1
+  module.exports: object
+    fromLoginCredentials: function/1

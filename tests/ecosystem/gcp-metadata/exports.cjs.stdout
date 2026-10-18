@@ -1,0 +1,31 @@
+module.exports: object
+  BASE_PATH: string
+  GCE_LINUX_BIOS_PATHS: object
+    BIOS_DATE: string
+    BIOS_VENDOR: string
+  HEADERS: object
+    Metadata-Flavor: string
+  HEADER_NAME: string
+  HEADER_VALUE: string
+  HOST_ADDRESS: string
+  METADATA_SERVER_DETECTION: object
+    assume-present: string
+    bios-only: string
+    none: string
+    ping-only: string
+  SECONDARY_HOST_ADDRESS: string
+  bulk: function/1
+  detectGCPResidency: function/0
+  gcpResidencyCache: null
+  getGCPResidency: function/0
+  instance: function/1
+  isAvailable: function/0 (promise, promise, promise, promise, promise, promise, promise, promise, promise)
+  isGoogleCloudServerless: function/0 (false, false, false, false, false, false, false, false, false)
+  isGoogleComputeEngine: function/0 (false, false, false, false, false, false, false, false, false)
+  isGoogleComputeEngineLinux: function/0 (false, false, false, false, false, false, false, false, false)
+  isGoogleComputeEngineMACAddress: function/0 (false, false, false, false, false, false, false, false, false)
+  project: function/1
+  requestTimeout: function/0
+  resetIsAvailableCache: function/0
+  setGCPResidency: function/0
+  universe: function/1

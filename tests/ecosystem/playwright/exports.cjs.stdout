@@ -1,0 +1,279 @@
+module.exports: object
+  _android: object
+    _channel: object
+    _connection: object
+    _eventToSubscriptionMapping: object Map
+    _events: object
+    _eventsCount: number
+    _guid: string
+    _initializer: object
+    _instrumentation: object
+    _logger: undefined
+    _maxListeners: number
+    _objects: object Map
+    _parent: object
+    _pendingHandlers: object Map
+    _playwright: object
+    _serverLauncher: object
+    _timeoutSettings: object
+    _type: string
+    _wasCollected: boolean
+    off: function/2
+    on: function/2
+  _channel: object
+    _events: object
+    _eventsCount: number
+    _maxListeners: undefined
+    _object: object
+    _pendingHandlers: object Map
+    off: function/2
+    on: function/2
+  _connection: object
+    _callbacks: object Map
+    _events: object
+    _eventsCount: number
+    _instrumentation: object
+    _isRemote: boolean
+    _localUtils: object
+    _maxListeners: undefined
+    _nextCallId: function/0
+    _objectFactories: object Map
+    _objects: object Map
+    _pendingHandlers: object Map
+    _rawBuffers: boolean
+    _rootObject: object
+    _tracingCount: number
+    headers: object Array
+    off: function/2
+    on: function/2
+    onmessage: function/1
+    toImpl: function/1
+  _electron: object
+    _channel: object
+    _connection: object
+    _eventToSubscriptionMapping: object Map
+    _events: object
+    _eventsCount: number
+    _guid: string
+    _initializer: object
+    _instrumentation: object
+    _logger: undefined
+    _maxListeners: number
+    _objects: object Map
+    _parent: object
+    _pendingHandlers: object Map
+    _playwright: object
+    _type: string
+    _wasCollected: boolean
+    off: function/2
+    on: function/2
+  _eventToSubscriptionMapping: object Map
+  _events: object
+  _eventsCount: number
+  _guid: string
+  _initializer: object
+    android: object
+    chromium: object
+    electron: object
+    firefox: object
+    utils: object
+    webkit: object
+  _instrumentation: object
+  _logger: undefined
+  _maxListeners: number
+  _objects: object Map
+  _parent: object
+    _channel: object
+    _connection: object
+    _eventToSubscriptionMapping: object Map
+    _events: object
+    _eventsCount: number
+    _guid: string
+    _initializer: object
+    _instrumentation: object
+    _maxListeners: number
+    _objects: object Map
+    _parent: undefined
+    _pendingHandlers: object Map
+    _type: string
+    _wasCollected: boolean
+    off: function/2
+    on: function/2
+  _pendingHandlers: object Map
+  _type: string
+  _wasCollected: boolean
+  chromium: object
+    _channel: object
+    _connection: object
+    _contexts: object Set
+    _eventToSubscriptionMapping: object Map
+    _events: object
+    _eventsCount: number
+    _guid: string
+    _initializer: object
+    _instrumentation: object
+    _logger: undefined
+    _maxListeners: number
+    _objects: object Map
+    _parent: object
+    _pendingHandlers: object Map
+    _playwright: object
+    _serverLauncher: object
+    _type: string
+    _wasCollected: boolean
+    off: function/2
+    on: function/2
+  devices: object
+    BlackBerry Z30: object
+    BlackBerry Z30 landscape: object
+    Blackberry PlayBook: object
+    Blackberry PlayBook landscape: object
+    Desktop Chrome: object
+    Desktop Chrome HiDPI: object
+    Desktop Edge: object
+    Desktop Edge HiDPI: object
+    Desktop Firefox: object
+    Desktop Firefox HiDPI: object
+    Desktop Safari: object
+    Galaxy A55: object
+    Galaxy A55 landscape: object
+    Galaxy Note 3: object
+    Galaxy Note 3 landscape: object
+    Galaxy Note II: object
+    Galaxy Note II landscape: object
+    Galaxy S III: object
+    Galaxy S III landscape: object
+    Galaxy S24: object
+    Galaxy S24 landscape: object
+    Galaxy S5: object
+    Galaxy S5 landscape: object
+    Galaxy S8: object
+    Galaxy S8 landscape: object
+    Galaxy S9+: object
+    Galaxy S9+ landscape: object
+    Galaxy Tab S4: object
+    Galaxy Tab S4 landscape: object
+    Galaxy Tab S9: object
+    Galaxy Tab S9 landscape: object
+    Galaxy Z Flip 6: object
+    Galaxy Z Flip 6 Cover: object
+    Galaxy Z Flip 6 Cover landscape: object
+    Galaxy Z Flip 6 landscape: object
+    Galaxy Z Flip 7: object
+    Galaxy Z Flip 7 Cover: object
+    Galaxy Z Flip 7 Cover landscape: object
+    Galaxy Z Flip 7 landscape: object
+    Galaxy Z Fold 6: object
+    Galaxy Z Fold 6 Cover: object
+    Galaxy Z Fold 6 Cover landscape: object
+    Galaxy Z Fold 6 landscape: object
+    Galaxy Z Fold 7: object
+    Galaxy Z Fold 7 Cover: object
+    Galaxy Z Fold 7 Cover landscape: object
+    Galaxy Z Fold 7 landscape: object
+    Kindle Fire HDX: object
+    Kindle Fire HDX landscape: object
+    LG Optimus L70: object
+    LG Optimus L70 landscape: object
+    Microsoft Lumia 550: object
+    Microsoft Lumia 550 landscape: object
+    Microsoft Lumia 950: object
+    Microsoft Lumia 950 landscape: object
+    Moto G4: object
+    Moto G4 landscape: object
+    Nexus 10: object
+    Nexus 10 landscape: object
+    Nexus 4: object
+    Nexus 4 landscape: object
+    Nexus 5: object
+    Nexus 5 landscape: object
+    Nexus 5X: object
+    Nexus 5X landscape: object
+    Nexus 6: object
+    Nexus 6 landscape: object
+    Nexus 6P: object
+    Nexus 6P landscape: object
+    Nexus 7: object
+    Nexus 7 landscape: object
+    Nokia Lumia 520: object
+    Nokia Lumia 520 landscape: object
+    Nokia N9: object
+    Nokia N9 landscape: object
+    Pixel 10: object
+    Pixel 10 Pro: object
+    Pixel 10 Pro XL: object
+    Pixel 10 Pro XL landscape: object
+    Pixel 10 Pro landscape: object
+    Pixel 10 landscape: object
+    Pixel 2: object
+    Pixel 2 XL: object
+    Pixel 2 XL landscape: object
+    Pixel 2 landscape: object
+    Pixel 3: object
+    Pixel 3 landscape: object
+    Pixel 4: object
+    Pixel 4 landscape: object
+    Pixel 4a (5G): object
+    Pixel 4a (5G) landscape: object
+    Pixel 5: object
+    Pixel 5 landscape: object
+    Pixel 6: object
+    Pixel 6 Pro: object
+    Pixel 6 Pro landscape: object
+    Pixel 6 landscape: object
+    Pixel 6a: object
+    Pixel 6a landscape: object
+    Pixel 7: object
+    ... 107 more keys
+  errors: object
+    TimeoutError: function/1
+  firefox: object
+    _channel: object
+    _connection: object
+    _contexts: object Set
+    _eventToSubscriptionMapping: object Map
+    _events: object
+    _eventsCount: number
+    _guid: string
+    _initializer: object
+    _instrumentation: object
+    _logger: undefined
+    _maxListeners: number
+    _objects: object Map
+    _parent: object
+    _pendingHandlers: object Map
+    _playwright: object
+    _serverLauncher: object
+    _type: string
+    _wasCollected: boolean
+    off: function/2
+    on: function/2
+  off: function/2
+  on: function/2
+  request: object
+    _contexts: object Set
+    _playwright: object
+  selectors: object
+    _contextsForSelectors: object Set
+    _selectorEngines: object Array
+  webkit: object
+    _channel: object
+    _connection: object
+    _contexts: object Set
+    _eventToSubscriptionMapping: object Map
+    _events: object
+    _eventsCount: number
+    _guid: string
+    _initializer: object
+    _instrumentation: object
+    _logger: undefined
+    _maxListeners: number
+    _objects: object Map
+    _parent: object
+    _pendingHandlers: object Map
+    _playwright: object
+    _serverLauncher: object
+    _type: string
+    _wasCollected: boolean
+    off: function/2
+    on: function/2

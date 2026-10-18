@@ -1,0 +1,5 @@
+namespace: object Module
+  VERSION: string
+  defineConfig: function/1
+  rollup: function/1
+  watch: function/1

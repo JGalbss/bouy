@@ -1,0 +1,14 @@
+namespace: object Module
+  createBunPlugin: function/1
+  createEsbuildPlugin: function/1
+  createFarmPlugin: function/1
+  createRolldownPlugin: function/1
+  createRollupPlugin: function/1
+  createRsbuildPlugin: function/1
+  createRspackPlugin: function/1
+  createUnloaderPlugin: function/1
+  createUnplugin: function/1
+  createVitePlugin: function/1
+  createWebpackPlugin: function/1
+  setParseImpl: function/1
+  version: string

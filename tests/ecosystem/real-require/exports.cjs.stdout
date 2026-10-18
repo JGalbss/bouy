@@ -1,0 +1,3 @@
+module.exports: object
+  realImport: function/1
+  realRequire: function/1

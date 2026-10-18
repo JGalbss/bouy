@@ -1,0 +1,1 @@
+module.exports: class/1 {essence, isHTML, isJavaScript, isXML, parameters, subtype, toString, type}

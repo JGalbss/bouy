@@ -1,0 +1,3 @@
+module.exports: object
+  name: function/1
+  qname: function/1

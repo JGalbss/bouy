@@ -1,0 +1,10 @@
+module.exports: object
+  assignRef: function/2
+  createCallbackRef: function/1
+  mergeRefs: function/1
+  refToCallback: function/1
+  transformRef: function/2
+  useCallbackRef: function/2
+  useMergeRefs: function/2
+  useRefToCallback: function/1
+  useTransformRef: function/2

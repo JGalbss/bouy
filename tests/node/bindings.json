@@ -1,0 +1,7225 @@
+{
+  "generated_by": "buoy-suites node-bindings",
+  "node": "v25.9.0",
+  "commit": "9f5a2c929274d4ece400a5890582adc9ab779492",
+  "bindings": {
+    "async_context_frame": {
+      "sources": [
+        "src/async_context_frame.cc"
+      ],
+      "members": {
+        "getContinuationPreservedEmbedderData": {
+          "kind": "value"
+        },
+        "setContinuationPreservedEmbedderData": {
+          "kind": "value"
+        }
+      }
+    },
+    "async_wrap": {
+      "sources": [
+        "src/async_wrap.cc"
+      ],
+      "members": {
+        "Providers": {
+          "kind": "object",
+          "members": {
+            "ARGON2REQUEST": {
+              "kind": "value"
+            },
+            "BLOBREADER": {
+              "kind": "value"
+            },
+            "CHECKPRIMEREQUEST": {
+              "kind": "value"
+            },
+            "CIPHERREQUEST": {
+              "kind": "value"
+            },
+            "DERIVEBITSREQUEST": {
+              "kind": "value"
+            },
+            "DIRHANDLE": {
+              "kind": "value"
+            },
+            "DNSCHANNEL": {
+              "kind": "value"
+            },
+            "ELDHISTOGRAM": {
+              "kind": "value"
+            },
+            "FILEHANDLE": {
+              "kind": "value"
+            },
+            "FILEHANDLECLOSEREQ": {
+              "kind": "value"
+            },
+            "FSEVENTWRAP": {
+              "kind": "value"
+            },
+            "FSREQCALLBACK": {
+              "kind": "value"
+            },
+            "FSREQPROMISE": {
+              "kind": "value"
+            },
+            "GETADDRINFOREQWRAP": {
+              "kind": "value"
+            },
+            "GETNAMEINFOREQWRAP": {
+              "kind": "value"
+            },
+            "HASHREQUEST": {
+              "kind": "value"
+            },
+            "HEAPSNAPSHOT": {
+              "kind": "value"
+            },
+            "HTTP2PING": {
+              "kind": "value"
+            },
+            "HTTP2SESSION": {
+              "kind": "value"
+            },
+            "HTTP2SETTINGS": {
+              "kind": "value"
+            },
+            "HTTP2STREAM": {
+              "kind": "value"
+            },
+            "HTTPCLIENTREQUEST": {
+              "kind": "value"
+            },
+            "HTTPINCOMINGMESSAGE": {
+              "kind": "value"
+            },
+            "JSSTREAM": {
+              "kind": "value"
+            },
+            "JSUDPWRAP": {
+              "kind": "value"
+            },
+            "KEYEXPORTREQUEST": {
+              "kind": "value"
+            },
+            "KEYGENREQUEST": {
+              "kind": "value"
+            },
+            "KEYPAIRGENREQUEST": {
+              "kind": "value"
+            },
+            "LOCKS": {
+              "kind": "value"
+            },
+            "MESSAGEPORT": {
+              "kind": "value"
+            },
+            "NONE": {
+              "kind": "value"
+            },
+            "PBKDF2REQUEST": {
+              "kind": "value"
+            },
+            "PIPECONNECTWRAP": {
+              "kind": "value"
+            },
+            "PIPESERVERWRAP": {
+              "kind": "value"
+            },
+            "PIPEWRAP": {
+              "kind": "value"
+            },
+            "PROCESSWRAP": {
+              "kind": "value"
+            },
+            "PROMISE": {
+              "kind": "value"
+            },
+            "QUERYWRAP": {
+              "kind": "value"
+            },
+            "QUIC_ENDPOINT": {
+              "kind": "value"
+            },
+            "QUIC_LOGSTREAM": {
+              "kind": "value"
+            },
+            "QUIC_PACKET": {
+              "kind": "value"
+            },
+            "QUIC_SESSION": {
+              "kind": "value"
+            },
+            "QUIC_STREAM": {
+              "kind": "value"
+            },
+            "QUIC_UDP": {
+              "kind": "value"
+            },
+            "RANDOMBYTESREQUEST": {
+              "kind": "value"
+            },
+            "RANDOMPRIMEREQUEST": {
+              "kind": "value"
+            },
+            "SCRYPTREQUEST": {
+              "kind": "value"
+            },
+            "SHUTDOWNWRAP": {
+              "kind": "value"
+            },
+            "SIGINTWATCHDOG": {
+              "kind": "value"
+            },
+            "SIGNALWRAP": {
+              "kind": "value"
+            },
+            "SIGNREQUEST": {
+              "kind": "value"
+            },
+            "STATWATCHER": {
+              "kind": "value"
+            },
+            "STREAMPIPE": {
+              "kind": "value"
+            },
+            "TCPCONNECTWRAP": {
+              "kind": "value"
+            },
+            "TCPSERVERWRAP": {
+              "kind": "value"
+            },
+            "TCPWRAP": {
+              "kind": "value"
+            },
+            "TLSWRAP": {
+              "kind": "value"
+            },
+            "TTYWRAP": {
+              "kind": "value"
+            },
+            "UDPSENDWRAP": {
+              "kind": "value"
+            },
+            "UDPWRAP": {
+              "kind": "value"
+            },
+            "VERIFYREQUEST": {
+              "kind": "value"
+            },
+            "WORKER": {
+              "kind": "value"
+            },
+            "WORKERCPUPROFILE": {
+              "kind": "value"
+            },
+            "WORKERCPUUSAGE": {
+              "kind": "value"
+            },
+            "WORKERHEAPPROFILE": {
+              "kind": "value"
+            },
+            "WORKERHEAPSNAPSHOT": {
+              "kind": "value"
+            },
+            "WORKERHEAPSTATISTICS": {
+              "kind": "value"
+            },
+            "WRITEWRAP": {
+              "kind": "value"
+            },
+            "ZLIB": {
+              "kind": "value"
+            }
+          }
+        },
+        "async_hook_fields": {
+          "kind": "value"
+        },
+        "async_id_fields": {
+          "kind": "value"
+        },
+        "async_ids_stack": {
+          "kind": "value"
+        },
+        "clearAsyncIdStack": {
+          "kind": "function"
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "kAfter": {
+              "kind": "value"
+            },
+            "kAsyncIdCounter": {
+              "kind": "value"
+            },
+            "kBefore": {
+              "kind": "value"
+            },
+            "kCheck": {
+              "kind": "value"
+            },
+            "kDefaultTriggerAsyncId": {
+              "kind": "value"
+            },
+            "kDestroy": {
+              "kind": "value"
+            },
+            "kExecutionAsyncId": {
+              "kind": "value"
+            },
+            "kInit": {
+              "kind": "value"
+            },
+            "kPromiseResolve": {
+              "kind": "value"
+            },
+            "kStackLength": {
+              "kind": "value"
+            },
+            "kTotals": {
+              "kind": "value"
+            },
+            "kTriggerAsyncId": {
+              "kind": "value"
+            },
+            "kUsesExecutionAsyncResource": {
+              "kind": "value"
+            }
+          }
+        },
+        "executionAsyncResource": {
+          "kind": "function"
+        },
+        "execution_async_resources": {
+          "kind": "value"
+        },
+        "getPromiseHooks": {
+          "kind": "function"
+        },
+        "popAsyncContext": {
+          "kind": "function"
+        },
+        "pushAsyncContext": {
+          "kind": "function"
+        },
+        "queueDestroyAsyncId": {
+          "kind": "function"
+        },
+        "registerDestroyHook": {
+          "kind": "function"
+        },
+        "setCallbackTrampoline": {
+          "kind": "function"
+        },
+        "setPromiseHooks": {
+          "kind": "function"
+        },
+        "setupHooks": {
+          "kind": "function"
+        }
+      }
+    },
+    "blob": {
+      "sources": [
+        "src/node_blob.cc"
+      ],
+      "members": {
+        "concat": {
+          "kind": "function"
+        },
+        "createBlob": {
+          "kind": "function"
+        },
+        "createBlobFromFilePath": {
+          "kind": "function"
+        },
+        "getDataObject": {
+          "kind": "function"
+        },
+        "revokeObjectURL": {
+          "kind": "function"
+        },
+        "storeDataObject": {
+          "kind": "function"
+        }
+      }
+    },
+    "block_list": {
+      "sources": [
+        "src/node_sockaddr.cc"
+      ],
+      "members": {
+        "AF_INET": {
+          "kind": "value"
+        },
+        "AF_INET6": {
+          "kind": "value"
+        },
+        "BlockList": {
+          "kind": "class",
+          "prototype": [
+            "addAddress",
+            "addRange",
+            "addSubnet",
+            "check",
+            "getRules"
+          ]
+        },
+        "SocketAddress": {
+          "kind": "class",
+          "prototype": [
+            "detail",
+            "flowlabel",
+            "legacyDetail"
+          ]
+        }
+      }
+    },
+    "buffer": {
+      "sources": [
+        "src/node_buffer.cc"
+      ],
+      "members": {
+        "asciiSlice": {
+          "kind": "function"
+        },
+        "asciiWriteStatic": {
+          "kind": "function"
+        },
+        "atob": {
+          "kind": "function"
+        },
+        "base64Slice": {
+          "kind": "function"
+        },
+        "base64Write": {
+          "kind": "function"
+        },
+        "base64urlSlice": {
+          "kind": "function"
+        },
+        "base64urlWrite": {
+          "kind": "function"
+        },
+        "btoa": {
+          "kind": "function"
+        },
+        "byteLengthUtf8": {
+          "kind": "function"
+        },
+        "compare": {
+          "kind": "function"
+        },
+        "compareOffset": {
+          "kind": "function"
+        },
+        "copy": {
+          "kind": "function"
+        },
+        "copyArrayBuffer": {
+          "kind": "function"
+        },
+        "createUnsafeArrayBuffer": {
+          "kind": "function"
+        },
+        "fill": {
+          "kind": "function"
+        },
+        "hexSlice": {
+          "kind": "function"
+        },
+        "hexWrite": {
+          "kind": "function"
+        },
+        "indexOfBuffer": {
+          "kind": "function"
+        },
+        "indexOfNumber": {
+          "kind": "function"
+        },
+        "indexOfString": {
+          "kind": "function"
+        },
+        "isAscii": {
+          "kind": "function"
+        },
+        "isUtf8": {
+          "kind": "function"
+        },
+        "kMaxLength": {
+          "kind": "value"
+        },
+        "kStringMaxLength": {
+          "kind": "value"
+        },
+        "latin1Slice": {
+          "kind": "function"
+        },
+        "latin1WriteStatic": {
+          "kind": "function"
+        },
+        "setBufferPrototype": {
+          "kind": "function"
+        },
+        "setDetachKey": {
+          "kind": "function"
+        },
+        "swap16": {
+          "kind": "function"
+        },
+        "swap32": {
+          "kind": "function"
+        },
+        "swap64": {
+          "kind": "function"
+        },
+        "ucs2Slice": {
+          "kind": "function"
+        },
+        "ucs2Write": {
+          "kind": "function"
+        },
+        "utf8Slice": {
+          "kind": "function"
+        },
+        "utf8WriteStatic": {
+          "kind": "function"
+        }
+      }
+    },
+    "builtins": {
+      "sources": [
+        "src/node_builtins.cc"
+      ],
+      "members": {
+        "builtinCategories": {
+          "kind": "value"
+        },
+        "builtinIds": {
+          "kind": "value"
+        },
+        "compileFunction": {
+          "kind": "function"
+        },
+        "config": {
+          "kind": "value"
+        },
+        "getCacheUsage": {
+          "kind": "function"
+        },
+        "hasCachedBuiltins": {
+          "kind": "function"
+        },
+        "importBuiltinSourceTextModule": {
+          "kind": "function"
+        },
+        "natives": {
+          "kind": "value"
+        },
+        "setInternalLoaders": {
+          "kind": "function"
+        }
+      }
+    },
+    "cares_wrap": {
+      "sources": [
+        "src/cares_wrap.cc"
+      ],
+      "members": {
+        "AF_INET": {
+          "kind": "value"
+        },
+        "AF_INET6": {
+          "kind": "value"
+        },
+        "AF_UNSPEC": {
+          "kind": "value"
+        },
+        "AI_ADDRCONFIG": {
+          "kind": "value"
+        },
+        "AI_ALL": {
+          "kind": "value"
+        },
+        "AI_V4MAPPED": {
+          "kind": "value"
+        },
+        "ChannelWrap": {
+          "kind": "class",
+          "prototype": [
+            "cancel",
+            "getHostByAddr",
+            "getServers",
+            "queryA",
+            "queryAaaa",
+            "queryAny",
+            "queryCaa",
+            "queryCname",
+            "queryMx",
+            "queryNaptr",
+            "queryNs",
+            "queryPtr",
+            "querySoa",
+            "querySrv",
+            "queryTlsa",
+            "queryTxt",
+            "setLocalAddress",
+            "setServers"
+          ]
+        },
+        "DNS_ORDER_IPV4_FIRST": {
+          "kind": "value"
+        },
+        "DNS_ORDER_IPV6_FIRST": {
+          "kind": "value"
+        },
+        "DNS_ORDER_VERBATIM": {
+          "kind": "value"
+        },
+        "GetAddrInfoReqWrap": {
+          "kind": "class"
+        },
+        "GetNameInfoReqWrap": {
+          "kind": "class"
+        },
+        "QueryReqWrap": {
+          "kind": "class"
+        },
+        "canonicalizeIP": {
+          "kind": "function"
+        },
+        "convertIpv6StringToBuffer": {
+          "kind": "function"
+        },
+        "getaddrinfo": {
+          "kind": "function"
+        },
+        "getnameinfo": {
+          "kind": "function"
+        },
+        "strerror": {
+          "kind": "function"
+        }
+      }
+    },
+    "cjs_lexer": {
+      "sources": [
+        "src/node_cjs_lexer.cc"
+      ],
+      "members": {
+        "parse": {
+          "kind": "function"
+        }
+      }
+    },
+    "config": {
+      "sources": [
+        "src/node_config.cc"
+      ],
+      "members": {
+        "bits": {
+          "kind": "value"
+        },
+        "fipsMode": {
+          "kind": "value"
+        },
+        "getDefaultLocale": {
+          "kind": "function"
+        },
+        "hasInspector": {
+          "kind": "value"
+        },
+        "hasIntl": {
+          "kind": "value",
+          "conditional": true
+        },
+        "hasNodeOptions": {
+          "kind": "value",
+          "conditional": true
+        },
+        "hasOpenSSL": {
+          "kind": "value"
+        },
+        "hasSmallICU": {
+          "kind": "value",
+          "conditional": true
+        },
+        "hasTracing": {
+          "kind": "value",
+          "conditional": true
+        },
+        "isDebugBuild": {
+          "kind": "value"
+        },
+        "noBrowserGlobals": {
+          "kind": "value"
+        },
+        "openSSLIsBoringSSL": {
+          "kind": "value"
+        }
+      }
+    },
+    "constants": {
+      "sources": [
+        "src/node_constants.cc"
+      ],
+      "members": {
+        "crypto": {
+          "kind": "object",
+          "members": {
+            "DH_CHECK_P_NOT_PRIME": {
+              "kind": "value",
+              "conditional": true
+            },
+            "DH_CHECK_P_NOT_SAFE_PRIME": {
+              "kind": "value",
+              "conditional": true
+            },
+            "DH_NOT_SUITABLE_GENERATOR": {
+              "kind": "value",
+              "conditional": true
+            },
+            "DH_UNABLE_TO_CHECK_GENERATOR": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_ALL": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_CIPHERS": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_DH": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_DIGESTS": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_DSA": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_EC": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_NONE": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_PKEY_ASN1_METHS": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_PKEY_METHS": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_RAND": {
+              "kind": "value",
+              "conditional": true
+            },
+            "ENGINE_METHOD_RSA": {
+              "kind": "value",
+              "conditional": true
+            },
+            "OPENSSL_VERSION_NUMBER": {
+              "kind": "value",
+              "conditional": true
+            },
+            "POINT_CONVERSION_COMPRESSED": {
+              "kind": "value",
+              "conditional": true
+            },
+            "POINT_CONVERSION_HYBRID": {
+              "kind": "value",
+              "conditional": true
+            },
+            "POINT_CONVERSION_UNCOMPRESSED": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_NO_PADDING": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_PKCS1_OAEP_PADDING": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_PKCS1_PADDING": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_PKCS1_PSS_PADDING": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_PSS_SALTLEN_AUTO": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_PSS_SALTLEN_DIGEST": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_PSS_SALTLEN_MAX_SIGN": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_SSLV23_PADDING": {
+              "kind": "value",
+              "conditional": true
+            },
+            "RSA_X931_PADDING": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_ALL": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_ALLOW_NO_DHE_KEX": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_CIPHER_SERVER_PREFERENCE": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_CISCO_ANYCONNECT": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_COOKIE_EXCHANGE": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_CRYPTOPRO_TLSEXT_BUG": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_LEGACY_SERVER_CONNECT": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_COMPRESSION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_ENCRYPT_THEN_MAC": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_QUERY_MTU": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_RENEGOTIATION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_SSLv2": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_SSLv3": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_TICKET": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_TLSv1": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_TLSv1_1": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_TLSv1_2": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_NO_TLSv1_3": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_PRIORITIZE_CHACHA": {
+              "kind": "value",
+              "conditional": true
+            },
+            "SSL_OP_TLS_ROLLBACK_BUG": {
+              "kind": "value",
+              "conditional": true
+            },
+            "TLS1_1_VERSION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "TLS1_2_VERSION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "TLS1_3_VERSION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "TLS1_VERSION": {
+              "kind": "value",
+              "conditional": true
+            },
+            "defaultCoreCipherList": {
+              "kind": "value",
+              "conditional": true
+            }
+          }
+        },
+        "fs": {
+          "kind": "object",
+          "members": {
+            "COPYFILE_EXCL": {
+              "kind": "value",
+              "conditional": true
+            },
+            "COPYFILE_FICLONE": {
+              "kind": "value",
+              "conditional": true
+            },
+            "COPYFILE_FICLONE_FORCE": {
+              "kind": "value",
+              "conditional": true
+            },
+            "F_OK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_APPEND": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_CREAT": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_DIRECT": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_DIRECTORY": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_DSYNC": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_EXCL": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_NOATIME": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_NOCTTY": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_NOFOLLOW": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_NONBLOCK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_RDONLY": {
+              "kind": "value"
+            },
+            "O_RDWR": {
+              "kind": "value"
+            },
+            "O_SYMLINK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_SYNC": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_TRUNC": {
+              "kind": "value",
+              "conditional": true
+            },
+            "O_WRONLY": {
+              "kind": "value"
+            },
+            "R_OK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IFBLK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IFCHR": {
+              "kind": "value"
+            },
+            "S_IFDIR": {
+              "kind": "value"
+            },
+            "S_IFIFO": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IFLNK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IFMT": {
+              "kind": "value"
+            },
+            "S_IFREG": {
+              "kind": "value"
+            },
+            "S_IFSOCK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IRGRP": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IROTH": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IRUSR": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IRWXG": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IRWXO": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IRWXU": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IWGRP": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IWOTH": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IWUSR": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IXGRP": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IXOTH": {
+              "kind": "value",
+              "conditional": true
+            },
+            "S_IXUSR": {
+              "kind": "value",
+              "conditional": true
+            },
+            "UV_DIRENT_BLOCK": {
+              "kind": "value"
+            },
+            "UV_DIRENT_CHAR": {
+              "kind": "value"
+            },
+            "UV_DIRENT_DIR": {
+              "kind": "value"
+            },
+            "UV_DIRENT_FIFO": {
+              "kind": "value"
+            },
+            "UV_DIRENT_FILE": {
+              "kind": "value"
+            },
+            "UV_DIRENT_LINK": {
+              "kind": "value"
+            },
+            "UV_DIRENT_SOCKET": {
+              "kind": "value"
+            },
+            "UV_DIRENT_UNKNOWN": {
+              "kind": "value"
+            },
+            "UV_FS_COPYFILE_EXCL": {
+              "kind": "value",
+              "conditional": true
+            },
+            "UV_FS_COPYFILE_FICLONE": {
+              "kind": "value",
+              "conditional": true
+            },
+            "UV_FS_COPYFILE_FICLONE_FORCE": {
+              "kind": "value",
+              "conditional": true
+            },
+            "UV_FS_O_FILEMAP": {
+              "kind": "value"
+            },
+            "UV_FS_SYMLINK_DIR": {
+              "kind": "value"
+            },
+            "UV_FS_SYMLINK_JUNCTION": {
+              "kind": "value"
+            },
+            "W_OK": {
+              "kind": "value",
+              "conditional": true
+            },
+            "X_OK": {
+              "kind": "value",
+              "conditional": true
+            }
+          }
+        },
+        "internal": {
+          "kind": "object",
+          "members": {
+            "EXTENSIONLESS_FORMAT_JAVASCRIPT": {
+              "kind": "value"
+            },
+            "EXTENSIONLESS_FORMAT_WASM": {
+              "kind": "value"
+            }
+          }
+        },
+        "os": {
+          "kind": "object",
+          "members": {
+            "UV_UDP_REUSEADDR": {
+              "kind": "value"
+            },
+            "dlopen": {
+              "kind": "object",
+              "members": {
+                "RTLD_DEEPBIND": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "RTLD_GLOBAL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "RTLD_LAZY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "RTLD_LOCAL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "RTLD_NOW": {
+                  "kind": "value",
+                  "conditional": true
+                }
+              }
+            },
+            "errno": {
+              "kind": "object",
+              "members": {
+                "E2BIG": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EACCES": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EADDRINUSE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EADDRNOTAVAIL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EAFNOSUPPORT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EAGAIN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EALREADY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EBADF": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EBADMSG": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EBUSY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ECANCELED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ECHILD": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ECONNABORTED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ECONNREFUSED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ECONNRESET": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EDEADLK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EDESTADDRREQ": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EDOM": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EDQUOT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EEXIST": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EFAULT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EFBIG": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EHOSTUNREACH": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EIDRM": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EILSEQ": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EINPROGRESS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EINTR": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EINVAL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EIO": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EISCONN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EISDIR": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ELOOP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EMFILE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EMLINK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EMSGSIZE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EMULTIHOP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENAMETOOLONG": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENETDOWN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENETRESET": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENETUNREACH": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENFILE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOBUFS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENODATA": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENODEV": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOENT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOEXEC": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOLCK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOLINK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOMEM": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOMSG": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOPROTOOPT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOSPC": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOSR": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOSTR": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOSYS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOTCONN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOTDIR": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOTEMPTY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOTSOCK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOTSUP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENOTTY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ENXIO": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EOPNOTSUPP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EOVERFLOW": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EPERM": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EPIPE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EPROTO": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EPROTONOSUPPORT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EPROTOTYPE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ERANGE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EROFS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ESPIPE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ESRCH": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ESTALE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ETIME": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ETIMEDOUT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "ETXTBSY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EWOULDBLOCK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "EXDEV": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEACCES": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEADDRINUSE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEADDRNOTAVAIL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEAFNOSUPPORT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEALREADY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEBADF": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAECANCELLED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAECONNABORTED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAECONNREFUSED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAECONNRESET": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEDESTADDRREQ": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEDISCON": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEDQUOT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEFAULT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEHOSTDOWN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEHOSTUNREACH": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEINPROGRESS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEINTR": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEINVAL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEINVALIDPROCTABLE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEINVALIDPROVIDER": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEISCONN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAELOOP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEMFILE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEMSGSIZE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENAMETOOLONG": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENETDOWN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENETRESET": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENETUNREACH": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENOBUFS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENOMORE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENOPROTOOPT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENOTCONN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENOTEMPTY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAENOTSOCK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEOPNOTSUPP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEPFNOSUPPORT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEPROCLIM": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEPROTONOSUPPORT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEPROTOTYPE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEPROVIDERFAILEDINIT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEREFUSED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEREMOTE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAESHUTDOWN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAESOCKTNOSUPPORT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAESTALE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAETIMEDOUT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAETOOMANYREFS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEUSERS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAEWOULDBLOCK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSANOTINITIALISED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSASERVICE_NOT_FOUND": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSASYSCALLFAILURE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSASYSNOTREADY": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSATYPE_NOT_FOUND": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSAVERNOTSUPPORTED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSA_E_CANCELLED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "WSA_E_NO_MORE": {
+                  "kind": "value",
+                  "conditional": true
+                }
+              }
+            },
+            "priority": {
+              "kind": "object",
+              "members": {
+                "PRIORITY_ABOVE_NORMAL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "PRIORITY_BELOW_NORMAL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "PRIORITY_HIGH": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "PRIORITY_HIGHEST": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "PRIORITY_LOW": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "PRIORITY_NORMAL": {
+                  "kind": "value",
+                  "conditional": true
+                }
+              }
+            },
+            "signals": {
+              "kind": "object",
+              "members": {
+                "SIGABRT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGALRM": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGBREAK": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGBUS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGCHLD": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGCONT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGFPE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGHUP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGILL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGINFO": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGINT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGIO": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGIOT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGKILL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGLOST": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGPIPE": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGPOLL": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGPROF": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGPWR": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGQUIT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGSEGV": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGSTKFLT": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGSTOP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGSYS": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGTERM": {
+                  "kind": "value"
+                },
+                "SIGTRAP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGTSTP": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGTTIN": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGTTOU": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGUNUSED": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGURG": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGUSR1": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGUSR2": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGVTALRM": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGWINCH": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGXCPU": {
+                  "kind": "value",
+                  "conditional": true
+                },
+                "SIGXFSZ": {
+                  "kind": "value",
+                  "conditional": true
+                }
+              }
+            }
+          }
+        },
+        "trace": {
+          "kind": "object",
+          "members": {
+            "TRACE_EVENT_PHASE_ASYNC_BEGIN": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_ASYNC_END": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_ASYNC_STEP_INTO": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_ASYNC_STEP_PAST": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_BEGIN": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_CLOCK_SYNC": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_COMPLETE": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_COUNTER": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_CREATE_OBJECT": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_DELETE_OBJECT": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_END": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_ENTER_CONTEXT": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_FLOW_BEGIN": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_FLOW_END": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_FLOW_STEP": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_INSTANT": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_LEAVE_CONTEXT": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_LINK_IDS": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_MARK": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_MEMORY_DUMP": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_METADATA": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_NESTABLE_ASYNC_BEGIN": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_NESTABLE_ASYNC_END": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_NESTABLE_ASYNC_INSTANT": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_SAMPLE": {
+              "kind": "value"
+            },
+            "TRACE_EVENT_PHASE_SNAPSHOT_OBJECT": {
+              "kind": "value"
+            }
+          }
+        },
+        "zlib": {
+          "kind": "object",
+          "members": {
+            "BROTLI_DECODE": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_ALLOC_BLOCK_TYPE_TREES": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MAP": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MODES": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_1": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_2": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_ALLOC_TREE_GROUPS": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_DICTIONARY_NOT_SET": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_1": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_2": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_CL_SPACE": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_CONTEXT_MAP_REPEAT": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_DICTIONARY": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_DISTANCE": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_META_NIBBLE": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_NIBBLE": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_HUFFMAN_SPACE": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_PADDING_1": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_PADDING_2": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_RESERVED": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_ALPHABET": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_SAME": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_TRANSFORM": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_FORMAT_WINDOW_BITS": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_INVALID_ARGUMENTS": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_ERROR_UNREACHABLE": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_NEEDS_MORE_INPUT": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_NEEDS_MORE_OUTPUT": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_NO_ERROR": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_PARAM_LARGE_WINDOW": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_RESULT_ERROR": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_RESULT_SUCCESS": {
+              "kind": "value"
+            },
+            "BROTLI_DECODER_SUCCESS": {
+              "kind": "value"
+            },
+            "BROTLI_DEFAULT_MODE": {
+              "kind": "value"
+            },
+            "BROTLI_DEFAULT_QUALITY": {
+              "kind": "value"
+            },
+            "BROTLI_DEFAULT_WINDOW": {
+              "kind": "value"
+            },
+            "BROTLI_ENCODE": {
+              "kind": "value"
+            },
+            "BROTLI_LARGE_MAX_WINDOW_BITS": {
+              "kind": "value"
+            },
+            "BROTLI_MAX_INPUT_BLOCK_BITS": {
+              "kind": "value"
+            },
+            "BROTLI_MAX_QUALITY": {
+              "kind": "value"
+            },
+            "BROTLI_MAX_WINDOW_BITS": {
+              "kind": "value"
+            },
+            "BROTLI_MIN_INPUT_BLOCK_BITS": {
+              "kind": "value"
+            },
+            "BROTLI_MIN_QUALITY": {
+              "kind": "value"
+            },
+            "BROTLI_MIN_WINDOW_BITS": {
+              "kind": "value"
+            },
+            "BROTLI_MODE_FONT": {
+              "kind": "value"
+            },
+            "BROTLI_MODE_GENERIC": {
+              "kind": "value"
+            },
+            "BROTLI_MODE_TEXT": {
+              "kind": "value"
+            },
+            "BROTLI_OPERATION_EMIT_METADATA": {
+              "kind": "value"
+            },
+            "BROTLI_OPERATION_FINISH": {
+              "kind": "value"
+            },
+            "BROTLI_OPERATION_FLUSH": {
+              "kind": "value"
+            },
+            "BROTLI_OPERATION_PROCESS": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_DISABLE_LITERAL_CONTEXT_MODELING": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_LARGE_WINDOW": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_LGBLOCK": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_LGWIN": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_MODE": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_NDIRECT": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_NPOSTFIX": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_QUALITY": {
+              "kind": "value"
+            },
+            "BROTLI_PARAM_SIZE_HINT": {
+              "kind": "value"
+            },
+            "DEFLATE": {
+              "kind": "value"
+            },
+            "DEFLATERAW": {
+              "kind": "value"
+            },
+            "GUNZIP": {
+              "kind": "value"
+            },
+            "GZIP": {
+              "kind": "value"
+            },
+            "INFLATE": {
+              "kind": "value"
+            },
+            "INFLATERAW": {
+              "kind": "value"
+            },
+            "UNZIP": {
+              "kind": "value"
+            },
+            "ZLIB_VERNUM": {
+              "kind": "value"
+            },
+            "ZSTD_CLEVEL_DEFAULT": {
+              "kind": "value"
+            },
+            "ZSTD_COMPRESS": {
+              "kind": "value"
+            },
+            "ZSTD_DECOMPRESS": {
+              "kind": "value"
+            },
+            "ZSTD_btlazy2": {
+              "kind": "value"
+            },
+            "ZSTD_btopt": {
+              "kind": "value"
+            },
+            "ZSTD_btultra": {
+              "kind": "value"
+            },
+            "ZSTD_btultra2": {
+              "kind": "value"
+            },
+            "ZSTD_c_chainLog": {
+              "kind": "value"
+            },
+            "ZSTD_c_checksumFlag": {
+              "kind": "value"
+            },
+            "ZSTD_c_compressionLevel": {
+              "kind": "value"
+            },
+            "ZSTD_c_contentSizeFlag": {
+              "kind": "value"
+            },
+            "ZSTD_c_dictIDFlag": {
+              "kind": "value"
+            },
+            "ZSTD_c_enableLongDistanceMatching": {
+              "kind": "value"
+            },
+            "ZSTD_c_hashLog": {
+              "kind": "value"
+            },
+            "ZSTD_c_jobSize": {
+              "kind": "value"
+            },
+            "ZSTD_c_ldmBucketSizeLog": {
+              "kind": "value"
+            },
+            "ZSTD_c_ldmHashLog": {
+              "kind": "value"
+            },
+            "ZSTD_c_ldmHashRateLog": {
+              "kind": "value"
+            },
+            "ZSTD_c_ldmMinMatch": {
+              "kind": "value"
+            },
+            "ZSTD_c_minMatch": {
+              "kind": "value"
+            },
+            "ZSTD_c_nbWorkers": {
+              "kind": "value"
+            },
+            "ZSTD_c_overlapLog": {
+              "kind": "value"
+            },
+            "ZSTD_c_searchLog": {
+              "kind": "value"
+            },
+            "ZSTD_c_strategy": {
+              "kind": "value"
+            },
+            "ZSTD_c_targetLength": {
+              "kind": "value"
+            },
+            "ZSTD_c_windowLog": {
+              "kind": "value"
+            },
+            "ZSTD_d_windowLogMax": {
+              "kind": "value"
+            },
+            "ZSTD_dfast": {
+              "kind": "value"
+            },
+            "ZSTD_e_continue": {
+              "kind": "value"
+            },
+            "ZSTD_e_end": {
+              "kind": "value"
+            },
+            "ZSTD_e_flush": {
+              "kind": "value"
+            },
+            "ZSTD_error_GENERIC": {
+              "kind": "value"
+            },
+            "ZSTD_error_checksum_wrong": {
+              "kind": "value"
+            },
+            "ZSTD_error_corruption_detected": {
+              "kind": "value"
+            },
+            "ZSTD_error_dictionaryCreation_failed": {
+              "kind": "value"
+            },
+            "ZSTD_error_dictionary_corrupted": {
+              "kind": "value"
+            },
+            "ZSTD_error_dictionary_wrong": {
+              "kind": "value"
+            },
+            "ZSTD_error_dstBuffer_null": {
+              "kind": "value"
+            },
+            "ZSTD_error_dstSize_tooSmall": {
+              "kind": "value"
+            },
+            "ZSTD_error_frameParameter_unsupported": {
+              "kind": "value"
+            },
+            "ZSTD_error_frameParameter_windowTooLarge": {
+              "kind": "value"
+            },
+            "ZSTD_error_init_missing": {
+              "kind": "value"
+            },
+            "ZSTD_error_literals_headerWrong": {
+              "kind": "value"
+            },
+            "ZSTD_error_maxSymbolValue_tooLarge": {
+              "kind": "value"
+            },
+            "ZSTD_error_maxSymbolValue_tooSmall": {
+              "kind": "value"
+            },
+            "ZSTD_error_memory_allocation": {
+              "kind": "value"
+            },
+            "ZSTD_error_noForwardProgress_destFull": {
+              "kind": "value"
+            },
+            "ZSTD_error_noForwardProgress_inputEmpty": {
+              "kind": "value"
+            },
+            "ZSTD_error_no_error": {
+              "kind": "value"
+            },
+            "ZSTD_error_parameter_combination_unsupported": {
+              "kind": "value"
+            },
+            "ZSTD_error_parameter_outOfBound": {
+              "kind": "value"
+            },
+            "ZSTD_error_parameter_unsupported": {
+              "kind": "value"
+            },
+            "ZSTD_error_prefix_unknown": {
+              "kind": "value"
+            },
+            "ZSTD_error_srcSize_wrong": {
+              "kind": "value"
+            },
+            "ZSTD_error_stabilityCondition_notRespected": {
+              "kind": "value"
+            },
+            "ZSTD_error_stage_wrong": {
+              "kind": "value"
+            },
+            "ZSTD_error_tableLog_tooLarge": {
+              "kind": "value"
+            },
+            "ZSTD_error_version_unsupported": {
+              "kind": "value"
+            },
+            "ZSTD_error_workSpace_tooSmall": {
+              "kind": "value"
+            },
+            "ZSTD_fast": {
+              "kind": "value"
+            },
+            "ZSTD_greedy": {
+              "kind": "value"
+            },
+            "ZSTD_lazy": {
+              "kind": "value"
+            },
+            "ZSTD_lazy2": {
+              "kind": "value"
+            },
+            "Z_BEST_COMPRESSION": {
+              "kind": "value"
+            },
+            "Z_BEST_SPEED": {
+              "kind": "value"
+            },
+            "Z_BLOCK": {
+              "kind": "value"
+            },
+            "Z_BUF_ERROR": {
+              "kind": "value"
+            },
+            "Z_DATA_ERROR": {
+              "kind": "value"
+            },
+            "Z_DEFAULT_CHUNK": {
+              "kind": "value"
+            },
+            "Z_DEFAULT_COMPRESSION": {
+              "kind": "value"
+            },
+            "Z_DEFAULT_LEVEL": {
+              "kind": "value"
+            },
+            "Z_DEFAULT_MEMLEVEL": {
+              "kind": "value"
+            },
+            "Z_DEFAULT_STRATEGY": {
+              "kind": "value"
+            },
+            "Z_DEFAULT_WINDOWBITS": {
+              "kind": "value"
+            },
+            "Z_ERRNO": {
+              "kind": "value"
+            },
+            "Z_FILTERED": {
+              "kind": "value"
+            },
+            "Z_FINISH": {
+              "kind": "value"
+            },
+            "Z_FIXED": {
+              "kind": "value"
+            },
+            "Z_FULL_FLUSH": {
+              "kind": "value"
+            },
+            "Z_HUFFMAN_ONLY": {
+              "kind": "value"
+            },
+            "Z_MAX_CHUNK": {
+              "kind": "value"
+            },
+            "Z_MAX_LEVEL": {
+              "kind": "value"
+            },
+            "Z_MAX_MEMLEVEL": {
+              "kind": "value"
+            },
+            "Z_MAX_WINDOWBITS": {
+              "kind": "value"
+            },
+            "Z_MEM_ERROR": {
+              "kind": "value"
+            },
+            "Z_MIN_CHUNK": {
+              "kind": "value"
+            },
+            "Z_MIN_LEVEL": {
+              "kind": "value"
+            },
+            "Z_MIN_MEMLEVEL": {
+              "kind": "value"
+            },
+            "Z_MIN_WINDOWBITS": {
+              "kind": "value"
+            },
+            "Z_NEED_DICT": {
+              "kind": "value"
+            },
+            "Z_NO_COMPRESSION": {
+              "kind": "value"
+            },
+            "Z_NO_FLUSH": {
+              "kind": "value"
+            },
+            "Z_OK": {
+              "kind": "value"
+            },
+            "Z_PARTIAL_FLUSH": {
+              "kind": "value"
+            },
+            "Z_RLE": {
+              "kind": "value"
+            },
+            "Z_STREAM_END": {
+              "kind": "value"
+            },
+            "Z_STREAM_ERROR": {
+              "kind": "value"
+            },
+            "Z_SYNC_FLUSH": {
+              "kind": "value"
+            },
+            "Z_VERSION_ERROR": {
+              "kind": "value"
+            }
+          }
+        }
+      }
+    },
+    "contextify": {
+      "sources": [
+        "src/node_contextify.cc"
+      ],
+      "members": {
+        "ContextifyScript": {
+          "kind": "class",
+          "prototype": [
+            "createCachedData",
+            "runInContext"
+          ]
+        },
+        "compileFunction": {
+          "kind": "function"
+        },
+        "compileFunctionForCJSLoader": {
+          "kind": "function"
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "measureMemory": {
+              "kind": "object",
+              "members": {
+                "execution": {
+                  "kind": "object",
+                  "members": {
+                    "DEFAULT": {
+                      "kind": "value"
+                    },
+                    "EAGER": {
+                      "kind": "value"
+                    }
+                  }
+                },
+                "mode": {
+                  "kind": "object",
+                  "members": {
+                    "DETAILED": {
+                      "kind": "value"
+                    },
+                    "SUMMARY": {
+                      "kind": "value"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "containsModuleSyntax": {
+          "kind": "function"
+        },
+        "makeContext": {
+          "kind": "function"
+        },
+        "measureMemory": {
+          "kind": "function"
+        },
+        "startSigintWatchdog": {
+          "kind": "function"
+        },
+        "stopSigintWatchdog": {
+          "kind": "function"
+        },
+        "watchdogHasPendingSigint": {
+          "kind": "function"
+        }
+      }
+    },
+    "credentials": {
+      "sources": [
+        "src/node_credentials.cc"
+      ],
+      "members": {
+        "getTempDir": {
+          "kind": "function"
+        },
+        "getegid": {
+          "kind": "function",
+          "conditional": true
+        },
+        "geteuid": {
+          "kind": "function",
+          "conditional": true
+        },
+        "getgid": {
+          "kind": "function",
+          "conditional": true
+        },
+        "getgroups": {
+          "kind": "function",
+          "conditional": true
+        },
+        "getuid": {
+          "kind": "function",
+          "conditional": true
+        },
+        "implementsPosixCredentials": {
+          "kind": "value",
+          "conditional": true
+        },
+        "initgroups": {
+          "kind": "function",
+          "conditional": true
+        },
+        "safeGetenv": {
+          "kind": "function"
+        },
+        "setegid": {
+          "kind": "function",
+          "conditional": true
+        },
+        "seteuid": {
+          "kind": "function",
+          "conditional": true
+        },
+        "setgid": {
+          "kind": "function",
+          "conditional": true
+        },
+        "setgroups": {
+          "kind": "function",
+          "conditional": true
+        },
+        "setuid": {
+          "kind": "function",
+          "conditional": true
+        }
+      }
+    },
+    "crypto": {
+      "sources": [
+        "src/node_crypto.cc"
+      ],
+      "condition": "HAVE_OPENSSL",
+      "members": {
+        "AESCipherJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "Argon2Job": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "ChaCha20Poly1305CipherJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "CheckPrimeJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "CipherBase": {
+          "kind": "class",
+          "prototype": [
+            "final",
+            "getAuthTag",
+            "setAAD",
+            "setAuthTag",
+            "setAutoPadding",
+            "update"
+          ]
+        },
+        "DHBitsJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "DHKeyExportJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "DhKeyPairGenJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "DsaKeyPairGenJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "ECDH": {
+          "kind": "class",
+          "prototype": [
+            "computeSecret",
+            "generateKeys",
+            "getPrivateKey",
+            "getPublicKey",
+            "setPrivateKey",
+            "setPublicKey"
+          ]
+        },
+        "ECDHBitsJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "ECDHConvertKey": {
+          "kind": "function"
+        },
+        "ECKeyExportJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "EVP_PKEY_ED25519": {
+          "kind": "value"
+        },
+        "EVP_PKEY_ED448": {
+          "kind": "value"
+        },
+        "EVP_PKEY_ML_DSA_44": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_ML_DSA_65": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_ML_DSA_87": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_ML_KEM_1024": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_ML_KEM_512": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_ML_KEM_768": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHA2_128F": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHA2_128S": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHA2_192F": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHA2_192S": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHA2_256F": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHA2_256S": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHAKE_128F": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHAKE_128S": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHAKE_192F": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHAKE_192S": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHAKE_256F": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_SLH_DSA_SHAKE_256S": {
+          "kind": "value",
+          "conditional": true
+        },
+        "EVP_PKEY_X25519": {
+          "kind": "value"
+        },
+        "EVP_PKEY_X448": {
+          "kind": "value"
+        },
+        "EcKeyPairGenJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "HKDFJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "Hash": {
+          "kind": "class",
+          "prototype": [
+            "digest",
+            "update"
+          ]
+        },
+        "HashJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "Hmac": {
+          "kind": "class",
+          "prototype": [
+            "digest",
+            "init",
+            "update"
+          ]
+        },
+        "HmacJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "KEMDecapsulateJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "KEMEncapsulateJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "KangarooTwelveJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "KeyObjectHandle": {
+          "kind": "class",
+          "prototype": [
+            "checkEcKeyData",
+            "equals",
+            "export",
+            "exportJwk",
+            "getAsymmetricKeyType",
+            "getSymmetricKeySize",
+            "init",
+            "initECRaw",
+            "initEDRaw",
+            "initJwk",
+            "initPqcRaw",
+            "keyDetail",
+            "rawPublicKey",
+            "rawSeed"
+          ]
+        },
+        "KmacJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "NidKeyPairGenJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "OPENSSL_EC_EXPLICIT_CURVE": {
+          "kind": "value"
+        },
+        "OPENSSL_EC_NAMED_CURVE": {
+          "kind": "value"
+        },
+        "PBKDF2Job": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "RSACipherJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "RSAKeyExportJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "RSA_PKCS1_PSS_PADDING": {
+          "kind": "value"
+        },
+        "RandomBytesJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "RandomPrimeJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "RsaKeyPairGenJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "ScryptJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "SecretKeyGenJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "SecureContext": {
+          "kind": "class",
+          "prototype": [
+            "addCACert",
+            "addCRL",
+            "addRootCerts",
+            "close",
+            "enableTicketKeyCallback",
+            "getCertificate",
+            "getIssuer",
+            "getMaxProto",
+            "getMinProto",
+            "getTicketKeys",
+            "init",
+            "loadPKCS12",
+            "setAllowPartialTrustChain",
+            "setCert",
+            "setCipherSuites",
+            "setCiphers",
+            "setClientCertEngine",
+            "setDHParam",
+            "setECDHCurve",
+            "setEngineKey",
+            "setKey",
+            "setMaxProto",
+            "setMinProto",
+            "setOptions",
+            "setSessionIdContext",
+            "setSessionTimeout",
+            "setSigalgs",
+            "setTicketKeys"
+          ],
+          "accessors": [
+            "_external"
+          ],
+          "members": {
+            "kTicketKeyAESIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyHMACIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyIVIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyNameIndex": {
+              "kind": "value"
+            },
+            "kTicketKeyReturnIndex": {
+              "kind": "value"
+            }
+          }
+        },
+        "Sign": {
+          "kind": "class",
+          "prototype": [
+            "init",
+            "sign",
+            "update"
+          ]
+        },
+        "SignJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "TurboShakeJob": {
+          "kind": "class",
+          "prototype": [
+            "run"
+          ]
+        },
+        "Verify": {
+          "kind": "class",
+          "prototype": [
+            "init",
+            "update",
+            "verify"
+          ]
+        },
+        "X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT": {
+          "kind": "value"
+        },
+        "X509_CHECK_FLAG_MULTI_LABEL_WILDCARDS": {
+          "kind": "value"
+        },
+        "X509_CHECK_FLAG_NEVER_CHECK_SUBJECT": {
+          "kind": "value"
+        },
+        "X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS": {
+          "kind": "value"
+        },
+        "X509_CHECK_FLAG_NO_WILDCARDS": {
+          "kind": "value"
+        },
+        "X509_CHECK_FLAG_SINGLE_LABEL_SUBDOMAINS": {
+          "kind": "value"
+        },
+        "certExportChallenge": {
+          "kind": "function"
+        },
+        "certExportPublicKey": {
+          "kind": "function"
+        },
+        "certVerifySpkac": {
+          "kind": "function"
+        },
+        "createNativeKeyObjectClass": {
+          "kind": "function"
+        },
+        "getBundledRootCertificates": {
+          "kind": "function"
+        },
+        "getCachedAliases": {
+          "kind": "function"
+        },
+        "getCipherInfo": {
+          "kind": "function"
+        },
+        "getCiphers": {
+          "kind": "function"
+        },
+        "getCurves": {
+          "kind": "function"
+        },
+        "getExtraCACertificates": {
+          "kind": "function"
+        },
+        "getFipsCrypto": {
+          "kind": "function"
+        },
+        "getHashes": {
+          "kind": "function"
+        },
+        "getOpenSSLSecLevelCrypto": {
+          "kind": "function"
+        },
+        "getSSLCiphers": {
+          "kind": "function"
+        },
+        "getSystemCACertificates": {
+          "kind": "function"
+        },
+        "getUserRootCertificates": {
+          "kind": "function"
+        },
+        "kCryptoJobAsync": {
+          "kind": "value"
+        },
+        "kCryptoJobSync": {
+          "kind": "value"
+        },
+        "kKEMDecapsulate": {
+          "kind": "value"
+        },
+        "kKEMEncapsulate": {
+          "kind": "value"
+        },
+        "kKeyEncodingPKCS1": {
+          "kind": "value"
+        },
+        "kKeyEncodingPKCS8": {
+          "kind": "value"
+        },
+        "kKeyEncodingSEC1": {
+          "kind": "value"
+        },
+        "kKeyEncodingSPKI": {
+          "kind": "value"
+        },
+        "kKeyFormatDER": {
+          "kind": "value"
+        },
+        "kKeyFormatJWK": {
+          "kind": "value"
+        },
+        "kKeyFormatPEM": {
+          "kind": "value"
+        },
+        "kKeyTypePrivate": {
+          "kind": "value"
+        },
+        "kKeyTypePublic": {
+          "kind": "value"
+        },
+        "kKeyTypeSecret": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_CBC_128": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_CBC_192": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_CBC_256": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_CTR_128": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_CTR_192": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_CTR_256": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_GCM_128": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_GCM_192": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_GCM_256": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_KW_128": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_KW_192": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_KW_256": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_OCB_128": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_OCB_192": {
+          "kind": "value"
+        },
+        "kKeyVariantAES_OCB_256": {
+          "kind": "value"
+        },
+        "kKeyVariantRSA_OAEP": {
+          "kind": "value"
+        },
+        "kKeyVariantRSA_PSS": {
+          "kind": "value"
+        },
+        "kKeyVariantRSA_SSA_PKCS1_v1_5": {
+          "kind": "value"
+        },
+        "kSigEncDER": {
+          "kind": "value"
+        },
+        "kSigEncP1363": {
+          "kind": "value"
+        },
+        "kSignJobModeSign": {
+          "kind": "value"
+        },
+        "kSignJobModeVerify": {
+          "kind": "value"
+        },
+        "kTypeArgon2d": {
+          "kind": "value"
+        },
+        "kTypeArgon2i": {
+          "kind": "value"
+        },
+        "kTypeArgon2id": {
+          "kind": "value"
+        },
+        "kWebCryptoCipherDecrypt": {
+          "kind": "value"
+        },
+        "kWebCryptoCipherEncrypt": {
+          "kind": "value"
+        },
+        "kWebCryptoKeyFormatJWK": {
+          "kind": "value"
+        },
+        "kWebCryptoKeyFormatPKCS8": {
+          "kind": "value"
+        },
+        "kWebCryptoKeyFormatRaw": {
+          "kind": "value"
+        },
+        "kWebCryptoKeyFormatSPKI": {
+          "kind": "value"
+        },
+        "oneShotDigest": {
+          "kind": "function"
+        },
+        "parseX509": {
+          "kind": "function"
+        },
+        "privateDecrypt": {
+          "kind": "function"
+        },
+        "privateEncrypt": {
+          "kind": "function"
+        },
+        "publicDecrypt": {
+          "kind": "function"
+        },
+        "publicEncrypt": {
+          "kind": "function"
+        },
+        "resetRootCertStore": {
+          "kind": "function"
+        },
+        "secureBuffer": {
+          "kind": "function"
+        },
+        "secureHeapUsed": {
+          "kind": "function"
+        },
+        "setEngine": {
+          "kind": "function",
+          "conditional": true
+        },
+        "setFipsCrypto": {
+          "kind": "function"
+        },
+        "startLoadingCertificatesOffThread": {
+          "kind": "function"
+        },
+        "testFipsCrypto": {
+          "kind": "function"
+        },
+        "timingSafeEqual": {
+          "kind": "function"
+        }
+      }
+    },
+    "diagnostics_channel": {
+      "sources": [
+        "src/node_diagnostics_channel.cc"
+      ],
+      "members": {
+        "getOrCreateChannelIndex": {
+          "kind": "function"
+        },
+        "linkNativeChannel": {
+          "kind": "function"
+        },
+        "subscribers": {
+          "kind": "value"
+        }
+      }
+    },
+    "encoding_binding": {
+      "sources": [
+        "src/encoding_binding.cc"
+      ],
+      "members": {
+        "decodeUTF8": {
+          "kind": "function"
+        },
+        "encodeInto": {
+          "kind": "function"
+        },
+        "encodeIntoResults": {
+          "kind": "value"
+        },
+        "encodeUtf8String": {
+          "kind": "function"
+        },
+        "toASCII": {
+          "kind": "function"
+        },
+        "toUnicode": {
+          "kind": "function"
+        }
+      }
+    },
+    "errors": {
+      "sources": [
+        "src/node_errors.cc"
+      ],
+      "members": {
+        "exitCodes": {
+          "kind": "object",
+          "members": {
+            "kAbort": {
+              "kind": "value"
+            },
+            "kBootstrapFailure": {
+              "kind": "value"
+            },
+            "kExceptionInFatalExceptionHandler": {
+              "kind": "value"
+            },
+            "kGenericUserError": {
+              "kind": "value"
+            },
+            "kInternalJSEvaluationFailure": {
+              "kind": "value"
+            },
+            "kInternalJSParseError": {
+              "kind": "value"
+            },
+            "kInvalidCommandLineArgument": {
+              "kind": "value"
+            },
+            "kInvalidCommandLineArgument2": {
+              "kind": "value"
+            },
+            "kInvalidFatalExceptionMonkeyPatching": {
+              "kind": "value"
+            },
+            "kNoFailure": {
+              "kind": "value"
+            },
+            "kStartupSnapshotFailure": {
+              "kind": "value"
+            },
+            "kUnsettledTopLevelAwait": {
+              "kind": "value"
+            },
+            "kV8FatalError": {
+              "kind": "value"
+            }
+          }
+        },
+        "getErrorSourcePositions": {
+          "kind": "function"
+        },
+        "noSideEffectsToString": {
+          "kind": "function"
+        },
+        "setEnhanceStackForFatalException": {
+          "kind": "function"
+        },
+        "setGetSourceMapErrorSource": {
+          "kind": "function"
+        },
+        "setMaybeCacheGeneratedSourceMap": {
+          "kind": "function"
+        },
+        "setPrepareStackTraceCallback": {
+          "kind": "function"
+        },
+        "setSourceMapsEnabled": {
+          "kind": "function"
+        },
+        "triggerUncaughtException": {
+          "kind": "function"
+        }
+      }
+    },
+    "fs": {
+      "sources": [
+        "src/node_file.cc"
+      ],
+      "members": {
+        "FSReqCallback": {
+          "kind": "class"
+        },
+        "FileHandle": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "closeSync",
+            "readStart",
+            "readStop",
+            "releaseFD",
+            "shutdown",
+            "useUserBuffer",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase"
+          ]
+        },
+        "StatWatcher": {
+          "kind": "class",
+          "prototype": [
+            "start"
+          ]
+        },
+        "access": {
+          "kind": "function"
+        },
+        "bigintStatFsValues": {
+          "kind": "value"
+        },
+        "bigintStatValues": {
+          "kind": "value"
+        },
+        "chmod": {
+          "kind": "function"
+        },
+        "chown": {
+          "kind": "function"
+        },
+        "close": {
+          "kind": "function"
+        },
+        "copyFile": {
+          "kind": "function"
+        },
+        "cpSyncCheckPaths": {
+          "kind": "function"
+        },
+        "cpSyncCopyDir": {
+          "kind": "function"
+        },
+        "cpSyncOverrideFile": {
+          "kind": "function"
+        },
+        "existsSync": {
+          "kind": "function"
+        },
+        "fchmod": {
+          "kind": "function"
+        },
+        "fchown": {
+          "kind": "function"
+        },
+        "fdatasync": {
+          "kind": "function"
+        },
+        "fstat": {
+          "kind": "function"
+        },
+        "fsync": {
+          "kind": "function"
+        },
+        "ftruncate": {
+          "kind": "function"
+        },
+        "futimes": {
+          "kind": "function"
+        },
+        "getFormatOfExtensionlessFile": {
+          "kind": "function"
+        },
+        "internalModuleStat": {
+          "kind": "function"
+        },
+        "kFsStatsFieldsNumber": {
+          "kind": "value"
+        },
+        "kUsePromises": {
+          "kind": "value"
+        },
+        "lchown": {
+          "kind": "function"
+        },
+        "legacyMainResolve": {
+          "kind": "function"
+        },
+        "link": {
+          "kind": "function"
+        },
+        "lstat": {
+          "kind": "function"
+        },
+        "lutimes": {
+          "kind": "function"
+        },
+        "mkdir": {
+          "kind": "function"
+        },
+        "mkdtemp": {
+          "kind": "function"
+        },
+        "open": {
+          "kind": "function"
+        },
+        "openFileHandle": {
+          "kind": "function"
+        },
+        "read": {
+          "kind": "function"
+        },
+        "readBuffers": {
+          "kind": "function"
+        },
+        "readFileUtf8": {
+          "kind": "function"
+        },
+        "readdir": {
+          "kind": "function"
+        },
+        "readlink": {
+          "kind": "function"
+        },
+        "realpath": {
+          "kind": "function"
+        },
+        "rename": {
+          "kind": "function"
+        },
+        "rmSync": {
+          "kind": "function"
+        },
+        "rmdir": {
+          "kind": "function"
+        },
+        "stat": {
+          "kind": "function"
+        },
+        "statFsValues": {
+          "kind": "value"
+        },
+        "statValues": {
+          "kind": "value"
+        },
+        "statfs": {
+          "kind": "function"
+        },
+        "symlink": {
+          "kind": "function"
+        },
+        "unlink": {
+          "kind": "function"
+        },
+        "utimes": {
+          "kind": "function"
+        },
+        "writeBuffer": {
+          "kind": "function"
+        },
+        "writeBuffers": {
+          "kind": "function"
+        },
+        "writeFileUtf8": {
+          "kind": "function"
+        },
+        "writeString": {
+          "kind": "function"
+        }
+      }
+    },
+    "fs_dir": {
+      "sources": [
+        "src/node_dir.cc"
+      ],
+      "members": {
+        "DirHandle": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "read"
+          ]
+        },
+        "opendir": {
+          "kind": "function"
+        },
+        "opendirSync": {
+          "kind": "function"
+        }
+      }
+    },
+    "fs_event_wrap": {
+      "sources": [
+        "src/fs_event_wrap.cc"
+      ],
+      "members": {
+        "FSEvent": {
+          "kind": "class",
+          "prototype": [
+            "start"
+          ],
+          "accessors": [
+            "initialized"
+          ]
+        }
+      }
+    },
+    "heap_utils": {
+      "sources": [
+        "src/heap_utils.cc"
+      ],
+      "members": {
+        "buildEmbedderGraph": {
+          "kind": "function"
+        },
+        "createHeapSnapshotStream": {
+          "kind": "function"
+        },
+        "triggerHeapSnapshot": {
+          "kind": "function"
+        }
+      }
+    },
+    "http2": {
+      "sources": [
+        "src/node_http2.cc"
+      ],
+      "members": {
+        "Http2Session": {
+          "kind": "class",
+          "prototype": [
+            "altsvc",
+            "consume",
+            "destroy",
+            "goaway",
+            "hasPendingData",
+            "localSettings",
+            "origin",
+            "ping",
+            "receive",
+            "refreshState",
+            "remoteSettings",
+            "request",
+            "setGracefulClose",
+            "setLocalWindowSize",
+            "setNextStreamID",
+            "settings",
+            "updateChunksSent"
+          ]
+        },
+        "Http2Stream": {
+          "kind": "class",
+          "prototype": [
+            "destroy",
+            "id",
+            "info",
+            "priority",
+            "pushPromise",
+            "readStart",
+            "readStop",
+            "refreshState",
+            "respond",
+            "rstStream",
+            "shutdown",
+            "trailers",
+            "useUserBuffer",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase"
+          ]
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "DEFAULT_SETTINGS_ENABLE_CONNECT_PROTOCOL": {
+              "kind": "value"
+            },
+            "DEFAULT_SETTINGS_ENABLE_PUSH": {
+              "kind": "value"
+            },
+            "DEFAULT_SETTINGS_HEADER_TABLE_SIZE": {
+              "kind": "value"
+            },
+            "DEFAULT_SETTINGS_INITIAL_WINDOW_SIZE": {
+              "kind": "value"
+            },
+            "DEFAULT_SETTINGS_MAX_CONCURRENT_STREAMS": {
+              "kind": "value"
+            },
+            "DEFAULT_SETTINGS_MAX_FRAME_SIZE": {
+              "kind": "value"
+            },
+            "DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCEPT": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCEPT_CHARSET": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCEPT_ENCODING": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCEPT_LANGUAGE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCEPT_RANGES": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_ALLOW_HEADERS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_ALLOW_METHODS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_EXPOSE_HEADERS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_REQUEST_HEADERS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_AGE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ALLOW": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ALT_SVC": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_AUTHORITY": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_AUTHORIZATION": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CACHE_CONTROL": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONNECTION": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_DISPOSITION": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_ENCODING": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_LANGUAGE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_LENGTH": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_LOCATION": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_MD5": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_RANGE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_SECURITY_POLICY": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_CONTENT_TYPE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_COOKIE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_DATE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_DNT": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_EARLY_DATA": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ETAG": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_EXPECT": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_EXPECT_CT": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_EXPIRES": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_FORWARDED": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_FROM": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_HOST": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_HTTP2_SETTINGS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_IF_MATCH": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_IF_MODIFIED_SINCE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_IF_NONE_MATCH": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_IF_RANGE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_IF_UNMODIFIED_SINCE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_KEEP_ALIVE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_LAST_MODIFIED": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_LINK": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_LOCATION": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_MAX_FORWARDS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_METHOD": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_ORIGIN": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PATH": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PREFER": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PRIORITY": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PROTOCOL": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PROXY_AUTHENTICATE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PROXY_AUTHORIZATION": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PROXY_CONNECTION": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_PURPOSE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_RANGE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_REFERER": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_REFRESH": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_RETRY_AFTER": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_SCHEME": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_SERVER": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_SET_COOKIE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_STATUS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_STRICT_TRANSPORT_SECURITY": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_TE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_TIMING_ALLOW_ORIGIN": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_TK": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_TRAILER": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_TRANSFER_ENCODING": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_UPGRADE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_UPGRADE_INSECURE_REQUESTS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_USER_AGENT": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_VARY": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_VIA": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_WARNING": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_WWW_AUTHENTICATE": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_X_CONTENT_TYPE_OPTIONS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_X_FORWARDED_FOR": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_X_FRAME_OPTIONS": {
+              "kind": "value"
+            },
+            "HTTP2_HEADER_X_XSS_PROTECTION": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_ACL": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_BASELINE_CONTROL": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_BIND": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_CHECKIN": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_CHECKOUT": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_CONNECT": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_COPY": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_DELETE": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_GET": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_HEAD": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_LABEL": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_LINK": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_LOCK": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_MERGE": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_MKACTIVITY": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_MKCALENDAR": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_MKCOL": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_MKREDIRECTREF": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_MKWORKSPACE": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_MOVE": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_OPTIONS": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_ORDERPATCH": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_PATCH": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_POST": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_PRI": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_PROPFIND": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_PROPPATCH": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_PUT": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_REBIND": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_REPORT": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_SEARCH": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_TRACE": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_UNBIND": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_UNCHECKOUT": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_UNLINK": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_UNLOCK": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_UPDATE": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_UPDATEREDIRECTREF": {
+              "kind": "value"
+            },
+            "HTTP2_METHOD_VERSION_CONTROL": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_ACCEPTED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_ALREADY_REPORTED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_BAD_GATEWAY": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_BAD_REQUEST": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_BANDWIDTH_LIMIT_EXCEEDED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_CONFLICT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_CONTINUE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_CREATED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_EARLY_HINTS": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_EXPECTATION_FAILED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_FAILED_DEPENDENCY": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_FORBIDDEN": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_FOUND": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_GATEWAY_TIMEOUT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_GONE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_HTTP_VERSION_NOT_SUPPORTED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_IM_USED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_INSUFFICIENT_STORAGE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_INTERNAL_SERVER_ERROR": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_LENGTH_REQUIRED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_LOCKED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_LOOP_DETECTED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_METHOD_NOT_ALLOWED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_MISDIRECTED_REQUEST": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_MOVED_PERMANENTLY": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_MULTIPLE_CHOICES": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_MULTI_STATUS": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NETWORK_AUTHENTICATION_REQUIRED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NON_AUTHORITATIVE_INFORMATION": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NOT_ACCEPTABLE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NOT_EXTENDED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NOT_FOUND": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NOT_IMPLEMENTED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NOT_MODIFIED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_NO_CONTENT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_OK": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PARTIAL_CONTENT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PAYLOAD_TOO_LARGE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PAYMENT_REQUIRED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PERMANENT_REDIRECT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PRECONDITION_FAILED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PRECONDITION_REQUIRED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PROCESSING": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_PROXY_AUTHENTICATION_REQUIRED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_RANGE_NOT_SATISFIABLE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_REQUEST_TIMEOUT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_RESET_CONTENT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_SEE_OTHER": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_SERVICE_UNAVAILABLE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_SWITCHING_PROTOCOLS": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_TEAPOT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_TEMPORARY_REDIRECT": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_TOO_EARLY": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_TOO_MANY_REQUESTS": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_UNAUTHORIZED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_UNAVAILABLE_FOR_LEGAL_REASONS": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_UNPROCESSABLE_ENTITY": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_UPGRADE_REQUIRED": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_URI_TOO_LONG": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_USE_PROXY": {
+              "kind": "value"
+            },
+            "HTTP_STATUS_VARIANT_ALSO_NEGOTIATES": {
+              "kind": "value"
+            },
+            "MAX_INITIAL_WINDOW_SIZE": {
+              "kind": "value"
+            },
+            "MAX_MAX_FRAME_SIZE": {
+              "kind": "value"
+            },
+            "MIN_MAX_FRAME_SIZE": {
+              "kind": "value"
+            },
+            "NGHTTP2_CANCEL": {
+              "kind": "value"
+            },
+            "NGHTTP2_COMPRESSION_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_CONNECT_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_DEFAULT_WEIGHT": {
+              "kind": "value"
+            },
+            "NGHTTP2_ENHANCE_YOUR_CALM": {
+              "kind": "value"
+            },
+            "NGHTTP2_ERR_DEFERRED": {
+              "kind": "value"
+            },
+            "NGHTTP2_ERR_FRAME_SIZE_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_ERR_INVALID_ARGUMENT": {
+              "kind": "value"
+            },
+            "NGHTTP2_ERR_NOMEM": {
+              "kind": "value"
+            },
+            "NGHTTP2_ERR_STREAM_CLOSED": {
+              "kind": "value"
+            },
+            "NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE": {
+              "kind": "value"
+            },
+            "NGHTTP2_FLAG_ACK": {
+              "kind": "value"
+            },
+            "NGHTTP2_FLAG_END_HEADERS": {
+              "kind": "value"
+            },
+            "NGHTTP2_FLAG_END_STREAM": {
+              "kind": "value"
+            },
+            "NGHTTP2_FLAG_NONE": {
+              "kind": "value"
+            },
+            "NGHTTP2_FLAG_PADDED": {
+              "kind": "value"
+            },
+            "NGHTTP2_FLAG_PRIORITY": {
+              "kind": "value"
+            },
+            "NGHTTP2_FLOW_CONTROL_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_FRAME_SIZE_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_HCAT_HEADERS": {
+              "kind": "value"
+            },
+            "NGHTTP2_HCAT_PUSH_RESPONSE": {
+              "kind": "value"
+            },
+            "NGHTTP2_HCAT_REQUEST": {
+              "kind": "value"
+            },
+            "NGHTTP2_HCAT_RESPONSE": {
+              "kind": "value"
+            },
+            "NGHTTP2_HTTP_1_1_REQUIRED": {
+              "kind": "value"
+            },
+            "NGHTTP2_INADEQUATE_SECURITY": {
+              "kind": "value"
+            },
+            "NGHTTP2_INTERNAL_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_NO_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_NV_FLAG_NONE": {
+              "kind": "value"
+            },
+            "NGHTTP2_NV_FLAG_NO_INDEX": {
+              "kind": "value"
+            },
+            "NGHTTP2_PROTOCOL_ERROR": {
+              "kind": "value"
+            },
+            "NGHTTP2_REFUSED_STREAM": {
+              "kind": "value"
+            },
+            "NGHTTP2_SESSION_CLIENT": {
+              "kind": "value"
+            },
+            "NGHTTP2_SESSION_SERVER": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_ENABLE_PUSH": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_HEADER_TABLE_SIZE": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_MAX_FRAME_SIZE": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE": {
+              "kind": "value"
+            },
+            "NGHTTP2_SETTINGS_TIMEOUT": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_CLOSED": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_STATE_CLOSED": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_STATE_HALF_CLOSED_LOCAL": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_STATE_HALF_CLOSED_REMOTE": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_STATE_IDLE": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_STATE_OPEN": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_STATE_RESERVED_LOCAL": {
+              "kind": "value"
+            },
+            "NGHTTP2_STREAM_STATE_RESERVED_REMOTE": {
+              "kind": "value"
+            },
+            "PADDING_STRATEGY_ALIGNED": {
+              "kind": "value"
+            },
+            "PADDING_STRATEGY_CALLBACK": {
+              "kind": "value"
+            },
+            "PADDING_STRATEGY_MAX": {
+              "kind": "value"
+            },
+            "PADDING_STRATEGY_NONE": {
+              "kind": "value"
+            },
+            "STREAM_OPTION_EMPTY_PAYLOAD": {
+              "kind": "value"
+            },
+            "STREAM_OPTION_GET_TRAILERS": {
+              "kind": "value"
+            }
+          }
+        },
+        "kBitfield": {
+          "kind": "value"
+        },
+        "kSessionFrameErrorListenerCount": {
+          "kind": "value"
+        },
+        "kSessionHasAltsvcListeners": {
+          "kind": "value"
+        },
+        "kSessionHasPingListeners": {
+          "kind": "value"
+        },
+        "kSessionHasRemoteSettingsListeners": {
+          "kind": "value"
+        },
+        "kSessionMaxInvalidFrames": {
+          "kind": "value"
+        },
+        "kSessionMaxRejectedStreams": {
+          "kind": "value"
+        },
+        "kSessionPriorityListenerCount": {
+          "kind": "value"
+        },
+        "kSessionRemoteSettingsIsUpToDate": {
+          "kind": "value"
+        },
+        "kSessionUint8FieldCount": {
+          "kind": "value"
+        },
+        "nameForErrorCode": {
+          "kind": "value"
+        },
+        "nghttp2ErrorString": {
+          "kind": "function"
+        },
+        "optionsBuffer": {
+          "kind": "value"
+        },
+        "packSettings": {
+          "kind": "function"
+        },
+        "refreshDefaultSettings": {
+          "kind": "function"
+        },
+        "sessionState": {
+          "kind": "value"
+        },
+        "sessionStats": {
+          "kind": "value"
+        },
+        "setCallbackFunctions": {
+          "kind": "function"
+        },
+        "settingsBuffer": {
+          "kind": "value"
+        },
+        "streamState": {
+          "kind": "value"
+        },
+        "streamStats": {
+          "kind": "value"
+        }
+      }
+    },
+    "http_parser": {
+      "sources": [
+        "src/node_http_parser.cc"
+      ],
+      "members": {
+        "ConnectionsList": {
+          "kind": "class",
+          "prototype": [
+            "active",
+            "all",
+            "expired",
+            "idle"
+          ]
+        },
+        "HTTPParser": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "consume",
+            "execute",
+            "finish",
+            "free",
+            "getCurrentBuffer",
+            "initialize",
+            "pause",
+            "remove",
+            "resume",
+            "unconsume"
+          ],
+          "members": {
+            "REQUEST": {
+              "kind": "value"
+            },
+            "RESPONSE": {
+              "kind": "value"
+            },
+            "kLenientAll": {
+              "kind": "value"
+            },
+            "kLenientChunkedLength": {
+              "kind": "value"
+            },
+            "kLenientDataAfterClose": {
+              "kind": "value"
+            },
+            "kLenientHeaders": {
+              "kind": "value"
+            },
+            "kLenientKeepAlive": {
+              "kind": "value"
+            },
+            "kLenientNone": {
+              "kind": "value"
+            },
+            "kLenientOptionalCRBeforeLF": {
+              "kind": "value"
+            },
+            "kLenientOptionalCRLFAfterChunk": {
+              "kind": "value"
+            },
+            "kLenientOptionalLFAfterCR": {
+              "kind": "value"
+            },
+            "kLenientSpacesAfterChunkSize": {
+              "kind": "value"
+            },
+            "kLenientTransferEncoding": {
+              "kind": "value"
+            },
+            "kLenientVersion": {
+              "kind": "value"
+            },
+            "kOnBody": {
+              "kind": "value"
+            },
+            "kOnExecute": {
+              "kind": "value"
+            },
+            "kOnHeaders": {
+              "kind": "value"
+            },
+            "kOnHeadersComplete": {
+              "kind": "value"
+            },
+            "kOnMessageBegin": {
+              "kind": "value"
+            },
+            "kOnMessageComplete": {
+              "kind": "value"
+            },
+            "kOnTimeout": {
+              "kind": "value"
+            }
+          }
+        },
+        "allMethods": {
+          "kind": "value"
+        },
+        "methods": {
+          "kind": "value"
+        }
+      }
+    },
+    "icu": {
+      "sources": [
+        "src/node_i18n.cc"
+      ],
+      "condition": "NODE_HAVE_I18N_SUPPORT",
+      "members": {
+        "decode": {
+          "kind": "function"
+        },
+        "getConverter": {
+          "kind": "function"
+        },
+        "getStringWidth": {
+          "kind": "function"
+        },
+        "hasConverter": {
+          "kind": "function"
+        },
+        "icuErrName": {
+          "kind": "function"
+        },
+        "transcode": {
+          "kind": "function"
+        }
+      }
+    },
+    "inspector": {
+      "sources": [
+        "src/inspector_js_api.cc"
+      ],
+      "members": {
+        "asyncTaskCanceled": {
+          "kind": "function"
+        },
+        "asyncTaskFinished": {
+          "kind": "function"
+        },
+        "asyncTaskScheduled": {
+          "kind": "function"
+        },
+        "asyncTaskStarted": {
+          "kind": "function"
+        },
+        "callAndPauseOnStart": {
+          "kind": "function"
+        },
+        "console": {
+          "kind": "value"
+        },
+        "consoleCall": {
+          "kind": "class"
+        },
+        "emitProtocolEvent": {
+          "kind": "function"
+        },
+        "isEnabled": {
+          "kind": "function"
+        },
+        "open": {
+          "kind": "function"
+        },
+        "putNetworkResource": {
+          "kind": "function"
+        },
+        "registerAsyncHook": {
+          "kind": "function"
+        },
+        "setConsoleExtensionInstaller": {
+          "kind": "function"
+        },
+        "setupNetworkTracking": {
+          "kind": "function"
+        },
+        "url": {
+          "kind": "function"
+        },
+        "waitForDebugger": {
+          "kind": "function"
+        }
+      }
+    },
+    "internal_only_v8": {
+      "sources": [
+        "src/internal_only_v8.cc"
+      ],
+      "members": {
+        "queryObjects": {
+          "kind": "function"
+        }
+      }
+    },
+    "js_stream": {
+      "sources": [
+        "src/js_stream.cc"
+      ],
+      "members": {
+        "JSStream": {
+          "kind": "class",
+          "prototype": [
+            "emitEOF",
+            "finishShutdown",
+            "finishWrite",
+            "readBuffer",
+            "readStart",
+            "readStop",
+            "shutdown",
+            "useUserBuffer",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase"
+          ]
+        }
+      }
+    },
+    "js_udp_wrap": {
+      "sources": [
+        "src/js_udp_wrap.cc"
+      ],
+      "members": {
+        "JSUDPWrap": {
+          "kind": "class",
+          "prototype": [
+            "emitReceived",
+            "onAfterBind",
+            "onSendDone",
+            "recvStart",
+            "recvStop"
+          ]
+        }
+      }
+    },
+    "locks": {
+      "sources": [
+        "src/node_locks.cc"
+      ],
+      "members": {
+        "LOCK_MODE_EXCLUSIVE": {
+          "kind": "value"
+        },
+        "LOCK_MODE_SHARED": {
+          "kind": "value"
+        },
+        "LOCK_STOLEN_ERROR": {
+          "kind": "value"
+        },
+        "query": {
+          "kind": "function"
+        },
+        "request": {
+          "kind": "function"
+        }
+      }
+    },
+    "messaging": {
+      "sources": [
+        "src/node_messaging.cc"
+      ],
+      "members": {
+        "DOMException": {
+          "kind": "value"
+        },
+        "MessageChannel": {
+          "kind": "class"
+        },
+        "MessagePort": {
+          "kind": "class"
+        },
+        "broadcastChannel": {
+          "kind": "function"
+        },
+        "drainMessagePort": {
+          "kind": "function"
+        },
+        "exposeLazyDOMExceptionProperty": {
+          "kind": "function"
+        },
+        "moveMessagePortToContext": {
+          "kind": "function"
+        },
+        "receiveMessageOnPort": {
+          "kind": "function"
+        },
+        "setDeserializerCreateObjectFunction": {
+          "kind": "function"
+        },
+        "stopMessagePort": {
+          "kind": "function"
+        },
+        "structuredClone": {
+          "kind": "function"
+        }
+      }
+    },
+    "mksnapshot": {
+      "sources": [
+        "src/node_snapshotable.cc"
+      ],
+      "members": {
+        "anonymousMainPath": {
+          "kind": "value"
+        },
+        "compileSerializeMain": {
+          "kind": "function"
+        },
+        "isBuildingSnapshotBuffer": {
+          "kind": "value"
+        },
+        "runEmbedderPreload": {
+          "kind": "function"
+        },
+        "setDeserializeCallback": {
+          "kind": "function"
+        },
+        "setDeserializeMainFunction": {
+          "kind": "function"
+        },
+        "setSerializeCallback": {
+          "kind": "function"
+        }
+      }
+    },
+    "module_wrap": {
+      "sources": [
+        "src/module_wrap.cc"
+      ],
+      "members": {
+        "ModuleWrap": {
+          "kind": "class",
+          "prototype": [
+            "createCachedData",
+            "evaluate",
+            "evaluateSync",
+            "getError",
+            "getModuleRequests",
+            "getModuleSourceObject",
+            "getNamespace",
+            "getStatus",
+            "instantiate",
+            "link",
+            "setExport",
+            "setModuleSourceObject"
+          ]
+        },
+        "createRequiredModuleFacade": {
+          "kind": "function"
+        },
+        "kErrored": {
+          "kind": "value"
+        },
+        "kEvaluated": {
+          "kind": "value"
+        },
+        "kEvaluating": {
+          "kind": "value"
+        },
+        "kEvaluationPhase": {
+          "kind": "value"
+        },
+        "kInstantiated": {
+          "kind": "value"
+        },
+        "kInstantiating": {
+          "kind": "value"
+        },
+        "kSourcePhase": {
+          "kind": "value"
+        },
+        "kUninstantiated": {
+          "kind": "value"
+        },
+        "setImportMetaResolveInitializer": {
+          "kind": "function"
+        },
+        "setImportModuleDynamicallyCallback": {
+          "kind": "function"
+        },
+        "setInitializeImportMetaObjectCallback": {
+          "kind": "function"
+        },
+        "throwIfPromiseRejected": {
+          "kind": "function"
+        }
+      }
+    },
+    "modules": {
+      "sources": [
+        "src/node_modules.cc"
+      ],
+      "members": {
+        "cachedCodeTypes": {
+          "kind": "value"
+        },
+        "compileCacheStatus": {
+          "kind": "value"
+        },
+        "enableCompileCache": {
+          "kind": "function"
+        },
+        "flushCompileCache": {
+          "kind": "function"
+        },
+        "getCompileCacheDir": {
+          "kind": "function"
+        },
+        "getCompileCacheEntry": {
+          "kind": "function"
+        },
+        "getNearestParentPackageJSON": {
+          "kind": "function"
+        },
+        "getNearestParentPackageJSONType": {
+          "kind": "function"
+        },
+        "getPackageScopeConfig": {
+          "kind": "function"
+        },
+        "getPackageType": {
+          "kind": "function"
+        },
+        "moduleFormats": {
+          "kind": "value"
+        },
+        "readPackageJSON": {
+          "kind": "function"
+        },
+        "saveCompileCacheEntry": {
+          "kind": "function"
+        }
+      }
+    },
+    "options": {
+      "sources": [
+        "src/node_options.cc"
+      ],
+      "members": {
+        "envSettings": {
+          "kind": "object",
+          "members": {
+            "kAllowedInEnvvar": {
+              "kind": "value"
+            },
+            "kDisallowedInEnvvar": {
+              "kind": "value"
+            }
+          }
+        },
+        "getCLIOptionsInfo": {
+          "kind": "function"
+        },
+        "getCLIOptionsValues": {
+          "kind": "function"
+        },
+        "getEmbedderOptions": {
+          "kind": "function"
+        },
+        "getEnvOptionsInputType": {
+          "kind": "function"
+        },
+        "getNamespaceOptionsInputType": {
+          "kind": "function"
+        },
+        "getOptionsAsFlags": {
+          "kind": "function"
+        },
+        "types": {
+          "kind": "object",
+          "members": {
+            "kBoolean": {
+              "kind": "value"
+            },
+            "kHostPort": {
+              "kind": "value"
+            },
+            "kInteger": {
+              "kind": "value"
+            },
+            "kNoOp": {
+              "kind": "value"
+            },
+            "kString": {
+              "kind": "value"
+            },
+            "kStringList": {
+              "kind": "value"
+            },
+            "kUInteger": {
+              "kind": "value"
+            },
+            "kV8Option": {
+              "kind": "value"
+            }
+          }
+        }
+      }
+    },
+    "os": {
+      "sources": [
+        "src/node_os.cc"
+      ],
+      "members": {
+        "getAvailableParallelism": {
+          "kind": "function"
+        },
+        "getCPUs": {
+          "kind": "function"
+        },
+        "getFreeMem": {
+          "kind": "function"
+        },
+        "getHomeDirectory": {
+          "kind": "function"
+        },
+        "getHostname": {
+          "kind": "function"
+        },
+        "getInterfaceAddresses": {
+          "kind": "function"
+        },
+        "getLoadAvg": {
+          "kind": "function"
+        },
+        "getOSInformation": {
+          "kind": "function"
+        },
+        "getPriority": {
+          "kind": "function"
+        },
+        "getTotalMem": {
+          "kind": "function"
+        },
+        "getUptime": {
+          "kind": "function"
+        },
+        "getUserInfo": {
+          "kind": "function"
+        },
+        "isBigEndian": {
+          "kind": "value"
+        },
+        "setPriority": {
+          "kind": "function"
+        }
+      }
+    },
+    "performance": {
+      "sources": [
+        "src/node_perf.cc"
+      ],
+      "members": {
+        "Histogram": {
+          "kind": "class",
+          "prototype": [
+            "add",
+            "countBigInt",
+            "exceedsBigInt",
+            "maxBigInt",
+            "minBigInt",
+            "percentileBigInt",
+            "percentiles",
+            "percentilesBigInt"
+          ]
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "NODE_PERFORMANCE_ENTRY_TYPE_DNS": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_ENTRY_TYPE_GC": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_ENTRY_TYPE_HTTP": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_ENTRY_TYPE_HTTP2": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_ENTRY_TYPE_NET": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_FLAGS_ALL_AVAILABLE_GARBAGE": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_FLAGS_ALL_EXTERNAL_MEMORY": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_FLAGS_CONSTRUCT_RETAINED": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_FLAGS_FORCED": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_FLAGS_NO": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_FLAGS_SCHEDULE_IDLE": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_FLAGS_SYNCHRONOUS_PHANTOM_PROCESSING": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_INCREMENTAL": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_MAJOR": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_MINOR": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_GC_WEAKCB": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_BOOTSTRAP_COMPLETE": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_ENVIRONMENT": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_LOOP_EXIT": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_LOOP_START": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_NODE_START": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_TIME_ORIGIN": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_TIME_ORIGIN_TIMESTAMP": {
+              "kind": "value"
+            },
+            "NODE_PERFORMANCE_MILESTONE_V8_START": {
+              "kind": "value"
+            }
+          }
+        },
+        "createELDHistogram": {
+          "kind": "function"
+        },
+        "installGarbageCollectionTracking": {
+          "kind": "function"
+        },
+        "loopIdleTime": {
+          "kind": "function"
+        },
+        "markBootstrapComplete": {
+          "kind": "function"
+        },
+        "milestones": {
+          "kind": "value"
+        },
+        "notify": {
+          "kind": "function"
+        },
+        "now": {
+          "kind": "function"
+        },
+        "observerCounts": {
+          "kind": "value"
+        },
+        "removeGarbageCollectionTracking": {
+          "kind": "function"
+        },
+        "setupObservers": {
+          "kind": "function"
+        },
+        "uvMetricsInfo": {
+          "kind": "function"
+        }
+      }
+    },
+    "permission": {
+      "sources": [
+        "src/permission/permission.cc"
+      ],
+      "members": {
+        "has": {
+          "kind": "function"
+        }
+      }
+    },
+    "pipe_wrap": {
+      "sources": [
+        "src/pipe_wrap.cc"
+      ],
+      "members": {
+        "Pipe": {
+          "kind": "class",
+          "prototype": [
+            "bind",
+            "connect",
+            "fchmod",
+            "listen",
+            "open",
+            "setPendingInstances"
+          ]
+        },
+        "PipeConnectWrap": {
+          "kind": "class"
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "IPC": {
+              "kind": "value"
+            },
+            "SERVER": {
+              "kind": "value"
+            },
+            "SOCKET": {
+              "kind": "value"
+            },
+            "UV_READABLE": {
+              "kind": "value"
+            },
+            "UV_WRITABLE": {
+              "kind": "value"
+            }
+          }
+        }
+      }
+    },
+    "process_methods": {
+      "sources": [
+        "src/node_process_methods.cc"
+      ],
+      "members": {
+        "_debugEnd": {
+          "kind": "function"
+        },
+        "_debugProcess": {
+          "kind": "function"
+        },
+        "_getActiveHandles": {
+          "kind": "function"
+        },
+        "_getActiveRequests": {
+          "kind": "function"
+        },
+        "_kill": {
+          "kind": "function"
+        },
+        "_rawDebug": {
+          "kind": "function"
+        },
+        "abort": {
+          "kind": "function"
+        },
+        "availableMemory": {
+          "kind": "function"
+        },
+        "causeSegfault": {
+          "kind": "function"
+        },
+        "chdir": {
+          "kind": "function"
+        },
+        "constrainedMemory": {
+          "kind": "function"
+        },
+        "cpuUsage": {
+          "kind": "function"
+        },
+        "cwd": {
+          "kind": "function"
+        },
+        "dlopen": {
+          "kind": "function"
+        },
+        "execve": {
+          "kind": "function",
+          "conditional": true
+        },
+        "getActiveResourcesInfo": {
+          "kind": "function"
+        },
+        "hrtime": {
+          "kind": "function"
+        },
+        "hrtimeBigInt": {
+          "kind": "function"
+        },
+        "hrtimeBuffer": {
+          "kind": "value"
+        },
+        "loadEnvFile": {
+          "kind": "function"
+        },
+        "memoryUsage": {
+          "kind": "function"
+        },
+        "patchProcessObject": {
+          "kind": "function"
+        },
+        "reallyExit": {
+          "kind": "function"
+        },
+        "resourceUsage": {
+          "kind": "function"
+        },
+        "rss": {
+          "kind": "function"
+        },
+        "setEmitWarningSync": {
+          "kind": "function"
+        },
+        "threadCpuUsage": {
+          "kind": "function"
+        },
+        "umask": {
+          "kind": "function"
+        },
+        "uptime": {
+          "kind": "function"
+        }
+      }
+    },
+    "process_wrap": {
+      "sources": [
+        "src/process_wrap.cc"
+      ],
+      "members": {
+        "Process": {
+          "kind": "class",
+          "prototype": [
+            "kill",
+            "spawn"
+          ]
+        }
+      }
+    },
+    "profiler": {
+      "sources": [
+        "src/inspector_profiler.cc"
+      ],
+      "condition": "HAVE_INSPECTOR",
+      "members": {
+        "endCoverage": {
+          "kind": "function"
+        },
+        "setCoverageDirectory": {
+          "kind": "function"
+        },
+        "setSourceMapCacheGetter": {
+          "kind": "function"
+        },
+        "stopCoverage": {
+          "kind": "function"
+        },
+        "takeCoverage": {
+          "kind": "function"
+        }
+      }
+    },
+    "quic": {
+      "sources": [
+        "src/quic/quic.cc"
+      ],
+      "condition": "HAVE_OPENSSL && OPENSSL_NO_QUIC != 1",
+      "members": {
+        "CC_ALGO_BBR": {
+          "kind": "value"
+        },
+        "CC_ALGO_BBR_STR": {
+          "kind": "value"
+        },
+        "CC_ALGO_CUBIC": {
+          "kind": "value"
+        },
+        "CC_ALGO_CUBIC_STR": {
+          "kind": "value"
+        },
+        "CC_ALGO_RENO": {
+          "kind": "value"
+        },
+        "CC_ALGO_RENO_STR": {
+          "kind": "value"
+        },
+        "CLOSECONTEXT_BIND_FAILURE": {
+          "kind": "value"
+        },
+        "CLOSECONTEXT_CLOSE": {
+          "kind": "value"
+        },
+        "CLOSECONTEXT_LISTEN_FAILURE": {
+          "kind": "value"
+        },
+        "CLOSECONTEXT_RECEIVE_FAILURE": {
+          "kind": "value"
+        },
+        "CLOSECONTEXT_SEND_FAILURE": {
+          "kind": "value"
+        },
+        "CLOSECONTEXT_START_FAILURE": {
+          "kind": "value"
+        },
+        "DEFAULT_ACTIVE_CONNECTION_ID_LIMIT": {
+          "kind": "value"
+        },
+        "DEFAULT_CIPHERS": {
+          "kind": "value"
+        },
+        "DEFAULT_GROUPS": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_CONNECTIONS": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_CONNECTIONS_PER_HOST": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_DATA": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_HEADER_LENGTH": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_HEADER_LIST_PAIRS": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_IDLE_TIMEOUT": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_PACKET_LENGTH": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_RETRY_LIMIT": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_SOCKETADDRESS_LRU_SIZE": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_STATELESS_RESETS": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_STREAMS_BIDI": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_STREAMS_UNI": {
+          "kind": "value"
+        },
+        "DEFAULT_MAX_STREAM_DATA": {
+          "kind": "value"
+        },
+        "DEFAULT_PREFERRED_ADDRESS_POLICY": {
+          "kind": "value"
+        },
+        "DEFAULT_REGULARTOKEN_EXPIRATION": {
+          "kind": "value"
+        },
+        "DEFAULT_RETRYTOKEN_EXPIRATION": {
+          "kind": "value"
+        },
+        "Endpoint": {
+          "kind": "class"
+        },
+        "Http3Application": {
+          "kind": "class"
+        },
+        "IDX_STATE_ENDPOINT_BOUND": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_BOUND_SIZE": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_BUSY": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_BUSY_SIZE": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_CLOSING": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_CLOSING_SIZE": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_LISTENING": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_LISTENING_SIZE": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_PENDING_CALLBACKS": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_PENDING_CALLBACKS_SIZE": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_RECEIVING": {
+          "kind": "value"
+        },
+        "IDX_STATE_ENDPOINT_RECEIVING_SIZE": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_CLOSING": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_DATAGRAM": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_GRACEFUL_CLOSE": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_HANDSHAKE_COMPLETED": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_HANDSHAKE_CONFIRMED": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_LAST_DATAGRAM_ID": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_PATH_VALIDATION": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_PRIORITY_SUPPORTED": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_SESSION_TICKET": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_SILENT_CLOSE": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_STATELESS_RESET": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_STREAM_OPEN_ALLOWED": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_VERSION_NEGOTIATION": {
+          "kind": "value"
+        },
+        "IDX_STATE_SESSION_WRAPPED": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_FIN_RECEIVED": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_FIN_SENT": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_HAS_OUTBOUND": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_HAS_READER": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_ID": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_PAUSED": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_PENDING": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_READ_ENDED": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_RESET": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_WANTS_BLOCK": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_WANTS_HEADERS": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_WANTS_RESET": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_WANTS_TRAILERS": {
+          "kind": "value"
+        },
+        "IDX_STATE_STREAM_WRITE_ENDED": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_BYTES_RECEIVED": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_BYTES_SENT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_CLIENT_SESSIONS": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_CREATED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_DESTROYED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_IMMEDIATE_CLOSE_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_PACKETS_RECEIVED": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_PACKETS_SENT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_RETRY_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_SERVER_BUSY_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_SERVER_SESSIONS": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_STATELESS_RESET_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_ENDPOINT_VERSION_NEGOTIATION_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_BIDI_IN_STREAM_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_BIDI_OUT_STREAM_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_BLOCK_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_BYTES_IN_FLIGHT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_BYTES_RECEIVED": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_BYTES_SENT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_CLOSING_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_CREATED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_CWND": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_DATAGRAMS_ACKNOWLEDGED": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_DATAGRAMS_LOST": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_DATAGRAMS_RECEIVED": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_DATAGRAMS_SENT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_HANDSHAKE_COMPLETED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_HANDSHAKE_CONFIRMED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_LATEST_RTT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_MAX_BYTES_IN_FLIGHT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_MIN_RTT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_RTTVAR": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_SMOOTHED_RTT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_SSTHRESH": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_UNI_IN_STREAM_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_SESSION_UNI_OUT_STREAM_COUNT": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_ACKED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_BYTES_RECEIVED": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_BYTES_SENT": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_CREATED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_DESTROYED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_FINAL_SIZE": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_MAX_OFFSET": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_MAX_OFFSET_ACK": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_MAX_OFFSET_RECV": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_OPENED_AT": {
+          "kind": "value"
+        },
+        "IDX_STATS_STREAM_RECEIVED_AT": {
+          "kind": "value"
+        },
+        "PREFERRED_ADDRESS_IGNORE": {
+          "kind": "value"
+        },
+        "PREFERRED_ADDRESS_USE": {
+          "kind": "value"
+        },
+        "QUIC_PROTO_MAX": {
+          "kind": "value"
+        },
+        "QUIC_PROTO_MIN": {
+          "kind": "value"
+        },
+        "QUIC_STREAM_HEADERS_FLAGS_NONE": {
+          "kind": "value"
+        },
+        "QUIC_STREAM_HEADERS_FLAGS_TERMINAL": {
+          "kind": "value"
+        },
+        "QUIC_STREAM_HEADERS_KIND_HINTS": {
+          "kind": "value"
+        },
+        "QUIC_STREAM_HEADERS_KIND_INITIAL": {
+          "kind": "value"
+        },
+        "QUIC_STREAM_HEADERS_KIND_TRAILING": {
+          "kind": "value"
+        },
+        "STREAM_DIRECTION_BIDIRECTIONAL": {
+          "kind": "value"
+        },
+        "STREAM_DIRECTION_UNIDIRECTIONAL": {
+          "kind": "value"
+        },
+        "flushPacketFreelist": {
+          "kind": "function"
+        },
+        "setCallbacks": {
+          "kind": "function"
+        }
+      }
+    },
+    "report": {
+      "sources": [
+        "src/node_report_module.cc"
+      ],
+      "members": {
+        "getCompact": {
+          "kind": "function"
+        },
+        "getDirectory": {
+          "kind": "function"
+        },
+        "getExcludeEnv": {
+          "kind": "function"
+        },
+        "getExcludeNetwork": {
+          "kind": "function"
+        },
+        "getFilename": {
+          "kind": "function"
+        },
+        "getReport": {
+          "kind": "function"
+        },
+        "getSignal": {
+          "kind": "function"
+        },
+        "setCompact": {
+          "kind": "function"
+        },
+        "setDirectory": {
+          "kind": "function"
+        },
+        "setExcludeEnv": {
+          "kind": "function"
+        },
+        "setExcludeNetwork": {
+          "kind": "function"
+        },
+        "setFilename": {
+          "kind": "function"
+        },
+        "setReportOnFatalError": {
+          "kind": "function"
+        },
+        "setReportOnSignal": {
+          "kind": "function"
+        },
+        "setReportOnUncaughtException": {
+          "kind": "function"
+        },
+        "setSignal": {
+          "kind": "function"
+        },
+        "shouldReportOnFatalError": {
+          "kind": "function"
+        },
+        "shouldReportOnSignal": {
+          "kind": "function"
+        },
+        "shouldReportOnUncaughtException": {
+          "kind": "function"
+        },
+        "writeReport": {
+          "kind": "function"
+        }
+      }
+    },
+    "sea": {
+      "sources": [
+        "src/node_sea.cc"
+      ],
+      "members": {
+        "getAsset": {
+          "kind": "function"
+        },
+        "getAssetKeys": {
+          "kind": "function"
+        },
+        "isExperimentalSeaWarningNeeded": {
+          "kind": "function"
+        },
+        "isSea": {
+          "kind": "function"
+        }
+      }
+    },
+    "serdes": {
+      "sources": [
+        "src/node_serdes.cc"
+      ],
+      "members": {
+        "Deserializer": {
+          "kind": "class",
+          "prototype": [
+            "_readRawBytes",
+            "getWireFormatVersion",
+            "readDouble",
+            "readHeader",
+            "readUint32",
+            "readUint64",
+            "readValue",
+            "transferArrayBuffer"
+          ]
+        },
+        "Serializer": {
+          "kind": "class",
+          "prototype": [
+            "_setTreatArrayBufferViewsAsHostObjects",
+            "releaseBuffer",
+            "transferArrayBuffer",
+            "writeDouble",
+            "writeHeader",
+            "writeRawBytes",
+            "writeUint32",
+            "writeUint64",
+            "writeValue"
+          ]
+        }
+      }
+    },
+    "signal_wrap": {
+      "sources": [
+        "src/signal_wrap.cc"
+      ],
+      "members": {
+        "Signal": {
+          "kind": "class",
+          "prototype": [
+            "start",
+            "stop"
+          ]
+        }
+      }
+    },
+    "spawn_sync": {
+      "sources": [
+        "src/spawn_sync.cc"
+      ],
+      "members": {
+        "spawn": {
+          "kind": "function"
+        }
+      }
+    },
+    "sqlite": {
+      "sources": [
+        "src/node_sqlite.cc"
+      ],
+      "condition": "HAVE_SQLITE",
+      "members": {
+        "DatabaseSync": {
+          "kind": "class",
+          "prototype": [
+            "aggregate",
+            "applyChangeset",
+            "close",
+            "createSession",
+            "createTagStore",
+            "enableDefensive",
+            "enableLoadExtension",
+            "exec",
+            "function",
+            "loadExtension",
+            "location",
+            "open",
+            "prepare",
+            "setAuthorizer"
+          ]
+        },
+        "Session": {
+          "kind": "class",
+          "prototype": [
+            "changeset",
+            "close",
+            "patchset"
+          ]
+        },
+        "StatementSync": {
+          "kind": "class",
+          "prototype": [
+            "all",
+            "columns",
+            "get",
+            "iterate",
+            "run",
+            "setAllowBareNamedParameters",
+            "setAllowUnknownNamedParameters",
+            "setReadBigInts",
+            "setReturnArrays"
+          ]
+        },
+        "backup": {
+          "kind": "value"
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "SQLITE_ALTER_TABLE": {
+              "kind": "value"
+            },
+            "SQLITE_ANALYZE": {
+              "kind": "value"
+            },
+            "SQLITE_ATTACH": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_ABORT": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_CONFLICT": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_CONSTRAINT": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_DATA": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_FOREIGN_KEY": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_NOTFOUND": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_OMIT": {
+              "kind": "value"
+            },
+            "SQLITE_CHANGESET_REPLACE": {
+              "kind": "value"
+            },
+            "SQLITE_COPY": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_INDEX": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_TABLE": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_TEMP_INDEX": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_TEMP_TABLE": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_TEMP_TRIGGER": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_TEMP_VIEW": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_TRIGGER": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_VIEW": {
+              "kind": "value"
+            },
+            "SQLITE_CREATE_VTABLE": {
+              "kind": "value"
+            },
+            "SQLITE_DELETE": {
+              "kind": "value"
+            },
+            "SQLITE_DENY": {
+              "kind": "value"
+            },
+            "SQLITE_DETACH": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_INDEX": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_TABLE": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_TEMP_INDEX": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_TEMP_TABLE": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_TEMP_TRIGGER": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_TEMP_VIEW": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_TRIGGER": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_VIEW": {
+              "kind": "value"
+            },
+            "SQLITE_DROP_VTABLE": {
+              "kind": "value"
+            },
+            "SQLITE_FUNCTION": {
+              "kind": "value"
+            },
+            "SQLITE_IGNORE": {
+              "kind": "value"
+            },
+            "SQLITE_INSERT": {
+              "kind": "value"
+            },
+            "SQLITE_OK": {
+              "kind": "value"
+            },
+            "SQLITE_PRAGMA": {
+              "kind": "value"
+            },
+            "SQLITE_READ": {
+              "kind": "value"
+            },
+            "SQLITE_RECURSIVE": {
+              "kind": "value"
+            },
+            "SQLITE_REINDEX": {
+              "kind": "value"
+            },
+            "SQLITE_SAVEPOINT": {
+              "kind": "value"
+            },
+            "SQLITE_SELECT": {
+              "kind": "value"
+            },
+            "SQLITE_TRANSACTION": {
+              "kind": "value"
+            },
+            "SQLITE_UPDATE": {
+              "kind": "value"
+            }
+          }
+        }
+      }
+    },
+    "stream_pipe": {
+      "sources": [
+        "src/stream_pipe.cc"
+      ],
+      "members": {
+        "StreamPipe": {
+          "kind": "class",
+          "prototype": [
+            "isClosed",
+            "pendingWrites",
+            "start",
+            "unpipe"
+          ]
+        }
+      }
+    },
+    "stream_wrap": {
+      "sources": [
+        "src/stream_wrap.cc"
+      ],
+      "members": {
+        "ShutdownWrap": {
+          "kind": "class"
+        },
+        "WriteWrap": {
+          "kind": "class"
+        },
+        "kArrayBufferOffset": {
+          "kind": "value"
+        },
+        "kBytesWritten": {
+          "kind": "value"
+        },
+        "kLastWriteWasAsync": {
+          "kind": "value"
+        },
+        "kReadBytesOrError": {
+          "kind": "value"
+        },
+        "streamBaseState": {
+          "kind": "value"
+        }
+      }
+    },
+    "string_decoder": {
+      "sources": [
+        "src/string_decoder.cc"
+      ],
+      "members": {
+        "decode": {
+          "kind": "function"
+        },
+        "encodings": {
+          "kind": "value"
+        },
+        "flush": {
+          "kind": "function"
+        },
+        "kBufferedBytes": {
+          "kind": "value"
+        },
+        "kEncodingField": {
+          "kind": "value"
+        },
+        "kIncompleteCharactersEnd": {
+          "kind": "value"
+        },
+        "kIncompleteCharactersStart": {
+          "kind": "value"
+        },
+        "kMissingBytes": {
+          "kind": "value"
+        },
+        "kNumFields": {
+          "kind": "value"
+        },
+        "kSize": {
+          "kind": "value"
+        }
+      }
+    },
+    "symbols": {
+      "sources": [
+        "src/node_symbols.cc"
+      ],
+      "members": {
+        "async_id_symbol": {
+          "kind": "value"
+        },
+        "builtin_source_text_module_hdo": {
+          "kind": "value"
+        },
+        "constructor_key_symbol": {
+          "kind": "value"
+        },
+        "embedder_module_hdo": {
+          "kind": "value"
+        },
+        "fs_use_promises_symbol": {
+          "kind": "value"
+        },
+        "handle_onclose": {
+          "kind": "value"
+        },
+        "imported_cjs_symbol": {
+          "kind": "value"
+        },
+        "messaging_clone_symbol": {
+          "kind": "value"
+        },
+        "messaging_deserialize_symbol": {
+          "kind": "value"
+        },
+        "messaging_transfer_list_symbol": {
+          "kind": "value"
+        },
+        "messaging_transfer_symbol": {
+          "kind": "value"
+        },
+        "no_message_symbol": {
+          "kind": "value"
+        },
+        "oninit": {
+          "kind": "value"
+        },
+        "onpskexchange": {
+          "kind": "value"
+        },
+        "owner_symbol": {
+          "kind": "value"
+        },
+        "resource_symbol": {
+          "kind": "value"
+        },
+        "source_text_module_default_hdo": {
+          "kind": "value"
+        },
+        "trigger_async_id_symbol": {
+          "kind": "value"
+        },
+        "vm_context_no_contextify": {
+          "kind": "value"
+        },
+        "vm_dynamic_import_default_internal": {
+          "kind": "value"
+        },
+        "vm_dynamic_import_main_context_default": {
+          "kind": "value"
+        },
+        "vm_dynamic_import_missing_flag": {
+          "kind": "value"
+        },
+        "vm_dynamic_import_no_callback": {
+          "kind": "value"
+        }
+      }
+    },
+    "task_queue": {
+      "sources": [
+        "src/node_task_queue.cc"
+      ],
+      "members": {
+        "enqueueMicrotask": {
+          "kind": "function"
+        },
+        "promiseRejectEvents": {
+          "kind": "object",
+          "members": {
+            "kPromiseHandlerAddedAfterReject": {
+              "kind": "value"
+            },
+            "kPromiseRejectAfterResolved": {
+              "kind": "value"
+            },
+            "kPromiseRejectWithNoHandler": {
+              "kind": "value"
+            },
+            "kPromiseResolveAfterResolved": {
+              "kind": "value"
+            }
+          }
+        },
+        "runMicrotasks": {
+          "kind": "function"
+        },
+        "setPromiseRejectCallback": {
+          "kind": "function"
+        },
+        "setTickCallback": {
+          "kind": "function"
+        },
+        "tickInfo": {
+          "kind": "value"
+        }
+      }
+    },
+    "tcp_wrap": {
+      "sources": [
+        "src/tcp_wrap.cc"
+      ],
+      "members": {
+        "TCP": {
+          "kind": "class",
+          "prototype": [
+            "bind",
+            "bind6",
+            "connect",
+            "connect6",
+            "getTypeOfService",
+            "getpeername",
+            "getsockname",
+            "listen",
+            "open",
+            "reset",
+            "setKeepAlive",
+            "setNoDelay",
+            "setSimultaneousAccepts",
+            "setTypeOfService"
+          ]
+        },
+        "TCPConnectWrap": {
+          "kind": "class"
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "SERVER": {
+              "kind": "value"
+            },
+            "SOCKET": {
+              "kind": "value"
+            },
+            "UV_TCP_IPV6ONLY": {
+              "kind": "value"
+            },
+            "UV_TCP_REUSEPORT": {
+              "kind": "value"
+            }
+          }
+        }
+      }
+    },
+    "timers": {
+      "sources": [
+        "src/timers.cc"
+      ],
+      "members": {
+        "getLibuvNow": {
+          "kind": "function"
+        },
+        "immediateInfo": {
+          "kind": "value"
+        },
+        "scheduleTimer": {
+          "kind": "function"
+        },
+        "setupTimers": {
+          "kind": "function"
+        },
+        "timeoutInfo": {
+          "kind": "value"
+        },
+        "toggleImmediateRef": {
+          "kind": "function"
+        },
+        "toggleTimerRef": {
+          "kind": "function"
+        }
+      }
+    },
+    "tls_wrap": {
+      "sources": [
+        "src/crypto/crypto_tls.cc"
+      ],
+      "condition": "HAVE_OPENSSL",
+      "members": {
+        "HAVE_SSL_TRACE": {
+          "kind": "value"
+        },
+        "TLSWrap": {
+          "kind": "class",
+          "prototype": [
+            "certCbDone",
+            "destroySSL",
+            "enableALPNCb",
+            "enableCertCb",
+            "enableKeylogCallback",
+            "enablePskCallback",
+            "enableSessionCallbacks",
+            "enableTrace",
+            "endParser",
+            "exportKeyingMaterial",
+            "getALPNNegotiatedProtocol",
+            "getCertificate",
+            "getCipher",
+            "getEphemeralKeyInfo",
+            "getFinished",
+            "getPeerCertificate",
+            "getPeerFinished",
+            "getPeerX509Certificate",
+            "getProtocol",
+            "getServername",
+            "getSession",
+            "getSharedSigalgs",
+            "getTLSTicket",
+            "getX509Certificate",
+            "isSessionReused",
+            "loadSession",
+            "newSessionDone",
+            "readStart",
+            "readStop",
+            "receive",
+            "renegotiate",
+            "requestOCSP",
+            "setALPNProtocols",
+            "setKeyCert",
+            "setMaxSendFragment",
+            "setOCSPResponse",
+            "setPskIdentityHint",
+            "setServername",
+            "setSession",
+            "setVerifyMode",
+            "shutdown",
+            "start",
+            "useUserBuffer",
+            "verifyError",
+            "writeAsciiString",
+            "writeBuffer",
+            "writeLatin1String",
+            "writeUcs2String",
+            "writeUtf8String",
+            "writesIssuedByPrevListenerDone",
+            "writev"
+          ],
+          "accessors": [
+            "isStreamBase",
+            "writeQueueSize"
+          ]
+        },
+        "wrap": {
+          "kind": "function"
+        }
+      }
+    },
+    "trace_events": {
+      "sources": [
+        "src/node_trace_events.cc"
+      ],
+      "members": {
+        "CategorySet": {
+          "kind": "class",
+          "prototype": [
+            "disable",
+            "enable"
+          ]
+        },
+        "getCategoryEnabledBuffer": {
+          "kind": "function"
+        },
+        "getEnabledCategories": {
+          "kind": "function"
+        },
+        "isTraceCategoryEnabled": {
+          "kind": "value"
+        },
+        "setTraceCategoryStateUpdateHandler": {
+          "kind": "function"
+        },
+        "trace": {
+          "kind": "value"
+        }
+      }
+    },
+    "tty_wrap": {
+      "sources": [
+        "src/tty_wrap.cc"
+      ],
+      "members": {
+        "TTY": {
+          "kind": "class",
+          "prototype": [
+            "getWindowSize",
+            "setRawMode"
+          ]
+        },
+        "isTTY": {
+          "kind": "function"
+        }
+      }
+    },
+    "types": {
+      "sources": [
+        "src/node_types.cc"
+      ],
+      "members": {
+        "isAnyArrayBuffer": {
+          "kind": "function"
+        },
+        "isArgumentsObject": {
+          "kind": "function"
+        },
+        "isArrayBuffer": {
+          "kind": "function"
+        },
+        "isAsyncFunction": {
+          "kind": "function"
+        },
+        "isBigIntObject": {
+          "kind": "function"
+        },
+        "isBooleanObject": {
+          "kind": "function"
+        },
+        "isBoxedPrimitive": {
+          "kind": "function"
+        },
+        "isDataView": {
+          "kind": "function"
+        },
+        "isDate": {
+          "kind": "function"
+        },
+        "isExternal": {
+          "kind": "function"
+        },
+        "isGeneratorFunction": {
+          "kind": "function"
+        },
+        "isGeneratorObject": {
+          "kind": "function"
+        },
+        "isMap": {
+          "kind": "function"
+        },
+        "isMapIterator": {
+          "kind": "function"
+        },
+        "isModuleNamespaceObject": {
+          "kind": "function"
+        },
+        "isNativeError": {
+          "kind": "function"
+        },
+        "isNumberObject": {
+          "kind": "function"
+        },
+        "isPromise": {
+          "kind": "function"
+        },
+        "isProxy": {
+          "kind": "function"
+        },
+        "isRegExp": {
+          "kind": "function"
+        },
+        "isSet": {
+          "kind": "function"
+        },
+        "isSetIterator": {
+          "kind": "function"
+        },
+        "isSharedArrayBuffer": {
+          "kind": "function"
+        },
+        "isStringObject": {
+          "kind": "function"
+        },
+        "isSymbolObject": {
+          "kind": "function"
+        },
+        "isWeakMap": {
+          "kind": "function"
+        },
+        "isWeakSet": {
+          "kind": "function"
+        }
+      }
+    },
+    "udp_wrap": {
+      "sources": [
+        "src/udp_wrap.cc"
+      ],
+      "members": {
+        "SendWrap": {
+          "kind": "class"
+        },
+        "UDP": {
+          "kind": "class",
+          "prototype": [
+            "addMembership",
+            "addSourceSpecificMembership",
+            "bind",
+            "bind6",
+            "bufferSize",
+            "connect",
+            "connect6",
+            "disconnect",
+            "dropMembership",
+            "dropSourceSpecificMembership",
+            "getSendQueueCount",
+            "getSendQueueSize",
+            "getpeername",
+            "getsockname",
+            "open",
+            "recvStart",
+            "recvStop",
+            "send",
+            "send6",
+            "setBroadcast",
+            "setMulticastInterface",
+            "setMulticastLoopback",
+            "setMulticastTTL",
+            "setTTL"
+          ],
+          "accessors": [
+            "fd"
+          ]
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "UV_UDP_IPV6ONLY": {
+              "kind": "value"
+            },
+            "UV_UDP_REUSEADDR": {
+              "kind": "value"
+            },
+            "UV_UDP_REUSEPORT": {
+              "kind": "value"
+            }
+          }
+        }
+      }
+    },
+    "url": {
+      "sources": [
+        "src/node_url.cc"
+      ],
+      "members": {
+        "canParse": {
+          "kind": "function"
+        },
+        "domainToASCII": {
+          "kind": "function"
+        },
+        "domainToUnicode": {
+          "kind": "function"
+        },
+        "format": {
+          "kind": "function"
+        },
+        "getOrigin": {
+          "kind": "function"
+        },
+        "parse": {
+          "kind": "function"
+        },
+        "pathToFileURL": {
+          "kind": "function"
+        },
+        "update": {
+          "kind": "function"
+        },
+        "urlComponents": {
+          "kind": "value"
+        }
+      }
+    },
+    "url_pattern": {
+      "sources": [
+        "src/node_url_pattern.cc"
+      ],
+      "members": {
+        "URLPattern": {
+          "kind": "class",
+          "prototype": [
+            "exec",
+            "test"
+          ]
+        }
+      }
+    },
+    "util": {
+      "sources": [
+        "src/node_util.cc"
+      ],
+      "members": {
+        "arrayBufferViewHasBuffer": {
+          "kind": "function"
+        },
+        "constants": {
+          "kind": "object",
+          "members": {
+            "ALL_PROPERTIES": {
+              "kind": "value"
+            },
+            "ONLY_CONFIGURABLE": {
+              "kind": "value"
+            },
+            "ONLY_ENUMERABLE": {
+              "kind": "value"
+            },
+            "ONLY_WRITABLE": {
+              "kind": "value"
+            },
+            "SKIP_STRINGS": {
+              "kind": "value"
+            },
+            "SKIP_SYMBOLS": {
+              "kind": "value"
+            },
+            "kCloneable": {
+              "kind": "value"
+            },
+            "kDisallowCloneAndTransfer": {
+              "kind": "value"
+            },
+            "kExitCode": {
+              "kind": "value"
+            },
+            "kExiting": {
+              "kind": "value"
+            },
+            "kFulfilled": {
+              "kind": "value"
+            },
+            "kHasExitCode": {
+              "kind": "value"
+            },
+            "kPending": {
+              "kind": "value"
+            },
+            "kRejected": {
+              "kind": "value"
+            },
+            "kTransferable": {
+              "kind": "value"
+            }
+          }
+        },
+        "constructSharedArrayBuffer": {
+          "kind": "function"
+        },
+        "defineLazyProperties": {
+          "kind": "function"
+        },
+        "getCallSites": {
+          "kind": "function"
+        },
+        "getCallerLocation": {
+          "kind": "function"
+        },
+        "getConstructorName": {
+          "kind": "function"
+        },
+        "getExternalValue": {
+          "kind": "function"
+        },
+        "getOwnNonIndexProperties": {
+          "kind": "function"
+        },
+        "getPromiseDetails": {
+          "kind": "function"
+        },
+        "getProxyDetails": {
+          "kind": "function"
+        },
+        "guessHandleType": {
+          "kind": "function"
+        },
+        "isInsideNodeModules": {
+          "kind": "function"
+        },
+        "parseEnv": {
+          "kind": "function"
+        },
+        "previewEntries": {
+          "kind": "function"
+        },
+        "privateSymbols": {
+          "kind": "object",
+          "members": {
+            "arrow_message_private_symbol": {
+              "kind": "value"
+            },
+            "contextify_context_private_symbol": {
+              "kind": "value"
+            },
+            "decorated_private_symbol": {
+              "kind": "value"
+            },
+            "empty_context_frame_sentinel_symbol": {
+              "kind": "value"
+            },
+            "entry_point_module_private_symbol": {
+              "kind": "value"
+            },
+            "entry_point_promise_private_symbol": {
+              "kind": "value"
+            },
+            "exit_info_private_symbol": {
+              "kind": "value"
+            },
+            "host_defined_option_symbol": {
+              "kind": "value"
+            },
+            "js_transferable_wrapper_private_symbol": {
+              "kind": "value"
+            },
+            "module_circular_visited_private_symbol": {
+              "kind": "value"
+            },
+            "module_export_names_private_symbol": {
+              "kind": "value"
+            },
+            "module_export_private_symbol": {
+              "kind": "value"
+            },
+            "module_first_parent_private_symbol": {
+              "kind": "value"
+            },
+            "module_last_parent_private_symbol": {
+              "kind": "value"
+            },
+            "module_source_private_symbol": {
+              "kind": "value"
+            },
+            "napi_type_tag": {
+              "kind": "value"
+            },
+            "napi_wrapper": {
+              "kind": "value"
+            },
+            "promise_trace_id": {
+              "kind": "value"
+            },
+            "source_map_data_private_symbol": {
+              "kind": "value"
+            },
+            "transfer_mode_private_symbol": {
+              "kind": "value"
+            },
+            "untransferable_object_private_symbol": {
+              "kind": "value"
+            }
+          }
+        },
+        "shouldAbortOnUncaughtToggle": {
+          "kind": "value"
+        },
+        "sleep": {
+          "kind": "function"
+        }
+      }
+    },
+    "uv": {
+      "sources": [
+        "src/uv.cc"
+      ],
+      "members": {
+        "errname": {
+          "kind": "class"
+        },
+        "getErrorMap": {
+          "kind": "function"
+        },
+        "getErrorMessage": {
+          "kind": "function"
+        }
+      }
+    },
+    "v8": {
+      "sources": [
+        "src/node_v8.cc"
+      ],
+      "members": {
+        "GCProfiler": {
+          "kind": "class",
+          "prototype": [
+            "start",
+            "stop"
+          ]
+        },
+        "cachedDataVersionTag": {
+          "kind": "function"
+        },
+        "detailLevel": {
+          "kind": "object",
+          "members": {
+            "BRIEF": {
+              "kind": "value"
+            },
+            "DETAILED": {
+              "kind": "value"
+            }
+          }
+        },
+        "getCppHeapStatistics": {
+          "kind": "function"
+        },
+        "getHashSeed": {
+          "kind": "function"
+        },
+        "getTotalAllocatedBytes": {
+          "kind": "function"
+        },
+        "heapCodeStatisticsBuffer": {
+          "kind": "value"
+        },
+        "heapSpaceStatisticsBuffer": {
+          "kind": "value"
+        },
+        "heapStatisticsBuffer": {
+          "kind": "value"
+        },
+        "isStringOneByteRepresentation": {
+          "kind": "function"
+        },
+        "kBytecodeAndMetadataSizeIndex": {
+          "kind": "value"
+        },
+        "kCPUProfilerMetaDataSizeIndex": {
+          "kind": "value"
+        },
+        "kCodeAndMetadataSizeIndex": {
+          "kind": "value"
+        },
+        "kDoesZapGarbageIndex": {
+          "kind": "value"
+        },
+        "kExternalMemoryIndex": {
+          "kind": "value"
+        },
+        "kExternalScriptSourceSizeIndex": {
+          "kind": "value"
+        },
+        "kHeapSizeLimitIndex": {
+          "kind": "value"
+        },
+        "kHeapSpaces": {
+          "kind": "value"
+        },
+        "kMallocedMemoryIndex": {
+          "kind": "value"
+        },
+        "kNumberOfDetachedContextsIndex": {
+          "kind": "value"
+        },
+        "kNumberOfNativeContextsIndex": {
+          "kind": "value"
+        },
+        "kPeakMallocedMemoryIndex": {
+          "kind": "value"
+        },
+        "kPhysicalSpaceSizeIndex": {
+          "kind": "value"
+        },
+        "kSpaceAvailableSizeIndex": {
+          "kind": "value"
+        },
+        "kSpaceSizeIndex": {
+          "kind": "value"
+        },
+        "kSpaceUsedSizeIndex": {
+          "kind": "value"
+        },
+        "kTotalAvailableSize": {
+          "kind": "value"
+        },
+        "kTotalGlobalHandlesSizeIndex": {
+          "kind": "value"
+        },
+        "kTotalHeapSizeExecutableIndex": {
+          "kind": "value"
+        },
+        "kTotalHeapSizeIndex": {
+          "kind": "value"
+        },
+        "kTotalPhysicalSizeIndex": {
+          "kind": "value"
+        },
+        "kUsedGlobalHandlesSizeIndex": {
+          "kind": "value"
+        },
+        "kUsedHeapSizeIndex": {
+          "kind": "value"
+        },
+        "setFlagsFromString": {
+          "kind": "function"
+        },
+        "setHeapSnapshotNearHeapLimit": {
+          "kind": "function"
+        },
+        "startCpuProfile": {
+          "kind": "function"
+        },
+        "stopCpuProfile": {
+          "kind": "function"
+        },
+        "updateHeapCodeStatisticsBuffer": {
+          "kind": "function"
+        },
+        "updateHeapSpaceStatisticsBuffer": {
+          "kind": "function"
+        },
+        "updateHeapStatisticsBuffer": {
+          "kind": "function"
+        }
+      }
+    },
+    "wasi": {
+      "sources": [
+        "src/node_wasi.cc"
+      ],
+      "members": {
+        "WASI": {
+          "kind": "class"
+        }
+      }
+    },
+    "wasm_web_api": {
+      "sources": [
+        "src/node_wasm_web_api.cc"
+      ],
+      "members": {
+        "setImplementation": {
+          "kind": "function"
+        }
+      }
+    },
+    "watchdog": {
+      "sources": [
+        "src/node_watchdog.cc"
+      ],
+      "members": {
+        "TraceSigintWatchdog": {
+          "kind": "class",
+          "prototype": [
+            "start",
+            "stop"
+          ]
+        }
+      }
+    },
+    "webstorage": {
+      "sources": [
+        "src/node_webstorage.cc"
+      ],
+      "condition": "HAVE_SQLITE",
+      "members": {
+        "Storage": {
+          "kind": "class",
+          "prototype": [
+            "clear",
+            "getItem",
+            "key",
+            "removeItem",
+            "setItem"
+          ],
+          "accessors": [
+            "length"
+          ]
+        },
+        "kConstructorKey": {
+          "kind": "value"
+        }
+      }
+    },
+    "worker": {
+      "sources": [
+        "src/node_worker.cc"
+      ],
+      "members": {
+        "Worker": {
+          "kind": "class",
+          "prototype": [
+            "cpuUsage",
+            "getHeapStatistics",
+            "getResourceLimits",
+            "hasRef",
+            "loopIdleTime",
+            "loopStartTime",
+            "ref",
+            "startCpuProfile",
+            "startHeapProfile",
+            "startThread",
+            "stopCpuProfile",
+            "stopHeapProfile",
+            "stopThread",
+            "takeHeapSnapshot",
+            "unref"
+          ]
+        },
+        "getEnvMessagePort": {
+          "kind": "function"
+        },
+        "isInternalThread": {
+          "kind": "value"
+        },
+        "isMainThread": {
+          "kind": "value"
+        },
+        "kCodeRangeSizeMb": {
+          "kind": "value"
+        },
+        "kMaxOldGenerationSizeMb": {
+          "kind": "value"
+        },
+        "kMaxYoungGenerationSizeMb": {
+          "kind": "value"
+        },
+        "kStackSizeMb": {
+          "kind": "value"
+        },
+        "kTotalResourceLimitCount": {
+          "kind": "value"
+        },
+        "ownsProcessState": {
+          "kind": "value"
+        },
+        "resourceLimits": {
+          "kind": "value"
+        },
+        "threadId": {
+          "kind": "value"
+        },
+        "threadName": {
+          "kind": "value"
+        }
+      }
+    },
+    "zlib": {
+      "sources": [
+        "src/node_zlib.cc"
+      ],
+      "members": {
+        "BrotliDecoder": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "init",
+            "params",
+            "reset",
+            "write",
+            "writeSync"
+          ]
+        },
+        "BrotliEncoder": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "init",
+            "params",
+            "reset",
+            "write",
+            "writeSync"
+          ]
+        },
+        "ZLIB_VERSION": {
+          "kind": "value"
+        },
+        "Zlib": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "init",
+            "params",
+            "reset",
+            "write",
+            "writeSync"
+          ]
+        },
+        "ZstdCompress": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "init",
+            "params",
+            "reset",
+            "write",
+            "writeSync"
+          ]
+        },
+        "ZstdDecompress": {
+          "kind": "class",
+          "prototype": [
+            "close",
+            "init",
+            "params",
+            "reset",
+            "write",
+            "writeSync"
+          ]
+        },
+        "crc32": {
+          "kind": "function"
+        }
+      }
+    }
+  }
+}

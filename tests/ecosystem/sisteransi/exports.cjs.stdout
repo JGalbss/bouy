@@ -1,0 +1,27 @@
+module.exports: object
+  beep: string
+  cursor: object
+    backward: function/0
+    down: function/0
+    forward: function/0
+    hide: string
+    left: string
+    move: function/2
+    nextLine: function/0
+    prevLine: function/0
+    restore: string
+    save: string
+    show: string
+    to: function/2
+    up: function/0
+  erase: object
+    down: function/0
+    line: string
+    lineEnd: string
+    lineStart: string
+    lines: function/1
+    screen: string
+    up: function/0
+  scroll: object
+    down: function/0
+    up: function/0

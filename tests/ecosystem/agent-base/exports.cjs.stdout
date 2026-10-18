@@ -1,0 +1,5 @@
+module.exports: object
+  Agent: class/1 {createConnection, createSocket, decrementSockets, defaultPort, getName, incrementSockets, isSecureEndpoint, protocol}
+  json: function/1
+  req: function/1
+  toBuffer: function/1

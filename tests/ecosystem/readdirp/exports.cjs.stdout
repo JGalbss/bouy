@@ -1,0 +1,7 @@
+module.exports: function/1
+  ReaddirpStream: class/0 {_exploreDir, _formatEntry, _getEntryType, _includeAsFile, _onError, _read}
+  default: function/1
+    ReaddirpStream: class/0 {_exploreDir, _formatEntry, _getEntryType, _includeAsFile, _onError, _read}
+    default: function/1
+    promise: function/1
+  promise: function/1

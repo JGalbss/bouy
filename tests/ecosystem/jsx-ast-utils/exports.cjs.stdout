@@ -1,0 +1,25 @@
+module.exports: object
+  elementType: function/0
+  eventHandlers: object Array
+  eventHandlersByType: object
+    animation: object Array
+    clipboard: object Array
+    composition: object Array
+    focus: object Array
+    form: object Array
+    image: object Array
+    keyboard: object Array
+    media: object Array
+    mouse: object Array
+    selection: object Array
+    touch: object Array
+    transition: object Array
+    ui: object Array
+    wheel: object Array
+  getLiteralPropValue: function/1
+  getProp: function/0
+  getPropValue: function/1
+  hasAnyProp: function/0
+  hasEveryProp: function/0
+  hasProp: function/0
+  propName: function/0

@@ -1,0 +1,6 @@
+namespace: object Module
+  interval: function/3
+  now: function/0
+  timeout: function/3
+  timer: class/3 {restart, stop}
+  timerFlush: function/0
