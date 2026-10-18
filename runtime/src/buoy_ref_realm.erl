@@ -94,7 +94,11 @@ create() ->
         Last -> Last + 1
     end,
     erlang:put('$buoy_realms', N),
-    buoy_heap:intrinsic(N, 'globalThis').
+    Global = buoy_heap:intrinsic(N, 'globalThis'),
+    %% A vm context has none of Node's globals, as in Node, and the accessors
+    %% of realm 0 would read and write the globals of realm 0.
+    [buoy_heap:delete_property(Global, Name) || Name <- buoy_node:lazy_globals()],
+    Global.
 
 %% The global object of the current realm.
 -spec global_object() -> term().
