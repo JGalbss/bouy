@@ -129,43 +129,39 @@ scrypt(Password, Salt, N, R, P, Length) ->
     Mixed = << <<(romix(Block, N, R))/binary>> || <<Block:Size/binary>> <= B >>,
     pbkdf2(Sha256, Password, Mixed, 1, Length).
 
+%% The states stay binaries, which live off the heap of the process, so a
+%% large N does not make each garbage collection copy the whole of V.
 romix(Block, N, R) ->
-    X0 = words(Block),
-    {X, V} = fill(X0, N, R, []),
+    {X, V} = fill(Block, N, R, []),
     mix(X, N, R, V, N).
 
 %% V holds the N states in order, so the step j reads element j + 1.
 fill(X, 0, _, Acc) -> {X, list_to_tuple(lists:reverse(Acc))};
 fill(X, N, R, Acc) -> fill(block_mix(X, R), N - 1, R, [X | Acc]).
 
-mix(X, 0, _, _, _) -> << <<W:32/little>> || W <- tuple_to_list(X) >>;
+mix(X, 0, _, _, _) -> X;
 mix(X, I, R, V, N) ->
     J = integerify(X, R) band (N - 1),
-    mix(block_mix(xor_words(X, element(J + 1, V)), R), I - 1, R, V, N).
-
-words(Bin) -> list_to_tuple([W || <<W:32/little>> <= Bin]).
-
-xor_words(A, B) -> list_to_tuple(lists:zipwith(fun(X, Y) -> X bxor Y end, tuple_to_list(A), tuple_to_list(B))).
+    mix(block_mix(crypto:exor(X, element(J + 1, V)), R), I - 1, R, V, N).
 
 %% The first word of the last 64-byte block, as the low bits of Integerify.
-integerify(X, R) -> element((2 * R - 1) * 16 + 1, X).
+integerify(X, R) ->
+    <<_:((2 * R - 1) * 64)/binary, W:32/little, _/binary>> = X,
+    W.
 
-%% BlockMix with Salsa20/8 over the 2R blocks of 16 words of X.
+%% BlockMix with Salsa20/8 over the 2R blocks of 64 bytes of X: the even
+%% outputs, then the odd ones.
 block_mix(X, R) ->
-    Blocks = blocks(tuple_to_list(X), []),
-    Last = lists:last(Blocks),
+    Last = binary:part(X, (2 * R - 1) * 64, 64),
     {Ys, _} = lists:mapfoldl(fun(Bi, Prev) ->
-        Y = salsa(lists:zipwith(fun(A, B) -> A bxor B end, Prev, Bi)),
+        Y = salsa(Prev, Bi),
         {Y, Y}
-    end, Last, Blocks),
-    Even = [Y || {I, Y} <- lists:zip(lists:seq(0, 2 * R - 1), Ys), I rem 2 =:= 0],
-    Odd = [Y || {I, Y} <- lists:zip(lists:seq(0, 2 * R - 1), Ys), I rem 2 =:= 1],
-    list_to_tuple(lists:append(Even ++ Odd)).
+    end, Last, [Bi || <<Bi:64/binary>> <= X]),
+    {Even, Odd} = split_alternate(Ys, [], []),
+    iolist_to_binary([Even, Odd]).
 
-blocks([], Acc) -> lists:reverse(Acc);
-blocks(Words, Acc) ->
-    {Block, Rest} = lists:split(16, Words),
-    blocks(Rest, [Block | Acc]).
+split_alternate([E, O | Rest], Even, Odd) -> split_alternate(Rest, [E | Even], [O | Odd]);
+split_alternate([], Even, Odd) -> {lists:reverse(Even), lists:reverse(Odd)}.
 
 -compile({inline, [q/3]}).
 
@@ -174,10 +170,23 @@ q(A, B, C) ->
     V = (A + B) band ?MASK,
     ((V bsl C) band ?MASK) bor (V bsr (32 - C)).
 
-%% Salsa20/8 core: four double rounds, then the input added back.
-salsa([I0, I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, I11, I12, I13, I14, I15] = Input) ->
-    Out = rounds(4, {I0, I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, I11, I12, I13, I14, I15}),
-    lists:zipwith(fun(A, B) -> (A + B) band ?MASK end, tuple_to_list(Out), Input).
+%% Salsa20/8 core on the exclusive or of two 64-byte blocks: four double
+%% rounds, then the input added back.
+salsa(<<A0:32/little, A1:32/little, A2:32/little, A3:32/little, A4:32/little, A5:32/little, A6:32/little,
+        A7:32/little, A8:32/little, A9:32/little, A10:32/little, A11:32/little, A12:32/little, A13:32/little,
+        A14:32/little, A15:32/little>>,
+      <<B0:32/little, B1:32/little, B2:32/little, B3:32/little, B4:32/little, B5:32/little, B6:32/little,
+        B7:32/little, B8:32/little, B9:32/little, B10:32/little, B11:32/little, B12:32/little, B13:32/little,
+        B14:32/little, B15:32/little>>) ->
+    {I0, I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, I11, I12, I13, I14, I15} =
+        {A0 bxor B0, A1 bxor B1, A2 bxor B2, A3 bxor B3, A4 bxor B4, A5 bxor B5, A6 bxor B6, A7 bxor B7,
+         A8 bxor B8, A9 bxor B9, A10 bxor B10, A11 bxor B11, A12 bxor B12, A13 bxor B13, A14 bxor B14, A15 bxor B15},
+    {O0, O1, O2, O3, O4, O5, O6, O7, O8, O9, O10, O11, O12, O13, O14, O15} =
+        rounds(4, {I0, I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, I11, I12, I13, I14, I15}),
+    <<(O0 + I0):32/little, (O1 + I1):32/little, (O2 + I2):32/little, (O3 + I3):32/little,
+      (O4 + I4):32/little, (O5 + I5):32/little, (O6 + I6):32/little, (O7 + I7):32/little,
+      (O8 + I8):32/little, (O9 + I9):32/little, (O10 + I10):32/little, (O11 + I11):32/little,
+      (O12 + I12):32/little, (O13 + I13):32/little, (O14 + I14):32/little, (O15 + I15):32/little>>.
 
 rounds(0, S) -> S;
 rounds(N, {X0, X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, X13, X14, X15}) ->
