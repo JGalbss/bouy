@@ -27,7 +27,7 @@ Requirement 7 of [goal.md](../goal.md): "test262 covers the language. Node's own
 | Tier               | Location                                          | Runner                                 | Size                         |
 | ------------------ | ------------------------------------------------- | -------------------------------------- | ---------------------------- |
 | Compiler snapshots | `crates/buoy-compiler/tests/{fixtures,snapshots}` | insta, plus an `erlc` check            | 34 snapshots                 |
-| Runtime unit tests | `runtime/test/**/*_tests.erl`                        | EUnit through rebar3                   | 24 modules                   |
+| Runtime unit tests | `runtime/test/**/*_tests.erl`                     | EUnit through rebar3                   | 24 modules                   |
 | Conformance        | `tests/conformance`                               | `crates/buoy-cli/tests/conformance.rs` | 72 programs                  |
 | Equivalence        | `tests/equivalence/{effect,ai}`                   | `equivalence.rs`, `ai.rs`              | 23 Effect, 7 AI              |
 | Actor invariants   | `tests/programs`                                  | `crates/buoy-cli/tests/programs.rs`    | 31 tests                     |

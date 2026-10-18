@@ -8441,19 +8441,19 @@
       "binding": "async_context_frame",
       "members": 2,
       "implemented": 2,
-      "module": "runtime/src/buoy_binding_async_context_frame.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_async_context_frame.erl"
     },
     {
       "binding": "async_wrap",
       "members": 16,
       "implemented": 16,
-      "module": "runtime/src/buoy_binding_async_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_async_wrap.erl"
     },
     {
       "binding": "blob",
       "members": 6,
       "implemented": 6,
-      "module": "runtime/src/buoy_binding_blob.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_blob.erl"
     },
     {
       "binding": "block_list",
@@ -8464,13 +8464,13 @@
       "binding": "buffer",
       "members": 35,
       "implemented": 35,
-      "module": "runtime/src/buoy_binding_buffer.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_buffer.erl"
     },
     {
       "binding": "builtins",
       "members": 9,
       "implemented": 7,
-      "module": "runtime/src/buoy_binding_builtins.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_builtins.erl"
     },
     {
       "binding": "cares_wrap",
@@ -8486,25 +8486,25 @@
       "binding": "config",
       "members": 12,
       "implemented": 11,
-      "module": "runtime/src/buoy_binding_config.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_config.erl"
     },
     {
       "binding": "constants",
       "members": 6,
       "implemented": 3,
-      "module": "runtime/src/buoy_binding_constants.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_constants.erl"
     },
     {
       "binding": "contextify",
       "members": 10,
       "implemented": 8,
-      "module": "runtime/src/buoy_binding_contextify.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_contextify.erl"
     },
     {
       "binding": "credentials",
       "members": 14,
       "implemented": 14,
-      "module": "runtime/src/buoy_binding_credentials.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_credentials.erl"
     },
     {
       "binding": "crypto",
@@ -8516,37 +8516,37 @@
       "binding": "diagnostics_channel",
       "members": 3,
       "implemented": 3,
-      "module": "runtime/src/buoy_binding_diagnostics_channel.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_diagnostics_channel.erl"
     },
     {
       "binding": "encoding_binding",
       "members": 6,
       "implemented": 6,
-      "module": "runtime/src/buoy_binding_encoding_binding.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_encoding_binding.erl"
     },
     {
       "binding": "errors",
       "members": 9,
       "implemented": 9,
-      "module": "runtime/src/buoy_binding_errors.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_errors.erl"
     },
     {
       "binding": "fs",
       "members": 54,
       "implemented": 54,
-      "module": "runtime/src/buoy_binding_fs.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_fs.erl"
     },
     {
       "binding": "fs_dir",
       "members": 3,
       "implemented": 3,
-      "module": "runtime/src/buoy_binding_fs_dir.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_fs_dir.erl"
     },
     {
       "binding": "fs_event_wrap",
       "members": 1,
       "implemented": 1,
-      "module": "runtime/src/buoy_binding_fs_event_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_fs_event_wrap.erl"
     },
     {
       "binding": "heap_utils",
@@ -8578,7 +8578,7 @@
       "binding": "internal_only_v8",
       "members": 1,
       "implemented": 1,
-      "module": "runtime/src/buoy_binding_internal_only_v8.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_internal_only_v8.erl"
     },
     {
       "binding": "js_stream",
@@ -8594,25 +8594,25 @@
       "binding": "locks",
       "members": 5,
       "implemented": 5,
-      "module": "runtime/src/buoy_binding_locks.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_locks.erl"
     },
     {
       "binding": "messaging",
       "members": 11,
       "implemented": 6,
-      "module": "runtime/src/buoy_binding_messaging.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_messaging.erl"
     },
     {
       "binding": "mksnapshot",
       "members": 7,
       "implemented": 5,
-      "module": "runtime/src/buoy_binding_mksnapshot.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_mksnapshot.erl"
     },
     {
       "binding": "module_wrap",
       "members": 14,
       "implemented": 12,
-      "module": "runtime/src/buoy_binding_module_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_module_wrap.erl"
     },
     {
       "binding": "modules",
@@ -8623,43 +8623,43 @@
       "binding": "options",
       "members": 8,
       "implemented": 8,
-      "module": "runtime/src/buoy_binding_options.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_options.erl"
     },
     {
       "binding": "os",
       "members": 14,
       "implemented": 14,
-      "module": "runtime/src/buoy_binding_os.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_os.erl"
     },
     {
       "binding": "performance",
       "members": 13,
       "implemented": 13,
-      "module": "runtime/src/buoy_binding_performance.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_performance.erl"
     },
     {
       "binding": "permission",
       "members": 1,
       "implemented": 1,
-      "module": "runtime/src/buoy_binding_permission.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_permission.erl"
     },
     {
       "binding": "pipe_wrap",
       "members": 3,
       "implemented": 3,
-      "module": "runtime/src/buoy_binding_pipe_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_pipe_wrap.erl"
     },
     {
       "binding": "process_methods",
       "members": 29,
       "implemented": 26,
-      "module": "runtime/src/buoy_binding_process_methods.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_process_methods.erl"
     },
     {
       "binding": "process_wrap",
       "members": 1,
       "implemented": 1,
-      "module": "runtime/src/buoy_binding_process_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_process_wrap.erl"
     },
     {
       "binding": "profiler",
@@ -8677,7 +8677,7 @@
       "binding": "report",
       "members": 20,
       "implemented": 0,
-      "module": "runtime/src/buoy_binding_report.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_report.erl"
     },
     {
       "binding": "sea",
@@ -8688,19 +8688,19 @@
       "binding": "serdes",
       "members": 2,
       "implemented": 2,
-      "module": "runtime/src/buoy_binding_serdes.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_serdes.erl"
     },
     {
       "binding": "signal_wrap",
       "members": 1,
       "implemented": 1,
-      "module": "runtime/src/buoy_binding_signal_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_signal_wrap.erl"
     },
     {
       "binding": "spawn_sync",
       "members": 1,
       "implemented": 1,
-      "module": "runtime/src/buoy_binding_spawn_sync.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_spawn_sync.erl"
     },
     {
       "binding": "sqlite",
@@ -8717,25 +8717,25 @@
       "binding": "stream_wrap",
       "members": 7,
       "implemented": 7,
-      "module": "runtime/src/buoy_binding_stream_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_stream_wrap.erl"
     },
     {
       "binding": "string_decoder",
       "members": 10,
       "implemented": 10,
-      "module": "runtime/src/buoy_binding_string_decoder.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_string_decoder.erl"
     },
     {
       "binding": "symbols",
       "members": 23,
       "implemented": 0,
-      "module": "runtime/src/buoy_binding_symbols.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_symbols.erl"
     },
     {
       "binding": "task_queue",
       "members": 6,
       "implemented": 6,
-      "module": "runtime/src/buoy_binding_task_queue.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_task_queue.erl"
     },
     {
       "binding": "tcp_wrap",
@@ -8746,7 +8746,7 @@
       "binding": "timers",
       "members": 7,
       "implemented": 7,
-      "module": "runtime/src/buoy_binding_timers.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_timers.erl"
     },
     {
       "binding": "tls_wrap",
@@ -8758,19 +8758,19 @@
       "binding": "trace_events",
       "members": 6,
       "implemented": 6,
-      "module": "runtime/src/buoy_binding_trace_events.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_trace_events.erl"
     },
     {
       "binding": "tty_wrap",
       "members": 2,
       "implemented": 1,
-      "module": "runtime/src/buoy_binding_tty_wrap.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_tty_wrap.erl"
     },
     {
       "binding": "types",
       "members": 27,
       "implemented": 27,
-      "module": "runtime/src/buoy_binding_types.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_types.erl"
     },
     {
       "binding": "udp_wrap",
@@ -8781,7 +8781,7 @@
       "binding": "url",
       "members": 9,
       "implemented": 9,
-      "module": "runtime/src/buoy_binding_url.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_url.erl"
     },
     {
       "binding": "url_pattern",
@@ -8792,13 +8792,13 @@
       "binding": "util",
       "members": 18,
       "implemented": 18,
-      "module": "runtime/src/buoy_binding_util.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_util.erl"
     },
     {
       "binding": "uv",
       "members": 3,
       "implemented": 3,
-      "module": "runtime/src/buoy_binding_uv.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_uv.erl"
     },
     {
       "binding": "v8",
@@ -8830,13 +8830,13 @@
       "binding": "worker",
       "members": 13,
       "implemented": 12,
-      "module": "runtime/src/buoy_binding_worker.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_worker.erl"
     },
     {
       "binding": "zlib",
       "members": 7,
       "implemented": 6,
-      "module": "runtime/src/buoy_binding_zlib.erl"
+      "module": "runtime/src/node/bindings/buoy_binding_zlib.erl"
     }
   ]
 }
