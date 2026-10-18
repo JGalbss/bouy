@@ -78,7 +78,7 @@ fn is_runtime_source(path: &Path) -> bool {
 const TEMPORAL_EDITS: &[(&str, &str)] = &[
     (
         "!function() {\n  \"use strict\";\n",
-        "\"use strict\";\nconst { Intl, nowNanoseconds } = this;\n",
+        "\"use strict\";\nconst { Intl, nowNanoseconds, exactDivide } = this;\n",
     ),
     // The namespace is a lazy global, so reading it here would load the polyfill again.
     (
@@ -88,6 +88,16 @@ const TEMPORAL_EDITS: &[(&str, &str)] = &[
     (
         "return BigInt(Date.now()) * bigNanoInMilli;",
         "return nowNanoseconds();",
+    ),
+    // Duration.prototype.total converts the exact quotient to a Number (TotalTimeDuration
+    // and NudgeToCalendarUnit); the polyfill divided in floating point.
+    (
+        "return days * (nanoInUtcDay / divisorNano) + (Math.trunc(timeNano / divisorNano) + timeNano % divisorNano / divisorNano);",
+        "return exactDivide(bigNano, BigInt(divisorNano));",
+    ),
+    (
+        "return interpolateRelativeUnitWindow(unitWindow, Number(endEpochNano - unitWindow.I) / Number(unitWindow.O - unitWindow.I));",
+        "return exactDivide(BigInt(unitWindow.ve) * (unitWindow.O - unitWindow.I) + (endEpochNano - unitWindow.I) * BigInt(unitWindow.qe - unitWindow.ve), unitWindow.O - unitWindow.I);",
     ),
 ];
 

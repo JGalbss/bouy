@@ -49,7 +49,8 @@ load(?NAMESPACE = Id) ->
     try
         Intl = buoy_heap:object(?OBJECT_PROTO, [{<<"DateTimeFormat">>, buoy_ref_realm:constructor(?MODULE, <<"Intl.DateTimeFormat">>)}]),
         Clock = buoy_ref_realm:builtin(<<"Temporal.nowNanoseconds">>, fun(_, _) -> {'$bigint', erlang:system_time(nanosecond)} end),
-        Host = buoy_heap:object(?OBJECT_PROTO, [{<<"Intl">>, Intl}, {<<"nowNanoseconds">>, Clock}]),
+        Divide = buoy_ref_realm:builtin(<<"Temporal.exactDivide">>, fun(_, [{'$bigint', N}, {'$bigint', D} | _]) -> exact_divide(N, D) end),
+        Host = buoy_heap:object(?OBJECT_PROTO, [{<<"Intl">>, Intl}, {<<"nowNanoseconds">>, Clock}, {<<"exactDivide">>, Divide}]),
         %% The top level of the polyfill runs no program code, so the builtins that
         %% it calls, such as the Set constructor, iterate arrays as a native
         %% Temporal would, whatever a program wrote to the array iterator.
@@ -63,6 +64,44 @@ load(?NAMESPACE = Id) ->
             erlang:erase(Id),
             erlang:raise(Class, Reason, Stack)
     end.
+
+%% The Number nearest to the exact quotient N / D of two integers, ties to
+%% even, as Temporal converts its exact totals (ECMA-262 6.1.6.1, the Number
+%% value for a mathematical value). The quotient keeps at least 64 bits and a
+%% sticky bit for the rest, so one rounding to 53 bits is exact.
+-spec exact_divide(integer(), integer()) -> number().
+exact_divide(_N, 0) -> 'NaN';
+exact_divide(N, D) when D < 0 -> exact_divide(-N, -D);
+exact_divide(0, _D) -> 0;
+exact_divide(N, D) ->
+    A = abs(N),
+    Shift = max(0, 64 - (bits(A) - bits(D))),
+    Scaled = A bsl Shift,
+    Q = Scaled div D,
+    Sticky = Scaled rem D =/= 0,
+    Drop = bits(Q) - 53,
+    Mantissa0 = Q bsr Drop,
+    Rest = Q band ((1 bsl Drop) - 1),
+    Half = 1 bsl (Drop - 1),
+    Up = Rest > Half orelse (Rest =:= Half andalso (Sticky orelse Mantissa0 band 1 =:= 1)),
+    {Mantissa, Exponent} = case Up of
+        false -> {Mantissa0, Drop - Shift};
+        true when Mantissa0 + 1 =:= 1 bsl 53 -> {(Mantissa0 + 1) bsr 1, Drop - Shift + 1};
+        true -> {Mantissa0 + 1, Drop - Shift}
+    end,
+    Biased = Exponent + 52 + 1023,
+    Sign = case N < 0 of true -> 1; false -> 0 end,
+    case Biased >= 2047 of
+        true when Sign =:= 1 -> '-Infinity';
+        true -> 'Infinity';
+        false ->
+            <<F:64/float>> = <<Sign:1, Biased:11, (Mantissa band ((1 bsl 52) - 1)):52>>,
+            buoy_ref_number:canonical(F)
+    end.
+
+bits(X) -> bits(X, 0).
+bits(0, Count) -> Count;
+bits(X, Count) -> bits(X bsr 1, Count + 1).
 
 %% Date.prototype.toTemporalInstant of the time value T: a new instance of
 %% the intrinsic Temporal.Instant.
