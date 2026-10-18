@@ -920,9 +920,11 @@ require(M, Specifier) ->
                                              buoy_ref_string:concat([<<"The \"id\" argument must be of type string. Received ">>, buoy_ref:describe(Specifier)])),
     Specifier =:= <<>> andalso throw_coded('TypeError', <<"ERR_INVALID_ARG_VALUE">>,
                                            <<"The argument 'id' must be a non-empty string. Received ''">>),
-    %% --expose-internals lets require load the internal ids of Node's lib.
+    %% --expose-internals lets require load the internal ids of Node's lib,
+    %% with or without node:, as BuiltinModule.normalizeRequirableId reads them.
+    Id = case Specifier of <<"node:", Rest/binary>> -> Rest; _ -> Specifier end,
     Internal = lists:member(<<"--expose-internals">>, buoy_node_process:exec_argv())
-        andalso lists:member(Specifier, buoy_node:ids()),
+        andalso lists:member(Id, buoy_node:ids()),
     case target(M, Specifier, require) of
         {builtin, Name} ->
             builtin_exports(Name);
