@@ -38,7 +38,7 @@ methods(Proto) ->
         {<<"close">>, fun(This, Args) -> close(This, A(1, Args)) end},
         {<<"ref">>, fun(This, _) -> set_ref(This, true) end},
         {<<"unref">>, fun(This, _) -> set_ref(This, false) end},
-        {<<"hasRef">>, fun(This, _) -> maps:get(refed, state(This), false) end},
+        {<<"hasRef">>, fun(This, _) -> #{refed := R, closed := C} = state(This), R andalso not C end},
         {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This), -1) end},
         {<<"useUserBuffer">>, fun(_, _) -> undefined end},
         {<<"setBlocking">>, fun(_, _) -> 0 end}],
@@ -55,17 +55,26 @@ methods(Proto) ->
 -spec attach(term(), pid()) -> ok.
 attach(Handle, Channel) ->
     Id = erlang:unique_integer([positive]),
-    buoy_heap:private_put(Handle, ?STATE, #{channel => Channel, reading => false, pending => [], eof => false,
-                                            refed => false, read => 0, written => 0, async_id => Id, closed => false}).
+    update(Handle, fun(S) -> S#{channel => Channel, reading => false, pending => [], eof => false,
+                                read => 0, written => 0, async_id => Id, closed => false} end).
 
 state(Handle) ->
     case buoy_heap:is_object(Handle) andalso buoy_heap:private_find(Handle, ?STATE) of
         {ok, S} -> S;
-        _ -> #{channel => none, reading => false, pending => [], eof => false, refed => false, closed => false}
+        _ -> #{channel => none, reading => false, pending => [], eof => false, refed => true, counted => false, closed => false}
     end.
 
+%% uv_loop_alive: a handle keeps the loop alive while it is ref'd and
+%% active, and a stream is active while it reads, before its end.
 update(Handle, Fun) ->
-    buoy_heap:private_put(Handle, ?STATE, Fun(state(Handle))).
+    #{refed := Refed, reading := Reading, eof := Eof, closed := Closed, counted := Counted} = S = Fun(state(Handle)),
+    Alive = Refed andalso Reading andalso not Eof andalso not Closed,
+    case {Counted, Alive} of
+        {false, true} -> buoy_node_loop:ref_handle();
+        {true, false} -> buoy_node_loop:unref_handle();
+        _ -> ok
+    end,
+    buoy_heap:private_put(Handle, ?STATE, S#{counted := Alive}).
 
 send(Handle, Message) ->
     case state(Handle) of
@@ -82,8 +91,10 @@ call(Realm, Fun) ->
 stream_state() ->
     buoy_heap:get(buoy_node:binding(<<"stream_wrap">>), <<"streamBaseState">>).
 
-%% The request stays a root of the heap until the channel reports the write.
+%% The request stays a root of the heap, and keeps the loop alive as libuv's
+%% active request does, until the channel reports the write.
 write(Handle, Req, Bytes) ->
+    buoy_node_loop:ref_handle(),
     State = stream_state(),
     buoy_heap:set(State, ?K_BYTES_WRITTEN, byte_size(Bytes)),
     buoy_heap:set(State, ?K_ASYNC, 1),
@@ -102,6 +113,7 @@ write(Handle, Req, Bytes) ->
 written(Ref, Status, _) ->
     case erlang:erase({?MODULE, request, Ref}) of
         {Handle, Req} ->
+            buoy_node_loop:unref_handle(),
             Oncomplete = buoy_heap:get(Req, <<"oncomplete">>),
             buoy_heap:is_callable(Oncomplete) andalso buoy_heap:call(Oncomplete, Req, [Status, Handle]);
         undefined ->
@@ -128,7 +140,6 @@ pairs(_) -> [].
 
 read_start(Handle) ->
     update(Handle, fun(S) -> S#{reading := true} end),
-    set_ref(Handle, true),
     case state(Handle) of
         #{pending := [_ | _] = Pending} ->
             update(Handle, fun(S) -> S#{pending := []} end),
@@ -140,13 +151,7 @@ read_start(Handle) ->
     0.
 
 set_ref(Handle, Refed) ->
-    #{refed := Old} = S = state(Handle),
-    case {Old, Refed, maps:get(closed, S, false)} of
-        {false, true, false} -> buoy_node_loop:ref_handle();
-        {true, false, _} -> buoy_node_loop:unref_handle();
-        _ -> ok
-    end,
-    update(Handle, fun(St) -> St#{refed := Refed andalso not maps:get(closed, St, false)} end),
+    update(Handle, fun(S) -> S#{refed := Refed} end),
     undefined.
 
 %% Data that the channel read, or eof: the handle's onread gets it while it
@@ -164,7 +169,6 @@ deliver(Handle, Item) ->
             case Item of
                 eof ->
                     update(Handle, fun(_) -> S#{eof := true} end),
-                    set_ref(Handle, false),
                     buoy_heap:set(State, ?K_READ_BYTES, ?UV_EOF),
                     buoy_heap:is_callable(Onread) andalso buoy_heap:call(Onread, Handle, [undefined]);
                 Bytes ->
@@ -178,7 +182,6 @@ deliver(Handle, Item) ->
     end.
 
 close(Handle, Callback) ->
-    set_ref(Handle, false),
     update(Handle, fun(S) -> S#{closed => true, reading := false} end),
     send(Handle, close),
     buoy_heap:is_callable(Callback) andalso

@@ -82,7 +82,9 @@ create(Class, Proto, ByteLength, Max) ->
 
 room() -> buoy_guard:limit(os:getenv("BUOY_MAX_MEMORY", "")) - erlang:memory(total).
 
-data(Bytes) -> atomics:new(max(1, (Bytes + 7) div 8), [{signed, false}]).
+data(Bytes) ->
+    buoy_heap:add_external(Bytes),
+    atomics:new(max(1, (Bytes + 7) div 8), [{signed, false}]).
 
 -spec is_buffer(term()) -> boolean().
 is_buffer({'$o', _} = O) ->

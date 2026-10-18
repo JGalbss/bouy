@@ -15,8 +15,8 @@
 -export([new_promise/0, new_promise/1, capability/0, promise_resolve/1, perform_then/4, is_promise/1]).
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
 -export([await/3, async_call/1, enqueue/1, drain/0]).
--export([set_timer/4, clear_timer/1]).
--export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
+-export([set_timer/4, clear_timer/1, has_timers/0]).
+-export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0, set_main_result/1, unsettled_main/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
 -export([all/1]).
 
@@ -34,6 +34,7 @@
 -define(PROMISE_PROTO, {'$o', 'Promise.prototype'}).
 -define(MAX_DELAY, 2147483647).
 -define(GC_MIN, 20000).
+-define(EXTERNAL_GC, 67108864).
 
 %%% Microtasks
 
@@ -327,6 +328,9 @@ set_timer(Callback, Delay, Args, Repeat) ->
     erlang:put(?TIMERS, Timers#{Id => {Due, Callback, Args, case Repeat of true -> Ms; false -> none end}}),
     Id.
 
+-spec has_timers() -> boolean().
+has_timers() -> map_size(timers()) > 0.
+
 -spec clear_timer(term()) -> undefined.
 clear_timer(Id) ->
     erlang:put(?TIMERS, maps:remove(Id, timers())),
@@ -385,6 +389,22 @@ run_main(Body) ->
             ok
     end.
 
+%% The evaluation of the entry module, when it runs after the first job, as
+%% the script of a worker does.
+-spec set_main_result(term()) -> ok.
+set_main_result(Result) ->
+    erlang:put(?MAIN, Result),
+    ok.
+
+%% Whether the evaluation of the entry module still waits: an unsettled
+%% top-level await.
+-spec unsettled_main() -> boolean().
+unsettled_main() ->
+    case erlang:get(?MAIN) of
+        {'$o', _} = P -> is_promise(P) andalso element(1, buoy_heap:slots(P)) =:= pending;
+        _ -> false
+    end.
+
 %% One macrotask: the job, every microtask it queues, and then a collection
 %% when the heap grew enough since the last one.
 -spec run_job(fun(() -> term())) -> ok.
@@ -427,14 +447,14 @@ loop_until_exit() ->
 
 %% Collects when the realm allocated more ids since the last collection than
 %% twice the live count then, and at least ?GC_MIN, so the cost stays in
-%% proportion to the allocation.
+%% proportion to the allocation, or ?EXTERNAL_GC bytes of buffers.
 maybe_gc() ->
     {At, Live} = case erlang:get(?LAST_GC) of
         undefined -> {0, 0};
         L -> L
     end,
     Allocated = buoy_heap:allocated(),
-    case Allocated - At >= max(?GC_MIN, 2 * Live) of
+    case Allocated - At >= max(?GC_MIN, 2 * Live) orelse buoy_heap:external() >= ?EXTERNAL_GC of
         true ->
             #{live := Live1} = buoy_heap:gc([]),
             erlang:put(?LAST_GC, {Allocated, Live1});

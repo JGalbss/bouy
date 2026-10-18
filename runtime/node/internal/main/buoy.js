@@ -157,6 +157,16 @@ function setupChildProcessIpcChannel() {
   }
 }
 
+// A worker of node:cluster starts its channel to the primary before any code
+// of the program runs, as initializeClusterIPC does.
+function initializeClusterIPC() {
+  if (process.argv[1] && process.env.NODE_UNIQUE_ID) {
+    const cluster = require('cluster');
+    cluster._setupWorker();
+    delete process.env.NODE_UNIQUE_ID;
+  }
+}
+
 // Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 loadEnvFiles();
@@ -168,4 +178,5 @@ setupNavigator();
 setupWarningHandler();
 setupDebugEnv();
 setupChildProcessIpcChannel();
+initializeClusterIPC();
 require('internal/process/pre_execution').markBootstrapComplete();

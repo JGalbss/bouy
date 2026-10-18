@@ -1,12 +1,14 @@
 %% internalBinding('spawn_sync') (src/spawn_sync.cc): spawn(options) runs a
 %% child process to its end and returns {pid, status, signal, output, error},
 %% as SyncProcessRunner does. The child starts through /bin/sh, which wires
-%% its stdio and then execs the file: Erlang's port reads the child's stdout
-%% from fd 4 (nouse_stdio), stderr goes to a temporary file, and the input of
-%% stdin comes from one.
+%% its stdio and then execs `buoy --buoy-exec` (crates/buoy-cli/src/spawn.rs),
+%% which sets the environment, argv[0], the ids, and the session exactly and
+%% execs the file: Erlang's port reads the child's stdout from fd 4
+%% (nouse_stdio), stderr goes to a temporary file, and the input of stdin
+%% comes from one.
 -module(buoy_binding_spawn_sync).
 
--export([binding/0, signal_name/1, executable/3, split_pair/1, temp_base/0, quote/1]).
+-export([binding/0, signal_name/1, executable/3, split_pair/1, temp_base/0, quote/1, exec/4]).
 
 -spec binding() -> term().
 binding() ->
@@ -18,17 +20,52 @@ text(V) -> unicode:characters_to_list(buoy_ref_string:to_utf8(buoy_ref:to_string
 
 spawn_sync(Options) ->
     File = text(get(Options, <<"file">>)),
-    [_Argv0 | Args] = [text(A) || A <- items(get(Options, <<"args">>))],
     Env = [split_pair(text(P)) || P <- items(get(Options, <<"envPairs">>))],
     Cwd = case get(Options, <<"cwd">>) of
-        V when V =:= undefined; V =:= null -> element(2, file:get_cwd());
+        V when V =:= undefined; V =:= null; V =:= <<>> -> element(2, file:get_cwd());
         V -> text(V)
     end,
     Stdio = [stdio(S) || S <- items(get(Options, <<"stdio">>))],
-    case {filelib:is_dir(Cwd), executable(File, Cwd, Env)} of
-        {true, {ok, Path}} -> run(Path, Args, Cwd, Env, Stdio, Options);
-        _ -> result(#{error => -2, pid => 0, status => null, signal => null, output => null})
+    case filelib:is_dir(Cwd) andalso exec(File, Cwd, Env, Options) of
+        {ok, Exec} -> run(Exec, Cwd, Stdio, Options);
+        {error, Errno} -> result(#{error => Errno, pid => 0, status => null, signal => null, output => null});
+        false -> result(#{error => -2, pid => 0, status => null, signal => null, output => null})
     end.
+
+%% The program and the arguments that start File as uv_spawn would, in the
+%% order of its child: the ids (setgid and setuid, which only root may change
+%% to another id, else EPERM), then the search of execvp (ENOENT). The
+%% `buoy --buoy-exec` step gives the child the exact envPairs and argv[0].
+-spec exec(string(), string(), [{string(), string()}], term()) -> {ok, {string(), [string()]}} | {error, integer()}.
+exec(File, Cwd, Env, Options) ->
+    Ids = [{Name, trunc(buoy_ref:to_number(get(Options, Key)))}
+           || {Name, Key} <- [{"gid", <<"gid">>}, {"uid", <<"uid">>}], is_number(get(Options, Key))],
+    Denied = [Name || {Name, Id} <- Ids, not may_take(Name, Id)],
+    case {Denied, executable(File, Cwd, Env)} of
+        {[_ | _], _} ->
+            {error, -1};
+        {[], error} ->
+            {error, -2};
+        {[], {ok, Path}} ->
+            [Argv0 | Args] = case [text(A) || A <- items(get(Options, <<"args">>))] of
+                [] -> [File];
+                Given -> Given
+            end,
+            Pairs = [text(P) || P <- items(get(Options, <<"envPairs">>))],
+            Flags = case [<<"detached">> || get(Options, <<"detached">>) =:= true]
+                         ++ [iolist_to_binary([Name, $=, integer_to_list(Id)]) || {Name, Id} <- Ids] of
+                [] -> "-";
+                Set -> binary_to_list(iolist_to_binary(lists:join(",", Set)))
+            end,
+            Buoy = unicode:characters_to_list(buoy_ref_string:to_utf8(buoy_node_process:exec_path())),
+            {ok, {Buoy, ["--buoy-exec", Flags, Argv0, Path, integer_to_list(length(Pairs)) | Pairs ++ Args]}}
+    end.
+
+%% Whether setuid or setgid to Id succeeds: root takes any id, another user
+%% only its own.
+may_take(Name, Id) ->
+    Own = fun(Flag) -> list_to_integer(string:trim(os:cmd("id " ++ Flag))) end,
+    Own("-u") =:= 0 orelse Id =:= Own(case Name of "uid" -> "-u"; "gid" -> "-g" end).
 
 items(undefined) -> [];
 items(null) -> [];
@@ -79,16 +116,15 @@ is_executable(Path) ->
         _ -> false
     end.
 
-run(Path, Args, Cwd, Env, Stdio0, Options) ->
+run({Program, ProgramArgs}, Cwd, Stdio0, Options) ->
     Stdio = lists:sublist(Stdio0 ++ [ignore, ignore, ignore], 3),
     Temp = temp_base(),
     InFile = Temp ++ ".in",
     ErrFile = Temp ++ ".err",
     Redirects = redirects(Stdio, InFile, ErrFile),
     Script = "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&-",
-    Unset = [{K, false} || K <- [element(1, split_pair(P)) || P <- os:getenv()], not lists:keymember(K, 1, Env)],
     Port = open_port({spawn_executable, "/bin/sh"},
-                     [nouse_stdio, binary, exit_status, {cd, Cwd}, {env, Unset ++ Env}, {args, ["-c", Script, Path | Args]}]),
+                     [nouse_stdio, binary, exit_status, {cd, Cwd}, {args, ["-c", Script, Program | ProgramArgs]}]),
     OsPid = case erlang:port_info(Port, os_pid) of {os_pid, P} -> P; _ -> 0 end,
     Timeout = case buoy_ref:to_number(get(Options, <<"timeout">>)) of
         T when is_integer(T), T > 0 -> T;

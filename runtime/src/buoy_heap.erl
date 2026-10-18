@@ -12,8 +12,11 @@
 %%                        function gets a record only when it needs one, so
 %%                        an arrow function costs one id and no record.
 %%   {'$sym', Tag, Desc}  a symbol. Tag is an integer for Symbol(), the atom
-%%                        registered for Symbol.for(), or an atom such as
-%%                        iterator for a well-known symbol.
+%%                        registered for Symbol.for(), an atom such as
+%%                        iterator for a well-known symbol, or {private, N}
+%%                        for a private symbol of V8, which Node's bindings
+%%                        use: an own key only, no key of ownKeys, and
+%%                        writable on a frozen object, as a private name.
 %%   {'$c', Id}           a heap cell for a captured mutable variable. It is
 %%                        never a JavaScript value; it appears in fun envs.
 %%
@@ -47,11 +50,11 @@
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
 -export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
 -export([cell/1, cell_get/1, cell_set/2]).
--export([symbol/1, symbol_for/1, well_known/1]).
+-export([symbol/1, symbol_for/1, well_known/1, private_symbol/1]).
 -export([to_key/1, key_to_value/1]).
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
--export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
--export([clone_out/1, clone_in/1]).
+-export([gc/1, gc_stats/0, heap_size/0, allocated/0, add_external/1, external/0]).
+-export([clone_out/1, clone_in/1, clone_out/2, clone_in/2]).
 -export([private_find/2, private_put/3, set_failed/2]).
 
 -export_type([value/0, key/0, property/0]).
@@ -63,6 +66,8 @@
 
 -define(NEXT, '$buoy_next').
 -define(STATS, '$buoy_gc').
+-define(EXTERNAL, '$buoy_external').
+-define(CLONE_HOOK, '$buoy_clone_hook').
 -define(WORDS_PER_ID, 16).
 -define(MIN_HEAP_WORDS, 4096).
 -define(WRITABLE, 1).
@@ -373,6 +378,7 @@ from_record({_, Proto, Props, _, _, _}, K, Receiver) ->
     end.
 
 inherited(null, _K, _Receiver) -> undefined;
+inherited(_Proto, {'$sym', {private, _}, _}, _Receiver) -> undefined;
 inherited(Proto, K, Receiver) -> get(Proto, K, Receiver).
 
 %% [[Get]] of a typed array (ECMA-262 §10.4.5.4): a numeric key reads the
@@ -639,10 +645,12 @@ set_on_receiver(_K, _V, _Receiver) ->
     false.
 
 writable({'#', _, _}, _Attrs) -> true;
+writable({'$sym', {private, _}, _}, _Attrs) -> true;
 writable(_K, #{'$frozen' := true}) -> false;
 writable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?WRITABLE =/= 0.
 
 is_private({'#', _, _}) -> true;
+is_private({'$sym', {private, _}, _}) -> true;
 is_private(_) -> false.
 
 extensible(#{'$frozen' := true}) -> false;
@@ -651,6 +659,7 @@ extensible(_) -> true.
 
 add_key(K, _Props, Keys) when is_integer(K) -> Keys;
 add_key({'#', _, _}, _Props, Keys) -> Keys;
+add_key({'$sym', {private, _}, _}, _Props, Keys) -> Keys;
 add_key(K, Props, Keys) ->
     case Props of
         #{K := _} -> Keys;
@@ -844,16 +853,21 @@ define_failed(O, K) ->
     end,
     throw_error('TypeError', Message).
 
-%% [[DefineOwnProperty]]: true when the property now matches the descriptor.
--spec define_own_property(value(), key(), map()) -> boolean().
-define_own_property(O, {'#', _, _} = K, Desc) ->
-    %% A private name is no property: it takes its value whatever the object's state.
+%% A private name is no property: it takes its value whatever the object's state.
+define_private(O, K, Desc) ->
     Slot = case is_accessor_descriptor(Desc) of
         true -> {'$accessor', maps:get(get, Desc, undefined), maps:get(set, Desc, undefined)};
         false -> maps:get(value, Desc, undefined)
     end,
     put_own(O, K, Slot, ?ALL),
-    true;
+    true.
+
+%% [[DefineOwnProperty]]: true when the property now matches the descriptor.
+-spec define_own_property(value(), key(), map()) -> boolean().
+define_own_property(O, {'#', _, _} = K, Desc) ->
+    define_private(O, K, Desc);
+define_own_property(O, {'$sym', {private, _}, _} = K, Desc) ->
+    define_private(O, K, Desc);
 define_own_property(O, K, Desc) ->
     case record_of(O) of
         {namespace, _, _, _, _, _} ->
@@ -1088,6 +1102,7 @@ own_of({_, _, Props, _, Attrs, _}, K) ->
     found(maps:find(K, Props), own_bits(K, Attrs)).
 
 own_bits({'#', _, _}, _Attrs) -> ?ALL;
+own_bits({'$sym', {private, _}, _}, _Attrs) -> ?ALL;
 own_bits(K, #{'$frozen' := true} = Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE;
 own_bits(K, Attrs) -> maps:get(K, Attrs, ?ALL).
 
@@ -1373,6 +1388,9 @@ cell_set({'$c', Id}, V) ->
 -spec symbol(value()) -> {'$sym', integer(), value()}.
 symbol(Description) -> {'$sym', erlang:unique_integer(), Description}.
 
+-spec private_symbol(binary()) -> {'$sym', {private, integer()}, binary()}.
+private_symbol(Description) -> {'$sym', {private, erlang:unique_integer()}, Description}.
+
 %% Symbol.for: the key is the identity, so every realm agrees without a registry.
 -spec symbol_for(binary()) -> {'$sym', registered, binary()}.
 symbol_for(Key) -> {'$sym', registered, Key}.
@@ -1455,6 +1473,10 @@ gc(Roots) ->
     {Live, Chunks, Weak} = ephemerons(Live0, Chunks0, Weak0),
     clear_weak(Weak, Chunks),
     Freed = sweep(Ids, Chunks, 0),
+    %% The data of a dropped buffer is an atomics array that only BEAM's own
+    %% collection of this process frees.
+    external() >= 1048576 andalso erlang:garbage_collect(),
+    erlang:erase(?EXTERNAL),
     Us = erlang:monotonic_time(microsecond) - Start,
     Stats = #{live => Live, freed => Freed, us => Us},
     {Runs, Total, Max} = case erlang:get(?STATS) of
@@ -1464,6 +1486,21 @@ gc(Roots) ->
     erlang:put(?STATS, Stats#{runs => Runs + 1, total_us => Total + Us, max_us => max(Max, Us), at => allocated()}),
     size_heap(Live),
     Stats.
+
+%% Bytes that the realm allocated outside the heap since the last
+%% collection, such as the data of ArrayBuffers: V8's external memory, which
+%% paces collection next to the ids, since one id can hold a large buffer.
+-spec add_external(non_neg_integer()) -> ok.
+add_external(Bytes) ->
+    erlang:put(?EXTERNAL, external() + Bytes),
+    ok.
+
+-spec external() -> non_neg_integer().
+external() ->
+    case erlang:get(?EXTERNAL) of
+        undefined -> 0;
+        N -> N
+    end.
 
 -spec gc_stats() -> map().
 gc_stats() ->
@@ -1623,16 +1660,43 @@ clone_out(Value) ->
     {Term, _} = out(Value, #{}),
     Term.
 
+%% clone_out with the host objects of an embedder, such as the MessagePorts
+%% and the JS transferables of Node's postMessage: Hook(Object) returns none
+%% for an ordinary object, or {host, Tag, Data}, whose Data clones with the
+%% rest of the value and reaches the Hook of clone_in/2 as {Tag, Clone}.
+-spec clone_out(value(), fun((value()) -> none | {host, term(), value()})) -> term().
+clone_out(Value, Hook) ->
+    Old = erlang:put(?CLONE_HOOK, Hook),
+    try clone_out(Value)
+    after restore_hook(Old)
+    end.
+
+-spec clone_in(term(), fun(({term(), value()}) -> value())) -> value().
+clone_in(Term, Hook) ->
+    Old = erlang:put(?CLONE_HOOK, Hook),
+    try clone_in(Term)
+    after restore_hook(Old)
+    end.
+
+restore_hook(undefined) -> erlang:erase(?CLONE_HOOK);
+restore_hook(Old) -> erlang:put(?CLONE_HOOK, Old).
+
 out({'$o', Id} = O, Seen) ->
     case Seen of
         #{Id := N} ->
             {{'$back', N}, Seen};
         _ ->
             N = map_size(Seen),
-            out_record(record_of(O), O, N, Seen#{Id => N})
+            case host_out(O) of
+                none ->
+                    out_record(record_of(O), O, N, Seen#{Id => N});
+                {host, Tag, Data} ->
+                    {DataTerm, Seen1} = out(Data, Seen#{Id => N}),
+                    {{'$host', N, Tag, DataTerm}, Seen1}
+            end
     end;
-out({'$f', _, _}, _Seen) ->
-    throw_error('DataCloneError', <<"function could not be cloned.">>);
+out({'$f', _, _} = F, _Seen) ->
+    throw_error('DataCloneError', text([buoy_ref:to_string(F), <<" could not be cloned.">>]));
 out({'$sym', _, _} = S, _Seen) ->
     throw_error('DataCloneError', text([key_text(S), <<" could not be cloned.">>]));
 out(V, Seen) ->
@@ -1678,6 +1742,12 @@ out_record({object, _, _, _, _, _}, O, N, Seen) ->
 out_record({Class, _, _, _, _, _}, _O, _N, _Seen) ->
     throw_error('DataCloneError', <<"#<", (atom_to_binary(Class))/binary, "> could not be cloned.">>).
 
+host_out(O) ->
+    case erlang:get(?CLONE_HOOK) of
+        undefined -> none;
+        Hook -> Hook(O)
+    end.
+
 value_text(undefined) -> <<>>;
 value_text(V) -> buoy_ref:to_string(V).
 
@@ -1702,6 +1772,10 @@ clone_in(Term) ->
 
 in({'$back', N}, Made) ->
     {maps:get(N, Made), Made};
+in({'$host', N, Tag, DataTerm}, Made) ->
+    {Data, Made1} = in(DataTerm, Made),
+    O = (erlang:get(?CLONE_HOOK))({Tag, Data}),
+    {O, Made1#{N => O}};
 in({'$object', N, Pairs}, Made) ->
     O = new_object(?OBJECT_PROTO),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) -> {V1, M1} = in(V, M), {{K, V1}, M1} end, Made#{N => O}, Pairs),
