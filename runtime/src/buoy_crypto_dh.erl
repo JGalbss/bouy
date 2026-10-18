@@ -162,7 +162,11 @@ derive(#{kind := ec, curve := Curve, priv := D}, #{kind := ec, curve := Curve, p
     Size = (buoy_crypto_pkey:curve_bits(Curve) + 7) div 8,
     crypto:compute_key(ecdh, Pub, <<D:(Size * 8)>>, Curve);
 derive(#{kind := Kind, priv := Priv}, #{kind := Kind, pub := Pub}) when Kind =:= x25519; Kind =:= x448 ->
-    crypto:compute_key(eddh, Pub, Priv, Kind);
+    %% OpenSSL refuses a low-order point, whose secret is all zeros.
+    try crypto:compute_key(eddh, Pub, Priv, Kind)
+    catch
+        error:{error, _, _} -> buoy_crypto:fail({openssl, failed_during_derivation})
+    end;
 derive(#{kind := Kind}, #{kind := Kind}) when Kind =:= dh; Kind =:= ec ->
     buoy_crypto:fail({openssl, mismatching_domain_parameters});
 derive(_, _) ->

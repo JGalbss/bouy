@@ -195,10 +195,11 @@ rsa_private(#{e := E, n := N, d := D, p := P, q := Q, dp := DP, dq := DQ, qi := 
 rsa_options(K, Md, ?RSA_PKCS1_PSS_PADDING, Salt) ->
     {Mgf1, KeySalt} = case buoy_crypto_pkey:pss_params(K) of
         #{md := KeyMd, mgf1 := M, salt := S} ->
-            {ok, #{name := Allowed}} = buoy_crypto_hash:digest(KeyMd),
-            maps:get(name, Md) =:= Allowed orelse buoy_crypto:fail({openssl, digest_not_allowed}),
+            %% OpenSSL checks the salt length before the digest.
             is_integer(Salt) andalso Salt >= 0 andalso Salt < S andalso
                 buoy_crypto:fail({openssl, pss_saltlen_too_small}),
+            {ok, #{name := Allowed}} = buoy_crypto_hash:digest(KeyMd),
+            maps:get(name, Md) =:= Allowed orelse buoy_crypto:fail({openssl, digest_not_allowed}),
             {ok, MgfMd} = buoy_crypto_hash:digest(M),
             {otp_md(MgfMd), S};
         undefined -> {otp_md(Md), undefined}
