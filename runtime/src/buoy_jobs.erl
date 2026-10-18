@@ -363,6 +363,11 @@ run_timer(Id) ->
 
 %%% The realm loop
 
+%% Node bootstraps before the code of -e and -p runs, and internal/main/buoy
+%% hands that code each built-in module as a global, as eval_string does.
+eval_bootstrap() ->
+    init:get_argument(buoy_eval) =:= error orelse buoy_node:ensure().
+
 %% Runs the top-level code of the entry module as the first job, then serves
 %% timers and replies until no work is left, as Node does.
 -spec run_main(fun(() -> term())) -> ok.
@@ -370,7 +375,7 @@ run_main(Body) ->
     buoy_ref:init_realm(),
     update_now(),
     %% The result lives under a pdict key, a root, so a collection keeps it.
-    run_job(fun() -> erlang:put(?MAIN, Body()) end),
+    run_job(fun() -> eval_bootstrap(), erlang:put(?MAIN, Body()) end),
     loop_until_exit(),
     case erlang:get(?MAIN) of
         {'$o', _} = P ->
