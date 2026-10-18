@@ -47,8 +47,9 @@ fd_loop(Port, Realm, Handle) ->
             fd_loop(Port, Realm, Handle);
         {Port, eof} ->
             ended(Realm, Handle);
-        {write, Bytes} ->
-            port_command(Port, Bytes),
+        {write, Bytes, From, Ref} ->
+            Status = try port_command(Port, Bytes) of true -> 0 catch error:badarg -> -32 end,
+            call(From, fun() -> bouy_node_stream:written(Ref, Status, ok) end),
             fd_loop(Port, Realm, Handle);
         shutdown ->
             fd_loop(Port, Realm, Handle);

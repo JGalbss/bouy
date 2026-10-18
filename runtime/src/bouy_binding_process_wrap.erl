@@ -174,8 +174,8 @@ socket_loop(Socket, Realm, Handle) ->
             deliver(Realm, Handle, eof),
             Self = self(),
             bouy_node_stream:call(Realm, fun() -> erlang:erase({?MODULE, root, Self}) end);
-        {write, Bytes} ->
-            _ = gen_tcp:send(Socket, Bytes),
+        {write, Bytes, From, Ref} ->
+            report(From, Ref, gen_tcp:send(Socket, Bytes)),
             socket_loop(Socket, Realm, Handle);
         shutdown ->
             _ = gen_tcp:shutdown(Socket, write),
@@ -256,8 +256,11 @@ manage(#{port := Port, realm := Realm, handles := Handles, writer := Writer, std
         {tcp_closed, Stderr} ->
             deliver(Realm, maps:get(stderr, Handles), eof),
             manage(M#{waiting := lists:delete(stderr, maps:get(waiting, M))});
-        {write, Bytes} when is_pid(Writer) ->
-            Writer ! {write, Bytes},
+        {write, _, _, _} = Write when is_pid(Writer) ->
+            Writer ! Write,
+            manage(M);
+        {write, _, From, Ref} ->
+            report(From, Ref, {error, epipe}),
             manage(M);
         shutdown when is_pid(Writer) ->
             Writer ! shutdown,
@@ -282,10 +285,10 @@ deliver(Realm, Handle, Item) -> bouy_node_stream:call(Realm, fun() -> bouy_node_
 %% in the manager. Shutdown half-closes, so the child reads the end.
 write_loop(Socket) ->
     receive
-        {write, Bytes} ->
+        {write, Bytes, From, Ref} ->
             case gen_tcp:send(Socket, Bytes) of
-                ok -> write_loop(Socket);
-                _ -> gen_tcp:close(Socket)
+                ok -> report(From, Ref, ok), write_loop(Socket);
+                Error -> report(From, Ref, Error), gen_tcp:close(Socket), write_closed(Socket)
             end;
         shutdown ->
             _ = gen_tcp:shutdown(Socket, write),
@@ -294,10 +297,21 @@ write_loop(Socket) ->
 
 write_loop_closed(Socket) ->
     receive
+        {write, _, From, Ref} -> report(From, Ref, {error, epipe}), write_loop_closed(Socket);
         _ -> write_loop_closed(Socket)
     after 60000 ->
         gen_tcp:close(Socket)
     end.
+
+%% A writer whose socket failed answers each later write with EPIPE.
+write_closed(Socket) ->
+    write_loop_closed(Socket).
+
+%% Reports a write of the realm's request Ref: 0, or EPIPE when it failed.
+report(Realm, Ref, ok) ->
+    bouy_node_stream:call(Realm, fun() -> bouy_node_stream:written(Ref, 0, ok) end);
+report(Realm, Ref, _Error) ->
+    bouy_node_stream:call(Realm, fun() -> bouy_node_stream:written(Ref, -32, ok) end).
 
 %% ProcessWrap::OnExit: onexit(exitCode, signal name or '').
 exited(This, Code, Signal) ->

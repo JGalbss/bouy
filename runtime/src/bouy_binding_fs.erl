@@ -79,6 +79,8 @@ missing(Name) ->
 %% and fstat, whose last says whether a missing file throws: a
 %% request object runs the call as a callback, kUsePromises is not
 %% implemented, and undefined runs it now.
+call(<<"read">>, [0, Buffer, Offset, Length, _Position, Req | _], 6, _Fun) when ?IS_OBJECT(Req) ->
+    read_stdin_async(Req, Buffer, trunc(bouy_ref:to_number(Offset)), trunc(bouy_ref:to_number(Length)));
 call(Name, Args, Length, Fun) ->
     case bouy_node:arg(Length, Args) of
         undefined ->
@@ -228,12 +230,19 @@ read(Args) ->
     bouy_node_encoding:view_write(Buffer, At, Data),
     byte_size(Data).
 
-read_stdin(Count) ->
-    case io:get_chars(standard_io, <<>>, Count) of
-        eof -> <<>>;
-        {error, _} -> <<>>;
-        Chars -> unicode:characters_to_binary(Chars)
-    end.
+read_stdin(Count) -> bouy_node_stdin:read(Count).
+
+%% An asynchronous read of stdin waits for its bytes outside the realm, so the
+%% loop runs on; the request and its buffer stay roots of the heap meanwhile.
+read_stdin_async(Req, Buffer, At, Count) ->
+    Ref = make_ref(),
+    erlang:put({?MODULE, stdin_read, Ref}, {Req, Buffer}),
+    bouy_node_stdin:read_async(Count, fun(Bytes) ->
+        {Req1, Buffer1} = erlang:erase({?MODULE, stdin_read, Ref}),
+        bouy_node_encoding:view_write(Buffer1, At, Bytes),
+        bouy_heap:call(bouy_heap:get(Req1, <<"oncomplete">>), Req1, [null, byte_size(Bytes)])
+    end),
+    undefined.
 
 position(undefined) -> current;
 position(null) -> current;
