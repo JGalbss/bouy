@@ -9,6 +9,9 @@
 
 -include_lib("public_key/include/public_key.hrl").
 
+%% These only throw, on purpose.
+-dialyzer({no_return, [fail/2, set_client_cert_engine/2]}).
+
 -define(TLS1, 16#301).
 -define(TLS1_1, 16#302).
 -define(TLS1_2, 16#303).
@@ -41,7 +44,7 @@ members() ->
         {<<"getTicketKeys">>, 0, fun(This, _) -> buoy_crypto:buffer(maps:get(ticket_keys, state(This))) end},
         {<<"setAllowPartialTrustChain">>, 0, Set(partial_chain, fun(_) -> true end)},
         {<<"loadPKCS12">>, 2, fun load_pkcs12/2},
-        {<<"setClientCertEngine">>, 1, fun(_, _) -> fail(<<"ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED">>, <<"Custom engines not supported by this OpenSSL">>) end},
+        {<<"setClientCertEngine">>, 1, fun set_client_cert_engine/2},
         {<<"getCertificate">>, 0, fun(This, _) -> certificate(This, leaf) end},
         {<<"getIssuer">>, 0, fun(This, _) -> certificate(This, issuer) end},
         {<<"close">>, 0, fun(_, _) -> undefined end}]),
@@ -64,6 +67,9 @@ is_context(V) ->
     buoy_heap:is_object(V) andalso buoy_heap:private_find(V, buoy_crypto:state_key(secure_context)) =/= error.
 
 fail(Code, Message) -> buoy_crypto:fail({code, 'Error', Code, Message}).
+
+set_client_cert_engine(_, _) ->
+    fail(<<"ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED">>, <<"Custom engines not supported by this OpenSSL">>).
 
 %% init(secureProtocol, minVersion, maxVersion): a secureProtocol method
 %% such as 'TLSv1_2_method' pins the version, as SSL_CTX_new does.
