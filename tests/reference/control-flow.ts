@@ -72,3 +72,17 @@ const holder = {
 };
 const maybe: typeof holder | undefined = holder;
 console.log((maybe?.read)(), holder.read?.(), maybe?.read?.());
+// The head of a for-in or for-of loop writes its target, which the code after the loop
+// reads.
+function lastKeys(): unknown[] {
+  let key = "";
+  for (key in "92") continue;
+  let item = 0;
+  for (item of [1, 2, 3]) {
+    if (item === 2) break;
+  }
+  const box = { p: "" };
+  for (box.p in { k: 1 });
+  return [key, item, box.p];
+}
+console.log(lastKeys());

@@ -264,7 +264,12 @@ impl<'a> Lowerer<'a, '_> {
         let labels = std::mem::take(&mut self.frame.labels);
         let initial_state = self.bind_var("State", state);
         let mut code = std::mem::take(&mut self.pre);
-        let vars = self.assigned_in(span, |visitor| visitor.visit_statement(body));
+        // The head writes its target on each step, so the code after the loop sees the
+        // last value.
+        let vars = self.assigned_in(span, |visitor| {
+            visitor.visit_for_statement_left(left);
+            visitor.visit_statement(body);
+        });
         let initial: Vec<Expr> = std::iter::once(initial_state.clone())
             .chain(vars.iter().map(|v| self.carried(*v)))
             .collect();
