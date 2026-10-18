@@ -55,3 +55,8 @@ console.log(
   pathNamespace[Symbol.toStringTag],
 );
 console.log("delete before init", deleted);
+try {
+  delete (counter as { count?: number }).count;
+} catch (error) {
+  console.log("delete export", (error as Error).message);
+}

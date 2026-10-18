@@ -747,9 +747,14 @@ delete_property(O, K) ->
         %% [[Delete]] of a namespace fails for an export and does not read its binding.
         {namespace, _, Props, _, _, _} when not is_tuple(K); element(1, K) =/= '$sym' ->
             not is_map_key(K, Props);
-        {deferred_namespace, _, _, _, _, M} = R ->
-            deferred_key(M, K),
-            own_of(R, K) =:= none;
+        %% A deferred namespace has no own "then", and an export key evaluates
+        %% its module (GetModuleExportsList).
+        {deferred_namespace, _, Props, _, _, M} = R ->
+            case deferred_key(M, K) of
+                absent -> true;
+                ordinary -> ordinary_delete(O, R, K);
+                export -> not is_map_key(K, Props)
+            end;
         {typed_array, _, _, _, _, _} = R ->
             case typed_index(K) of
                 {index, N} -> buoy_ref_typed_array:element_delete(O, N);
@@ -780,13 +785,15 @@ remove_own(O, K) ->
     ok.
 
 %% V8's message names the receiver: #<Class> for an object, [object Array]
-%% for an array.
+%% for an array, and [object Module] for a namespace, whose properties the
+%% message must not read.
 -spec cannot_delete(value(), key()) -> no_return().
 cannot_delete(O, K) ->
     Receiver = case O of
         {'$o', _} ->
             case class_of(O) of
                 array -> [<<" of [object Array]">>];
+                Namespace when Namespace =:= namespace; Namespace =:= deferred_namespace -> [<<" of [object Module]">>];
                 _ -> [<<" of #<">>, receiver_name(O, 0), <<">">>]
             end;
         _ -> []
