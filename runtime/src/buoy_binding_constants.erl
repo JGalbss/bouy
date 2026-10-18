@@ -1,16 +1,24 @@
 %% internalBinding('constants') (src/node_constants.cc): the constants of os,
-%% fs, crypto, zlib, and the others, as Node 25.9.0 reports them on darwin.
-%% shortcut: the values are darwin's, recorded with the oracle; record the
-%% table of each platform when Buoy runs on another one.
+%% fs, crypto, zlib, and the others, as Node 25.9.0 reports them. The tables
+%% are darwin's, and Linux replaces its errno, signal, dlopen, and fs numbers,
+%% as Bun generates one table for each platform from the system headers. The
+%% oracle recorded each table, on Linux in the node:25.9.0 image on arm64
+%% and on x86-64.
 -module(buoy_binding_constants).
 
--export([binding/0]).
+-export([binding/0, fs/1]).
 
 -spec binding() -> term().
 binding() ->
     Binding = buoy_node:from_json(json()),
+    buoy_node_process:platform() =:= <<"linux">> andalso linux(Binding),
     [null_prototype(buoy_heap:get(Binding, K)) || K <- buoy_heap:enumerable_keys(Binding)],
     Binding.
+
+%% The fs constant Name of this OS, such as O_CREAT for an open flag.
+-spec fs(binary()) -> term().
+fs(Name) ->
+    buoy_heap:get(buoy_heap:get(buoy_node:binding(<<"constants">>), <<"fs">>), Name).
 
 %% node_constants.cc gives each table, and each table inside one, a null
 %% prototype, so os.constants.signals['__proto__'] is undefined.
@@ -23,6 +31,18 @@ null_prototype(O) ->
         false ->
             ok
     end.
+
+linux(Binding) ->
+    Os = buoy_heap:get(Binding, <<"os">>),
+    Tables = buoy_node:from_json(linux_os()),
+    [buoy_heap:set(Os, K, buoy_heap:get(Tables, K)) || K <- buoy_heap:enumerable_keys(Tables)],
+    Fs = buoy_node:from_json(linux_fs()),
+    [buoy_heap:set(Fs, K, V) || {K, V} <- arm64_fs(buoy_node_process:arch())],
+    buoy_heap:set(Binding, <<"fs">>, Fs).
+
+%% The open flags of arm64 Linux that differ from x86-64.
+arm64_fs(<<"arm64">>) -> [{<<"O_DIRECT">>, 65536}, {<<"O_DIRECTORY">>, 16384}, {<<"O_NOFOLLOW">>, 32768}];
+arm64_fs(_) -> [].
 
 json() ->
     %% Recorded with node --expose-internals -p
@@ -144,3 +164,42 @@ json() ->
       "E_EVENT_PHASE_MARK\":82,\"TRACE_EVENT_PHASE_CLOCK_SYNC\":99,\"TRACE_EVENT_PHASE_ENTER_CONTEXT\""/utf8,
       ":40,\"TRACE_EVENT_PHASE_LEAVE_CONTEXT\":41,\"TRACE_EVENT_PHASE_LINK_IDS\":61},\"internal\":{\"EXT"/utf8,
       "ENSIONLESS_FORMAT_JAVASCRIPT\":0,\"EXTENSIONLESS_FORMAT_WASM\":1}}"/utf8>>.
+
+%% The tables of os.constants that differ on Linux: dlopen, errno, and signals.
+linux_os() ->
+    <<"{\"dlopen\":{\"RTLD_LAZY\":1,\"RTLD_NOW\":2,\"RTLD_GLOBAL\":256,\"RTLD_LOCAL\":0,\"RTLD_DE"/utf8,
+      "EPBIND\":8},\"errno\":{\"E2BIG\":7,\"EACCES\":13,\"EADDRINUSE\":98,\"EADDRNOTAVAIL\":99,\""/utf8,
+      "EAFNOSUPPORT\":97,\"EAGAIN\":11,\"EALREADY\":114,\"EBADF\":9,\"EBADMSG\":74,\"EBUSY\":16,\""/utf8,
+      "ECANCELED\":125,\"ECHILD\":10,\"ECONNABORTED\":103,\"ECONNREFUSED\":111,\"ECONNRESET\":104"/utf8,
+      ",\"EDEADLK\":35,\"EDESTADDRREQ\":89,\"EDOM\":33,\"EDQUOT\":122,\"EEXIST\":17,\"EFAULT\":14"/utf8,
+      ",\"EFBIG\":27,\"EHOSTUNREACH\":113,\"EIDRM\":43,\"EILSEQ\":84,\"EINPROGRESS\":115,\"EINTR\""/utf8,
+      ":4,\"EINVAL\":22,\"EIO\":5,\"EISCONN\":106,\"EISDIR\":21,\"ELOOP\":40,\"EMFILE\":24,\"EMLI"/utf8,
+      "NK\":31,\"EMSGSIZE\":90,\"EMULTIHOP\":72,\"ENAMETOOLONG\":36,\"ENETDOWN\":100,\"ENETRESET\""/utf8,
+      ":102,\"ENETUNREACH\":101,\"ENFILE\":23,\"ENOBUFS\":105,\"ENODATA\":61,\"ENODEV\":19,\"ENOE"/utf8,
+      "NT\":2,\"ENOEXEC\":8,\"ENOLCK\":37,\"ENOLINK\":67,\"ENOMEM\":12,\"ENOMSG\":42,\"ENOPROTOOP"/utf8,
+      "T\":92,\"ENOSPC\":28,\"ENOSR\":63,\"ENOSTR\":60,\"ENOSYS\":38,\"ENOTCONN\":107,\"ENOTDIR\""/utf8,
+      ":20,\"ENOTEMPTY\":39,\"ENOTSOCK\":88,\"ENOTSUP\":95,\"ENOTTY\":25,\"ENXIO\":6,\"EOPNOTSUPP"/utf8,
+      "\":95,\"EOVERFLOW\":75,\"EPERM\":1,\"EPIPE\":32,\"EPROTO\":71,\"EPROTONOSUPPORT\":93,\"EPR"/utf8,
+      "OTOTYPE\":91,\"ERANGE\":34,\"EROFS\":30,\"ESPIPE\":29,\"ESRCH\":3,\"ESTALE\":116,\"ETIME\""/utf8,
+      ":62,\"ETIMEDOUT\":110,\"ETXTBSY\":26,\"EWOULDBLOCK\":11,\"EXDEV\":18},\"signals\":{\"SIGHU"/utf8,
+      "P\":1,\"SIGINT\":2,\"SIGQUIT\":3,\"SIGILL\":4,\"SIGTRAP\":5,\"SIGABRT\":6,\"SIGIOT\":6,\"S"/utf8,
+      "IGBUS\":7,\"SIGFPE\":8,\"SIGKILL\":9,\"SIGUSR1\":10,\"SIGSEGV\":11,\"SIGUSR2\":12,\"SIGPIP"/utf8,
+      "E\":13,\"SIGALRM\":14,\"SIGTERM\":15,\"SIGCHLD\":17,\"SIGSTKFLT\":16,\"SIGCONT\":18,\"SIGS"/utf8,
+      "TOP\":19,\"SIGTSTP\":20,\"SIGTTIN\":21,\"SIGTTOU\":22,\"SIGURG\":23,\"SIGXCPU\":24,\"SIGXF"/utf8,
+      "SZ\":25,\"SIGVTALRM\":26,\"SIGPROF\":27,\"SIGWINCH\":28,\"SIGIO\":29,\"SIGPOLL\":29,\"SIGP"/utf8,
+      "WR\":30,\"SIGSYS\":31}}"/utf8>>.
+
+%% The fs constants of Linux on x86-64.
+linux_fs() ->
+    <<"{\"UV_FS_SYMLINK_DIR\":1,\"UV_FS_SYMLINK_JUNCTION\":2,\"O_RDONLY\":0,\"O_WRONLY\":1,\"O_RD"/utf8,
+      "WR\":2,\"UV_DIRENT_UNKNOWN\":0,\"UV_DIRENT_FILE\":1,\"UV_DIRENT_DIR\":2,\"UV_DIRENT_LINK\""/utf8,
+      ":3,\"UV_DIRENT_FIFO\":4,\"UV_DIRENT_SOCKET\":5,\"UV_DIRENT_CHAR\":6,\"UV_DIRENT_BLOCK\":7,"/utf8,
+      "\"S_IFMT\":61440,\"S_IFREG\":32768,\"S_IFDIR\":16384,\"S_IFCHR\":8192,\"S_IFBLK\":24576,\""/utf8,
+      "S_IFIFO\":4096,\"S_IFLNK\":40960,\"S_IFSOCK\":49152,\"O_CREAT\":64,\"O_EXCL\":128,\"UV_FS_"/utf8,
+      "O_FILEMAP\":0,\"O_NOCTTY\":256,\"O_TRUNC\":512,\"O_APPEND\":1024,\"O_DIRECTORY\":65536,\"O"/utf8,
+      "_NOATIME\":262144,\"O_NOFOLLOW\":131072,\"O_SYNC\":1052672,\"O_DSYNC\":4096,\"O_DIRECT\":1"/utf8,
+      "6384,\"O_NONBLOCK\":2048,\"S_IRWXU\":448,\"S_IRUSR\":256,\"S_IWUSR\":128,\"S_IXUSR\":64,\""/utf8,
+      "S_IRWXG\":56,\"S_IRGRP\":32,\"S_IWGRP\":16,\"S_IXGRP\":8,\"S_IRWXO\":7,\"S_IROTH\":4,\"S_I"/utf8,
+      "WOTH\":2,\"S_IXOTH\":1,\"F_OK\":0,\"R_OK\":4,\"W_OK\":2,\"X_OK\":1,\"UV_FS_COPYFILE_EXCL\""/utf8,
+      ":1,\"COPYFILE_EXCL\":1,\"UV_FS_COPYFILE_FICLONE\":2,\"COPYFILE_FICLONE\":2,\"UV_FS_COPYFIL"/utf8,
+      "E_FICLONE_FORCE\":4,\"COPYFILE_FICLONE_FORCE\":4}"/utf8>>.
