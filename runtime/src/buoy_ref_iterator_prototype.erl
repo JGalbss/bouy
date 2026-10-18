@@ -120,7 +120,7 @@ method(<<"Iterator.prototype">>, Name, This, Args) ->
 %% any other iterator wrapped.
 from(O) ->
     {Iterator, Next} = flattenable(O, iterate_strings),
-    case buoy_ref:instance_of(Iterator, constructor()) of
+    case buoy_ref:instance_of(Iterator, buoy_ref_realm:current(constructor())) of
         true -> Iterator;
         false -> buoy_heap:new_exotic(wrap_for_valid_iterator, ?WRAP_PROTO, {Iterator, Next})
     end.

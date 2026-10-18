@@ -1,1 +1,2 @@
 callback realm 3 true,true
+foreign Iterator.from wraps true true

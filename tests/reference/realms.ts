@@ -16,3 +16,8 @@ forEach.call([1], () => {
   made.push([].constructor === Array, {}.constructor === Object);
 });
 console.log("callback realm", total, made.join(","));
+// Iterator.from of another realm wraps an iterator of this realm: it is not an
+// instance of that realm's Iterator.
+const from = vm.runInContext("Iterator.from", context) as (iterator: Iterator<number>) => unknown;
+const values = [1, 2].values();
+console.log("foreign Iterator.from wraps", from(values) !== values, Iterator.from(values) === values);
