@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "9429a822082a95c0ed9cbfacf2e18362e807c48c",
+  "updated": "f163d9abd2625aa8cf66d21d3c80e1739cbf80c5",
   "total": 4419,
   "outcomes": {
-    "pass": 2454,
+    "pass": 2457,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
     "fail": 1301,
-    "timeout": 69,
+    "timeout": 66,
     "harness_error": 0,
     "crash": 12
   },
@@ -23,10 +23,10 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 2336,
+        "pass": 2339,
         "skip": 545,
         "fail": 1124,
-        "timeout": 62,
+        "timeout": 59,
         "crash": 12
       },
       "sequential": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2454,
+        "pass": 2457,
         "skip": 240,
         "fail": 1301,
-        "timeout": 69,
+        "timeout": 66,
         "crash": 12
       }
     },
@@ -102,9 +102,8 @@
         "timeout": 1
       },
       "dns": {
-        "pass": 18,
-        "skip": 10,
-        "timeout": 1
+        "pass": 19,
+        "skip": 10
       },
       "domain": {
         "pass": 30,
@@ -144,10 +143,10 @@
         "timeout": 2
       },
       "net": {
-        "pass": 146,
+        "pass": 147,
         "skip": 10,
         "fail": 3,
-        "timeout": 3
+        "timeout": 2
       },
       "os": {
         "pass": 2,
@@ -155,10 +154,10 @@
         "fail": 4
       },
       "other": {
-        "pass": 239,
+        "pass": 240,
         "skip": 178,
         "fail": 193,
-        "timeout": 4,
+        "timeout": 3,
         "crash": 2
       },
       "path": {

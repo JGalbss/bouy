@@ -959,7 +959,7 @@ parallel/test-disable-sigusr1.js pass
 parallel/test-dns-cancel-reverse-lookup.js pass
 parallel/test-dns-channel-cancel-promise.js pass
 parallel/test-dns-channel-cancel.js pass
-parallel/test-dns-channel-timeout.js timeout
+parallel/test-dns-channel-timeout.js pass
 parallel/test-dns-default-order-ipv4.js skip
 parallel/test-dns-default-order-ipv6.js skip
 parallel/test-dns-default-order-verbatim.js skip
@@ -2496,13 +2496,13 @@ parallel/test-net-listen-after-destroying-stdin.js pass
 parallel/test-net-listen-close-server-callback-is-not-function.js pass
 parallel/test-net-listen-close-server.js pass
 parallel/test-net-listen-error.js pass
-parallel/test-net-listen-exclusive-random-ports.js fail
+parallel/test-net-listen-exclusive-random-ports.js pass
 parallel/test-net-listen-fd0.js pass
 parallel/test-net-listen-handle-in-cluster-1.js timeout
 parallel/test-net-listen-handle-in-cluster-2.js skip
 parallel/test-net-listen-invalid-port.js pass
 parallel/test-net-listen-ipv6only.js pass
-parallel/test-net-listen-twice.js timeout
+parallel/test-net-listen-twice.js fail
 parallel/test-net-listening.js pass
 parallel/test-net-local-address-port.js pass
 parallel/test-net-localerror.js pass
@@ -2715,7 +2715,7 @@ parallel/test-pipe-head.js pass
 parallel/test-pipe-outgoing-message-data-emitted-after-ended.js fail
 parallel/test-pipe-return-val.js pass
 parallel/test-pipe-stream.js pass
-parallel/test-pipe-unref.js timeout
+parallel/test-pipe-unref.js pass
 parallel/test-pipe-writev.js pass
 parallel/test-preload-print-process-argv.js fail
 parallel/test-preload-self-referential.js pass
