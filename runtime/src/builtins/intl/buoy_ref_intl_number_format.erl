@@ -12,7 +12,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, constructor/0]).
--export([format_value/3, format_mv/2, number_format/2]).
+-export([format_value/3, format_mv/2, number_format/2, partition/2, locale_data/2]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 -import(buoy_ref_intl, [get_option/5]).
@@ -187,6 +187,7 @@ construct(NewTarget, Args) ->
 
 %% [[LocaleData]].[[<locale>]].[[nu]]: the default numbering system of the
 %% locale first, then each numbering system with simple digits.
+-spec locale_data(binary(), binary()) -> [binary()].
 locale_data(Locale, <<"nu">>) ->
     Default = buoy_intl_cldr:get(buoy_ref_intl:base_name(Locale), nu_default, <<"latn">>),
     [Default | [Nu || Nu <- buoy_ref_intl_data:numbering_systems(), Nu =/= Default]].
@@ -488,6 +489,8 @@ grouping(#{sizes := {G1, G2, G3}}, Strategy, Locale) ->
 
 %%% PartitionNumberPattern
 
+%% PartitionNumberPattern: [{Type, Text}] with Text a list of code points.
+-spec partition(term(), buoy_ref_intl_number:mv()) -> [{atom(), [char()]}].
 partition(NF, X) ->
     finish(format_parts(formatter(NF), X)).
 

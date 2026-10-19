@@ -30,6 +30,7 @@ intrinsics() ->
                          {<<"ListFormat">>, buoy_ref_intl_list_format:constructor()},
                          {<<"NumberFormat">>, buoy_ref_intl_number_format:constructor()},
                          {<<"PluralRules">>, buoy_ref_intl_plural_rules:constructor()},
+                         {<<"RelativeTimeFormat">>, buoy_ref_intl_relative_time_format:constructor()},
                          {<<"Segmenter">>, buoy_ref_intl_segmenter:constructor()},
                          {?SYM(toStringTag), <<"Intl">>, 4}],
                      none)}].

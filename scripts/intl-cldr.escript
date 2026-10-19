@@ -7,7 +7,7 @@
 %%
 %% <cldr-json-dir> is the cldr-json directory of the cldr-json release that Node's ICU uses
 %% (process.versions.cldr), such as https://github.com/unicode-org/cldr-json/tree/48.0.0,
-%% with cldr-numbers-full, cldr-units-full, cldr-misc-full, and cldr-core.
+%% with cldr-numbers-full, cldr-units-full, cldr-misc-full, cldr-dates-full, and cldr-core.
 %%
 %% cldr-json holds resolved data, so each locale holds what it inherits. The file keeps
 %% for each locale only the entries that differ from its parent, and buoy_intl_cldr reads
@@ -68,7 +68,9 @@ entries(Dir, Read, L) ->
         false -> #{}
     end,
     Lists = maps:get(<<"listPatterns">>, maps:get(Locale, maps:get(<<"main">>, Read("cldr-misc-full/main/" ++ L ++ "/listPatterns.json")))),
-    maps:from_list(number_entries(Numbers) ++ currency_entries(Currencies) ++ unit_entries(Units) ++ list_entries(Lists)).
+    Fields = maps:get(<<"fields">>, maps:get(<<"dates">>, maps:get(Locale, maps:get(<<"main">>, Read("cldr-dates-full/main/" ++ L ++ "/dateFields.json"))))),
+    maps:from_list(number_entries(Numbers) ++ currency_entries(Currencies) ++ unit_entries(Units) ++ list_entries(Lists)
+                   ++ field_entries(Fields)).
 
 %%% numbers.json
 
@@ -170,6 +172,25 @@ list_entries(Lists) ->
         two => maps:get(<<"2">>, P)}}
      || {<<"listPattern-type-", Name/binary>>, P} <- maps:to_list(Lists),
         {Type, Style} <- [case binary:split(Name, <<"-">>) of [T] -> {T, <<"long">>}; [T, S] -> {T, S} end]].
+
+%%% dateFields.json
+
+%% The fields of dates by width, {field, Name, Width} => #{name, relative =>
+%% #{Offset => Text}, future | past => #{Count => Pattern}}, with Width long,
+%% short, or narrow.
+field_entries(Fields) ->
+    [{{field, Name, binary_to_atom(Width)}, field(Value)}
+     || {Key, Value} <- maps:to_list(Fields),
+        {Name, Width} <- [case binary:split(Key, <<"-">>) of [N] -> {N, <<"long">>}; [N, W] -> {N, W} end]].
+
+field(Value) ->
+    Patterns = fun(Tense) ->
+                       maps:from_list([{Count, P} || {<<"relativeTimePattern-count-", Count/binary>>, P}
+                                                         <- maps:to_list(maps:get(Tense, Value, #{}))])
+               end,
+    #{name => maps:get(<<"displayName">>, Value, undefined),
+      relative => maps:from_list([{Offset, T} || {<<"relative-type-", Offset/binary>>, T} <- maps:to_list(Value)]),
+      future => Patterns(<<"relativeTime-type-future">>), past => Patterns(<<"relativeTime-type-past">>)}.
 
 %%% Supplemental data
 
