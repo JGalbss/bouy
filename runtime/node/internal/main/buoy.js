@@ -157,16 +157,6 @@ function setupChildProcessIpcChannel() {
   }
 }
 
-// A worker of node:cluster starts its channel to the primary before any code
-// of the program runs, as initializeClusterIPC does.
-function initializeClusterIPC() {
-  if (process.argv[1] && process.env.NODE_UNIQUE_ID) {
-    const cluster = require('cluster');
-    cluster._setupWorker();
-    delete process.env.NODE_UNIQUE_ID;
-  }
-}
-
 // The tracing of async_hooks when --trace-event-categories enables it.
 function setupTraceCategoryState() {
   const { isTraceCategoryEnabled } = internalBinding('trace_events');
@@ -187,7 +177,6 @@ setupWarningHandler();
 setupDebugEnv();
 require('internal/dns/utils').initializeDns();
 setupChildProcessIpcChannel();
-initializeClusterIPC();
 // -e and -p see the built-in modules as globals, as eval_string.js gives them.
 if (getOptionValue('[has_eval_string]')) {
   require('internal/modules/cjs/loader').initializeCJS();
