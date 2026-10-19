@@ -2,8 +2,10 @@
 //! `es-module`, `sequential`, and `wasi` that `scripts/vendor-node-tests.sh` copied into
 //! `tests/node/test` at the tag of `.node-version`. Each file runs in its own `buoy` OS
 //! process, because these files use `process.exit`, signals, stdio, and child processes. A
-//! file passes when it exits with 0 within the deadline. `config.json` skips the files that
-//! can never apply to Buoy (section 3.5), by path or by a flag of the `// Flags:` line.
+//! file passes when it exits with 0 within the deadline, unless it skipped itself as
+//! `common.skip` does. `config.json` skips the files that can never apply to Buoy (section
+//! 3.5), by path or by a flag of the `// Flags:` line, and a reviewed line of
+//! `tests/node/never.txt` gives a file that Buoy will never run the outcome `never`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -16,6 +18,7 @@ use serde::Deserialize;
 
 use crate::comparison::{self, Comparison, Origin, Selection};
 use crate::expectations::{self, Entry, Expectations, PLATFORM};
+use crate::node_surface;
 use crate::outcome::{Facts, Outcome, RunResult, classify};
 use crate::summary::{self, Counts, Destination, Results, Summary, TestResult};
 use crate::{SKIP_REASONS, buoy_env};
@@ -39,6 +42,13 @@ const SEQUENTIAL: &str = "sequential/";
 /// The flags of a file that tests a private internal or a V8 engine detail. These files
 /// form the `internals` group of section 5.7.1, apart from the headline.
 const INTERNALS: [&str; 2] = ["--expose-internals", "--allow-natives-syntax"];
+
+/// The line of `printSkipMessage` of `test/common`, which `common.skip` prints before it exits
+/// with 0. Node's `tools/test.py` reports such a file as a skip, not a pass.
+const SELF_SKIP: &str = "1..0 # Skipped: ";
+
+/// The group of `skip reason` of a file that skipped itself.
+const SELF_SKIP_REASON: &str = "self";
 
 /// The entry files of `test/common`, for a `CommonJS` file and for an ES module.
 const COMMON: [&str; 2] = ["common/index.js", "common/index.mjs"];
@@ -255,6 +265,8 @@ struct Test {
     env: Vec<(String, String)>,
     /// The reason code of the skip of `config.json` that applies.
     skip: Option<String>,
+    /// The reason of the line of `never.txt` that names the file.
+    never: Option<String>,
     /// The entry file of `test/common` that the test loads.
     common: Option<&'static str>,
 }
@@ -324,8 +336,40 @@ fn test_of(id: String, source: &str, config: &Config) -> Result<Test, String> {
         options,
         env,
         skip,
+        never: None,
         common,
     })
+}
+
+/// Whether a line of `never.txt` names a test file, such as `parallel/test-a.js`, rather
+/// than an entry of the API surface.
+#[must_use]
+pub fn is_test_id(name: &str) -> bool {
+    DIRECTORIES.iter().any(|directory| {
+        name.strip_prefix(directory)
+            .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+/// Gives each file that a line of `never.txt` of `directory` names its reason. A line that
+/// names no test file of the suite fails the run.
+fn mark_never(directory: &Path, tests: &mut [Test]) -> Result<(), String> {
+    let mut never: BTreeMap<String, String> = node_surface::never(directory)?
+        .into_iter()
+        .filter(|(name, _)| is_test_id(name))
+        .collect();
+    for test in tests.iter_mut() {
+        test.never = never.remove(&test.id);
+    }
+    match never.keys().next() {
+        Some(id) => Err(format!("{}: `{id}` is no test file", node_surface::NEVER)),
+        None => Ok(()),
+    }
+}
+
+/// The message of the first skip line of `stdout`, when the file skipped itself.
+fn self_skip(stdout: &str) -> Option<&str> {
+    stdout.lines().find_map(|line| line.strip_prefix(SELF_SKIP))
 }
 
 /// The text of the first `// <key>:` line of `source`, after the colon: the
@@ -413,7 +457,8 @@ pub fn run(options: &Options) -> Result<Report, String> {
     let mut durations_ms = BTreeMap::new();
 
     let started = Instant::now();
-    let tests = load_tests(&options.directory.join(SUITE_DIRECTORY), &config)?;
+    let mut tests = load_tests(&options.directory.join(SUITE_DIRECTORY), &config)?;
+    mark_never(&options.directory, &mut tests)?;
     durations_ms.insert("load".to_owned(), started.elapsed().as_millis());
 
     // A line whose outcome differs by platform names each one, and a run compares with
@@ -559,7 +604,10 @@ fn execute_selected<'a>(
         .map(|result| {
             let (serial, test, execution) = result?;
             if expected.get(&test.id) == Some(&Entry::Same(execution.outcome))
-                || matches!(execution.outcome, Outcome::Crash | Outcome::Skip)
+                || matches!(
+                    execution.outcome,
+                    Outcome::Crash | Outcome::Skip | Outcome::Never
+                )
             {
                 return Ok((test, execution));
             }
@@ -580,14 +628,16 @@ fn end_package_scope(scratch: &Path) -> Result<(), String> {
         .map_err(|error| format!("{}: {error}", scratch.display()))
 }
 
-/// A skip costs no run, so every selection takes the skipped files, and a change to the
-/// skips of config.json shows on a pull request.
+/// A skip or a `never` costs no run, so every selection takes those files, and a change to
+/// config.json or never.txt shows on a pull request.
 fn is_selected(test: &Test, options: &Options, expected: Option<&Entry>) -> bool {
     options
         .filter
         .as_ref()
         .is_none_or(|filter| test.id.contains(filter.as_str()))
-        && (test.skip.is_some() || options.selection.includes(&test.id, expected))
+        && (test.skip.is_some()
+            || test.never.is_some()
+            || options.selection.includes(&test.id, expected))
 }
 
 /// The entry files of `test/common` that `buoy check` rejects. Each one is a blocker of the
@@ -617,11 +667,16 @@ fn rejected_common(options: &Options, scratch: &Path) -> Result<Vec<&'static str
 
 /// Runs one file with `buoy run` from `tests/node`, or skips it.
 fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, String> {
-    if let Some(reason) = &test.skip {
+    let unrun = match (&test.skip, &test.never) {
+        (Some(reason), _) => Some((Outcome::Skip, reason)),
+        (None, Some(reason)) => Some((Outcome::Never, reason)),
+        (None, None) => None,
+    };
+    if let Some((outcome, reason)) = unrun {
         return Ok(Execution {
-            outcome: Outcome::Skip,
+            outcome,
             blockers: Vec::new(),
-            report: format!("--- {}: skip, {reason}\n", test.id),
+            report: format!("--- {}: {outcome}, {reason}\n", test.id),
             time_ms: 0,
         });
     }
@@ -648,7 +703,12 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
     let passed = !finished.timed_out && finished.output.status.success();
     let result = RunResult::read(&result_file);
     let _ = fs::remove_dir_all(&directory);
-    let outcome = classify(&Facts::of_run(result.as_ref(), finished.timed_out, passed));
+    let stdout = String::from_utf8_lossy(&finished.output.stdout);
+    let skipped = self_skip(&stdout).filter(|_| passed);
+    let outcome = match skipped {
+        Some(_) => Outcome::Skip,
+        None => classify(&Facts::of_run(result.as_ref(), finished.timed_out, passed)),
+    };
     let mut blockers = result
         .map(|result| result.blockers(outcome))
         .unwrap_or_default();
@@ -660,8 +720,9 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
     }
     let stderr = String::from_utf8_lossy(&finished.output.stderr);
     let stderr: Vec<&str> = stderr.lines().take(STDERR_LINES).collect();
+    let skipped = skipped.map_or_else(String::new, |message| format!(" ({message})"));
     let report = format!(
-        "--- {}: {outcome}, exit status {:?}\n--- stderr:\n{}\nrerun: {command:?}\n",
+        "--- {}: {outcome}{skipped}, exit status {:?}\n--- stderr:\n{}\nrerun: {command:?}\n",
         test.id,
         finished.output.status.code(),
         stderr.join("\n"),
@@ -675,7 +736,7 @@ fn execute(test: &Test, serial: usize, context: &Context) -> Result<Execution, S
 }
 
 /// The groups of section 5.7 and 5.7.1: `kind` (`public` or `internals`), `directory`,
-/// `module`, and the skips by reason.
+/// `module`, and the skips by reason, where `self` is a file that skipped itself.
 fn groups(tests: &[Test], entries: &Expectations) -> BTreeMap<String, BTreeMap<String, Counts>> {
     let mut groups: BTreeMap<String, BTreeMap<String, Counts>> = BTreeMap::new();
     for test in tests {
@@ -698,7 +759,11 @@ fn groups(tests: &[Test], entries: &Expectations) -> BTreeMap<String, BTreeMap<S
             ("directory", directory),
             ("module", &module),
         ];
-        if let Some(reason) = &test.skip {
+        let reason = test
+            .skip
+            .as_deref()
+            .or_else(|| (entry.outcome() == Outcome::Skip).then_some(SELF_SKIP_REASON));
+        if let Some(reason) = reason {
             names.push(("skip reason", reason));
         }
         for (group, name) in names {

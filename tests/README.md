@@ -45,17 +45,17 @@ Node is the oracle, and no test runs it. `scripts/freeze-expectations.sh <direct
 
 ## Outcomes
 
-| Outcome         | Meaning                                                                               |
-| --------------- | ------------------------------------------------------------------------------------- |
-| `pass`          | The result equals the Node result, or the upstream test's own check passes.           |
-| `rejected`      | The compiler reported a diagnostic.                                                   |
-| `late`          | The run threw a `TypeError` with the code `ERR_BUOY_UNSUPPORTED`.                     |
-| `skip`          | The test can never apply to Buoy, and `config.json` gives the reason.                 |
-| `never`         | Buoy will never have the entry, and `tests/node/never.txt` gives the reviewed reason. |
-| `fail`          | The program ran, and the result differs from Node. This is a silent divergence.       |
-| `timeout`       | The deadline passed.                                                                  |
-| `harness_error` | A harness file compiled and then threw, so the test never started.                    |
-| `crash`         | A Buoy bug: a compiler panic, generated Erlang that does not compile, or a VM crash.  |
+| Outcome         | Meaning                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| `pass`          | The result equals the Node result, or the upstream test's own check passes.                 |
+| `rejected`      | The compiler reported a diagnostic.                                                         |
+| `late`          | The run threw a `TypeError` with the code `ERR_BUOY_UNSUPPORTED`.                           |
+| `skip`          | The test can never apply to Buoy, and `config.json` gives the reason, or it skipped itself. |
+| `never`         | Buoy will never have the entry, and `tests/node/never.txt` gives the reviewed reason.       |
+| `fail`          | The program ran, and the result differs from Node. This is a silent divergence.             |
+| `timeout`       | The deadline passed.                                                                        |
+| `harness_error` | A harness file compiled and then threw, so the test never started.                          |
+| `crash`         | A Buoy bug: a compiler panic, generated Erlang that does not compile, or a VM crash.        |
 
 `rejected`, `late`, and `skip` are loud: the user sees them. `fail`, `timeout`, and `harness_error` are silent. A corpus with an `expectations.txt`, such as `tests/migration`, holds one line for each program: its id and its outcome. A run with another outcome fails.
 

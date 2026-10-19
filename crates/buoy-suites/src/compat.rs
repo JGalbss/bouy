@@ -12,9 +12,9 @@ use serde::Serialize;
 
 use crate::expectations::{self, Entry};
 use crate::node_bindings::{self, Coverage};
-use crate::node_surface;
 use crate::outcome::Outcome;
 use crate::summary::{Blocker, Counts, Summary};
+use crate::{node, node_surface};
 
 /// The command that writes the two files.
 pub const COMMAND: &str = "pnpm compat";
@@ -218,13 +218,25 @@ fn upstream(root: &Path) -> Result<Vec<TierRow>, String> {
             outcomes: summary.outcomes.with_zeros(),
             groups: summary.groups,
             blockers: summary.blockers,
-            never: (suite == node_surface::SUITE)
-                .then(|| node_surface::never(&root.join("tests/node")))
-                .transpose()?,
+            never: never_of(root, suite)?,
             rule: String::new(),
         });
     }
     Ok(tiers)
+}
+
+/// The lines of `tests/node/never.txt` that belong to `suite`: the test files of Node's
+/// suite, or the entries of its surface.
+fn never_of(root: &Path, suite: &str) -> Result<Option<BTreeMap<String, String>>, String> {
+    let lines = match suite {
+        "node" => node_surface::never(&root.join("tests/node"))?
+            .into_iter()
+            .filter(|(name, _)| node::is_test_id(name))
+            .collect(),
+        node_surface::SUITE => node_surface::never_entries(&root.join("tests/node"))?,
+        _ => return Ok(None),
+    };
+    Ok(Some(lines))
 }
 
 /// The tiers of Buoy's own corpora.
@@ -412,7 +424,8 @@ fn suite_section(page: &mut String, tier: &TierRow) {
 fn never_section(page: &mut String, never: &BTreeMap<String, String>) {
     let _ = writeln!(
         page,
-        "### Never\n\nThe entries of `{}` that Buoy will never have, each approved by a reviewer.\n",
+        "### Never\n\nThe lines of `{}` for this suite: what Buoy will never have, each approved \
+         by a reviewer.\n",
         node_surface::NEVER
     );
     if never.is_empty() {

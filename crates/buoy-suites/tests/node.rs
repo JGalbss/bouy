@@ -13,7 +13,8 @@ use buoy_suites::outcome::Outcome;
 
 /// The file is the last argument. Rejects `common/index.mjs` on `check`. On `run`, a file named `*rejected*` is rejected,
 /// `*fail*` exits with 1, `*flaky*` fails until the file `FAKE_MARK` exists and makes it,
-/// and `*env*` passes only with the variables of the runner and of its `// Env:` line.
+/// `*env*` passes only with the variables of the runner and of its `// Env:` line, and
+/// `*self-skip*` prints the line of `common.skip` and exits with 0.
 const FAKE_BUOY: &str = r#"#!/bin/sh
 for file; do :; done
 if [ "$1" = check ]; then
@@ -23,6 +24,8 @@ fi
 case "$file" in
 *rejected*) echo '{"status":2,"diagnostics":["BUOY206"]}' >"$BUOY_RESULT_FILE"; exit 2 ;;
 *fail*) echo '{"status":1}' >"$BUOY_RESULT_FILE"; exit 1 ;;
+*self-skip*) echo '1..0 # Skipped: no inspector' ;;
+*never*) exit 3 ;;
 *flaky*)
     if [ ! -f "$FAKE_MARK" ]; then
         touch "$FAKE_MARK"; echo '{"status":1}' >"$BUOY_RESULT_FILE"; exit 1
@@ -53,6 +56,10 @@ impl FakeSuite {
                    "skip": [{"flag": "--expose-internals", "reason": "node-internals"},
                             {"path": "parallel/test-inspector", "reason": "node-inspector"}]}"#,
             ),
+            (
+                "tests/never.txt",
+                "# A comment.\nparallel/test-never.js a reviewed reason\nnode:fs.x an entry\n",
+            ),
             ("tests/test/common/index.js", "'use strict';\n"),
             ("tests/test/common/index.mjs", "import './index.js';\n"),
             ("tests/test/parallel/helper.js", "// no test\n"),
@@ -68,6 +75,8 @@ impl FakeSuite {
                 "tests/test/parallel/test-fs-env.js",
                 "'use strict';\n// Env: FAKE_ENV=yes\nrequire('../common');\n",
             ),
+            ("tests/test/parallel/test-self-skip.js", "'use strict';\n"),
+            ("tests/test/parallel/test-never.js", "'use strict';\n"),
             (
                 "tests/test/parallel/test-internals.js",
                 "// Flags: --expose_internals\n'use strict';\n",
@@ -129,12 +138,14 @@ fn the_fake_suite_gets_its_outcomes_skips_and_blockers() {
         ("parallel/test-rejected.js", Outcome::Rejected),
         ("parallel/test-internals.js", Outcome::Skip),
         ("parallel/test-inspector-port.js", Outcome::Skip),
+        ("parallel/test-self-skip.js", Outcome::Skip),
+        ("parallel/test-never.js", Outcome::Never),
         ("es-module/test-esm-rejected.mjs", Outcome::Rejected),
         ("sequential/test-fail.js", Outcome::Fail),
     ] {
         assert_eq!(entry(id), Some(Entry::Same(outcome)), "{id}");
     }
-    assert_eq!(report.run.len(), 7, "helper.js is no test");
+    assert_eq!(report.run.len(), 9, "helper.js is no test");
     assert_eq!(
         report.comparison.regressions.len(),
         1,
@@ -143,7 +154,7 @@ fn the_fake_suite_gets_its_outcomes_skips_and_blockers() {
     );
     assert_eq!(
         report.comparison.stale.len(),
-        7,
+        9,
         "{:?}",
         report.comparison.stale
     );
@@ -164,6 +175,8 @@ fn the_fake_suite_gets_its_outcomes_skips_and_blockers() {
     assert_eq!(count("module", "fs", Outcome::Pass), 1);
     assert_eq!(count("module", "module", Outcome::Rejected), 1);
     assert_eq!(count("skip reason", "node-inspector", Outcome::Skip), 1);
+    assert_eq!(count("skip reason", "self", Outcome::Skip), 1);
+    assert_eq!(count("kind", "public", Outcome::Never), 1);
     assert_eq!(count("directory", "sequential", Outcome::Fail), 1);
     let text = report.text();
     assert!(text.contains("sequential/test-fail.js: fail"), "{text}");
@@ -182,8 +195,10 @@ fn an_update_writes_a_file_that_the_next_run_matches() {
          parallel/test-fs-env.js pass\n\
          parallel/test-inspector-port.js skip\n\
          parallel/test-internals.js skip\n\
+         parallel/test-never.js never\n\
          parallel/test-pass.js pass\n\
          parallel/test-rejected.js rejected\n\
+         parallel/test-self-skip.js skip\n\
          sequential/test-fail.js fail\n"
     );
     assert!(suite.read("summary.json").contains("\"internals\""));
@@ -207,14 +222,17 @@ fn an_update_writes_a_file_that_the_next_run_matches() {
 }
 
 #[test]
-fn a_pull_request_runs_the_passes_the_skips_and_the_sample() {
+fn a_pull_request_runs_the_passes_the_skips_the_nevers_and_the_sample() {
     let suite = FakeSuite::new("selection");
     node::run(&suite.options(true)).expect("the update runs");
     let mut options = suite.options(false);
     options.selection = Selection::PullRequest;
     let report = node::run(&options).expect("the selection runs");
     for (id, entry) in parse(&suite.read("expectations.txt")).expect("parses") {
-        let selected = matches!(entry.outcome(), Outcome::Pass | Outcome::Skip) || is_sampled(&id);
+        let selected = matches!(
+            entry.outcome(),
+            Outcome::Pass | Outcome::Skip | Outcome::Never
+        ) || is_sampled(&id);
         assert_eq!(report.run.contains_key(&id), selected, "{id}");
     }
     assert_eq!(report.comparison, Comparison::default());
@@ -334,4 +352,17 @@ fn an_unexpected_outcome_gets_one_rerun() {
     fs::remove_file(suite.root.join("flaky.mark")).expect("the first run made the mark");
     let report = node::run(&suite.options(false)).expect("the run");
     assert_eq!(report.comparison, Comparison::default());
+}
+
+/// A line of `never.txt` that names a test file must name one of the suite.
+#[test]
+fn a_never_line_names_a_test_file_of_the_suite() {
+    let suite = FakeSuite::new("never");
+    fs::write(
+        suite.root.join("tests/never.txt"),
+        "parallel/test-gone.js a reason\n",
+    )
+    .expect("writable");
+    let error = node::run(&suite.options(false)).expect_err("the line names no file");
+    assert!(error.contains("parallel/test-gone.js"), "{error}");
 }

@@ -1043,6 +1043,27 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 | Blocker | Tests blocked | Only blocker |
 | --- | --- | --- |
 
+### Never
+
+The lines of `tests/node/never.txt` for this suite: what Buoy will never have, each approved by a reviewer.
+
+- `parallel/test-buffer-swap-fast.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-buffer-write-fast.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-debug-v8-fast-api.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-http-same-map.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-inspector-overwrite-config.js`: Buoy runs no V8 inspector, and the file reads console calls through inspector.Session without common.skipIfInspectorDisabled
+- `parallel/test-os-fast.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-perf-hooks-histogram-fast-calls.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-process-dlopen-error-message-crash.js`: the file loads test/addons/not-a-binding/build/Release/binding.node, which node-gyp builds in nodejs/node and scripts/vendor-node-tests.sh does not copy
+- `parallel/test-process-hrtime-bigint.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-process-hrtime.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-timers-fast-calls.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-timers-now.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-util-types.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `parallel/test-whatwg-url-canparse.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `sequential/test-crypto-timing-safe-equal-fast.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+- `sequential/test-zlib-crc32-fast-api.js`: the file calls V8 runtime functions with the % syntax of --allow-natives-syntax, such as %OptimizeFunctionOnNextCall, which only V8 parses
+
 ## Node API surface
 
 node-surface at v25.9.0, updated at 853b704. Evidence: `tests/node/surface/expectations.txt`.
@@ -1213,7 +1234,7 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ### Never
 
-The entries of `tests/node/never.txt` that Buoy will never have, each approved by a reviewer.
+The lines of `tests/node/never.txt` for this suite: what Buoy will never have, each approved by a reviewer.
 
 - `node:inspector`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
 - `node:inspector.DOMStorage`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE

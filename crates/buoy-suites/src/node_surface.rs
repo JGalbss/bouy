@@ -18,11 +18,11 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use crate::buoy_env;
 use crate::comparison::{self, Comparison, Origin};
 use crate::expectations::{self, Entry, Expectations, PLATFORM};
 use crate::outcome::{Facts, Outcome, RunResult, classify};
 use crate::summary::{self, Counts, Destination, Results, Summary, TestResult};
+use crate::{buoy_env, node};
 
 /// The name of the suite in `summary.json`, `results.json`, and the comment.
 pub const SUITE: &str = "node-surface";
@@ -271,13 +271,13 @@ pub fn run(options: &Options) -> Result<Report, String> {
     })
 }
 
-/// The manifest of `directory` and its `never` list, each line of which names an entry.
+/// The manifest of `directory` and the lines of its `never` list that name an entry.
 fn load(directory: &Path) -> Result<(Manifest, BTreeMap<String, String>), String> {
     let path = directory.join("surface.json");
     let text = fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     let manifest: Manifest =
         serde_json::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
-    let never = never(directory)?;
+    let never = never_entries(directory)?;
     if let Some(name) = never
         .keys()
         .find(|name| !manifest.entries.contains_key(*name))
@@ -378,8 +378,18 @@ fn judge<'a>(
     probed
 }
 
-/// The reviewed entries of `never.txt` in `directory`, each with its reason. A line is
-/// `<entry> <reason>`, and a line that starts with `#` is a comment.
+/// The lines of `never.txt` in `directory` that name an entry of the surface, not a test
+/// file of `buoy-suites node`.
+pub fn never_entries(directory: &Path) -> Result<BTreeMap<String, String>, String> {
+    Ok(never(directory)?
+        .into_iter()
+        .filter(|(name, _)| !node::is_test_id(name))
+        .collect())
+}
+
+/// The reviewed lines of `never.txt` in `directory`, each with its reason. A line is
+/// `<entry> <reason>`, where the entry names an entry of the surface or a test file of
+/// Node's suite, and a line that starts with `#` is a comment.
 pub fn never(directory: &Path) -> Result<BTreeMap<String, String>, String> {
     let path = directory.join("never.txt");
     let text = fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
@@ -524,7 +534,7 @@ fn execute(
         .current_dir(programs)
         .env("BUOY_RESULT_FILE", &result_file)
         .arg("run")
-        .args(crate::node::ENGINE)
+        .args(node::ENGINE)
         .arg(file);
     let finished = crate::run(&mut command, options.deadline);
     let result = RunResult::read(&result_file);
@@ -656,7 +666,7 @@ mod tests {
     #[test]
     fn the_committed_never_list_names_entries_of_the_manifest() {
         let directory = crate::repository().join("tests/node");
-        let never = never(&directory).expect("never.txt reads");
+        let never = never_entries(&directory).expect("never.txt reads");
         let manifest = fs::read_to_string(directory.join("surface.json")).expect("reads");
         let manifest: Manifest = serde_json::from_str(&manifest).expect("parses");
         for name in never.keys() {
