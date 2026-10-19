@@ -34,6 +34,8 @@
 -define(MAIN, '$buoy_main_result').
 -define(MAX_DELAY, 2147483647).
 -define(GC_MIN, 20000).
+%% A full collection that gc() of --expose-gc asked for.
+-define(GC_REQUESTED, '$buoy_gc_requested').
 %% The continuation-preserved embedder data of V8: the value that each job
 %% restores from the moment it was queued, as AsyncLocalStorage needs.
 -define(CONTEXT, '$buoy_node_cped').
@@ -593,6 +595,7 @@ has_preload_modules() ->
 -spec run_main(fun(() -> term())) -> ok.
 run_main(Body) ->
     buoy_ref:init_realm(),
+    expose_gc(),
     update_now(),
     %% The result lives under a pdict key, a root, so a collection keeps it.
     run_job(fun() -> eval_bootstrap(), erlang:put(?MAIN, Body()) end),
@@ -603,6 +606,35 @@ run_main(Body) ->
             buoy_ref:exit_program(13);
         false ->
             ok
+    end.
+
+%% --expose-gc, a flag of V8, defines the global function gc. A collection
+%% while code runs would miss the values that only its Erlang frames hold, so
+%% gc() asks for a full collection at the end of the job, before WeakRef
+%% targets may die anyway (KeepDuringJob). gc({execution: 'async'}) returns a
+%% promise that a later macrotask fulfills, after the collection.
+expose_gc() ->
+    Flags = [<<"--expose-gc">>, <<"--expose_gc">>],
+    case lists:any(fun(Arg) -> lists:member(Arg, Flags) end, buoy_node_process:exec_argv()) of
+        true ->
+            Gc = buoy_heap:function(fun gc/2, <<"gc">>, 0, #{}),
+            Descriptor = #{value => Gc, writable => true, enumerable => false, configurable => true},
+            buoy_heap:define(buoy_ref_realm:global_object(), <<"gc">>, Descriptor),
+            ok;
+        false ->
+            ok
+    end.
+
+gc(_This, Args) ->
+    erlang:put(?GC_REQUESTED, true),
+    Options = case Args of [O | _] -> O; [] -> undefined end,
+    case buoy_heap:is_object(Options) andalso buoy_heap:get(Options, <<"execution">>) of
+        <<"async">> ->
+            {P, Resolve, _Reject} = capability(),
+            set_timer(buoy_heap:function(fun(_, _) -> Resolve(undefined) end), 0, [], false),
+            P;
+        _ ->
+            undefined
     end.
 
 %% Whether the top-level await of the entry module has not settled.
@@ -666,14 +698,14 @@ loop_until_exit() ->
 
 %% Collects when the realm allocated more ids since the last collection than
 %% twice the live count then, and at least ?GC_MIN, so the cost stays in
-%% proportion to the allocation.
+%% proportion to the allocation, or when gc() asked for a collection.
 maybe_gc() ->
     {At, Live} = case erlang:get(?LAST_GC) of
         undefined -> {0, 0};
         L -> L
     end,
     Allocated = buoy_heap:allocated(),
-    case Allocated - At >= max(?GC_MIN, 2 * Live) of
+    case erlang:erase(?GC_REQUESTED) =:= true orelse Allocated - At >= max(?GC_MIN, 2 * Live) of
         true ->
             #{live := Live1} = buoy_heap:gc([]),
             erlang:put(?LAST_GC, {Allocated, Live1});
