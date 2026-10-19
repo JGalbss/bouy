@@ -148,17 +148,24 @@ The report lists regressions first, then the newly silent ids, then the stale li
 
 A skip means that the test can never apply to Buoy. A test that Buoy cannot run yet always runs, and its outcome says why it fails. The crate holds the fixed list of reason codes, and a new code needs review:
 
-| Code                    | Use                                                                       |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `needs-dom`             | The test needs `document`, a browser window, or `IsHTMLDDA`.              |
-| `can-block`             | test262 `CanBlockIsFalse`: an actor can block, so `[[CanBlock]]` is true. |
-| `v8-flag`               | A V8 option in the `// Flags:` line of a Node test.                       |
-| `node-internals`        | `--expose-internals` or `require('internal/...')`.                        |
-| `native-addon`          | The test loads a `.node` addon.                                           |
-| `node-inspector`        | The test drives the inspector or `node inspect`.                          |
-| `node-permission-model` | The test checks Node's permission model.                                  |
+| Code                    | Use                                                                         |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `needs-dom`             | The test needs `document`, a browser window, or `IsHTMLDDA`.                |
+| `can-block`             | test262 `CanBlockIsFalse`: an actor can block, so `[[CanBlock]]` is true.   |
+| `v8-flag`               | A V8 option in the `// Flags:` line of a Node test.                         |
+| `node-internals`        | `--expose-internals` or `require('internal/...')`.                          |
+| `native-addon`          | The test loads a `.node` addon.                                             |
+| `node-inspector`        | The test drives the inspector or `node inspect`.                            |
+| `node-permission-model` | The test checks Node's permission model.                                    |
+| `node-behavior`         | A test262 proposal test that Node's own `lib/` contradicts (section 3.5.1). |
 
 A skip counts in the denominator. The dashboard shows skips by reason, so a reader can compute the rate over the tests that apply.
+
+#### 3.5.1 Tests that contradict Node
+
+A `node-behavior` skip names one test262 file by its path. The proposal that the test checks requires a behavior that Node's own `lib/` contradicts, and Buoy runs that `lib/` unchanged. Each entry is a review decision:
+
+- The 10 files of `built-ins/Error/prototype/stack` (the error stack accessor proposal, stage 2) that require an error without an own `stack` property, or a `stack` write that only takes a string. Node 25 gives each error an own `stack` (V8). `isErrorLike` of `lib/internal/process/promises.js` tests it with `hasOwnProperty`, and `lib/internal/per_context/domexception.js` assigns a `stack` that can be undefined. Buoy keeps the own property and also has the `Error.prototype.stack` accessor of the proposal, so the other 25 files of the directory pass.
 
 ### 3.6 Results and summaries
 

@@ -3,6 +3,40 @@
   "timeout_ms": 10000,
   "skip": [
     { "flag": "CanBlockIsFalse", "reason": "can-block" },
-    { "feature": "IsHTMLDDA", "reason": "needs-dom" }
+    { "feature": "IsHTMLDDA", "reason": "needs-dom" },
+    {
+      "path": "built-ins/Error/prototype/stack/getter-error-as-prototype.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/getter-foreign-new-target.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/getter-receiver-is-proxy.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/instance-no-own-stack.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/instance-not-enumerable.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/setter-creates-own-property.js",
+      "reason": "node-behavior"
+    },
+    { "path": "built-ins/Error/prototype/stack/setter-cross-realm.js", "reason": "node-behavior" },
+    { "path": "built-ins/Error/prototype/stack/setter-empty-string.js", "reason": "node-behavior" },
+    {
+      "path": "built-ins/Error/prototype/stack/setter-non-extensible-receiver.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/setter-via-assignment.js",
+      "reason": "node-behavior"
+    }
   ]
 }

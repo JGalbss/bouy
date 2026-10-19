@@ -15,7 +15,7 @@ The columns of the tables:
 
 - **Baseline pass:** the passes of the directory at the baseline, commit `7090eb1`.
 - **Compile:** the compiler rejected the test with a Buoy diagnostic, such as `BUOY206` for syntax that the reference lowering does not lower yet.
-- **Skip:** a `CanBlockIsFalse` test or an `IsHTMLDDA` test. A `noStrict` test runs as sloppy code. The baseline skipped the `noStrict` tests: 1544 in `test/language` and 198 in `test/built-ins`.
+- **Skip:** a test that `tests/test262/config.json` skips: a `CanBlockIsFalse` test, an `IsHTMLDDA` test, or a `node-behavior` file of [testing.md](testing.md) section 3.5.1. A `noStrict` test runs as sloppy code. The baseline skipped the `noStrict` tests: 1544 in `test/language` and 198 in `test/built-ins`.
 - **Baseline rate** and **Pass rate:** the passes divided by the tests that ran, which are the tests minus the skips.
 
 The counts include proposals, such as Temporal and ShadowRealm, and the features after ES2022. The number T of ADR 0003 (testing.md §5.5) leaves them out, and this runner does not compute T.

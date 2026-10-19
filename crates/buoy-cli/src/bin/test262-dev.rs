@@ -20,7 +20,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
@@ -47,6 +47,36 @@ delete globalThis.$262CreateRealm;\n";
 
 /// The VM half of the runner, which the VM compiles when it starts.
 const VM_RUNNER: &str = include_str!("../../../../runtime/test/engine/buoy_test262.erl");
+
+/// The config of the test262 suite: its skips are the reviewed list of the tests that never
+/// apply to Buoy, each with its reason code (testing.md section 3.5).
+const CONFIG: &str = include_str!("../../../../tests/test262/config.json");
+
+/// One skip of `CONFIG`: the tests whose id starts with `path`, or that name `feature` or
+/// `flag`. An id is the path under the `test` directory of the checkout.
+struct Skip {
+    path: Option<String>,
+    feature: Option<String>,
+    flag: Option<String>,
+    reason: String,
+}
+
+static SKIPS: LazyLock<Vec<Skip>> = LazyLock::new(|| {
+    let config: serde_json::Value =
+        serde_json::from_str(CONFIG).expect("tests/test262/config.json is JSON");
+    let text = |skip: &serde_json::Value, key: &str| skip[key].as_str().map(str::to_owned);
+    config["skip"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|skip| Skip {
+            path: text(skip, "path"),
+            feature: text(skip, "feature"),
+            flag: text(skip, "flag"),
+            reason: text(skip, "reason").unwrap_or_default(),
+        })
+        .collect()
+});
 
 /// The tests that one VM runs before the runner starts a new VM. The VM never frees an entry
 /// of its fun table, even when it purges the module of the fun, and the table holds 524288
@@ -383,7 +413,8 @@ fn write_program(test262: &Path, scratch: &Path, test: &Test) -> Written {
         Err(error) => return Written::Decided(Outcome::Fail(format!("cannot read: {error}"))),
     };
     let meta = frontmatter(&source);
-    if let Some(reason) = skip_reason(&meta) {
+    let id = relative(&test262.join("test"), &test.path);
+    if let Some(reason) = skip_reason(&id, &meta) {
         return Written::Decided(Outcome::Skip(reason));
     }
     let (program, prelude_lines) = match program(test262, &meta, &source, test.mode) {
@@ -463,14 +494,15 @@ fn timeout_ms(options: &Options, meta: &Frontmatter) -> u64 {
     options.timeout_ms
 }
 
-fn skip_reason(meta: &Frontmatter) -> Option<&'static str> {
-    if meta.has_flag("CanBlockIsFalse") {
-        return Some("can-block");
-    }
-    if meta.features.iter().any(|feature| feature == "IsHTMLDDA") {
-        return Some("needs-dom");
-    }
-    None
+fn skip_reason(id: &str, meta: &Frontmatter) -> Option<&'static str> {
+    SKIPS
+        .iter()
+        .find(|skip| {
+            skip.path.as_ref().is_some_and(|path| id.starts_with(path.as_str()))
+                || skip.feature.as_ref().is_some_and(|feature| meta.features.contains(feature))
+                || skip.flag.as_ref().is_some_and(|flag| meta.has_flag(flag))
+        })
+        .map(|skip| skip.reason.as_str())
 }
 
 /// The program that runs a test: the strict directive unless the test is `noStrict`, the
