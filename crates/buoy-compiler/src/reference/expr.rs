@@ -15,7 +15,7 @@ use oxc::syntax::operator::{
 use super::context::{Kind, Local, Lowerer, Top, boolean_case};
 use super::literal::{bigint, js_string_literal, number};
 use super::member::{MemberKey, super_parts};
-use crate::erlang::{Clause, Expr};
+use crate::erlang::{CatchClause, Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
     pub fn expr(&mut self, expression: &'a Expression<'a>) -> Expr {
@@ -446,7 +446,8 @@ impl<'a> Lowerer<'a, '_> {
             AssignmentOperator::BitwiseXOR => "bit_xor",
             _ => "bit_and",
         };
-        self.bind(operator_call(function, current, value))
+        let value = self.operator_call(function, current, value);
+        self.bind(value)
     }
 
     /// The numeric value before `++` or `--` and the value after it: inline for an
@@ -541,22 +542,22 @@ impl<'a> Lowerer<'a, '_> {
             BinaryOperator::StrictInequality => Expr::not(strict_eq(left, right)),
             BinaryOperator::Equality => call("loose_eq", vec![left, right]),
             BinaryOperator::Inequality => Expr::not(call("loose_eq", vec![left, right])),
-            BinaryOperator::LessThan => operator_call("lt", left, right),
-            BinaryOperator::LessEqualThan => operator_call("le", left, right),
-            BinaryOperator::GreaterThan => operator_call("gt", left, right),
-            BinaryOperator::GreaterEqualThan => operator_call("ge", left, right),
-            BinaryOperator::Addition => operator_call("add", left, right),
-            BinaryOperator::Subtraction => operator_call("sub", left, right),
-            BinaryOperator::Multiplication => call("mul", vec![left, right]),
-            BinaryOperator::Division => call("divide", vec![left, right]),
+            BinaryOperator::LessThan => self.operator_call("lt", left, right),
+            BinaryOperator::LessEqualThan => self.operator_call("le", left, right),
+            BinaryOperator::GreaterThan => self.operator_call("gt", left, right),
+            BinaryOperator::GreaterEqualThan => self.operator_call("ge", left, right),
+            BinaryOperator::Addition => self.operator_call("add", left, right),
+            BinaryOperator::Subtraction => self.operator_call("sub", left, right),
+            BinaryOperator::Multiplication => self.operator_call("mul", left, right),
+            BinaryOperator::Division => self.operator_call("divide", left, right),
             BinaryOperator::Remainder => call("remainder", vec![left, right]),
             BinaryOperator::Exponential => call("power", vec![left, right]),
             BinaryOperator::ShiftLeft => call("shift_left", vec![left, right]),
-            BinaryOperator::ShiftRight => operator_call("shift_right", left, right),
+            BinaryOperator::ShiftRight => self.operator_call("shift_right", left, right),
             BinaryOperator::ShiftRightZeroFill => call("shift_right_unsigned", vec![left, right]),
-            BinaryOperator::BitwiseOR => operator_call("bit_or", left, right),
-            BinaryOperator::BitwiseXOR => operator_call("bit_xor", left, right),
-            BinaryOperator::BitwiseAnd => operator_call("bit_and", left, right),
+            BinaryOperator::BitwiseOR => self.operator_call("bit_or", left, right),
+            BinaryOperator::BitwiseXOR => self.operator_call("bit_xor", left, right),
+            BinaryOperator::BitwiseAnd => self.operator_call("bit_and", left, right),
             BinaryOperator::In => call("in", vec![left, right]),
             BinaryOperator::Instanceof => call("instance_of", vec![left, right]),
         };
@@ -701,17 +702,102 @@ pub fn strict_eq(left: Expr, right: Expr) -> Expr {
 /// The largest integer that a JavaScript number holds exactly, 2^53 - 1.
 const SAFE: i64 = 9_007_199_254_740_991;
 
-/// `buoy_ref:Function(Left, Right)`, with the operands that are Erlang numbers of the
-/// right kind computed inline, where the inline result is the runtime's: comparisons of
-/// numbers, `+` and `-` of integers with a result within ±2^53, and the bitwise
-/// operators on int32 values. Bun: `JavaScriptCore`'s baseline JIT emits an int32 fast path
-/// for each operator and calls out on the slow path; this is that split in Erlang guards.
-fn operator_call(function: &str, left: Expr, right: Expr) -> Expr {
-    if !(is_operand(&left) && is_operand(&right)) {
-        return Expr::call("buoy_ref", function, vec![left, right]);
+impl Lowerer<'_, '_> {
+    /// `buoy_ref:Function(Left, Right)`, with the operands that are Erlang numbers of the
+    /// right kind computed inline, where the inline result is the runtime's: comparisons of
+    /// numbers, `+` and `-` of integers with a result within ±2^53, the bitwise operators
+    /// on int32 values, and `+`, `-`, `*`, and `/` with a float operand. Bun:
+    /// `JavaScriptCore`'s baseline JIT emits an int32 and a double fast path for each
+    /// operator and calls out on the slow path; this is that split in Erlang guards.
+    fn operator_call(&mut self, function: &str, left: Expr, right: Expr) -> Expr {
+        if !(is_operand(&left) && is_operand(&right)) {
+            return Expr::call("buoy_ref", function, vec![left, right]);
+        }
+        let slow = Expr::call("buoy_ref", function, vec![left.clone(), right.clone()]);
+        let mut clauses: Vec<Clause> = integer_fast_path(function, &left, &right)
+            .map(|(guard, fast)| Clause::guarded(Expr::var("_"), vec![guard], vec![fast]))
+            .into_iter()
+            .collect();
+        if let Some(clause) = self.float_fast_path(function, &left, &right, &slow) {
+            clauses.push(clause);
+        }
+        if clauses.is_empty() {
+            return slow;
+        }
+        clauses.push(Clause::new(Expr::var("_"), vec![slow]));
+        Expr::case(left, clauses)
     }
-    let both = |test: &str| and(is(test, &left), is(test, &right));
-    let (guard, fast) = match function {
+
+    /// `+`, `-`, or `*` of two numbers of which one is a float, or `/` of two numbers: the
+    /// Erlang operation, whose result is canonical unless it is integral
+    /// (`buoy_ref_number:canonical/1` turns 2.0 into 2), and the runtime call when Erlang
+    /// raises `badarith` for a result past the doubles or a division by zero.
+    fn float_fast_path(
+        &mut self,
+        function: &str,
+        left: &Expr,
+        right: &Expr,
+        slow: &Expr,
+    ) -> Option<Clause> {
+        let operator = match function {
+            "add" => "+",
+            "sub" => "-",
+            "mul" => "*",
+            "divide" => "/",
+            _ => return None,
+        };
+        let numbers = and(is("is_number", left), is("is_number", right));
+        // `/` of two integers is a float in Erlang too; the integer paths cover the rest.
+        let guard = if operator == "/" {
+            numbers
+        } else {
+            and(
+                numbers,
+                Expr::op("orelse", is("is_float", left), is("is_float", right)),
+            )
+        };
+        let computed = Expr::Try {
+            body: vec![Expr::op(operator, left.clone(), right.clone())],
+            catches: vec![CatchClause {
+                class: Expr::atom("error"),
+                reason: Expr::atom("badarith"),
+                stack: "_".to_owned(),
+                body: vec![slow.clone()],
+            }],
+            after: vec![],
+        };
+        let result = Expr::var(self.fresh("F"));
+        let fraction = Expr::op(
+            "-",
+            result.clone(),
+            Expr::call("erlang", "trunc", vec![result.clone()]),
+        );
+        let canonical = Expr::case(
+            computed,
+            vec![
+                Clause::guarded(
+                    result.clone(),
+                    vec![Expr::op("/=", fraction, Expr::Float(0.0))],
+                    vec![result.clone()],
+                ),
+                Clause::new(
+                    result.clone(),
+                    vec![Expr::call("buoy_ref_number", "canonical", vec![result])],
+                ),
+            ],
+        );
+        Some(Clause::guarded(
+            Expr::var("_"),
+            vec![guard],
+            vec![canonical],
+        ))
+    }
+}
+
+/// The guard and the inline result of the integer and comparison fast path of an operator.
+fn integer_fast_path(function: &str, left: &Expr, right: &Expr) -> Option<(Expr, Expr)> {
+    let both = |test: &str| and(is(test, left), is(test, right));
+    let fast = match function {
         "lt" => (
             both("is_number"),
             Expr::op("<", left.clone(), right.clone()),
@@ -744,32 +830,26 @@ fn operator_call(function: &str, left: Expr, right: Expr) -> Expr {
                 _ => "bxor",
             };
             (
-                and(int32(&left), int32(&right)),
+                and(int32(left), int32(right)),
                 Expr::op(operator, left.clone(), right.clone()),
             )
         }
         "shift_right" => {
             let count = and(
-                is("is_integer", &right),
+                is("is_integer", right),
                 and(
                     Expr::op(">=", right.clone(), Expr::Integer(0)),
                     Expr::op("=<", right.clone(), Expr::Integer(31)),
                 ),
             );
             (
-                and(int32(&left), count),
+                and(int32(left), count),
                 Expr::op("bsr", left.clone(), right.clone()),
             )
         }
-        _ => return Expr::call("buoy_ref", function, vec![left, right]),
+        _ => return None,
     };
-    let subject = left.clone();
-    guarded(
-        &subject,
-        guard,
-        fast,
-        Expr::call("buoy_ref", function, vec![left, right]),
-    )
+    Some(fast)
 }
 
 /// An operand that the inline code may repeat and test: a variable or a number literal.

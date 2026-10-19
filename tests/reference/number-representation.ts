@@ -11,6 +11,20 @@ console.log(String(-0), `${-0}`, JSON.stringify(-0), [-0].includes(0));
 const half = 0.5;
 console.log(half + half === 1, typeof (half + half), [1].indexOf(half * 2));
 console.log(0.1 + 0.2, 1 / 3, 2 ** 0.5, 10 / 4, 9 / 3);
+const step = 1.5;
+console.log(
+  Object.is(step * 0, 0),
+  Object.is(-step * 0, -0),
+  Object.is(0 / -step, -0),
+  step - step,
+);
+console.log(
+  step + step,
+  new Set([3]).has(step * 2),
+  step * 2 === 3,
+  Object.is(-step + step, 0),
+  step * 1e308 * 2,
+);
 
 const big = 2 ** 53;
 console.log(big, big + 1, big + 2, big * 3, Number.MAX_SAFE_INTEGER + 2);
