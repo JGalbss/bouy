@@ -62,7 +62,12 @@ part_type(_) -> literal.
 %%% The fields
 
 field($G, Count, F, Ctx) ->
-    name(Ctx, {eras, width(Count)}, integer_to_binary(maps:get(era, F)));
+    Width = case Count of 4 -> <<"wide">>; 5 -> <<"narrow">>; _ -> <<"abbreviated">> end,
+    Era = integer_to_binary(maps:get(era, F)),
+    case calendar(Ctx, [<<"eras">>, Width, Era]) of
+        Name when is_binary(Name) -> unicode:characters_to_list(Name);
+        _ -> binary_to_list(Era)
+    end;
 field(C, Count, F, Ctx) when C =:= $y; C =:= $Y; C =:= $u ->
     Year = maps:get(era_year, F),
     case Count of
@@ -77,8 +82,10 @@ field(C, Count, F, Ctx) when C =:= $M; C =:= $L ->
         1 -> number(Ctx, Month, 1);
         2 -> number(Ctx, Month, 2);
         _ ->
-            Context = case C of $M -> format; $L -> 'stand-alone' end,
-            name(Ctx, {months, Context, width(Count)}, maps:get(month_key, F, integer_to_binary(Month)))
+            Context = case C of $M -> <<"format">>; $L -> <<"stand-alone">> end,
+            Width = case Count of 3 -> <<"abbreviated">>; 4 -> <<"wide">>; 5 -> <<"narrow">>; _ -> <<"wide">> end,
+            names(Ctx, [<<"monthNames">>, Context, Width], [<<"monthNames">>, <<"format">>, Width], Month - 1,
+                  integer_to_list(Month))
     end;
 field($d, Count, F, Ctx) -> number(Ctx, maps:get(day, F), Count);
 field($E, Count, F, Ctx) -> weekday(Ctx, format, max(Count, 3), F);
@@ -122,11 +129,6 @@ field(C, Count, F, Ctx) when C =:= $z; C =:= $O; C =:= $v ->
     end;
 field(C, Count, _F, _Ctx) -> lists:duplicate(Count, C).
 
-width(Count) when Count =< 3 -> short;
-width(4) -> long;
-width(5) -> narrow;
-width(_) -> long.
-
 %% A number in the digits of the numbering system, padded to Min digits.
 number(Ctx, N, Min) ->
     Text = integer_to_list(abs(N)),
@@ -139,44 +141,34 @@ localize(Ctx, Text) ->
         Digits -> [case C >= $0 andalso C =< $9 of true -> lists:nth(C - $0 + 1, Digits); false -> C end || C <- Text]
     end.
 
-%% A name of the calendar data: the table of the key, then the format
-%% context, then the gregorian calendar's.
-name(Ctx, Table, Key) ->
-    case lookup(Ctx, Table) of
-        #{Key := Name} -> unicode:characters_to_list(Name);
-        _ -> binary_to_list(Key)
+%% The calendar resource at Path under calendar/<cal> of ICU's data.
+calendar(#{locale := Locale, cal := Cal}, Path) ->
+    buoy_intl_cldr:get(Locale, [<<"calendar">>, buoy_ref_intl_date_skeleton:icu_calendar(Cal) | Path]).
+
+%% The name at Index (from 0) of an array of the calendar, else Fallback.
+indexed(Ctx, Path, Index, Fallback) ->
+    case calendar(Ctx, Path) of
+        List when is_list(List), Index >= 0, Index < length(List) -> unicode:characters_to_list(lists:nth(Index + 1, List));
+        _ -> Fallback
     end.
 
-lookup(#{locale := Locale, cal := Cal}, Table) ->
-    Keys = case Table of
-        {months, Context, Width} -> [{months, Context, cldr_width(months, Width)}, {months, format, cldr_width(months, Width)}];
-        {days, Context, Width} -> [{days, Context, Width}, {days, format, Width}];
-        {day_periods, Context, Width} -> [{day_periods, Context, Width}, {day_periods, format, Width}];
-        {eras, Width} -> [{eras, Width}]
-    end,
-    first([buoy_intl_cldr:get(Locale, list_to_tuple([cal, C | tuple_to_list(K)])) || C <- lists:usort([Cal, <<"gregory">>]), K <- Keys]).
-
-first([]) -> #{};
-first([undefined | Rest]) -> first(Rest);
-first([Map | _]) -> Map.
-
-cldr_width(_, short) -> abbreviated;
-cldr_width(_, long) -> wide;
-cldr_width(_, narrow) -> narrow.
+%% The name of the context's array, else of the format context's.
+names(Ctx, Path, FormatPath, Index, Fallback) ->
+    case indexed(Ctx, Path, Index, none) of
+        none -> indexed(Ctx, FormatPath, Index, Fallback);
+        Name -> Name
+    end.
 
 weekday(Ctx, Context, Count, F) ->
     Width = case Count of
-        3 -> abbreviated;
-        4 -> wide;
-        5 -> narrow;
-        6 -> short;
-        _ -> abbreviated
+        4 -> <<"wide">>;
+        5 -> <<"narrow">>;
+        6 -> <<"short">>;
+        _ -> <<"abbreviated">>
     end,
-    Key = element(maps:get(weekday, F), {<<"sun">>, <<"mon">>, <<"tue">>, <<"wed">>, <<"thu">>, <<"fri">>, <<"sat">>}),
-    case lookup(Ctx, {days, Context, Width}) of
-        #{Key := Name} -> unicode:characters_to_list(Name);
-        _ -> binary_to_list(Key)
-    end.
+    Ctx1 = case Context of format -> <<"format">>; 'stand-alone' -> <<"stand-alone">> end,
+    names(Ctx, [<<"dayNames">>, Ctx1, Width], [<<"dayNames">>, <<"format">>, Width], maps:get(weekday, F) - 1,
+          integer_to_list(maps:get(weekday, F))).
 
 %% The weekday counted from the first day of the week of the locale's region.
 local_weekday(F, #{locale := Locale}) ->
@@ -193,32 +185,36 @@ region_of(Locale) ->
         R -> R
     end.
 
+%% The AM/PM marker of the hour: AmPmMarkersAbbr, AmPmMarkers for 4
+%% letters, AmPmMarkersNarrow for 5.
 am_pm(Ctx, Count, F) ->
-    Key = case maps:get(hour, F) < 12 of
-        true -> <<"am">>;
-        false -> <<"pm">>
+    Table = case Count of
+        4 -> <<"AmPmMarkers">>;
+        5 -> <<"AmPmMarkersNarrow">>;
+        _ -> <<"AmPmMarkersAbbr">>
     end,
-    case period(Ctx, Count, Key) of
-        undefined -> binary_to_list(string:uppercase(Key));
-        Name -> Name
-    end.
+    Index = case maps:get(hour, F) < 12 of true -> 0; false -> 1 end,
+    indexed(Ctx, [Table], Index, case Index of 0 -> "AM"; 1 -> "PM" end).
 
+%% A day period name of the format context, or undefined.
 period(Ctx, Count, Key) ->
     Width = case Count of
-        4 -> wide;
-        5 -> narrow;
-        _ when Count > 5 -> wide;
-        _ -> abbreviated
+        4 -> <<"wide">>;
+        5 -> <<"narrow">>;
+        _ when Count > 5 -> <<"wide">>;
+        _ -> <<"abbreviated">>
     end,
-    case lookup(Ctx, {day_periods, format, Width}) of
-        #{Key := Name} -> unicode:characters_to_list(Name);
+    %% DateFormatSymbols fills a missing wide or narrow name with the abbreviated one.
+    case {calendar(Ctx, [<<"dayPeriod">>, <<"format">>, Width, Key]), calendar(Ctx, [<<"dayPeriod">>, <<"format">>, <<"abbreviated">>, Key])} of
+        {Name, _} when is_binary(Name) -> unicode:characters_to_list(Name);
+        {_, Name} when is_binary(Name) -> unicode:characters_to_list(Name);
         _ -> undefined
     end.
 
 %% The flexible day period of the locale's language for the hour, with noon
 %% when the time is exactly noon; am and pm fall back to the a field.
 flexible(#{locale := Locale} = Ctx, Count, F) ->
-    Rules = maps:get(buoy_ref_intl:language(Locale), buoy_intl_cldr:supplemental(day_periods), undefined),
+    Rules = day_period_rules(buoy_ref_intl:language(Locale)),
     case Rules of
         undefined -> am_pm(Ctx, Count, F);
         _ ->
@@ -244,6 +240,21 @@ flexible(#{locale := Locale} = Ctx, Count, F) ->
                 _ -> Name
             end
     end.
+
+%% The day period rules of a language in ICU's dayPeriods data:
+%% [{Period, {at, Minute} | {from, Minute, Before}}], or undefined.
+day_period_rules(Language) ->
+    Data = buoy_intl_cldr:supplemental(day_periods),
+    case maps:get(Language, maps:get(<<"locales">>, Data), undefined) of
+        undefined -> undefined;
+        Set ->
+            [{Name, case Rule of
+                        #{<<"at">> := At} -> {at, minutes(At)};
+                        #{<<"from">> := From, <<"before">> := Before} -> {from, minutes(From), minutes(Before)}
+                    end} || {Name, Rule} <- maps:to_list(maps:get(Set, maps:get(<<"rules">>, Data)))]
+    end.
+
+minutes(<<H:2/binary, ":", M:2/binary>>) -> binary_to_integer(H) * 60 + binary_to_integer(M).
 
 %% DayPeriodRules::getDayPeriodForHour: the period whose span holds the hour.
 for_hour(Rules, Hour) ->

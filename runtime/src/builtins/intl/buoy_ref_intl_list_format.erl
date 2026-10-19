@@ -1,6 +1,6 @@
 %% Intl.ListFormat (ECMA-402 section 14): an object of the class
 %% intl_list_format whose slots hold the resolved locale, type, and style.
-%% The list patterns come from CLDR (buoy_intl_cldr), and Spanish and Hebrew
+%% The list patterns come from ICU's data (buoy_intl_cldr), and Spanish and Hebrew
 %% choose the conjunction from the next element as ICU's ListFormatter does.
 -module(buoy_ref_intl_list_format).
 
@@ -92,14 +92,19 @@ format_list(_S, [One], Element) -> [{Element, One}];
 format_list(S, Items, Element) ->
     Locale = buoy_ref_intl:base_name(maps:get(data_locale, S)),
     Type = case maps:get(type, S) of
-        <<"conjunction">> -> standard;
-        <<"disjunction">> -> 'or';
-        <<"unit">> -> unit
+        <<"conjunction">> -> <<"standard">>;
+        <<"disjunction">> -> <<"or">>;
+        <<"unit">> -> <<"unit">>
     end,
-    Patterns = buoy_intl_cldr:get(Locale, {list, Type, binary_to_atom(maps:get(style, S))}, #{}),
+    Name = case maps:get(style, S) of
+        <<"long">> -> Type;
+        Style -> <<Type/binary, "-", Style/binary>>
+    end,
+    Patterns = buoy_intl_cldr:table(Locale, [<<"listPattern">>, Name]),
     Language = buoy_ref_intl:language(Locale),
     Pattern = fun(Key, Next) ->
-                      Text = unicode:characters_to_list(maps:get(Key, Patterns, <<"{0}, {1}">>)),
+                      Resource = case Key of two -> <<"2">>; _ -> atom_to_binary(Key) end,
+                      Text = unicode:characters_to_list(maps:get(Resource, Patterns, <<"{0}, {1}">>)),
                       case Key of
                           two -> contextual(Language, Text, Next);
                           'end' -> contextual(Language, Text, Next);

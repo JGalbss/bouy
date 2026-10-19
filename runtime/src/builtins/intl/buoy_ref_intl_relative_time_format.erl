@@ -1,7 +1,7 @@
 %% Intl.RelativeTimeFormat (ECMA-402 section 18): an object of the class
 %% intl_relative_time_format whose slots hold the resolved options and the
-%% NumberFormat of its numbers. The patterns come from the date fields of
-%% CLDR (buoy_intl_cldr), and the number is the magnitude of the value, as
+%% NumberFormat of its numbers. The patterns come from the fields of ICU's
+%% data (buoy_intl_cldr), and the number is the magnitude of the value, as
 %% ICU's RelativeDateTimeFormatter writes it for V8.
 -module(buoy_ref_intl_relative_time_format).
 
@@ -86,12 +86,13 @@ partition(S, Args) ->
     Unit = singular(buoy_ref:to_string(arg(2, Args))),
     is_number(Value) orelse buoy_ref_intl:range_error(<<"Invalid value for relative time">>),
     Locale = buoy_ref_intl:base_name(maps:get(data_locale, S)),
-    Fields = case buoy_intl_cldr:get(Locale, {field, Unit, binary_to_atom(maps:get(style, S))}) of
-        undefined -> buoy_intl_cldr:get(Locale, {field, Unit, long}, #{});
-        F -> F
+    Field = case maps:get(style, S) of
+        <<"long">> -> Unit;
+        Style -> <<Unit/binary, "-", Style/binary>>
     end,
+    Fields = buoy_intl_cldr:table(Locale, [<<"fields">>, Field]),
     Relative = case maps:get(numeric, S) of
-        <<"auto">> -> maps:get(buoy_ref_number:to_string(Value), maps:get(relative, Fields, #{}), undefined);
+        <<"auto">> -> maps:get(buoy_ref_number:to_string(Value), maps:get(<<"relative">>, Fields, #{}), undefined);
         _ -> undefined
     end,
     case Relative of
@@ -109,7 +110,7 @@ numeric(S, Locale, Fields, Value, Unit) ->
     Magnitude = buoy_ref_intl_number:to_intl_mv(abs(Value)),
     {_, Plain} = buoy_ref_intl_number:format_to_string(maps:get(digits, buoy_heap:slots(NF)), Magnitude),
     Plural = buoy_ref_intl_plural_rules:select(<<"cardinal">>, Locale, Plain, 0),
-    Patterns = maps:get(Tense, Fields, #{}),
+    Patterns = maps:get(atom_to_binary(Tense), maps:get(<<"relativeTime">>, Fields, #{}), #{}),
     Pattern = unicode:characters_to_list(maps:get(Plural, Patterns, maps:get(<<"other">>, Patterns, <<"{0}">>))),
     Number = [{T, V, Unit} || {T, V} <- buoy_ref_intl_number_format:partition(NF, Magnitude)],
     {Before, After} = case string:split(Pattern, "{0}") of

@@ -320,7 +320,7 @@ fn intl_calendar_date(calendar: &str, epoch_days: i64) -> Option<(i32, u8, u8, b
     })
 }
 
-/// The CLDR locale data of `scripts/intl-cldr.escript`, in the external term format, which
+/// The locale data of `scripts/intl-icu.escript`, in the external term format, which
 /// `buoy_intl_cldr` decodes once per VM.
 #[rustler::nif]
 fn intl_cldr(env: Env<'_>) -> Binary<'_> {

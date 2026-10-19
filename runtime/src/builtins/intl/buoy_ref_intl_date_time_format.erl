@@ -357,14 +357,20 @@ component(Options, Property, Values, Hc) ->
 %% the date and time joined by the glue of the date style, and a pattern of
 %% the generator when the time style's hour cycle is not the one asked for.
 style_pattern(Locale, Cal, DateStyle, TimeStyle, Hc, DefaultHour) ->
-    Get = fun(Key) -> unicode:characters_to_list(calendar_get(Locale, Cal, Key, <<>>)) end,
+    Patterns = buoy_intl_cldr:get(Locale, [<<"calendar">>, buoy_ref_intl_date_skeleton:icu_calendar(Cal), <<"DateTimePatterns">>], []),
+    Get = fun(Offset, Style) ->
+                  Index = Offset + case Style of <<"full">> -> 1; <<"long">> -> 2; <<"medium">> -> 3; <<"short">> -> 4 end,
+                  case lists:nth(Index, Patterns) of
+                      [P | _] -> unicode:characters_to_list(P);
+                      P -> unicode:characters_to_list(P)
+                  end
+          end,
     Pattern = case {DateStyle, TimeStyle} of
-        {_, undefined} -> Get({date_format, binary_to_atom(DateStyle)});
-        {undefined, _} -> Get({time_format, binary_to_atom(TimeStyle)});
+        {_, undefined} -> Get(4, DateStyle);
+        {undefined, _} -> Get(0, TimeStyle);
         _ ->
             Glue = buoy_ref_intl_date_skeleton:date_time_glue(Locale, Cal, binary_to_atom(DateStyle)),
-            lists:flatten(string:replace(string:replace(Glue, "{1}", Get({date_format, binary_to_atom(DateStyle)})),
-                                         "{0}", Get({time_format, binary_to_atom(TimeStyle)})))
+            lists:flatten(string:replace(string:replace(Glue, "{1}", Get(4, DateStyle)), "{0}", Get(0, TimeStyle)))
     end,
     case TimeStyle =:= undefined orelse Hc =:= pattern_hour_cycle(Pattern) of
         true -> Pattern;
@@ -372,12 +378,6 @@ style_pattern(Locale, Cal, DateStyle, TimeStyle, Hc, DefaultHour) ->
             Skeleton = [case C of _ when C =:= $h; C =:= $H; C =:= $K; C =:= $k -> hour_char(Hc); _ -> C end
                         || C <- buoy_ref_intl_date_skeleton:skeleton_of(Pattern), C =/= $a, C =/= $b, C =/= $B],
             replace_hour_cycle(buoy_ref_intl_date_skeleton:best_pattern(Locale, Cal, Skeleton, DefaultHour), Hc)
-    end.
-
-calendar_get(Locale, Cal, Key, Default) ->
-    case buoy_intl_cldr:get(Locale, list_to_tuple([cal, Cal | tuple_to_list(Key)])) of
-        undefined -> buoy_intl_cldr:get(Locale, list_to_tuple([cal, <<"gregory">> | tuple_to_list(Key)]), Default);
-        V -> V
     end.
 
 %% HourCycleFromPattern.

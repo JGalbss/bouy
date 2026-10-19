@@ -2,8 +2,8 @@
 %% gives them to V8: the localized GMT formats (O and OOOO), the specific
 %% names (z and zzzz) of the zone or of its metazone at the instant, and the
 %% generic names (v and vvvv), which fall back to the region or city of the
-%% zone. The names come from CLDR (buoy_intl_cldr), keyed by the CLDR
-%% identifier of the zone.
+%% zone. The names come from the zoneStrings of ICU's data (buoy_intl_cldr),
+%% keyed by the CLDR identifier of the zone with colons for slashes.
 -module(buoy_ref_intl_zone_names).
 
 -export([name/6, gmt/4]).
@@ -27,42 +27,62 @@ name(Locale, [C | _] = Field, Zone, T, {Offset, Dst}, Digits) ->
         _ -> unicode:characters_to_list(Name)
     end.
 
+%% ZoneMeta::getCanonicalCLDRID: the CLDR identifier of an IANA alias.
 canonical(Zone) ->
-    maps:get(Zone, buoy_intl_cldr:supplemental(zone_canonical), Zone).
+    Aliases = maps:get(<<"timezone">>, maps:get(<<"typeAlias">>, buoy_intl_cldr:supplemental(timezone_types))),
+    maps:get(key(Zone), Aliases, Zone).
+
+key(Zone) -> binary:replace(Zone, <<"/">>, <<":">>, [global]).
 
 %% The specific name: the zone's own standard or daylight name, else its
 %% metazone's.
 specific(Locale, Zone, T, Long, Dst) ->
-    Width = width(Long),
-    Kind = case Dst of
-        true -> <<"daylight">>;
-        false -> <<"standard">>
-    end,
-    case zone_name(Locale, Zone, Width, Kind) of
+    Field = field(Long, case Dst of true -> $d; false -> $s end),
+    case zone_name(Locale, Zone, Field) of
         undefined ->
             case metazone(Zone, T) of
                 undefined -> undefined;
-                Mz -> meta_name(Locale, Mz, Width, Kind)
+                Mz -> meta_name(Locale, Mz, Field)
             end;
         Name -> Name
     end.
 
-width(true) -> <<"long">>;
-width(false) -> <<"short">>.
+%% The key of a name in zoneStrings: l or s for the width, then s, d, or g
+%% for standard, daylight, or generic.
+field(true, Kind) -> <<$l, Kind>>;
+field(false, Kind) -> <<$s, Kind>>.
 
-zone_name(Locale, Zone, Width, Kind) ->
-    maps:get(Kind, maps:get(Width, buoy_intl_cldr:get(Locale, {tz_zone, Zone}, #{}), #{}), undefined).
+zone_name(Locale, Zone, Field) -> zone_string(Locale, key(Zone), Field).
 
-meta_name(Locale, Mz, Width, Kind) ->
-    maps:get(Kind, maps:get(Width, buoy_intl_cldr:get(Locale, {tz_meta, Mz}, #{}), #{}), undefined).
+meta_name(Locale, Mz, Field) -> zone_string(Locale, <<"meta:", Mz/binary>>, Field).
 
-%% The metazone of the zone at the instant, or undefined.
+%% A name in zoneStrings, or undefined; a locale removes an inherited name
+%% with the marker of ICU's ZNames.
+zone_string(Locale, Entry, Field) ->
+    case buoy_intl_cldr:get(Locale, [<<"zoneStrings">>, Entry, Field]) of
+        <<"∅∅∅"/utf8>> -> undefined;
+        Name -> Name
+    end.
+
+zone_format(Locale, Name, Default) ->
+    buoy_intl_cldr:get(Locale, [<<"zoneStrings">>, Name], Default).
+
+%% ZoneMeta::getMetazoneID: the metazone of the zone at the instant, or
+%% undefined. A use without dates spans all time.
 metazone(Zone, T) ->
-    Uses = maps:get(Zone, buoy_intl_cldr:supplemental(metazones), []),
-    case [Mz || {From, To, Mz} <- Uses, From =:= undefined orelse From =< T, To =:= undefined orelse T < To] of
+    Uses = maps:get(key(Zone), maps:get(<<"metazoneInfo">>, buoy_intl_cldr:supplemental(meta_zones)), []),
+    case [Mz || [Mz | Span] <- Uses, within(Span, T)] of
         [Mz | _] -> Mz;
         [] -> undefined
     end.
+
+within([], _T) -> true;
+within([From, To], T) -> instant(From) =< T andalso T < instant(To).
+
+%% The UTC instant of a date of metaZones, "1970-01-01 00:00", in ms.
+instant(<<Y:4/binary, $-, Mo:2/binary, $-, D:2/binary, $\s, H:2/binary, $:, Mi:2/binary>>) ->
+    [Year, Month, Day, Hour, Minute] = [binary_to_integer(B) || B <- [Y, Mo, D, H, Mi]],
+    (calendar:datetime_to_gregorian_seconds({{Year, Month, Day}, {Hour, Minute, 0}}) - 62167219200) * 1000.
 
 %% TZGNCore::getDisplayName: the generic non-location name, else the
 %% generic location name.
@@ -73,8 +93,7 @@ generic(Locale, Zone, T, Long, Offset, Dst) ->
     end.
 
 non_location(Locale, Zone, T, Long, Offset, Dst) ->
-    Width = width(Long),
-    case zone_name(Locale, Zone, Width, <<"generic">>) of
+    case zone_name(Locale, Zone, field(Long, $g)) of
         undefined ->
             case metazone(Zone, T) of
                 undefined -> undefined;
@@ -84,7 +103,7 @@ non_location(Locale, Zone, T, Long, Offset, Dst) ->
                             case specific(Locale, Zone, T, Long, false) of
                                 undefined -> undefined;
                                 S ->
-                                    case string:equal(S, meta_name(Locale, Mz, Width, <<"generic">>), true) of
+                                    case string:equal(S, meta_name(Locale, Mz, field(Long, $g)), true) of
                                         true -> undefined;
                                         false -> S
                                     end
@@ -92,7 +111,7 @@ non_location(Locale, Zone, T, Long, Offset, Dst) ->
                         false -> undefined
                     end,
                     case Standard of
-                        undefined -> meta_generic(Locale, Zone, Mz, Width, T, Offset);
+                        undefined -> meta_generic(Locale, Zone, Mz, Long, T, Offset);
                         _ -> Standard
                     end
             end;
@@ -105,8 +124,8 @@ uses_dst_near(Zone, T) ->
 
 %% The metazone's generic name, or its partial location form when the
 %% golden zone of the metazone in the locale's region has another offset.
-meta_generic(Locale, Zone, Mz, Width, T, Offset) ->
-    case meta_name(Locale, Mz, Width, <<"generic">>) of
+meta_generic(Locale, Zone, Mz, Long, T, Offset) ->
+    case meta_name(Locale, Mz, field(Long, $g)) of
         undefined -> undefined;
         Name ->
             Golden = golden(Mz, target_region(Locale)),
@@ -117,15 +136,17 @@ meta_generic(Locale, Zone, Mz, Width, T, Offset) ->
                     case GoldenOffset =:= Offset of
                         true -> Name;
                         false ->
-                            Fallback = buoy_intl_cldr:get(Locale, {tz_format, <<"fallbackFormat">>}, <<"{1} ({0})">>),
+                            Fallback = zone_format(Locale, <<"fallbackFormat">>, <<"{1} ({0})">>),
                             fill(Fallback, [{<<"{1}">>, Name}, {<<"{0}">>, place(Locale, Zone)}])
                     end
             end
     end.
 
+%% TimeZoneNamesImpl::getReferenceZoneID: the zone of the metazone in the
+%% region, else in 001.
 golden(Mz, Region) ->
-    Golden = buoy_intl_cldr:supplemental(golden_zones),
-    maps:get({Mz, Region}, Golden, maps:get({Mz, <<"001">>}, Golden, undefined)).
+    Zones = maps:get(Mz, maps:get(<<"mapTimezones">>, buoy_intl_cldr:supplemental(meta_zones)), #{}),
+    maps:get(Region, Zones, maps:get(<<"001">>, Zones, undefined)).
 
 %% The region of the locale or of its likely subtags, else 001.
 target_region(Locale) ->
@@ -145,7 +166,7 @@ location(Locale, Zone) ->
         undefined -> undefined;
         Region when Region =:= <<"ZZ">>; Region =:= <<"001">> -> undefined;
         _ ->
-            Format = buoy_intl_cldr:get(Locale, {tz_format, <<"regionFormat">>}, <<"{0} Time">>),
+            Format = zone_format(Locale, <<"regionFormat">>, <<"{0}">>),
             fill(Format, [{<<"{0}">>, place(Locale, Zone)}])
     end.
 
@@ -154,16 +175,15 @@ location(Locale, Zone) ->
 place(Locale, Zone) ->
     Regions = buoy_intl_cldr:supplemental(zone_regions),
     Region = maps:get(Zone, Regions, undefined),
-    Canonical = buoy_intl_cldr:supplemental(zone_canonical),
-    Zones = lists:usort([maps:get(Z, Canonical, Z) || {Z, R} <- maps:to_list(Regions), R =:= Region]),
-    Primary = maps:get(Region, buoy_intl_cldr:supplemental(primary_zones), undefined),
-    case (length(Zones) =:= 1 orelse Primary =:= Zone) andalso buoy_intl_cldr:get(Locale, {region, Region}) of
+    Zones = lists:usort([canonical(Z) || {Z, R} <- maps:to_list(Regions), R =:= Region]),
+    Primary = maps:get(Region, maps:get(<<"primaryZones">>, buoy_intl_cldr:supplemental(meta_zones)), undefined),
+    case (length(Zones) =:= 1 orelse Primary =:= Zone) andalso buoy_intl_cldr:get(Locale, [<<"Countries">>, Region]) of
         Country when is_binary(Country) -> Country;
         _ -> city(Locale, Zone)
     end.
 
 city(Locale, Zone) ->
-    case maps:get(<<"exemplarCity">>, buoy_intl_cldr:get(Locale, {tz_zone, Zone}, #{}), undefined) of
+    case zone_name(Locale, Zone, <<"ec">>) of
         undefined ->
             Last = lists:last(binary:split(Zone, <<"/">>, [global])),
             binary:replace(Last, <<"_">>, <<" ">>, [global]);
@@ -184,10 +204,10 @@ iana(Zone) ->
 %% or short ("GMT-8").
 -spec gmt(binary(), integer(), boolean(), [char()] | undefined) -> [char()].
 gmt(Locale, 0, _Long, _Digits) ->
-    unicode:characters_to_list(buoy_intl_cldr:get(Locale, {tz_format, <<"gmtZeroFormat">>}, <<"GMT">>));
+    unicode:characters_to_list(zone_format(Locale, <<"gmtZeroFormat">>, <<"GMT">>));
 gmt(Locale, Offset, Long, Digits) ->
-    Format = unicode:characters_to_list(buoy_intl_cldr:get(Locale, {tz_format, <<"gmtFormat">>}, <<"GMT{0}">>)),
-    [Positive, Negative] = string:split(unicode:characters_to_list(buoy_intl_cldr:get(Locale, {tz_format, <<"hourFormat">>}, <<"+HH:mm;-HH:mm">>)), ";"),
+    Format = unicode:characters_to_list(zone_format(Locale, <<"gmtFormat">>, <<"GMT{0}">>)),
+    [Positive, Negative] = string:split(unicode:characters_to_list(zone_format(Locale, <<"hourFormat">>, <<"+HH:mm;-HH:mm">>)), ";"),
     Pattern = case Offset < 0 of
         true -> Negative;
         false -> Positive

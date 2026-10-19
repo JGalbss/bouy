@@ -144,9 +144,9 @@ unit_options(Unit, Options, BaseStyle, Styles, DigitalBase, Prev) ->
 %% of the numbering system when it is one of the four V8 knows, else ":".
 separator(Locale, Nu) ->
     Base = buoy_ref_intl:base_name(Locale),
-    Symbol = case buoy_intl_cldr:get(Base, {symbols, Nu}) of
-        #{<<"timeSeparator">> := T} -> T;
-        _ -> maps:get(<<"timeSeparator">>, buoy_intl_cldr:get(Base, {symbols, <<"latn">>}, #{}), <<":">>)
+    Symbol = case buoy_intl_cldr:get(Base, [<<"NumberElements">>, Nu, <<"symbols">>, <<"timeSeparator">>]) of
+        undefined -> buoy_intl_cldr:get(Base, [<<"NumberElements">>, <<"latn">>, <<"symbols">>, <<"timeSeparator">>], <<":">>);
+        T -> T
     end,
     case Symbol of
         <<".">> -> <<".">>;

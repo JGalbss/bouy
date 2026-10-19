@@ -1,6 +1,6 @@
 %% Intl.DisplayNames (ECMA-402 section 12): an object of the class
 %% intl_display_names whose slots hold the resolved options. The names come
-%% from CLDR (buoy_intl_cldr), and a language tag is named the way ICU's
+%% from ICU's data (buoy_intl_cldr), and a language tag is named the way ICU's
 %% LocaleDisplayNames names it for V8: a dialect name when CLDR has one, else
 %% the language with its script, region, and variants in the locale's
 %% display pattern.
@@ -130,9 +130,9 @@ name(S, Code) ->
         <<"region">> -> or_code(lookup(Locale, region, Code, Short), Code, Substitute);
         <<"script">> -> or_code(lookup(Locale, script, Code, Short), Code, Substitute);
         <<"currency">> ->
-            case maps:get(name, buoy_intl_cldr:get(Locale, {currency, Code}, #{}), undefined) of
-                undefined -> or_code(undefined, Code, Substitute);
-                Name -> Name
+            case buoy_intl_cldr:get(Locale, [<<"Currencies">>, Code]) of
+                [_, Name | _] -> Name;
+                _ -> or_code(undefined, Code, Substitute)
             end;
         <<"calendar">> ->
             Type = case Code of
@@ -147,11 +147,20 @@ name(S, Code) ->
 or_code(undefined, Code, true) -> Code;
 or_code(Name, _Code, _Substitute) -> Name.
 
-%% The name of Kind for Code, the short one first for a short style.
+%% The name of Kind for Code in ICU's tables, the short one first for a
+%% short style.
 lookup(Locale, Kind, Code, Short) ->
-    Plain = buoy_intl_cldr:get(Locale, {Kind, Code}),
+    Path = case Kind of
+        language -> [<<"Languages">>, binary:replace(Code, <<"-">>, <<"_">>, [global])];
+        region -> [<<"Countries">>, Code];
+        script -> [<<"Scripts">>, Code];
+        calendar_name -> [<<"Types">>, <<"calendar">>, Code]
+    end,
+    Plain = buoy_intl_cldr:get(Locale, Path),
     case Short of
-        true -> buoy_intl_cldr:get(Locale, {list_to_atom(atom_to_list(Kind) ++ "_short"), Code}, Plain);
+        true ->
+            [Table | Rest] = Path,
+            buoy_intl_cldr:get(Locale, [<<Table/binary, "%short">> | Rest], Plain);
         false -> Plain
     end.
 
@@ -164,11 +173,11 @@ field_name(Locale, Code, Style) ->
         _ -> Code
     end,
     Widths = case Style of
-        <<"narrow">> -> [narrow, short, long];
-        <<"short">> -> [short, long];
-        <<"long">> -> [long]
+        <<"narrow">> -> [<<"-narrow">>, <<"-short">>, <<>>];
+        <<"short">> -> [<<"-short">>, <<>>];
+        <<"long">> -> [<<>>]
     end,
-    first([maps:get(name, buoy_intl_cldr:get(Locale, {field, Field, W}, #{}), undefined) || W <- Widths]).
+    first([buoy_intl_cldr:get(Locale, [<<"fields">>, <<Field/binary, W/binary>>, <<"dn">>]) || W <- Widths]).
 
 first([]) -> undefined;
 first([undefined | Rest]) -> first(Rest);
@@ -197,14 +206,15 @@ language_name(Locale, Code, Short, Dialect, Substitute) ->
     Parts = [case Kind of
                  script -> or_code(lookup(Locale, script, Value, Short), Value, Substitute);
                  region -> or_code(lookup(Locale, region, Value, Short), Value, Substitute);
-                 variant -> or_code(buoy_intl_cldr:get(Locale, {variant, string:uppercase(Value)}), Value, Substitute)
+                 variant -> or_code(buoy_intl_cldr:get(Locale, [<<"Variants">>, string:uppercase(Value)]), Value, Substitute)
              end || {Kind, Value} <- [{script, LeftScript}, {region, LeftRegion}] ++ [{variant, V} || V <- Variants],
                     Value =/= none],
     case Base =:= undefined orelse lists:member(undefined, Parts) of
         true -> undefined;
         false when Parts =:= [] -> Base;
         false ->
-            {Pattern, Separator, _} = buoy_intl_cldr:get(Locale, display_pattern, {<<"{0} ({1})">>, <<"{0}, {1}">>, <<"{0}: {1}">>}),
+            Pattern = buoy_intl_cldr:get(Locale, [<<"localeDisplayPattern">>, <<"pattern">>], <<"{0} ({1})">>),
+            Separator = buoy_intl_cldr:get(Locale, [<<"localeDisplayPattern">>, <<"separator">>], <<"{0}, {1}">>),
             Remainder = lists:foldl(fun(Part, Acc) -> fill(Separator, Acc, Part) end, hd(Parts), tl(Parts)),
             fill(Pattern, Base, brackets(Pattern, Remainder))
     end.

@@ -18,6 +18,7 @@
 -import(buoy_ref_intl, [get_option/5]).
 
 -define(PROTO, 'Intl.NumberFormat.prototype').
+-define(NE, <<"NumberElements">>).
 -define(LEGACY, <<"IntlLegacyConstructedSymbol">>).
 
 -spec intrinsics() -> [{term(), tuple()}].
@@ -189,7 +190,7 @@ construct(NewTarget, Args) ->
 %% locale first, then each numbering system with simple digits.
 -spec locale_data(binary(), binary()) -> [binary()].
 locale_data(Locale, <<"nu">>) ->
-    Default = buoy_intl_cldr:get(buoy_ref_intl:base_name(Locale), nu_default, <<"latn">>),
+    Default = buoy_intl_cldr:get(buoy_ref_intl:base_name(Locale), [?NE, <<"default">>], <<"latn">>),
     [Default | [Nu || Nu <- buoy_ref_intl_data:numbering_systems(), Nu =/= Default]].
 
 %% SetNumberFormatUnitOptions.
@@ -315,7 +316,7 @@ make_formatter(S) ->
         true -> decimal
     end,
     Symbols = symbols(Locale, Nu),
-    Pattern = parse_pattern(nu_get(Locale, Nu, fun(N) -> {format, N, PatternKind} end, <<"#,##0.###">>)),
+    Pattern = parse_pattern(nu_get(Locale, Nu, [<<"patterns">>, pattern_resource(PatternKind)], <<"#,##0.###">>)),
     Plural = fun(Text) -> buoy_ref_intl_plural_rules:select(<<"cardinal">>, Locale, Text, 0) end,
     #{locale => Locale, nu => Nu, symbols => Symbols, digits => buoy_intl_cldr:numbering_digits(Nu),
       style => Style, digit_options => maps:get(digits, S), notation => Notation,
@@ -325,24 +326,42 @@ make_formatter(S) ->
       pattern => Pattern, grouping => grouping(Pattern, maps:get(use_grouping, S), Locale),
       compact => compact_data(Locale, Nu, maps:get(compact_display, S), Style =:= <<"currency">> andalso CurrencyDisplay =/= <<"name">>),
       outer => outer(Locale, Nu, S, CldrUnit, Unit, Width), plural => Plural,
-      spacing => nu_get(Locale, Nu, fun(N) -> {spacing, N} end, none),
-      misc => nu_get(Locale, Nu, fun(N) -> {misc, N} end, #{})}.
+      spacing => spacing(Locale), misc => nu_table(Locale, Nu, [<<"miscPatterns">>])}.
 
-%% The entry of a numbering system, else of latn, as ICU falls back.
-nu_get(Locale, Nu, Key, Default) ->
-    case buoy_intl_cldr:get(Locale, Key(Nu)) of
-        undefined -> buoy_intl_cldr:get(Locale, Key(<<"latn">>), Default);
+pattern_resource(decimal) -> <<"decimalFormat">>;
+pattern_resource(percent) -> <<"percentFormat">>;
+pattern_resource(currency) -> <<"currencyFormat">>;
+pattern_resource(accounting) -> <<"accountingFormat">>.
+
+%% A resource of a numbering system, else of latn, as ICU falls back.
+nu_get(Locale, Nu, Rest, Default) ->
+    case buoy_intl_cldr:get(Locale, [?NE, Nu | Rest]) of
+        undefined -> buoy_intl_cldr:get(Locale, [?NE, <<"latn">> | Rest], Default);
         Value -> Value
+    end.
+
+%% A table of a numbering system over that of latn.
+nu_table(Locale, Nu, Rest) ->
+    Latn = buoy_intl_cldr:table(Locale, [?NE, <<"latn">> | Rest]),
+    case Nu of
+        <<"latn">> -> Latn;
+        _ -> maps:merge(Latn, buoy_intl_cldr:table(Locale, [?NE, Nu | Rest]))
     end.
 
 %% The number symbols of a numbering system, each missing one from latn.
 symbols(Locale, Nu) ->
-    Latn = buoy_intl_cldr:get(Locale, {symbols, <<"latn">>}, #{}),
-    Own = case Nu of
-        <<"latn">> -> #{};
-        _ -> buoy_intl_cldr:get(Locale, {symbols, Nu}, #{})
-    end,
-    maps:map(fun(_, V) -> unicode:characters_to_list(V) end, maps:merge(Latn, Own)).
+    maps:map(fun(_, V) -> unicode:characters_to_list(V) end, nu_table(Locale, Nu, [<<"symbols">>])).
+
+%% The currency spacing of the locale: {Before, After}, each {CurrencyMatch,
+%% SurroundingMatch, Insert}.
+spacing(Locale) ->
+    case buoy_intl_cldr:table(Locale, [<<"currencySpacing">>]) of
+        #{<<"beforeCurrency">> := Before, <<"afterCurrency">> := After} -> {spacing_side(Before), spacing_side(After)};
+        _ -> none
+    end.
+
+spacing_side(Side) ->
+    {maps:get(<<"currencyMatch">>, Side), maps:get(<<"surroundingMatch">>, Side), maps:get(<<"insertBetween">>, Side)}.
 
 symbol(F, Name) ->
     maps:get(Name, maps:get(symbols, F), default_symbol(Name)).
@@ -371,11 +390,20 @@ compact_data(Locale, Nu, Display, Currency) ->
         currency -> short;
         decimal -> binary_to_atom(Display)
     end,
-    Lookup = fun(W) -> nu_get(Locale, Nu, fun(N) -> {compact, N, W, Type} end, []) end,
-    case Lookup(Width) of
-        [] -> Lookup(short);
-        Patterns -> Patterns
-    end.
+    Resource = case Type of decimal -> <<"decimalFormat">>; currency -> <<"currencyFormat">> end,
+    Lookup = fun(W) ->
+                     Table = case W of long -> <<"patternsLong">>; short -> <<"patternsShort">> end,
+                     case buoy_intl_cldr:table(Locale, [?NE, Nu, Table, Resource]) of
+                         Empty when map_size(Empty) =:= 0 -> buoy_intl_cldr:table(Locale, [?NE, <<"latn">>, Table, Resource]);
+                         Found -> Found
+                     end
+             end,
+    Patterns = case Lookup(Width) of
+        Empty when map_size(Empty) =:= 0 -> Lookup(short);
+        Found -> Found
+    end,
+    lists:sort([{binary_to_integer(T), Count, P} || {T, Counts} <- maps:to_list(Patterns), is_map(Counts),
+                                                    {Count, P} <- maps:to_list(Counts)]).
 
 %%% The outer modifier: unit and currency long names
 
@@ -383,13 +411,20 @@ compact_data(Locale, Nu, Display, Currency) ->
 %% for the currency name style, else none. Each pattern has {0} for the number.
 outer(Locale, _Nu, _S, true, Unit, Width) ->
     {unit, unit_patterns(Locale, Unit, binary_to_atom(Width))};
-outer(Locale, Nu, S, false, _Unit, _Width) ->
+outer(Locale, _Nu, S, false, _Unit, _Width) ->
     case {maps:get(style, S), maps:get(currency_display, S)} of
         {<<"currency">>, <<"name">>} ->
             Code = maps:get(currency, S),
-            Names = buoy_intl_cldr:get(Locale, {currency, Code}, #{}),
-            Patterns = nu_get(Locale, Nu, fun(N) -> {currency_unit, N} end, #{<<"other">> => <<"{0} {1}">>}),
-            Name = fun(Count) -> maps:get(Count, Names, maps:get(<<"other">>, Names, maps:get(name, Names, Code))) end,
+            Plurals = buoy_intl_cldr:table(Locale, [<<"CurrencyPlurals">>, Code]),
+            LongName = case buoy_intl_cldr:get(Locale, [<<"Currencies">>, Code]) of
+                [_, Long | _] -> Long;
+                _ -> Code
+            end,
+            Patterns = case buoy_intl_cldr:table(Locale, [<<"CurrencyUnitPatterns">>]) of
+                Empty when map_size(Empty) =:= 0 -> #{<<"other">> => <<"{0} {1}">>};
+                Found -> Found
+            end,
+            Name = fun(Count) -> maps:get(Count, Plurals, maps:get(<<"other">>, Plurals, LongName)) end,
             {currency_name, maps:map(fun(Count, P) -> {unicode:characters_to_list(P), unicode:characters_to_list(Name(Count))} end,
                                      Patterns)};
         _ -> none
@@ -399,25 +434,50 @@ outer(Locale, Nu, S, false, _Unit, _Width) ->
 %% the patterns of X in the per pattern of Y, else in the compound per
 %% pattern with the name of Y (ICU's LongNameHandler::forArbitraryUnit).
 unit_patterns(Locale, Unit, Width) ->
-    case unit_data(Locale, Unit, Width) of
-        #{} = Own when map_size(Own) > 0 -> maps:map(fun(_, P) -> unicode:characters_to_list(P) end, maps:remove(per, Own));
+    case plural_patterns(unit_data(Locale, Unit, Width)) of
+        Own when map_size(Own) > 0 -> maps:map(fun(_, P) -> unicode:characters_to_list(P) end, Own);
         _ ->
             [Numerator, Denominator] = binary:split(Unit, <<"-per-">>),
-            Patterns = maps:remove(per, unit_data(Locale, Numerator, Width)),
+            Patterns = plural_patterns(unit_data(Locale, Numerator, Width)),
             Den = unit_data(Locale, Denominator, Width),
             Per = case Den of
-                #{per := P} -> unicode:characters_to_list(P);
+                #{<<"per">> := P} -> unicode:characters_to_list(P);
                 _ ->
                     One = unicode:characters_to_list(maps:get(<<"one">>, Den, maps:get(<<"other">>, Den, <<"{0}">>))),
                     Name = string:trim(string:replace(One, "{0}", "", all), both, [$\s, 16#A0]),
-                    Compound = unicode:characters_to_list(buoy_intl_cldr:get(Locale, {per, Width}, <<"{0}/{1}">>)),
+                    Compound = unicode:characters_to_list(buoy_intl_cldr:get(Locale, [units_table(Width), <<"compound">>, <<"per">>],
+                                                                            <<"{0}/{1}">>)),
                     lists:flatten(string:replace(Compound, "{1}", Name, all))
             end,
             maps:map(fun(_, P) -> lists:flatten(string:replace(Per, "{0}", unicode:characters_to_list(P), all)) end, Patterns)
     end.
 
+%% The table of a unit in ICU's unit data: its plural patterns, its per
+%% pattern, and its display name.
 unit_data(Locale, Unit, Width) ->
-    buoy_intl_cldr:get(Locale, {unit, Width, Unit}, #{}).
+    case unit_category(Unit) of
+        undefined -> #{};
+        Category -> buoy_intl_cldr:table(Locale, [units_table(Width), Category, Unit])
+    end.
+
+units_table(long) -> <<"units">>;
+units_table(short) -> <<"unitsShort">>;
+units_table(narrow) -> <<"unitsNarrow">>.
+
+plural_patterns(Table) ->
+    maps:with([<<"zero">>, <<"one">>, <<"two">>, <<"few">>, <<"many">>, <<"other">>], Table).
+
+%% The category of a unit in root's unit data, such as length for meter.
+unit_category(Unit) ->
+    Categories = case persistent_term:get({?MODULE, unit_categories}, undefined) of
+        undefined ->
+            Made = maps:from_list([{U, C} || {C, Units} <- maps:to_list(buoy_intl_cldr:table(<<"root">>, [<<"units">>])),
+                                            is_map(Units), U <- maps:keys(Units)]),
+            persistent_term:put({?MODULE, unit_categories}, Made),
+            Made;
+        Made -> Made
+    end,
+    maps:get(Unit, Categories, undefined).
 
 %%% Patterns
 
@@ -470,7 +530,7 @@ grouping_sizes(Body) ->
 %% a primary of -1 for no grouping.
 grouping(_Pattern, false, _Locale) -> {-1, -1, 0};
 grouping(#{sizes := {G1, G2, G3}}, Strategy, Locale) ->
-    LocaleMin = buoy_intl_cldr:get(Locale, min_grouping, 1),
+    LocaleMin = binary_to_integer(buoy_intl_cldr:get(Locale, [?NE, <<"minimumGroupingDigits">>], <<"1">>)),
     Min = case Strategy of
         <<"auto">> -> LocaleMin;
         <<"min2">> -> max(2, LocaleMin);
@@ -785,12 +845,16 @@ quoted([C | Rest], Acc) -> quoted(Rest, [C | Acc]).
 %% currencyDisplay option, two give the ISO code.
 currency_symbol(F, Count) ->
     Code = maps:get(currency, F),
-    Names = buoy_intl_cldr:get(maps:get(locale, F), {currency, Code}, #{}),
+    Locale = maps:get(locale, F),
+    Symbol = case buoy_intl_cldr:get(Locale, [<<"Currencies">>, Code]) of
+        [S | _] -> S;
+        _ -> Code
+    end,
     Text = case {Count, maps:get(currency_display, F)} of
         {2, _} -> Code;
         {_, <<"code">>} -> Code;
-        {_, <<"narrowSymbol">>} -> maps:get(narrow, Names, maps:get(symbol, Names, Code));
-        _ -> maps:get(symbol, Names, Code)
+        {_, <<"narrowSymbol">>} -> buoy_intl_cldr:get(Locale, [<<"Currencies%narrow">>, Code], Symbol);
+        _ -> Symbol
     end,
     unicode:characters_to_list(Text).
 

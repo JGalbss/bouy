@@ -110,7 +110,7 @@ intl_calendar_date(_Calendar, _EpochDays) -> erlang:nif_error(nif_not_loaded).
 -spec intl_compact_exponent(binary(), boolean(), integer()) -> non_neg_integer().
 intl_compact_exponent(_Tag, _Long, _Magnitude) -> erlang:nif_error(nif_not_loaded).
 
-%% The CLDR locale data of scripts/intl-cldr.escript, in the external term
+%% The locale data of scripts/intl-icu.escript, in the external term
 %% format (buoy_intl_cldr).
 -spec intl_cldr() -> binary().
 intl_cldr() -> erlang:nif_error(nif_not_loaded).

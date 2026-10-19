@@ -6,7 +6,7 @@
 %% ties of the distance. Patterns and skeletons are lists of code points.
 -module(buoy_ref_intl_date_skeleton).
 
--export([best_pattern/4, skeleton_of/1, items/1, date_time_glue/3]).
+-export([best_pattern/4, skeleton_of/1, items/1, date_time_glue/3, icu_calendar/1]).
 
 -define(FIELDS, 16).
 -define(ERA, 0).
@@ -185,57 +185,52 @@ generator(Locale, Cal) ->
     end.
 
 make_generator(Locale, Cal) ->
-    Get = fun(K, Default) -> calendar_get(Locale, Cal, K, Default) end,
+    Calendar = [<<"calendar">>, icu_calendar(Cal)],
+    Patterns = [pattern_text(P) || P <- buoy_intl_cldr:get(Locale, Calendar ++ [<<"DateTimePatterns">>], [])],
     Canonical = lists:foldl(fun(C, Map) -> add(Map, [C], none, false) end, boot(), "GyQMwWEDFdaHmsSv"),
-    Styles = [unicode:characters_to_list(P) || Kind <- [time_format, date_format], Style <- [full, long, medium, short],
-                                               P <- [Get({Kind, Style}, undefined)], P =/= undefined],
-    WithStyles = lists:foldl(fun(P, Map) -> add(Map, P, none, false) end, Canonical, Styles),
-    Available = available(Locale, Cal),
+    WithStyles = lists:foldl(fun(P, Map) -> add(Map, P, none, false) end, Canonical, lists:sublist(Patterns, 8)),
+    Available = [{S, P} || {S, P} <- buoy_intl_cldr:ordered(Locale, Calendar ++ [<<"availableFormats">>]), is_binary(P)],
     Map = lists:foldl(fun({Skel, P}, M) -> add(M, unicode:characters_to_list(P), unicode:characters_to_list(Skel), true) end,
                       WithStyles, Available),
-    Glue = [{Style, unicode:characters_to_list(case Get({date_time_at, Style}, undefined) of
-                                                    undefined -> Get({date_time, Style}, <<"{1} {0}">>);
-                                                    P -> P
-                                                end)} || Style <- [full, long, medium, short]],
-    Names = [{"Era", ?ERA}, {"Year", ?YEAR}, {"Quarter", 2}, {"Month", ?MONTH}, {"Week", 4}, {"Day-Of-Week", ?WEEKDAY},
-             {"Day", ?DAY}, {"Hour", ?HOUR}, {"Minute", ?MINUTE}, {"Second", ?SECOND}, {"Timezone", ?ZONE}],
-    AppendFormats = maps:from_list([{F, case Get({append, list_to_binary(N)}, undefined) of
-                                            undefined -> [${, $0, $}, $\s, 16#251C, ${, $2, $}, $:, $\s, ${, $1, $}, 16#2524];
-                                            P -> unicode:characters_to_list(P)
-                                        end} || {N, F} <- Names]),
-    FieldNames = [{?ERA, <<"era">>}, {?YEAR, <<"year">>}, {2, <<"quarter">>}, {?MONTH, <<"month">>}, {4, <<"week">>},
-                  {5, <<"weekOfMonth">>}, {?WEEKDAY, <<"weekday">>}, {7, <<"dayOfYear">>}, {8, <<"weekdayOfMonth">>},
-                  {?DAY, <<"day">>}, {?DAYPERIOD, <<"dayperiod">>}, {?HOUR, <<"hour">>}, {?MINUTE, <<"minute">>},
-                  {?SECOND, <<"second">>}, {?ZONE, <<"zone">>}],
-    AppendNames = maps:from_list([{F, case maps:get(name, buoy_intl_cldr:get(Locale, {field, N, long}, #{}), undefined) of
+    Glue = case buoy_intl_cldr:get(Locale, Calendar ++ [<<"DateTimePatterns%atTime">>]) of
+        [_, _, _, _ | _] = AtTime -> lists:zip([full, long, medium, short], [pattern_text(P) || P <- lists:sublist(AtTime, 4)]);
+        _ when length(Patterns) >= 13 -> lists:zip([full, long, medium, short], lists:sublist(Patterns, 10, 4));
+        _ -> [{Style, "{1} {0}"} || Style <- [full, long, medium, short]]
+    end,
+    Items = buoy_intl_cldr:table(Locale, Calendar ++ [<<"appendItems">>]),
+    AppendFormats = maps:from_list([{F, unicode:characters_to_list(P)} || {N, F} <- append_fields(), #{N := P} <- [Items]]),
+    AppendNames = maps:from_list([{F, case buoy_intl_cldr:get(Locale, [<<"fields">>, N, <<"dn">>]) of
                                           undefined -> "F" ++ integer_to_list(F);
                                           Name -> unicode:characters_to_list(Name)
-                                      end} || {F, N} <- FieldNames]),
-    Symbols = buoy_intl_cldr:get(Locale, {symbols, buoy_intl_cldr:get(Locale, nu_default, <<"latn">>)},
-                                 buoy_intl_cldr:get(Locale, {symbols, <<"latn">>}, #{})),
-    Decimal = unicode:characters_to_list(maps:get(<<"decimal">>, Symbols, <<".">>)),
-    {lists:append([lists:reverse(Bucket) || Bucket <- tuple_to_list(Map)]), Glue, AppendFormats, AppendNames, Decimal}.
+                                      end} || {F, N} <- field_names()]),
+    Nu = buoy_intl_cldr:get(Locale, [<<"NumberElements">>, <<"default">>], <<"latn">>),
+    Decimal = case buoy_intl_cldr:get(Locale, [<<"NumberElements">>, Nu, <<"symbols">>, <<"decimal">>]) of
+        undefined -> buoy_intl_cldr:get(Locale, [<<"NumberElements">>, <<"latn">>, <<"symbols">>, <<"decimal">>], <<".">>);
+        D -> D
+    end,
+    {lists:append([lists:reverse(Bucket) || Bucket <- tuple_to_list(Map)]), Glue, AppendFormats, AppendNames,
+     unicode:characters_to_list(Decimal)}.
 
-calendar_get(Locale, Cal, Key, Default) ->
-    case buoy_intl_cldr:get(Locale, list_to_tuple([cal, Cal | tuple_to_list(Key)])) of
-        undefined when Cal =/= <<"gregory">> -> buoy_intl_cldr:get(Locale, list_to_tuple([cal, <<"gregory">> | tuple_to_list(Key)]), Default);
-        undefined -> Default;
-        V -> V
-    end.
+%% A pattern of DateTimePatterns, which may come with its numbering override.
+pattern_text([P | _]) -> unicode:characters_to_list(P);
+pattern_text(P) -> unicode:characters_to_list(P).
 
-%% The availableFormats in ICU's order: the locale's own entries sorted by
-%% skeleton, then those of each parent that are not set yet.
-available(Locale, Cal) ->
-    {_, Ordered} = lists:foldl(
-                     fun(L, {Seen, Acc}) ->
-                             Own = lists:sort([{S, P} || {{cal, C, available, S}, P} <- maps:to_list(buoy_intl_cldr:own(L)),
-                                                         C =:= Cal, not maps:is_key(S, Seen)]),
-                             {maps:merge(Seen, maps:from_list([{S, true} || {S, _} <- Own])), Acc ++ Own}
-                     end, {#{}, []}, buoy_intl_cldr:locales(Locale)),
-    case Ordered of
-        [] when Cal =/= <<"gregory">> -> available(Locale, <<"gregory">>);
-        _ -> Ordered
-    end.
+append_fields() ->
+    [{<<"Era">>, ?ERA}, {<<"Year">>, ?YEAR}, {<<"Quarter">>, 2}, {<<"Month">>, ?MONTH}, {<<"Week">>, 4},
+     {<<"Day-Of-Week">>, ?WEEKDAY}, {<<"Day">>, ?DAY}, {<<"Hour">>, ?HOUR}, {<<"Minute">>, ?MINUTE},
+     {<<"Second">>, ?SECOND}, {<<"Timezone">>, ?ZONE}].
+
+field_names() ->
+    [{?ERA, <<"era">>}, {?YEAR, <<"year">>}, {2, <<"quarter">>}, {?MONTH, <<"month">>}, {4, <<"week">>},
+     {5, <<"weekOfMonth">>}, {?WEEKDAY, <<"weekday">>}, {7, <<"dayOfYear">>}, {8, <<"weekdayOfMonth">>},
+     {?DAY, <<"day">>}, {?DAYPERIOD, <<"dayperiod">>}, {?HOUR, <<"hour">>}, {?MINUTE, <<"minute">>},
+     {?SECOND, <<"second">>}, {?ZONE, <<"zone">>}].
+
+%% The name of a calendar in ICU's data for its BCP 47 type.
+-spec icu_calendar(binary()) -> binary().
+icu_calendar(<<"gregory">>) -> <<"gregorian">>;
+icu_calendar(<<"ethioaa">>) -> <<"ethiopic-amete-alem">>;
+icu_calendar(Cal) -> Cal.
 
 %% The 52 buckets of the pattern map, by the first letter of the base, each
 %% newest first.

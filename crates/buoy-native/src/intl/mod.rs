@@ -10,7 +10,7 @@ pub mod collator;
 pub mod number;
 pub mod segmenter;
 
-/// The CLDR locale data that `scripts/intl-cldr.escript` writes from cldr-json.
+/// The locale data that `scripts/intl-icu.escript` writes from the resource bundles of Node's ICU.
 pub static CLDR: &[u8] = include_bytes!("../../data/cldr.etf");
 
 use icu_locale::subtags::{Language, Region, Script};
