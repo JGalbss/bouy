@@ -185,6 +185,8 @@ new_session(This, TypeArg) ->
                 async_id => async_id(), padding => maps:get(padding_strategy, Opts, 0),
                 max_header_pairs => case Type of server -> max(MaxPairs, 4); client -> max(MaxPairs, 1) end,
                 max_pings => maps:get(max_outstanding_pings, Opts, 10),
+                %% maxSessionMemory counts in megabytes (DEFAULT_MAX_SESSION_MEMORY).
+                max_memory => maps:get(max_session_memory, Opts, 10) * 1000000,
                 max_settings => maps:get(max_outstanding_settings, Opts, 10),
                 pings => [], settings => [], outgoing => [], pending_rst => [],
                 write_scheduled => false, in_scope => false, sending => false, write_in_progress => false,
@@ -638,7 +640,7 @@ on(This, {begin_headers, #{id := Id, cat := Cat}}) ->
         undefined ->
             S = session(This),
             Local = buoy_h2:local_settings(h2(This)),
-            case map_size(maps:get(streams, S)) < maps:get(max_concurrent_streams, Local) of
+            case map_size(maps:get(streams, S)) < maps:get(max_concurrent_streams, Local) andalso has_session_memory(S) of
                 true ->
                     update(This, fun(St) -> St#{rejected_streams => 0} end),
                     new_stream(This, Id, Cat, 0),
@@ -1252,6 +1254,14 @@ stream_read_start(This) ->
     end.
 
 %%% Helpers
+
+%% CanAddStream's has_available_session_memory(sizeof(Http2Stream)): the
+%% session's memory counts the body bytes that its streams queued
+%% (IncrementAvailableOutboundLength) and each stream.
+-define(STREAM_SIZE, 512).
+has_session_memory(#{streams := Streams, max_memory := Max}) ->
+    Queued = lists:sum([maps:get(available, stream(St), 0) + ?STREAM_SIZE || St <- maps:values(Streams)]),
+    Queued + ?STREAM_SIZE =< Max.
 
 %% Debug of src/debug_utils-inl.h: a line on stderr after the wrap's
 %% diagnostic_name while NODE_DEBUG_NATIVE names a part of its provider,
