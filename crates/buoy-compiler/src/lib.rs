@@ -162,6 +162,10 @@ pub fn compile_loaded(
     };
     match resolve::Resolver::default().resolve(specifier, importer, mode) {
         Ok(resolve::Target::Builtin(name)) => Ok(Loaded::Builtin(name)),
+        Ok(resolve::Target::Data(url)) => Err((
+            "ERR_UNSUPPORTED_ESM_URL_SCHEME".to_owned(),
+            format!("{url} loads through the ESM loader of the program"),
+        )),
         Ok(resolve::Target::File(path)) => {
             let root = project_root(main);
             let root = root.canonicalize().unwrap_or(root);

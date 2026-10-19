@@ -34,6 +34,8 @@ pub enum Target {
     /// A built-in module of Node, by the name that `require('module').builtinModules`
     /// lists, such as `fs` or `node:test`.
     Builtin(String),
+    /// A `data:` URL of JavaScript or JSON, whose body is the source of the module.
+    Data(String),
 }
 
 /// A failed resolution: Node's error code and message.
@@ -224,7 +226,7 @@ impl Resolver {
         }?;
         Ok(match found {
             Target::File(path) => Target::File(path.canonicalize().unwrap_or(path)),
-            builtin @ Target::Builtin(_) => builtin,
+            other => other,
         })
     }
 
@@ -258,6 +260,18 @@ impl Resolver {
         }
         if let Some(path) = specifier.strip_prefix("file://") {
             return finish_esm(PathBuf::from(decode(path)), importer);
+        }
+        if specifier.starts_with("data:") {
+            return data_target(specifier);
+        }
+        if is_path(specifier) && importer.to_string_lossy().starts_with("data:") {
+            return Err(Failure {
+                code: "ERR_UNSUPPORTED_RESOLVE_REQUEST",
+                message: format!(
+                    "Failed to resolve module specifier \"{specifier}\" from \"{}\": Invalid relative URL or base scheme is not hierarchical.",
+                    importer.display()
+                ),
+            });
         }
         if is_path(specifier) {
             // A relative specifier is a URL: `./a%2ejs` names `./a.js`.
@@ -927,6 +941,107 @@ pub fn normalize(path: &Path) -> PathBuf {
     out
 }
 
+/// A `data:` URL as a module, or Node's error for a format that no module has
+/// (`getDataProtocolModuleFormat`): `type/subtype` before the parameters names it.
+fn data_target(url: &str) -> Result<Target, Failure> {
+    let Some((head, _)) = url["data:".len()..].split_once(',') else {
+        return Err(Failure {
+            code: "ERR_INVALID_URL",
+            message: "Invalid URL".to_owned(),
+        });
+    };
+    let mime = head.split(';').next().unwrap_or_default();
+    let known = mime
+        .split_once('/')
+        .is_some_and(|(kind, sub)| !kind.is_empty() && !sub.is_empty());
+    match known.then(|| data_format(mime)).flatten() {
+        Some(_) => Ok(Target::Data(url.to_owned())),
+        None => Err(Failure {
+            code: "ERR_UNKNOWN_MODULE_FORMAT",
+            message: format!(
+                "Unknown module format: {} for URL {url}",
+                if known { mime } else { "null" }
+            ),
+        }),
+    }
+}
+
+/// `mimeToFormat` of Node's ESM loader.
+fn data_format(mime: &str) -> Option<Format> {
+    let essence = mime.trim().to_ascii_lowercase();
+    match essence.as_str() {
+        "text/javascript" | "application/javascript" => Some(Format::Esm),
+        "application/json" if mime == "application/json" => Some(Format::Json),
+        _ => None,
+    }
+}
+
+/// The format and the source text of the module of a `data:` URL, as the data URL
+/// processor of the Fetch standard reads its body: percent-decoded, then base64-decoded
+/// when the media type ends with `;base64`.
+pub fn data_source(url: &str) -> Option<(Format, String)> {
+    let (head, body) = url.strip_prefix("data:")?.split_once(',')?;
+    let format = data_format(head.split(';').next().unwrap_or_default())?;
+    let bytes = decode(body).into_bytes();
+    let base64 = head
+        .trim_end_matches(' ')
+        .rsplit_once(';')
+        .is_some_and(|(_, last)| last.trim_start_matches(' ').eq_ignore_ascii_case("base64"));
+    let bytes = if base64 {
+        forgiving_base64(&bytes)?
+    } else {
+        bytes
+    };
+    Some((format, String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+/// The forgiving-base64 decode of the Infra standard: ASCII whitespace is skipped, and
+/// up to two `=` may end the text.
+fn forgiving_base64(text: &[u8]) -> Option<Vec<u8>> {
+    let mut digits: Vec<u8> = text
+        .iter()
+        .copied()
+        .filter(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\x0c' | b'\r'))
+        .collect();
+    if digits.len().is_multiple_of(4) {
+        let padding = digits
+            .iter()
+            .rev()
+            .take_while(|byte| **byte == b'=')
+            .count();
+        if padding > 2 {
+            return None;
+        }
+        digits.truncate(digits.len() - padding);
+    }
+    if digits.len() % 4 == 1 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(digits.len() * 3 / 4);
+    let mut buffer: u32 = 0;
+    for (index, byte) in digits.iter().enumerate() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        if index % 4 == 3 {
+            out.extend_from_slice(&buffer.to_be_bytes()[1..]);
+            buffer = 0;
+        }
+    }
+    match digits.len() % 4 {
+        2 => out.extend_from_slice(&(buffer >> 4).to_be_bytes()[3..]),
+        3 => out.extend_from_slice(&(buffer >> 2).to_be_bytes()[2..]),
+        _ => {}
+    }
+    Some(out)
+}
+
 /// The path of a `file://` URL, with its percent escapes decoded.
 fn decode(path: &str) -> String {
     let bytes = path.as_bytes();
@@ -1052,5 +1167,39 @@ mod tests {
             Format::Detect
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reads_data_urls_as_node_loads_them() {
+        let importer = Path::new("/project/main.mjs");
+        let resolver = Resolver::default();
+        let code = |specifier: &str| {
+            resolver
+                .resolve(specifier, importer, Mode::Import)
+                .map_err(|failure| failure.code)
+        };
+        let url = "data:text/javascript;charset=utf-8,export%20default%201";
+        assert_eq!(code(url), Ok(Target::Data(url.to_owned())));
+        assert_eq!(code("data:text/plain,x"), Err("ERR_UNKNOWN_MODULE_FORMAT"));
+        assert_eq!(code("data:x"), Err("ERR_INVALID_URL"));
+        assert_eq!(
+            resolver
+                .resolve("./x.mjs", Path::new("data:text/javascript,"), Mode::Import)
+                .map_err(|failure| failure.code),
+            Err("ERR_UNSUPPORTED_RESOLVE_REQUEST")
+        );
+        assert_eq!(
+            data_source(url),
+            Some((Format::Esm, "export default 1".to_owned()))
+        );
+        assert_eq!(
+            data_source("data:text/javascript;base64,ZXhwb3J0IGRlZmF1bHQgNDI="),
+            Some((Format::Esm, "export default 42".to_owned()))
+        );
+        assert_eq!(
+            data_source("data:application/json;base64,WzEsMl0"),
+            Some((Format::Json, "[1,2]".to_owned()))
+        );
+        assert_eq!(data_source("data:text/javascript;base64,a"), None);
     }
 }

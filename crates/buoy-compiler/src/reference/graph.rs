@@ -22,7 +22,7 @@ use super::analyze::Suspends;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::graph::{has_value_use, unit_name};
 use crate::parse::with_program_as;
-use crate::resolve::{Failure, Format, Mode, Resolver, Target, normalize};
+use crate::resolve::{self, Failure, Format, Mode, Resolver, Target, normalize};
 
 /// The wrapper of a `CommonJS` module, as Node writes it. The source starts on its first
 /// line, so line numbers stay.
@@ -74,10 +74,11 @@ pub enum Kind {
 
 impl Kind {
     pub fn source_type(self, path: &Path) -> SourceType {
-        let typescript = path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| matches!(extension, "ts" | "mts" | "cts" | "tsx"));
+        let typescript = !is_data(path)
+            && path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| matches!(extension, "ts" | "mts" | "cts" | "tsx"));
         let base = if typescript {
             SourceType::ts()
         } else {
@@ -177,6 +178,7 @@ pub fn load(
             None if units.is_empty() && text.is_some() => {
                 scan(&resolver, &path, text.take().unwrap_or_default(), script)
             }
+            None if is_data(&path) => scan_data(&path),
             None => fs::read_to_string(&path)
                 .map_err(|error| {
                     vec![Reporter::new(&path, "").at(
@@ -311,6 +313,10 @@ fn resolved_of(
     match result {
         Ok(Target::File(found)) => Resolved::Unit(enqueue(index, queue, found.clone()), found),
         Ok(Target::Builtin(builtin)) => Resolved::Builtin(builtin),
+        Ok(Target::Data(url)) => {
+            let found = PathBuf::from(url);
+            Resolved::Unit(enqueue(index, queue, found.clone()), found)
+        }
         Err(failure) => Resolved::Missing(failure),
     }
 }
@@ -505,6 +511,31 @@ fn scan(
         Format::Detect => detect(path, &text),
     };
     scan_as(path, text, kind, script)
+}
+
+/// Whether `path` stands for a `data:` URL, which names a module without a file.
+pub fn is_data(path: &Path) -> bool {
+    path.to_string_lossy().starts_with("data:")
+}
+
+/// Reads the module of a `data:` URL, which the resolver accepted.
+fn scan_data(path: &Path) -> Result<Scanned, Vec<Diagnostic>> {
+    let url = path.to_string_lossy();
+    match resolve::data_source(&url) {
+        Some((Format::Json, text)) => Ok(Scanned {
+            source: text,
+            kind: Kind::Json,
+            record: Record::default(),
+            specifiers: Vec::new(),
+            dynamic: Dynamic::default(),
+        }),
+        Some((_, text)) => scan_as(path, text, Kind::Esm, false),
+        None => Err(vec![Reporter::new(path, "").at(
+            0,
+            Code::BadImport,
+            format!("cannot decode {url}"),
+        )]),
+    }
 }
 
 /// Reads the syntax facts of a module of a known format.

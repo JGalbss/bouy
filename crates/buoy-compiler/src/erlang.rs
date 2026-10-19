@@ -578,11 +578,16 @@ pub fn shorten(name: &str, limit: usize) -> String {
     if name.chars().count() <= limit {
         return name.to_owned();
     }
-    let hash = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-    });
+    let hash = fnv1a(name);
     let prefix: String = name.chars().take(limit - 17).collect();
     format!("{prefix}_{hash:016x}")
+}
+
+/// The 64-bit FNV-1a hash of `text`.
+pub fn fnv1a(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
 }
 
 /// An atom in source form, quoted when it needs quotes.

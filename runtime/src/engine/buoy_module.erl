@@ -905,9 +905,13 @@ meta(M) ->
             Path = info(M, path),
             Resolve = buoy_heap:function(fun(_This, Args) -> meta_resolve(M, buoy_ref_realm:arg(1, Args)) end,
                                          <<"resolve">>, 1, #{}),
-            O = buoy_heap:object(null, [{<<"dirname">>, dirname(Path)}, {<<"filename">>, Path},
-                                        {<<"main">>, erlang:get(?ENTRY) =:= M}, {<<"resolve">>, Resolve},
-                                        {<<"url">>, file_url(Path)}]),
+            %% A module of a data: URL has no file.
+            File = case buoy_ref_string:to_utf8(Path) of
+                <<"data:", _/binary>> -> [];
+                _ -> [{<<"dirname">>, dirname(Path)}, {<<"filename">>, Path}]
+            end,
+            O = buoy_heap:object(null, File ++ [{<<"main">>, erlang:get(?ENTRY) =:= M}, {<<"resolve">>, Resolve},
+                                                {<<"url">>, file_url(Path)}]),
             erlang:put(?META(M), O),
             O;
         {O, _} ->
@@ -960,9 +964,14 @@ meta_resolve(M, Specifier) ->
 dirname(Path) -> buoy_ref_string:from_utf8(filename:dirname(buoy_ref_string:to_utf8(Path))).
 
 %% pathToFileURL: file:// and the path, with the bytes that a URL path may not
-%% hold percent-encoded.
+%% hold percent-encoded. The path of a module of a data: URL is its URL.
 file_url(Path) ->
-    Bytes = buoy_ref_string:to_utf8(Path),
+    case buoy_ref_string:to_utf8(Path) of
+        <<"data:", _/binary>> -> Path;
+        Bytes -> path_url(Bytes)
+    end.
+
+path_url(Bytes) ->
     Encoded = << <<(encode_byte(B))/binary>> || <<B>> <= Bytes >>,
     buoy_ref_string:from_utf8(<<"file://", Encoded/binary>>).
 
@@ -1178,9 +1187,15 @@ instantiate(M) ->
 -spec program_module(term()) -> {ok, module()} | none.
 program_module(Url) ->
     Graph = case erlang:get(?GRAPH) of undefined -> #{}; G -> G end,
-    case buoy_ref_string:to_utf8(Url) of
-        <<"file://", Rest/binary>> ->
-            Path = buoy_ref_string:from_utf8(uri_string:percent_decode(hd(binary:split(Rest, [<<"?">>, <<"#">>])))),
+    Path = case buoy_ref_string:to_utf8(Url) of
+        <<"file://", Rest/binary>> -> buoy_ref_string:from_utf8(uri_string:percent_decode(hd(binary:split(Rest, [<<"?">>, <<"#">>]))));
+        <<"data:", _/binary>> -> Url;
+        _ -> none
+    end,
+    case Path of
+        none ->
+            none;
+        _ ->
             case maps:find(Path, Graph) of
                 {ok, M} when is_atom(M), M =/= none ->
                     case kind(M) of
@@ -1189,9 +1204,7 @@ program_module(Url) ->
                     end;
                 _ ->
                     none
-            end;
-        _ ->
-            none
+            end
     end.
 
 %% Records the realm of a module and the referrer and host-defined option
