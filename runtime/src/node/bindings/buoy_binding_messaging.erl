@@ -20,9 +20,10 @@
 -module(buoy_binding_messaging).
 
 -export([binding/0, ready/2, poll/0, new_port/3, pipe/0, is_message_port/1, port_side/1, transfer_out/1, close_carried/1]).
--export([pipe_init/1, construct_invalid/2]).
+-export([pipe_init/1, construct_invalid/2, mark_cloneable/3]).
 
 -define(STATE, {'#', ?MODULE, <<"port">>}).
+-define(CLONE, {'#', ?MODULE, <<"clone">>}).
 -define(PORTS(Pipe, Side), {?MODULE, port, Pipe, Side}).
 -define(CREATE, {?MODULE, create_object}).
 -define(PROTO, {?MODULE, port_prototype}).
@@ -559,26 +560,40 @@ host_out(O, Ports, Js) ->
         error ->
             is_message_port(O) andalso
                 clone_error(<<"Object that needs transfer was found in message but not listed in transferList">>),
-            %% V8's serializer asks the delegate only about plain objects; it
-            %% clones an ArrayBuffer, an array, or a Map itself, marked or not.
-            case buoy_heap:class_of(O) =:= object andalso transfer_mode(O) of
-                Unmarked when Unmarked =:= false; Unmarked =:= undefined ->
-                    none;
-                Mode ->
-                    Transferred = lists:member(O, Js),
-                    Method = if
-                        Transferred -> <<"messaging_transfer_symbol">>;
-                        Mode band 2 =:= 2 -> <<"messaging_clone_symbol">>;
-                        Mode band 1 =:= 1 ->
-                            clone_error(<<"Object that needs transfer was found in message but not listed in transferList">>);
-                        true ->
-                            clone_error(<<"Cannot clone object of unsupported type.">>)
-                    end,
-                    Result = buoy_heap:call(buoy_heap:get(O, symbol(Method)), O, []),
-                    Info = buoy_ref_string:to_utf8(buoy_ref:to_string(buoy_heap:get(Result, <<"deserializeInfo">>))),
-                    {host, {js, Info}, buoy_heap:get(Result, <<"data">>)}
+            case buoy_heap:private_find(O, ?CLONE) of
+                {ok, {Module, Term}} -> {host, {native, Module, Term}, undefined};
+                error -> js_host_out(O, Js)
             end
     end.
+
+js_host_out(O, Js) ->
+    %% V8's serializer asks the delegate only about plain objects; it
+    %% clones an ArrayBuffer, an array, or a Map itself, marked or not.
+    case buoy_heap:class_of(O) =:= object andalso transfer_mode(O) of
+        Unmarked when Unmarked =:= false; Unmarked =:= undefined ->
+            none;
+        Mode ->
+            Transferred = lists:member(O, Js),
+            Method = if
+                Transferred -> <<"messaging_transfer_symbol">>;
+                Mode band 2 =:= 2 -> <<"messaging_clone_symbol">>;
+                Mode band 1 =:= 1 ->
+                    clone_error(<<"Object that needs transfer was found in message but not listed in transferList">>);
+                true ->
+                    clone_error(<<"Cannot clone object of unsupported type.">>)
+            end,
+            Result = buoy_heap:call(buoy_heap:get(O, symbol(Method)), O, []),
+            Info = buoy_ref_string:to_utf8(buoy_ref:to_string(buoy_heap:get(Result, <<"deserializeInfo">>))),
+            {host, {js, Info}, buoy_heap:get(Result, <<"data">>)}
+    end.
+
+%% Makes Handle, an object of a binding, cloneable as a BaseObject whose
+%% transfer mode is kCloneable: a message carries Term, and Module:clone_in(Term)
+%% makes the handle in the realm that receives it.
+-spec mark_cloneable(term(), module(), term()) -> ok.
+mark_cloneable(Handle, Module, Term) ->
+    buoy_heap:private_put(Handle, ?CLONE, {Module, Term}),
+    ok.
 
 index_of(X, List) -> index_of(X, List, 0).
 index_of(_, [], _) -> error;
@@ -629,7 +644,8 @@ dom_clone_error(E) ->
 deserialize({message, Payload, Carried}) ->
     Ports = [new_port(Pipe, Side, Queue) || {Pipe, Side, Queue} <- Carried],
     Hook = fun({{port, I}, _}) -> lists:nth(I + 1, Ports);
-              ({{js, Info}, Data}) -> js_object(Info, Data)
+              ({{js, Info}, Data}) -> js_object(Info, Data);
+              ({{native, Module, Term}, _}) -> Module:clone_in(Term)
            end,
     try buoy_heap:clone_in(Payload, Hook) of
         Value -> {ok, Value, Ports}
