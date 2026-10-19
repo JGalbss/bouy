@@ -7,6 +7,7 @@
 pub mod calendar;
 pub mod casemap;
 pub mod collator;
+pub mod number;
 
 use icu_locale::subtags::{Language, Region, Script};
 use icu_locale::{

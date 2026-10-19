@@ -320,6 +320,13 @@ fn intl_calendar_date(calendar: &str, epoch_days: i64) -> Option<(i32, u8, u8, b
     })
 }
 
+/// The exponent by which compact notation scales a number of the magnitude in the locale
+/// `tag`, short or long (`ComputeExponentForMagnitude` of ECMA-402).
+#[rustler::nif]
+fn intl_compact_exponent(tag: &str, long: bool, magnitude: i16) -> u8 {
+    intl::number::compact_exponent(tag, long, magnitude)
+}
+
 mod atoms {
     rustler::atoms! { base, accent, case }
 }

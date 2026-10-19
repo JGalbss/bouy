@@ -13,6 +13,7 @@
 -export([intl_canonicalize/1, intl_maximize/1, intl_minimize/1, intl_is_right_to_left/1]).
 -export([intl_collator_new/3, intl_collator_compare/3, intl_collation_types/1, intl_change_case/3]).
 -export([intl_calendar_date/2]).
+-export([intl_compact_exponent/3]).
 
 -export_type([stream/0, failure/0]).
 
@@ -103,3 +104,8 @@ intl_change_case(_Language, _Text, _Upper) -> erlang:nif_error(nif_not_loaded).
 -spec intl_calendar_date(binary(), integer()) ->
           {integer(), pos_integer(), pos_integer(), boolean(), pos_integer()} | nil.
 intl_calendar_date(_Calendar, _EpochDays) -> erlang:nif_error(nif_not_loaded).
+
+%% ComputeExponentForMagnitude in compact notation: the power of ten by
+%% which the locale scales a number of the magnitude, short or long.
+-spec intl_compact_exponent(binary(), boolean(), integer()) -> non_neg_integer().
+intl_compact_exponent(_Tag, _Long, _Magnitude) -> erlang:nif_error(nif_not_loaded).

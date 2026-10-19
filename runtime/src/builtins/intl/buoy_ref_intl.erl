@@ -27,6 +27,7 @@ intrinsics() ->
     [{'Intl', record(object, ?OBJECT_PROTO,
                      ?METHODS(<<"Intl">>, [{<<"getCanonicalLocales">>, 1}, {<<"supportedValuesOf">>, 1}])
                      ++ [{<<"Collator">>, buoy_ref_intl_collator:constructor()}, {<<"Locale">>, buoy_ref_intl_locale:constructor()},
+                         {<<"PluralRules">>, buoy_ref_intl_plural_rules:constructor()},
                          {?SYM(toStringTag), <<"Intl">>, 4}],
                      none)}].
 
