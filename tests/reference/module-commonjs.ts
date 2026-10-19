@@ -1,6 +1,6 @@
 // CommonJS on the reference engine: the wrapper arguments, require and its cache, the
-// named exports that Node's lexer finds, the default export, require of an ES module,
-// and JSON modules.
+// named exports that Node's lexer finds, the default export, require of an ES module
+// and of the ES modules that it imports, and JSON modules.
 import legacy, { greet, kind, helper } from "./modules/legacy.cjs";
 import * as legacyNamespace from "./modules/legacy.cjs";
 import replaced from "./modules/replaced.cjs";
@@ -16,5 +16,6 @@ console.log(legacyNamespace.default === legacy, legacyNamespace["module.exports"
 console.log(replaced(), replaced.extra);
 console.log(flagged.default, flagged.other, Object.keys(flaggedNamespace));
 console.log(report.esm, report.data, report.cached, report.resolved, report.inCache);
+console.log(report.nested);
 console.log(data.name, data.items);
 console.log("babel re-export", Object.keys(babel), babel.helper());

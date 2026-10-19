@@ -1151,11 +1151,15 @@ set_synthetic_export(M, Name, Value) ->
 -spec requests_of(module()) -> [term()].
 requests_of(M) -> maps:get(hosted, get(M, info), []).
 
-%% Binds the requests of M to the modules Targets, in order.
+%% Binds the requests of M to the modules Targets, in order. A module of the
+%% program reports no requests to the host, which links it to none, and keeps
+%% the requests that the compiler linked.
 -spec link_requests(module(), [module()]) -> ok.
 link_requests(M, Targets) ->
-    set(M, info, (get(M, info))#{requests => Targets, linked => true}),
-    ok.
+    case erlang:get(?HOST(M)) of
+        undefined -> ok;
+        _ -> set(M, info, (get(M, info))#{requests => Targets, linked => true}), ok
+    end.
 
 %% Instantiate: links the graph of M, or throws the error of a request that
 %% does not provide an import, as V8's InstantiateModule does. A source text
