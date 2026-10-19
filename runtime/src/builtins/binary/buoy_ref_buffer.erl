@@ -156,14 +156,19 @@ write_words(Ref, Index, Rest) ->
 %% Replaces the bytes of a word from Start with Part, through a
 %% compare-and-swap, so that a write does not undo the write of another
 %% agent to the other bytes of the word.
+%% A mask on the integer, not a binary rebuilt from three parts, because each
+%% element store of a typed array smaller than a word comes here.
 write_word(Ref, Index, Start, Part) ->
+    Bits = byte_size(Part) * 8,
+    <<Value:Bits/little>> = Part,
+    Shift = Start * 8,
+    swap_bits(Ref, Index, bnot (((1 bsl Bits) - 1) bsl Shift), Value bsl Shift).
+
+swap_bits(Ref, Index, Keep, Put) ->
     Old = atomics:get(Ref, Index),
-    Take = byte_size(Part),
-    <<Before:Start/binary, _:Take/binary, After/binary>> = <<Old:64/little>>,
-    <<New:64/little>> = <<Before/binary, Part/binary, After/binary>>,
-    case atomics:compare_exchange(Ref, Index, Old, New) of
+    case atomics:compare_exchange(Ref, Index, Old, (Old band Keep) bor Put) of
         ok -> ok;
-        _ -> write_word(Ref, Index, Start, Part)
+        _ -> swap_bits(Ref, Index, Keep, Put)
     end.
 
 %% Copies Count bytes from one buffer to another, as a read then a write,
