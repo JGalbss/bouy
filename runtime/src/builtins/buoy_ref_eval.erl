@@ -370,11 +370,14 @@ compile(Source, Flags, Key) ->
             true = ets:insert(buoy_eval_modules, {Module, Text}),
             loaded(load_apart(Key, Module, Erlang));
         <<2, Diagnostic/binary>> -> report(Diagnostic);
-        <<_, Output/binary>> -> loaded({failed, Output})
+        <<_, Output/binary>> -> compiler_failed(Output)
     end.
 
 loaded({module, Module}) -> Module;
-loaded({failed, Output}) -> type_error(buoy_ref_string:from_utf8(<<"the Buoy compiler failed: ", Output/binary>>)).
+loaded({failed, Output}) -> compiler_failed(Output).
+
+-spec compiler_failed(binary()) -> no_return().
+compiler_failed(Output) -> type_error(buoy_ref_string:from_utf8(<<"the Buoy compiler failed: ", Output/binary>>)).
 
 call_compiler(Request) ->
     Server = compiler(),

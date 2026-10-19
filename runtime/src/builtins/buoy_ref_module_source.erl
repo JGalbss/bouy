@@ -4,7 +4,8 @@
 %% prototype of a module source class, and the test262 runner through
 %% `$262.AbstractModuleSource`. Its constructor always throws, and its
 %% @@toStringTag getter answers the [[ModuleSourceClassName]] of a module
-%% source object, the slot `module_source_class_name`, else undefined.
+%% source object: "WebAssembly.Module" for a WebAssembly module, the only
+%% module source of Buoy, else undefined.
 -module(buoy_ref_module_source).
 
 -include("buoy_ref.hrl").
@@ -35,11 +36,12 @@ method(_Owner, Name, _This, _Args) -> type_error(<<"AbstractModuleSource has no 
 -spec call_constructor(binary(), term(), list()) -> no_return().
 call_constructor(_Name, _This, _Args) -> type_error(<<"Constructor AbstractModuleSource requires 'new'">>).
 
+-spec construct(term(), list()) -> no_return().
 construct(_NewTarget, _Args) -> type_error(<<"AbstractModuleSource is an abstract class">>).
 
 class_name(O) when ?IS_OBJECT(O) ->
-    case buoy_heap:slots(O) of
-        #{module_source_class_name := Name} -> Name;
+    case buoy_heap:class_of(O) of
+        wasm_module -> <<"WebAssembly.Module">>;
         _ -> undefined
     end;
 class_name(_) -> undefined.

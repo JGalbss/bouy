@@ -63,29 +63,7 @@ intrinsics() ->
     ++ class(<<"Tag">>, [], [])
     ++ class(<<"Exception">>, [{<<"getArg">>, 2}, {<<"is">>, 1}], [])
     ++ class(<<"Suspending">>, [], [])
-    ++ lists:append([error_class(N) || N <- ?ERRORS])
-    ++ abstract_module_source().
-
-%% %AbstractModuleSource% of the source phase imports proposal, the parent of
-%% WebAssembly.Module.prototype: its Symbol.toStringTag getter names the class
-%% of a module source.
-abstract_module_source() ->
-    Get = buoy_ref_realm:builtin(<<"get AbstractModuleSource.prototype[Symbol.toStringTag]">>,
-                                 <<"get [Symbol.toStringTag]">>, 0,
-                                 fun(This, _) ->
-                                     case ?IS_OBJECT(This) andalso buoy_heap:class_of(This) of
-                                         wasm_module -> <<"WebAssembly.Module">>;
-                                         _ -> undefined
-                                     end
-                                 end),
-    Constructor = {'$f', {builtin, <<"AbstractModuleSource">>},
-                   fun(_, _) -> buoy_ref:type_error(<<"Abstract class AbstractModuleSource not directly constructable">>) end},
-    Proto = record(object, ?OBJECT_PROTO,
-                   [{<<"constructor">>, Constructor}, {?SYM(toStringTag), {'$accessor', Get, undefined}, 4}], none),
-    [{'AbstractModuleSource.prototype', Proto},
-     {{builtin, <<"AbstractModuleSource">>},
-      ctor_record(<<"AbstractModuleSource">>, 0, {'$o', 'AbstractModuleSource.prototype'}, [],
-                  fun(_, _) -> buoy_ref:type_error(<<"Abstract class AbstractModuleSource not directly constructable">>) end)}].
+    ++ lists:append([error_class(N) || N <- ?ERRORS]).
 
 operations(Owner, Names) -> [{K, V, ?OPERATION} || {K, V} <- ?METHODS(Owner, Names)].
 
