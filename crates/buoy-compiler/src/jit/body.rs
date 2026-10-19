@@ -1346,7 +1346,7 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             return Ok((ir::Expr::Shift(Box::new(array)), element));
         }
         if matches!(name, "indexOf" | "includes") {
-            return self.search(array, element, name, call);
+            return self.search(array, &element, name, call);
         }
         let [Argument::ArrowFunctionExpression(arrow)] = call.arguments.as_slice() else {
             return reject(format!("{name} without an arrow function"));
@@ -1384,8 +1384,11 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             setup.push(set(bound, read));
         }
         let (value, value_ty) = self.expr(body)?;
-        let (before, each, after, result) =
-            self.callback_steps(name, &element, item, index, value, &value_ty)?;
+        let CallbackSteps {
+            before,
+            each,
+            result,
+        } = self.callback_steps(name, &element, item, index, value, &value_ty)?;
         setup.extend(each);
         // An element that the callback removed is no longer there to visit. `map` keeps
         // a hole in its place, which its array of results cannot hold, so it bails.
@@ -1421,12 +1424,11 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             )],
             test_after: false,
         });
-        stmts.extend(after);
         Ok((ir::Expr::Block(stmts, Box::new(result.0)), result.1))
     }
 
-    /// What a method with a callback does before its loop, with each value of the callback,
-    /// and after its loop, and its result.
+    /// What a method with a callback does before its loop and with each value of the
+    /// callback, and its result.
     fn callback_steps(
         &mut self,
         name: &str,
@@ -1435,19 +1437,18 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
         index: u32,
         value: ir::Expr,
         value_ty: &T,
-    ) -> Checked<(Vec<ir::Stmt>, Vec<ir::Stmt>, Vec<ir::Stmt>, (ir::Expr, T))> {
+    ) -> Checked<CallbackSteps> {
         let found = |found: Vec<ir::Stmt>, test: ir::Expr| {
             let mut then = found;
             then.push(ir::Stmt::Break(0));
             vec![ir::Stmt::If(test, then, Vec::new())]
         };
         Ok(match name {
-            "forEach" => (
-                Vec::new(),
-                vec![ir::Stmt::Expr(value)],
-                Vec::new(),
-                (ir::Expr::Undefined, T::Void),
-            ),
+            "forEach" => CallbackSteps {
+                before: Vec::new(),
+                each: vec![ir::Stmt::Expr(value)],
+                result: (ir::Expr::Undefined, T::Void),
+            },
             "filter" | "map" => {
                 let (kept, pushed, test) = if name == "filter" {
                     (element.clone(), local(item), Some(truthy(value, value_ty)?))
@@ -1463,12 +1464,11 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
                     Some(test) => vec![ir::Stmt::If(test, vec![push], Vec::new())],
                     None => vec![push],
                 };
-                (
-                    vec![set(out, ir::Expr::ArrayOf(kept.ir(), Vec::new()))],
+                CallbackSteps {
+                    before: vec![set(out, ir::Expr::ArrayOf(kept.ir(), Vec::new()))],
                     each,
-                    Vec::new(),
-                    (local(out), T::Array(Box::new(kept))),
-                )
+                    result: (local(out), T::Array(Box::new(kept))),
+                }
             }
             "some" | "every" => {
                 let some = name == "some";
@@ -1479,41 +1479,38 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
                 } else {
                     ir::Expr::Unary(Unary::Not, Box::new(test))
                 };
-                (
-                    vec![set(result, ir::Expr::Bool(!some))],
-                    found(vec![set(result, ir::Expr::Bool(some))], test),
-                    Vec::new(),
-                    (local(result), T::Bool),
-                )
+                CallbackSteps {
+                    before: vec![set(result, ir::Expr::Bool(!some))],
+                    each: found(vec![set(result, ir::Expr::Bool(some))], test),
+                    result: (local(result), T::Bool),
+                }
             }
             "find" if element.is_reference() => {
                 let result = self.local(element.clone());
-                (
-                    vec![set(result, ir::Expr::Undefined)],
-                    found(vec![set(result, local(item))], truthy(value, value_ty)?),
-                    Vec::new(),
-                    (local(result), element.clone()),
-                )
+                CallbackSteps {
+                    before: vec![set(result, ir::Expr::Undefined)],
+                    each: found(vec![set(result, local(item))], truthy(value, value_ty)?),
+                    result: (local(result), element.clone()),
+                }
             }
             "findIndex" => {
                 let result = self.local(T::Num);
-                (
-                    vec![set(result, ir::Expr::Num(-1.0))],
-                    found(vec![set(result, local(index))], truthy(value, value_ty)?),
-                    Vec::new(),
-                    (local(result), T::Num),
-                )
+                CallbackSteps {
+                    before: vec![set(result, ir::Expr::Num(-1.0))],
+                    each: found(vec![set(result, local(index))], truthy(value, value_ty)?),
+                    result: (local(result), T::Num),
+                }
             }
             _ => return reject(format!("the array method {name}")),
         })
     }
 
-    /// `indexOf(v)` and `includes(v)`: `===`, and SameValueZero, which finds NaN, for
+    /// `indexOf(v)` and `includes(v)`: `===`, and `SameValueZero`, which finds NaN, for
     /// `includes`.
     fn search(
         &mut self,
         array: ir::Expr,
-        element: T,
+        element: &T,
         name: &str,
         call: &'a CallExpression<'a>,
     ) -> Checked<(ir::Expr, T)> {
@@ -1525,8 +1522,8 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
             .ok_or_else(|| Reject("a spread argument".into()))?;
         let (wanted, wanted_ty) = self.expr(wanted)?;
         let comparable =
-            wanted_ty == element || (wanted_ty.is_reference() && element.is_reference());
-        if !comparable || element == T::Str {
+            wanted_ty == *element || (wanted_ty.is_reference() && element.is_reference());
+        if !comparable || *element == T::Str {
             return reject(format!("{name} of a value of another type or of a string"));
         }
         let held = self.local(T::Array(Box::new(element.clone())));
@@ -1535,7 +1532,7 @@ impl<'i, 'a, 's> Body<'i, 'a, 's> {
         let result = self.local(T::Num);
         let item = ir::Expr::Index(Box::new(local(held)), Box::new(local(index)));
         let mut equal = ir::Expr::Binary(Op::Eq, Box::new(item.clone()), Box::new(local(target)));
-        if name == "includes" && element == T::Num {
+        if name == "includes" && *element == T::Num {
             let nan = |value: ir::Expr| {
                 ir::Expr::Binary(Op::Ne, Box::new(value.clone()), Box::new(value))
             };
@@ -1984,4 +1981,12 @@ fn is_top_level_declaration(island: &Island<'_, '_>, node: oxc::semantic::NodeId
         nodes.parent_kind(node),
         AstKind::Program(_) | AstKind::FunctionBody(_)
     ) || matches!(nodes.parent_kind(node), AstKind::ExportNamedDeclaration(_))
+}
+
+/// The steps of an array method with a callback: before its loop, with each value of the
+/// callback, and its result.
+struct CallbackSteps {
+    before: Vec<ir::Stmt>,
+    each: Vec<ir::Stmt>,
+    result: (ir::Expr, T),
 }

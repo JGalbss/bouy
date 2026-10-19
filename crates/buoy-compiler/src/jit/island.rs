@@ -927,7 +927,7 @@ fn written_globals(program: &ir::Program) -> BTreeSet<u32> {
                 visit(value, out);
             }
             E::SetLocal(_, a) | E::Unary(_, a) | E::Field(a, _, _) | E::Length(a) | E::Shift(a) => {
-                visit(a, out)
+                visit(a, out);
             }
             E::Binary(_, a, b)
             | E::And(a, b)

@@ -851,7 +851,9 @@ fn children(expr: &Expr) -> Vec<&Expr> {
         | Expr::Unary(_, value)
         | Expr::Field(value, _, _)
         | Expr::Length(value)
-        | Expr::Shift(value) => vec![value],
+        | Expr::Shift(value)
+        // The statements of a block are not operands; `written_in_expr` visits them.
+        | Expr::Block(_, value) => vec![value],
         Expr::Binary(_, a, b)
         | Expr::And(a, b)
         | Expr::Or(a, b)
@@ -860,8 +862,6 @@ fn children(expr: &Expr) -> Vec<&Expr> {
         | Expr::Push(a, b)
         | Expr::ArrayFill(_, a, b) => vec![a, b],
         Expr::Cond(_, a, b, c) | Expr::SetIndex(a, b, c) => vec![a, b, c],
-        // The statements of a block are not operands; `written_in_expr` visits them.
-        Expr::Block(_, value) => vec![value],
         Expr::Call(_, items)
         | Expr::New(_, _, items)
         | Expr::Dispatch { args: items, .. }

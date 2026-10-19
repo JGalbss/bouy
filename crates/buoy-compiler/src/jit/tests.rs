@@ -56,8 +56,11 @@ fn a_loop_over_numbers_is_an_island() {
     assert_eq!(islands(source), ["sum"]);
 }
 
+/// A run copies the module variables that it writes back (contract section 17.10), so
+/// `bump` is an island. `console.log` is an effect that a run cannot copy, a compound
+/// assignment works on numbers only, and `leaf` neither loops nor calls.
 #[test]
-fn code_with_effects_outside_is_not_an_island() {
+fn only_effects_that_a_run_copies_back_are_islands() {
     let source = "
         let count = 0;
         function bump(n: number): number {
@@ -76,7 +79,7 @@ fn code_with_effects_outside_is_not_an_island() {
             return a + b;
         }
     ";
-    assert!(islands(source).is_empty());
+    assert_eq!(islands(source), ["bump"]);
 }
 
 #[test]

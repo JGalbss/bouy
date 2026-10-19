@@ -115,7 +115,11 @@ fn native_library(workspace: &Path, out: &Path) -> String {
         .status()
         .expect("cargo runs");
     assert!(status.success(), "cargo could not build the NIF libraries");
-    let suffix = if target.contains("apple") { "dylib" } else { "so" };
+    let suffix = if target.contains("apple") {
+        "dylib"
+    } else {
+        "so"
+    };
     let mut table = String::from(
         "/// The NIF libraries: the file name in `ebin`, where the module of the same name loads\n\
          /// it, and the contents.\npub const NATIVE: &[(&str, &[u8])] = &[\n",
@@ -127,8 +131,7 @@ fn native_library(workspace: &Path, out: &Path) -> String {
             .join("release")
             .join(format!("lib{module}.{suffix}"));
         let library = out.join(format!("{module}.so"));
-        let bytes =
-            fs::read(&built).unwrap_or_else(|error| panic!("{}: {error}", built.display()));
+        let bytes = fs::read(&built).unwrap_or_else(|error| panic!("{}: {error}", built.display()));
         fs::write(&library, &bytes).expect("OUT_DIR is writable");
         hash = bytes.iter().fold(hash, |hash, byte| {
             (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)

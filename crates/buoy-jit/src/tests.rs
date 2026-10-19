@@ -457,49 +457,6 @@ fn bitwise_operators_wrap_like_javascript() {
     }
 }
 
-/// A tool, not a test: runs the encoded IR in the file `BUOY_JIT_IR` with the numbers of
-/// `BUOY_JIT_ARGS`, separated by commas, `BUOY_JIT_REPEAT` times, and prints each time.
-/// `BUOY_JIT_GLOBALS` gives the globals the same way. `BUOY_JIT_PRINT=1` prints the
-/// program first.
-#[test]
-#[ignore = "a tool for profiling the code generator"]
-fn run_ir_file() {
-    let path = std::env::var("BUOY_JIT_IR").expect("BUOY_JIT_IR names a file");
-    let bytes = std::fs::read(path).expect("the file reads");
-    let program = Program::decode(&bytes).expect("the IR decodes");
-    if std::env::var_os("BUOY_JIT_PRINT").is_some() {
-        println!("{program:#?}");
-    }
-    let numbers = |name: &str| -> Vec<Value> {
-        std::env::var(name)
-            .unwrap_or_default()
-            .split(',')
-            .filter(|text| !text.is_empty())
-            .map(|text| Value::Num(text.parse().expect("a number")))
-            .collect()
-    };
-    let args = numbers("BUOY_JIT_ARGS");
-    let repeat: usize = std::env::var("BUOY_JIT_REPEAT")
-        .ok()
-        .and_then(|text| text.parse().ok())
-        .unwrap_or(5);
-    let started = std::time::Instant::now();
-    let code = Arc::new(compile(&program).expect("the program compiles"));
-    println!("compile: {:?}", started.elapsed());
-    let globals = numbers("BUOY_JIT_GLOBALS");
-    let mut context = Context::new(1 << 30);
-    for _ in 0..repeat {
-        let started = std::time::Instant::now();
-        let mut step = context
-            .start(&code, 0, &args, &globals, &[])
-            .expect("the run starts");
-        while step == Step::Yield {
-            step = context.resume();
-        }
-        println!("{step:?} in {:?}", started.elapsed());
-    }
-}
-
 /// Counts the `i` in `[0, n)` with `(i & 3) === 1 || !((i | 0) >= 5 && (i >> 1) < 4)`: the
 /// comparisons of int32s and the jumps of `&&`, `||`, and `!` give what doubles give.
 #[test]
