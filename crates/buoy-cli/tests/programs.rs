@@ -557,6 +557,28 @@ fn sigterm_during_the_boot_ends_the_program() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "");
 }
 
+/// A program sees the `PATH` of its caller, as a Node program does, also when the VM starts
+/// through erlexec, which puts the directories of the OTP release first on `PATH`.
+#[test]
+fn the_program_sees_the_path_of_its_caller() {
+    if !common::vm_available() {
+        return;
+    }
+    let mut command = common::buoy();
+    command
+        .args(["-p", "process.env.PATH"])
+        .env("ERL_AFLAGS", "+S 2:2");
+    let path = command
+        .get_envs()
+        .find_map(|(name, value)| (name == "PATH").then_some(value).flatten())
+        .map(|path| path.to_string_lossy().into_owned())
+        .expect("buoy_env sets PATH");
+    let common::Run { output, timed_out } = common::run(&mut command, common::deadline());
+    assert!(!timed_out);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), format!("{path}\n"));
+    assert!(output.status.success(), "{:?}", output.status);
+}
+
 /// A reader that closes stdout early ends the program, as `node app.ts | head -1` does.
 #[test]
 fn a_closed_stdout_ends_the_program() {

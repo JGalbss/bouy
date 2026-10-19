@@ -38,6 +38,12 @@ boot() ->
     %% The CLI execs the VM with SIGTERM blocked, because ERTS drops one that comes
     %% before its signal server runs. One that came during the boot ends the VM here.
     _ = try buoy_native:unblock_sigterm() catch error:_ -> false end,
+    %% erlexec put the directories of the OTP release first on PATH. A program and
+    %% its child processes see the caller's PATH (Runtime::vm in the CLI).
+    _ = case os:getenv("BUOY_PATH") of
+        false -> ok;
+        Path -> os:putenv("PATH", Path), os:unsetenv("BUOY_PATH")
+    end,
     _ = logger:remove_handler(default),
     _ = logger:add_handler(default, logger_std_h, #{config => #{type => standard_error}}),
     %% Node writes UTF-8 under any locale. A device in latin1 mode would escape or
