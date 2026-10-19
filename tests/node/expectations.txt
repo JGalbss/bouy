@@ -3169,7 +3169,7 @@ parallel/test-startup-empty-regexp-statics.js fail
 parallel/test-startup-empty-regexp-statics.mjs fail
 parallel/test-startup-large-pages.js fail
 parallel/test-stdin-child-proc.js pass
-parallel/test-stdin-from-file-spawn.js fail
+parallel/test-stdin-from-file-spawn.js pass
 parallel/test-stdin-from-file.js pass
 parallel/test-stdin-hang.js pass
 parallel/test-stdin-pause-resume-sync.js pass
