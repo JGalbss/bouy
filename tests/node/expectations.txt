@@ -1563,7 +1563,7 @@ parallel/test-http-agent-false.js pass
 parallel/test-http-agent-getname.js pass
 parallel/test-http-agent-keep-alive-timeout-buffer.js pass
 parallel/test-http-agent-keepalive-delay.js pass
-parallel/test-http-agent-keepalive.js fail
+parallel/test-http-agent-keepalive.js pass
 parallel/test-http-agent-maxsockets-respected.js pass
 parallel/test-http-agent-maxsockets.js pass
 parallel/test-http-agent-maxtotalsockets.js pass
@@ -4361,7 +4361,7 @@ sequential/test-http-server-keep-alive-timeout-slow-client-headers.js pass
 sequential/test-http-server-keep-alive-timeout-slow-server.js pass
 sequential/test-http-server-request-timeouts-mixed.js pass
 sequential/test-http2-large-file.js pass
-sequential/test-http2-max-session-memory.js timeout
+sequential/test-http2-max-session-memory.js pass
 sequential/test-http2-ping-flood.js pass
 sequential/test-http2-settings-flood.js pass
 sequential/test-http2-timeout-large-write-file.js pass

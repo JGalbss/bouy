@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "c948a5be3f6de54f4c318ad78357e97c54a7e6f2",
+  "updated": "af4f8371927cf2054d6807a4e8b3a37be1b59066",
   "total": 4419,
   "outcomes": {
-    "pass": 2596,
+    "pass": 2598,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1160,
-    "timeout": 68,
+    "fail": 1159,
+    "timeout": 67,
     "harness_error": 0,
     "crash": 12
   },
@@ -23,17 +23,17 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 2474,
+        "pass": 2475,
         "skip": 545,
-        "fail": 988,
+        "fail": 987,
         "timeout": 60,
         "crash": 12
       },
       "sequential": {
-        "pass": 56,
+        "pass": 57,
         "skip": 22,
         "fail": 33,
-        "timeout": 7
+        "timeout": 6
       }
     },
     "kind": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2596,
+        "pass": 2598,
         "skip": 240,
-        "fail": 1160,
-        "timeout": 68,
+        "fail": 1159,
+        "timeout": 67,
         "crash": 12
       }
     },
@@ -124,16 +124,16 @@
         "timeout": 4
       },
       "http": {
-        "pass": 373,
+        "pass": 374,
         "skip": 15,
-        "fail": 4,
+        "fail": 3,
         "timeout": 2
       },
       "http2": {
-        "pass": 236,
+        "pass": 237,
         "skip": 32,
         "fail": 2,
-        "timeout": 4
+        "timeout": 3
       },
       "https": {
         "pass": 58,
