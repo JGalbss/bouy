@@ -27,6 +27,7 @@
 -define(FDS, '$buoy_node_fds').
 -define(STATE, {?MODULE, state}).
 -define(FD_SLOT, {'#', ?MODULE, <<"fd">>}).
+-define(READ_SLOT, {'#', ?MODULE, <<"read">>}).
 -define(STAT_FIELDS, 18).
 %% The open flags of this OS, as the constants binding reports them.
 -define(O_WRONLY, 1).
@@ -464,10 +465,14 @@ close(Args) ->
     end.
 
 %% A FileHandle wraps a descriptor of the realm. Its close() returns a
-%% promise; closeSync() and releaseFD() act now.
+%% promise; closeSync() and releaseFD() act now. It is a StreamBase that
+%% reads length bytes from offset, as new FileHandle(fd, offset, length)
+%% asks; -1 reads from the current position to the end.
 file_handle_class() ->
     Class = buoy_node:constructor(<<"FileHandle">>, 0, fun(This, Args) ->
         buoy_heap:private_put(This, ?FD_SLOT, int(buoy_node:arg(1, Args))),
+        Range = [case buoy_node:arg(I, Args) of N when is_number(N) -> int(N); _ -> -1 end || I <- [2, 3]],
+        buoy_heap:private_put(This, ?READ_SLOT, maps:from_list(lists:zip([offset, length], Range))),
         undefined
     end),
     Proto = buoy_heap:get(Class, <<"prototype">>),
@@ -478,9 +483,74 @@ file_handle_class() ->
                {<<"getAsyncId">>, fun(_, _) -> -1 end}],
     [buoy_heap:define(Proto, Name, #{value => buoy_node:fn(Name, 0, Fun), writable => true, enumerable => false,
                                      configurable => true}) || {Name, Fun} <- Methods],
-    buoy_heap:define(Proto, <<"fd">>, #{get => buoy_node:fn(<<"get fd">>, 0, fun(This, _) -> handle_fd(This, keep) end),
-                                       set => undefined, enumerable => false, configurable => true}),
+    buoy_stream_base:methods(Proto, #{
+        write => fun(_, _, _) -> uv_errno(enosys) end,
+        shutdown => fun(This, _) -> handle_close_sync(This), 1 end,
+        read_start => fun handle_read_start/1,
+        read_stop => fun(This) -> read_state(This, fun(S) -> S#{reading => false} end), 0 end,
+        fd => fun(This) -> handle_fd(This, keep) end}),
     Class.
+
+%% FileHandle::ReadStart: one read of at most 64 KiB in flight, which
+%% completes on a later turn of the loop as uv_fs_read calls back, and
+%% another after it while the handle is reading.
+handle_read_start(This) ->
+    handle_read_start(This, handle_fd(This, keep)).
+
+handle_read_start(_, -1) ->
+    -4095;
+handle_read_start(This, Fd) ->
+    case read_state(This, fun(S) -> S#{reading => true} end) of
+        #{busy := true} -> 0;
+        #{length := 0} -> buoy_stream_base:emit_read(This, eof), 0;
+        #{offset := At, length := Length} ->
+            read_state(This, fun(S) -> S#{busy => true} end),
+            Count = case Length of L when L >= 0, L < 65536 -> L; _ -> 65536 end,
+            buoy_node_loop:defer(fun() -> handle_read_done(This, handle_read(Fd, Count, At)) end),
+            0
+    end.
+
+handle_read(Fd, Count, At) ->
+    Result = case fds() of
+        #{Fd := {_, _, write}} -> {error, ebadf};
+        #{Fd := {File, _, _}} when At >= 0 -> file:pread(File, At, Count);
+        #{Fd := {File, _, _}} -> file:read(File, Count);
+        _ -> {error, ebadf}
+    end,
+    case Result of
+        {ok, Bytes} -> Bytes;
+        eof -> <<>>;
+        {error, Reason} -> uv_errno(Reason)
+    end.
+
+handle_read_done(This, Result) ->
+    Emit = case Result of
+        <<>> -> eof;
+        _ -> Result
+    end,
+    Size = case Emit of
+        Bytes when is_binary(Bytes) -> byte_size(Bytes);
+        _ -> 0
+    end,
+    read_state(This, fun(#{offset := At, length := Length} = S) ->
+        S#{busy => false, offset => if At >= 0 -> At + Size; true -> At end,
+           length => if Length >= 0 -> Length - Size; true -> Length end}
+    end),
+    buoy_stream_base:emit_read(This, Emit),
+    case read_state(This, fun(S) -> S end) of
+        #{reading := true} -> handle_read_start(This);
+        _ -> 0
+    end.
+
+%% The read state of a FileHandle after Update.
+read_state(This, Update) ->
+    Before = case buoy_heap:private_find(This, ?READ_SLOT) of
+        {ok, S} -> S;
+        error -> #{offset => -1, length => -1}
+    end,
+    After = Update(maps:merge(#{reading => false, busy => false}, Before)),
+    buoy_heap:private_put(This, ?READ_SLOT, After),
+    After.
 
 open_file_handle(Args) ->
     Fd = open(Args),

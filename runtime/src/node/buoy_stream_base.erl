@@ -7,10 +7,10 @@
 %% StreamBase: write(This, Req, [Bytes]) returns 0 for a write that
 %% completes later through done/3, a negative errno, or {sync, Status};
 %% shutdown(This, Req), read_start(This), and read_stop(This) return an
-%% integer.
+%% integer, and the optional fd(This) gives the descriptor.
 -module(buoy_stream_base).
 
--export([methods/2, emit_read/2, done/3, push_listener/2]).
+-export([methods/2, emit_read/2, done/3, push_listener/2, push_listener/3]).
 
 -define(BYTES, {'#', ?MODULE, <<"bytes">>}).
 -define(K_READ_BYTES, 0).
@@ -39,7 +39,7 @@ methods(Proto, Impl) ->
      || {Name, Fun} <- Methods],
     Getters = [{<<"bytesRead">>, fun(This, _) -> element(1, counts(This)) end},
                {<<"bytesWritten">>, fun(This, _) -> element(2, counts(This)) end},
-               {<<"fd">>, fun(_, _) -> -1 end},
+               {<<"fd">>, fun(This, _) -> (maps:get(fd, Impl, fun(_) -> -1 end))(This) end},
                {<<"_externalStream">>, fun(_, _) -> undefined end}],
     [buoy_heap:define(Proto, Name, #{get => F(<<"get ", Name/binary>>, 0, Get), enumerable => false, configurable => false})
      || {Name, Get} <- Getters],
@@ -93,11 +93,14 @@ counts(This) ->
 state() ->
     buoy_heap:get(buoy_node:binding(<<"stream_wrap">>), <<"streamBaseState">>).
 
-%% CallJSOnreadMethod: the bytes, or eof, to the handle's onread.
--spec emit_read(term(), binary() | eof) -> term().
+%% CallJSOnreadMethod: the bytes, eof, or a negative errno to the handle's
+%% onread.
+-spec emit_read(term(), binary() | eof | integer()) -> term().
 emit_read(Handle, eof) ->
+    emit_read(Handle, ?UV_EOF);
+emit_read(Handle, Errno) when is_integer(Errno) ->
     State = state(),
-    buoy_heap:set(State, ?K_READ_BYTES, ?UV_EOF),
+    buoy_heap:set(State, ?K_READ_BYTES, Errno),
     buoy_heap:set(State, ?K_OFFSET, 0),
     onread(Handle, undefined);
 emit_read(Handle, Bytes) ->
@@ -119,10 +122,14 @@ onread(Handle, Arg) ->
 
 %% StreamBase::PushStreamListener for a binding that reads a handle, such
 %% as a consumed socket: OnRead gets the bytes of each read, and a read
-%% error or EOF goes to the onread of before (PassReadErrorToPreviousListener).
-%% Returns that onread, for the binding to put back.
+%% error or EOF goes to the onread of before (PassReadErrorToPreviousListener),
+%% then to OnEnd. Returns that onread, for the binding to put back.
 -spec push_listener(term(), fun((binary()) -> term())) -> term().
 push_listener(Handle, OnRead) ->
+    push_listener(Handle, OnRead, fun(_) -> ok end).
+
+-spec push_listener(term(), fun((binary()) -> term()), fun((integer()) -> term())) -> term().
+push_listener(Handle, OnRead, OnEnd) ->
     Prev = buoy_heap:get(Handle, <<"onread">>),
     buoy_heap:set(Handle, <<"onread">>, buoy_node:fn(<<"onread">>, 1, fun(_, Args) ->
         Buffer = buoy_node:arg(1, Args),
@@ -132,7 +139,8 @@ push_listener(Handle, OnRead) ->
                 case buoy_heap:is_callable(Prev) of
                     true -> buoy_heap:call(Prev, Handle, [Buffer]);
                     false -> undefined
-                end;
+                end,
+                OnEnd(N);
             0 ->
                 undefined;
             N ->
