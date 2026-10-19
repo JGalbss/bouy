@@ -128,7 +128,8 @@ walk({'$o', Id}, State) when is_integer(Id) ->
             {{'$ref', N}, State};
         #{count := N} ->
             Seen = State#{count := N + 1, {seen, Id} => N, {id, N} => Id},
-            {Item, Walked} = item(erlang:get(Id), Seen),
+            %% record/1 gives a shaped object (buoy_heap) in the form of every other one.
+            {Item, Walked} = item(buoy_heap:record({'$o', Id}), Seen),
             {{'$ref', N}, Walked#{{item, N} => Item}}
     end;
 walk({'$u16', Units} = Value, State) when is_binary(Units) ->
@@ -203,7 +204,7 @@ fill(Id, {array, Elements}, Objects, _) ->
 fill(Id, {Class, Fields}, Objects, Classes) ->
     {_, Keys} = lists:nth(Class + 1, Classes),
     Values = [resolve(Field, Objects) || Field <- Fields],
-    {object, Proto, _, Order, Attrs, Slots} = erlang:get(Id),
+    {object, Proto, _, Order, Attrs, Slots} = buoy_heap:record({'$o', Id}),
     erlang:put(Id, {object, Proto, maps:from_list(lists:zip(Keys, Values)), Order, Attrs, Slots}).
 
 resolve({'$ref', N}, Objects) -> element(N + 1, Objects);
