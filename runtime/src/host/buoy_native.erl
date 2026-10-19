@@ -3,14 +3,15 @@
 %% internalBinding('zlib'): each stream is a resource that owns one zlib,
 %% brotli, or zstd context (src/node_zlib.cc of Node). A failure is
 %% {Message, Errno, Code}, the arguments of a handle's onerror. It also
-%% derives Argon2 for internalBinding('crypto').
+%% runs Argon2, the Keccak sponge, and the ROMix of scrypt for
+%% internalBinding('crypto'), which OTP's crypto lacks.
 -module(buoy_native).
 
 -on_load(load/0).
 
 -export([zlib_open/6, brotli_open/2, zstd_open/3]).
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
--export([argon2/9]).
+-export([argon2/9, keccak/5, scrypt_romix/2]).
 
 -export_type([stream/0, failure/0]).
 
@@ -65,3 +66,14 @@ stream_close(_Stream) -> erlang:nif_error(nif_not_loaded).
              pos_integer()) -> binary() | error.
 argon2(_Type, _Message, _Nonce, _Secret, _AssociatedData, _Lanes, _TagLen, _Memory, _Passes) ->
     erlang:nif_error(nif_not_loaded).
+
+%% The Keccak sponge of Rounds rounds and Rate bytes: Input absorbed with
+%% the domain byte Delimiter and pad10*1, then Length bytes squeezed.
+-spec keccak(1..24, pos_integer(), byte(), binary(), non_neg_integer()) -> binary().
+keccak(_Rounds, _Rate, _Delimiter, _Input, _Length) -> erlang:nif_error(nif_not_loaded).
+
+%% ROMix of scrypt (RFC 7914) on one block of 128 * r bytes with the cost
+%% N, a power of 2. It allocates N blocks, and a failed allocation aborts
+%% the VM, so the caller checks that they fit first.
+-spec scrypt_romix(binary(), pos_integer()) -> binary().
+scrypt_romix(_Block, _Cost) -> erlang:nif_error(nif_not_loaded).

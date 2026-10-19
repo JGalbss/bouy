@@ -31,8 +31,8 @@ valid(Lanes, TagLen, Memory, Passes, Salt) ->
 derive(_, _, _, _, _, _, 0, _, _) ->
     {ok, <<>>};
 derive(Type, P, S, K, X, Lanes, TagLen, Memory, Passes) ->
-    Room = buoy_guard:limit(os:getenv("BUOY_MAX_MEMORY", "")) - erlang:memory(total),
-    case Memory * 1024 + TagLen < Room andalso buoy_native:argon2(Type, P, S, K, X, Lanes, TagLen, Memory, Passes) of
+    case buoy_crypto:has_room(Memory * 1024 + TagLen) andalso
+         buoy_native:argon2(Type, P, S, K, X, Lanes, TagLen, Memory, Passes) of
         Tag when is_binary(Tag) -> {ok, Tag};
         _ -> {error, {message, <<"Deriving bits failed">>}}
     end.

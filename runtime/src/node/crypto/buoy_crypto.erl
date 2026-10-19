@@ -9,7 +9,7 @@
 -export([bytes/1, data/2, is_buffer_source/1, array_buffer/1, buffer/1, encoding/2, encode/2, encode_output/3]).
 -export([class/3, fn/3, method/3, state/2, put_state/2, state_key/1, guard/1]).
 -export([fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, error_value/1, openssl_message/1]).
--export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2, bit_length/1]).
+-export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2, bit_length/1, has_room/1]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
 -dialyzer({no_return, [fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, illegal/0]}).
@@ -69,6 +69,11 @@ bit_length(0) -> 0;
 bit_length(N) ->
     <<Top, _/binary>> = Bytes = binary:encode_unsigned(N),
     (byte_size(Bytes) - 1) * 8 + length(integer_to_list(Top, 2)).
+
+%% Whether the VM can hold Bytes more under BUOY_MAX_MEMORY. A NIF whose
+%% allocation fails aborts the VM, so a job asks first.
+-spec has_room(non_neg_integer()) -> boolean().
+has_room(Bytes) -> Bytes < buoy_guard:limit(os:getenv("BUOY_MAX_MEMORY", "")) - erlang:memory(total).
 
 -spec equal_bytes(binary(), binary()) -> boolean().
 equal_bytes(<<>>, <<>>) -> true;

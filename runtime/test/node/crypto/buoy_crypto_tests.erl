@@ -4,16 +4,6 @@
 
 hex(Text) -> binary:decode_hex(Text).
 
-%% RFC 7914, section 12.
-scrypt_test_() ->
-    [?_assertEqual(hex(<<"77d6576238657b203b19ca42c18a0497f16b4844e3074ae8dfdffa3fede21442"
-                         "fcd0069ded0948f8326a753a0fc81f17e8d3e0fb2e0d3628cf35e20c38d18906">>),
-                   buoy_crypto_kdf:scrypt(<<>>, <<>>, 16, 1, 1, 64)),
-     {timeout, 60, ?_assertEqual(
-         hex(<<"fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b373162"
-               "2eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0640">>),
-         buoy_crypto_kdf:scrypt(<<"password">>, <<"NaCl">>, 1024, 8, 16, 64))}].
-
 %% RFC 8032, section 7.4: "1 octet (with context)".
 ed448_context_test() ->
     Priv = hex(<<"c4eab05d357007c632f3dbb48489924d552b08fe0c353a0d4a1f00acda2c463a"

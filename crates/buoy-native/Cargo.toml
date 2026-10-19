@@ -1,6 +1,6 @@
 [package]
 name = "buoy-native"
-description = "The NIF library of the runtime: the zlib, brotli, and zstd codecs of Node's zlib module, and Argon2."
+description = "The NIF library of the runtime: the zlib, brotli, and zstd codecs of Node's zlib module, and Argon2, Keccak, and scrypt for its crypto module."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
