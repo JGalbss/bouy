@@ -14,13 +14,15 @@
 
 -include("buoy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4, cjs_lexer/1, contains_module_syntax/2]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4, cjs_lexer/1, contains_module_syntax/2, syntax_position/1]).
 -export([interrupt/0, run_until/2]).
 
 -import(buoy_ref, [type_error/1]).
 
 -define(GLOBAL, buoy_ref_realm:global_object()).
 -define(DEADLINE, '$buoy_deadline').
+%% The private slot of a SyntaxError of a compilation: [Line, Column].
+-define(SYNTAX_POSITION, {'$sym', {private, buoy_syntax_position}, <<"syntax position">>}).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() -> [].
@@ -504,15 +506,40 @@ compile_loaded(Module, Erlang) ->
     {ok, Module, Binary} = compile:forms(Forms, Options),
     code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary).
 
-%% The compiler reports a diagnostic as <ErrorName>\t<message>.
+%% The compiler reports a diagnostic as <ErrorName>\t<message>, and a
+%% SyntaxError with \t<line>\t<column> of the error in the source text,
+%% which syntax_position/1 reads from the error.
 -spec report(binary()) -> no_return().
 report(Output) ->
-    {Name, Message} = case binary:split(Output, <<"\t">>) of
-        [<<"SyntaxError">>, M] -> {'SyntaxError', M};
-        [_, M] -> {'TypeError', M};
-        [M] -> {'TypeError', M}
-    end,
-    buoy_heap:throw_error(Name, buoy_ref_string:from_utf8(Message)).
+    case binary:split(Output, <<"\t">>, [global]) of
+        [<<"SyntaxError">>, M, Line, Column] ->
+            try
+                buoy_heap:throw_error('SyntaxError', buoy_ref_string:from_utf8(M))
+            catch
+                error:{'$throw', E} = Reason:Stack ->
+                    Position = buoy_heap:new_array([binary_to_integer(Line), binary_to_integer(Column)]),
+                    buoy_heap:private_put(E, ?SYNTAX_POSITION, Position),
+                    erlang:raise(error, Reason, Stack)
+            end;
+        [<<"SyntaxError">>, M | _] ->
+            buoy_heap:throw_error('SyntaxError', buoy_ref_string:from_utf8(M));
+        [_, M | _] ->
+            buoy_heap:throw_error('TypeError', buoy_ref_string:from_utf8(M));
+        [M] ->
+            buoy_heap:throw_error('TypeError', buoy_ref_string:from_utf8(M))
+    end.
+
+%% The line and the column, from 1, of a SyntaxError of a compilation in the
+%% source text that it compiled, as V8's message of the error holds them.
+-spec syntax_position(term()) -> {pos_integer(), pos_integer()} | none.
+syntax_position(E) ->
+    case buoy_heap:is_object(E) andalso buoy_heap:private_find(E, ?SYNTAX_POSITION) of
+        {ok, Position} ->
+            [Line, Column] = buoy_heap:array_items(Position),
+            {Line, Column};
+        _ ->
+            none
+    end.
 
 %% Eval code mostly runs once, so the module compiles without the optimizing
 %% passes, in this process.

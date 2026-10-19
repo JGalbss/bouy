@@ -129,7 +129,7 @@ make_context(Sandbox, OwnQueue, Option) ->
 %% SyntaxError throws from the constructor.
 new_script(This, Args) ->
     Code = buoy_node:arg(1, Args),
-    Module = buoy_ref_eval:compile_script(Code),
+    Module = decorated(fun() -> buoy_ref_eval:compile_script(Code) end, Args, 0),
     buoy_heap:private_put(This, ?SCRIPT, Module),
     buoy_heap:private_put(This, ?SOURCE, Code),
     set_host(This, Module, buoy_node:arg(2, Args), buoy_node:arg(8, Args)),
@@ -212,7 +212,8 @@ compile_function(Args) ->
         undefined -> [];
         List -> buoy_heap:array_items(List)
     end,
-    Make = fun(_, _) -> buoy_ref_eval:create_function(Params ++ [Code]) end,
+    %% The body starts on the third line of the source of create_function.
+    Make = fun(_, _) -> decorated(fun() -> buoy_ref_eval:create_function(Params ++ [Code]) end, Args, 2) end,
     Function = case buoy_node:arg(7, Args) of
         Context when Context =:= undefined; Context =:= null -> Make(undefined, undefined);
         Context -> (buoy_ref_realm:realm_fun(realm_of(Context), Make))(undefined, undefined)
@@ -245,7 +246,7 @@ compile_function_for_cjs_loader(Code, Filename, Detect) ->
     Text = buoy_ref:to_string(Code),
     {Function, Esm} = case buoy_module:compiled_wrapper(Filename, Text) of
         {ok, Wrapper} -> {Wrapper, false};
-        none -> compile_cjs(Text, Detect =:= true)
+        none -> compile_cjs(Text, Filename, Detect =:= true)
     end,
     buoy_node:object([{<<"cachedDataRejected">>, false}, {<<"sourceMapURL">>, source_map_url(Text)},
                       {<<"sourceURL">>, undefined}, {<<"function">>, Function}, {<<"canParseAsESM">>, Esm}]).
@@ -253,9 +254,10 @@ compile_function_for_cjs_loader(Code, Filename, Detect) ->
 %% Text that does not compile as CommonJS can parse as an ES module, which
 %% the loader then loads as one, as Node retries a syntax error of ES module
 %% syntax when shouldDetectModule holds.
-compile_cjs(Text, Detect) ->
+compile_cjs(Text, Filename, Detect) ->
     try
-        {compile_cjs(Text), false}
+        %% The body starts on the third line of the source of create_function.
+        {decorated(fun() -> compile_cjs(Text) end, [Text, Filename], 2), false}
     catch
         error:{'$throw', _} = Reason:Stack ->
             case Detect andalso contains_module_syntax(Text) of
@@ -265,6 +267,46 @@ compile_cjs(Text, Detect) ->
     end.
 
 contains_module_syntax(Text) -> buoy_ref_eval:contains_module_syntax(Text, true).
+
+%% DecorateErrorStack of node_errors.cc: a SyntaxError that the compilation of
+%% the code of a script or a function throws gets the arrow message, the
+%% place, the source line, and a caret, in front of its stack. Args are the
+%% code, the filename, and the line offset of the script, and Skipped is the
+%% count of the lines that the compiled source has before the code.
+decorated(Compile, Args, Skipped) ->
+    try
+        Compile()
+    catch
+        error:{'$throw', E} = Reason:Stack ->
+            case buoy_ref_eval:syntax_position(E) of
+                {Line, Column} ->
+                    Offset = case buoy_node:arg(3, Args) of N when is_integer(N) -> N; _ -> 0 end,
+                    decorate(E, buoy_node:arg(1, Args), buoy_node:arg(2, Args), Line - Skipped, Offset, Column);
+                none ->
+                    ok
+            end,
+            erlang:raise(error, Reason, Stack)
+    end.
+
+decorate(E, Code, Filename, Line, Offset, Column) ->
+    Source = case lines(buoy_ref_string:to_utf8(buoy_ref:to_string(Code))) of
+        Lines when Line >= 1, Line =< length(Lines) -> lists:nth(Line, Lines);
+        _ -> <<>>
+    end,
+    Arrow = buoy_ref_string:from_utf8(iolist_to_binary(
+        [buoy_ref_string:to_utf8(buoy_ref:to_string(Filename)), $:, integer_to_binary(Line + Offset), $\n,
+         Source, $\n, lists:duplicate(max(Column - 1, 0), $\s), "^\n"])),
+    Stack = buoy_heap:get(E, <<"stack">>),
+    case buoy_ref:typeof(Stack) of
+        <<"string">> ->
+            buoy_heap:set(E, <<"stack">>, buoy_ref_string:concat([Arrow, <<"\n">>, Stack])),
+            buoy_heap:private_put(E, buoy_node:private_symbol(<<"arrow_message_private_symbol">>), Arrow),
+            buoy_heap:private_put(E, buoy_node:private_symbol(<<"decorated_private_symbol">>), true);
+        _ ->
+            ok
+    end.
+
+lines(Text) -> binary:split(Text, [<<"\r\n">>, <<"\n">>], [global]).
 
 compile_cjs(Text) ->
     Length = buoy_ref_string:length_of(Text),

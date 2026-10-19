@@ -184,7 +184,15 @@ fn syntax_errors(
                     "`yield*` runs an Effect only directly in a generator function; a nested function cannot yield, so make it return an Effect, such as `Effect.gen(function* () { ... })`, and `yield*` that".to_owned(),
                 );
             }
-            reporter.at(offset, Code::Syntax, v8_message(&error.message, source, offset))
+            let message = v8_message(&error.message, source, offset);
+            // V8 places an unexpected token at its start, after white space and comments.
+            let rest = source.get(offset..).unwrap_or_default();
+            let offset = if message.starts_with("Unexpected") {
+                offset + rest.len() - skip_trivia(rest).len()
+            } else {
+                offset
+            };
+            reporter.at(offset, Code::Syntax, message)
         })
         .collect()
 }
@@ -216,6 +224,15 @@ fn v8_message(message: &str, source: &str, offset: usize) -> String {
         }
         "Unterminated string" | "Invalid characters after number" => "Invalid or unexpected token",
         other if other.starts_with("Invalid Character") => "Invalid or unexpected token",
+        "Cannot assign to this expression" => {
+            let before = source.get(..offset).unwrap_or_default().trim_end();
+            return if before.ends_with("++") || before.ends_with("--") {
+                "Invalid left-hand side expression in prefix operation"
+            } else {
+                "Invalid left-hand side in assignment"
+            }
+            .to_owned();
+        }
         "Unexpected token"
         | "Expected a semicolon or an implicit semicolon after a statement, but found none" => {
             return unexpected_token(source, offset);

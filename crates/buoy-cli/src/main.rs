@@ -128,7 +128,8 @@ struct Served {
 }
 
 impl EvalRequest {
-    /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`.
+    /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`,
+    /// and for a `SyntaxError` also `\t<line>\t<column>` of the error in the text.
     fn compile(self, text: &str) -> Result<String, String> {
         let module = self.module.unwrap_or_default();
         let context = EvalContext {
@@ -159,11 +160,18 @@ impl EvalRequest {
             } else {
                 "TypeError"
             };
-            let message = diagnostics
+            let Some(first) = diagnostics
                 .iter()
                 .find(|d| name == "TypeError" || d.code == buoy_compiler::Code::Syntax)
-                .map_or_else(String::new, |d| d.message.replace('\n', " "));
-            format!("{name}\t{message}")
+            else {
+                return format!("{name}\t");
+            };
+            let message = first.message.replace(['\n', '\t'], " ");
+            if name == "SyntaxError" {
+                format!("{name}\t{message}\t{}\t{}", first.line, first.column)
+            } else {
+                format!("{name}\t{message}")
+            }
         })
     }
 }
