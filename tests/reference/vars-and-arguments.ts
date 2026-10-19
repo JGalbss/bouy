@@ -54,3 +54,24 @@ function readOuter() {
 }
 console.log(readOuter());
 console.log("legacy var statements", legacyVarStatements);
+
+function keysInTry(input: object) {
+  try {
+    var keys = Object.keys(input);
+    var count = keys.length;
+  } catch {
+    return "threw";
+  }
+  return [keys, count];
+}
+function varsInCatchAndFinally() {
+  try {
+    throw new Error("boom");
+  } catch (error) {
+    var message = (error as Error).message;
+  } finally {
+    var done = true;
+  }
+  return [message, done];
+}
+console.log(keysInTry({ a: 1, b: 2 }), varsInCatchAndFinally());

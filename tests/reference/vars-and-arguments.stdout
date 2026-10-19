@@ -6,3 +6,4 @@
 Point 2 [ 'sum' ]
 [ 2, 1 ]
 legacy var statements before,1,1
+[ [ 'a', 'b' ], 2 ] [ 'boom', true ]

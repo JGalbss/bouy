@@ -11,7 +11,7 @@ use oxc::ast::ast::{
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{NodeId, ScopeFlags, ScopeId, Scoping, Semantic, SymbolId};
-use oxc::span::Span;
+use oxc::span::{GetSpan, Span};
 
 /// The variables that live in heap cells.
 pub struct Analysis {
@@ -46,14 +46,21 @@ pub fn analyze(program: &Program<'_>, semantic: &Semantic<'_>) -> Analysis {
             continue;
         }
         let home = function_scope(scoping, scoping.symbol_scope_id(symbol));
-        let declared = scoping.symbol_span(symbol);
+        // The declaration and every reference: a `var` declared inside a `try` that code
+        // reads after the `try` outlives the Erlang `try` that binds it.
+        let extent = references
+            .iter()
+            .fold(scoping.symbol_span(symbol), |extent, reference| {
+                let span = nodes.kind(reference.node_id()).span();
+                Span::new(extent.start.min(span.start), extent.end.max(span.end))
+            });
         let captured = references
             .iter()
             .any(|reference| function_scope(scoping, reference.scope_id()) != home);
         let guarded = references
             .iter()
             .filter(|reference| reference.is_write())
-            .any(|reference| guarded_write(nodes, reference.node_id(), declared));
+            .any(|reference| guarded_write(nodes, reference.node_id(), extent));
         if captured || guarded {
             cells.insert(symbol);
         }
@@ -157,20 +164,21 @@ pub fn function_scope(scoping: &Scoping, scope: ScopeId) -> ScopeId {
         .unwrap_or(scope)
 }
 
-/// Whether a write sits in a `try` statement that does not declare the variable, or in a
-/// conditional part of an expression, where a version could not reach the code after it.
-fn guarded_write(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, declared: Span) -> bool {
+/// Whether a write sits in a `try` statement that does not hold `extent`, the declaration and
+/// every reference of the variable, or in a conditional part of an expression, where a
+/// version could not reach the code after it.
+fn guarded_write(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, extent: Span) -> bool {
     let mut in_expression = true;
     for ancestor in nodes.ancestors(node) {
         match ancestor.kind() {
             AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => return false,
             AstKind::TryStatement(statement) => {
-                if !contains(statement.span, declared) {
+                if !contains(statement.span, extent) {
                     return true;
                 }
             }
             AstKind::WithStatement(statement) => {
-                if !contains(statement.span, declared) {
+                if !contains(statement.span, extent) {
                     return true;
                 }
             }
