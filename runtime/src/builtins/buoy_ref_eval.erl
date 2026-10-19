@@ -41,7 +41,8 @@ indirect(Value) -> Value.
 %% `eval(...)` where eval is the name of the global: a direct eval when it
 %% still is the intrinsic, else a plain call.
 %% Scope holds the caller's scope innermost first: [{Name, Cell}] for its
-%% bindings (a copy for an immutable one, whose name starts with `!`), with
+%% bindings (a copy for an immutable one, whose name starts with `!`, and
+%% the cell of a `const`, whose name starts with `#`), with
 %% {<<"@with">>, Object} for a `with` object and
 %% {<<"@vars">>, Object} for the variables of a function. Lexical holds the
 %% names that sloppy eval code may not declare with `var`, and Context what

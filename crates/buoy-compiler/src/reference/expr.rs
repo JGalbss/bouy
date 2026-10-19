@@ -414,6 +414,17 @@ impl<'a> Lowerer<'a, '_> {
     /// Stores `value` in the binding `name` of the caller of a direct eval, else in the
     /// global.
     fn set_binding(&mut self, name: &str, value: Expr) {
+        // A write of a `const` throws in any code, after the read of its dead zone.
+        if self.is_eval_const(name) {
+            let cell = self.eval_binding(name).unwrap_or_default();
+            self.pre.push(Expr::call(
+                "buoy_ref_class",
+                "initialized",
+                vec![super::context::cell_get(&cell), Expr::js_string(name)],
+            ));
+            self.pre.push(Expr::call("buoy_ref", "const_error", vec![]));
+            return;
+        }
         // Strict code may not write an immutable binding; sloppy code writes nothing.
         if self.is_eval_constant(name) {
             if !self.frame.sloppy {

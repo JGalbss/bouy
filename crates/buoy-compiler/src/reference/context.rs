@@ -371,10 +371,20 @@ impl Lowerer<'_, '_> {
     /// Whether the binding `name` of the caller of a direct eval is immutable, such as the
     /// name of a function expression: its scope entry starts with `!`.
     pub fn is_eval_constant(&self, name: &str) -> bool {
+        self.eval_entry_starts(name, '!')
+    }
+
+    /// Whether the binding `name` of the caller of a direct eval is a `const`: its scope
+    /// entry starts with `#`.
+    pub fn is_eval_const(&self, name: &str) -> bool {
+        self.eval_entry_starts(name, '#')
+    }
+
+    fn eval_entry_starts(&self, name: &str, mark: char) -> bool {
         self.eval_bindings
             .iter()
             .find(|(binding, _)| binding_name(binding) == name)
-            .is_some_and(|(binding, _)| binding.starts_with('!'))
+            .is_some_and(|(binding, _)| binding.starts_with(mark))
     }
 
     /// The nesting order of the next reified `try` or finally frame.
@@ -422,11 +432,12 @@ impl Lowerer<'_, '_> {
     }
 }
 
-/// The name of a scope entry of a direct eval, without the `!` of an immutable binding or
-/// the `?` of a catch parameter.
+/// The name of a scope entry of a direct eval, without the `!` of an immutable binding, the
+/// `#` of a `const`, or the `?` of a catch parameter.
 pub fn binding_name(entry: &str) -> &str {
     entry
         .strip_prefix('!')
+        .or_else(|| entry.strip_prefix('#'))
         .or_else(|| entry.strip_prefix('?'))
         .unwrap_or(entry)
 }
