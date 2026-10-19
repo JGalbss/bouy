@@ -2601,7 +2601,7 @@ parallel/test-node-run.js fail
 parallel/test-nodeeventtarget.js skip
 parallel/test-npm-install.js fail
 parallel/test-npm-version.js fail
-parallel/test-openssl-ca-options.js fail
+parallel/test-openssl-ca-options.js pass
 parallel/test-options-binding.js skip
 parallel/test-os-checked-function.js skip
 parallel/test-os-constants-signals.js pass
