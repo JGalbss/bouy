@@ -713,3 +713,21 @@ fn diagnostics_stop_the_program_before_the_vm_starts() {
         );
     }
 }
+
+#[test]
+fn the_node_form_reports_code_that_does_not_parse_as_a_syntax_error() {
+    let path = "tests/programs/diagnostics/buoy200-redeclared.ts";
+    let mut command = common::buoy();
+    command.current_dir(common::repository()).arg(path);
+    check(
+        &mut command,
+        &Outcome {
+            stdout: "",
+            stderr: &format!(
+                "{path}:1:7: BUOY200: Identifier `total` has already been declared\n\n\
+                 SyntaxError: Identifier `total` has already been declared\n"
+            ),
+            status: 1,
+        },
+    );
+}

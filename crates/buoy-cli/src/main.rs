@@ -471,6 +471,16 @@ fn build(entry: &Path, semantics: Semantics) -> ExitCode {
 
 /// Compiles the program, printing diagnostics to stderr.
 fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
+    compile_reporting(entry, semantics, |_| DIAGNOSTICS)
+}
+
+/// Compiles the program, printing diagnostics to stderr; `report` ends their report and
+/// gives the exit status.
+fn compile_reporting(
+    entry: &Path,
+    semantics: Semantics,
+    report: fn(&[Diagnostic]) -> u8,
+) -> Result<Project, ExitCode> {
     if !entry.is_file() {
         eprintln!("buoy: cannot find the file {}", entry.display());
         return Err(ExitCode::from(DIAGNOSTICS));
@@ -479,14 +489,15 @@ fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
         for diagnostic in &diagnostics {
             eprintln!("{}", relative(diagnostic));
         }
-        write_result(&diagnostics);
-        ExitCode::from(DIAGNOSTICS)
+        let status = report(&diagnostics);
+        write_result(&diagnostics, status);
+        ExitCode::from(status)
     })
 }
 
 /// Writes the facts of a run that stopped at its diagnostics to `BUOY_RESULT_FILE`, as
 /// the VM writes the facts of a run (section 1 of the contract).
-fn write_result(diagnostics: &[Diagnostic]) {
+fn write_result(diagnostics: &[Diagnostic], status: u8) {
     let Some(path) = env::var_os("BUOY_RESULT_FILE").filter(|path| !path.is_empty()) else {
         return;
     };
@@ -495,7 +506,7 @@ fn write_result(diagnostics: &[Diagnostic]) {
         .map(|diagnostic| format!("\"{}\"", diagnostic.code.as_str()))
         .collect();
     let facts = format!(
-        "{{\"status\":{DIAGNOSTICS},\"diagnostics\":[{}]}}",
+        "{{\"status\":{status},\"diagnostics\":[{}]}}",
         codes.join(",")
     );
     if let Err(error) = fs::write(&path, facts) {

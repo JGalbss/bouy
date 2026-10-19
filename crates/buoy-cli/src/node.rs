@@ -9,7 +9,7 @@ use std::io::{IsTerminal as _, Read as _};
 use std::path::Path;
 use std::process::ExitCode;
 
-use buoy_compiler::Semantics;
+use buoy_compiler::{Code, Diagnostic, Semantics};
 
 /// The node options of an invocation, which the VM reads with `-buoy_exec_argv`, and
 /// whether the entry is the code of `-e` or `-p`, which has no script in `process.argv`.
@@ -221,7 +221,11 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             run_stdin(&arguments, options)
         }
         Some(Entry::Script(script)) => {
-            let project = match super::compile(Path::new(&script), Semantics::Reference) {
+            let project = match super::compile_reporting(
+                Path::new(&script),
+                Semantics::Reference,
+                syntax_error,
+            ) {
                 Ok(project) => project,
                 Err(code) => return code,
             };
@@ -273,8 +277,23 @@ fn run_source(code: String, module: bool, arguments: &[OsString], options: &Opti
             for diagnostic in &diagnostics {
                 eprintln!("{}", super::relative(diagnostic));
             }
-            ExitCode::from(super::DIAGNOSTICS)
+            ExitCode::from(syntax_error(&diagnostics))
         }
+    }
+}
+
+/// Node reports code that does not parse as an uncaught `SyntaxError` and exits with 1.
+/// Buoy's other diagnostics keep the status of the contract.
+fn syntax_error(diagnostics: &[Diagnostic]) -> u8 {
+    match diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == Code::Syntax)
+    {
+        Some(syntax) => {
+            eprintln!("\nSyntaxError: {}", syntax.message);
+            1
+        }
+        None => super::DIAGNOSTICS,
     }
 }
 
