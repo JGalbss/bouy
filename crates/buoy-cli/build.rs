@@ -1,10 +1,12 @@
-//! Embeds the runtime sources, `runtime/src/*.erl`, `*.hrl`, and `*.app.src`, in the binary.
-//! The build fails when they are missing, because a binary without them cannot run a program.
+//! Embeds the runtime sources, the `*.erl` and `*.app.src` files of `runtime/src` and its
+//! subsystem directories and the `*.hrl` files of `runtime/include`, in the binary, under
+//! their file names. The build fails when they are missing, because a binary without them
+//! cannot run a program.
 //!
 //! It also compiles the vendored Temporal polyfill into one more runtime source,
-//! `buoy_temporal.erl`, with the reference compiler (see `temporal_module`), and each Node
+//! `buoy_temporal.erl`, with the reference compiler (see `temporal_module`), each Node
 //! built-in of `runtime/node/builtins.txt` into a runtime source `buoy_node@<id>.erl` (see
-//! `node_modules`).
+//! `node_modules`), and the NIF library of `crates/buoy-native` (see `native_library`).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -14,18 +16,13 @@ fn main() {
     let manifest =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
     let runtime = manifest.join("../../runtime/src");
-    println!("cargo:rerun-if-changed={}", runtime.display());
-    let mut sources: Vec<PathBuf> = fs::read_dir(&runtime)
-        .unwrap_or_else(|error| panic!("{} holds the runtime sources: {error}", runtime.display()))
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| is_runtime_source(path))
-        .collect();
+    let mut sources = runtime_sources(&runtime);
     assert!(
         !sources.is_empty(),
         "{} holds no runtime sources",
         runtime.display()
     );
+    sources.extend(runtime_sources(&manifest.join("../../runtime/include")));
     let out = PathBuf::from(env::var("OUT_DIR").expect("cargo sets OUT_DIR"));
     sources.push(temporal_module(
         &manifest.join("../../runtime/vendor/temporal-polyfill/global.js"),
@@ -52,7 +49,86 @@ fn main() {
         );
     }
     table.push_str("];\n");
+    table.push_str(&native_library(&manifest.join("../.."), &out));
     fs::write(out.join("runtime_sources.rs"), table).expect("OUT_DIR is writable");
+}
+
+/// The runtime sources under `directory` and its subdirectories.
+fn runtime_sources(directory: &Path) -> Vec<PathBuf> {
+    println!("cargo:rerun-if-changed={}", directory.display());
+    let entries = fs::read_dir(directory)
+        .unwrap_or_else(|error| panic!("{} holds runtime sources: {error}", directory.display()));
+    let mut sources = Vec::new();
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        if path.is_dir() {
+            sources.extend(runtime_sources(&path));
+        } else if is_runtime_source(&path) {
+            sources.push(path);
+        }
+    }
+    sources
+}
+
+/// Builds `crates/buoy-native` for the target in release mode, with a cargo of its own in
+/// `target/native`, and returns the code that embeds the library as `NATIVE` and its
+/// hash as `NATIVE_HASH`. Cargo cannot hand one crate's cdylib to another crate's build.
+fn native_library(workspace: &Path, out: &Path) -> String {
+    let crate_dir = workspace.join("crates/buoy-native");
+    println!("cargo:rerun-if-changed={}", crate_dir.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        workspace.join("Cargo.lock").display()
+    );
+    let target = env::var("TARGET").expect("cargo sets TARGET");
+    // OUT_DIR is <target dir>/<profile>/build/<package>-<hash>/out.
+    let target_dir = out
+        .ancestors()
+        .nth(4)
+        .expect("OUT_DIR lies in the target directory")
+        .join("native");
+    let status = std::process::Command::new(env::var_os("CARGO").expect("cargo sets CARGO"))
+        .args([
+            "build",
+            "--release",
+            "--package",
+            "buoy-native",
+            "--target",
+            &target,
+        ])
+        .arg("--manifest-path")
+        .arg(workspace.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target_dir)
+        // A clippy run of the workspace must not lint the inner build.
+        .env_remove("RUSTC_WORKSPACE_WRAPPER")
+        .env_remove("CLIPPY_ARGS")
+        .status()
+        .expect("cargo runs");
+    assert!(status.success(), "cargo could not build crates/buoy-native");
+    let file = if target.contains("apple") {
+        "libbuoy_native.dylib"
+    } else {
+        "libbuoy_native.so"
+    };
+    let built = target_dir.join(&target).join("release").join(file);
+    let library = out.join("buoy_native.so");
+    let bytes = fs::read(&built).unwrap_or_else(|error| panic!("{}: {error}", built.display()));
+    fs::write(&library, &bytes).expect("OUT_DIR is writable");
+    let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+    });
+    let digits = format!("{hash:016x}");
+    format!(
+        "/// The NIF library `buoy_native.so` that `buoy_native.erl` loads.\n\
+         pub const NATIVE: &[u8] = include_bytes!({:?});\n\
+         /// The FNV-1a hash of `NATIVE`.\n\
+         pub const NATIVE_HASH: u64 = 0x{}_{}_{}_{};\n",
+        library.display().to_string(),
+        &digits[..4],
+        &digits[4..8],
+        &digits[8..12],
+        &digits[12..]
+    )
 }
 
 /// `*.erl`, `*.hrl`, and `*.app.src`.

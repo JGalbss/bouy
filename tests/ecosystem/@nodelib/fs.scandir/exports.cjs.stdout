@@ -1,0 +1,4 @@
+module.exports: object
+  Settings: class/0 {_getValue}
+  scandir: function/3
+  scandirSync: function/2

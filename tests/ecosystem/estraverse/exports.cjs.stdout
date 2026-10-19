@@ -1,0 +1,162 @@
+module.exports: object
+  Controller: class/0 {__execute, __initialize, break, current, notify, parents, path, remove, replace, skip, traverse, type}
+  Syntax: object
+    ArrayExpression: string
+    ArrayPattern: string
+    ArrowFunctionExpression: string
+    AssignmentExpression: string
+    AssignmentPattern: string
+    AwaitExpression: string
+    BinaryExpression: string
+    BlockStatement: string
+    BreakStatement: string
+    CallExpression: string
+    CatchClause: string
+    ChainExpression: string
+    ClassBody: string
+    ClassDeclaration: string
+    ClassExpression: string
+    ComprehensionBlock: string
+    ComprehensionExpression: string
+    ConditionalExpression: string
+    ContinueStatement: string
+    DebuggerStatement: string
+    DirectiveStatement: string
+    DoWhileStatement: string
+    EmptyStatement: string
+    ExportAllDeclaration: string
+    ExportDefaultDeclaration: string
+    ExportNamedDeclaration: string
+    ExportSpecifier: string
+    ExpressionStatement: string
+    ForInStatement: string
+    ForOfStatement: string
+    ForStatement: string
+    FunctionDeclaration: string
+    FunctionExpression: string
+    GeneratorExpression: string
+    Identifier: string
+    IfStatement: string
+    ImportDeclaration: string
+    ImportDefaultSpecifier: string
+    ImportExpression: string
+    ImportNamespaceSpecifier: string
+    ImportSpecifier: string
+    LabeledStatement: string
+    Literal: string
+    LogicalExpression: string
+    MemberExpression: string
+    MetaProperty: string
+    MethodDefinition: string
+    ModuleSpecifier: string
+    NewExpression: string
+    ObjectExpression: string
+    ObjectPattern: string
+    PrivateIdentifier: string
+    Program: string
+    Property: string
+    PropertyDefinition: string
+    RestElement: string
+    ReturnStatement: string
+    SequenceExpression: string
+    SpreadElement: string
+    Super: string
+    SwitchCase: string
+    SwitchStatement: string
+    TaggedTemplateExpression: string
+    TemplateElement: string
+    TemplateLiteral: string
+    ThisExpression: string
+    ThrowStatement: string
+    TryStatement: string
+    UnaryExpression: string
+    UpdateExpression: string
+    VariableDeclaration: string
+    VariableDeclarator: string
+    WhileStatement: string
+    WithStatement: string
+    YieldExpression: string
+  VisitorKeys: object
+    ArrayExpression: object Array
+    ArrayPattern: object Array
+    ArrowFunctionExpression: object Array
+    AssignmentExpression: object Array
+    AssignmentPattern: object Array
+    AwaitExpression: object Array
+    BinaryExpression: object Array
+    BlockStatement: object Array
+    BreakStatement: object Array
+    CallExpression: object Array
+    CatchClause: object Array
+    ChainExpression: object Array
+    ClassBody: object Array
+    ClassDeclaration: object Array
+    ClassExpression: object Array
+    ComprehensionBlock: object Array
+    ComprehensionExpression: object Array
+    ConditionalExpression: object Array
+    ContinueStatement: object Array
+    DebuggerStatement: object Array
+    DirectiveStatement: object Array
+    DoWhileStatement: object Array
+    EmptyStatement: object Array
+    ExportAllDeclaration: object Array
+    ExportDefaultDeclaration: object Array
+    ExportNamedDeclaration: object Array
+    ExportSpecifier: object Array
+    ExpressionStatement: object Array
+    ForInStatement: object Array
+    ForOfStatement: object Array
+    ForStatement: object Array
+    FunctionDeclaration: object Array
+    FunctionExpression: object Array
+    GeneratorExpression: object Array
+    Identifier: object Array
+    IfStatement: object Array
+    ImportDeclaration: object Array
+    ImportDefaultSpecifier: object Array
+    ImportExpression: object Array
+    ImportNamespaceSpecifier: object Array
+    ImportSpecifier: object Array
+    LabeledStatement: object Array
+    Literal: object Array
+    LogicalExpression: object Array
+    MemberExpression: object Array
+    MetaProperty: object Array
+    MethodDefinition: object Array
+    ModuleSpecifier: object Array
+    NewExpression: object Array
+    ObjectExpression: object Array
+    ObjectPattern: object Array
+    PrivateIdentifier: object Array
+    Program: object Array
+    Property: object Array
+    PropertyDefinition: object Array
+    RestElement: object Array
+    ReturnStatement: object Array
+    SequenceExpression: object Array
+    SpreadElement: object Array
+    Super: object Array
+    SwitchCase: object Array
+    SwitchStatement: object Array
+    TaggedTemplateExpression: object Array
+    TemplateElement: object Array
+    TemplateLiteral: object Array
+    ThisExpression: object Array
+    ThrowStatement: object Array
+    TryStatement: object Array
+    UnaryExpression: object Array
+    UpdateExpression: object Array
+    VariableDeclaration: object Array
+    VariableDeclarator: object Array
+    WhileStatement: object Array
+    WithStatement: object Array
+    YieldExpression: object Array
+  VisitorOption: object
+    Break: object
+    Remove: object
+    Skip: object
+  attachComments: function/3
+  cloneEnvironment: function/0
+  replace: function/2
+  traverse: function/2

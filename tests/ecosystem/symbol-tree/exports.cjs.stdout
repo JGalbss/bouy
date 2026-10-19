@@ -1,0 +1,7 @@
+module.exports: class/1 {_node, ancestorsIterator, ancestorsToArray, appendChild, childrenCount, childrenIterator, childrenToArray, compareTreePosition, firstChild, following, hasChildren, index, initialize, insertAfter, insertBefore, lastChild, lastInclusiveDescendant, nextSibling, nextSiblingsIterator, parent, preceding, prependChild, previousSibling, previousSiblingsIterator, remove, treeIterator, treeToArray}
+  TreePosition: object
+    CONTAINED_BY: number
+    CONTAINS: number
+    DISCONNECTED: number
+    FOLLOWING: number
+    PRECEDING: number

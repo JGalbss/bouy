@@ -1,0 +1,2 @@
+module.exports: function/2
+  version: string

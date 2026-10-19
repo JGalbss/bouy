@@ -1,0 +1,4 @@
+module.exports: object
+  LinesAndColumns: class/1 {indexForLocation, lengthOfLine, locationForIndex}
+  __esModule: boolean
+  default: class/1 {indexForLocation, lengthOfLine, locationForIndex}

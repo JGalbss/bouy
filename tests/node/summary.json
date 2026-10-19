@@ -1,39 +1,39 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "abff2029b822906af0dc129fea33b25d9ef436ab",
+  "updated": "4543f248501d08de11f03ffafd1db2ce6e6bce61",
   "total": 4419,
   "outcomes": {
-    "pass": 2164,
+    "pass": 2296,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1539,
-    "timeout": 123,
+    "fail": 1473,
+    "timeout": 55,
     "harness_error": 0,
-    "crash": 10
+    "crash": 12
   },
   "groups": {
     "directory": {
       "es-module": {
-        "pass": 65,
+        "pass": 66,
         "skip": 16,
-        "fail": 128,
-        "timeout": 13
+        "fail": 139,
+        "timeout": 1
       },
       "parallel": {
-        "pass": 2049,
+        "pass": 2187,
         "skip": 545,
-        "fail": 1372,
-        "timeout": 103,
-        "crash": 10
+        "fail": 1286,
+        "timeout": 49,
+        "crash": 12
       },
       "sequential": {
-        "pass": 50,
+        "pass": 43,
         "skip": 22,
-        "fail": 39,
-        "timeout": 7
+        "fail": 48,
+        "timeout": 5
       }
     },
     "kind": {
@@ -41,11 +41,11 @@
         "skip": 343
       },
       "public": {
-        "pass": 2164,
+        "pass": 2296,
         "skip": 240,
-        "fail": 1539,
-        "timeout": 123,
-        "crash": 10
+        "fail": 1473,
+        "timeout": 55,
+        "crash": 12
       }
     },
     "module": {
@@ -56,9 +56,9 @@
         "crash": 2
       },
       "async_hooks": {
-        "pass": 15,
+        "pass": 30,
         "skip": 11,
-        "fail": 30
+        "fail": 15
       },
       "buffer": {
         "pass": 58,
@@ -66,16 +66,16 @@
         "fail": 5
       },
       "child_process": {
-        "pass": 68,
+        "pass": 76,
         "skip": 7,
         "fail": 24,
-        "timeout": 15
+        "timeout": 7
       },
       "cluster": {
-        "pass": 25,
+        "pass": 23,
         "skip": 2,
-        "fail": 48,
-        "timeout": 13
+        "fail": 52,
+        "timeout": 11
       },
       "console": {
         "pass": 17,
@@ -91,42 +91,39 @@
         "skip": 9
       },
       "dgram": {
-        "pass": 63,
+        "pass": 5,
         "skip": 11,
-        "timeout": 5
+        "fail": 63
       },
       "diagnostics_channel": {
-        "pass": 40,
+        "pass": 46,
         "skip": 3,
-        "fail": 11,
-        "timeout": 2
-      },
-      "dns": {
-        "pass": 18,
-        "skip": 10,
+        "fail": 6,
         "timeout": 1
       },
+      "dns": {
+        "skip": 10,
+        "fail": 19
+      },
       "domain": {
-        "pass": 25,
+        "pass": 30,
         "skip": 2,
-        "fail": 20,
-        "timeout": 3
+        "fail": 18
       },
       "events": {
         "pass": 34,
         "skip": 6
       },
       "fs": {
-        "pass": 99,
+        "pass": 306,
         "skip": 20,
-        "fail": 218,
-        "timeout": 6
+        "fail": 13,
+        "timeout": 4
       },
       "http": {
         "pass": 37,
         "skip": 15,
-        "fail": 341,
-        "timeout": 1
+        "fail": 342
       },
       "http2": {
         "pass": 242,
@@ -140,16 +137,16 @@
         "skip": 114
       },
       "module": {
-        "pass": 85,
+        "pass": 86,
         "skip": 17,
-        "fail": 163,
-        "timeout": 15
+        "fail": 175,
+        "timeout": 2
       },
       "net": {
-        "pass": 146,
+        "pass": 19,
         "skip": 10,
-        "fail": 2,
-        "timeout": 4
+        "fail": 131,
+        "timeout": 2
       },
       "os": {
         "pass": 2,
@@ -157,27 +154,26 @@
         "fail": 4
       },
       "other": {
-        "pass": 222,
+        "pass": 231,
         "skip": 178,
-        "fail": 200,
-        "timeout": 14,
+        "fail": 202,
+        "timeout": 3,
         "crash": 2
       },
       "path": {
         "pass": 17
       },
       "perf_hooks": {
-        "pass": 15,
+        "pass": 20,
         "skip": 3,
-        "fail": 7,
-        "timeout": 1,
+        "fail": 3,
         "crash": 1
       },
       "process": {
         "pass": 94,
         "skip": 8,
-        "fail": 23,
-        "timeout": 6
+        "fail": 24,
+        "timeout": 5
       },
       "punycode": {
         "pass": 1
@@ -197,8 +193,9 @@
       "repl": {
         "pass": 4,
         "skip": 14,
-        "fail": 79,
-        "timeout": 9
+        "fail": 77,
+        "timeout": 9,
+        "crash": 2
       },
       "sea": {
         "fail": 1
@@ -208,9 +205,9 @@
         "skip": 2
       },
       "stream": {
-        "pass": 201,
+        "pass": 204,
         "skip": 8,
-        "fail": 54
+        "fail": 51
       },
       "string_decoder": {
         "pass": 3
@@ -219,15 +216,15 @@
         "pass": 1
       },
       "test": {
-        "pass": 23,
+        "pass": 27,
         "skip": 5,
-        "fail": 15,
-        "timeout": 22
+        "fail": 26,
+        "timeout": 7
       },
       "timers": {
-        "pass": 42,
+        "pass": 46,
         "skip": 12,
-        "fail": 6
+        "fail": 2
       },
       "tls": {
         "pass": 204,
@@ -235,9 +232,9 @@
         "timeout": 1
       },
       "trace_events": {
-        "pass": 5,
+        "pass": 16,
         "skip": 3,
-        "fail": 21
+        "fail": 10
       },
       "tty": {
         "pass": 2,
@@ -260,10 +257,10 @@
         "fail": 8
       },
       "vm": {
-        "pass": 22,
+        "pass": 23,
         "skip": 9,
-        "fail": 63,
-        "timeout": 4,
+        "fail": 64,
+        "timeout": 2,
         "crash": 1
       },
       "worker_threads": {
@@ -273,9 +270,8 @@
         "timeout": 1
       },
       "zlib": {
-        "pass": 2,
-        "skip": 3,
-        "fail": 58
+        "pass": 60,
+        "skip": 3
       }
     },
     "skip reason": {

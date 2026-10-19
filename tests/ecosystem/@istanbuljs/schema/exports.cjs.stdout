@@ -1,0 +1,27 @@
+module.exports: object
+  babelPluginIstanbul: object
+    description: string
+    properties: object
+    type: string
+  defaults: object
+    babelPluginIstanbul: object
+    instrumentVisitor: object
+    instrumenter: object
+    nyc: object
+    testExclude: object
+  instrumentVisitor: object
+    description: string
+    properties: object
+    type: string
+  instrumenter: object
+    description: string
+    properties: object
+    type: string
+  nyc: object
+    description: string
+    properties: object
+    type: string
+  testExclude: object
+    description: string
+    properties: object
+    type: string

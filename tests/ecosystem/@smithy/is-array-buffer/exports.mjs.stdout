@@ -1,0 +1,6 @@
+namespace: object Module
+  default: object
+    isArrayBuffer: function/1
+  isArrayBuffer: function/1 (false, false, false, false, false, false, false, false, false)
+  module.exports: object
+    isArrayBuffer: function/1

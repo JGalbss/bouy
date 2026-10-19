@@ -1,0 +1,5 @@
+module.exports: object
+  decode: function/3
+  encode: function/3
+  length: function/1
+  test: function/1

@@ -1,0 +1,4 @@
+module.exports: object
+  isAbsolute: function/1 (false, false, false, false, false, false, false, false, false)
+  normalize: function/1
+  resolve: function/3

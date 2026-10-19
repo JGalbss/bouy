@@ -1,0 +1,10 @@
+module.exports: function/4
+  mkdirP: function/4
+    mkdirP: function/4
+    mkdirp: function/4
+    sync: function/3
+  mkdirp: function/4
+    mkdirP: function/4
+    mkdirp: function/4
+    sync: function/3
+  sync: function/3

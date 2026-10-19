@@ -1,0 +1,24 @@
+module.exports: object
+  cosmiconfig: function/1
+  cosmiconfigSync: function/1
+  defaultLoaders: object
+    .cjs: function/1
+    .js: function/1
+    .json: function/2
+    .mjs: function/1
+    .ts: function/2
+    .yaml: function/2
+    .yml: function/2
+    noExt: function/2
+  defaultLoadersSync: object
+    .cjs: function/1
+    .js: function/1
+    .json: function/2
+    .ts: function/2
+    .yaml: function/2
+    .yml: function/2
+    noExt: function/2
+  getDefaultSearchPlaces: function/1
+  getDefaultSearchPlacesSync: function/1
+  globalConfigSearchPlaces: object Array
+  globalConfigSearchPlacesSync: object Array

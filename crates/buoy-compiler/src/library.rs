@@ -325,8 +325,10 @@ mod tests {
     fn global_functions_exist_in_the_runtime() {
         let runtime = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../runtime/src");
         for (module, global, functions) in GLOBAL_FUNCTIONS {
-            let source = std::fs::read_to_string(runtime.join(format!("{module}.erl")))
-                .unwrap_or_else(|error| panic!("{module}.erl: {error}"));
+            let path = find_file(&runtime, &format!("{module}.erl"))
+                .unwrap_or_else(|| panic!("runtime/src holds no {module}.erl"));
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
             let exports: String = source
                 .lines()
                 .filter(|line| line.starts_with("-export("))
@@ -345,6 +347,21 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The path of the file `name` in `directory` or one of its subdirectories.
+    fn find_file(directory: &std::path::Path, name: &str) -> Option<std::path::PathBuf> {
+        std::fs::read_dir(directory)
+            .ok()?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find_map(|path| {
+                if path.is_dir() {
+                    find_file(&path, name)
+                } else {
+                    (path.file_name()? == name).then_some(path)
+                }
+            })
     }
 
     #[test]

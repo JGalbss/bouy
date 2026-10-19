@@ -1,0 +1,65 @@
+module.exports: object
+  Activity: symbol
+  Children: object
+    count: function/1
+    forEach: function/3
+    map: function/3
+    only: function/1
+    toArray: function/1
+  Component: class/3 {forceUpdate, isMounted, isReactComponent, replaceState, setState}
+  Fragment: symbol
+  Profiler: symbol
+  PureComponent: class/3 {forceUpdate, isPureReactComponent, isReactComponent, setState}
+  StrictMode: symbol
+  Suspense: symbol
+  ViewTransition: symbol
+  __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: object
+    A: null
+    H: null
+    S: null
+    T: null
+    actQueue: null
+    asyncTransitions: number
+    didScheduleLegacyUpdate: boolean
+    didUsePromise: boolean
+    getCurrentStack: null
+    isBatchingLegacy: boolean
+    recentlyCreatedOwnerStacks: number
+    thrownErrors: object Array
+  __COMPILER_RUNTIME: object
+    c: function/1
+  act: function/1
+  addTransitionType: function/1
+  cache: function/1
+  cacheSignal: function/0
+  captureOwnerStack: function/0
+  cloneElement: function/3
+  createContext: function/1
+  createElement: function/3
+  createRef: function/0
+  forwardRef: function/1
+  isValidElement: function/1 (false, false, false, false, false, false, false, false, false)
+  lazy: function/1
+  memo: function/2
+  startTransition: function/1
+  unstable_useCacheRefresh: function/0
+  use: function/1
+  useActionState: function/3
+  useCallback: function/2
+  useContext: function/1
+  useDebugValue: function/2
+  useDeferredValue: function/2
+  useEffect: function/2
+  useEffectEvent: function/1
+  useId: function/0
+  useImperativeHandle: function/3
+  useInsertionEffect: function/2
+  useLayoutEffect: function/2
+  useMemo: function/2
+  useOptimistic: function/2
+  useReducer: function/3
+  useRef: function/1
+  useState: function/1
+  useSyncExternalStore: function/3
+  useTransition: function/0
+  version: string

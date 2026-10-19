@@ -1,0 +1,8 @@
+module.exports: object
+  ENV_ACCOUNT_ID: string
+  ENV_CREDENTIAL_SCOPE: string
+  ENV_EXPIRATION: string
+  ENV_KEY: string
+  ENV_SECRET: string
+  ENV_SESSION: string
+  fromEnv: function/1

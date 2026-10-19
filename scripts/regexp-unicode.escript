@@ -1,5 +1,5 @@
 #!/usr/bin/env escript
-%% Writes runtime/src/buoy_regexp_unicode.erl, the Unicode data of the RegExp engine,
+%% Writes runtime/src/builtins/regexp/buoy_regexp_unicode.erl, the Unicode data of the RegExp engine,
 %% from the files of the Unicode Character Database.
 %%
 %% Usage: scripts/regexp-unicode.escript <ucd-dir> <output.erl>

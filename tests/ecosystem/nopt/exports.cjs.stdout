@@ -1,0 +1,18 @@
+module.exports: function/2
+  clean: function/2
+  lib: object
+    clean: function/1
+    nopt: function/1
+    parse: function/3
+    resolveShort: function/1
+    typeDefs: object
+    validate: function/4
+  typeDefs: object
+    Array: object
+    Boolean: object
+    Date: object
+    Number: object
+    Stream: object
+    String: object
+    path: object
+    url: object

@@ -1,0 +1,5 @@
+module.exports: object
+  assert: function/2
+  get: function/2
+  has: function/2
+  set: function/3

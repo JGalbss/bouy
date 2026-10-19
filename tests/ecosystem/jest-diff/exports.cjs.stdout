@@ -1,0 +1,11 @@
+module.exports: object
+  DIFF_DELETE: number
+  DIFF_EQUAL: number
+  DIFF_INSERT: number
+  Diff: function/2
+  diff: function/3
+  diffLinesRaw: function/2
+  diffLinesUnified: function/3
+  diffLinesUnified2: function/5
+  diffStringsRaw: function/3
+  diffStringsUnified: function/3

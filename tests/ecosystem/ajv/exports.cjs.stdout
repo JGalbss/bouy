@@ -1,0 +1,35 @@
+module.exports: class/0 {_addDefaultMetaSchema, _addVocabularies, defaultMeta}
+  Ajv: class/0 {_addDefaultMetaSchema, _addVocabularies, defaultMeta}
+    Ajv: class/0 {_addDefaultMetaSchema, _addVocabularies, defaultMeta}
+    CodeGen: class/1 {_blockNode, _currNode, _def, _elseNode, _endBlockNode, _for, _leafNode, _root, add, assign, block, break, code, const, else, elseIf, endBlock, endFor, endFunc, endIf, for, forIn, forOf, forRange, func, getScopeValue, if, label, let, name, object, optimize, return, scopeCode, scopeName, scopeRefs, scopeValue, throw, toString, try, var}
+    KeywordCxt: class/3 {$dataError, _error, block$data, check$data, error, fail, fail$data, failResult, invalid$data, mergeEvaluated, mergeValidEvaluated, ok, pass, reset, result, setParams, subschema}
+    MissingRefError: function/4
+    Name: class/1 {emptyStr, names, toString}
+    ValidationError: function/1
+    _: function/1
+    default: class/0 {_addDefaultMetaSchema, _addVocabularies, defaultMeta}
+    nil: object
+    str: function/1
+    stringify: function/1
+  CodeGen: class/1 {_blockNode, _currNode, _def, _elseNode, _endBlockNode, _for, _leafNode, _root, add, assign, block, break, code, const, else, elseIf, endBlock, endFor, endFunc, endIf, for, forIn, forOf, forRange, func, getScopeValue, if, label, let, name, object, optimize, return, scopeCode, scopeName, scopeRefs, scopeValue, throw, toString, try, var}
+  KeywordCxt: class/3 {$dataError, _error, block$data, check$data, error, fail, fail$data, failResult, invalid$data, mergeEvaluated, mergeValidEvaluated, ok, pass, reset, result, setParams, subschema}
+  MissingRefError: function/4
+  Name: class/1 {emptyStr, names, toString}
+  ValidationError: function/1
+  _: function/1
+  default: class/0 {_addDefaultMetaSchema, _addVocabularies, defaultMeta}
+    Ajv: class/0 {_addDefaultMetaSchema, _addVocabularies, defaultMeta}
+    CodeGen: class/1 {_blockNode, _currNode, _def, _elseNode, _endBlockNode, _for, _leafNode, _root, add, assign, block, break, code, const, else, elseIf, endBlock, endFor, endFunc, endIf, for, forIn, forOf, forRange, func, getScopeValue, if, label, let, name, object, optimize, return, scopeCode, scopeName, scopeRefs, scopeValue, throw, toString, try, var}
+    KeywordCxt: class/3 {$dataError, _error, block$data, check$data, error, fail, fail$data, failResult, invalid$data, mergeEvaluated, mergeValidEvaluated, ok, pass, reset, result, setParams, subschema}
+    MissingRefError: function/4
+    Name: class/1 {emptyStr, names, toString}
+    ValidationError: function/1
+    _: function/1
+    default: class/0 {_addDefaultMetaSchema, _addVocabularies, defaultMeta}
+    nil: object
+    str: function/1
+    stringify: function/1
+  nil: object
+    _items: object Array
+  str: function/1
+  stringify: function/1

@@ -1,0 +1,39 @@
+module.exports: object
+  config: function/0
+  configs: object
+    all: object Array
+    base: object
+    disableTypeChecked: object
+    eslintRecommended: object
+    recommended: object Array
+    recommendedTypeChecked: object Array
+    recommendedTypeCheckedOnly: object Array
+    strict: object Array
+    strictTypeChecked: object Array
+    strictTypeCheckedOnly: object Array
+    stylistic: object Array
+    stylisticTypeChecked: object Array
+    stylisticTypeCheckedOnly: object Array
+  default: object
+    config: function/0
+    configs: object
+    extensions: object
+    globs: object
+    parser: object
+    plugin: object
+  extensions: object
+    js: object Array
+    jsts: object Array
+    ts: object Array
+  globs: object
+    js: string
+    jsts: string
+    ts: string
+    tsDeclaration: string
+  parser: object
+    meta: object
+    parseForESLint: function/2
+  plugin: object
+    configs: object
+    meta: object
+    rules: object

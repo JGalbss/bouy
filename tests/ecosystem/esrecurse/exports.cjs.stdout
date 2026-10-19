@@ -1,0 +1,4 @@
+module.exports: object
+  Visitor: class/2 {visit, visitChildren}
+  version: string
+  visit: function/3

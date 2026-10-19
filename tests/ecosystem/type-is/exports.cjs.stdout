@@ -1,0 +1,5 @@
+module.exports: function/2
+  hasBody: function/1
+  is: function/2
+  match: function/2
+  normalize: function/1

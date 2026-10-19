@@ -1,0 +1,2 @@
+namespace: object Module
+  decodeString: function/1

@@ -1,0 +1,4 @@
+module.exports: object
+  codeFrameColumns: function/2
+  default: function/3
+  highlight: function/1

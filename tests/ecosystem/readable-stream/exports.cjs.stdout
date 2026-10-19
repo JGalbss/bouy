@@ -1,0 +1,41 @@
+module.exports: class/1 {_destroy, _read, _undestroy, addListener, destroy, destroyed, isPaused, on, pause, pipe, push, read, readableHighWaterMark, resume, setEncoding, unpipe, unshift, wrap}
+  Duplex: class/1 {_destroy, _write, _writev, cork, destroyed, end, setDefaultEncoding, uncork, writableHighWaterMark, write}
+  PassThrough: class/1 {_transform}
+  Readable: class/1 {_destroy, _read, _undestroy, addListener, destroy, destroyed, isPaused, on, pause, pipe, push, read, readableHighWaterMark, resume, setEncoding, unpipe, unshift, wrap}
+    Duplex: class/1 {_destroy, _write, _writev, cork, destroyed, end, setDefaultEncoding, uncork, writableHighWaterMark, write}
+    PassThrough: class/1 {_transform}
+    Readable: class/1 {_destroy, _read, _undestroy, addListener, destroy, destroyed, isPaused, on, pause, pipe, push, read, readableHighWaterMark, resume, setEncoding, unpipe, unshift, wrap}
+    ReadableState: function/2
+    Stream: class/1 {eventNames, pipe}
+    Transform: class/1 {_destroy, _read, _transform, _write, push}
+    Writable: class/1 {_destroy, _undestroy, _write, _writev, cork, destroy, destroyed, end, pipe, setDefaultEncoding, uncork, writableHighWaterMark, write}
+    _fromList: function/2
+  ReadableState: function/2
+  Stream: class/1 {eventNames, pipe}
+    Duplex: class/1 {_write, _writev, cork, destroy, destroyed, end, setDefaultEncoding, uncork, writable, writableBuffer, writableCorked, writableEnded, writableFinished, writableHighWaterMark, writableLength, writableNeedDrain, writableObjectMode, write}
+    PassThrough: class/1 {_transform}
+    Readable: class/1 {_destroy, _read, _undestroy, addListener, closed, compose, destroy, destroyed, drop, errored, every, filter, find, flatMap, forEach, isPaused, iterator, map, off, on, pause, pipe, push, read, readable, readableAborted, readableBuffer, readableDidRead, readableEncoding, readableEnded, readableFlowing, readableHighWaterMark, readableLength, readableObjectMode, reduce, removeAllListeners, removeListener, resume, setEncoding, some, take, toArray, unpipe, unshift, wrap}
+    Stream: class/1 {eventNames, pipe}
+    Transform: class/1 {_final, _read, _transform, _write}
+    Writable: class/1 {_destroy, _undestroy, _write, _writev, closed, cork, destroy, destroyed, end, errored, pipe, setDefaultEncoding, uncork, writable, writableAborted, writableBuffer, writableCorked, writableEnded, writableFinished, writableHighWaterMark, writableLength, writableNeedDrain, writableObjectMode, write}
+    _isArrayBufferView: function/1
+    _isUint8Array: function/1
+    _uint8ArrayToBuffer: function/1
+    addAbortSignal: function/2
+    compose: function/0
+    destroy: function/2
+    duplexPair: function/1
+    finished: function/3
+    getDefaultHighWaterMark: function/1
+    isDestroyed: function/1
+    isDisturbed: function/1
+    isErrored: function/1
+    isReadable: function/1
+    isWritable: function/1
+    pipeline: function/0
+    promises: object
+    setDefaultHighWaterMark: function/2
+  Transform: class/1 {_destroy, _read, _transform, _write, push}
+  Writable: class/1 {_destroy, _undestroy, _write, _writev, cork, destroy, destroyed, end, pipe, setDefaultEncoding, uncork, writableHighWaterMark, write}
+    WritableState: class/2 {buffer, getBuffer}
+  _fromList: function/2

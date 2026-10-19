@@ -1,0 +1,3 @@
+module.exports: function/3
+  cache: object
+  clearCache: function/0

@@ -1,0 +1,360 @@
+module.exports: object
+  ACCESSOR_TYPES: object Array
+  ALIAS_KEYS: object
+    AnyTypeAnnotation: object Array
+    ArgumentPlaceholder: object Array
+    ArrayExpression: object Array
+    ArrayPattern: object Array
+    ArrayTypeAnnotation: object Array
+    ArrowFunctionExpression: object Array
+    AssignmentExpression: object Array
+    AssignmentPattern: object Array
+    AwaitExpression: object Array
+    BigIntLiteral: object Array
+    BinaryExpression: object Array
+    BindExpression: object Array
+    BlockStatement: object Array
+    BooleanLiteral: object Array
+    BooleanLiteralTypeAnnotation: object Array
+    BooleanTypeAnnotation: object Array
+    BreakStatement: object Array
+    CallExpression: object Array
+    CatchClause: object Array
+    ClassAccessorProperty: object Array
+    ClassBody: object Array
+    ClassDeclaration: object Array
+    ClassExpression: object Array
+    ClassImplements: object Array
+    ClassMethod: object Array
+    ClassPrivateMethod: object Array
+    ClassPrivateProperty: object Array
+    ClassProperty: object Array
+    ConditionalExpression: object Array
+    ContinueStatement: object Array
+    DebuggerStatement: object Array
+    DecimalLiteral: object Array
+    DeclareClass: object Array
+    DeclareExportAllDeclaration: object Array
+    DeclareExportDeclaration: object Array
+    DeclareFunction: object Array
+    DeclareInterface: object Array
+    DeclareModule: object Array
+    DeclareModuleExports: object Array
+    DeclareOpaqueType: object Array
+    DeclareTypeAlias: object Array
+    DeclareVariable: object Array
+    DeclaredPredicate: object Array
+    Decorator: object Array
+    Directive: object Array
+    DirectiveLiteral: object Array
+    DoExpression: object Array
+    DoWhileStatement: object Array
+    EmptyStatement: object Array
+    EmptyTypeAnnotation: object Array
+    EnumBooleanBody: object Array
+    EnumBooleanMember: object Array
+    EnumDeclaration: object Array
+    EnumDefaultedMember: object Array
+    EnumNumberBody: object Array
+    EnumNumberMember: object Array
+    EnumStringBody: object Array
+    EnumStringMember: object Array
+    EnumSymbolBody: object Array
+    ExistsTypeAnnotation: object Array
+    ExportAllDeclaration: object Array
+    ExportDefaultDeclaration: object Array
+    ExportDefaultSpecifier: object Array
+    ExportNamedDeclaration: object Array
+    ExportNamespaceSpecifier: object Array
+    ExportSpecifier: object Array
+    ExpressionStatement: object Array
+    File: object Array
+    ForInStatement: object Array
+    ForOfStatement: object Array
+    ForStatement: object Array
+    FunctionDeclaration: object Array
+    FunctionExpression: object Array
+    FunctionTypeAnnotation: object Array
+    FunctionTypeParam: object Array
+    GenericTypeAnnotation: object Array
+    Identifier: object Array
+    IfStatement: object Array
+    Import: object Array
+    ImportAttribute: object Array
+    ImportDeclaration: object Array
+    ImportDefaultSpecifier: object Array
+    ImportExpression: object Array
+    ImportNamespaceSpecifier: object Array
+    ImportSpecifier: object Array
+    IndexedAccessType: object Array
+    InferredPredicate: object Array
+    InterfaceDeclaration: object Array
+    InterfaceExtends: object Array
+    InterfaceTypeAnnotation: object Array
+    InterpreterDirective: object Array
+    IntersectionTypeAnnotation: object Array
+    JSXAttribute: object Array
+    JSXClosingElement: object Array
+    JSXClosingFragment: object Array
+    JSXElement: object Array
+    JSXEmptyExpression: object Array
+    JSXExpressionContainer: object Array
+    JSXFragment: object Array
+    JSXIdentifier: object Array
+    ... 153 more keys
+  ASSIGNMENT_OPERATORS: object Array
+  AnyTypeAnnotation: function/0
+  ArgumentPlaceholder: function/0
+  ArrayExpression: function/0
+  ArrayPattern: function/1
+  ArrayTypeAnnotation: function/1
+  ArrowFunctionExpression: function/2
+  AssignmentExpression: function/3
+  AssignmentPattern: function/2
+  AwaitExpression: function/1
+  BINARY_OPERATORS: object Array
+  BINARY_TYPES: object Array
+  BLOCKPARENT_TYPES: object Array
+  BLOCK_SCOPED_SYMBOL: symbol
+  BLOCK_TYPES: object Array
+  BOOLEAN_BINARY_OPERATORS: object Array
+  BOOLEAN_NUMBER_BINARY_OPERATORS: object Array
+  BOOLEAN_UNARY_OPERATORS: object Array
+  BUILDER_KEYS: object
+    AnyTypeAnnotation: object Array
+    ArgumentPlaceholder: object Array
+    ArrayExpression: object Array
+    ArrayPattern: object Array
+    ArrayTypeAnnotation: object Array
+    ArrowFunctionExpression: object Array
+    AssignmentExpression: object Array
+    AssignmentPattern: object Array
+    AwaitExpression: object Array
+    BigIntLiteral: object Array
+    BinaryExpression: object Array
+    BindExpression: object Array
+    BlockStatement: object Array
+    BooleanLiteral: object Array
+    BooleanLiteralTypeAnnotation: object Array
+    BooleanTypeAnnotation: object Array
+    BreakStatement: object Array
+    CallExpression: object Array
+    CatchClause: object Array
+    ClassAccessorProperty: object Array
+    ClassBody: object Array
+    ClassDeclaration: object Array
+    ClassExpression: object Array
+    ClassImplements: object Array
+    ClassMethod: object Array
+    ClassPrivateMethod: object Array
+    ClassPrivateProperty: object Array
+    ClassProperty: object Array
+    ConditionalExpression: object Array
+    ContinueStatement: object Array
+    DebuggerStatement: object Array
+    DecimalLiteral: object Array
+    DeclareClass: object Array
+    DeclareExportAllDeclaration: object Array
+    DeclareExportDeclaration: object Array
+    DeclareFunction: object Array
+    DeclareInterface: object Array
+    DeclareModule: object Array
+    DeclareModuleExports: object Array
+    DeclareOpaqueType: object Array
+    DeclareTypeAlias: object Array
+    DeclareVariable: object Array
+    DeclaredPredicate: object Array
+    Decorator: object Array
+    Directive: object Array
+    DirectiveLiteral: object Array
+    DoExpression: object Array
+    DoWhileStatement: object Array
+    EmptyStatement: object Array
+    EmptyTypeAnnotation: object Array
+    EnumBooleanBody: object Array
+    EnumBooleanMember: object Array
+    EnumDeclaration: object Array
+    EnumDefaultedMember: object Array
+    EnumNumberBody: object Array
+    EnumNumberMember: object Array
+    EnumStringBody: object Array
+    EnumStringMember: object Array
+    EnumSymbolBody: object Array
+    ExistsTypeAnnotation: object Array
+    ExportAllDeclaration: object Array
+    ExportDefaultDeclaration: object Array
+    ExportDefaultSpecifier: object Array
+    ExportNamedDeclaration: object Array
+    ExportNamespaceSpecifier: object Array
+    ExportSpecifier: object Array
+    ExpressionStatement: object Array
+    File: object Array
+    ForInStatement: object Array
+    ForOfStatement: object Array
+    ForStatement: object Array
+    FunctionDeclaration: object Array
+    FunctionExpression: object Array
+    FunctionTypeAnnotation: object Array
+    FunctionTypeParam: object Array
+    GenericTypeAnnotation: object Array
+    Identifier: object Array
+    IfStatement: object Array
+    Import: object Array
+    ImportAttribute: object Array
+    ImportDeclaration: object Array
+    ImportDefaultSpecifier: object Array
+    ImportExpression: object Array
+    ImportNamespaceSpecifier: object Array
+    ImportSpecifier: object Array
+    IndexedAccessType: object Array
+    InferredPredicate: object Array
+    InterfaceDeclaration: object Array
+    InterfaceExtends: object Array
+    InterfaceTypeAnnotation: object Array
+    InterpreterDirective: object Array
+    IntersectionTypeAnnotation: object Array
+    JSXAttribute: object Array
+    JSXClosingElement: object Array
+    JSXClosingFragment: object Array
+    JSXElement: object Array
+    JSXEmptyExpression: object Array
+    JSXExpressionContainer: object Array
+    JSXFragment: object Array
+    JSXIdentifier: object Array
+    ... 153 more keys
+  BigIntLiteral: function/1
+  BinaryExpression: function/3
+  BindExpression: function/2
+  BlockStatement: function/1
+  BooleanLiteral: function/1
+  BooleanLiteralTypeAnnotation: function/1
+  BooleanTypeAnnotation: function/0
+  BreakStatement: function/0
+  CLASS_TYPES: object Array
+  COMMENT_KEYS: object Array
+  COMPARISON_BINARY_OPERATORS: object Array
+  COMPLETIONSTATEMENT_TYPES: object Array
+  CONDITIONAL_TYPES: object Array
+  CallExpression: function/2
+  CatchClause: function/0
+  ClassAccessorProperty: function/1
+  ClassBody: function/1
+  ClassDeclaration: function/0
+  ClassExpression: function/0
+  ClassImplements: function/1
+  ClassMethod: function/0
+  ClassPrivateMethod: function/0
+  ClassPrivateProperty: function/1
+  ClassProperty: function/1
+  ConditionalExpression: function/3
+  ContinueStatement: function/0
+  DECLARATION_TYPES: object Array
+  DEPRECATED_ALIASES: object
+    ModuleDeclaration: string
+  DEPRECATED_KEYS: object
+    NumberLiteral: string
+    RegexLiteral: string
+    RestProperty: string
+    SpreadProperty: string
+  DebuggerStatement: function/0
+  DecimalLiteral: function/1
+  DeclareClass: function/1
+  DeclareExportAllDeclaration: function/1
+  DeclareExportDeclaration: function/0
+  DeclareFunction: function/1
+  DeclareInterface: function/1
+  DeclareModule: function/2
+  DeclareModuleExports: function/1
+  DeclareOpaqueType: function/1
+  DeclareTypeAlias: function/1
+  DeclareVariable: function/1
+  DeclaredPredicate: function/1
+  Decorator: function/1
+  Directive: function/1
+  DirectiveLiteral: function/1
+  DoExpression: function/1
+  DoWhileStatement: function/2
+  ENUMBODY_TYPES: object Array
+  ENUMMEMBER_TYPES: object Array
+  EQUALITY_BINARY_OPERATORS: object Array
+  EXPORTDECLARATION_TYPES: object Array
+  EXPRESSIONWRAPPER_TYPES: object Array
+  EXPRESSION_TYPES: object Array
+  EmptyStatement: function/0
+  EmptyTypeAnnotation: function/0
+  EnumBooleanBody: function/1
+  EnumBooleanMember: function/1
+  EnumDeclaration: function/2
+  EnumDefaultedMember: function/1
+  EnumNumberBody: function/1
+  EnumNumberMember: function/2
+  EnumStringBody: function/1
+  EnumStringMember: function/2
+  EnumSymbolBody: function/1
+  ExistsTypeAnnotation: function/0
+  ExportAllDeclaration: function/1
+  ExportDefaultDeclaration: function/1
+  ExportDefaultSpecifier: function/1
+  ExportNamedDeclaration: function/0
+  ExportNamespaceSpecifier: function/1
+  ExportSpecifier: function/2
+  ExpressionStatement: function/1
+  FLATTENABLE_KEYS: object Array
+  FLIPPED_ALIAS_KEYS: object
+    Accessor: object Array
+    Binary: object Array
+    Block: object Array
+    BlockParent: object Array
+    Class: object Array
+    CompletionStatement: object Array
+    Conditional: object Array
+    Declaration: object Array
+    EnumBody: object Array
+    EnumMember: object Array
+    ExportDeclaration: object Array
+    Expression: object Array
+    ExpressionWrapper: object Array
+    Flow: object Array
+    FlowBaseAnnotation: object Array
+    FlowDeclaration: object Array
+    FlowPredicate: object Array
+    FlowType: object Array
+    For: object Array
+    ForXStatement: object Array
+    Function: object Array
+    FunctionParameter: object Array
+    FunctionParent: object Array
+    Immutable: object Array
+    ImportOrExportDeclaration: object Array
+    JSX: object Array
+    LVal: object Array
+    Literal: object Array
+    Loop: object Array
+    Method: object Array
+    Miscellaneous: object Array
+    ModuleDeclaration: object Array
+    ModuleSpecifier: object Array
+    ObjectMember: object Array
+    Pattern: object Array
+    PatternLike: object Array
+    Private: object Array
+    Property: object Array
+    Pureish: object Array
+    Scopable: object Array
+    Standardized: object Array
+    Statement: object Array
+    TSBaseType: object Array
+    TSEntityName: object Array
+    TSType: object Array
+    TSTypeElement: object Array
+    Terminatorless: object Array
+    TypeScript: object Array
+    UnaryLike: object Array
+    UserWhitespacable: object Array
+    While: object Array
+  FLOWBASEANNOTATION_TYPES: object Array
+  FLOWDECLARATION_TYPES: object Array
+  FLOWPREDICATE_TYPES: object Array
+  FLOWTYPE_TYPES: object Array
+  FLOW_TYPES: object Array
+  ... 1256 more keys

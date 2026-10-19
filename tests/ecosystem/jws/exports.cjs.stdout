@@ -1,0 +1,8 @@
+module.exports: object
+  ALGORITHMS: object Array
+  createSign: function/1
+  createVerify: function/1
+  decode: function/2
+  isValid: function/1 (false, false, false, false, false, false, false, false, false)
+  sign: function/1
+  verify: function/3

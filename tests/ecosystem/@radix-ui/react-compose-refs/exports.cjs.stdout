@@ -1,0 +1,3 @@
+module.exports: object
+  composeRefs: function/0
+  useComposedRefs: function/0

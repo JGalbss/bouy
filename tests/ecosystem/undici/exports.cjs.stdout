@@ -1,0 +1,106 @@
+module.exports: object
+  Agent: class/0 {stats}
+  BalancedPool: class/0 {_updateBalancedPoolStats, addUpstream, getUpstream, removeUpstream, upstreams}
+  Client: class/1 {pipelining, stats}
+  CloseEvent: class/1 {code, reason, wasClean}
+  DecoratorHandler: class/1 {onBodySent, onRequestStart, onRequestUpgrade, onResponseData, onResponseEnd, onResponseError, onResponseStart}
+  Dispatcher: class/0 {close, compose, connect, destroy, dispatch, pipeline, request, stream, upgrade}
+  EnvHttpProxyAgent: function/0
+  ErrorEvent: class/2 {colno, error, filename, lineno, message}
+  EventSource: class/1 {CLOSED, CONNECTING, OPEN, close, onerror, onmessage, onopen, readyState, url, withCredentials}
+    CLOSED: number
+    CONNECTING: number
+    OPEN: number
+  FormData: class/0 {append, delete, entries, forEach, get, getAll, has, keys, set, values}
+  H2CClient: function/2
+  Headers: class/0 {append, delete, entries, forEach, get, getSetCookie, has, keys, set, values}
+  MessageEvent: class/1 {data, initMessageEvent, lastEventId, origin, ports, source}
+  MockAgent: class/0 {activate, assertNoPendingInterceptors, clearCallHistory, close, deactivate, disableCallHistory, disableNetConnect, dispatch, enableCallHistory, enableNetConnect, get, getCallHistory, isMockActive, pendingInterceptors}
+  MockCallHistory: class/0 {calls, clear, filterCalls, firstCall, lastCall, nthCall}
+  MockCallHistoryLog: class/0 {toMap, toString}
+  MockClient: class/2 {cleanMocks, intercept}
+  MockPool: class/2 {cleanMocks, intercept}
+  Pool: function/1
+  ProxyAgent: class/1 {dispatch}
+  RedirectHandler: class/4 {onRequestStart, onRequestUpgrade, onResponseData, onResponseEnd, onResponseError, onResponseStart}
+  Request: class/1 {arrayBuffer, attribute, blob, body, bodyUsed, bytes, cache, clone, credentials, destination, duplex, formData, headers, integrity, isHistoryNavigation, isReloadNavigation, json, keepalive, method, mode, redirect, referrer, referrerPolicy, signal, text, url}
+  Response: class/0 {arrayBuffer, blob, body, bodyUsed, bytes, clone, formData, headers, json, ok, redirected, status, statusText, text, type, url}
+    error: function/0
+    json: function/1
+    redirect: function/1
+  RetryAgent: class/1 {close, destroy, dispatch}
+  RetryHandler: class/2 {checkpointResponseEnd, onRequestStart, onRequestUpgrade, onResponseData, onResponseEnd, onResponseError, onResponseStart, onResponseStartWithRetry, retry}
+  RoundRobinPool: function/1
+  SnapshotAgent: class/0 {clearSnapshots, close, deleteSnapshot, dispatch, getMode, getRecorder, getSnapshotInfo, loadSnapshots, replaceSnapshots, resetCallCounts, saveSnapshots}
+  Socks5ProxyAgent: class/1 {createSocks5Connection}
+  WebSocket: class/1 {CLOSED, CLOSING, CONNECTING, OPEN, binaryType, bufferedAmount, close, extensions, onclose, onerror, onmessage, onopen, protocol, readyState, send, url}
+    CLOSED: number
+    CLOSING: number
+    CONNECTING: number
+    OPEN: number
+  WebSocketError: class/0 {closeCode, reason}
+  WebSocketStream: class/1 {close, closed, opened, url}
+  buildConnector: function/1
+  cacheStores: object
+    MemoryCacheStore: class/1 {createWriteStream, delete, get, isFull, size}
+    SqliteCacheStore: class/1 {close, createWriteStream, delete, get, set, size}
+  caches: object CacheStorage
+  connect: function/3
+  deleteCookie: function/3
+  errors: object
+    AbortError: function/1
+    BalancedPoolMissingUpstreamError: function/1
+    BodyTimeoutError: function/1
+    ClientClosedError: function/1
+    ClientDestroyedError: function/1
+    ConnectTimeoutError: function/1
+    HTTPParserError: function/3
+    HeadersOverflowError: function/1
+    HeadersTimeoutError: function/1
+    InformationalError: function/1
+    InvalidArgumentError: function/1
+    InvalidReturnValueError: function/1
+    MaxOriginsReachedError: function/1
+    MessageSizeExceededError: function/1
+    NotSupportedError: function/1
+    RequestAbortedError: function/1
+    RequestContentLengthMismatchError: function/1
+    RequestRetryError: function/3
+    ResponseContentLengthMismatchError: function/1
+    ResponseError: function/3
+    ResponseExceededMaxSizeError: function/1
+    SecureProxyConnectionError: function/2
+    SocketError: function/2
+    Socks5ProxyError: function/2
+    UndiciError: function/2
+  fetch: function/1
+  getCookies: function/1
+  getGlobalDispatcher: function/0
+  getGlobalOrigin: function/0
+  getSetCookies: function/1
+  install: function/0
+  interceptors: object
+    cache: function/0
+    decompress: function/0
+    deduplicate: function/0
+    dns: function/1
+    dump: function/0
+    redirect: function/0
+    responseError: function/0
+    retry: function/1
+  mockErrors: object
+    MockNotMatchedError: function/1
+  parseCookie: function/1
+  parseMIMEType: function/1
+  ping: function/2
+  pipeline: function/3
+  request: function/3
+  serializeAMimeType: function/1
+  setCookie: function/2
+  setGlobalDispatcher: function/1
+  setGlobalOrigin: function/1
+  stream: function/3
+  upgrade: function/3
+  util: object
+    headerNameToString: function/1
+    parseHeaders: function/2

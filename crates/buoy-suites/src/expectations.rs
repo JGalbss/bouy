@@ -21,6 +21,21 @@ pub enum Entry {
 /// The entries of an expectation file, by id.
 pub type Expectations = BTreeMap<String, Entry>;
 
+/// The platform of this run, as a line whose outcome differs by platform names it.
+pub const PLATFORM: &str = std::env::consts::OS;
+
+/// The platforms whose runs record the expectation files of Node's tests.
+pub const PLATFORMS: [&str; 2] = ["linux", "macos"];
+
+/// The entries as a run on `platform` expects them (`Entry::on_platform`).
+#[must_use]
+pub fn on_platform(entries: &Expectations, platform: &str) -> Expectations {
+    entries
+        .iter()
+        .map(|(id, entry)| (id.clone(), entry.on_platform(platform)))
+        .collect()
+}
+
 impl Entry {
     /// The entry of the outcome of each mode. Equal outcomes collapse to one.
     #[must_use]
@@ -59,6 +74,41 @@ impl Entry {
         match self {
             Self::Same(outcome) => *outcome == Outcome::Pass,
             Self::Modes(modes) => modes.values().any(|outcome| *outcome == Outcome::Pass),
+        }
+    }
+
+    /// The entry that a run on `platform` expects: the outcome of `platform` when the line
+    /// names platforms, as `linux=fail,macos=pass`.
+    #[must_use]
+    pub fn on_platform(&self, platform: &str) -> Self {
+        match self {
+            Self::Modes(platforms) => platforms
+                .get(platform)
+                .map_or_else(|| self.clone(), |outcome| Self::Same(*outcome)),
+            Self::Same(_) => self.clone(),
+        }
+    }
+
+    /// The entry with `outcome` on `platform`. A line that names platforms keeps the others.
+    /// A line that names none takes `outcome` on every platform when `everywhere` holds, as
+    /// an update after a change to the code does, and else keeps its outcome on the other
+    /// platforms of `PLATFORMS`, as a run of the same code on a second platform does.
+    #[must_use]
+    pub fn with_platform(&self, platform: &str, outcome: Outcome, everywhere: bool) -> Self {
+        match self {
+            Self::Same(_) if everywhere => Self::Same(outcome),
+            Self::Same(before) => Self::of_modes(
+                PLATFORMS
+                    .iter()
+                    .map(|other| ((*other).to_owned(), *before))
+                    .chain([(platform.to_owned(), outcome)])
+                    .collect(),
+            ),
+            Self::Modes(platforms) => {
+                let mut platforms = platforms.clone();
+                platforms.insert(platform.to_owned(), outcome);
+                Self::of_modes(platforms)
+            }
         }
     }
 
@@ -205,6 +255,30 @@ mod tests {
         let mixed: Entry = "nonstrict=rejected,strict=crash".parse().expect("parses");
         assert_eq!(mixed.outcome(), Outcome::Crash);
         assert_eq!(mixed.to_string(), "nonstrict=rejected,strict=crash");
+    }
+
+    #[test]
+    fn a_platform_line_keeps_the_outcome_of_the_other_platform() {
+        let line: Entry = "linux=fail,macos=pass".parse().expect("parses");
+        assert_eq!(line.on_platform("linux"), Entry::Same(Outcome::Fail));
+        assert_eq!(line.on_platform("macos"), Entry::Same(Outcome::Pass));
+        assert_eq!(line.outcome(), Outcome::Fail, "the worst platform counts");
+        assert_eq!(
+            line.with_platform("linux", Outcome::Pass, true),
+            Entry::Same(Outcome::Pass)
+        );
+        assert_eq!(line.with_platform("macos", Outcome::Pass, true), line);
+        let same = Entry::Same(Outcome::Pass);
+        assert_eq!(
+            same.with_platform("linux", Outcome::Fail, false),
+            line,
+            "a run of the same code splits the line"
+        );
+        assert_eq!(
+            same.with_platform("linux", Outcome::Fail, true),
+            Entry::Same(Outcome::Fail),
+            "an update after a change moves every platform"
+        );
     }
 
     #[test]

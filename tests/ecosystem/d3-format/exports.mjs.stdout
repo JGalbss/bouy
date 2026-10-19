@@ -1,0 +1,10 @@
+namespace: object Module
+  FormatSpecifier: class/1 {toString}
+  format: function/2
+  formatDefaultLocale: function/1
+  formatLocale: function/1
+  formatPrefix: function/2
+  formatSpecifier: class/1 {toString}
+  precisionFixed: function/1
+  precisionPrefix: function/2
+  precisionRound: function/2

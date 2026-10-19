@@ -1,0 +1,11 @@
+module.exports: function/3
+  match: function/3
+  matches: function/4
+  parse: function/1
+  query: function/3
+    match: function/3
+    matches: function/4
+    parse: function/1
+    query: function/3
+    traverse: function/4
+  traverse: function/4

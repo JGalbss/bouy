@@ -1,0 +1,7 @@
+module.exports: object
+  ESLint: class/0 {calculateConfigForFile, findConfigFile, getRulesMetaForResults, hasFlag, isPathIgnored, lintFiles, lintText, loadFormatter}
+    configType: string
+  Linter: class/0 {_distinguishSuppressedMessages, _verifyWithConfigArray, _verifyWithFlatConfigArray, _verifyWithFlatConfigArrayAndProcessor, _verifyWithFlatConfigArrayAndWithoutProcessors, _verifyWithProcessor, _verifyWithoutProcessors, defineParser, defineRule, defineRules, getFixPassCount, getRules, getSourceCode, getSuppressedMessages, getTimes, hasFlag, verify, verifyAndFix}
+  RuleTester: class/0 {run}
+  SourceCode: class/2 {applyInlineConfig, applyLanguageOptions, finalize, getAllComments, getAncestors, getDeclaredVariables, getDisableDirectives, getIndexFromLoc, getInlineConfigNodes, getJSDocComment, getLines, getLoc, getLocFromIndex, getNodeByRangeIndex, getRange, getScope, getText, isGlobalReference, isSpaceBetween, isSpaceBetweenTokens, markVariableAsUsed, traverse}
+  loadESLint: function/0

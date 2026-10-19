@@ -1,0 +1,23 @@
+namespace: object Module
+  convert: object
+    colorToHex: function/1
+    colorToHsl: function/1
+    colorToHwb: function/1
+    colorToLab: function/1
+    colorToLch: function/1
+    colorToOklab: function/1
+    colorToOklch: function/1
+    colorToRgb: function/1
+    colorToXyz: function/1
+    colorToXyzD50: function/1
+    numberToHex: function/1
+  cssCalc: function/1
+  isColor: function/1 (false, false, false, false, false, false, false, false, false)
+  resolve: function/1
+  utils: object
+    cssCalc: function/1
+    cssVar: function/1
+    extractDashedIdent: function/1
+    isColor: function/1
+    isGradient: function/1
+    splitValue: function/1

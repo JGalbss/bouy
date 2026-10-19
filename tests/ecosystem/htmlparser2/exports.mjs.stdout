@@ -1,0 +1,75 @@
+namespace: object Module
+  DefaultHandler: class/3 {addNode, handleCallback, oncdataend, oncdatastart, onclosetag, oncomment, oncommentend, onend, onerror, onopentag, onparserinit, onprocessinginstruction, onreset, ontext}
+  DomHandler: class/3 {addNode, handleCallback, oncdataend, oncdatastart, onclosetag, oncomment, oncommentend, onend, onerror, onopentag, onparserinit, onprocessinginstruction, onreset, ontext}
+  DomUtils: object Module
+    DocumentPosition: object
+    append: function/2
+    appendChild: function/2
+    compareDocumentPosition: function/2
+    existsOne: function/2
+    filter: function/2
+    find: function/4
+    findAll: function/2
+    findOne: function/2
+    findOneChild: function/2
+    getAttributeValue: function/2
+    getChildren: function/1
+    getElementById: function/2
+    getElements: function/3
+    getElementsByClassName: function/2
+    getElementsByTagName: function/2
+    getElementsByTagType: function/2
+    getFeed: function/1
+    getInnerHTML: function/2
+    getName: function/1
+    getOuterHTML: function/2
+    getParent: function/1
+    getSiblings: function/1
+    getText: function/1
+    hasAttrib: function/2
+    hasChildren: function/1
+    innerText: function/1
+    isCDATA: function/1
+    isComment: function/1
+    isDocument: function/1
+    isTag: function/1
+    isText: function/1
+    nextElementSibling: function/1
+    prepend: function/2
+    prependChild: function/2
+    prevElementSibling: function/1
+    removeElement: function/1
+    removeSubsets: function/1
+    replaceElement: function/2
+    testElement: function/2
+    textContent: function/1
+    uniqueSort: function/1
+  ElementType: object Module
+    CDATA: string
+    Comment: string
+    Directive: string
+    Doctype: string
+    ElementType: object
+    Root: string
+    Script: string
+    Style: string
+    Tag: string
+    Text: string
+    isTag: function/1
+  Parser: class/1 {closeCurrentTag, done, emitOpenTag, end, endOpenTag, getInstructionName, getSlice, isVoidElement, onattribdata, onattribend, onattribentity, onattribname, oncdata, onclosetag, oncomment, ondeclaration, onend, onopentagend, onopentagname, onprocessinginstruction, onselfclosingtag, ontext, ontextentity, parseChunk, parseComplete, pause, reset, resume, shiftBuffer, write}
+  QuoteType: object
+    0: string
+    1: string
+    2: string
+    3: string
+    Double: number
+    NoValue: number
+    Single: number
+    Unquoted: number
+  Tokenizer: class/2 {cleanup, emitCodePoint, end, fastForwardTo, finish, handleInAttributeValue, handleTrailingData, isTagStartChar, parse, pause, reset, resume, shouldContinue, startEntity, startSpecial, stateAfterAttributeName, stateAfterClosingTagName, stateBeforeAttributeName, stateBeforeAttributeValue, stateBeforeClosingTagName, stateBeforeComment, stateBeforeDeclaration, stateBeforeSpecialS, stateBeforeSpecialT, stateBeforeTagName, stateCDATASequence, stateInAttributeName, stateInAttributeValueDoubleQuotes, stateInAttributeValueNoQuotes, stateInAttributeValueSingleQuotes, stateInClosingTagName, stateInCommentLike, stateInDeclaration, stateInEntity, stateInProcessingInstruction, stateInSelfClosingTag, stateInSpecialComment, stateInSpecialTag, stateInTagName, stateSpecialStartSequence, stateText, write}
+  createDocumentStream: function/3
+  createDomStream: function/3
+  getFeed: function/1
+  parseDOM: function/2
+  parseDocument: function/2
+  parseFeed: function/1

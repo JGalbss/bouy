@@ -1,0 +1,2 @@
+namespace: object Module
+  VFileMessage: class/3 {ancestors, cause, column, fatal, file, line, message, name, place, reason, ruleId, source, stack}

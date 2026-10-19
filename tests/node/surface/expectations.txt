@@ -410,8 +410,8 @@ URL.prototype.toString pass
 URL.prototype.username pass
 URL.revokeObjectURL pass
 URLPattern pass
-URLPattern.prototype.exec fail
-URLPattern.prototype.test fail
+URLPattern.prototype.exec pass
+URLPattern.prototype.test pass
 URLSearchParams pass
 URLSearchParams.prototype.append pass
 URLSearchParams.prototype.delete pass
@@ -451,8 +451,8 @@ __filename pass
 atob pass
 btoa pass
 clearImmediate pass
-clearInterval fail
-clearTimeout fail
+clearInterval pass
+clearTimeout pass
 console pass
 console.Console.prototype.assert fail
 console.Console.prototype.clear fail
@@ -1528,8 +1528,8 @@ node:fs.futimes pass
 node:fs.futimesSync pass
 node:fs.glob pass
 node:fs.globSync pass
-node:fs.lchmod pass
-node:fs.lchmodSync pass
+node:fs.lchmod linux=fail,macos=pass
+node:fs.lchmodSync linux=fail,macos=pass
 node:fs.lchown pass
 node:fs.lchownSync pass
 node:fs.link pass
@@ -3279,9 +3279,9 @@ node:tls.getCACertificates pass
 node:tls.getCiphers pass
 node:tls.rootCertificates pass
 node:tls.setDefaultCACertificates pass
-node:trace_events fail
-node:trace_events.createTracing fail
-node:trace_events.getEnabledCategories fail
+node:trace_events pass
+node:trace_events.createTracing pass
+node:trace_events.getEnabledCategories pass
 node:tty pass
 node:tty.ReadStream pass
 node:tty.ReadStream.listenerCount pass
@@ -3446,8 +3446,8 @@ node:url.URL.prototype.toString pass
 node:url.URL.prototype.username pass
 node:url.URL.revokeObjectURL pass
 node:url.URLPattern pass
-node:url.URLPattern.prototype.exec fail
-node:url.URLPattern.prototype.test fail
+node:url.URLPattern.prototype.exec pass
+node:url.URLPattern.prototype.test pass
 node:url.URLSearchParams pass
 node:url.URLSearchParams.prototype.append pass
 node:url.URLSearchParams.prototype.delete pass
@@ -4448,7 +4448,7 @@ process.unref pass
 process.uptime pass
 process.version pass
 process.versions pass
-queueMicrotask fail
+queueMicrotask pass
 require pass
 require.cache pass
 require.extensions pass
@@ -4457,6 +4457,6 @@ require.resolve pass
 require.resolve.paths pass
 sessionStorage fail
 setImmediate pass
-setInterval fail
-setTimeout fail
-structuredClone fail
+setInterval pass
+setTimeout pass
+structuredClone pass

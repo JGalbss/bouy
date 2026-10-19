@@ -1,0 +1,24 @@
+module.exports: object
+  DEFAULT_OPTIONS: object
+    callToJSON: boolean
+    compareKeys: undefined
+    escapeRegex: boolean
+    escapeString: boolean
+    highlight: boolean
+    indent: number
+    maxDepth: number
+    min: boolean
+    plugins: object Array
+    printBasicPrototype: boolean
+    printFunctionName: boolean
+    theme: object
+  default: function/2
+  format: function/2
+  plugins: object
+    AsymmetricMatcher: object
+    ConvertAnsi: object
+    DOMCollection: object
+    DOMElement: object
+    Immutable: object
+    ReactElement: object
+    ReactTestComponent: object

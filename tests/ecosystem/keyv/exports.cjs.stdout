@@ -1,0 +1,1 @@
+module.exports: class/1 {_checkIterableAdaptar, _getKeyPrefix, _getKeyPrefixArray, _getKeyUnprefix, clear, delete, disconnect, get, has, set}
