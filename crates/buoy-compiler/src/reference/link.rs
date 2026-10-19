@@ -259,6 +259,15 @@ impl Linker<'_> {
                     "Source phase import object is not defined for module '{builtin}'"
                 ),
             }),
+            // shortcut: a module that the host links gives no source object yet; give it one
+            // when node:vm links a WebAssembly module for `import source`.
+            (Resolved::Hosted(_), Imported::Source) => Err(LinkError {
+                kind: "SyntaxError",
+                code: None,
+                message: format!(
+                    "Source phase import object is not defined for module '{specifier}'"
+                ),
+            }),
             (Resolved::Missing(failure), _) => Err(LinkError {
                 kind: "Error",
                 code: Some(failure.code),

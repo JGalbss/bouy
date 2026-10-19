@@ -392,6 +392,7 @@ fn typed_unit(root: &Path, path: &Path, kind: Kind) -> Unit {
         requests: Vec::new(),
         broken,
         script: false,
+        bytes: Vec::new(),
     }
 }
 
@@ -423,6 +424,7 @@ pub fn hosted(text: String, name: &str, path: PathBuf) -> Result<Graph, Vec<Diag
             requests,
             broken: Vec::new(),
             script: false,
+            bytes: Vec::new(),
         }],
         reflects_calls: false,
     })
@@ -800,6 +802,7 @@ fn scan_data(path: &Path) -> Result<Scanned, Vec<Diagnostic>> {
             record: Record::default(),
             specifiers: Vec::new(),
             dynamic: Dynamic::default(),
+            bytes: Vec::new(),
         }),
         Some((_, text)) => scan_as(path, text, Kind::Esm, false),
         None => Err(vec![Reporter::new(path, "").at(
