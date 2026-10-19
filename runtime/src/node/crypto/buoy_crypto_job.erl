@@ -99,9 +99,10 @@ schedule(This, Work, Encode) ->
     Ref = make_ref(),
     erlang:put({?MODULE, Ref}, {This, Encode}),
     buoy_node_loop:ref_handle(),
+    {Traced, Finished} = buoy_trace:pool_work(<<"crypto">>, fun() -> perform(Work) end),
     _ = spawn(fun() ->
-        Outcome = perform(Work),
-        buoy_node_stream:call(Realm, fun() -> done(Ref, Outcome) end)
+        Outcome = Traced(),
+        buoy_node_stream:call(Realm, fun() -> Finished(), done(Ref, Outcome) end)
     end),
     undefined.
 

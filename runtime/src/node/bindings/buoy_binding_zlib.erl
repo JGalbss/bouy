@@ -179,9 +179,10 @@ start_write(This, Out, OutOff, Write) ->
     Key = {?MODULE, write, make_ref()},
     erlang:put(Key, {This, Out}),
     buoy_node_loop:ref_handle(),
+    {Traced, Finished} = buoy_trace:pool_work(<<"zlib">>, Write),
     _ = spawn(fun() ->
-        Result = try {ok, Write()} catch Class:Reason:Stack -> {raised, Class, Reason, Stack} end,
-        Realm ! {'$buoy_node_call', fun() -> finish_write(Key, OutOff, Result) end}
+        Result = try {ok, Traced()} catch Class:Reason:Stack -> {raised, Class, Reason, Stack} end,
+        Realm ! {'$buoy_node_call', fun() -> Finished(), finish_write(Key, OutOff, Result) end}
     end),
     ok.
 

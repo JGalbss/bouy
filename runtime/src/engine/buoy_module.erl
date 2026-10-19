@@ -870,32 +870,48 @@ import_attributes(Options) ->
     end,
     buoy_heap:object(null, Pairs).
 
-%% Node's loader publishes import() to the tracing channel module.import.
+%% Node's loader publishes import() to the tracing channel module.import. An
+%% import of a module that the compiler resolved publishes here, and another
+%% goes to Node's loader, which publishes it once. Options that V8 rejects
+%% reach no loader, so they publish nothing.
 import_program_module(From, Specifier, Options, Phase) ->
-    buoy_binding_diagnostics_channel:trace_promise(<<"module.import">>, fun() -> [{<<"parentURL">>, file_url(info(From, path))}, {<<"url">>, Specifier}] end,
-                                                   fun() -> import_traced(From, Specifier, Options, Phase) end).
-
-import_traced(From, Specifier, Options, Phase) ->
     {P, Resolve, Reject} = buoy_jobs:capability(),
+    try import_route(From, Specifier, Options) of
+        node ->
+            node_import(From, Specifier, Options, Phase, Resolve, Reject),
+            P;
+        Target ->
+            Context = fun() -> [{<<"parentURL">>, file_url(info(From, path))}, {<<"url">>, Specifier}] end,
+            buoy_binding_diagnostics_channel:trace_promise(<<"module.import">>, Context, fun() ->
+                import_traced(Target, Options, Phase, Resolve, Reject),
+                P
+            end)
+    catch
+        error:Reason:Stack ->
+            Reject(buoy_ref:caught(Reason, Stack)),
+            P
+    end.
+
+%% The module of the program or the built-in that import() of Specifier
+%% loads, or node when the compiler did not resolve it.
+import_route(From, Specifier, Options) ->
+    Text = case check_options(Options) of
+        none -> buoy_ref:to_string(Specifier);
+        Type -> buoy_ref_string:concat([buoy_ref:to_string(Specifier), <<0>>, Type])
+    end,
+    case target(From, Text, import) of
+        {_Path, Module} when is_atom(Module), Module =/= none -> Module;
+        {builtin, Name} -> {builtin, Name};
+        _ -> node
+    end.
+
+import_traced(Target, Options, Phase, Resolve, Reject) ->
     try
-        Text = case check_options(Options) of
-            none -> buoy_ref:to_string(Specifier);
-            Type -> buoy_ref_string:concat([buoy_ref:to_string(Specifier), <<0>>, Type])
-        end,
-        case target(From, Text, import) of
-            {_Path, Module} when is_atom(Module), Module =/= none ->
-                validate_attributes(Module, Options),
-                import_target(Module, Phase, Resolve, Reject);
-            {builtin, Name} ->
-                validate_attributes({builtin, Name}, Options),
-                import_target({builtin, Name}, Phase, Resolve, Reject);
-            _ ->
-                node_import(From, Specifier, Options, Phase, Resolve, Reject)
-        end
+        validate_attributes(Target, Options),
+        import_target(Target, Phase, Resolve, Reject)
     catch
         error:Reason:Stack -> Reject(buoy_ref:caught(Reason, Stack))
-    end,
-    P.
+    end.
 
 %% The import attributes of import() against the format of the target, as
 %% Node's ESM loader checks them with validateAttributes: a JSON module needs
@@ -1376,11 +1392,20 @@ cache() ->
 cjs_exports(M) ->
     Path = info(M, path),
     ok = buoy_node:ensure(),
-    {ok, Module} = builtin(<<"module">>),
+    Module = cjs_loader(),
     case filelib:is_regular(buoy_ref_string:to_utf8(Path)) of
         true -> buoy_heap:call(buoy_heap:get(Module, <<"_load">>), Module, [Path, null, erlang:get(?ENTRY) =:= M]);
         false -> eval_exports(Module, Path)
     end.
+
+%% The Module class of Node's CommonJS loader, which `module` also exports.
+%% A program loads through it, as run_main does, so lib/module.js loads only
+%% when the program requires it.
+cjs_loader() ->
+    {_, Require} = buoy_node:loaders(),
+    Module = buoy_heap:get(buoy_heap:call(Require, undefined, [<<"internal/modules/cjs/loader">>]), <<"Module">>),
+    share_cache(Module),
+    Module.
 
 eval_exports(Module, Path) ->
     Instance = buoy_heap:construct(Module, [Path], Module),

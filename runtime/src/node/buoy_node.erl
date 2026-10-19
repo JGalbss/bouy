@@ -153,7 +153,7 @@ boot() ->
         false -> ?BOOTSTRAP ++ repl_main()
     end,
     Replaced = replaced_globals(),
-    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- Bootstrap, is_compiled(Id)],
+    [bootstrap(Id, [Process, Require, InternalBinding, Primordials]) || Id <- Bootstrap, is_compiled(Id)],
     [restore_global(Name, Property) || {Name, Property} <- Replaced],
     %% A global that the bootstrap did not define, such as Storage under
     %% --no-webstorage, is not defined, as in Node.
@@ -162,6 +162,15 @@ boot() ->
     keep_engine_timers(),
     debug("bootstrap done~n", []),
     ok.
+
+%% Runs a script of the bootstrap. In a build with the inspector, as Node's
+%% releases are, createGlobalConsole of exposed-wildcard wraps V8's console
+%% into the global one.
+bootstrap(<<"internal/bootstrap/web/exposed-wildcard">> = Id, Args) ->
+    run(Id, Args),
+    buoy_binding_inspector:wrap_console();
+bootstrap(Id, Args) ->
+    run(Id, Args).
 
 %% A timer that the program set before the bootstrap is the engine's, whose
 %% id Node's clearTimeout and clearInterval do not know: while one is live,

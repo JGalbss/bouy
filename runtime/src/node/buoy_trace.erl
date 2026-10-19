@@ -8,6 +8,7 @@
 
 -export([start_cli/0, start/0, add/1, remove/1, categories/0, enabled/1]).
 -export([event/5, complete/3, scope/3, open_scope/3, close_scope/2, instant/3, metadata/2, stop/0]).
+-export([pool_work/2]).
 
 %% The enabled categories, each with its count: #{Category => Count}.
 -define(CATEGORIES, {?MODULE, categories}).
@@ -153,6 +154,26 @@ open_scope(Group, Name, Args) -> event($b, Group, Name, tid(self()), Args).
 
 -spec close_scope(binary(), binary()) -> ok.
 close_scope(Group, Name) -> event($e, Group, Name, tid(self()), []).
+
+%% ThreadPoolWork of threadpoolwork-inl.h, such as a crypto job or a zlib
+%% write of Type: a nestable async begin when the realm queues the work, a
+%% begin and an end around Work in the process that runs it, and the async
+%% end when the result is back. Returns a fun for the worker that runs Work
+%% and gives its result, and a fun for the realm that ends the async event.
+-spec pool_work(binary(), fun(() -> T)) -> {fun(() -> T), fun(() -> ok)}.
+pool_work(Type, Work) ->
+    Async = <<"node,node.threadpoolwork,node.threadpoolwork.async">>,
+    Sync = <<"node,node.threadpoolwork,node.threadpoolwork.sync">>,
+    Id = erlang:unique_integer([positive]),
+    event($b, Async, Type, Id, []),
+    {fun() ->
+         event($B, Sync, Type, none, []),
+         try Work()
+         after
+             event($E, Sync, Type, none, [])
+         end
+     end,
+     fun() -> event($e, Async, Type, Id, [{<<"result">>, 0}]) end}.
 
 %% TRACE_EVENT_INSTANT_WITH_TIMESTAMP0, with a time in microseconds since
 %% the VM started.

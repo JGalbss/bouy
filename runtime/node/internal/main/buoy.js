@@ -36,10 +36,6 @@ function patchProcessObject() {
   const globalConsole = require('internal/console/global');
   const { initializeGlobalConsole } = require('internal/console/constructor');
   initializeGlobalConsole(globalConsole);
-  // The release builds of Node have the inspector, so createGlobalConsole of
-  // internal/bootstrap/web/exposed-wildcard wraps V8's console methods into
-  // the global console. Buoy reports no inspector, so it wraps them here.
-  require('internal/util/inspector').wrapConsole(globalConsole);
 
   addReadOnlyProcessAlias('_eval', '--eval');
   addReadOnlyProcessAlias('_print_eval', '--print');
