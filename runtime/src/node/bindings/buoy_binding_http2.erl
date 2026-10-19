@@ -684,7 +684,7 @@ on(This, {data_chunk, Id, Data, _Flags}) ->
                 #{destroyed := true} -> ok;
                 #{reading := Reading} ->
                     stream_count(Stream, received, byte_size(Data)),
-                    buoy_stream_base:emit_read(Stream, Data),
+                    emit_stream_read(Stream, Data),
                     case Reading of
                         true -> put_h2(This, buoy_h2:consume_stream(h2(This), Id, byte_size(Data)));
                         false -> update_stream(Stream, fun(St) -> St#{paused_consumed => maps:get(paused_consumed, St) + byte_size(Data)} end)
@@ -812,7 +812,7 @@ frame_received(This, 0, #{stream_id := Id, flags := Flags, length := Len}) ->
     case find_stream(This, Id) of
         Stream when Stream =/= undefined, Flags band 1 =/= 0 ->
             case stream(Stream) of
-                #{destroyed := false} -> buoy_stream_base:emit_read(Stream, eof);
+                #{destroyed := false} -> emit_stream_read(Stream, eof);
                 _ -> ok
             end;
         _ when Len =:= 0 ->
@@ -922,8 +922,18 @@ call_session(This, Name, Args) ->
 call_stream_callback(Stream, Name, Args) ->
     case maps:get(Name, erlang:get(?CALLBACKS), undefined) of
         undefined -> undefined;
-        F -> buoy_heap:call(F, Stream, Args)
+        F -> in_frame(Stream, fun() -> buoy_heap:call(F, Stream, Args) end)
     end.
+
+%% Stream::MakeCallback runs in the async context frame of the stream's
+%% creation, which a client request takes from its PendingRequest.
+emit_stream_read(Stream, Data) ->
+    in_frame(Stream, fun() -> buoy_stream_base:emit_read(Stream, Data) end).
+
+in_frame(Stream, Fun) ->
+    Prior = buoy_jobs:context(),
+    buoy_jobs:set_context(maps:get(frame, stream(Stream), Prior)),
+    try Fun() after buoy_jobs:set_context(Prior) end.
 
 %% Provider::Stream::OnRead: the next bytes of the stream's body, with
 %% the write requests that they finish.
@@ -1033,7 +1043,7 @@ new_stream(Session, Id, Cat, Options) ->
               has_trailers => Options band ?STREAM_OPTION_GET_TRAILERS =/= 0,
               headers => [], headers_length => 0, paused_consumed => 0,
               max_header_length => min(maps:get(max_header_list_size, Local), 16777215),
-              async_id => async_id(),
+              async_id => async_id(), frame => buoy_jobs:context(),
               stats => #{start => now_ns(), first_header => 0, first_byte => 0, first_byte_sent => 0,
                          sent => 0, received => 0}},
     buoy_heap:private_put(Stream, ?STREAM, State),
