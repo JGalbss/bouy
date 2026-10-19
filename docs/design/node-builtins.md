@@ -28,9 +28,9 @@ The first use of a built-in module, or of `process`, `Buffer`, `global`, `setImm
 1. `internal/per_context/primordials`, `domexception`, and `messageport`, with the private and per-isolate symbols of `src/env_properties.h`.
 2. `internal/bootstrap/realm`, which defines `BuiltinModule` and hands `internalBinding` and `requireBuiltin` to the `builtins` binding.
 3. `internal/bootstrap/node`, `web/exposed-wildcard`, `web/exposed-window-or-worker`, `switches/is_main_thread`, and `switches/does_own_process_state`.
-4. `internal/main/buoy`: the steps of `prepareMainThreadExecution` that a program needs. Buoy's compiler loads the program, so Node's module loaders do not run.
+4. `internal/main/buoy`: the steps of `prepareMainThreadExecution` that a program needs, and the modules of `--require`. Buoy's compiler links the program, and a CommonJS module of the program loads through Node's CommonJS loader, with its compiled wrapper as the code cache.
 
-A program that never uses Node pays nothing.
+The bootstrap also runs before the main script when the code comes from `-e`, `-p`, or stdin, when `--require` names modules, and when the entry is a CommonJS module. An ES module that never uses Node pays nothing.
 
 ## 3. Bindings
 

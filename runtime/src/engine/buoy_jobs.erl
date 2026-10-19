@@ -573,9 +573,20 @@ run_timer(Id) ->
 %%% The realm loop
 
 %% Node bootstraps before the code of -e and -p runs, and internal/main/buoy
-%% hands that code each built-in module as a global, as eval_string does.
+%% hands that code each built-in module as a global, as eval_string does. The
+%% modules of --require load in the bootstrap, before the main script.
 eval_bootstrap() ->
-    init:get_argument(buoy_eval) =:= error orelse buoy_node:ensure().
+    case init:get_argument(buoy_eval) =/= error orelse has_preload_modules() of
+        true -> buoy_node:ensure();
+        false -> ok
+    end.
+
+has_preload_modules() ->
+    lists:any(fun(<<"-r">>) -> true;
+                 (<<"--require">>) -> true;
+                 (<<"--require=", _/binary>>) -> true;
+                 (_) -> false
+              end, buoy_node_process:exec_argv()).
 
 %% Runs the top-level code of the entry module as the first job, then serves
 %% timers and replies until no work is left, as Node does.

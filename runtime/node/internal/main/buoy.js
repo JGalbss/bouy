@@ -212,6 +212,15 @@ function initializeHeapSnapshotSignalHandlers() {
   process.on(signal, () => writeHeapSnapshot());
 }
 
+// --require: the modules that load before the main script, as
+// loadPreloadModules of pre_execution loads them.
+function loadPreloadModules() {
+  const preloadModules = getOptionValue('--require');
+  if (preloadModules.length > 0) {
+    require('internal/modules/cjs/loader').Module._preloadModules(preloadModules);
+  }
+}
+
 // node --test: the steps of internal/main/test_runner after the preparation
 // above. The arguments of the command line are the patterns of the files.
 function runTestRunner() {
@@ -244,6 +253,7 @@ setupVmModules();
 initializeCJS();
 initializeESM();
 setupEvalGlobals();
+loadPreloadModules();
 require('internal/process/pre_execution').markBootstrapComplete();
 if (getOptionValue('--test')) {
   runTestRunner();

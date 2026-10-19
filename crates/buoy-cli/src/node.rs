@@ -6,7 +6,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::io::{IsTerminal as _, Read as _};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use buoy_compiler::{Code, Diagnostic, Semantics};
@@ -231,7 +231,10 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             run_stdin(&arguments, options)
         }
         Some(Entry::Script(script)) => {
-            let entry = Path::new(&script);
+            let Some(entry) = main_path(Path::new(&script)) else {
+                return module_not_found(&script);
+            };
+            let entry = entry.as_path();
             let place = entry.canonicalize().unwrap_or_else(|_| entry.to_path_buf());
             let source = std::fs::read_to_string(entry).unwrap_or_default();
             let report = |diagnostics: &[Diagnostic]| {
@@ -241,7 +244,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                 Ok(project) => project,
                 Err(code) => return code,
             };
-            super::start_program(&project, Path::new(&script), program_arguments, &options)
+            super::start_program(&project, entry, program_arguments, &options)
         }
         Some(Entry::Eval(code)) => {
             options.eval = true;
@@ -346,6 +349,32 @@ fn report(diagnostics: &[Diagnostic], source: &str, place: &str) -> ExitCode {
         "{place}:{}\n{line}\n{caret}^\n\nSyntaxError: {}\n\nNode.js v{}",
         error.line,
         error.message,
+        NODE_VERSION.trim()
+    );
+    ExitCode::from(1)
+}
+
+/// The file of the main script, as `Module._findPath` finds it: the path, the path with
+/// `.js`, or the `index.js` of the directory.
+fn main_path(script: &Path) -> Option<PathBuf> {
+    let with_js = PathBuf::from(format!("{}.js", script.display()));
+    [script.to_path_buf(), with_js, script.join("index.js")]
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
+/// Node's report of a main script that does not exist, which `Module._resolveFilename`
+/// throws with the absolute path, and status 1.
+fn module_not_found(script: &str) -> ExitCode {
+    let path: PathBuf = env::current_dir()
+        .map(|directory| directory.join(script))
+        .unwrap_or_else(|_| PathBuf::from(script))
+        .components()
+        .filter(|component| !matches!(component, std::path::Component::CurDir))
+        .collect();
+    eprintln!(
+        "node:internal/modules/cjs/loader:1478\n  throw err;\n  ^\n\nError: Cannot find module '{}'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15) {{\n  code: 'MODULE_NOT_FOUND',\n  requireStack: []\n}}\n\nNode.js v{}",
+        path.display(),
         NODE_VERSION.trim()
     );
     ExitCode::from(1)
