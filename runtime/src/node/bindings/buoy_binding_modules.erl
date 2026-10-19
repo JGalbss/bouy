@@ -49,7 +49,7 @@ binding() ->
                 Directory -> Directory
             end
         end)},
-        {<<"flushCompileCache">>, F(<<"flushCompileCache">>, 1, fun(_, Args) -> flush_compile_cache(A(1, Args)) end)},
+        {<<"flushCompileCache">>, F(<<"flushCompileCache">>, 0, fun(_, Args) -> flush_compile_cache(A(1, Args)) end)},
         {<<"getCompileCacheEntry">>, F(<<"getCompileCacheEntry">>, 4, fun(_, Args) ->
             compile_cache_entry(A(1, Args), A(3, Args))
         end)},

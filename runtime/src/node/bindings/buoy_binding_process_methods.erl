@@ -161,11 +161,14 @@ abort(_This, _Args) -> erlang:halt(134).
 -spec segfault(term(), list()) -> no_return().
 segfault(_This, _Args) -> erlang:halt(139).
 
-%% process.dlopen: Buoy loads no native addon (goal.md, requirement 2).
+%% process.dlopen(module, filename, flags): Buoy loads no native addon
+%% (goal.md, requirement 2). The message names the file, as dlopen's does.
 -spec dlopen(term(), list()) -> no_return().
-dlopen(_This, _Args) ->
+dlopen(_This, Args) ->
+    File = buoy_ref_string:to_utf8(buoy_ref:to_string(buoy_node:arg(2, Args))),
     buoy_node:throw_code('Error', <<"ERR_DLOPEN_FAILED">>,
-                         <<"Buoy cannot load native addons (.node files); use the WebAssembly or pure-JavaScript build of the package">>).
+                         <<"Cannot load ", File/binary, ": Buoy cannot load native addons (.node files); "
+                           "use the WebAssembly or pure-JavaScript build of the package">>).
 
 %% GetActiveResourcesInfo: a Timeout for each active timer (timeoutInfo[0]
 %% of lib/internal/timers) and an Immediate for each ref'd immediate
