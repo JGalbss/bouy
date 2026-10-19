@@ -20,7 +20,7 @@ const SKIPPED: [&str; 8] = [
     "target",
 ];
 
-/// The vendored upstream trees. Rule 7 keeps them byte-identical, so no rule reads their
+/// The vendored upstream trees. Rule 2 keeps them byte-identical, so no rule reads their
 /// code, and the `node` shim stops any call to node at run time.
 const UPSTREAM: [&str; 2] = ["tests/node/test/", "runtime/vendor/node/"];
 
@@ -334,4 +334,30 @@ fn the_node_patterns_find_each_way_to_start_node() {
     for (path, line) in others {
         assert!(!starts_node(path, line), "{path}: {line}");
     }
+}
+
+/// Rule 7: each Erlang file of `runtime/src` and `runtime/test` sits in the directory of its
+/// subsystem, such as `runtime/src/engine/`, never at the top, and the headers sit in
+/// `runtime/include/`.
+#[test]
+fn runtime_files_sit_in_a_subsystem_directory() {
+    const TOPS: [&str; 2] = ["runtime/src", "runtime/test"];
+    let flat: Vec<String> = TOPS
+        .iter()
+        .flat_map(|top| files(&repository(), top))
+        .filter(|file| {
+            let path = Path::new(file);
+            path.parent()
+                .is_some_and(|parent| TOPS.iter().any(|top| parent == Path::new(top)))
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension == "erl" || extension == "hrl")
+        })
+        .collect();
+    assert!(
+        flat.is_empty(),
+        "these files sit at the top of runtime/src or runtime/test; move each into the \
+         directory of its subsystem (AGENTS.md, Layout):\n{}",
+        flat.join("\n")
+    );
 }

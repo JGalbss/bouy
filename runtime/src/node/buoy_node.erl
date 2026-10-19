@@ -23,7 +23,7 @@
 -export([constructor/3, missing_constructor/3, ids/0, mangle/1, from_json/1, not_implemented/2, stubs/2, arg/2, per_isolate_symbols/0, private_symbols/0, context/0, set_loaders/2, loaders/0, compile/1]).
 
 %% A stub of a binding is a function that only throws, on purpose.
--dialyzer({no_return, [not_implemented/2, missing_constructor/3]}).
+-dialyzer({no_return, [not_implemented/2, missing_constructor/3, missing_method/3]}).
 
 -define(STATE, '$buoy_node_state').
 -define(LOADERS, '$buoy_node_loaders').

@@ -22,7 +22,7 @@
 | `gh run download <run> -n node -D target/suites/node`                    | The Node files of a CI run on Linux. Its `expectations.txt` names both platforms on a line whose Linux outcome differs; copy it to `tests/node`.                                                      |
 | `cargo run --release -p buoy-suites -- node-surface`                     | Probes each entry of `tests/node/surface.json` on Buoy, compared with `tests/node/surface/expectations.txt`. `--update` rewrites it.                                                                  |
 | `scripts/node-surface.sh`                                                | Writes `tests/node/surface.json` with the pinned node and Node's `doc/api/all.json`. When the pin moves.                                                                                              |
-| `cargo run --release -p buoy-suites -- node-bindings`                    | Writes `tests/node/bindings.json` and `runtime/src/buoy_node_manifest.erl` from `src/` of Node at the tag of `.node-version`. When the pin moves.                                                     |
+| `cargo run --release -p buoy-suites -- node-bindings`                    | Writes `tests/node/bindings.json` and `runtime/src/node/buoy_node_manifest.erl` from `src/` of Node at the tag of `.node-version`. When the pin moves.                                                |
 | `scripts/vendor-node-tests.sh`                                           | Copies Node's tests at the tag of `.node-version` into `tests/node/test`, and writes `suite.sha256`. When the pin moves.                                                                              |
 | `cargo run --release -p buoy-suites -- packages`                         | `tests/npm`, `tests/packages`, and the scenario areas of `tests/equivalence`, compared with their expectation files.                                                                                  |
 | `cargo run --release -p buoy-suites -- packages --update`                | Every program of those corpora, then rewrites each `expectations.txt` and `tests/packages/summary.json`.                                                                                              |
@@ -61,18 +61,18 @@ Node is the oracle, and no test runs it. `scripts/freeze-expectations.sh <direct
 
 ## Where a test goes
 
-| The bug                                     | The test goes to                                                              |
-| ------------------------------------------- | ----------------------------------------------------------------------------- |
-| Language behavior differs from Node         | the conformance program of that behavior                                      |
-| A documented difference                     | `tests/divergence`                                                            |
-| A built-in or a Node API                    | `tests/unit/<module>.test.ts`                                                 |
-| A package misbehaves                        | `tests/packages/<name>@<major>/main.mjs`, or a new program in that directory  |
-| Module resolution                           | `tests/npm/<case>`                                                            |
-| An actor, supervision, or CLI behavior      | `tests/programs` with a test in `programs.rs`, or `tests/cli`                 |
-| A compiler crash or wrong Erlang            | a fixture in `crates/buoy-compiler/tests/fixtures`, and a conformance program |
-| A runtime function                          | `runtime/test/<module>_tests.erl`                                             |
-| It worked before, then broke, with an issue | `tests/regressions/<issue>.ts`                                                |
-| A fuzz finding                              | `tests/fuzz/<generator>/<seed>.ts`, written by the campaign                   |
+| The bug                                     | The test goes to                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Language behavior differs from Node         | the conformance program of that behavior                                                 |
+| A documented difference                     | `tests/divergence`                                                                       |
+| A built-in or a Node API                    | `tests/unit/<module>.test.ts`                                                            |
+| A package misbehaves                        | `tests/packages/<name>@<major>/main.mjs`, or a new program in that directory             |
+| Module resolution                           | `tests/npm/<case>`                                                                       |
+| An actor, supervision, or CLI behavior      | `tests/programs` with a test in `programs.rs`, or `tests/cli`                            |
+| A compiler crash or wrong Erlang            | a fixture in `crates/buoy-compiler/tests/fixtures`, and a conformance program            |
+| A runtime function                          | `runtime/test/<dir>/<module>_tests.erl`, with the `<dir>` of the module in `runtime/src` |
+| It worked before, then broke, with an issue | `tests/regressions/<issue>.ts`                                                           |
+| A fuzz finding                              | `tests/fuzz/<generator>/<seed>.ts`, written by the campaign                              |
 
 Section 11 of the design builds `tests/divergence`, `tests/unit`, and `tests/cli`. Until a directory exists, put the test in the nearest corpus that exists.
 
