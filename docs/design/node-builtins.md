@@ -4,20 +4,20 @@ Buoy runs Node's own JavaScript for the built-in modules, as ADR 0003 chooses: t
 
 ## 1. The parts
 
-| Path                                  | What it holds                                                                                                                |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `runtime/vendor/node/lib/`            | Node's `lib/` at the tag of `.node-version`, byte for byte. `scripts/vendor-node-lib.sh` copies it and writes `lib.sha256`.  |
-| `runtime/vendor/node/deps/`           | The bundled dependencies that `lib/` requires as `internal/deps/<path>`: undici, acorn, and minimatch.                       |
-| `runtime/node/builtins.txt`           | The ids that `crates/buoy-cli/build.rs` compiles into the runtime. It lists every file of `lib/` and of `deps/`.             |
-| `runtime/node/<id>.js`                | Buoy's own version of an id. build.rs takes it in place of the vendored file. `internal/main/buoy.js` is Buoy's main script. |
-| `runtime/src/buoy_node.erl`           | The C++ side of Node: the bootstrap, the primordials, `internalBinding`, and the helpers of the bindings.                    |
-| `runtime/src/buoy_node_process.erl`   | The process object before the bootstrap, and `process.env`.                                                                  |
-| `runtime/src/buoy_node_loop.erl`      | The event loop of Node on the job queue of the realm.                                                                        |
-| `runtime/src/buoy_node_encoding.erl`  | The byte encodings of Buffer, and the bytes of typed arrays.                                                                 |
-| `runtime/src/buoy_binding_<name>.erl` | `internalBinding('<name>')`. Its `binding/0` returns the binding object.                                                     |
-| `runtime/src/buoy_node_stubs.erl`     | The bindings that have no `buoy_binding_<name>.erl` yet, with Node's shape.                                                  |
-| `crates/buoy-native`                  | The NIF library `buoy_native`: native code in Rust that a binding needs, such as the codecs of `zlib`.                       |
-| `runtime/src/buoy_native.erl`         | Loads the NIF library and declares its functions.                                                                            |
+| Path                                                | What it holds                                                                                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `runtime/vendor/node/lib/`                          | Node's `lib/` at the tag of `.node-version`, byte for byte. `scripts/vendor-node-lib.sh` copies it and writes `lib.sha256`.  |
+| `runtime/vendor/node/deps/`                         | The bundled dependencies that `lib/` requires as `internal/deps/<path>`: undici, acorn, and minimatch.                       |
+| `runtime/node/builtins.txt`                         | The ids that `crates/buoy-cli/build.rs` compiles into the runtime. It lists every file of `lib/` and of `deps/`.             |
+| `runtime/node/<id>.js`                              | Buoy's own version of an id. build.rs takes it in place of the vendored file. `internal/main/buoy.js` is Buoy's main script. |
+| `runtime/src/node/buoy_node.erl`                    | The C++ side of Node: the bootstrap, the primordials, `internalBinding`, and the helpers of the bindings.                    |
+| `runtime/src/node/buoy_node_process.erl`            | The process object before the bootstrap, and `process.env`.                                                                  |
+| `runtime/src/node/buoy_node_loop.erl`               | The event loop of Node on the job queue of the realm.                                                                        |
+| `runtime/src/node/buoy_node_encoding.erl`           | The byte encodings of Buffer, and the bytes of typed arrays.                                                                 |
+| `runtime/src/node/bindings/buoy_binding_<name>.erl` | `internalBinding('<name>')`. Its `binding/0` returns the binding object.                                                     |
+| `runtime/src/node/buoy_node_stubs.erl`              | The bindings that have no `buoy_binding_<name>.erl` yet, with Node's shape.                                                  |
+| `crates/buoy-native`                                | The NIF library `buoy_native`: native code in Rust that a binding needs, such as the codecs of `zlib`.                       |
+| `runtime/src/host/buoy_native.erl`                  | Loads the NIF library and declares its functions.                                                                            |
 
 build.rs compiles each id with the reference compiler into the runtime module `buoy_node@<id>`, with `/` as `@` and `-` as `_`. Its `'__eval__'/3` returns the function that Node wraps around the code: `(exports, require, module, process, internalBinding, primordials)` for a module, and the parameters of `src/builtin_info.h` for the bootstrap and per-context scripts. The CLI caches each compiled `.beam` by the hash of its source, so a change to one id compiles one module.
 
@@ -36,7 +36,7 @@ A program that never uses Node pays nothing.
 
 `internalBinding(name)` returns `buoy_binding_<name>:binding()`, built once per realm. A name without such a module takes its entry of `buoy_node_stubs`: each function throws `ERR_BUOY_NOT_IMPLEMENTED` with the binding and the member, each class throws when constructed, each `set*` function does nothing, and each value is Node's. So Node's lib loads, and a program fails only where it calls missing native code. Read `src/<file>.cc` of Node for the semantics of a member.
 
-`tests/node/bindings.json` lists every binding and every member that `src/` of Node sets on it, and `cargo run --release -p buoy-suites -- node-bindings` writes it from Node's source at the tag of `.node-version`, with `runtime/src/buoy_node_manifest.erl`. `binding/1` gives each binding a stub for each function and class of the manifest that it lacks, so no member is silently missing. The "Node native bindings" section of `docs/COMPAT.md` counts the members of each binding that its module implements, which is the work list of the bindings.
+`tests/node/bindings.json` lists every binding and every member that `src/` of Node sets on it, and `cargo run --release -p buoy-suites -- node-bindings` writes it from Node's source at the tag of `.node-version`, with `runtime/src/node/buoy_node_manifest.erl`. `binding/1` gives each binding a stub for each function and class of the manifest that it lacks, so no member is silently missing. The "Node native bindings" section of `docs/COMPAT.md` counts the members of each binding that its module implements, which is the work list of the bindings.
 
 The helpers in `buoy_node`:
 
@@ -61,7 +61,7 @@ A binding function that only throws must call a function, such as `buoy_node:thr
 `buoy_node_loop` serves the bindings of `lib/internal/timers`, `lib/internal/process/task_queues`, and `lib/internal/process/promises`:
 
 - After each job: the microtasks, and the tick callback when `tickInfo` asks for it.
-- Timers: one Erlang `send_after` for the native timer of `lib/internal/timers`, ref'd or not.
+- Timers: one Erlang `send_after` for the native timer of `lib/internal/timers`, ref'd or not. Each turn of the loop starts with the timer when the clock has passed its deadline, before the poll, as libuv's `uv__run_timers` does, so a late message does not let the next immediates run first.
 - Immediates: after each poll of the mailbox, while `immediateInfo` counts any.
 - Rejections: the hook of `buoy_jobs` calls the callback of `setPromiseRejectCallback`.
 - Uncaught exceptions: `process._fatalException` decides. An error that no handler takes prints its stack and `Node.js v25.9.0`, and the program exits with `process.exitCode`, or 1.

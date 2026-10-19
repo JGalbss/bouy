@@ -36,15 +36,15 @@ Section 11 lists the mistakes Bun made and fixed, each with the rule that it giv
 
 Bun is a runtime on JavaScriptCore (JSC), the engine of WebKit. Since Bun 1.4 it is written in Rust, with C++ for the JSC bindings and TypeScript for the built-in modules ([Rewriting Bun in Rust](https://bun.com/blog/bun-in-rust), 2026-07-08). Before that it was Zig. The source is a Cargo workspace of about 200 crates (`CLAUDE.md`):
 
-| Bun path                                    | What it holds                                                                        | Buoy counterpart                                  |
-| ------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `src/js/node/<module>.ts`                   | The `node:*` modules, mostly rewritten in TypeScript                                 | `runtime/vendor/node/lib/` (Node's own, verbatim) |
-| `src/js/internal/`                          | Internal modules; some are ports of Node's `lib/internal`                            | `runtime/vendor/node/lib/internal/`               |
-| `src/runtime/node/*_binding.rs`             | The native half of each Node module (`node_fs_binding.rs`, `node_net_binding.rs`)    | `runtime/src/buoy_binding_<name>.erl`             |
-| `src/jsc/bindings/*.cpp`                    | JSC classes: `JSBuffer.cpp`, `BunProcess.cpp`, `NodeHTTP.cpp`, `JSNextTickQueue.cpp` | `runtime/src/buoy_node*.erl`, `buoy_ref_*.erl`    |
-| `src/event_loop/`, `src/io/`                | The event loop and the poll layer                                                    | `runtime/src/buoy_node_loop.erl`, ERTS            |
-| `packages/bun-uws`, `packages/bun-usockets` | uWebSockets and uSockets, Bun's fork                                                 | `gen_tcp` and `socket` of OTP                     |
-| `test/js/node/test/parallel`                | 3,662 of Node's test files, added one by one as they pass                            | `tests/node/test`, every file at the tag          |
+| Bun path                                    | What it holds                                                                        | Buoy counterpart                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `src/js/node/<module>.ts`                   | The `node:*` modules, mostly rewritten in TypeScript                                 | `runtime/vendor/node/lib/` (Node's own, verbatim)   |
+| `src/js/internal/`                          | Internal modules; some are ports of Node's `lib/internal`                            | `runtime/vendor/node/lib/internal/`                 |
+| `src/runtime/node/*_binding.rs`             | The native half of each Node module (`node_fs_binding.rs`, `node_net_binding.rs`)    | `runtime/src/node/bindings/buoy_binding_<name>.erl` |
+| `src/jsc/bindings/*.cpp`                    | JSC classes: `JSBuffer.cpp`, `BunProcess.cpp`, `NodeHTTP.cpp`, `JSNextTickQueue.cpp` | `runtime/src/node/buoy_node*.erl`, `buoy_ref_*.erl` |
+| `src/event_loop/`, `src/io/`                | The event loop and the poll layer                                                    | `runtime/src/node/buoy_node_loop.erl`, ERTS         |
+| `packages/bun-uws`, `packages/bun-usockets` | uWebSockets and uSockets, Bun's fork                                                 | `gen_tcp` and `socket` of OTP                       |
+| `test/js/node/test/parallel`                | 3,662 of Node's test files, added one by one as they pass                            | `tests/node/test`, every file at the tag            |
 
 Bun vendors C libraries for the work that must be fast: simdutf and highway (SIMD text and search), zlib-ng, brotli, zstd, libdeflate, BoringSSL, c-ares, llhttp, lshpack, lsquic, mimalloc, and SQLite (`CLAUDE.md`, "Vendored Dependencies"). OTP already ships native code for some of these: `crypto` (OpenSSL), `zlib`, `zstd` (OTP 28 and later), `ssl`, `socket`, and `prim_file`. Use those before you write a NIF.
 

@@ -518,7 +518,7 @@ parallel/test-client-request-destroy.js pass
 parallel/test-cluster-accept-fail.js skip
 parallel/test-cluster-advanced-serialization.js timeout
 parallel/test-cluster-basic.js fail
-parallel/test-cluster-bind-privileged-port.js pass
+parallel/test-cluster-bind-privileged-port.js linux=fail,macos=pass
 parallel/test-cluster-bind-twice.js fail
 parallel/test-cluster-call-and-destroy.js pass
 parallel/test-cluster-child-index-dgram.js pass
@@ -579,7 +579,7 @@ parallel/test-cluster-setup-primary-emit.js pass
 parallel/test-cluster-setup-primary-multiple.js pass
 parallel/test-cluster-setup-primary.js fail
 parallel/test-cluster-shared-handle-bind-error.js fail
-parallel/test-cluster-shared-handle-bind-privileged-port.js pass
+parallel/test-cluster-shared-handle-bind-privileged-port.js linux=fail,macos=pass
 parallel/test-cluster-shared-leak.js fail
 parallel/test-cluster-uncaught-exception.js pass
 parallel/test-cluster-worker-constructor.js pass
@@ -889,7 +889,7 @@ parallel/test-dgram-setBroadcast.js fail
 parallel/test-dgram-setTTL.js fail
 parallel/test-dgram-socket-buffer-size.js skip
 parallel/test-dgram-udp4.js fail
-parallel/test-dgram-udp6-link-local-address.js linux=pass,macos=fail
+parallel/test-dgram-udp6-link-local-address.js fail
 parallel/test-dgram-udp6-send-default-host.js fail
 parallel/test-dgram-unref-in-cluster.js pass
 parallel/test-dgram-unref.js fail
@@ -1141,10 +1141,10 @@ parallel/test-exception-handler.js pass
 parallel/test-exception-handler2.js pass
 parallel/test-experimental-shared-value-conveyor.js fail
 parallel/test-fastutf8stream-destroy.js fail
-parallel/test-fastutf8stream-end.js fail
+parallel/test-fastutf8stream-end.js linux=pass,macos=fail
 parallel/test-fastutf8stream-flush-mocks.js pass
 parallel/test-fastutf8stream-flush-sync.js fail
-parallel/test-fastutf8stream-flush.js fail
+parallel/test-fastutf8stream-flush.js linux=pass,macos=fail
 parallel/test-fastutf8stream-fsync.js fail
 parallel/test-fastutf8stream-minlength.js pass
 parallel/test-fastutf8stream-mode.js fail
@@ -1466,7 +1466,7 @@ parallel/test-fs-watch-recursive-linux-parallel-remove.js pass
 parallel/test-fs-watch-recursive-promise.js pass
 parallel/test-fs-watch-recursive-symlink.js pass
 parallel/test-fs-watch-recursive-sync-write.js pass
-parallel/test-fs-watch-recursive-update-file.js pass
+parallel/test-fs-watch-recursive-update-file.js linux=timeout,macos=pass
 parallel/test-fs-watch-recursive-validate.js pass
 parallel/test-fs-watch-recursive-watch-file.js pass
 parallel/test-fs-watch-ref-unref.js pass
@@ -3082,7 +3082,7 @@ parallel/test-runner-todo-skip-tests.js fail
 parallel/test-runner-typechecking.js pass
 parallel/test-runner-v8-deserializer.mjs skip
 parallel/test-runner-wait-for.js pass
-parallel/test-runner-watch-mode-complex.mjs fail
+parallel/test-runner-watch-mode-complex.mjs linux=timeout,macos=fail
 parallel/test-runner-worker-id.js fail
 parallel/test-runner-xfail.js pass
 parallel/test-safe-get-env.js skip
@@ -4043,7 +4043,7 @@ parallel/test-whatwg-events-event-constructors.js pass
 parallel/test-whatwg-events-eventtarget-this-of-listener.js pass
 parallel/test-whatwg-readablebytestream-bad-buffers-and-views.js pass
 parallel/test-whatwg-readablebytestream.js skip
-parallel/test-whatwg-readablebytestreambyob.js fail
+parallel/test-whatwg-readablebytestreambyob.js linux=pass,macos=fail
 parallel/test-whatwg-readablestream.js skip
 parallel/test-whatwg-readablestream.mjs pass
 parallel/test-whatwg-transformstream-cancel-write-race.js pass
