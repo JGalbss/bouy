@@ -186,6 +186,7 @@ dependencies = [
  "icu_provider",
  "icu_segmenter",
  "libz-rs-sys",
+ "memchr",
  "rustler",
  "zstd-sys",
 ]

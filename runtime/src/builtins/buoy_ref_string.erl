@@ -20,7 +20,7 @@
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, wrap/2, step/1]).
 -export([from_utf8/1, to_utf8/1, from_units/1, units/1, code_points/1, from_code_points/1]).
 -export([length_of/1, unit_at/2, unit_string/2, slice/3, concat/1, concat/2, compare/2, get/2, wide/1]).
--export([index_of/3, is_whitespace/1]).
+-export([index_of/3, is_whitespace/1, narrow/1]).
 
 -export_type([js_string/0]).
 
@@ -259,6 +259,7 @@ wide(B) when is_binary(B) -> << <<C:16>> || <<C>> <= B >>;
 wide({'$u16', W}) -> W.
 
 %% The canonical form of a two-byte buffer.
+-spec narrow(binary()) -> js_string().
 narrow(W) ->
     case is_narrow(W) of
         true -> << <<C>> || <<0, C>> <= W >>;

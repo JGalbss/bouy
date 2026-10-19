@@ -94,6 +94,8 @@ fn native_library(workspace: &Path, out: &Path) -> String {
             "buoy-native",
             "--target",
             &target,
+            // The outer build has resolved the workspace, so the lock file is complete.
+            "--locked",
         ])
         .arg("--manifest-path")
         .arg(workspace.join("Cargo.toml"))

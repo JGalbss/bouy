@@ -30,9 +30,7 @@ method(<<"JSON">>, <<"parse">>, _This, Args) ->
             {Value, Record} = parse_text(Text, true),
             Root = buoy_heap:object(?OBJECT_PROTO, [{<<>>, Value}]),
             internalize(Root, <<>>, Reviver, Record);
-        _ ->
-            {Value, _} = parse_text(Text, false),
-            Value
+        _ -> parse(Text)
     end;
 method(<<"JSON">>, <<"rawJSON">>, _This, Args) -> raw_json(buoy_ref:to_string(arg(1, Args)));
 method(<<"JSON">>, <<"isRawJSON">>, _This, Args) ->
@@ -43,8 +41,37 @@ method(<<"JSON">>, <<"isRawJSON">>, _This, Args) ->
 
 -spec parse(buoy_ref_string:js_string()) -> term().
 parse(Text) ->
-    {Value, _} = parse_text(Text, false),
-    Value.
+    case native_parse(Text) of
+        {ok, Value} -> Value;
+        error ->
+            {Value, _} = parse_text(Text, false),
+            Value
+    end.
+
+%% The parser of buoy_native, which makes the records of the objects and arrays, or error
+%% for text that is not JSON. It runs in time slices, and each slice gives the records
+%% that it closed.
+native_parse(Text) ->
+    case buoy_native:available() of
+        true ->
+            {Bytes, Wide} = case Text of
+                {'$u16', B} -> {B, true};
+                B -> {B, false}
+            end,
+            native_parse(Bytes, Wide, {?OBJECT_PROTO, buoy_heap:intrinsic('Array.prototype')}, start);
+        false -> error
+    end.
+
+native_parse(Bytes, Wide, Protos, State) ->
+    case buoy_native:json_parse(Bytes, Wide, Protos, buoy_heap:first_free(), State) of
+        {done, Value, Ids, Records, Next} ->
+            buoy_heap:adopt(Ids, Records, Next),
+            {ok, Value};
+        {more, Paused, Ids, Records, Next} ->
+            buoy_heap:adopt(Ids, Records, Next),
+            native_parse(Bytes, Wide, Protos, Paused);
+        error -> error
+    end.
 
 %% The value of the text, and with Records, the parse record of each value:
 %% {Value, Source} for a primitive, {Value, [Record]} for an array, and
@@ -55,10 +82,10 @@ parse_text(Text, Records) ->
         B -> {8, B}
     end,
     State = #{width => Width, text => Text, records => Records},
-    {Value, Record, Rest, Pos} = parse_value(skip(Bytes, Width), State, offset(Bytes, Bytes, Width)),
+    {Value, Record, Rest, _} = parse_value(skip(Bytes, Width), State, offset(Bytes, Bytes, Width)),
     case skip(Rest, Width) of
         <<>> -> {Value, Record};
-        Trailing -> at(<<"Unexpected non-whitespace character after JSON">>, Trailing, State, Pos)
+        Trailing -> located(<<"Unexpected non-whitespace character after JSON">>, State, position(Trailing, State))
     end.
 
 offset(All, Rest, Width) -> (byte_size(All) - byte_size(Rest)) * 8 div Width.
@@ -289,11 +316,15 @@ expected(What, Bin, State) -> at(<<"Expected ", What/binary>>, Bin, State).
 at(Message, Bin, State) -> at(Message, Bin, State, position(Bin, State)).
 
 -spec at(binary(), binary(), map(), non_neg_integer()) -> no_return().
-at(Message, _Bin, #{text := Text}, Pos) ->
+at(Message, _Bin, State, Pos) -> located(<<Message/binary, " in JSON">>, State, Pos).
+
+%% A message with a position in the text, and its line and column, as V8 writes it.
+-spec located(binary(), map(), non_neg_integer()) -> no_return().
+located(Message, #{text := Text}, Pos) ->
     Before = buoy_ref_string:units(buoy_ref_string:slice(Text, 0, Pos)),
     Line = 1 + length([U || U <- Before, U =:= $\n]),
     Column = 1 + length(lists:takewhile(fun(U) -> U =/= $\n end, lists:reverse(Before))),
-    syntax_error(iolist_to_binary([Message, <<" in JSON at position ">>, integer_to_binary(Pos), <<" (line ">>,
+    syntax_error(iolist_to_binary([Message, <<" at position ">>, integer_to_binary(Pos), <<" (line ">>,
                                    integer_to_binary(Line), <<" column ">>, integer_to_binary(Column), <<")">>])).
 
 -spec end_of_input() -> no_return().
@@ -356,6 +387,20 @@ raw_json(Text) ->
     buoy_heap:freeze(O).
 
 %%% JSON.stringify
+%%
+%% The text is an iolist of strings of the engine: one-byte binaries, the bytes of
+%% one-byte binaries, and {'$u16', Units} pieces. iolist_to_binary/1 joins a text of
+%% one-byte pieces in C, and a text with a two-byte piece joins as units (text/1).
+%%
+%% Plain objects and arrays take a fast path, as JavaScriptCore's FastStringifier does
+%% for Bun: an object of the class object whose prototype is Object.prototype, or an
+%% array whose prototype is Array.prototype, with no own toJSON, serializes from its
+%% record while neither prototype has a toJSON, because reading a data property of such
+%% a record runs no user code. Every other value, an accessor, and a hole take the steps
+%% of SerializeJSONProperty (property/4). Those steps can run user code, which can add a
+%% toJSON, so they reset the answer that clean/0 keeps.
+
+-define(CLEAN, '$buoy_json_clean').
 
 -spec stringify(term(), term(), term()) -> buoy_ref_string:js_string() | undefined.
 stringify(Value, Replacer, Space) ->
@@ -370,11 +415,27 @@ stringify(Value, Replacer, Space) ->
     end,
     Gap = gap(unwrap_space(Space)),
     Wrapper = buoy_heap:object(?OBJECT_PROTO, [{<<>>, Value}]),
-    State = #{replacer => ReplacerFunction, keys => PropertyList, gap => Gap, stack => []},
+    Fast = ReplacerFunction =:= undefined andalso PropertyList =:= undefined,
+    State = #{replacer => ReplacerFunction, keys => PropertyList, gap => Gap, stack => [], fast => Fast,
+              object_proto => ?OBJECT_PROTO, array_proto => buoy_heap:intrinsic('Array.prototype')},
+    erlang:put(?CLEAN, unknown),
     case property(<<>>, Wrapper, State, <<>>) of
         undefined -> undefined;
-        Text -> buoy_ref_string:from_utf8(iolist_to_binary(Text))
+        Text -> text(Text)
     end.
+
+%% The string of a text.
+text(Text) ->
+    try iolist_to_binary(Text)
+    catch
+        error:badarg -> buoy_ref_string:narrow(iolist_to_binary(units(Text)))
+    end.
+
+units(B) when is_binary(B) -> << <<0, C>> || <<C>> <= B >>;
+units({'$u16', B}) -> B;
+units(C) when is_integer(C) -> <<0, C>>;
+units([H | T]) -> [units(H) | units(T)];
+units([]) -> [].
 
 %% The keys of an array replacer: strings, numbers, and their objects, each
 %% once.
@@ -416,7 +477,7 @@ gap(N) when ?IS_NUMBER(N) ->
         I -> max(0, min(10, I))
     end,
     binary:copy(<<" ">>, Count);
-gap(S) when ?IS_STRING(S) -> buoy_ref_string:to_utf8(buoy_ref_string:slice(S, 0, min(10, buoy_ref_string:length_of(S))));
+gap(S) when ?IS_STRING(S) -> buoy_ref_string:slice(S, 0, min(10, buoy_ref_string:length_of(S)));
 gap(_) -> <<>>.
 
 %% SerializeJSONProperty.
@@ -435,7 +496,9 @@ property(Key, Holder, #{replacer := Replacer} = State, Indent) ->
         undefined -> Value1;
         _ -> buoy_ref:call(Replacer, Holder, [buoy_heap:key_to_value(Key), Value1])
     end,
-    value(unwrap(Value), State, Indent).
+    Unwrapped = unwrap(Value),
+    erlang:put(?CLEAN, unknown),
+    value(Unwrapped, State, Indent).
 
 is_big_int({'$bigint', _}) -> true;
 is_big_int(_) -> false.
@@ -458,28 +521,31 @@ value(I, _, _) when is_integer(I) -> integer_to_binary(I);
 value(F, _, _) when is_float(F) -> buoy_ref_number:to_string(F);
 value(A, _, _) when A =:= 'NaN'; A =:= 'Infinity'; A =:= '-Infinity' -> <<"null">>;
 value({'$bigint', _}, _, _) -> buoy_ref:type_error(<<"Do not know how to serialize a BigInt">>);
-value({'$o', _} = O, State, Indent) ->
+value({'$o', Id} = O, #{fast := true} = State, Indent) when is_integer(Id) ->
+    case plain(Id, State) of
+        none -> composite(O, State, Indent);
+        Plain -> plain_text(Plain, O, enter(O, State), Indent)
+    end;
+value({'$o', _} = O, State, Indent) -> composite(O, State, Indent);
+value(_, _, _) -> undefined.
+
+composite(O, State, Indent) ->
     %% IsArray: a proxy of an array serializes as an array too.
     case buoy_heap:class_of(O) of
-        raw_json -> buoy_ref_string:to_utf8(buoy_ref:get(O, <<"rawJSON">>));
+        raw_json -> buoy_ref:get(O, <<"rawJSON">>);
         _ ->
             case buoy_ref_object:is_array(O) of
                 true -> array(O, enter(O, State), Indent);
                 false -> object(O, enter(O, State), Indent)
             end
-    end;
-value(_, _, _) -> undefined.
+    end.
 
 enter(O, #{stack := Stack} = State) ->
     lists:member(O, Stack) andalso buoy_ref:type_error(<<"Converting circular structure to JSON">>),
     State#{stack := [O | Stack]}.
 
 object(O, #{gap := Gap, keys := PropertyList} = State, Indent) ->
-    Inner = <<Indent/binary, Gap/binary>>,
-    Colon = case Gap of
-        <<>> -> <<":">>;
-        _ -> <<": ">>
-    end,
+    Inner = indent(Indent, Gap),
     Keys = case PropertyList of
         undefined -> buoy_heap:enumerable_keys(O);
         _ -> PropertyList
@@ -487,31 +553,146 @@ object(O, #{gap := Gap, keys := PropertyList} = State, Indent) ->
     Members = lists:filtermap(fun(K) ->
                                       case property(K, O, State, Inner) of
                                           undefined -> false;
-                                          Text -> {true, [quote(buoy_ref:to_string(buoy_heap:key_to_value(K))), Colon, Text]}
+                                          Text -> {true, [key_text(K), colon(Gap), Text]}
                                       end
                               end, Keys),
     wrap(<<"{">>, <<"}">>, Members, Gap, Indent, Inner).
 
 array(A, #{gap := Gap} = State, Indent) ->
-    Inner = <<Indent/binary, Gap/binary>>,
+    Inner = indent(Indent, Gap),
     Items = [case property(I, A, State, Inner) of
                  undefined -> <<"null">>;
                  Text -> Text
              end || I <- seq(0, buoy_ref_array:length_of(A) - 1)],
     wrap(<<"[">>, <<"]">>, Items, Gap, Indent, Inner).
 
-%% QuoteJSONString, with a lone surrogate escaped as JSON.stringify does.
-quote(S) -> [$", [escape(C) || C <- buoy_ref_string:code_points(S)], $"].
+%%% The fast path
 
-escape($") -> <<"\\\"">>;
-escape($\\) -> <<"\\\\">>;
-escape($\b) -> <<"\\b">>;
-escape($\f) -> <<"\\f">>;
-escape($\n) -> <<"\\n">>;
-escape($\r) -> <<"\\r">>;
-escape($\t) -> <<"\\t">>;
-escape(C) when C < 16#20; C >= 16#D800, C =< 16#DFFF -> io_lib:format("\\u~4.16.0b", [C]);
-escape(C) -> <<C/utf8>>.
+%% The parts of the record of a plain object or array, or none.
+plain(Id, #{object_proto := ObjectProto, array_proto := ArrayProto}) ->
+    case erlang:get(Id) of
+        {object, ObjectProto, Props, Keys, Attrs, _} when not is_map_key(<<"toJSON">>, Props) ->
+            case clean() of
+                true -> {object, Props, Keys, Attrs};
+                false -> none
+            end;
+        {array, ArrayProto, Props, _, _, {Length, Elements}} when not is_map_key(<<"toJSON">>, Props) ->
+            case clean() of
+                true -> {array, Length, Elements};
+                false -> none
+            end;
+        _ -> none
+    end.
+
+%% Whether neither Object.prototype nor Array.prototype has a toJSON. The answer
+%% holds until property/4 runs steps that can run user code.
+clean() ->
+    case erlang:get(?CLEAN) of
+        unknown ->
+            Clean = buoy_heap:get_own(?OBJECT_PROTO, <<"toJSON">>) =:= none
+                andalso buoy_heap:get_own(buoy_heap:intrinsic('Array.prototype'), <<"toJSON">>) =:= none,
+            erlang:put(?CLEAN, Clean),
+            Clean;
+        Clean -> Clean
+    end.
+
+plain_text({object, Props, Keys, Attrs}, O, #{gap := Gap} = State, Indent) ->
+    Inner = indent(Indent, Gap),
+    Order = case map_size(Props) =:= length(Keys) of
+        true -> lists:reverse(Keys);
+        false -> buoy_heap:own_keys(O)
+    end,
+    Members = plain_members(Order, Props, Attrs, O, State, Inner, colon(Gap)),
+    wrap(<<"{">>, <<"}">>, Members, Gap, Indent, Inner);
+plain_text({array, Length, Elements}, O, #{gap := Gap} = State, Indent) ->
+    Inner = indent(Indent, Gap),
+    Items = [case element_text(I, Elements, O, State, Inner) of
+                 undefined -> <<"null">>;
+                 Text -> Text
+             end || I <- seq(0, Length - 1)],
+    wrap(<<"[">>, <<"]">>, Items, Gap, Indent, Inner).
+
+plain_members([K | Rest], Props, Attrs, O, State, Inner, Colon) when is_integer(K); ?IS_STRING(K) ->
+    case maps:get(K, Attrs, 7) band 2 =/= 0 andalso member(K, maps:get(K, Props), O, State, Inner) of
+        Skipped when Skipped =:= false; Skipped =:= undefined -> plain_members(Rest, Props, Attrs, O, State, Inner, Colon);
+        Text -> [[key_text(K), Colon, Text] | plain_members(Rest, Props, Attrs, O, State, Inner, Colon)]
+    end;
+plain_members([_ | Rest], Props, Attrs, O, State, Inner, Colon) ->
+    plain_members(Rest, Props, Attrs, O, State, Inner, Colon);
+plain_members([], _Props, _Attrs, _O, _State, _Inner, _Colon) -> [].
+
+%% An element of a plain array. A hole reads the prototype chain.
+element_text(I, Elements, A, State, Inner) ->
+    case Elements of
+        #{I := V} -> member(I, V, A, State, Inner);
+        _ -> property(I, A, State, Inner)
+    end.
+
+%% The text of the data value V of the key K of a plain object or array, or undefined.
+%% A value whose serialization can run user code takes the steps of property/4.
+member(K, V, Holder, State, Inner) ->
+    case V of
+        {'$o', Id} when is_integer(Id) ->
+            case plain(Id, State) of
+                none -> property(K, Holder, State, Inner);
+                Plain -> plain_text(Plain, V, enter(V, State), Inner)
+            end;
+        {'$o', _} -> property(K, Holder, State, Inner);
+        {'$f', _, _} -> property(K, Holder, State, Inner);
+        {'$accessor', _, _} -> property(K, Holder, State, Inner);
+        {'$bigint', _} -> property(K, Holder, State, Inner);
+        _ -> value(V, State, Inner)
+    end.
+
+%%% Text
+
+key_text(K) when is_integer(K) -> [$", integer_to_binary(K), $"];
+key_text(K) -> quote(K).
+
+colon(<<>>) -> <<":">>;
+colon(_) -> <<": ">>.
+
+indent(Indent, <<>>) -> Indent;
+indent(Indent, Gap) -> buoy_ref_string:concat(Indent, Gap).
+
+%% QuoteJSONString, with a lone surrogate escaped as JSON.stringify does. A one-byte
+%% string without a character to escape is its own text.
+quote(S) when is_binary(S) ->
+    case binary:matches(S, specials()) of
+        [] -> [$", S, $"];
+        Found -> [$", escape(S, Found, 0), $"]
+    end;
+quote({'$u16', B}) -> [$", {'$u16', iolist_to_binary(escape_units(B))}, $"].
+
+%% The pattern of the characters of a one-byte string that QuoteJSONString escapes.
+specials() ->
+    case persistent_term:get(?MODULE, undefined) of
+        undefined ->
+            Pattern = binary:compile_pattern([<<"\"">>, <<"\\">> | [<<C>> || C <- lists:seq(0, 16#1F)]]),
+            persistent_term:put(?MODULE, Pattern),
+            Pattern;
+        Pattern -> Pattern
+    end.
+
+escape(S, [{Pos, 1} | Rest], From) ->
+    [binary:part(S, From, Pos - From), escape_unit(binary:at(S, Pos)) | escape(S, Rest, Pos + 1)];
+escape(S, [], From) -> binary:part(S, From, byte_size(S) - From).
+
+escape_units(<<H:16, L:16, Rest/binary>>) when H >= 16#D800, H =< 16#DBFF, L >= 16#DC00, L =< 16#DFFF ->
+    [<<H:16, L:16>> | escape_units(Rest)];
+escape_units(<<U:16, Rest/binary>>) when U < 16#20; U =:= $"; U =:= $\\; U >= 16#D800, U =< 16#DFFF ->
+    [units(escape_unit(U)) | escape_units(Rest)];
+escape_units(<<U:16, Rest/binary>>) -> [<<U:16>> | escape_units(Rest)];
+escape_units(<<>>) -> [].
+
+escape_unit($") -> <<"\\\"">>;
+escape_unit($\\) -> <<"\\\\">>;
+escape_unit($\b) -> <<"\\b">>;
+escape_unit($\f) -> <<"\\f">>;
+escape_unit($\n) -> <<"\\n">>;
+escape_unit($\r) -> <<"\\r">>;
+escape_unit($\t) -> <<"\\t">>;
+escape_unit(U) -> iolist_to_binary(io_lib:format("\\u~4.16.0b", [U])).
 
 wrap(Open, Close, [], _Gap, _Indent, _Inner) -> [Open, Close];
 wrap(Open, Close, Parts, <<>>, _Indent, _Inner) -> [Open, lists:join(<<",">>, Parts), Close];

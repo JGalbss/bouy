@@ -405,6 +405,22 @@ to_string('-Infinity') -> <<"-Infinity">>;
 to_string(F) when F == 0 -> <<"0">>;
 to_string(F) when F < 0 -> <<"-", (to_string(-F))/binary>>;
 to_string(F) ->
+    %% OTP picks the shorter of the decimal and the exponent form of the
+    %% shortest digits; its decimal form only occurs for 1e-6 =< F < 1e21,
+    %% where Number::toString writes the same text without a ".0".
+    Short = float_to_binary(F, [short]),
+    case binary:match(Short, <<"e">>) of
+        nomatch -> binary:part(Short, 0, byte_size(Short) - point_zero(Short));
+        _ -> exponent_to_string(F)
+    end.
+
+point_zero(Short) ->
+    case binary:last(Short) =:= $0 andalso binary:at(Short, byte_size(Short) - 2) =:= $. of
+        true -> 2;
+        false -> 0
+    end.
+
+exponent_to_string(F) ->
     {Digits, N} = shortest(F),
     K = length(Digits),
     list_to_binary(if
@@ -718,7 +734,19 @@ parse_float(S) ->
     end.
 
 %% parseInt with the radix R of ToInt32.
-parse_int(S, R0) ->
+parse_int(S, R0) when is_binary(S), byte_size(S) > 0, byte_size(S) =< 15, (R0 =:= 0 orelse R0 =:= 10) ->
+    %% Up to 15 decimal digits are exact, so the common case is one BIF.
+    case is_decimal(S) of
+        true -> binary_to_integer(S);
+        false -> parse_int_units(S, R0)
+    end;
+parse_int(S, R0) -> parse_int_units(S, R0).
+
+is_decimal(<<C, Rest/binary>>) when C >= $0, C =< $9 -> is_decimal(Rest);
+is_decimal(<<>>) -> true;
+is_decimal(_) -> false.
+
+parse_int_units(S, R0) ->
     Units0 = lists:dropwhile(fun buoy_ref_string:is_whitespace/1, buoy_ref_string:units(S)),
     {Sign, Units1} = case Units0 of
         [$- | T] -> {-1, T};

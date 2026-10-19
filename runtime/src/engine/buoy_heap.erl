@@ -39,18 +39,18 @@
 
 -include("buoy_ref.hrl").
 
--export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
+-export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_with/3, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
 -export([function/1, function/4, function/5, reflect_calls/1, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
--export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
+-export([class_of/1, slots/1, set_slots/2, new_exotic/3, new_record/1, proxy/2, is_object/1, is_callable/1]).
 -export([cell/1, cell_get/1, cell_set/2]).
 -export([symbol/1, symbol_for/1, well_known/1]).
 -export([to_key/1, key_to_value/1]).
 -export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
--export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
+-export([gc/1, gc_stats/0, heap_size/0, allocated/0, first_free/0, adopt/3]).
 -export([clone_out/1, clone_in/1]).
 -export([private_find/2, private_put/3, set_failed/2]).
 
@@ -110,6 +110,31 @@ size_heap(Entries) ->
 bit_length(0, N) -> N;
 bit_length(W, N) -> bit_length(W bsr 1, N + 1).
 
+%% The id that next_id/0 hands out next.
+-spec first_free() -> pos_integer().
+first_free() ->
+    case erlang:get(?NEXT) of
+        undefined -> 1;
+        Id -> Id
+    end.
+
+%% Stores records that native code made (buoy_native) under the ids that it gave them, from
+%% first_free() up to Next - 1, and hands out ids from Next on.
+-spec adopt([pos_integer()], [tuple()], pos_integer()) -> ok.
+adopt(Ids, Records, Next) ->
+    First = first_free(),
+    put_records(Ids, Records),
+    erlang:put(?NEXT, Next),
+    case (First - 1) bsr 12 =:= (Next - 1) bsr 12 of
+        true -> ok;
+        false -> grow(Next)
+    end.
+
+put_records([Id | Ids], [Record | Records]) ->
+    erlang:put(Id, Record),
+    put_records(Ids, Records);
+put_records([], []) -> ok.
+
 %% How many ids the realm has handed out. The jobs loop compares it with the
 %% count at the last collection to decide when to collect.
 -spec allocated() -> non_neg_integer().
@@ -152,6 +177,16 @@ new_array(Items, Proto) ->
     erlang:put(Id, {array, Proto, #{}, [], #{}, {map_size(Elements), Elements}}),
     {'$o', Id}.
 
+%% An array of Items with more data properties, each writable, enumerable, and
+%% configurable, as CreateDataPropertyOrThrow leaves them on a new array: Props maps each
+%% key to its value, and Keys holds the keys newest first.
+-spec array_with([value()], #{key() => value()}, [key()]) -> value().
+array_with(Items, Props, Keys) ->
+    Elements = maps:from_list(lists:enumerate(0, Items)),
+    Id = next_id(),
+    erlang:put(Id, {array, intrinsic('Array.prototype'), Props, Keys, #{}, {map_size(Elements), Elements}}),
+    {'$o', Id}.
+
 %% A proxy (buoy_ref_proxy): a function value when Target is callable.
 -spec proxy(value(), value()) -> value().
 proxy(Target, Handler) ->
@@ -167,6 +202,14 @@ proxy(Target, Handler) ->
 new_exotic(Class, Proto, Slots) ->
     Id = next_id(),
     erlang:put(Id, {Class, Proto, #{}, [], #{}, Slots}),
+    {'$o', Id}.
+
+%% An object with a record that the caller built whole, such as a RegExp with its
+%% lastIndex in place.
+-spec new_record(tuple()) -> value().
+new_record(Record) ->
+    Id = next_id(),
+    erlang:put(Id, Record),
     {'$o', Id}.
 
 %% The items of an array, holes as undefined. Another object, such as a proxy

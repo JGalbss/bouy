@@ -1,6 +1,6 @@
 [package]
 name = "buoy-native"
-description = "The NIF library of the runtime: the CLDR data of Intl, and the zlib, brotli, and zstd codecs of Node's zlib module."
+description = "The NIF library of the runtime: JSON.parse, the RegExp matcher, the CLDR data of Intl, and the zlib, brotli, and zstd codecs of Node's zlib module."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,6 +15,7 @@ name = "buoy_native"
 crate-type = ["cdylib"]
 
 [dependencies]
+memchr = "2"
 # Allocations go through enif_alloc, so erlang:memory and BUOY_MAX_MEMORY count them.
 rustler = { version = "0.39", default-features = false, features = [
   "allocator",

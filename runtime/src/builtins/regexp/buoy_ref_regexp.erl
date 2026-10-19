@@ -191,8 +191,10 @@ initialize(O, Pattern, Flags) ->
 -spec literal(buoy_ref_string:js_string(), binary()) -> term().
 literal(Source, Flags) ->
     {_Program, Names} = program(Source, Flags),
-    O = buoy_heap:new_exotic(regexp, buoy_heap:intrinsic('RegExp.prototype'), #{legacy => true, realm => buoy_heap:realm(), source => Source, flags => Flags, names => Names}),
-    buoy_heap:define(O, <<"lastIndex">>, #{value => 0, writable => true, enumerable => false, configurable => false}).
+    Slots = #{legacy => true, realm => buoy_heap:realm(), source => Source, flags => Flags, names => Names},
+    %% lastIndex: 0, writable only (attribute bits 1).
+    buoy_heap:new_record({regexp, buoy_heap:intrinsic('RegExp.prototype'), #{<<"lastIndex">> => 0}, [<<"lastIndex">>],
+                          #{<<"lastIndex">> => 1}, Slots}).
 
 %% The matcher of an initialized RegExp. The object keeps its source and flags,
 %% not the matcher: the collector scans the slots of each live object, and many
@@ -279,7 +281,12 @@ proto(<<"exec">>, This, Args) ->
     builtin_exec(R, buoy_ref:to_string(arg(1, Args)));
 proto(<<"test">>, This, Args) ->
     R = this_object(This, <<"test">>),
-    regexp_exec(R, buoy_ref:to_string(arg(1, Args))) =/= null;
+    S = buoy_ref:to_string(arg(1, Args)),
+    %% A pristine R runs the builtin exec, whose result array nothing can observe here.
+    case pristine(R) of
+        true -> builtin_search(R, S) =/= nomatch;
+        false -> regexp_exec(R, S) =/= null
+    end;
 proto(<<"toString">>, This, _Args) ->
     R = this_object(This, <<"toString">>),
     Source = buoy_ref:to_string(buoy_ref:get(R, <<"source">>)),
@@ -387,9 +394,18 @@ regexp_exec(R, S) ->
 
 %% RegExpBuiltinExec.
 builtin_exec(R, S) ->
+    case builtin_search(R, S) of
+        nomatch -> null;
+        {match, Index, End, Captures, #{names := Names, flags := Flags}} ->
+            match_array(S, Index, End, Captures, Names, lists:member($d, buoy_ref_string:units(Flags)))
+    end.
+
+%% RegExpBuiltinExec up to the match: it updates lastIndex and the legacy static
+%% properties, and returns the match and the slots of R, or nomatch.
+builtin_search(R, S) ->
     Length = buoy_ref_string:length_of(S),
     LastIndex0 = to_length(buoy_ref:get(R, <<"lastIndex">>)),
-    #{flags := Flags, names := Names, legacy := Legacy} = Slots = buoy_heap:slots(R),
+    #{flags := Flags, legacy := Legacy} = Slots = buoy_heap:slots(R),
     Program = matcher(Slots),
     Units = buoy_ref_string:units(Flags),
     Global = lists:member($g, Units),
@@ -406,21 +422,19 @@ builtin_exec(R, S) ->
     case Found of
         nomatch ->
             Updates andalso buoy_heap:set(R, <<"lastIndex">>, 0),
-            null;
+            nomatch;
         {match, Index, End, Captures} ->
             Updates andalso buoy_heap:set(R, <<"lastIndex">>, End),
             Legacy andalso erlang:put(?LEGACY, {S, {S, Index, End, Captures}}),
-            match_array(S, Index, End, Captures, Names, lists:member($d, Units))
+            {match, Index, End, Captures, Slots}
     end.
 
 match_array(S, Index, End, Captures, Names, HasIndices) ->
     Ranges = [{Index, End} | tuple_to_list(Captures)],
     Values = [substring(S, Range) || Range <- Ranges],
-    A = buoy_heap:new_array(Values),
-    data(A, <<"index">>, Index),
-    data(A, <<"input">>, S),
     {Groups, GroupNames} = groups(lists:zip(lists:seq(1, length(Values) - 1), tl(Values)), Names),
-    data(A, <<"groups">>, Groups),
+    A = buoy_heap:array_with(Values, #{<<"index">> => Index, <<"input">> => S, <<"groups">> => Groups},
+                             [<<"groups">>, <<"input">>, <<"index">>]),
     HasIndices andalso data(A, <<"indices">>, indices_array(Ranges, GroupNames, Groups =/= undefined)),
     A.
 
@@ -486,7 +500,15 @@ advance(S, I, true) ->
     end;
 advance(_S, I, false) -> I + 1.
 
-flags_of(R) -> buoy_ref_string:units(buoy_ref:to_string(buoy_ref:get(R, <<"flags">>))).
+%% The flags of R, for the tests of a flag. A pristine R reads them from its slots: its
+%% flags accessor is the builtin, which gives the same flags in another order.
+flags_of(R) ->
+    case pristine(R) of
+        true ->
+            #{flags := Flags} = buoy_heap:slots(R),
+            buoy_ref_string:units(Flags);
+        false -> buoy_ref_string:units(buoy_ref:to_string(buoy_ref:get(R, <<"flags">>)))
+    end.
 
 full_unicode(Flags) -> lists:member($u, Flags) orelse lists:member($v, Flags).
 
@@ -510,14 +532,14 @@ pristine({'$o', _} = R) ->
 pristine(_) -> false.
 
 %% The matcher of a pristine RegExp with the g flag, for the loops of
-%% Symbol.match and Symbol.replace: {ok, Program, Unicode, Sticky} or none.
+%% Symbol.match and Symbol.replace: {ok, Program, Sticky} or none.
 global_program(R) ->
     case pristine(R) of
         true ->
             #{flags := Flags} = Slots = buoy_heap:slots(R),
             Units = buoy_ref_string:units(Flags),
             case lists:member($g, Units) of
-                true -> {ok, matcher(Slots), full_unicode(Units), lists:member($y, Units)};
+                true -> {ok, matcher(Slots), lists:member($y, Units)};
                 false -> none
             end;
         false -> none
@@ -525,26 +547,13 @@ global_program(R) ->
 
 %% Every match of the loop of Symbol.match and Symbol.replace with g, from
 %% lastIndex 0: after an empty match the next search starts one character on.
-all_matches(Program, S, Unicode, Sticky) ->
-    all_matches(Program, buoy_regexp_match:input(S), S, buoy_ref_string:length_of(S), Unicode, Sticky, 0, []).
-
-all_matches(Program, In, S, Length, Unicode, Sticky, LastIndex, Acc) when LastIndex =< Length ->
-    case buoy_regexp_match:search(Program, In, LastIndex, Sticky) of
-        nomatch -> lists:reverse(Acc);
-        {match, Index, End, _} = Match ->
-            Next = case End =< Index of
-                true -> advance(S, End, Unicode);
-                false -> End
-            end,
-            all_matches(Program, In, S, Length, Unicode, Sticky, Next, [Match | Acc])
-    end;
-all_matches(_Program, _In, _S, _Length, _Unicode, _Sticky, _LastIndex, Acc) ->
-    lists:reverse(Acc).
+all_matches(Program, S, Sticky) ->
+    buoy_regexp_match:search_all(Program, buoy_regexp_match:input(S), Sticky).
 
 symbol_match(R, S) ->
     case global_program(R) of
-        {ok, Program, Unicode, Sticky} ->
-            Matches = all_matches(Program, S, Unicode, Sticky),
+        {ok, Program, Sticky} ->
+            Matches = all_matches(Program, S, Sticky),
             buoy_ref:set(R, <<"lastIndex">>, 0),
             case Matches of
                 [] -> null;
@@ -612,9 +621,17 @@ symbol_replace(R, S, ReplaceValue) ->
         true -> ReplaceValue;
         false -> buoy_ref:to_string(ReplaceValue)
     end,
+    Constant = not Functional andalso not has_dollar(Template),
     {Parts, Next} = case global_program(R) of
-        {ok, Program, Unicode, Sticky} ->
-            Matches = all_matches(Program, S, Unicode, Sticky),
+        {ok, Program, Sticky} when Constant ->
+            %% Each match is replaced by the template itself, so only the matched ranges count.
+            Matches = all_matches(Program, S, Sticky),
+            buoy_ref:set(R, <<"lastIndex">>, 0),
+            lists:foldl(fun({match, Index, End, _}, {Acc, NextPosition}) ->
+                                {[Template, buoy_ref_string:slice(S, NextPosition, Index) | Acc], End}
+                        end, {[], 0}, Matches);
+        {ok, Program, Sticky} ->
+            Matches = all_matches(Program, S, Sticky),
             buoy_ref:set(R, <<"lastIndex">>, 0),
             #{names := Names} = buoy_heap:slots(R),
             lists:foldl(fun({match, Index, End, Caps}, {Acc, NextPosition}) ->
@@ -624,18 +641,34 @@ symbol_replace(R, S, ReplaceValue) ->
                                 replace_match(Match, S, Functional, Template, Acc, NextPosition)
                         end, {[], 0}, Matches);
         none ->
-            Flags = flags_of(R),
-            Global = lists:member($g, Flags),
-            Global andalso buoy_ref:set(R, <<"lastIndex">>, 0),
-            Results = replace_results(R, S, Global, full_unicode(Flags), []),
-            lists:foldl(fun(Result, {Acc, NextPosition}) ->
-                                replace_match(match_record(Result, Length), S, Functional, Template, Acc, NextPosition)
-                        end, {[], 0}, Results)
+            case pristine(R) of
+                %% Without g, the one result is the builtin's array, which reading runs no code.
+                true -> replace_once(R, S, Functional, Template);
+                false -> replace_generic(R, S, Length, Functional, Template)
+            end
     end,
     case Next >= Length of
         true -> buoy_ref_string:concat(lists:reverse(Parts));
         false -> buoy_ref_string:concat(lists:reverse([buoy_ref_string:slice(S, Next, Length) | Parts]))
     end.
+
+replace_once(R, S, Functional, Template) ->
+    case builtin_search(R, S) of
+        nomatch -> {[], 0};
+        {match, Index, End, Caps, #{names := Names}} ->
+            Captures = [substring(S, C) || C <- tuple_to_list(Caps)],
+            {Named, _} = groups(lists:enumerate(1, Captures), Names),
+            replace_match({buoy_ref_string:slice(S, Index, End), Index, Captures, Named}, S, Functional, Template, [], 0)
+    end.
+
+replace_generic(R, S, Length, Functional, Template) ->
+    Flags = flags_of(R),
+    Global = lists:member($g, Flags),
+    Global andalso buoy_ref:set(R, <<"lastIndex">>, 0),
+    Results = replace_results(R, S, Global, full_unicode(Flags), []),
+    lists:foldl(fun(Result, {Acc, NextPosition}) ->
+                        replace_match(match_record(Result, Length), S, Functional, Template, Acc, NextPosition)
+                end, {[], 0}, Results).
 
 replace_results(R, S, Global, Unicode, Acc) ->
     case regexp_exec(R, S) of
@@ -685,9 +718,15 @@ clamp(I, Length) -> min(max(I, 0), Length).
 to_object(V) when V =:= undefined; V =:= null -> type_error(<<"Cannot convert undefined or null to object">>);
 to_object(V) -> V.
 
-%% GetSubstitution.
+%% GetSubstitution. A template without a $ is its own replacement.
 substitution(Matched, S, Position, Captures, Groups, Template) ->
-    buoy_ref_string:concat(substitute(buoy_ref_string:units(Template), Matched, S, Position, Captures, Groups)).
+    case has_dollar(Template) of
+        false -> Template;
+        true -> buoy_ref_string:concat(substitute(buoy_ref_string:units(Template), Matched, S, Position, Captures, Groups))
+    end.
+
+has_dollar(Template) when is_binary(Template) -> binary:match(Template, <<"$">>) =/= nomatch;
+has_dollar({'$u16', Units}) -> lists:member($$, [U || <<U:16>> <= Units]).
 
 substitute([$$, $$ | Rest], M, S, P, C, G) -> [<<"$">> | substitute(Rest, M, S, P, C, G)];
 substitute([$$, $` | Rest], M, S, P, C, G) -> [buoy_ref_string:slice(S, 0, P) | substitute(Rest, M, S, P, C, G)];
@@ -1048,6 +1087,8 @@ split_string(S, Separator, Limit) ->
         {_, undefined, _} -> buoy_heap:new_array([S]);
         {_, _, 0} -> buoy_heap:new_array([buoy_ref_string:unit_string(S, I) || I <- lists:seq(0, min(Lim, Length) - 1)]);
         _ when Length =:= 0 -> buoy_heap:new_array([S]);
+        %% Two one-byte strings: the parts are sub-binaries, found by one BIF.
+        _ when is_binary(S), is_binary(R) -> buoy_heap:new_array(lists:sublist(binary:split(S, R, [global]), Lim));
         _ -> buoy_heap:new_array(lists:sublist(split_parts(S, R, 0), Lim))
     end.
 
