@@ -313,7 +313,7 @@ parallel/test-blob-createobjecturl.js pass
 parallel/test-blob-file-backed.js fail
 parallel/test-blob.js skip
 parallel/test-blocklist-clone.js fail
-parallel/test-blocklist.js fail
+parallel/test-blocklist.js pass
 parallel/test-bootstrap-modules.js pass
 parallel/test-broadcastchannel-custom-inspect.js fail
 parallel/test-btoa-atob.js pass
@@ -385,7 +385,7 @@ parallel/test-buffer-writeuint.js pass
 parallel/test-buffer-zero-fill-cli.js pass
 parallel/test-buffer-zero-fill-reset.js pass
 parallel/test-buffer-zero-fill.js pass
-parallel/test-c-ares.js fail
+parallel/test-c-ares.js pass
 parallel/test-child-process-advanced-serialization-largebuffer.js pass
 parallel/test-child-process-advanced-serialization-splitted-length-field.js pass
 parallel/test-child-process-advanced-serialization.js timeout
