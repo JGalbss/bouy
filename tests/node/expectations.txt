@@ -1489,7 +1489,7 @@ parallel/test-fs-write-negativeoffset.js pass
 parallel/test-fs-write-no-fd.js pass
 parallel/test-fs-write-optional-params.js pass
 parallel/test-fs-write-reuse-callback.js skip
-parallel/test-fs-write-sigxfsz.js fail
+parallel/test-fs-write-sigxfsz.js linux=fail,macos=pass
 parallel/test-fs-write-stream-autoclose-option.js pass
 parallel/test-fs-write-stream-change-open.js pass
 parallel/test-fs-write-stream-close-without-callback.js pass
