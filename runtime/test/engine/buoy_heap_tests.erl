@@ -471,6 +471,30 @@ shapes_filter_test() ->
                   ?assertEqual({data, 4, 7}, buoy_heap:get_own(O, <<"ad">>))
           end).
 
+%% The method of a call comes from the nearest prototype that holds the key,
+%% through prototypes that lack it, as [[Get]] finds it: a getter on the way
+%% runs with the instance as this, and an own property shadows them all.
+method_chain_test() ->
+    realm(fun() ->
+                  Define = fun(Owner, K, V) -> buoy_heap:define(Owner, K, #{value => V, writable => true, enumerable => false, configurable => true}) end,
+                  Base = buoy_heap:new_object(null),
+                  Mid = buoy_heap:new_object(Base),
+                  Proto = buoy_heap:new_object(Mid),
+                  Run = buoy_heap:function(fun(_This, []) -> base end),
+                  Define(Base, <<"run">>, Run),
+                  Define(Mid, <<"other">>, 1),
+                  Define(Proto, <<"another">>, 2),
+                  O = buoy_heap:new_object(Proto),
+                  ?assertEqual(Run, buoy_heap:method(O, <<"run">>)),
+                  ?assertEqual(Run, buoy_heap:inherited_method(Proto, <<"run">>, O)),
+                  ?assertEqual(undefined, buoy_heap:inherited_method(Proto, <<"missing">>, O)),
+                  Getter = buoy_heap:function(fun(This, []) -> This end),
+                  buoy_heap:define(Mid, <<"run">>, #{get => Getter, enumerable => false, configurable => true}),
+                  ?assertEqual(O, buoy_heap:method(O, <<"run">>)),
+                  Define(O, <<"run">>, own),
+                  ?assertEqual(own, buoy_heap:method(O, <<"run">>))
+          end).
+
 %% A delete, an accessor, an attribute, an index key, or a frozen object
 %% leaves the shape for the record of every other object, with the same
 %% properties in the same order.

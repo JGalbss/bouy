@@ -69,7 +69,7 @@
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0, safepoint/2, collect_young/2]).
 -export([clone_out/1, clone_in/1]).
 -export([private_find/2, private_put/3, set_failed/2]).
--export([literal_shaped/2, add_field/3, get_slot/3, set_slot/4, method/2, record/1]).
+-export([literal_shaped/2, add_field/3, get_slot/3, set_slot/4, method/2, inherited_method/3, record/1]).
 
 -export_type([value/0, key/0, property/0]).
 
@@ -281,19 +281,28 @@ method({'$o', Id} = O, K) ->
     case erlang:get(Id) of
         R when ?is_shaped(R) ->
             case position(element(1, R), K) of
-                none -> proto_method(element(2, R), K, O);
+                none -> inherited_method(element(2, R), K, O);
                 I -> element(I + 2, R)
             end;
         _ ->
             get(O, K, O)
     end.
 
-proto_method({'$o', Id} = P, K, Receiver) when is_integer(Id) ->
+%% The method K of an object whose own properties lack K, from its prototype P.
+%% An ordinary object record that lacks K passes the read on to its own
+%% prototype, so a method of a base class costs one map read per level.
+-spec inherited_method(value(), key(), value()) -> value().
+inherited_method({'$o', Id} = P, K, Receiver) when is_integer(Id) ->
     case erlang:get(Id) of
-        {object, _, #{K := {'$f', _, _} = F}, _, _, _} -> F;
+        {object, Next, Props, _, _, _} ->
+            case Props of
+                #{K := {'$f', _, _} = F} -> F;
+                #{K := _} -> get(P, K, Receiver);
+                _ -> inherited_method(Next, K, Receiver)
+            end;
         _ -> get(P, K, Receiver)
     end;
-proto_method(P, K, Receiver) ->
+inherited_method(P, K, Receiver) ->
     inherited(P, K, Receiver).
 
 %% A write of `o.k = v`, with the same expectation as get_slot/3.
