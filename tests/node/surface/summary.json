@@ -1,15 +1,15 @@
 {
   "suite": "node-surface",
   "version": "v25.9.0",
-  "updated": "0bf743bbb1e44d6d7b38ec6eca83779c7e9004a8",
+  "updated": "04d10056cf0babbeb5284f85b5994292d6078fed",
   "total": 4460,
   "outcomes": {
-    "pass": 3458,
+    "pass": 3461,
     "rejected": 0,
     "late": 0,
     "skip": 0,
     "never": 0,
-    "fail": 1002,
+    "fail": 999,
     "timeout": 0,
     "harness_error": 0,
     "crash": 0
@@ -17,12 +17,12 @@
   "groups": {
     "docs": {
       "deprecated": {
-        "pass": 100,
-        "fail": 29
+        "pass": 98,
+        "fail": 31
       },
       "documented": {
-        "pass": 3358,
-        "fail": 973
+        "pass": 3363,
+        "fail": 968
       }
     },
     "module": {
@@ -172,8 +172,7 @@
         "pass": 19
       },
       "URLPattern": {
-        "pass": 1,
-        "fail": 2
+        "pass": 3
       },
       "URLSearchParams": {
         "pass": 14
@@ -282,7 +281,8 @@
         "pass": 49
       },
       "node:fs": {
-        "pass": 241
+        "pass": 239,
+        "fail": 2
       },
       "node:fs/promises": {
         "pass": 34
@@ -388,8 +388,7 @@
         "pass": 143
       },
       "node:url": {
-        "pass": 44,
-        "fail": 2
+        "pass": 46
       },
       "node:util": {
         "pass": 97
@@ -439,7 +438,7 @@
         "pass": 1
       },
       "structuredClone": {
-        "fail": 1
+        "pass": 1
       }
     }
   },

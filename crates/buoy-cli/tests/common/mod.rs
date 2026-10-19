@@ -221,7 +221,7 @@ pub fn classify_run(recorded: &Path, command: &mut Command) -> (Outcome, String)
     (checked.outcome, checked.report)
 }
 
-/// Points `command` at the fake model server of `runtime/test/buoy_fake_openai.erl`
+/// Points `command` at the fake model server of `runtime/test/library/buoy_fake_openai.erl`
 /// (`buoy_suites::fake_server`).
 pub fn use_fake_openai(command: &mut Command) -> &mut Command {
     buoy_suites::fake_server::point(command).unwrap_or_else(|error| panic!("{error}"))

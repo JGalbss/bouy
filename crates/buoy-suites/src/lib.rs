@@ -58,6 +58,13 @@ pub fn repository() -> PathBuf {
 /// test needs far less, and `MAX_JOBS` VMs at once stay under 8 GiB.
 const TEST_MEMORY: &str = "1G";
 
+/// The scheduler threads of each test VM, which `erl` reads from `ERL_AFLAGS`: 2 schedulers,
+/// 2 dirty CPU and 2 dirty I/O schedulers, and no busy wait. A default VM starts a scheduler
+/// and a dirty CPU scheduler for each core and 10 dirty I/O schedulers, which spin before
+/// they sleep, so the VMs of several runners at once drove the load average past 500 and
+/// made tests miss their deadlines. A user's `buoy run` keeps the defaults.
+const TEST_SCHEDULERS: &str = "+S 2:2 +SDcpu 2:2 +SDio 2 +sbwt none +sbwtdcpu none +sbwtdio none";
+
 /// The most VMs that a runner starts at once by default.
 const MAX_JOBS: usize = 8;
 
@@ -70,8 +77,8 @@ pub fn default_jobs() -> usize {
 /// The environment of every test run (section 8), which the freeze script copies: the host
 /// variables except `KEPT` are gone, the time zone, locale, and color are fixed, `TMPDIR`
 /// is `temporary`, and the `node` shim of `tests/shim` comes first on `PATH`, so a run
-/// that starts node fails. The VM halts past `TEST_MEMORY`; only the VM reads that variable,
-/// so the freeze script leaves it out.
+/// that starts node fails. The VM halts past `TEST_MEMORY` and runs `TEST_SCHEDULERS`; only
+/// the VM reads those variables, so the freeze script leaves them out.
 pub fn buoy_env<'a>(command: &'a mut Command, temporary: &Path) -> &'a mut Command {
     warm(command.get_program());
     let mut path = repository().join("tests/shim").into_os_string();
@@ -90,6 +97,7 @@ pub fn buoy_env<'a>(command: &'a mut Command, temporary: &Path) -> &'a mut Comma
         .env("CI", "1")
         .env("TMPDIR", temporary)
         .env("BUOY_MAX_MEMORY", TEST_MEMORY)
+        .env("ERL_AFLAGS", TEST_SCHEDULERS)
 }
 
 /// Builds the runtime cache of the `buoy` at `program` once per process, before the first

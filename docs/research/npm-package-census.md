@@ -33,7 +33,7 @@ Codes in the "ran on" columns refer to library code only, not to the probe code:
 - `G`: `Effect.gen` + `runPromise`.
 - `T`: the Effect code of `tests/migration/before/src/reports/report-service.ts`, as plain JavaScript (services, layers, retry, timeout, Schema, tagged errors).
 - `S`: `Schema.decodeUnknownSync` on a Struct.
-- `A`: `generateText` with one `jsonSchema` tool, `openai.chat(...)` and `stepCountIs(3)`, against `runtime/test/buoy_fake_openai.erl` (2 HTTP calls).
+- `A`: `generateText` with one `jsonSchema` tool, `openai.chat(...)` and `stepCountIs(3)`, against `runtime/test/library/buoy_fake_openai.erl` (2 HTTP calls).
 - `Z` / `J`: a zod object parse with the JIT / with `jitless`.
 
 ### 2. Size and what runs
