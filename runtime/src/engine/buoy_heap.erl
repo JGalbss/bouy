@@ -56,7 +56,7 @@
 -include("buoy_ref.hrl").
 
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
--export([array_push/2, array_set_items/2]).
+-export([array_push/2, array_shift/1, array_set_items/2]).
 -export([function/1, function/4, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
@@ -407,6 +407,36 @@ array_push({'$o', Id} = O, Items) ->
     end;
 array_push(O, Items) ->
     generic_push(O, Items).
+
+%% Array.prototype.shift on an array whose elements are plain data properties:
+%% one read and one write of the record, where the steps of the spec read and
+%% write the record for each index. Any other object gives none, for those
+%% steps. The intrinsic prototypes hold no index until a realm writes them, so
+%% a hole reads as absent, as HasProperty finds it.
+-spec array_shift(value()) -> {ok, value()} | none.
+array_shift({'$o', Id}) ->
+    case erlang:get(Id) of
+        {array, ?ARRAY_PROTO = P, Props, Keys, Attrs, {Length, Elements}}
+          when map_size(Attrs) =:= 0, Length > 0 ->
+            Plain = erlang:get('Array.prototype') =:= undefined
+                andalso erlang:get('Object.prototype') =:= undefined
+                andalso not lists:any(fun is_accessor/1, maps:values(Elements)),
+            case Plain of
+                true ->
+                    Shifted = maps:from_list([{I - 1, V} || I := V <- Elements, I > 0]),
+                    erlang:put(Id, {array, P, Props, Keys, Attrs, {Length - 1, Shifted}}),
+                    {ok, maps:get(0, Elements, undefined)};
+                false ->
+                    none
+            end;
+        _ ->
+            none
+    end;
+array_shift(_) ->
+    none.
+
+is_accessor({'$accessor', _, _}) -> true;
+is_accessor(_) -> false.
 
 %% Push on any object: Set of each index, then of length.
 generic_push(O, Items) ->
