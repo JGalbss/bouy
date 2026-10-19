@@ -435,9 +435,9 @@ split3(Text) ->
 compile_loaded(Module, Erlang) ->
     {ok, Tokens, _} = erl_scan:string(unicode:characters_to_list(Erlang)),
     Forms = [Form || FormTokens <- split_forms(Tokens, [], []), {ok, Form} <- [erl_parse:parse_form(FormTokens)]],
-    Options = [binary, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process, no_ssa_opt,
-               no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt, no_fun_opt,
-               no_module_opt, no_line_info],
+    Options = [binary, from_abstr, no_lint, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process,
+               no_ssa_opt, no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt,
+               no_fun_opt, no_module_opt, no_line_info],
     {ok, Module, Binary} = compile:forms(Forms, Options),
     code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary).
 
@@ -452,13 +452,15 @@ report(Output) ->
     buoy_heap:throw_error(Name, buoy_ref_string:from_utf8(Message)).
 
 %% Eval code mostly runs once, so the module compiles without the optimizing
-%% passes, in this process.
+%% passes, in this process. It also skips erl_lint (no_lint), which the Buoy
+%% compiler's output does not need and which takes time quadratic in the funs
+%% of one function: 1000 methods in one object literal took minutes.
 load(Key, Module, Erlang) ->
     {ok, Tokens, _} = erl_scan:string(unicode:characters_to_list(Erlang)),
     Forms = [Form || FormTokens <- split_forms(Tokens, [], []), {ok, Form} <- [erl_parse:parse_form(FormTokens)]],
-    Options = [binary, return_errors, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process,
-               no_ssa_opt, no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt,
-               no_fun_opt, no_module_opt, no_line_info],
+    Options = [binary, return_errors, from_abstr, no_lint, nowarn_unused_vars, nowarn_unused_function,
+               no_spawn_compiler_process, no_ssa_opt, no_bool_opt, no_share_opt, no_recv_opt, no_postopt,
+               no_type_opt, no_copt, no_bsm_opt, no_fun_opt, no_module_opt, no_line_info],
     case compile:forms(Forms, Options) of
         {ok, Module, Binary} ->
             {module, Module} = code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary),

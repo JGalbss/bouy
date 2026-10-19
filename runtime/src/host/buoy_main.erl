@@ -10,7 +10,7 @@
 %% When BUOY_RESULT_FILE names a path, the VM writes the facts of the run there before
 %% it halts (section 1 of the contract).
 
--export([start/0, import/1, finish/2]).
+-export([start/0, import/1, finish/2, compile_generated/2]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -216,7 +216,7 @@ compile_module(Build, Ebin, Module) ->
     end.
 
 compile_source(Source, Beam, Stamp, Hash) ->
-    case compile:file(Source, [binary, return_errors, nowarn_unused_vars]) of
+    case compile_generated(Source, [binary, return_errors, nowarn_unused_vars]) of
         {ok, Module, Binary} ->
             ok = replace(Beam, Binary),
             ok = replace(Stamp, Hash),
@@ -226,6 +226,22 @@ compile_source(Source, Beam, Stamp, Hash) ->
             [format_error(File, Error) || {File, FileErrors} <- Errors, Error <- FileErrors];
         error ->
             [io_lib:format("buoy: the Erlang compiler crashed on ~ts (a compiler bug)~n", [Source])]
+    end.
+
+%% compile:file/2 for a module that the Buoy compiler wrote. Such code needs no
+%% erl_lint, whose time grows with the square of the funs of one function, so
+%% the module compiles from its forms without it. A form that does not parse
+%% goes to compile:file/2, which reports it.
+-spec compile_generated(file:filename(), [term()]) -> term().
+compile_generated(Source, Options) ->
+    case epp:parse_file(Source, []) of
+        {ok, Forms} ->
+            case lists:keymember(error, 1, Forms) of
+                false -> compile:forms(Forms, [from_abstr, no_lint, {source, Source} | Options]);
+                true -> compile:file(Source, Options)
+            end;
+        {error, _} ->
+            compile:file(Source, Options)
     end.
 
 %% Writes File through a temporary file and a rename, so a concurrent reader never sees
