@@ -141,19 +141,31 @@ wrapped(This) ->
     end.
 
 %% getModuleRequests(): [{ specifier, attributes, phase }] in source order.
+%% The attributes are frozen, as createImportAttributesContainer makes them.
 module_requests(M) ->
-    buoy_heap:new_array([buoy_heap:object(null, [{<<"specifier">>, S}, {<<"attributes">>, buoy_heap:object(null, [])},
-                                                 {<<"phase">>, 2}])
-                         || S <- buoy_module:requests_of(M)]).
+    buoy_heap:new_array([buoy_heap:object(null, [{<<"specifier">>, S}, {<<"attributes">>, attributes(Attributes)},
+                                                 {<<"phase">>, Phase}])
+                         || {S, Attributes, Phase} <- buoy_module:module_requests_of(M)]).
 
-%% link(modules): the ModuleWrap of each request, in order.
+attributes(Entries) ->
+    Attributes = buoy_heap:object(null, Entries),
+    buoy_heap:freeze(Attributes),
+    Attributes.
+
+%% link(modules): the ModuleWrap of each module request, in order.
+%% shortcut: the compiled module links each specifier once, so two requests of
+%% one specifier with other attributes or another phase share the module of
+%% the first; a fix would key the imports of the compiler by the request.
 link_modules(This, Modules) ->
     M = wrapped(This),
-    Targets = [wrapped(W) || W <- buoy_heap:array_items(Modules)],
-    length(Targets) =:= length(buoy_module:requests_of(M)) orelse
+    Requests = buoy_module:module_requests_of(M),
+    Given = [wrapped(W) || W <- buoy_heap:array_items(Modules)],
+    length(Given) =:= length(Requests) orelse
         buoy_node:throw_code('Error', <<"ERR_VM_MODULE_LINK_FAILURE">>,
-                             iolist_to_binary(["Expected ", integer_to_binary(length(buoy_module:requests_of(M))),
-                                               " modules, got ", integer_to_binary(length(Targets))])),
+                             iolist_to_binary(["Expected ", integer_to_binary(length(Requests)),
+                                               " modules, got ", integer_to_binary(length(Given))])),
+    BySpecifier = lists:zip([S || {S, _, _} <- Requests], Given),
+    Targets = [element(2, lists:keyfind(S, 1, BySpecifier)) || S <- buoy_module:requests_of(M)],
     ok = buoy_module:link_requests(M, Targets),
     undefined.
 

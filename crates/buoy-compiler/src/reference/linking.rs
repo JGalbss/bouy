@@ -181,7 +181,29 @@ impl<'c> Linking<'c> {
                     ])
                 })
                 .collect();
+            // The ModuleRequests of getModuleRequests: the specifier, the attributes, and
+            // the phase, 1 for source and 2 for evaluation, as module_wrap.cc numbers them.
+            let module_requests = unit
+                .record
+                .module_requests
+                .iter()
+                .map(|request| {
+                    let attributes = request
+                        .attributes
+                        .iter()
+                        .map(|(key, value)| {
+                            Expr::Tuple(vec![Expr::js_string(key), Expr::js_string(value)])
+                        })
+                        .collect();
+                    Expr::Tuple(vec![
+                        Expr::js_string(&request.specifier),
+                        Expr::List(attributes),
+                        Expr::Integer(if request.source_phase { 1 } else { 2 }),
+                    ])
+                })
+                .collect();
             extra.push((Expr::atom("hosted"), Expr::List(hosted)));
+            extra.push((Expr::atom("module_requests"), Expr::List(module_requests)));
             extra.push((Expr::atom("stars"), Expr::List(stars)));
             extra.push((Expr::atom("imports"), Expr::List(imports)));
         }

@@ -20,7 +20,7 @@
 -export([define_namespace/3, broken/1]).
 -export([deferred_namespace/1, ensure_deferred/1]).
 -export([hosted_import/3, new_synthetic/3, set_synthetic_export/3, link_requests/2, instantiate/1, evaluate/1]).
--export([program_module/1, set_realm_host/2, status/1, error_of/1, has_async_graph/1, has_top_level_await/1, requests_of/1, set_host/3, required_facade/1]).
+-export([program_module/1, set_realm_host/2, status/1, error_of/1, has_async_graph/1, has_top_level_await/1, requests_of/1, module_requests_of/1, set_host/3, required_facade/1]).
 
 -define(RECORD(M), {'$buoy_module', M}).
 -define(NAMESPACE(M), {'$buoy_namespace', M}).
@@ -1159,6 +1159,14 @@ set_synthetic_export(M, Name, Value) ->
 %% The specifiers of the requests of M, in order.
 -spec requests_of(module()) -> [term()].
 requests_of(M) -> maps:get(hosted, get(M, info), []).
+
+%% The ModuleRequests of M for the host, as getModuleRequests lists them:
+%% {Specifier, Attributes, Phase} for each specifier, attributes, and phase,
+%% with 1 for the source phase and 2 for evaluation.
+-spec module_requests_of(module()) -> [{term(), [{term(), term()}], 1 | 2}].
+module_requests_of(M) ->
+    Info = get(M, info),
+    maps:get(module_requests, Info, [{S, [], 2} || S <- maps:get(hosted, Info, [])]).
 
 %% Binds the requests of M to the modules Targets, in order. A module of the
 %% program reports no requests to the host, which links it to none, and keeps

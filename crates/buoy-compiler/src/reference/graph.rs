@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 
 use oxc::ast::ast::{
     Argument, CallExpression, Declaration, ExportDefaultDeclarationKind, Expression,
-    ImportDeclarationSpecifier, ImportExpression, ModuleExportName, ObjectPropertyKind, Program,
-    PropertyKey, SimpleAssignmentTarget, Statement,
+    ImportAttributeKey, ImportDeclarationSpecifier, ImportExpression, ModuleExportName,
+    ObjectPropertyKind, Program, PropertyKey, SimpleAssignmentTarget, Statement, WithClause,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::Semantic;
@@ -121,12 +121,24 @@ pub enum Imported {
     DeferredNamespace,
 }
 
+/// A request of a module: its specifier, its import attributes sorted by key, and whether
+/// it imports the source phase (`import source x from`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleRequest {
+    pub specifier: String,
+    pub attributes: Vec<(String, String)>,
+    pub source_phase: bool,
+}
+
 /// The syntax facts of a module that linking needs.
 #[derive(Debug, Default)]
 pub struct Record {
     /// The specifiers of `import` and `export ... from` in source order, once for each
     /// phase: `true` for `import defer`.
     pub order: Vec<(String, bool)>,
+    /// The `ModuleRequest`s of ECMA-262 in source order, once for each specifier,
+    /// attributes, and phase, as `getModuleRequests` of a `ModuleWrap` lists them.
+    pub module_requests: Vec<ModuleRequest>,
     /// `(local, specifier, imported)`
     pub imports: Vec<(String, String, Imported)>,
     /// `(export name, local name)`. The local name of `export default <expression>` and
@@ -723,6 +735,38 @@ impl<'a> Facts<'_, 'a> {
             .push((specifier.to_owned(), Mode::Import, false));
     }
 
+    fn module_request(
+        &mut self,
+        specifier: &str,
+        clause: Option<&WithClause<'a>>,
+        source_phase: bool,
+    ) {
+        let mut attributes: Vec<(String, String)> = clause
+            .map(|clause| {
+                clause
+                    .with_entries
+                    .iter()
+                    .map(|entry| {
+                        let key = match &entry.key {
+                            ImportAttributeKey::Identifier(name) => name.name.to_string(),
+                            ImportAttributeKey::StringLiteral(text) => text.value.to_string(),
+                        };
+                        (key, entry.value.value.to_string())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        attributes.sort();
+        let request = ModuleRequest {
+            specifier: specifier.to_owned(),
+            attributes,
+            source_phase,
+        };
+        if !self.record.module_requests.contains(&request) {
+            self.record.module_requests.push(request);
+        }
+    }
+
     /// The imports and exports of an ES module.
     fn module(&mut self, program: &Program<'a>) {
         for statement in &program.body {
@@ -771,6 +815,11 @@ impl<'a> Facts<'_, 'a> {
                         self.deferred_request(specifier);
                     } else if kept || !self.typescript {
                         self.request(specifier);
+                    }
+                    if kept || !self.typescript {
+                        let source_phase =
+                            matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Source));
+                        self.module_request(specifier, import.with_clause.as_deref(), source_phase);
                     }
                 }
                 _ => self.export(statement),
@@ -851,6 +900,7 @@ impl<'a> Facts<'_, 'a> {
                 }
                 if any || export.specifiers.is_empty() || !self.typescript {
                     self.request(specifier);
+                    self.module_request(specifier, export.with_clause.as_deref(), false);
                 }
             }
             Statement::ExportNamedDeclaration(export) => {
@@ -895,6 +945,7 @@ impl<'a> Facts<'_, 'a> {
                     None => self.record.stars.push(specifier.to_owned()),
                 }
                 self.request(specifier);
+                self.module_request(specifier, export.with_clause.as_deref(), false);
             }
             _ => {}
         }
