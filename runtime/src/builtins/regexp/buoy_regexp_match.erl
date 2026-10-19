@@ -30,7 +30,7 @@
 -type first() :: {literal, binary() | none, binary()} | {test, fun((non_neg_integer()) -> boolean())} | any.
 
 %% The Matcher of a pattern tree, for the flags i, m, s, u, and v: the program of the
-%% native matcher of buoy_nif when it loads, else the closures of this module.
+%% native matcher of buoy_native when it loads, else the closures of this module.
 -spec compile(term(), non_neg_integer(), map()) -> program().
 compile(Tree, Groups, #{i := I, m := M, s := S, u := U, v := V}) ->
     C = #c{i = I, m = M, s = S, u = U orelse V, v = V},
@@ -43,7 +43,7 @@ compile(Tree, Groups, #{i := I, m := M, s := S, u := U, v := V}) ->
 
 %%% The native matcher
 %%
-%% lower/2 turns the tree into the tree of crates/buoy-nif/src/regexp.rs, with each
+%% lower/2 turns the tree into the tree of crates/buoy-native/src/regexp.rs, with each
 %% character, class, and escape resolved to its CharSet by the functions of this module,
 %% so the sets keep one source:
 %%
@@ -56,8 +56,8 @@ compile(Tree, Groups, #{i := I, m := M, s := S, u := U, v := V}) ->
 %% runs the same algorithm as the closures, in time slices.
 
 native(Tree, Groups, C) ->
-    case buoy_nif:available() of
-        true -> buoy_nif:regexp_compile(lower(Tree, C), Groups, C#c.u);
+    case buoy_native:available() of
+        true -> buoy_native:regexp_compile(lower(Tree, C), Groups, C#c.u);
         false -> error
     end.
 
@@ -155,7 +155,7 @@ all(Program, {_, _, L} = In, Unicode, Sticky, LastIndex, Acc) when LastIndex =< 
 all(_Program, _In, _Unicode, _Sticky, _LastIndex, Acc) -> lists:reverse(Acc).
 
 native_all(Native, B, Wide, Sticky, State, Acc) ->
-    case buoy_nif:regexp_search_all(Native, B, Wide, Sticky, State) of
+    case buoy_native:regexp_search_all(Native, B, Wide, Sticky, State) of
         {done, Matches} -> lists:append(lists:reverse([Matches | Acc]));
         {more, Paused, Matches} -> native_all(Native, B, Wide, Sticky, Paused, [Matches | Acc]);
         overflow -> buoy_heap:throw_error('RangeError', <<"Maximum call stack size exceeded">>)
@@ -163,7 +163,7 @@ native_all(Native, B, Wide, Sticky, State, Acc) ->
 
 %% The native matcher runs in time slices and returns its state when a slice ends.
 native_search(Native, B, Wide, From, Sticky, State) ->
-    case buoy_nif:regexp_search(Native, B, Wide, From, Sticky, State) of
+    case buoy_native:regexp_search(Native, B, Wide, From, Sticky, State) of
         {more, Paused} -> native_search(Native, B, Wide, From, Sticky, Paused);
         overflow -> buoy_heap:throw_error('RangeError', <<"Maximum call stack size exceeded">>);
         Found -> Found

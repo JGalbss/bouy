@@ -118,7 +118,7 @@ first_free() ->
         Id -> Id
     end.
 
-%% Stores records that native code made (buoy_nif) under the ids that it gave them, from
+%% Stores records that native code made (buoy_native) under the ids that it gave them, from
 %% first_free() up to Next - 1, and hands out ids from Next on.
 -spec adopt([pos_integer()], [tuple()], pos_integer()) -> ok.
 adopt(Ids, Records, Next) ->

@@ -1,6 +1,7 @@
 //! Time slices. A NIF must not hold a scheduler for more than about 1 ms ("Long-running
-//! NIFs" in the `erl_nif` manual). Each NIF of this crate counts its work, reports the time
-//! it took with `enif_consume_timeslice`, and stops when the slice of its process is over.
+//! NIFs" in the `erl_nif` manual). Each NIF of `json` and `regexp` counts its work, reports
+//! the time it took with `enif_consume_timeslice`, and stops when the slice of its process
+//! is over.
 //! It then returns a continuation, which the Erlang caller passes to its next call. The
 //! process takes the reductions of the work, so the scheduler switches it out between the
 //! two calls, as it does an Erlang function that runs as long.

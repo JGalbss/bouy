@@ -11,7 +11,7 @@
 %% filename, as libuv reports an event that it cannot name. prim_file gives
 %% whole seconds, so two writes of the same size within one second look the
 %% same. Bun watches with kqueue,
-%% inotify, and FSEvents; a NIF of crates/buoy-nif that registers the
+%% inotify, and FSEvents; a NIF of crates/buoy-native that registers the
 %% watch with enif_select brings that here.
 -module(buoy_binding_fs_event_wrap).
 

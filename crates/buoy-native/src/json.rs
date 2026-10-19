@@ -102,8 +102,8 @@ fn json_parse<'a>(
 }
 
 /// Text for the Erlang parser: text that is not JSON, or a document that keeps more than
-/// `MAX_PENDING` values open, whose native copies would cost more memory than the VM's
-/// limit can see.
+/// `MAX_PENDING` values open, whose native copies the heap limit of the process cannot
+/// see.
 #[derive(Debug)]
 struct Fallback;
 

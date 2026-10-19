@@ -9,10 +9,6 @@ use std::process::Command;
 use std::{env, fs, process};
 
 include!(concat!(env!("OUT_DIR"), "/runtime_sources.rs"));
-include!(concat!(env!("OUT_DIR"), "/nif_library.rs"));
-
-/// The file name of the NIF library in `ebin`, where `buoy_nif` loads it.
-const NIF_FILE: &str = "buoy_nif.so";
 
 /// The compiled runtime that a program runs on.
 #[derive(Debug)]
@@ -219,7 +215,6 @@ fn compile(staging: &Path, objects: &Path) -> Result<(), String> {
     };
     fs::create_dir_all(&source).map_err(failed)?;
     fs::create_dir_all(&ebin).map_err(failed)?;
-    fs::write(ebin.join(NIF_FILE), NIF).map_err(failed)?;
     fs::write(ebin.join("buoy_native.so"), NATIVE).map_err(failed)?;
     for (name, text) in SOURCES {
         fs::write(source.join(name), text).map_err(failed)?;
@@ -378,14 +373,12 @@ fn record_release(staging: &Path) {
     }
 }
 
-/// FNV-1a over the names and contents of the runtime sources, the hashes of the two NIF
-/// libraries, and the installed OTP, so that the `.beam` files always match the OTP release
-/// that runs them.
+/// FNV-1a over the names and contents of the runtime sources, the NIF library, and the
+/// installed OTP, so that the `.beam` files always match the OTP release that runs them.
 fn hash(otp: &OsString) -> u64 {
     fnv(SOURCES
         .iter()
         .flat_map(|(name, text)| name.bytes().chain([0]).chain(text.bytes()).chain([0]))
-        .chain(NIF_HASH.to_le_bytes())
         .chain(NATIVE_HASH.to_le_bytes())
         .chain(otp.as_encoded_bytes().iter().copied()))
 }

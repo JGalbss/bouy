@@ -13,7 +13,7 @@
 %% shortcut: prim_file has no sub-second times, no statfs, and no call that
 %% changes a symlink itself, so stats carry whole seconds, and statfs and the
 %% calls on a symlink run a tool (df, chmod, chown, touch). A NIF of
-%% crates/buoy-nif removes these limits.
+%% crates/buoy-native removes these limits.
 -module(buoy_binding_fs).
 
 -include_lib("kernel/include/file.hrl").
@@ -816,7 +816,7 @@ statfs(Args) ->
 %% shortcut: prim_file has no statfs(2), so this runs /bin/df, one process
 %% for each call, as disksup of os_mon reads the space of a disk. df gives
 %% no file system type, which stays 0, and counts 1024-byte blocks, which
-%% this gives in 4096-byte ones. A statfs NIF of crates/buoy-nif replaces it.
+%% this gives in 4096-byte ones. A statfs NIF of crates/buoy-native replaces it.
 df(Path) ->
     case os:type() of
         {unix, darwin} ->
@@ -1311,7 +1311,7 @@ link_times(Path, Args, Syscall, ErrorPath) ->
 
 %% shortcut: prim_file cannot change a symlink itself, so lchmod, lchown,
 %% and lutimes run chmod, chown, and touch with -h, one process each. A NIF
-%% of crates/buoy-nif with lchmod, lchown, and lutimes replaces them.
+%% of crates/buoy-native with lchmod, lchown, and lutimes replaces them.
 tool(Name, Args, Syscall, ErrorPath) ->
     case run_tool(Name, Args) of
         {0, _} -> ok;

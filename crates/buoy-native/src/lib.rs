@@ -1,6 +1,10 @@
 //! The NIF library of the runtime, which `buoy_native.erl` loads into the VM.
 //!
-//! It holds the codecs behind `internalBinding('zlib')` (docs/design/node-builtins.md):
+//! It holds the native built-ins of section 17.10 of `docs/design/beam-runtime.md`,
+//! `JSON.parse` (`json`) and the `RegExp` matcher (`regexp`), which run on the scheduler of
+//! their process in time slices (`slice`), so BEAM preemption holds while they run.
+//!
+//! It also holds the codecs behind `internalBinding('zlib')` (docs/design/node-builtins.md):
 //! each stream is a resource that owns one zlib, brotli, or zstd context, and each module
 //! ports the matching context class of Node's `src/node_zlib.cc`. A write runs on a dirty
 //! CPU scheduler, as Node runs it on the libuv thread pool, so a slow compression never
@@ -13,7 +17,13 @@
 mod brotli;
 // The NIF glue links against the VM's `enif_*` symbols, which a test binary lacks.
 #[cfg(not(test))]
+mod json;
+#[cfg(not(test))]
 mod nif;
+#[cfg(not(test))]
+mod regexp;
+#[cfg(not(test))]
+mod slice;
 mod zlib;
 mod zstd;
 

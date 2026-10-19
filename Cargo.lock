@@ -178,16 +178,9 @@ dependencies = [
  "brotli",
  "brotli-decompressor",
  "libz-rs-sys",
- "rustler",
- "zstd-sys",
-]
-
-[[package]]
-name = "buoy-nif"
-version = "0.1.0"
-dependencies = [
  "memchr",
  "rustler",
+ "zstd-sys",
 ]
 
 [[package]]

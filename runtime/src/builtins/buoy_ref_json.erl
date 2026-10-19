@@ -48,11 +48,11 @@ parse(Text) ->
             Value
     end.
 
-%% The parser of buoy_nif, which makes the records of the objects and arrays, or error
+%% The parser of buoy_native, which makes the records of the objects and arrays, or error
 %% for text that is not JSON. It runs in time slices, and each slice gives the records
 %% that it closed.
 native_parse(Text) ->
-    case buoy_nif:available() of
+    case buoy_native:available() of
         true ->
             {Bytes, Wide} = case Text of
                 {'$u16', B} -> {B, true};
@@ -63,7 +63,7 @@ native_parse(Text) ->
     end.
 
 native_parse(Bytes, Wide, Protos, State) ->
-    case buoy_nif:json_parse(Bytes, Wide, Protos, buoy_heap:first_free(), State) of
+    case buoy_native:json_parse(Bytes, Wide, Protos, buoy_heap:first_free(), State) of
         {done, Value, Ids, Records, Next} ->
             buoy_heap:adopt(Ids, Records, Next),
             {ok, Value};
