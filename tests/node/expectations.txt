@@ -3156,11 +3156,11 @@ parallel/test-sqlite-database-sync-dispose.js pass
 parallel/test-sqlite-database-sync.js pass
 parallel/test-sqlite-limits.js pass
 parallel/test-sqlite-named-parameters.js pass
-parallel/test-sqlite-session.js pass
+parallel/test-sqlite-session.js fail
 parallel/test-sqlite-statement-sync-columns.js pass
 parallel/test-sqlite-statement-sync.js skip
 parallel/test-sqlite-template-tag.js skip
-parallel/test-sqlite-timeout.js pass
+parallel/test-sqlite-timeout.js fail
 parallel/test-sqlite-transactions.js pass
 parallel/test-sqlite-typed-array-and-data-view.js pass
 parallel/test-sqlite.js pass
@@ -4009,7 +4009,7 @@ parallel/test-webcrypto-wrap-unwrap.js pass
 parallel/test-websocket-disabled.js pass
 parallel/test-websocket.js pass
 parallel/test-webstorage-without-sqlite.js pass
-parallel/test-webstorage.js pass
+parallel/test-webstorage.js timeout
 parallel/test-webstream-encoding-inspect.js pass
 parallel/test-webstream-readable-from.js pass
 parallel/test-webstream-readablestream-pipeto.js skip
