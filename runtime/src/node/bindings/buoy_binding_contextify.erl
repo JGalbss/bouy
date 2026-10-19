@@ -310,13 +310,11 @@ compile_cjs(Text, Filename, Detect) ->
         {decorated(fun() -> compile_cjs(Text) end, [Text, Filename], 2), false}
     catch
         error:{'$throw', _} = Reason:Stack ->
-            case Detect andalso contains_module_syntax(Text) of
+            case Detect andalso buoy_ref_eval:contains_module_syntax(Text, true) of
                 true -> {undefined, true};
                 false -> erlang:raise(error, Reason, Stack)
             end
     end.
-
-contains_module_syntax(Text) -> buoy_ref_eval:contains_module_syntax(Text, true).
 
 %% DecorateErrorStack of node_errors.cc: a SyntaxError that the compilation of
 %% the code of a script or a function throws gets the arrow message, the
