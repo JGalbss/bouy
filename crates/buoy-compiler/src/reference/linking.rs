@@ -338,14 +338,19 @@ impl<'c> Linking<'c> {
         let error = diagnostics.first().map_or_else(
             || Expr::atom("none"),
             |diagnostic| {
-                let syntax = diagnostic.code == Code::Syntax;
+                if diagnostic.code == Code::Syntax {
+                    // V8's SyntaxError: its message, and the place, the source line, and a
+                    // caret, which the runtime puts in front of its stack.
+                    return Expr::Tuple(vec![
+                        Expr::js_string("SyntaxError"),
+                        Expr::undefined(),
+                        Expr::js_string(&diagnostic.message),
+                        Expr::js_string(&self.arrow(diagnostic)),
+                    ]);
+                }
                 Expr::Tuple(vec![
-                    Expr::js_string(if syntax { "SyntaxError" } else { "Error" }),
-                    if syntax {
-                        Expr::undefined()
-                    } else {
-                        Expr::js_string(diagnostic.code.as_str())
-                    },
+                    Expr::js_string("Error"),
+                    Expr::js_string(diagnostic.code.as_str()),
                     Expr::js_string(&diagnostic.to_string()),
                 ])
             },
@@ -371,6 +376,20 @@ impl<'c> Linking<'c> {
                 }],
             },
         ]
+    }
+
+    /// The arrow message of a syntax error of the unit, as `GetErrorSource` of Node prints
+    /// it: the place and the line, the source line, and a caret under the column.
+    fn arrow(&self, diagnostic: &Diagnostic) -> String {
+        let text = std::fs::read_to_string(&diagnostic.path).unwrap_or_default();
+        let line = text.lines().nth(diagnostic.line.saturating_sub(1)).unwrap_or_default();
+        let place = if self.unit().kind == Kind::Esm {
+            format!("file://{}", diagnostic.path.display())
+        } else {
+            diagnostic.path.display().to_string()
+        };
+        let caret = " ".repeat(diagnostic.column.saturating_sub(1));
+        format!("{place}:{}\n{line}\n{caret}^\n", diagnostic.line)
     }
 
     /// The functions of a JSON module.

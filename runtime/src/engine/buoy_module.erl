@@ -143,6 +143,13 @@ link_graph(M, Marked) ->
 broken(M) ->
     erlang:error({'$throw', link_error(info(M, error))}).
 
+%% A SyntaxError of a module that does not compile has its arrow message, the
+%% place, the source line, and a caret, in front of its stack, as Node's
+%% DecorateErrorStack puts it there.
+link_error({Kind, Code, Message, Arrow}) ->
+    E = link_error({Kind, Code, Message}),
+    buoy_heap:set(E, <<"stack">>, buoy_ref_string:concat([Arrow, <<"\n">>, buoy_heap:get(E, <<"stack">>)])),
+    E;
 link_error({Kind, Code, Message}) ->
     Name = binary_to_atom(Kind),
     E = buoy_heap:error_object(Name, Message, buoy_ref_string:concat([Kind, <<": ">>, Message])),
