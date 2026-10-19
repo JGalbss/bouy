@@ -287,11 +287,18 @@ slice(B, Start, End) when is_binary(B) -> binary:part(B, Start, End - Start);
 slice({'$u16', B}, Start, End) -> narrow(binary:part(B, 2 * Start, 2 * (End - Start))).
 
 -spec concat(js_string(), js_string()) -> js_string().
-concat(A, B) when is_binary(A), is_binary(B) -> <<A/binary, B/binary>>;
-concat(A, B) -> {'$u16', <<(wide(A))/binary, (wide(B))/binary>>}.
+concat(A, B) when is_binary(A), is_binary(B) ->
+    byte_size(A) + byte_size(B) > ?MAX_LENGTH andalso invalid_length(),
+    <<A/binary, B/binary>>;
+concat(A, B) ->
+    length_of(A) + length_of(B) > ?MAX_LENGTH andalso invalid_length(),
+    {'$u16', <<(wide(A))/binary, (wide(B))/binary>>}.
 
+%% A string longer than V8's String::kMaxLength is a RangeError before any
+%% copy, as in Node: a replacement can name a large capture many times.
 -spec concat([js_string()]) -> js_string().
 concat(Parts) ->
+    lists:foldl(fun(P, Sum) -> Sum + length_of(P) end, 0, Parts) > ?MAX_LENGTH andalso invalid_length(),
     case lists:all(fun erlang:is_binary/1, Parts) of
         true -> iolist_to_binary(Parts);
         false -> {'$u16', iolist_to_binary([wide(P) || P <- Parts])}
