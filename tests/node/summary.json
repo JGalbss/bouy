@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "e822095c8a6ca6ca66f68a1a60af5c17790739d1",
+  "updated": "d4d3fb2be8ae98b030250b5c51e42f239e7138b1",
   "total": 4419,
   "outcomes": {
-    "pass": 1969,
+    "pass": 2316,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1809,
-    "timeout": 43,
+    "fail": 1456,
+    "timeout": 49,
     "harness_error": 0,
     "crash": 15
   },
@@ -23,17 +23,17 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 1866,
+        "pass": 2198,
         "skip": 545,
-        "fail": 1616,
-        "timeout": 37,
+        "fail": 1279,
+        "timeout": 42,
         "crash": 15
       },
       "sequential": {
-        "pass": 37,
+        "pass": 52,
         "skip": 22,
-        "fail": 54,
-        "timeout": 5
+        "fail": 38,
+        "timeout": 6
       }
     },
     "kind": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 1969,
+        "pass": 2316,
         "skip": 240,
-        "fail": 1809,
-        "timeout": 43,
+        "fail": 1456,
+        "timeout": 49,
         "crash": 15
       }
     },
@@ -95,9 +95,8 @@
         "timeout": 2
       },
       "dgram": {
-        "pass": 5,
-        "skip": 11,
-        "fail": 63
+        "pass": 68,
+        "skip": 11
       },
       "diagnostics_channel": {
         "pass": 28,
@@ -106,9 +105,8 @@
         "timeout": 1
       },
       "dns": {
-        "pass": 18,
-        "skip": 10,
-        "timeout": 1
+        "pass": 19,
+        "skip": 10
       },
       "domain": {
         "pass": 30,
@@ -150,10 +148,9 @@
         "timeout": 2
       },
       "net": {
-        "pass": 19,
+        "pass": 151,
         "skip": 10,
-        "fail": 131,
-        "timeout": 2
+        "fail": 1
       },
       "os": {
         "pass": 2,
@@ -161,10 +158,10 @@
         "fail": 4
       },
       "other": {
-        "pass": 225,
+        "pass": 236,
         "skip": 178,
-        "fail": 208,
-        "timeout": 3,
+        "fail": 196,
+        "timeout": 4,
         "crash": 2
       },
       "path": {
@@ -212,9 +209,9 @@
         "skip": 2
       },
       "stream": {
-        "pass": 203,
+        "pass": 204,
         "skip": 8,
-        "fail": 52
+        "fail": 51
       },
       "string_decoder": {
         "pass": 3
@@ -234,10 +231,10 @@
         "fail": 2
       },
       "tls": {
-        "pass": 12,
+        "pass": 151,
         "skip": 15,
-        "fail": 192,
-        "timeout": 1
+        "fail": 45,
+        "timeout": 9
       },
       "trace_events": {
         "pass": 16,
