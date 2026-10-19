@@ -54,6 +54,11 @@
       "path": "staging/sm/strict/eval-variable-environment.js",
       "mode": "strict",
       "reason": "test-defect"
-    }
+    },
+    {
+      "path": "staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js",
+      "reason": "outdated-test"
+    },
+    { "path": "staging/sm/regress/regress-602621.js", "reason": "outdated-test" }
   ]
 }

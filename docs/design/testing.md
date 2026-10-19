@@ -148,23 +148,24 @@ The report lists regressions first, then the newly silent ids, then the stale li
 
 A skip means that the test can never apply to Buoy. A test that Buoy cannot run yet always runs, and its outcome says why it fails. The crate holds the fixed list of reason codes, and a new code needs review:
 
-| Code                    | Use                                                                         |
-| ----------------------- | --------------------------------------------------------------------------- |
-| `needs-dom`             | The test needs `document`, a browser window, or `IsHTMLDDA`.                |
-| `can-block`             | test262 `CanBlockIsFalse`: an actor can block, so `[[CanBlock]]` is true.   |
-| `v8-flag`               | A V8 option in the `// Flags:` line of a Node test.                         |
-| `node-internals`        | `--expose-internals` or `require('internal/...')`.                          |
-| `native-addon`          | The test loads a `.node` addon.                                             |
-| `node-inspector`        | The test drives the inspector or `node inspect`.                            |
-| `node-permission-model` | The test checks Node's permission model.                                    |
-| `node-behavior`         | A test262 proposal test that Node's own `lib/` contradicts (section 3.5.1). |
-| `test-defect`           | A test262 test that fails on every engine in one mode (section 3.5.1).      |
+| Code                    | Use                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `needs-dom`             | The test needs `document`, a browser window, or `IsHTMLDDA`.                       |
+| `can-block`             | test262 `CanBlockIsFalse`: an actor can block, so `[[CanBlock]]` is true.          |
+| `v8-flag`               | A V8 option in the `// Flags:` line of a Node test.                                |
+| `node-internals`        | `--expose-internals` or `require('internal/...')`.                                 |
+| `native-addon`          | The test loads a `.node` addon.                                                    |
+| `node-inspector`        | The test drives the inspector or `node inspect`.                                   |
+| `node-permission-model` | The test checks Node's permission model.                                           |
+| `node-behavior`         | A test262 proposal test that Node's own `lib/` contradicts (section 3.5.1).        |
+| `test-defect`           | A test262 test that fails on every engine in one mode (section 3.5.1).             |
+| `outdated-test`         | A test262 staging test that the current specification contradicts (section 3.5.1). |
 
 A skip counts in the denominator. The dashboard shows skips by reason, so a reader can compute the rate over the tests that apply.
 
 #### 3.5.1 Reviewed skips of test files
 
-A `node-behavior` or `test-defect` skip names one test262 file by its path, and a reviewer approves each one. A skip with a `mode` takes only the run of that mode, `strict` or `nonstrict`, and the other run still counts.
+A `node-behavior`, `test-defect`, or `outdated-test` skip names one test262 file by its path, and a reviewer approves each one. A skip with a `mode` takes only the run of that mode, `strict` or `nonstrict`, and the other run still counts.
 
 A `node-behavior` file checks a proposal that requires a behavior that Node's own `lib/` contradicts, and Buoy runs that `lib/` unchanged:
 
@@ -173,6 +174,10 @@ A `node-behavior` file checks a proposal that requires a behavior that Node's ow
 A `test-defect` file fails in one mode on every engine, Node included:
 
 - The strict runs of the 13 files of `staging/sm/strict` that include `sm/non262-strict-shell.js`. Its `completesNormally` and `raisesException` run the sloppy case through a direct `eval` in the harness, and a strict run makes the harness strict, so the sloppy case runs as strict code. SpiderMonkey runs these files as sloppy scripts only. Node fails each strict run and passes each sloppy run.
+
+An `outdated-test` file of `staging/` expects a behavior that the current specification changed, and a test outside `staging/` checks the change:
+
+- `staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js` and `staging/sm/regress/regress-602621.js` expect a function named `arguments` in a block to replace the `arguments` object of its function. Since `FunctionDeclarationInstantiation` appends `arguments` to the parameter names when the function needs the object, Annex B.3.2.1 does not apply to such a function, and `annexB/language/function-code/block-decl-func-skip-arguments.js` checks that the object stays. Buoy passes that test. Node 25 still replaces the object, as these two files expect.
 
 ### 3.6 Results and summaries
 
