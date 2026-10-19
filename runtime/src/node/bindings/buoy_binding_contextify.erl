@@ -57,10 +57,14 @@ binding() ->
         {<<"startSigintWatchdog">>, F(<<"startSigintWatchdog">>, 0, fun(_, _) -> undefined end)},
         {<<"stopSigintWatchdog">>, F(<<"stopSigintWatchdog">>, 0, fun(_, _) -> false end)},
         {<<"watchdogHasPendingSigint">>, F(<<"watchdogHasPendingSigint">>, 0, fun(_, _) -> false end)},
-        {<<"containsModuleSyntax">>, F(<<"containsModuleSyntax">>, 2, fun(_, _) -> false end)},
+        %% containsModuleSyntax(code, filename, resourceName, cjsVar): a string
+        %% cjsVar compiles the code without the variables of the wrapper.
+        {<<"containsModuleSyntax">>, F(<<"containsModuleSyntax">>, 2, fun(_, Args) ->
+            buoy_ref_eval:contains_module_syntax(buoy_ref:to_string(A(1, Args)), buoy_ref:typeof(A(4, Args)) =/= <<"string">>)
+        end)},
         {<<"measureMemory">>, F(<<"measureMemory">>, 2, fun(_, Args) -> measure_memory(A(1, Args)) end)},
         {<<"compileFunctionForCJSLoader">>, F(<<"compileFunctionForCJSLoader">>, 4, fun(_, Args) ->
-            compile_function_for_cjs_loader(A(1, Args), A(2, Args))
+            compile_function_for_cjs_loader(A(1, Args), A(2, Args), A(4, Args))
         end)}]).
 
 %% measureMemory(mode, execution): a promise of V8's estimate of the memory
@@ -237,14 +241,30 @@ set_host(_, _, _, _) ->
 %% function, as V8 takes a function from its code cache, and other text
 %% compiles here. A hashbang line becomes a comment, as V8 reads it in the
 %% source of a script.
-compile_function_for_cjs_loader(Code, Filename) ->
+compile_function_for_cjs_loader(Code, Filename, Detect) ->
     Text = buoy_ref:to_string(Code),
-    Function = case buoy_module:compiled_wrapper(Filename, Text) of
-        {ok, Wrapper} -> Wrapper;
-        none -> compile_cjs(Text)
+    {Function, Esm} = case buoy_module:compiled_wrapper(Filename, Text) of
+        {ok, Wrapper} -> {Wrapper, false};
+        none -> compile_cjs(Text, Detect =:= true)
     end,
     buoy_node:object([{<<"cachedDataRejected">>, false}, {<<"sourceMapURL">>, source_map_url(Text)},
-                      {<<"sourceURL">>, undefined}, {<<"function">>, Function}, {<<"canParseAsESM">>, false}]).
+                      {<<"sourceURL">>, undefined}, {<<"function">>, Function}, {<<"canParseAsESM">>, Esm}]).
+
+%% Text that does not compile as CommonJS can parse as an ES module, which
+%% the loader then loads as one, as Node retries a syntax error of ES module
+%% syntax when shouldDetectModule holds.
+compile_cjs(Text, Detect) ->
+    try
+        {compile_cjs(Text), false}
+    catch
+        error:{'$throw', _} = Reason:Stack ->
+            case Detect andalso contains_module_syntax(Text) of
+                true -> {undefined, true};
+                false -> erlang:raise(error, Reason, Stack)
+            end
+    end.
+
+contains_module_syntax(Text) -> buoy_ref_eval:contains_module_syntax(Text, true).
 
 compile_cjs(Text) ->
     Length = buoy_ref_string:length_of(Text),

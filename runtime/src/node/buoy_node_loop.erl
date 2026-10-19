@@ -452,9 +452,14 @@ finish() ->
                 true ->
                     ok;
                 false ->
-                    emit_exit(Process),
+                    %% handleProcessExit of run_main.js: an entry whose top-level
+                    %% await never settled exits with 13, unless process.exitCode is set.
+                    Unsettled = buoy_jobs:is_main_unsettled(),
+                    Default = case Unsettled of true -> 13; false -> 0 end,
+                    emit_exit(Process, Default),
+                    Unsettled andalso buoy_jobs:warn_unsettled(),
                     free_environment(),
-                    really_exit(exit_code(0))
+                    really_exit(exit_code(Default))
             end;
         true ->
             really_exit(exit_code(0))
@@ -473,11 +478,11 @@ exiting() ->
         Fields -> buoy_heap:get(Fields, 0) =/= 0
     end.
 
-emit_exit(Process) ->
+emit_exit(Process, Default) ->
     buoy_binding_performance:mark(loop_exit),
     Fields = buoy_node_process:exit_info(),
     buoy_heap:set(Fields, 0, 1),
-    buoy_jobs:run_job(fun() -> emit(Process, <<"exit">>, exit_code(0)) end).
+    buoy_jobs:run_job(fun() -> emit(Process, <<"exit">>, exit_code(Default)) end).
 
 emit(Process, Event, Code) ->
     buoy_heap:call(buoy_heap:get(Process, <<"emit">>), Process, [Event, Code]).

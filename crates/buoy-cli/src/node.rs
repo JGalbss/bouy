@@ -9,7 +9,7 @@ use std::io::{IsTerminal as _, Read as _};
 use std::path::Path;
 use std::process::ExitCode;
 
-use buoy_compiler::Semantics;
+use buoy_compiler::{Code, Diagnostic, Semantics};
 
 /// The node options of an invocation, which the VM reads with `-buoy_exec_argv`, and
 /// whether the entry is the code of `-e` or `-p`, which has no script in `process.argv`.
@@ -231,7 +231,13 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             run_stdin(&arguments, options)
         }
         Some(Entry::Script(script)) => {
-            let project = match super::compile(Path::new(&script), Semantics::Reference) {
+            let entry = Path::new(&script);
+            let place = entry.canonicalize().unwrap_or_else(|_| entry.to_path_buf());
+            let source = std::fs::read_to_string(entry).unwrap_or_default();
+            let report = |diagnostics: &[Diagnostic]| {
+                report(diagnostics, &source, &place.display().to_string())
+            };
+            let project = match super::compile_reporting(entry, Semantics::Reference, report) {
                 Ok(project) => project,
                 Err(code) => return code,
             };
@@ -240,7 +246,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         Some(Entry::Eval(code)) => {
             options.eval = true;
             let module = is_module(&code, &options.exec_argv);
-            run_source(code, module, program_arguments, &options)
+            run_source(code, module, "[eval]", program_arguments, &options)
         }
         Some(Entry::Print(code)) => {
             options.eval = true;
@@ -252,13 +258,19 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                  process.on('exit', () => console.log(result));\n",
                 json_string(&code)
             );
-            run_source(source, false, program_arguments, &options)
+            run_source(source, false, "[eval]", program_arguments, &options)
         }
         Some(Entry::TestRunner) => {
             options.eval = true;
             // The test runner is the main script of the bootstrap (internal/main/buoy),
             // which the first read of `process` runs.
-            run_source("process;".to_owned(), false, program_arguments, &options)
+            run_source(
+                "process;".to_owned(),
+                false,
+                "[eval]",
+                program_arguments,
+                &options,
+            )
         }
         None if std::io::stdin().is_terminal() => super::fail(
             "buoy: a REPL without a script is not supported yet; pass a script, -e, or -p",
@@ -298,27 +310,53 @@ fn run_stdin(arguments: &[OsString], mut options: Options) -> ExitCode {
     }
     options.eval = true;
     let module = is_module(&code, &options.exec_argv);
-    run_source(code, module, arguments, &options)
+    run_source(code, module, "[stdin]", arguments, &options)
 }
 
 /// Compiles the code as the module `[eval]` of the working directory, so it resolves its
-/// imports from there, and starts it.
-fn run_source(code: String, module: bool, arguments: &[OsString], options: &Options) -> ExitCode {
+/// imports from there, and starts it. `place` names the code in the report of a syntax error.
+fn run_source(
+    code: String,
+    module: bool,
+    place: &str,
+    arguments: &[OsString],
+    options: &Options,
+) -> ExitCode {
     let directory = env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
     let entry = directory.join(if module { "[eval].mjs" } else { "[eval].cjs" });
-    match buoy_compiler::compile_source(&entry, code) {
+    match buoy_compiler::compile_source(&entry, code.clone()) {
         Ok(project) => super::start_program(&project, &entry, arguments, options),
-        Err(diagnostics) => {
-            for diagnostic in &diagnostics {
-                eprintln!("{}", super::relative(diagnostic));
-            }
-            ExitCode::from(super::DIAGNOSTICS)
-        }
+        Err(diagnostics) => report(&diagnostics, &code, place),
     }
 }
 
-/// Whether the code of `-e` is an ES module: `--input-type=module`, or a line that starts
-/// with `import` or `export`, as Node's detection of module syntax finds it.
+/// The diagnostics of the entry. A syntax error prints as Node prints the `SyntaxError`
+/// that V8 throws when the loader compiles the entry: the place and line, the source line,
+/// a caret, the error, and the version, with status 1. Others print as buoy prints them.
+fn report(diagnostics: &[Diagnostic], source: &str, place: &str) -> ExitCode {
+    let Some(error) = diagnostics.iter().find(|d| d.code == Code::Syntax) else {
+        return super::print_diagnostics(diagnostics);
+    };
+    let line = source
+        .lines()
+        .nth(error.line.saturating_sub(1))
+        .unwrap_or_default();
+    let caret = " ".repeat(error.column.saturating_sub(1));
+    eprintln!(
+        "{place}:{}\n{line}\n{caret}^\n\nSyntaxError: {}\n\nNode.js v{}",
+        error.line,
+        error.message,
+        NODE_VERSION.trim()
+    );
+    ExitCode::from(1)
+}
+
+/// The Node release whose behavior Buoy follows.
+const NODE_VERSION: &str = include_str!("../../../.node-version");
+
+/// Whether the code of `-e` or stdin is an ES module: `--input-type=module`, or, without
+/// `--input-type`, module syntax that `containsModuleSyntax` finds without the `CommonJS`
+/// variables, as Node's `shouldUseModuleEntryPoint` asks.
 fn is_module(code: &str, exec_argv: &[String]) -> bool {
     let input_type = exec_argv
         .iter()
@@ -336,16 +374,7 @@ fn is_module(code: &str, exec_argv: &[String]) -> bool {
     match input_type.as_deref() {
         Some("module") => true,
         Some(_) => false,
-        None => code.lines().any(|line| {
-            let line = line.trim_start();
-            line.starts_with("import ")
-                || line.starts_with("import{")
-                || line.starts_with("import*")
-                || line.starts_with("import'")
-                || line.starts_with("import\"")
-                || line.starts_with("export ")
-                || line.contains("import.meta")
-        }),
+        None => buoy_compiler::contains_module_syntax(code, false),
     }
 }
 

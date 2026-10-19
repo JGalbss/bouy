@@ -184,7 +184,153 @@ fn syntax_errors(
                     "`yield*` runs an Effect only directly in a generator function; a nested function cannot yield, so make it return an Effect, such as `Effect.gen(function* () { ... })`, and `yield*` that".to_owned(),
                 );
             }
-            reporter.at(offset, Code::Syntax, error.message.to_string())
+            reporter.at(offset, Code::Syntax, v8_message(&error.message, source, offset))
         })
         .collect()
 }
+
+/// V8's message for a syntax error, which programs and Node's tests read, in place of oxc's
+/// where the two differ: the unexpected token names the token at the error, as V8 names it.
+fn v8_message(message: &str, source: &str, offset: usize) -> String {
+    let fixed = match message {
+        "'import statement' declaration can only be used at the top level of a module"
+        | "Cannot use import statement outside a module" => {
+            "Cannot use import statement outside a module"
+        }
+        "'export statement' declaration can only be used at the top level of a module"
+        | "Cannot use export statement outside a module" => "Unexpected token 'export'",
+        "Unexpected import.meta expression" => "Cannot use 'import.meta' outside a module",
+        "`await` is only allowed within async functions and at the top levels of modules" => {
+            "await is only valid in async functions and the top level bodies of modules"
+        }
+        "'with' statements are not allowed" => "Strict mode code may not include a with statement",
+        "Cannot assign to 'eval' in strict mode"
+        | "Cannot assign to 'arguments' in strict mode" => {
+            "Unexpected eval or arguments in strict mode"
+        }
+        "Super calls are not permitted outside constructors or in nested functions inside constructors."
+        | "'super' can only be referenced in members of derived classes or object literal expressions."
+        | "'super' can only be referenced in a derived class." => "'super' keyword unexpected here",
+        "`let` cannot be declared as a variable name inside of a `let` declaration" => {
+            "let is disallowed as a lexically bound name"
+        }
+        "Unterminated string" | "Invalid characters after number" => "Invalid or unexpected token",
+        other if other.starts_with("Invalid Character") => "Invalid or unexpected token",
+        "Unexpected token"
+        | "Expected a semicolon or an implicit semicolon after a statement, but found none" => {
+            return unexpected_token(source, offset);
+        }
+        other if other.starts_with("Expected `") && other.contains("` but found `") => {
+            return unexpected_token(source, offset);
+        }
+        other => {
+            return match other
+                .strip_prefix("Identifier `")
+                .and_then(|rest| rest.strip_suffix("` has already been declared"))
+            {
+                Some(name) => format!("Identifier '{name}' has already been declared"),
+                None => other.to_owned(),
+            };
+        }
+    };
+    fixed.to_owned()
+}
+
+/// V8's `Unexpected ...` message for the token that starts at `offset`, after white space
+/// and comments.
+fn unexpected_token(source: &str, offset: usize) -> String {
+    let rest = skip_trivia(source.get(offset..).unwrap_or_default());
+    let Some(first) = rest.chars().next() else {
+        return "Unexpected end of input".to_owned();
+    };
+    if first.is_ascii_digit()
+        || (first == '.' && rest[1..].starts_with(|c: char| c.is_ascii_digit()))
+    {
+        return "Unexpected number".to_owned();
+    }
+    if first == '"' || first == '\'' {
+        return "Unexpected string".to_owned();
+    }
+    if first == '`' {
+        return "Unexpected template string".to_owned();
+    }
+    if first == '$' || first == '_' || first.is_alphabetic() {
+        let end = rest
+            .find(|c: char| !(c == '$' || c == '_' || c.is_alphanumeric()))
+            .unwrap_or(rest.len());
+        let word = &rest[..end];
+        return if RESERVED_WORDS.contains(&word) {
+            format!("Unexpected token '{word}'")
+        } else {
+            format!("Unexpected identifier '{word}'")
+        };
+    }
+    PUNCTUATORS
+        .iter()
+        .find(|punctuator| rest.starts_with(**punctuator))
+        .map_or_else(
+            || "Invalid or unexpected token".to_owned(),
+            |punctuator| format!("Unexpected token '{punctuator}'"),
+        )
+}
+
+fn skip_trivia(mut text: &str) -> &str {
+    loop {
+        let trimmed = text.trim_start();
+        text = if let Some(comment) = trimmed.strip_prefix("//") {
+            comment.find('\n').map_or("", |end| &comment[end..])
+        } else if let Some(comment) = trimmed.strip_prefix("/*") {
+            comment.find("*/").map_or("", |end| &comment[end + 2..])
+        } else {
+            return trimmed;
+        };
+    }
+}
+
+/// The words that V8 reports as an unexpected token rather than an identifier.
+const RESERVED_WORDS: &[&str] = &[
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "new",
+    "null",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+];
+
+/// The punctuators of ECMAScript, longest first.
+const PUNCTUATORS: &[&str] = &[
+    ">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "??=", "=>", "==", "!=",
+    "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",
+    "<<", ">>", "**", "{", "}", "(", ")", "[", "]", ";", ",", "<", ">", "+", "-", "*", "/", "%",
+    "&", "|", "^", "!", "~", "?", ":", "=", ".",
+];

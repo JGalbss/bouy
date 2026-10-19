@@ -314,6 +314,13 @@ pub fn cjs_lexer(source: &str) -> Option<(Vec<String>, Vec<String>)> {
     reference::graph::cjs_lexer(source.to_owned()).ok()
 }
 
+/// Node's `containsModuleSyntax`: whether source text that does not compile as a `CommonJS`
+/// function body, with or without the wrapper's variables, is an ES module by its syntax.
+#[must_use]
+pub fn contains_module_syntax(source: &str, cjs_variables: bool) -> bool {
+    reference::graph::contains_module_syntax(source, cjs_variables)
+}
+
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
     path.canonicalize().map_err(|error| {
         vec![Diagnostic {

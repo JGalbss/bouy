@@ -164,7 +164,18 @@ pub fn load(
     let mut queue = VecDeque::from([entry.to_path_buf()]);
     index.insert(entry.to_path_buf(), 0);
     while let Some(path) = queue.pop_front() {
-        let name = unit_name(root, &path);
+        // Source text without a file, such as `-e` code, names its module after the text
+        // too: two VMs that start from one directory must not load each other's entry.
+        let name = match &text {
+            Some(source) if units.is_empty() => {
+                format!(
+                    "{}_{:016x}",
+                    unit_name(root, &path),
+                    crate::erlang::fnv1a(source)
+                )
+            }
+            _ => unit_name(root, &path),
+        };
         let scanned = match names.insert(name.clone(), path.clone()) {
             Some(other) => Err(vec![Reporter::new(&path, "").at(
                 0,
@@ -581,6 +592,15 @@ fn scan_as(
             facts.record.cjs_reexports = requests.reexports;
         }
         (facts.record, facts.specifiers, requests.dynamic)
+    })
+    .map_err(|mut diagnostics| {
+        // The wrapper shares the first line of a CommonJS module.
+        if kind == Kind::CommonJs {
+            for diagnostic in diagnostics.iter_mut().filter(|d| d.line == 1) {
+                diagnostic.column = diagnostic.column.saturating_sub(CJS_WRAPPER.len()).max(1);
+            }
+        }
+        diagnostics
     })?;
     Ok(Scanned {
         source,
@@ -591,26 +611,70 @@ fn scan_as(
     })
 }
 
-/// Node's syntax detection for a file without a package `type`: ESM when it parses as a
-/// module and has `import`, `export`, `import.meta`, or a top-level `await`.
+/// Node's syntax detection for a file without a package `type`.
 fn detect(path: &Path, text: &str) -> Kind {
-    let source_type = Kind::Esm.source_type(path);
-    let esm = crate::parse::parses(path, text, source_type, |program, module_syntax| {
-        if module_syntax {
-            return true;
-        }
-        let mut suspends = Suspends::default();
-        let mut meta = HasImportMeta(false);
-        for statement in &program.body {
-            suspends.visit_statement(statement);
-            meta.visit_statement(statement);
-        }
-        suspends.0 || meta.0
-    });
-    if esm.unwrap_or(false) {
+    if is_module(path, text, true) {
         Kind::Esm
     } else {
         Kind::CommonJs
+    }
+}
+
+/// Node's `containsModuleSyntax` for source text without a file, such as `--eval` code,
+/// which compiles without the variables of the `CommonJS` wrapper.
+pub fn contains_module_syntax(text: &str, cjs_variables: bool) -> bool {
+    is_module(Path::new("[detect].js"), text, cjs_variables)
+}
+
+/// `ShouldRetryAsESM` of Node: text is a module when it parses as one with `import`,
+/// `export`, `import.meta`, or a top-level `await`, or a top-level `let`, `const`, or
+/// `class` of a variable of the wrapper, and fails as a `CommonJS` function body. oxc's
+/// parser does not check redeclarations, so such a declaration stands for V8's error.
+fn is_module(path: &Path, text: &str, cjs_variables: bool) -> bool {
+    let candidate = crate::parse::parses(
+        path,
+        text,
+        Kind::Esm.source_type(path),
+        |program, module_syntax| {
+            let redeclares = cjs_variables && program.body.iter().any(declares_cjs_variable);
+            let mut suspends = Suspends::default();
+            let mut meta = HasImportMeta(false);
+            for statement in &program.body {
+                suspends.visit_statement(statement);
+                meta.visit_statement(statement);
+            }
+            (module_syntax || suspends.0 || meta.0, redeclares)
+        },
+    );
+    match candidate {
+        Some((_, true)) => true,
+        Some((true, false)) => {
+            let body = if cjs_variables {
+                wrap(text)
+            } else {
+                format!("(function () {{{text}\n}})")
+            };
+            crate::parse::parses(path, &body, Kind::CommonJs.source_type(path), |_, _| ()).is_none()
+        }
+        _ => false,
+    }
+}
+
+/// Whether a top-level statement declares a parameter of the `CommonJS` wrapper lexically.
+fn declares_cjs_variable(statement: &Statement) -> bool {
+    let is_wrapper_name =
+        |name: &str| ["exports", "require", "module", "__filename", "__dirname"].contains(&name);
+    match statement {
+        Statement::VariableDeclaration(declaration) if declaration.kind.is_lexical() => declaration
+            .declarations
+            .iter()
+            .flat_map(|declarator| declarator.id.get_binding_identifiers())
+            .any(|id| is_wrapper_name(&id.name)),
+        Statement::ClassDeclaration(class) => class
+            .id
+            .as_ref()
+            .is_some_and(|id| is_wrapper_name(&id.name)),
+        _ => false,
     }
 }
 

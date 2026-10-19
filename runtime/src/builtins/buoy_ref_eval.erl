@@ -14,7 +14,7 @@
 
 -include("buoy_ref.hrl").
 
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4, cjs_lexer/1]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4, cjs_lexer/1, contains_module_syntax/2]).
 -export([interrupt/0, run_until/2]).
 
 -import(buoy_ref, [type_error/1]).
@@ -447,6 +447,26 @@ cjs_lexer(Source) ->
         {Ref, {answer, _}} ->
             erlang:demonitor(Ref, [flush]),
             {[], []};
+        {'DOWN', Ref, process, _, Reason} ->
+            exit({compiler_down, Reason})
+    end.
+
+%% Node's containsModuleSyntax: whether source text that does not compile as
+%% a CommonJS function body, with the variables of the wrapper or without
+%% them, is an ES module by its syntax.
+-spec contains_module_syntax(term(), boolean()) -> boolean().
+contains_module_syntax(Source, CjsVariables) ->
+    Server = compiler(),
+    Ref = erlang:monitor(process, Server),
+    Header = case CjsVariables of
+        true -> "@module-syntax\n\n";
+        false -> "@module-syntax\nno-cjs-variables\n\n"
+    end,
+    Server ! {raw, self(), Ref, iolist_to_binary([Header, buoy_ref_string:to_utf8(Source)])},
+    receive
+        {Ref, {answer, Answer}} ->
+            erlang:demonitor(Ref, [flush]),
+            Answer =:= <<0, 1>>;
         {'DOWN', Ref, process, _, Reason} ->
             exit({compiler_down, Reason})
     end.

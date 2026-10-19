@@ -17,7 +17,7 @@
 -export([await/3, async_call/1, enqueue/1, drain/0, own_queue/1, checkpoint/1]).
 -export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1, quiet_capability/0]).
 -export([set_timer/4, clear_timer/1]).
--export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
+-export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0, is_main_unsettled/0, warn_unsettled/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
 -export([all/1]).
 
@@ -586,18 +586,28 @@ run_main(Body) ->
     %% The result lives under a pdict key, a root, so a collection keeps it.
     run_job(fun() -> eval_bootstrap(), erlang:put(?MAIN, Body()) end),
     loop_until_exit(),
-    case erlang:get(?MAIN) of
-        {'$o', _} = P ->
-            case is_promise(P) andalso buoy_heap:slots(P) of
-                {pending, _, _, _} ->
-                    io:put_chars(buoy_ref:stderr(), "Warning: Detected unsettled top-level await\n"),
-                    buoy_ref:exit_program(13);
-                _ ->
-                    ok
-            end;
-        _ ->
+    case is_main_unsettled() of
+        true ->
+            warn_unsettled(),
+            buoy_ref:exit_program(13);
+        false ->
             ok
     end.
+
+%% Whether the top-level await of the entry module has not settled.
+-spec is_main_unsettled() -> boolean().
+is_main_unsettled() ->
+    case erlang:get(?MAIN) of
+        {'$o', _} = P -> is_promise(P) andalso element(1, buoy_heap:slots(P)) =:= pending;
+        _ -> false
+    end.
+
+%% CheckUnsettledTopLevelAwait warns only without --no-warnings.
+-spec warn_unsettled() -> ok.
+warn_unsettled() ->
+    buoy_binding_options:value(<<"--warnings">>) andalso
+        io:put_chars(buoy_ref:stderr(), "Warning: Detected unsettled top-level await\n"),
+    ok.
 
 %% One macrotask: the job, every microtask it queues, and then a collection
 %% when the heap grew enough since the last one.

@@ -294,6 +294,8 @@ fn serve_eval() -> ExitCode {
             load_answer(request)
         } else if header == "@cjs-lexer" {
             cjs_lexer_answer(text)
+        } else if let Some(variables) = header.strip_prefix("@module-syntax") {
+            module_syntax_answer(text, variables != "\nno-cjs-variables")
         } else {
             match Served::try_parse_from(arguments) {
                 Ok(Served { request }) => match request.compile(text) {
@@ -313,6 +315,16 @@ fn serve_eval() -> ExitCode {
             return ExitCode::SUCCESS;
         }
     }
+}
+
+/// The answer to `@module-syntax`, with the line `no-cjs-variables` for text without the
+/// variables of the `CommonJS` wrapper: status 0 and the byte 1 when the text is an ES
+/// module by its syntax (`containsModuleSyntax`), else 0.
+fn module_syntax_answer(text: &str, cjs_variables: bool) -> Vec<u8> {
+    vec![
+        0,
+        u8::from(buoy_compiler::contains_module_syntax(text, cjs_variables)),
+    ]
 }
 
 /// The answer to `@cjs-lexer`, the export names of `CommonJS` source text: status 0, the
@@ -506,17 +518,31 @@ fn build(entry: &Path, semantics: Semantics) -> ExitCode {
 
 /// Compiles the program, printing diagnostics to stderr.
 fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
+    compile_reporting(entry, semantics, print_diagnostics)
+}
+
+/// Compiles the program, and on diagnostics records them and returns the status that
+/// `report` gives after printing them.
+fn compile_reporting(
+    entry: &Path,
+    semantics: Semantics,
+    report: impl FnOnce(&[Diagnostic]) -> ExitCode,
+) -> Result<Project, ExitCode> {
     if !entry.is_file() {
         eprintln!("buoy: cannot find the file {}", entry.display());
         return Err(ExitCode::from(DIAGNOSTICS));
     }
     buoy_compiler::compile_with(entry, semantics).map_err(|diagnostics| {
-        for diagnostic in &diagnostics {
-            eprintln!("{}", relative(diagnostic));
-        }
         write_result(&diagnostics);
-        ExitCode::from(DIAGNOSTICS)
+        report(&diagnostics)
     })
+}
+
+fn print_diagnostics(diagnostics: &[Diagnostic]) -> ExitCode {
+    for diagnostic in diagnostics {
+        eprintln!("{}", relative(diagnostic));
+    }
+    ExitCode::from(DIAGNOSTICS)
 }
 
 /// Writes the facts of a run that stopped at its diagnostics to `BUOY_RESULT_FILE`, as

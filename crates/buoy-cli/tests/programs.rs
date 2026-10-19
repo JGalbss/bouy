@@ -655,7 +655,7 @@ fn diagnostics_stop_the_program_before_the_vm_starts() {
     let cases: [(&str, &[&str]); 7] = [
         (
             "buoy200-redeclared.ts",
-            &["1:7: BUOY200: Identifier `total` has already been declared"],
+            &["1:7: BUOY200: Identifier 'total' has already been declared"],
         ),
         (
             "buoy201-unknown-package.ts",
