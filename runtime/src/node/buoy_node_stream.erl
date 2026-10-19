@@ -172,8 +172,28 @@ set_ref(Handle, Refed) ->
 %% shares its descriptor: while Target, the manager of that child, is set,
 %% what the handle reads goes to the child's stdin, as the reads of the
 %% child take it from the shared pipe.
+%% A socket of buoy_node_socket, such as a net.Socket, reads for the child
+%% through a listener instead.
 -spec forward(term(), pid() | none) -> ok.
 forward(Handle, Target) ->
+    case buoy_node_socket:find(Handle) of
+        {ok, _} -> forward_socket(Handle, Target);
+        error -> forward_channel(Handle, Target)
+    end.
+
+forward_socket(Handle, none) ->
+    buoy_node_socket:set_listener(Handle, none),
+    _ = buoy_node_socket:read_stop(Handle),
+    ok;
+forward_socket(Handle, Target) ->
+    buoy_node_socket:set_listener(Handle, fun({data, Bytes}) -> pass_to(Target, Bytes);
+                                             (eof) -> pass_to(Target, eof);
+                                             (_) -> ok
+                                          end),
+    _ = buoy_node_socket:read_start(Handle),
+    ok.
+
+forward_channel(Handle, Target) ->
     #{pending := Pending} = state(Handle),
     update(Handle, fun(S) -> S#{forward => Target, pending := case Target of none -> Pending; _ -> [] end} end),
     is_pid(Target) andalso lists:foreach(fun(Item) -> pass_to(Target, Item) end, lists:reverse(Pending)),
@@ -187,7 +207,10 @@ pass_to(Target, Bytes) -> Target ! {write, Bytes, self(), make_ref()}.
 %% through the handle's channel, as the child writes to the shared pipe.
 -spec pass(term(), binary()) -> ok.
 pass(Handle, Bytes) ->
-    send(Handle, {write, Bytes, self(), make_ref()}).
+    case buoy_node_socket:find(Handle) of
+        {ok, _} -> _ = buoy_node_socket:write_raw(Handle, Bytes), ok;
+        error -> send(Handle, {write, Bytes, self(), make_ref()})
+    end.
 
 %% Data that the channel read, or eof: the handle's onread gets it while it
 %% reads, and keeps it for readStart otherwise. Data that an IPC channel
