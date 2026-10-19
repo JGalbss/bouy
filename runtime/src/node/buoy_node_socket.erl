@@ -28,7 +28,7 @@
 -export([methods/1, handle_methods/1, create/2, create/3, wrap_info/1, adopt/3, find/1, state/1, save/2, kick/1, write_kick/1, later/1, js/1, event/1]).
 -export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
 -export([sockaddr/3, address_text/1, scope/1, open_inherited/2]).
--export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1, buffer_bytes/1]).
+-export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1, buffer_bytes/1, hold/3]).
 -export_type([kind/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -101,8 +101,18 @@ save(Handle, New) ->
 
 holds(#{closed := true}) -> false;
 holds(#{refed := false}) -> false;
-holds(#{reading := Reading, listening := Listening, connect := Connect, queue := Queue, shutdown := Shutdown}) ->
-    Reading orelse Listening orelse Connect =/= none orelse Queue =/= [] orelse Shutdown =/= none.
+holds(#{reading := Reading, listening := Listening, connect := Connect, queue := Queue, shutdown := Shutdown} = S) ->
+    Reading orelse Listening orelse Connect =/= none orelse Queue =/= [] orelse Shutdown =/= none
+        orelse maps:get(holders, S, []) =/= [].
+
+%% A wrap of the handle, such as a TLSWrap, holds the loop through the
+%% handle while its own work for the handle waits, so the handle's ref,
+%% unref, and close govern that hold as they govern the handle's reads.
+-spec hold(term(), term(), boolean()) -> ok.
+hold(Handle, Key, On) ->
+    S = state(Handle),
+    Holders = maps:get(holders, S, []) -- [Key],
+    save(Handle, S#{holders => case On of true -> [Key | Holders]; false -> Holders end}).
 
 attach(Handle, Socket) ->
     %% A read takes up to 64 KiB, as libuv's buffers do; the socket module
@@ -500,7 +510,7 @@ close(Handle, Callback) ->
             save(Handle, S#{closed := true, reading := false, listening := false, queue := [], queued := 0,
                             shutdown := none, connect := none}),
             Cancelled = [R || {R, _} <- Queue] ++ [R || R <- [Shutdown, Connect], R =/= none],
-            buoy_node_loop:defer(fun() ->
+            buoy_node_loop:closing(fun() ->
                 [cancel(R, Handle, Connect) || R <- Cancelled],
                 buoy_heap:is_callable(Callback) andalso buoy_heap:call(Callback, Handle, [])
             end),

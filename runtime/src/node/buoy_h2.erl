@@ -127,6 +127,9 @@
              inbound = head :: magic | first_settings | head | ign_all,
              magic_left = <<>> :: binary(),
              buf = <<>> :: binary(),
+             %% The DATA frame whose end waits, after a data_chunk callback
+             %% paused the receive (NGHTTP2_ERR_PAUSE).
+             paused = none :: none | map(),
              %% A header block that CONTINUATION frames continue:
              %% {Frame, StreamId, BlockSoFar}.
              cont = none :: none | {map(), non_neg_integer(), iodata()},
@@ -201,13 +204,17 @@ is_server(#h2{server = S}) -> S.
 
 %% nghttp2_session_mem_recv2: {ok, Session}, or {Error, Session} with the
 %% negative error code of nghttp2 when the session must end.
--spec mem_recv(session(), binary()) -> {ok | integer(), session()}.
+%% A data_chunk callback that answers pause stops the receive after that
+%% chunk, as NGHTTP2_ERR_PAUSE does: mem_recv returns paused and keeps the
+%% rest, and the next mem_recv, with more bytes or none, goes on with the
+%% end of that frame.
+-spec mem_recv(session(), binary()) -> {ok | paused | integer(), session()}.
 mem_recv(H, Data) ->
     case want_read(H) of
         false -> {ok, H};
         true ->
             try
-                recv(H#h2{buf = <<(H#h2.buf)/binary, Data/binary>>})
+                recv(resume(H#h2{buf = <<(H#h2.buf)/binary, Data/binary>>}))
             catch
                 throw:{?MODULE, fatal, Code, H1} -> {Code, H1#h2{inbound = ign_all, buf = <<>>}}
             end
@@ -237,10 +244,15 @@ recv(#h2{buf = <<Len:24, _:8, _:8, _:1, _:31, _/binary>>, local = #{max_frame_si
     {ok, terminate(H#h2{buf = <<>>}, ?FRAME_SIZE_ERROR, <<"too large frame size">>)};
 recv(#h2{buf = <<Len:24, Type:8, Flags:8, _:1, Id:31, Payload:Len/binary, Rest/binary>>} = H) ->
     Frame = #{type => Type, flags => Flags, stream_id => Id, length => Len},
-    H1 = frame(Frame, Payload, H#h2{buf = Rest}),
-    recv(H1);
+    case frame(Frame, Payload, H#h2{buf = Rest}) of
+        #h2{paused = none} = H1 -> recv(H1);
+        H1 -> {paused, H1}
+    end;
 recv(H) ->
     {ok, H}.
+
+resume(#h2{paused = none} = H) -> H;
+resume(#h2{paused = F} = H) -> on_data_received(F, H#h2{paused = none}).
 
 %% A complete frame. A header block in progress takes only its CONTINUATION.
 frame(#{type := ?CONTINUATION, stream_id := Id} = F, Payload, #h2{cont = {First, Id, Block}} = H) ->
@@ -293,30 +305,36 @@ recv_data(#{stream_id := Id, length := Len, flags := Flags} = F, Payload, H) ->
             end
     end.
 
+%% nghttp2_session_update_recv_stream_window_size: a stream past its window
+%% is reset with FLOW_CONTROL_ERROR, and only a connection past its window
+%% ends the session. The frame's data still reaches the application.
 recv_data_flow(#{stream_id := Id} = F, Data, Padding, H) ->
     S = stream(Id, H),
-    case S#stream.recv_window + byte_size(Data) + Padding > S#stream.local_window of
+    {S1, H1} = case S#stream.recv_window + byte_size(Data) + Padding > S#stream.local_window of
         true ->
-            terminate(H, ?FLOW_CONTROL_ERROR, <<>>);
+            {S, add_rst_stream(Id, ?FLOW_CONTROL_ERROR, H)};
         false ->
-            S1 = S#stream{recv_window = S#stream.recv_window + byte_size(Data) + Padding},
-            H1 = put_stream(S1, H),
-            %% Padding is consumed at once, as nghttp2 does without automatic
-            %% WINDOW_UPDATE.
-            H2 = case Padding of
-                0 -> H1;
-                _ -> consume_stream(consume_connection(H1, Padding), Id, Padding)
-            end,
-            case http_on_data(S1, byte_size(Data)) of
-                error ->
-                    invalid_stream(F, ?ERR_PROTO, H2);
-                {ok, Http} ->
-                    H3 = update_stream(Id, fun(St) -> St#stream{http = Http} end, H2),
-                    H4 = case Data of
-                        <<>> -> H3;
-                        _ -> element(2, cb({data_chunk, Id, Data, maps:get(flags, F)}, H3))
-                    end,
-                    on_data_received(F, H4)
+            Counted = S#stream{recv_window = S#stream.recv_window + byte_size(Data) + Padding},
+            {Counted, put_stream(Counted, H)}
+    end,
+    %% Padding is consumed at once, as nghttp2 does without automatic
+    %% WINDOW_UPDATE.
+    H2 = case Padding of
+        0 -> H1;
+        _ -> consume_stream(consume_connection(H1, Padding), Id, Padding)
+    end,
+    case http_on_data(S1, byte_size(Data)) of
+        error ->
+            invalid_stream(F, ?ERR_PROTO, H2);
+        {ok, Http} ->
+            H3 = update_stream(Id, fun(St) -> St#stream{http = Http} end, H2),
+            case Data of
+                <<>> -> on_data_received(F, H3);
+                _ ->
+                    case cb({data_chunk, Id, Data, maps:get(flags, F)}, H3) of
+                        {pause, H4} -> H4#h2{paused = F};
+                        {_, H4} -> on_data_received(F, H4)
+                    end
             end
     end.
 
@@ -506,14 +524,23 @@ push_promise_block(#{stream_id := Id, promised_stream_id := P} = F, Block, H) ->
                                decode_only(Block, H#h2{last_recv_stream_id = P}));
         #stream{} when H#h2.goaway_sent ->
             decode_only(Block, H#h2{last_recv_stream_id = P});
+        %% nghttp2_session_on_push_promise_received: a promise past
+        %% max_reserved_remote_streams is canceled, and its block only keeps
+        %% HPACK's state.
         #stream{} ->
-            H1 = H#h2{last_recv_stream_id = P},
-            S = (new_stream(P, reserved, true, H1))#stream{shut_wr = true},
-            H2 = put_stream(S, H1),
-            case decode(Block, H2) of
-                {error, H3} -> H3;
-                {ok, Fields, H3} -> deliver_headers(F#{cat => ?HCAT_REQUEST}, P, Fields, H3)
+            Reserved = length([S || S <- maps:values(H#h2.streams), S#stream.state =:= reserved, S#stream.incoming]),
+            case Reserved >= maps:get(max_reserved_remote_streams, H#h2.opts, 200) of
+                true -> decode_only(Block, add_rst_stream(P, ?CANCEL, H#h2{last_recv_stream_id = P}));
+                false -> push_promise_reserve(F, P, Block, H)
             end
+    end.
+
+push_promise_reserve(F, P, Block, H) ->
+    H1 = H#h2{last_recv_stream_id = P},
+    S = (new_stream(P, reserved, true, H1))#stream{shut_wr = true},
+    case decode(Block, put_stream(S, H1)) of
+        {error, H2} -> H2;
+        {ok, Fields, H2} -> deliver_headers(F#{cat => ?HCAT_REQUEST}, P, Fields, H2)
     end.
 
 %% on_begin_headers, then on_header for each field that passes the rules,
@@ -900,7 +927,7 @@ consume_connection(#h2{consumed = C, recv_window = R, local_window = L} = H, N) 
     C1 = C + N,
     Size = min(C1, R),
     case should_update(L, Size) andalso not H#h2.window_update_queued of
-        true -> queue(reg, {window_update, 0, Size}, H#h2{consumed = C1 - Size, recv_window = R - Size});
+        true -> queue_window_update(0, Size, H#h2{consumed = C1 - Size, recv_window = R - Size});
         false -> H#h2{consumed = C1}
     end.
 
@@ -914,12 +941,31 @@ consume_stream(H, Id, N) ->
             C1 = C + N,
             Size = min(C1, R),
             case should_update(L, Size) andalso not S#stream.window_update_queued andalso not S#stream.shut_rd of
-                true -> queue(reg, {window_update, Id, Size}, put_stream(S#stream{consumed = C1 - Size, recv_window = R - Size}, H));
+                true -> queue_window_update(Id, Size, put_stream(S#stream{consumed = C1 - Size, recv_window = R - Size}, H));
                 false -> put_stream(S#stream{consumed = C1}, H)
             end
     end.
 
 should_update(Local, Size) -> Size > 0 andalso Size >= Local div 2.
+
+%% nghttp2_session_add_window_update: until the frame leaves, the stream or
+%% the connection queues no other, so data that the peer sends meanwhile
+%% counts against the window that the peer knows.
+queue_window_update(0, Inc, H) ->
+    queue(reg, {window_update, 0, Inc}, H#h2{window_update_queued = true});
+queue_window_update(Id, Inc, H) ->
+    queue(reg, {window_update, Id, Inc}, update_stream(Id, fun(S) -> S#stream{window_update_queued = true} end, H)).
+
+%% session_after_frame_sent1 of a WINDOW_UPDATE: another may go now for
+%% what was consumed meanwhile.
+window_update_sent(0, H) ->
+    consume_connection(H#h2{window_update_queued = false}, 0);
+window_update_sent(Id, H) ->
+    case find(Id, H) of
+        none -> H;
+        #stream{shut_rd = true} = S -> put_stream(S#stream{window_update_queued = false}, H);
+        #stream{} = S -> consume_stream(put_stream(S#stream{window_update_queued = false}, H), Id, 0)
+    end.
 
 %% nghttp2_session_set_local_window_size for the connection.
 -spec set_local_window_size(session(), integer()) -> {integer(), session()}.
@@ -938,7 +984,7 @@ set_local_window_size(#h2{local_window = L, recv_window = R, recv_reduction = Re
             H1 = H#h2{local_window = Size, recv_reduction = Reduction - Back, recv_window = R + Back},
             case D - Back of
                 0 -> {0, H1};
-                Inc -> {0, queue(reg, {window_update, 0, Inc}, H1)}
+                Inc -> {0, queue_window_update(0, Inc, H1)}
             end;
         D ->
             %% nghttp2_adjust_local_window_size shrinks without telling the peer.
@@ -1224,7 +1270,8 @@ send_item({goaway, Last, Code, Data, Kind}, H) ->
     {frame_bytes(?GOAWAY, 0, 0, [<<0:1, Last:31, Code:32>>, Data]),
      sent(#{type => ?GOAWAY, flags => 0, stream_id => 0, last_stream_id => Last, error_code => Code}, H2)};
 send_item({window_update, Id, Inc}, H) ->
-    {frame_bytes(?WINDOW_UPDATE, 0, Id, <<0:1, Inc:31>>), sent(#{type => ?WINDOW_UPDATE, flags => 0, stream_id => Id}, H)};
+    {frame_bytes(?WINDOW_UPDATE, 0, Id, <<0:1, Inc:31>>),
+     window_update_sent(Id, sent(#{type => ?WINDOW_UPDATE, flags => 0, stream_id => Id}, H))};
 send_item({rst_stream, Id, Code}, H) ->
     Bytes = frame_bytes(?RST_STREAM, 0, Id, <<Code:32>>),
     {Bytes, close_stream(Id, Code, sent(#{type => ?RST_STREAM, flags => 0, stream_id => Id}, H))};

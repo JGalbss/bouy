@@ -18,6 +18,8 @@
 
 -define(SESSION, {'#', ?MODULE, <<"session">>}).
 -define(STREAM, {'#', ?MODULE, <<"stream">>}).
+%% Set while a read of a native handle runs the session outside JavaScript.
+-define(TOP_LEVEL, {?MODULE, top_level}).
 -define(CALLBACKS, {?MODULE, callbacks}).
 -define(STATE, {?MODULE, state}).
 
@@ -183,6 +185,8 @@ new_session(This, TypeArg) ->
                 async_id => async_id(), padding => maps:get(padding_strategy, Opts, 0),
                 max_header_pairs => case Type of server -> max(MaxPairs, 4); client -> max(MaxPairs, 1) end,
                 max_pings => maps:get(max_outstanding_pings, Opts, 10),
+                %% maxSessionMemory counts in megabytes (DEFAULT_MAX_SESSION_MEMORY).
+                max_memory => maps:get(max_session_memory, Opts, 10) * 1000000,
                 max_settings => maps:get(max_outstanding_settings, Opts, 10),
                 pings => [], settings => [], outgoing => [], pending_rst => [],
                 write_scheduled => false, in_scope => false, sending => false, write_in_progress => false,
@@ -253,17 +257,24 @@ maybe_schedule_write(This) ->
 
 %% consume(handle): the session reads and writes the socket's handle.
 consume(This, Handle) ->
-    update(This, fun(S) -> S#{socket => Handle} end),
+    update(This, fun(S) -> S#{socket => Handle, top_level => not buoy_binding_js_stream:is_js_stream(Handle)} end),
     Prev = buoy_stream_base:push_listener(Handle, fun(Bytes) -> on_stream_read(This, Bytes) end),
     update(This, fun(S) -> S#{prev_onread => Prev} end),
     undefined.
 
-%% Http2Session::OnStreamRead and ConsumeHTTP2Data.
+%% Http2Session::OnStreamRead.
 on_stream_read(This, Bytes) ->
     count(This, data_received, byte_size(Bytes)),
+    consume_data(This, Bytes).
+
+%% Http2Session::ConsumeHTTP2Data. A receive that paused while a write was
+%% in progress keeps the rest and sends nothing until that write is done.
+consume_data(This, Bytes) ->
     case session(This) of
-        #{destroyed := false} ->
-            scoped(This, fun() ->
+        #{destroyed := false} = Session ->
+            update(This, fun(S) -> S#{receive_paused => false} end),
+            maps:get(top_level, Session, false) andalso erlang:put(?TOP_LEVEL, true),
+            try_top_level(fun() -> scoped(This, fun() ->
                 {Ret, H} = buoy_h2:mem_recv(h2(This), Bytes),
                 put_h2(This, H),
                 case Ret of
@@ -272,13 +283,15 @@ on_stream_read(This, Bytes) ->
                             #{destroyed := false} -> send_pending(This);
                             _ -> ok
                         end;
+                    paused ->
+                        update(This, fun(S) -> S#{receive_paused => true} end);
                     Code ->
                         Custom = maps:get(custom_error, session(This), null),
                         update(This, fun(S) -> maps:remove(custom_error, S) end),
                         call_session(This, error, [Code, Custom])
                 end,
                 maybe_stop_reading(This)
-            end),
+            end) end),
             undefined;
         _ ->
             undefined
@@ -368,10 +381,12 @@ after_write(This, Status) ->
             call_owner(This, <<"ondone">>, []),
             update(This, fun(St) -> St#{reading_stopped => false} end),
             socket_call(This, <<"readStart">>, []);
-        #{write_scheduled := false} ->
-            maybe_schedule_write(This);
         _ ->
-            ok
+            maps:get(receive_paused, session(This), false) andalso consume_data(This, <<>>),
+            case session(This) of
+                #{write_scheduled := false, destroyed := false} -> maybe_schedule_write(This);
+                _ -> ok
+            end
     end,
     undefined.
 
@@ -444,7 +459,7 @@ close(This, Code, SocketClosed) ->
             end,
             Pings = maps:get(pings, session(This)),
             update(This, fun(S) -> S#{pings => []} end),
-            [buoy_node_loop:set_immediate(fun() -> ping_done(Cb, Start, false, undefined) end) || {Cb, Start} <- Pings],
+            [buoy_node_loop:set_immediate(fun() -> ping_done(Ping, Start, false, undefined) end) || {Ping, Start} <- Pings],
             emit_session_statistics(This),
             undefined;
         _ ->
@@ -497,30 +512,36 @@ settings_done(Callback, Start, Ack) ->
     buoy_heap:is_callable(Callback) andalso
         buoy_heap:call(Callback, undefined, [Ack, (hrtime() - Start) / 1.0e6]).
 
+%% Http2Session::AddPing: each ping is an AsyncWrap of its own, whose
+%% ondone runs through MakeCallback and which is destroyed after it.
 ping(This, Payload, Callback) ->
     S = session(This),
     Start = hrtime(),
+    Ping = buoy_node:object([{<<"ondone">>, Callback}]),
+    buoy_binding_async_wrap:wrap(Ping, <<"HTTP2PING">>),
     case length(maps:get(pings, S)) >= maps:get(max_pings, S) of
         true ->
-            ping_done(Callback, Start, false, undefined),
+            ping_done(Ping, Start, false, undefined),
             false;
         false ->
             Bytes = case buoy_heap:is_object(Payload) of
                 true -> buoy_node_encoding:view_bytes(Payload);
                 false -> <<Start:64/little>>
             end,
-            update(This, fun(St) -> St#{pings => maps:get(pings, St) ++ [{Callback, Start}]} end),
+            update(This, fun(St) -> St#{pings => maps:get(pings, St) ++ [{Ping, Start}]} end),
             scoped(This, fun() -> put_h2(This, buoy_h2:submit_ping(h2(This), Bytes)) end),
             true
     end.
 
-ping_done(Callback, Start, Ack, Payload) ->
+ping_done(Ping, Start, Ack, Payload) ->
     Buf = case Payload of
         undefined -> undefined;
         _ -> buoy_node_encoding:new_buffer(Payload)
     end,
-    buoy_heap:is_callable(Callback) andalso
-        buoy_heap:call(Callback, undefined, [Ack, (hrtime() - Start) / 1.0e6, Buf]).
+    Ondone = buoy_heap:get(Ping, <<"ondone">>),
+    buoy_heap:is_callable(Ondone) andalso
+        buoy_binding_async_wrap:make_callback(Ping, Ondone, [Ack, (hrtime() - Start) / 1.0e6, Buf]),
+    buoy_binding_async_wrap:emit_destroy(Ping).
 
 origin(This, String, Count) ->
     Text = buoy_node_encoding:encode(latin1, String),
@@ -619,7 +640,7 @@ on(This, {begin_headers, #{id := Id, cat := Cat}}) ->
         undefined ->
             S = session(This),
             Local = buoy_h2:local_settings(h2(This)),
-            case map_size(maps:get(streams, S)) < maps:get(max_concurrent_streams, Local) of
+            case map_size(maps:get(streams, S)) < maps:get(max_concurrent_streams, Local) andalso has_session_memory(S) of
                 true ->
                     update(This, fun(St) -> St#{rejected_streams => 0} end),
                     new_stream(This, Id, Cat, 0),
@@ -678,14 +699,19 @@ on(This, {data_chunk, Id, Data, _Flags}) ->
                 #{destroyed := true} -> ok;
                 #{reading := Reading} ->
                     stream_count(Stream, received, byte_size(Data)),
-                    buoy_stream_base:emit_read(Stream, Data),
+                    emit_stream_read(Stream, Data),
                     case Reading of
                         true -> put_h2(This, buoy_h2:consume_stream(h2(This), Id, byte_size(Data)));
                         false -> update_stream(Stream, fun(St) -> St#{paused_consumed => maps:get(paused_consumed, St) + byte_size(Data)} end)
+                    end,
+                    %% OnDataChunkReceived waits for a write in progress
+                    %% before it takes more input.
+                    case maps:get(write_in_progress, session(This)) of
+                        true -> pause;
+                        false -> ok
                     end
             end
-    end,
-    ok;
+    end;
 on(This, {stream_close, Id, Code}) ->
     case find_stream(This, Id) of
         undefined -> ok;
@@ -694,6 +720,7 @@ on(This, {stream_close, Id, Code}) ->
                 #{destroyed := true} -> ok;
                 _ ->
                     update_stream(Stream, fun(St) -> St#{closed => true, code => Code} end),
+                    debug({stream, Stream}, "closed with code ~b", [Code]),
                     Answer = call_stream_callback(Stream, stream_close, [Code]),
                     case Answer of
                         false -> destroy_stream(Stream);
@@ -803,10 +830,11 @@ translate_error(L) when L =:= -505; L =:= -531; L =:= -532 -> 1;
 translate_error(_) -> 2.
 
 frame_received(This, 0, #{stream_id := Id, flags := Flags, length := Len}) ->
+    debug({session, This}, "handling data frame for stream ~b", [Id]),
     case find_stream(This, Id) of
         Stream when Stream =/= undefined, Flags band 1 =/= 0 ->
             case stream(Stream) of
-                #{destroyed := false} -> buoy_stream_base:emit_read(Stream, eof);
+                #{destroyed := false} -> emit_stream_read(Stream, eof);
                 _ -> ok
             end;
         _ when Len =:= 0 ->
@@ -875,10 +903,10 @@ frame_received(This, 6, #{flags := Flags, opaque_data := Payload}) ->
     case Flags band 1 of
         1 ->
             case maps:get(pings, session(This)) of
-                [{Callback, Start} | Rest] ->
+                [{Ping, Start} | Rest] ->
                     update(This, fun(S) -> S#{pings => Rest} end),
                     count(This, ping_rtt, fun(_) -> hrtime() - Start end),
-                    ping_done(Callback, Start, true, Payload);
+                    ping_done(Ping, Start, true, Payload);
                 [] ->
                     call_session(This, error, [?ERR_PROTO])
             end;
@@ -910,14 +938,46 @@ frame_received(_, _, _) ->
 call_session(This, Name, Args) ->
     case maps:get(Name, erlang:get(?CALLBACKS), undefined) of
         undefined -> undefined;
-        F -> buoy_heap:call(F, This, Args)
+        F -> make_callback(fun() -> buoy_heap:call(F, This, Args) end)
     end.
 
 call_stream_callback(Stream, Name, Args) ->
     case maps:get(Name, erlang:get(?CALLBACKS), undefined) of
         undefined -> undefined;
-        F -> buoy_heap:call(F, Stream, Args)
+        F -> make_callback(fun() -> in_frame(Stream, fun() -> buoy_heap:call(F, Stream, Args) end) end)
     end.
+
+%% Stream::MakeCallback runs in the async context frame of the stream's
+%% creation, which a client request takes from its PendingRequest.
+emit_stream_read(Stream, Data) ->
+    make_callback(fun() -> in_frame(Stream, fun() -> buoy_stream_base:emit_read(Stream, Data) end) end).
+
+%% A read of a native handle reaches the session from the loop, so each of
+%% its callbacks is a MakeCallback at the top of the stack: the microtasks
+%% and ticks run after it (InternalCallbackScope::Close). The 'stream'
+%% event that onSessionHeaders queues thus runs before the next frame. A
+%% JSStream's read comes from JavaScript, where they wait.
+make_callback(Fun) ->
+    case erlang:erase(?TOP_LEVEL) of
+        true ->
+            try
+                Result = Fun(),
+                buoy_node_loop:after_callback(),
+                Result
+            after
+                erlang:put(?TOP_LEVEL, true)
+            end;
+        _ ->
+            Fun()
+    end.
+
+try_top_level(Fun) ->
+    try Fun() after erlang:erase(?TOP_LEVEL) end.
+
+in_frame(Stream, Fun) ->
+    Prior = buoy_jobs:context(),
+    buoy_jobs:set_context(maps:get(frame, stream(Stream), Prior)),
+    try Fun() after buoy_jobs:set_context(Prior) end.
 
 %% Provider::Stream::OnRead: the next bytes of the stream's body, with
 %% the write requests that they finish.
@@ -1027,7 +1087,7 @@ new_stream(Session, Id, Cat, Options) ->
               has_trailers => Options band ?STREAM_OPTION_GET_TRAILERS =/= 0,
               headers => [], headers_length => 0, paused_consumed => 0,
               max_header_length => min(maps:get(max_header_list_size, Local), 16777215),
-              async_id => async_id(),
+              async_id => async_id(), frame => buoy_jobs:context(),
               stats => #{start => now_ns(), first_header => 0, first_byte => 0, first_byte_sent => 0,
                          sent => 0, received => 0}},
     buoy_heap:private_put(Stream, ?STREAM, State),
@@ -1146,7 +1206,9 @@ destroy_stream(This) ->
             buoy_node_loop:set_immediate(fun() ->
                 Queue = maps:get(queue, stream(This)),
                 update_stream(This, fun(S) -> S#{queue => [], available => 0} end),
-                [buoy_stream_base:done(Req, ?UV_ECANCELED, This) || {_, Req} <- Queue, Req =/= undefined]
+                [buoy_stream_base:done(Req, ?UV_ECANCELED, This) || {_, Req} <- Queue, Req =/= undefined],
+                %% ~Http2Stream, when Detach drops the last reference.
+                debug({stream, This}, "tearing down stream", [])
             end),
             emit_stream_statistics(Session, Id, stream(This));
         _ ->
@@ -1184,6 +1246,7 @@ stream_read_start(This) ->
     case stream(This) of
         #{destroyed := false, session := Session, id := Id, paused_consumed := N} ->
             update_stream(This, fun(S) -> S#{reading => true, paused_consumed => 0} end),
+            debug({stream, This}, "reading starting", []),
             scoped(Session, fun() -> put_h2(Session, buoy_h2:consume_stream(h2(Session), Id, N)) end),
             0;
         _ ->
@@ -1191,6 +1254,37 @@ stream_read_start(This) ->
     end.
 
 %%% Helpers
+
+%% CanAddStream's has_available_session_memory(sizeof(Http2Stream)): the
+%% session's memory counts the body bytes that its streams queued
+%% (IncrementAvailableOutboundLength) and each stream.
+-define(STREAM_SIZE, 512).
+has_session_memory(#{streams := Streams, max_memory := Max}) ->
+    Queued = lists:sum([maps:get(available, stream(St), 0) + ?STREAM_SIZE || St <- maps:values(Streams)]),
+    Queued + ?STREAM_SIZE =< Max.
+
+%% Debug of src/debug_utils-inl.h: a line on stderr after the wrap's
+%% diagnostic_name while NODE_DEBUG_NATIVE names a part of its provider,
+%% as "http2" names HTTP2SESSION and HTTP2STREAM.
+debug(Wrap, Format, Args) ->
+    Wanted = case erlang:get({?MODULE, debug_native}) of
+        undefined ->
+            W = [C || C <- [string:lowercase(string:trim(C0)) || C0 <- string:split(os:getenv("NODE_DEBUG_NATIVE", ""), ",", all)], C =/= ""],
+            erlang:put({?MODULE, debug_native}, W),
+            W;
+        W ->
+            W
+    end,
+    Category = case Wrap of {session, _} -> "http2session"; {stream, _} -> "http2stream" end,
+    lists:any(fun(C) -> string:find(Category, C) =/= nomatch end, Wanted) andalso
+        io:put_chars(standard_error, [diagnostic_name(Wrap), " ", io_lib:format(Format, Args), "\n"]).
+
+diagnostic_name({session, This}) ->
+    #{type := Type, async_id := AsyncId} = session(This),
+    io_lib:format("Http2Session ~s (~b)", [Type, trunc(AsyncId)]);
+diagnostic_name({stream, This}) ->
+    #{id := Id, async_id := AsyncId, session := Session} = stream(This),
+    io_lib:format("HttpStream ~b (~b) [~s]", [Id, trunc(AsyncId), diagnostic_name({session, Session})]).
 
 %% Methods of a FunctionTemplate with a signature.
 methods(Proto, Slot, Methods) ->

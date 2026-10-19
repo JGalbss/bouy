@@ -200,7 +200,7 @@ begin_handshake(This, Role) ->
     Options = ssl_options(S, Role, Agent),
     Agent ! {options, case Role of client -> Options; server -> server_options(Options) end},
     save(This, S#{phase := handshaking, agent := Agent}),
-    buoy_node_loop:ref_handle(),
+    hold(This, handshake),
     parent_read(Parent, true),
     Role =:= server andalso call_js(This, <<"onhandshakestart">>, [buoy_node_loop:now()]),
     ok.
@@ -626,13 +626,13 @@ event(Id, Event) ->
     end.
 
 event(This, S, {handshake, {ok, Info}}) ->
-    buoy_node_loop:unref_handle(),
     save(This, S#{phase := open, info := Info}),
+    release(This, handshake),
     #{agent := Agent, pending := Pending, reading := Reading, server := Server, shutdown := Shutdown} = S,
     [Agent ! {write, Ref, Bytes} || {Ref, Bytes} <- Pending],
     save(This, (state(This))#{pending := []}),
     Reading andalso (Agent ! {reading, true, maps:get(delivered, S)}),
-    Shutdown =/= none andalso (Agent ! {shutdown, Shutdown}),
+    Shutdown =/= none andalso begin hold(This, shutdown), Agent ! {shutdown, Shutdown} end,
     maps:get(protocol, maps:get(items, Info, #{}), 'tlsv1.3') =/= 'tlsv1.3'
         andalso put(This, reneg, #{in => {header, <<>>}, out => {header, <<>>}, phase => idle, notify => Server}),
     call_js(This, <<"onhandshakedone">>, []),
@@ -641,7 +641,7 @@ event(This, S, {handshake, {ok, Info}}) ->
 event(This, S, {handshake, {error, Reason}}) ->
     save(This, S#{phase := failed}),
     release_flight(maps:get(id, S)),
-    buoy_node_loop:unref_handle(),
+    release(This, handshake),
     case Reason of
         closed -> cleartext_end(This);
         _ -> call_js(This, <<"onerror">>, [handshake_error(Reason, maps:get(server, S))])
@@ -658,6 +658,7 @@ event(This, S, {drained, Count}) ->
     case S of
         #{peer_eof := true, inbox := [], delivered := Count, tls_eof := false, phase := open} ->
             save(This, S#{tls_eof := true}),
+            release(This, eof),
             cleartext_end(This);
         _ ->
             ok
@@ -665,10 +666,15 @@ event(This, S, {drained, Count}) ->
 %% The agent is gone with ssl's connection: the writes that it did not
 %% take are canceled, as TLSWrap's InvokeQueued cancels them.
 event(This, _S, cleartext_eof) ->
-    #{writes := Writes} = S = state(This),
-    save(This, S#{phase := closed, writes := #{}, queued := 0}),
+    #{writes := Writes, shutdown := Shutdown, phase := Phase} = S = state(This),
+    save(This, S#{phase := closed, writes := #{}, queued := 0, shutdown := none}),
     Canceled = buoy_node_socket:errno(ecanceled),
     [buoy_node_socket:later(fun() -> complete(Req, Canceled, This) end) || {Req, _Size} <- maps:values(Writes)],
+    %% A shutdown that the agent took and will not answer.
+    Shutdown =/= none andalso Phase =:= open andalso
+        buoy_node_socket:later(fun() -> complete(Shutdown, Canceled, This) end),
+    release(This, shutdown),
+    release(This, eof),
     cleartext_end(This);
 event(This, S, {written, Ref, Status}) ->
     #{writes := Writes, queued := Queued} = S,
@@ -681,6 +687,7 @@ event(This, S, {written, Ref, Status}) ->
     end;
 event(This, S, {shutdown, Req, Status}) ->
     save(This, S#{shutdown := none}),
+    release(This, shutdown),
     %% ssl that the peer's close_notify ended shuts nothing; the parent's
     %% write side still ends, as SSL_shutdown is followed by the stream's.
     Status =:= ok orelse parent_shutdown(maps:get(parent, S)),
@@ -812,6 +819,7 @@ encrypted_in(This, {data, Data}) ->
 encrypted_in(This, eof) ->
     S = state(This),
     save(This, S#{peer_eof := true}),
+    maps:get(phase, S) =:= open andalso maps:get(reading, S) andalso hold(This, eof),
     case S of
         #{phase := open, renegotiating := true} -> pump(This);
         #{phase := open} -> poll(This);
@@ -1064,6 +1072,11 @@ stream_state() ->
 set_reading(This, Reading) ->
     S = state(This),
     save(This, S#{reading := Reading}),
+    case S of
+        #{peer_eof := true, tls_eof := false, phase := open} when Reading -> hold(This, eof);
+        _ when Reading -> ok;
+        _ -> release(This, eof)
+    end,
     case {S, Reading} of
         {#{phase := idle, server := true}, true} -> begin_handshake(This, server);
         {#{phase := open, agent := Agent, delivered := Count}, _} ->
@@ -1162,10 +1175,28 @@ pairs([Chunk, Encoding | Rest]) ->
     [Bytes | pairs(Rest)];
 pairs(_) -> [].
 
+%% The loop stays alive while ssl owes the stream an answer: to a shutdown,
+%% as the parent's uv_shutdown_t keeps Node's loop, and to the peer's end,
+%% which Node's TLSWrap answers in the same callback.
+%% A socket handle's ref and close govern the hold; another parent holds the
+%% loop itself.
+hold(This, Reason) -> hold(This, Reason, true).
+
+release(This, Reason) -> hold(This, Reason, false).
+
+hold(This, Reason, On) ->
+    #{parent := Parent, held := Held} = S = maps:merge(#{held => []}, state(This)),
+    case {buoy_node_socket:find(Parent), lists:member(Reason, Held)} of
+        {{ok, _}, _} -> buoy_node_socket:hold(Parent, {?MODULE, Reason}, On);
+        {error, false} when On -> buoy_node_loop:ref_handle(), save(This, S#{held := [Reason | Held]});
+        {error, true} when not On -> buoy_node_loop:unref_handle(), save(This, S#{held := lists:delete(Reason, Held)});
+        _ -> ok
+    end.
+
 %% shutdown(req): close_notify, then the parent's write side shuts.
 shutdown(This, Req) ->
     case state(This) of
-        #{phase := open, agent := Agent} = S -> save(This, S#{shutdown := Req}), Agent ! {shutdown, Req}, 0;
+        #{phase := open, agent := Agent} = S -> save(This, S#{shutdown := Req}), hold(This, shutdown), Agent ! {shutdown, Req}, 0;
         #{phase := P} = S when P =:= idle; P =:= handshaking -> save(This, S#{shutdown := Req}), 0;
         %% The TLS session is over, and the parent's write side still ends,
         %% as TLSWrap::DoShutdown always shuts the underlying stream.
@@ -1176,6 +1207,7 @@ shutdown(This, Req) ->
     end.
 
 destroy(This) ->
+    [release(This, Reason) || Reason <- [handshake, shutdown, eof]],
     case state(This) of
         #{sni_waiting := Waiting} when is_pid(Waiting) -> Waiting ! {'$buoy_tls_sni', []};
         _ -> ok
@@ -1189,7 +1221,7 @@ destroy(This) ->
         #{agent := Agent, phase := Phase, id := Id} = S when is_pid(Agent) ->
             Agent ! close,
             %% An agent that waits in a handshake ends with it.
-            Phase =:= handshaking andalso begin exit(Agent, kill), buoy_node_loop:unref_handle() end,
+            Phase =:= handshaking andalso exit(Agent, kill),
             save(This, S#{agent := none, phase := closed}),
             erlang:erase({?MODULE, Id});
         #{id := Id} = S ->

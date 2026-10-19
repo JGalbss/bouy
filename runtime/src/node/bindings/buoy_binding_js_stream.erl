@@ -5,7 +5,7 @@
 %% finishWrite(req, status); readBuffer(chunk) and emitEOF() feed onread.
 -module(buoy_binding_js_stream).
 
--export([binding/0]).
+-export([binding/0, is_js_stream/1]).
 
 -define(STATE, {'#', ?MODULE, <<"stream">>}).
 
@@ -48,6 +48,11 @@ binding() ->
     [buoy_heap:define(Proto, Name, #{value => buoy_node:fn(Name, 0, Fun), writable => true, enumerable => true, configurable => true})
      || {Name, Fun} <- Methods],
     buoy_node:object([{<<"JSStream">>, Class}]).
+
+%% Whether Handle is a JSStream, whose reads come from JavaScript.
+-spec is_js_stream(term()) -> boolean().
+is_js_stream(Handle) ->
+    buoy_heap:is_object(Handle) andalso buoy_heap:private_find(Handle, ?STATE) =/= error.
 
 %% MakeCallback(this[Name], ...): the JavaScript side's answer.
 callback(This, Name, Args) ->
