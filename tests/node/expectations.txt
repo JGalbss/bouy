@@ -3557,7 +3557,7 @@ parallel/test-tls-close-notify.js skip
 parallel/test-tls-cnnic-whitelist.js pass
 parallel/test-tls-connect-abort-controller.js pass
 parallel/test-tls-connect-address-family.js pass
-parallel/test-tls-connect-allow-half-open-option.js fail
+parallel/test-tls-connect-allow-half-open-option.js pass
 parallel/test-tls-connect-given-socket.js timeout
 parallel/test-tls-connect-hints-option.js pass
 parallel/test-tls-connect-hwm-option.js pass
@@ -3575,7 +3575,7 @@ parallel/test-tls-destroy-stream-12.js pass
 parallel/test-tls-destroy-stream.js pass
 parallel/test-tls-destroy-whilst-write.js pass
 parallel/test-tls-dhe.js skip
-parallel/test-tls-disable-renegotiation.js pass
+parallel/test-tls-disable-renegotiation.js fail
 parallel/test-tls-ecdh-auto.js pass
 parallel/test-tls-ecdh-multiple.js pass
 parallel/test-tls-ecdh.js pass
@@ -3634,7 +3634,7 @@ parallel/test-tls-multi-key.js pass
 parallel/test-tls-multi-pfx.js pass
 parallel/test-tls-multiple-cas-as-string.js pass
 parallel/test-tls-net-connect-prefer-path.js pass
-parallel/test-tls-net-socket-keepalive-12.js fail
+parallel/test-tls-net-socket-keepalive-12.js pass
 parallel/test-tls-net-socket-keepalive.js pass
 parallel/test-tls-no-cert-required.js pass
 parallel/test-tls-no-rsa-key.js pass
@@ -3666,7 +3666,7 @@ parallel/test-tls-reuse-host-from-socket.js pass
 parallel/test-tls-root-certificates.js pass
 parallel/test-tls-secure-context-usage-order.js pass
 parallel/test-tls-secure-session.js pass
-parallel/test-tls-server-capture-rejection.js fail
+parallel/test-tls-server-capture-rejection.js pass
 parallel/test-tls-server-connection-server.js pass
 parallel/test-tls-server-failed-handshake-emits-clienterror.js pass
 parallel/test-tls-server-parent-constructor-options.js pass
@@ -3702,7 +3702,7 @@ parallel/test-tls-socket-default-options.js timeout
 parallel/test-tls-socket-destroy.js pass
 parallel/test-tls-socket-failed-handshake-emits-error.js pass
 parallel/test-tls-socket-snicallback-without-server.js timeout
-parallel/test-tls-startcom-wosign-whitelist.js fail
+parallel/test-tls-startcom-wosign-whitelist.js pass
 parallel/test-tls-starttls-server.js pass
 parallel/test-tls-streamwrap-buffersize.js fail
 parallel/test-tls-ticket-12.js fail

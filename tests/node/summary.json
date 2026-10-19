@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "39d50650d2fa47065cb1aad7b258cba543982d94",
+  "updated": "ede66c4d303ef141e5d4bca1fbb9bafffc7245e0",
   "total": 4419,
   "outcomes": {
-    "pass": 2951,
+    "pass": 2967,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 817,
-    "timeout": 53,
+    "fail": 802,
+    "timeout": 52,
     "harness_error": 0,
     "crash": 15
   },
@@ -23,10 +23,10 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 2818,
+        "pass": 2834,
         "skip": 545,
-        "fail": 655,
-        "timeout": 46,
+        "fail": 640,
+        "timeout": 45,
         "crash": 15
       },
       "sequential": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2951,
+        "pass": 2967,
         "skip": 240,
-        "fail": 817,
-        "timeout": 53,
+        "fail": 802,
+        "timeout": 52,
         "crash": 15
       }
     },
@@ -89,10 +89,10 @@
         "skip": 1
       },
       "crypto": {
-        "pass": 137,
+        "pass": 149,
         "skip": 9,
-        "fail": 13,
-        "timeout": 2
+        "fail": 2,
+        "timeout": 1
       },
       "dgram": {
         "pass": 68,
@@ -160,9 +160,9 @@
         "fail": 4
       },
       "other": {
-        "pass": 236,
+        "pass": 237,
         "skip": 178,
-        "fail": 196,
+        "fail": 195,
         "timeout": 4,
         "crash": 2
       },
@@ -233,9 +233,9 @@
         "fail": 2
       },
       "tls": {
-        "pass": 151,
+        "pass": 154,
         "skip": 15,
-        "fail": 45,
+        "fail": 42,
         "timeout": 9
       },
       "trace_events": {
