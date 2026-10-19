@@ -1473,7 +1473,8 @@ error_object(Proto, Message, Stack) ->
     Props = #{<<"message">> => Message, <<"stack">> => Stack},
     Attrs = #{<<"message">> => ?WRITABLE bor ?CONFIGURABLE, <<"stack">> => ?WRITABLE bor ?CONFIGURABLE},
     Id = next_id(),
-    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, none}),
+    %% The slots hold the stack, which the getter of Error.prototype.stack reads.
+    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, Stack}),
     {'$o', Id}.
 
 -spec throw_error(atom(), binary()) -> no_return().
