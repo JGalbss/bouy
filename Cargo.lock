@@ -177,6 +177,7 @@ version = "0.1.0"
 dependencies = [
  "brotli",
  "brotli-decompressor",
+ "libc",
  "libz-rs-sys",
  "rustler",
  "zstd-sys",

@@ -6,8 +6,6 @@
 %% thread pool; here an Erlang timer message runs each poll in the realm.
 -module(buoy_node_stat_watcher).
 
--include_lib("kernel/include/file.hrl").
-
 -export([class/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -91,7 +89,7 @@ poll(Token) ->
 poll(This, Token) ->
     case state(This) of
         #{active := true, token := Token, path := Path, interval := Interval, last := Last, bigint := BigInt} = State ->
-            Now = buoy_binding_fs:read_info(Path, follow),
+            Now = buoy_binding_fs:read_stats(Path, follow),
             report(This, Last, Now, BigInt),
             Next = case Now of
                 {ok, _} -> Now;
@@ -106,10 +104,11 @@ poll(This, Token) ->
             ok
     end.
 
-%% Last is none before the first poll, {ok, Info} after a stat, and
-%% {{error, Reason}, Info} after an error, with the last good stat.
-prev_info(none) -> #file_info{};
-prev_info({{error, _}, Info}) -> Info.
+%% Last is none before the first poll, {ok, Stats} after a stat, and
+%% {{error, Reason}, Stats} after an error, with the last good stat; []
+%% stands for the zeros of no stat.
+prev_info(none) -> [];
+prev_info({{error, _}, Stats}) -> Stats.
 
 report(_This, none, {ok, _}, _) ->
     ok;
@@ -124,15 +123,14 @@ report(This, Last, {error, Reason}, BigInt) ->
         {ok, Info} -> Info;
         _ -> prev_info(Last)
     end,
-    onchange(This, buoy_binding_fs:uv_errno(Reason), #file_info{}, Prev, BigInt).
+    onchange(This, buoy_binding_fs:uv_errno(Reason), [], Prev, BigInt).
 
-%% statbuf_eq of libuv, over the fields that prim_file gives.
-same(A, B) ->
-    Key = fun(#file_info{} = I) ->
-        {I#file_info.ctime, I#file_info.mtime, I#file_info.size, I#file_info.mode, I#file_info.uid,
-         I#file_info.gid, I#file_info.inode, I#file_info.major_device}
-    end,
-    Key(A) =:= Key(B).
+%% statbuf_eq of libuv: every field but nlink, rdev, blksize, blocks, and
+%% atime.
+same(A, B) -> key(A) =:= key(B).
+
+key([Dev, Mode, _Nlink, Uid, Gid, _Rdev, _Blksize, Ino, Size, _Blocks, _, _ | Times]) ->
+    [Dev, Mode, Uid, Gid, Ino, Size | Times].
 
 onchange(This, Status, Curr, Prev, BigInt) ->
     Array = buoy_binding_fs:stat_pair(Curr, Prev, BigInt),

@@ -1,6 +1,8 @@
 //! The NIF library of the runtime, which `buoy_native.erl` loads into the VM.
 //!
-//! It holds the codecs behind `internalBinding('zlib')` (docs/design/node-builtins.md):
+//! `fs` holds the file system calls of `internalBinding('fs')` that ERTS lacks, and `inotify`
+//! the watches of `internalBinding('fs_event_wrap')` on Linux. The rest holds
+//! the codecs behind `internalBinding('zlib')` (docs/design/node-builtins.md):
 //! each stream is a resource that owns one zlib, brotli, or zstd context, and each module
 //! ports the matching context class of Node's `src/node_zlib.cc`. A write runs on a dirty
 //! CPU scheduler, as Node runs it on the libuv thread pool, so a slow compression never
@@ -12,6 +14,10 @@
 
 mod brotli;
 // The NIF glue links against the VM's `enif_*` symbols, which a test binary lacks.
+#[cfg(not(test))]
+mod fs;
+#[cfg(all(target_os = "linux", not(test)))]
+mod inotify;
 #[cfg(not(test))]
 mod nif;
 mod zlib;

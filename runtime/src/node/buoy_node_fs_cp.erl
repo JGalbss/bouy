@@ -180,7 +180,7 @@ copy_file(Src, Dest) ->
                         Copied = file:copy(From, To),
                         file:close(To),
                         case Copied of
-                            {ok, _} -> prim_file:write_file_info(Dest, #file_info{mode = Mode band 8#7777});
+                            {ok, _} -> buoy_binding_fs:result(buoy_native:fs_chmod(Dest, Mode band 8#7777, true));
                             Error -> Error
                         end;
                     Error ->
@@ -193,13 +193,13 @@ copy_file(Src, Dest) ->
             Error
     end.
 
-%% CopyUtimes: the atime and mtime of src on dest.
+%% CopyUtimes: the atime and mtime of src on dest, as seconds.
 copy_times(Src, Dest) ->
-    case prim_file:read_file_info(Src, [{time, posix}]) of
-        {ok, #file_info{atime = A, mtime = M}} ->
-            case prim_file:write_file_info(Dest, #file_info{atime = A, mtime = M}, [{time, posix}]) of
-                ok -> true;
-                {error, Reason} -> buoy_binding_fs:uv_error(Reason, <<"utime">>, Dest)
+    case buoy_binding_fs:read_stats(Src, follow) of
+        {ok, [_, _, _, _, _, _, _, _, _, _, As, Ans, Ms, Mns | _]} ->
+            case buoy_native:fs_utimes(Dest, As + Ans / 1.0e9, Ms + Mns / 1.0e9, true) of
+                0 -> true;
+                Code -> buoy_binding_fs:uv_error(buoy_binding_fs:reason(Code), <<"utime">>, Dest)
             end;
         {error, Reason} ->
             buoy_binding_fs:uv_error(Reason, <<"stat">>, Src)

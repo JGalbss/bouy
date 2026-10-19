@@ -1413,7 +1413,7 @@ parallel/test-fs-rmdir-throws-on-file.js pass
 parallel/test-fs-rmdir-type-check.js pass
 parallel/test-fs-sir-writes-alot.js pass
 parallel/test-fs-stat-bigint.js pass
-parallel/test-fs-stat-date.mjs fail
+parallel/test-fs-stat-date.mjs pass
 parallel/test-fs-stat.js pass
 parallel/test-fs-statfs.js pass
 parallel/test-fs-stream-construct-compat-error-read.js pass
