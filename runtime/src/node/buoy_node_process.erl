@@ -249,17 +249,7 @@ version_pairs() ->
         {<<"simdutf">>, <<"7.3.3">>}, {<<"sqlite">>, <<"3.53.2">>}, {<<"tz">>, <<"2026a">>}, {<<"undici">>, <<"7.24.4">>},
         {<<"unicode">>, <<"17.0">>}, {<<"uv">>, <<"1.52.1">>}, {<<"uvwasi">>, <<"0.0.23">>},
         {<<"v8">>, <<"14.1.146.11-node.25">>}, {<<"zlib">>, <<"1.2.12">>}, {<<"zstd">>, <<"1.5.7">>},
-        {<<"buoy">>, <<"0.1.0">>}] ++ openssl().
-
-%% The version of the OpenSSL that OTP's crypto links, as "3.6.4", or none
-%% when crypto cannot load it.
-openssl() ->
-    try crypto:info_lib() of
-        [{<<"OpenSSL">>, _, Text} | _] -> [{<<"openssl">>, hd(tl(binary:split(Text, <<" ">>, [global])))}];
-        _ -> []
-    catch
-        error:_ -> []
-    end.
+        {<<"buoy">>, <<"0.1.0">>}] ++ [{<<"openssl">>, V} || {ok, V} <- [buoy_crypto:openssl_version()]].
 
 %% The title that --title gives, or node, in UTF-8.
 -spec initial_title() -> binary().

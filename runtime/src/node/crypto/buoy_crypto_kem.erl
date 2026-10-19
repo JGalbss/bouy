@@ -75,13 +75,18 @@ decapsulate(K, Enc) ->
     end,
     extract_and_expand(Suite, dh_bytes(K, Dh), <<Enc/binary, (serialize(K, maps:get(pub, K)))/binary>>).
 
-%% The KEM id of RFC 9180 and its HKDF digest and secret length.
-suite(#{kind := ec, curve := prime256v1}, _) -> {16#0010, sha256, 32};
-suite(#{kind := ec, curve := secp384r1}, _) -> {16#0011, sha384, 48};
-suite(#{kind := ec, curve := secp521r1}, _) -> {16#0012, sha512, 64};
-suite(#{kind := x25519}, _) -> {16#0020, sha256, 32};
-suite(#{kind := x448}, _) -> {16#0021, sha512, 64};
-suite(_, Operation) -> failed(Operation).
+%% The KEM id of RFC 9180 and its HKDF digest and secret length. OpenSSL
+%% has DHKEM from 3.2 on.
+suite(K, Operation) ->
+    buoy_crypto:has_openssl(3, 2) orelse failed(Operation),
+    dhkem_suite(K, Operation).
+
+dhkem_suite(#{kind := ec, curve := prime256v1}, _) -> {16#0010, sha256, 32};
+dhkem_suite(#{kind := ec, curve := secp384r1}, _) -> {16#0011, sha384, 48};
+dhkem_suite(#{kind := ec, curve := secp521r1}, _) -> {16#0012, sha512, 64};
+dhkem_suite(#{kind := x25519}, _) -> {16#0020, sha256, 32};
+dhkem_suite(#{kind := x448}, _) -> {16#0021, sha512, 64};
+dhkem_suite(_, Operation) -> failed(Operation).
 
 ephemeral_dh(#{kind := ec, curve := Curve} = K) ->
     {Pub, Priv} = crypto:generate_key(ecdh, Curve),

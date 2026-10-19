@@ -10,7 +10,7 @@
 -export([class/3, fn/3, method/3, state/2, put_state/2, state_key/1, guard/1]).
 -export([fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, error_value/1, openssl_message/1]).
 -export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2, bit_length/1, has_room/1]).
--export([mod_pow/3, rand_below/1]).
+-export([mod_pow/3, rand_below/1, openssl_version/0, has_openssl/2, is_built/1]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
 -dialyzer({no_return, [fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, illegal/0]}).
@@ -85,6 +85,49 @@ rand_below(N) -> binary:decode_unsigned(crypto:strong_rand_bytes((bit_length(N) 
 %% allocation fails aborts the VM, so a job asks first.
 -spec has_room(non_neg_integer()) -> boolean().
 has_room(Bytes) -> Bytes < buoy_guard:limit(os:getenv("BUOY_MAX_MEMORY", "")) - erlang:memory(total).
+
+%%% The linked OpenSSL
+
+%% The version of the OpenSSL that OTP's crypto links, as <<"3.0.13">>,
+%% which process.versions.openssl names; error when crypto cannot load it.
+-spec openssl_version() -> {ok, binary()} | error.
+openssl_version() ->
+    try crypto:info_lib() of
+        [{<<"OpenSSL">>, _, Text} | _] -> {ok, hd(tl(binary:split(Text, <<" ">>, [global])))};
+        _ -> error
+    catch
+        error:_ -> error
+    end.
+
+%% Whether the linked OpenSSL is Major.Minor or later, as hasOpenSSL of
+%% Node's test/common/crypto.js asks. Node offers only the algorithms of
+%% the OpenSSL that it links, and its tests expect that, so the binding
+%% hides each algorithm that this OpenSSL lacks, even one that Buoy
+%% implements itself.
+-spec has_openssl(non_neg_integer(), non_neg_integer()) -> boolean().
+has_openssl(Major, Minor) ->
+    case openssl_version() of
+        {ok, Text} ->
+            case re:run(Text, <<"^(\\d+)\\.(\\d+)">>, [{capture, all_but_first, binary}]) of
+                {match, [M, N]} -> {binary_to_integer(M), binary_to_integer(N)} >= {Major, Minor};
+                nomatch -> false
+            end;
+        error -> false
+    end.
+
+%% Whether Node builds the member Name of internalBinding('crypto'), or the
+%% method Class.Method of one of its classes, with the linked OpenSSL:
+%% Argon2 needs OpenSSL 3.2 (node_crypto.cc), and ML-DSA, ML-KEM, and
+%% SLH-DSA need 3.5 (OPENSSL_WITH_PQC in crypto_keys.cc). Node's lib reads
+%% each absent member as an unsupported algorithm.
+-spec is_built(binary()) -> boolean().
+is_built(<<"Argon2Job">>) -> has_openssl(3, 2);
+is_built(<<"kTypeArgon2", _/binary>>) -> has_openssl(3, 2);
+is_built(<<"EVP_PKEY_ML_", _/binary>>) -> has_openssl(3, 5);
+is_built(<<"EVP_PKEY_SLH_", _/binary>>) -> has_openssl(3, 5);
+is_built(<<"KeyObjectHandle.", Method/binary>>) ->
+    has_openssl(3, 5) orelse not lists:member(Method, [<<"initPqcRaw">>, <<"rawPublicKey">>, <<"rawSeed">>]);
+is_built(_) -> true.
 
 -spec equal_bytes(binary(), binary()) -> boolean().
 equal_bytes(<<>>, <<>>) -> true;

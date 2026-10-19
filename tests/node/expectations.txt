@@ -3540,7 +3540,7 @@ parallel/test-tls-client-allow-partial-trust-chain.js pass
 parallel/test-tls-client-auth.js timeout
 parallel/test-tls-client-default-ciphers.js pass
 parallel/test-tls-client-destroy-soon.js pass
-parallel/test-tls-client-getephemeralkeyinfo.js pass
+parallel/test-tls-client-getephemeralkeyinfo.js linux=fail,macos=pass
 parallel/test-tls-client-mindhsize.js skip
 parallel/test-tls-client-reject-12.js pass
 parallel/test-tls-client-reject.js pass

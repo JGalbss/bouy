@@ -31,7 +31,7 @@ handle_class() ->
     Key = {?MODULE, handle_class, erlang:get('$buoy_realm')},
     case erlang:get(Key) of
         undefined ->
-            Class = buoy_crypto:class(<<"KeyObjectHandle">>, fun(_, _) -> undefined end, [
+            Methods = [
                 {<<"init">>, 0, fun init/2},
                 {<<"getSymmetricKeySize">>, 0, fun(This, _) -> byte_size(secret(key_data(This))) end},
                 {<<"getAsymmetricKeyType">>, 0, fun asymmetric_key_type/2},
@@ -45,7 +45,10 @@ handle_class() ->
                 {<<"rawSeed">>, 0, fun raw_seed/2},
                 {<<"initJwk">>, 0, fun init_jwk/2},
                 {<<"keyDetail">>, 0, fun key_detail/2},
-                {<<"equals">>, 0, fun equals/2}]),
+                {<<"equals">>, 0, fun equals/2}],
+            Class = buoy_crypto:class(<<"KeyObjectHandle">>, fun(_, _) -> undefined end,
+                                      [M || {Name, _, _} = M <- Methods,
+                                            buoy_crypto:is_built(<<"KeyObjectHandle.", Name/binary>>)]),
             erlang:put(Key, Class),
             Class;
         Class ->

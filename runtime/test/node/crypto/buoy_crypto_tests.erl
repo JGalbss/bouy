@@ -25,17 +25,29 @@ ed448_empty_context_test() ->
     ?assertEqual(crypto:sign(eddsa, none, <<"message">>, [Priv, ed448]), Sig),
     ?assert(buoy_crypto_ed448:verify(Pub, <<"message">>, Sig, <<>>)).
 
-%% ML-DSA signs with a context here, and OTP's crypto verifies the empty one.
+%% ML-DSA signs with a context here. OTP's crypto verifies the empty
+%% context when the linked OpenSSL has ML-DSA, from 3.5 on.
 ml_dsa_test_() ->
     [{atom_to_list(Kind), {timeout, 60, fun() ->
         #{pub := Pub, priv := Priv} = buoy_crypto_pqc:generate(Kind),
         Plain = buoy_crypto_pqc:ml_dsa_sign(Kind, Priv, <<"message">>, <<>>),
-        ?assert(crypto:verify(buoy_crypto_pqc:otp_type(Kind), none, <<"message">>, Plain, Pub)),
+        ?assert(buoy_crypto_pqc:ml_dsa_verify(Kind, Pub, <<"message">>, Plain, <<>>)),
         WithContext = buoy_crypto_pqc:ml_dsa_sign(Kind, Priv, <<"message">>, <<"context">>),
         ?assert(buoy_crypto_pqc:ml_dsa_verify(Kind, Pub, <<"message">>, WithContext, <<"context">>)),
         ?assertNot(buoy_crypto_pqc:ml_dsa_verify(Kind, Pub, <<"message">>, WithContext, <<>>)),
-        ?assertNot(crypto:verify(buoy_crypto_pqc:otp_type(Kind), none, <<"message">>, WithContext, Pub))
+        HasMlDsa = buoy_crypto:has_openssl(3, 5),
+        ?assertEqual(HasMlDsa, lists:member(buoy_crypto_pqc:otp_type(Kind), crypto:supports(public_keys))),
+        ?assertEqual(HasMlDsa, HasMlDsa andalso crypto:verify(buoy_crypto_pqc:otp_type(Kind), none, <<"message">>, Plain, Pub)),
+        ?assertNot(HasMlDsa andalso crypto:verify(buoy_crypto_pqc:otp_type(Kind), none, <<"message">>, WithContext, Pub))
      end}} || Kind <- [ml_dsa_44, ml_dsa_65, ml_dsa_87]].
+
+%% The version of the linked OpenSSL, which process.versions.openssl names
+%% and which decides the algorithms of the binding.
+openssl_version_test() ->
+    {ok, Version} = buoy_crypto:openssl_version(),
+    ?assertMatch({match, _}, re:run(Version, <<"^\\d+\\.\\d+\\.\\d+">>)),
+    ?assert(buoy_crypto:has_openssl(3, 0)),
+    ?assertNot(buoy_crypto:has_openssl(99, 0)).
 
 %% A safe prime of DH_generate_parameters for the generator 2.
 safe_prime_test() ->

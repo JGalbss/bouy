@@ -25,7 +25,7 @@ binding() ->
         ++ buoy_crypto_context:members(),
     Names = [Name || {Name, _} <- Members],
     Missing = [{Name, missing(Name)} || Name <- node_members(), not lists:member(Name, Names)],
-    buoy_node:object(Members ++ Missing).
+    buoy_node:object([M || {Name, _} = M <- Members ++ Missing, buoy_crypto:is_built(Name)]).
 
 %% A member that Buoy does not implement yet: a class or a function.
 missing(<<C, _/binary>> = Name) when C >= $A, C =< $Z -> buoy_node:missing_constructor(<<"crypto">>, Name, 0);

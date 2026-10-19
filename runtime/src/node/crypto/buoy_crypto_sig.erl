@@ -320,10 +320,10 @@ sign_job([Mode | Args]) ->
         _ -> sig_encoding(Enc)
     end,
     CtxBytes = context_bytes(Ctx),
-    CtxBytes =/= <<>> andalso not supports_context(K) andalso
-        buoy_crypto:fail_code(<<"ERR_CRYPTO_OPERATION_FAILED">>, <<"Context parameter is unsupported">>),
     byte_size(CtxBytes) > 255 andalso
         buoy_crypto:fail_code(<<"ERR_OUT_OF_RANGE">>, <<"context string must be at most 255 bytes">>),
+    CtxBytes =/= <<>> andalso not supports_context(K) andalso
+        buoy_crypto:fail_code(<<"ERR_CRYPTO_OPERATION_FAILED">>, <<"Context parameter is unsupported">>),
     case Mode of
         ?SIGN ->
             {fun() -> {ok, encode_signature(K, sign(K, Md, Data, Padding, Salt, CtxBytes), Encoding)} end,
@@ -337,6 +337,8 @@ sign_job([Mode | Args]) ->
 context_bytes(undefined) -> <<>>;
 context_bytes(Ctx) -> buoy_crypto:bytes(Ctx).
 
+%% SupportsContextString: OpenSSL takes a context string from 3.2 on.
 supports_context(#{kind := Kind}) ->
-    Kind =:= ed448 orelse lists:member(Kind, [ml_dsa_44, ml_dsa_65, ml_dsa_87]) orelse
-        lists:prefix("slh_dsa", atom_to_list(Kind)).
+    buoy_crypto:has_openssl(3, 2) andalso
+        (Kind =:= ed448 orelse lists:member(Kind, [ml_dsa_44, ml_dsa_65, ml_dsa_87]) orelse
+         lists:prefix("slh_dsa", atom_to_list(Kind))).

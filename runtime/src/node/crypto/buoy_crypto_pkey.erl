@@ -44,9 +44,13 @@
 %%% Kinds
 
 %% The OID of each kind that only names itself in an AlgorithmIdentifier.
+%% The linked OpenSSL decodes ML-DSA, ML-KEM, and SLH-DSA from 3.5 on.
 oid_kinds() ->
-    [{{1,3,101,110}, x25519}, {{1,3,101,111}, x448}, {{1,3,101,112}, ed25519}, {{1,3,101,113}, ed448},
-     {{2,16,840,1,101,3,4,3,17}, ml_dsa_44}, {{2,16,840,1,101,3,4,3,18}, ml_dsa_65},
+    [{{1,3,101,110}, x25519}, {{1,3,101,111}, x448}, {{1,3,101,112}, ed25519}, {{1,3,101,113}, ed448}]
+        ++ [K || buoy_crypto:has_openssl(3, 5), K <- pqc_oid_kinds()].
+
+pqc_oid_kinds() ->
+    [{{2,16,840,1,101,3,4,3,17}, ml_dsa_44}, {{2,16,840,1,101,3,4,3,18}, ml_dsa_65},
      {{2,16,840,1,101,3,4,3,19}, ml_dsa_87},
      {{2,16,840,1,101,3,4,4,1}, ml_kem_512}, {{2,16,840,1,101,3,4,4,2}, ml_kem_768},
      {{2,16,840,1,101,3,4,4,3}, ml_kem_1024},
@@ -168,8 +172,11 @@ public_from(?EC, Params, Point) ->
     {Curve, Explicit} = ec_params(Params),
     #{kind => ec, curve => Curve, pub => checked_point(Curve, Point), explicit => Explicit};
 public_from(Oid, none, Key) ->
-    {_, Kind} = lists:keyfind(Oid, 1, oid_kinds()),
-    #{kind => Kind, pub => Key}.
+    case lists:keyfind(Oid, 1, oid_kinds()) of
+        {_, Kind} -> #{kind => Kind, pub => Key};
+        %% X509_PUBKEY_get0 of a key that no decoder read.
+        false -> fail(decode_error)
+    end.
 
 dh_params(?DH, {seq, [{int, P}, {int, G} | _]}) -> #{kind => dh, p => P, g => G};
 dh_params(?DH_X942, {seq, [{int, P}, {int, G}, {int, Q} | _]}) -> #{kind => dh, p => P, g => G, q => Q, x942 => true}.

@@ -320,15 +320,21 @@ binding(Name) ->
 %% Gives Binding a stub for each function and class that src/ of Node sets on
 %% it and that Buoy lacks, and each class of Binding a stub for each method of
 %% its prototype that it lacks, so a call of missing native code names itself.
+%% A member that Node leaves out with the linked OpenSSL gets no stub.
 complete(Name, Binding) ->
-    [complete(Name, Binding, Key, Kind) || {Key, Kind} <- buoy_node_manifest:members(Name)],
+    [complete(Name, Binding, Key, Kind) || {Key, Kind} <- buoy_node_manifest:members(Name), is_built(Name, Key)],
     ok.
+
+is_built(<<"crypto">>, Key) -> buoy_crypto:is_built(Key);
+is_built(_, _) -> true.
 
 complete(Name, Binding, Key, Kind) ->
     case {buoy_heap:has_own(Binding, Key), Kind} of
         {false, function} -> stub(Binding, Key, not_implemented(Name, Key), true);
         {false, {class, _}} -> stub(Binding, Key, missing_constructor(Name, Key, 0), true);
-        {true, {class, Methods}} -> complete_prototype(Name, Key, buoy_heap:get(buoy_heap:get(Binding, Key), <<"prototype">>), Methods);
+        {true, {class, Methods}} ->
+            Built = [M || M <- Methods, is_built(Name, <<Key/binary, ".", M/binary>>)],
+            complete_prototype(Name, Key, buoy_heap:get(buoy_heap:get(Binding, Key), <<"prototype">>), Built);
         {true, function} -> ok
     end.
 
