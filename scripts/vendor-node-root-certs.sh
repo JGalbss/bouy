@@ -1,6 +1,6 @@
 #!/bin/sh
 # Vendors the root certificates that Node bundles, src/node_root_certs.h of nodejs/node at the
-# tag of `.node-version`, into runtime/src/buoy_crypto_root_certs.erl, the source of
+# tag of `.node-version`, into runtime/src/node/crypto/buoy_crypto_root_certs.erl, the source of
 # tls.rootCertificates (internalBinding('crypto').getBundledRootCertificates). Each string of the
 # header becomes a binary of the module, byte for byte.
 #
@@ -12,7 +12,7 @@ set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 tag="v$(cat "$root/.node-version")"
-out="$root/runtime/src/buoy_crypto_root_certs.erl"
+out="$root/runtime/src/node/crypto/buoy_crypto_root_certs.erl"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

@@ -10,6 +10,7 @@ api_test_() ->
         {"schedule after casts once", fun schedule_after_casts_once/0},
         {"a schedule ends when its actor stops", fun schedule_ends_with_actor/0},
         {"a schedule ends with the process that created it", fun schedule_ends_with_creator/0},
+        {"no cast of a schedule lands after its owner crashed", fun schedule_ends_with_crashed_owner/0},
         {"sleep blocks the calling process", fun sleep_blocks/0},
         {"cast returns a cast ref and true", fun cast_returns_true/0},
         {"spawn validates the class and its options", fun spawn_validates_options/0},
@@ -58,6 +59,21 @@ schedule_ends_with_creator() ->
         end,
     true = exit(Creator, kill),
     await(fun() -> not is_process_alive(Timer) end).
+
+%% The target sleeps while casts of the timer queue up, and the owner crashes
+%% before the target takes them: a cast sent while the owner ran must not
+%% land once a caller has seen the crash.
+schedule_ends_with_crashed_owner() ->
+    Owner = buoy:spawn([counter()]),
+    Target = buoy:spawn([counter()]),
+    TargetPid = buoy_test_runtime:pid(Target),
+    true = erlang:suspend_process(TargetPid),
+    {'$schedule', Timer} = buoy_actor:call(Owner, <<"tick">>, [Target, 1]),
+    await(fun() -> element(2, process_info(TargetPid, message_queue_len)) >= 3 end),
+    #{<<"name">> := <<"ActorFailed">>} = thrown(fun() -> buoy_actor:call(Owner, <<"fail">>, [<<"boom">>]) end),
+    true = erlang:resume_process(TargetPid),
+    await(fun() -> not is_process_alive(Timer) end),
+    ?assertEqual(0, count(Target)).
 
 sleep_blocks() ->
     Started = erlang:monotonic_time(millisecond),

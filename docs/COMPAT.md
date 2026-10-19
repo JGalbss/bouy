@@ -9,8 +9,8 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 2,299 | 4,419 | 52.0% | 1,525 | 12 | d143387 | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 3,463 | 4,460 | 77.6% | 997 | 0 | d143387 | `tests/node/surface/expectations.txt` |
+| node | node | v25.9.0 | 2,296 | 4,419 | 52.0% | 1,528 | 12 | 4543f24 | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,461 | 4,460 | 77.6% | 999 | 0 | 04d1005 | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
@@ -951,15 +951,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at 4543f24. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 2,299 | 52.0% | 0 | 0 | 583 | 0 | 1,472 | 53 | 0 | 12 |
+| every test | 4,419 | 2,296 | 52.0% | 0 | 0 | 583 | 0 | 1,473 | 55 | 0 | 12 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 2,299 | 56.4% | 0 | 0 | 240 | 0 | 1,472 | 53 | 0 | 12 |
+| kind: public | 4,076 | 2,296 | 56.3% | 0 | 0 | 240 | 0 | 1,473 | 55 | 0 | 12 |
 
 ### By module
 
@@ -971,7 +971,7 @@ node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
 | async_hooks | 56 | 30 | 53.6% | 0 | 0 | 11 | 0 | 15 | 0 | 0 | 0 |
 | buffer | 69 | 58 | 84.1% | 0 | 0 | 6 | 0 | 5 | 0 | 0 | 0 |
 | child_process | 114 | 76 | 66.7% | 0 | 0 | 7 | 0 | 24 | 7 | 0 | 0 |
-| cluster | 88 | 25 | 28.4% | 0 | 0 | 2 | 0 | 50 | 11 | 0 | 0 |
+| cluster | 88 | 23 | 26.1% | 0 | 0 | 2 | 0 | 52 | 11 | 0 | 0 |
 | console | 22 | 17 | 77.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 3 |
 | constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | crypto | 161 | 152 | 94.4% | 0 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
@@ -980,7 +980,7 @@ node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
 | dns | 29 | 0 | 0.0% | 0 | 0 | 10 | 0 | 19 | 0 | 0 | 0 |
 | domain | 50 | 30 | 60.0% | 0 | 0 | 2 | 0 | 18 | 0 | 0 | 0 |
 | events | 40 | 34 | 85.0% | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
-| fs | 343 | 307 | 89.5% | 0 | 0 | 20 | 0 | 13 | 3 | 0 | 0 |
+| fs | 343 | 306 | 89.2% | 0 | 0 | 20 | 0 | 13 | 4 | 0 | 0 |
 | http | 394 | 37 | 9.4% | 0 | 0 | 15 | 0 | 342 | 0 | 0 | 0 |
 | http2 | 274 | 242 | 88.3% | 0 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
 | https | 65 | 63 | 96.9% | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
@@ -1002,7 +1002,7 @@ node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
 | stream | 263 | 204 | 77.6% | 0 | 0 | 8 | 0 | 51 | 0 | 0 | 0 |
 | string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| test | 65 | 27 | 41.5% | 0 | 0 | 5 | 0 | 27 | 6 | 0 | 0 |
+| test | 65 | 27 | 41.5% | 0 | 0 | 5 | 0 | 26 | 7 | 0 | 0 |
 | timers | 60 | 46 | 76.7% | 0 | 0 | 12 | 0 | 2 | 0 | 0 | 0 |
 | tls | 220 | 204 | 92.7% | 0 | 0 | 15 | 0 | 0 | 1 | 0 | 0 |
 | trace_events | 29 | 16 | 55.2% | 0 | 0 | 3 | 0 | 10 | 0 | 0 | 0 |
@@ -1031,7 +1031,7 @@ node at v25.9.0, updated at d143387. Evidence: `tests/node/expectations.txt`.
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | es-module | 222 | 66 | 29.7% | 0 | 0 | 16 | 0 | 139 | 1 | 0 | 0 |
-| parallel | 4,079 | 2,190 | 53.7% | 0 | 0 | 545 | 0 | 1,285 | 47 | 0 | 12 |
+| parallel | 4,079 | 2,187 | 53.6% | 0 | 0 | 545 | 0 | 1,286 | 49 | 0 | 12 |
 | sequential | 118 | 43 | 36.4% | 0 | 0 | 22 | 0 | 48 | 5 | 0 | 0 |
 
 ### Blockers
@@ -1043,19 +1043,19 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at d143387. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 3,463 | 77.6% | 0 | 0 | 0 | 0 | 997 | 0 | 0 | 0 |
+| every test | 4,460 | 3,461 | 77.6% | 0 | 0 | 0 | 0 | 999 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| deprecated | 129 | 100 | 77.5% | 0 | 0 | 0 | 0 | 29 | 0 | 0 | 0 |
+| deprecated | 129 | 98 | 76.0% | 0 | 0 | 0 | 0 | 31 | 0 | 0 | 0 |
 | documented | 4,331 | 3,363 | 77.6% | 0 | 0 | 0 | 0 | 968 | 0 | 0 | 0 |
 
 ### By module
@@ -1147,7 +1147,7 @@ node-surface at v25.9.0, updated at d143387. Evidence: `tests/node/surface/expec
 | node:dns/promises | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
 | node:domain | 27 | 27 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:events | 49 | 49 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:fs | 241 | 241 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:fs | 241 | 239 | 99.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | node:fs/promises | 34 | 34 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:http | 318 | 318 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:http2 | 112 | 0 | 0.0% | 0 | 0 | 0 | 0 | 112 | 0 | 0 | 0 |
@@ -2319,76 +2319,76 @@ Buoy implements 389 of the 895 members that src/ of Node sets on its 70 `interna
 
 | Binding | Members | Implemented | Rate | Module | Build condition |
 | --- | --- | --- | --- | --- | --- |
-| `async_context_frame` | 2 | 2 | 100.0% | `runtime/src/buoy_binding_async_context_frame.erl` |  |
-| `async_wrap` | 16 | 16 | 100.0% | `runtime/src/buoy_binding_async_wrap.erl` |  |
-| `blob` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_blob.erl` |  |
+| `async_context_frame` | 2 | 2 | 100.0% | `runtime/src/node/bindings/buoy_binding_async_context_frame.erl` |  |
+| `async_wrap` | 16 | 16 | 100.0% | `runtime/src/node/bindings/buoy_binding_async_wrap.erl` |  |
+| `blob` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_blob.erl` |  |
 | `block_list` | 4 | 0 | 0.0% | stub |  |
-| `buffer` | 35 | 35 | 100.0% | `runtime/src/buoy_binding_buffer.erl` |  |
-| `builtins` | 9 | 7 | 77.8% | `runtime/src/buoy_binding_builtins.erl` |  |
+| `buffer` | 35 | 35 | 100.0% | `runtime/src/node/bindings/buoy_binding_buffer.erl` |  |
+| `builtins` | 9 | 7 | 77.8% | `runtime/src/node/bindings/buoy_binding_builtins.erl` |  |
 | `cares_wrap` | 18 | 0 | 0.0% | stub |  |
 | `cjs_lexer` | 1 | 0 | 0.0% | stub |  |
-| `config` | 12 | 11 | 91.7% | `runtime/src/buoy_binding_config.erl` |  |
-| `constants` | 6 | 3 | 50.0% | `runtime/src/buoy_binding_constants.erl` |  |
-| `contextify` | 10 | 8 | 80.0% | `runtime/src/buoy_binding_contextify.erl` |  |
-| `credentials` | 14 | 14 | 100.0% | `runtime/src/buoy_binding_credentials.erl` |  |
+| `config` | 12 | 11 | 91.7% | `runtime/src/node/bindings/buoy_binding_config.erl` |  |
+| `constants` | 6 | 3 | 50.0% | `runtime/src/node/bindings/buoy_binding_constants.erl` |  |
+| `contextify` | 10 | 8 | 80.0% | `runtime/src/node/bindings/buoy_binding_contextify.erl` |  |
+| `credentials` | 14 | 14 | 100.0% | `runtime/src/node/bindings/buoy_binding_credentials.erl` |  |
 | `crypto` | 144 | 0 | 0.0% | stub | HAVE_OPENSSL |
-| `diagnostics_channel` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_diagnostics_channel.erl` |  |
-| `encoding_binding` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_encoding_binding.erl` |  |
-| `errors` | 9 | 9 | 100.0% | `runtime/src/buoy_binding_errors.erl` |  |
-| `fs` | 54 | 54 | 100.0% | `runtime/src/buoy_binding_fs.erl` |  |
-| `fs_dir` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_fs_dir.erl` |  |
-| `fs_event_wrap` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_fs_event_wrap.erl` |  |
+| `diagnostics_channel` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_diagnostics_channel.erl` |  |
+| `encoding_binding` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_encoding_binding.erl` |  |
+| `errors` | 9 | 9 | 100.0% | `runtime/src/node/bindings/buoy_binding_errors.erl` |  |
+| `fs` | 54 | 54 | 100.0% | `runtime/src/node/bindings/buoy_binding_fs.erl` |  |
+| `fs_dir` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_fs_dir.erl` |  |
+| `fs_event_wrap` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_fs_event_wrap.erl` |  |
 | `heap_utils` | 3 | 0 | 0.0% | stub |  |
 | `http2` | 24 | 0 | 0.0% | stub |  |
 | `http_parser` | 4 | 0 | 0.0% | stub |  |
 | `icu` | 6 | 0 | 0.0% | stub | NODE_HAVE_I18N_SUPPORT |
 | `inspector` | 16 | 0 | 0.0% | stub |  |
-| `internal_only_v8` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_internal_only_v8.erl` |  |
+| `internal_only_v8` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_internal_only_v8.erl` |  |
 | `js_stream` | 1 | 0 | 0.0% | stub |  |
 | `js_udp_wrap` | 1 | 0 | 0.0% | stub |  |
-| `locks` | 5 | 5 | 100.0% | `runtime/src/buoy_binding_locks.erl` |  |
-| `messaging` | 11 | 6 | 54.5% | `runtime/src/buoy_binding_messaging.erl` |  |
-| `mksnapshot` | 7 | 5 | 71.4% | `runtime/src/buoy_binding_mksnapshot.erl` |  |
-| `module_wrap` | 14 | 12 | 85.7% | `runtime/src/buoy_binding_module_wrap.erl` |  |
+| `locks` | 5 | 5 | 100.0% | `runtime/src/node/bindings/buoy_binding_locks.erl` |  |
+| `messaging` | 11 | 6 | 54.5% | `runtime/src/node/bindings/buoy_binding_messaging.erl` |  |
+| `mksnapshot` | 7 | 5 | 71.4% | `runtime/src/node/bindings/buoy_binding_mksnapshot.erl` |  |
+| `module_wrap` | 14 | 12 | 85.7% | `runtime/src/node/bindings/buoy_binding_module_wrap.erl` |  |
 | `modules` | 13 | 0 | 0.0% | stub |  |
-| `options` | 8 | 8 | 100.0% | `runtime/src/buoy_binding_options.erl` |  |
-| `os` | 14 | 14 | 100.0% | `runtime/src/buoy_binding_os.erl` |  |
-| `performance` | 13 | 13 | 100.0% | `runtime/src/buoy_binding_performance.erl` |  |
-| `permission` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_permission.erl` |  |
-| `pipe_wrap` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_pipe_wrap.erl` |  |
-| `process_methods` | 29 | 26 | 89.7% | `runtime/src/buoy_binding_process_methods.erl` |  |
-| `process_wrap` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_process_wrap.erl` |  |
+| `options` | 8 | 8 | 100.0% | `runtime/src/node/bindings/buoy_binding_options.erl` |  |
+| `os` | 14 | 14 | 100.0% | `runtime/src/node/bindings/buoy_binding_os.erl` |  |
+| `performance` | 13 | 13 | 100.0% | `runtime/src/node/bindings/buoy_binding_performance.erl` |  |
+| `permission` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_permission.erl` |  |
+| `pipe_wrap` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_pipe_wrap.erl` |  |
+| `process_methods` | 29 | 26 | 89.7% | `runtime/src/node/bindings/buoy_binding_process_methods.erl` |  |
+| `process_wrap` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_process_wrap.erl` |  |
 | `profiler` | 5 | 0 | 0.0% | stub | HAVE_INSPECTOR |
 | `quic` | 135 | 0 | 0.0% | stub | HAVE_OPENSSL && OPENSSL_NO_QUIC != 1 |
-| `report` | 20 | 0 | 0.0% | `runtime/src/buoy_binding_report.erl` |  |
+| `report` | 20 | 0 | 0.0% | `runtime/src/node/bindings/buoy_binding_report.erl` |  |
 | `sea` | 4 | 0 | 0.0% | stub |  |
-| `serdes` | 2 | 2 | 100.0% | `runtime/src/buoy_binding_serdes.erl` |  |
-| `signal_wrap` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_signal_wrap.erl` |  |
-| `spawn_sync` | 1 | 1 | 100.0% | `runtime/src/buoy_binding_spawn_sync.erl` |  |
+| `serdes` | 2 | 2 | 100.0% | `runtime/src/node/bindings/buoy_binding_serdes.erl` |  |
+| `signal_wrap` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_signal_wrap.erl` |  |
+| `spawn_sync` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_spawn_sync.erl` |  |
 | `sqlite` | 5 | 0 | 0.0% | stub | HAVE_SQLITE |
 | `stream_pipe` | 1 | 0 | 0.0% | stub |  |
-| `stream_wrap` | 7 | 7 | 100.0% | `runtime/src/buoy_binding_stream_wrap.erl` |  |
-| `string_decoder` | 10 | 10 | 100.0% | `runtime/src/buoy_binding_string_decoder.erl` |  |
-| `symbols` | 23 | 0 | 0.0% | `runtime/src/buoy_binding_symbols.erl` |  |
-| `task_queue` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_task_queue.erl` |  |
+| `stream_wrap` | 7 | 7 | 100.0% | `runtime/src/node/bindings/buoy_binding_stream_wrap.erl` |  |
+| `string_decoder` | 10 | 10 | 100.0% | `runtime/src/node/bindings/buoy_binding_string_decoder.erl` |  |
+| `symbols` | 23 | 0 | 0.0% | `runtime/src/node/bindings/buoy_binding_symbols.erl` |  |
+| `task_queue` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_task_queue.erl` |  |
 | `tcp_wrap` | 3 | 0 | 0.0% | stub |  |
-| `timers` | 7 | 7 | 100.0% | `runtime/src/buoy_binding_timers.erl` |  |
+| `timers` | 7 | 7 | 100.0% | `runtime/src/node/bindings/buoy_binding_timers.erl` |  |
 | `tls_wrap` | 3 | 0 | 0.0% | stub | HAVE_OPENSSL |
-| `trace_events` | 6 | 6 | 100.0% | `runtime/src/buoy_binding_trace_events.erl` |  |
-| `tty_wrap` | 2 | 1 | 50.0% | `runtime/src/buoy_binding_tty_wrap.erl` |  |
-| `types` | 27 | 27 | 100.0% | `runtime/src/buoy_binding_types.erl` |  |
+| `trace_events` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_trace_events.erl` |  |
+| `tty_wrap` | 2 | 1 | 50.0% | `runtime/src/node/bindings/buoy_binding_tty_wrap.erl` |  |
+| `types` | 27 | 27 | 100.0% | `runtime/src/node/bindings/buoy_binding_types.erl` |  |
 | `udp_wrap` | 3 | 0 | 0.0% | stub |  |
-| `url` | 9 | 9 | 100.0% | `runtime/src/buoy_binding_url.erl` |  |
+| `url` | 9 | 9 | 100.0% | `runtime/src/node/bindings/buoy_binding_url.erl` |  |
 | `url_pattern` | 1 | 0 | 0.0% | stub |  |
-| `util` | 18 | 18 | 100.0% | `runtime/src/buoy_binding_util.erl` |  |
-| `uv` | 3 | 3 | 100.0% | `runtime/src/buoy_binding_uv.erl` |  |
+| `util` | 18 | 18 | 100.0% | `runtime/src/node/bindings/buoy_binding_util.erl` |  |
+| `uv` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_uv.erl` |  |
 | `v8` | 40 | 0 | 0.0% | stub |  |
 | `wasi` | 1 | 0 | 0.0% | stub |  |
 | `wasm_web_api` | 1 | 0 | 0.0% | stub |  |
 | `watchdog` | 1 | 0 | 0.0% | stub |  |
 | `webstorage` | 2 | 0 | 0.0% | stub | HAVE_SQLITE |
-| `worker` | 13 | 12 | 92.3% | `runtime/src/buoy_binding_worker.erl` |  |
-| `zlib` | 7 | 6 | 85.7% | `runtime/src/buoy_binding_zlib.erl` |  |
+| `worker` | 13 | 12 | 92.3% | `runtime/src/node/bindings/buoy_binding_worker.erl` |  |
+| `zlib` | 7 | 6 | 85.7% | `runtime/src/node/bindings/buoy_binding_zlib.erl` |  |
 
 </details>
 

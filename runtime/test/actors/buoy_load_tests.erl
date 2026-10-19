@@ -5,20 +5,31 @@
 -import(buoy_test_runtime, [counter/0, slow/0]).
 
 -define(ACTORS, 100000).
+%% The time limit of the fairness test. Each spinner spins this long, so it
+%% outlasts the test, which stops it after the measurement.
+-define(SPIN_SECONDS, 120).
 
 load_test_() ->
     {setup, fun buoy_test_runtime:start/0, fun buoy_test_runtime:stop/1, [
-        {timeout, 120, {"spinning actors do not delay the replies of another actor", fun spinners_do_not_delay_replies/0}},
+        {timeout, ?SPIN_SECONDS, {"spinning actors do not delay the replies of another actor", fun spinners_do_not_delay_replies/0}},
         {timeout, 600, {"100000 actors spawn and answer one call each", fun many_actors_answer/0}}
     ]}.
 
 %% Twice as many CPU-bound turns as schedulers, so every scheduler must
-%% preempt a spinning turn to serve the ping.
+%% preempt a spinning turn to serve the ping. The spinners spin until the
+%% test stops them, so all of them still spin however long the pings take.
 spinners_do_not_delay_replies() ->
     Ping = buoy:spawn([slow()]),
     Idle = latencies(Ping, 50),
     Spinners = [buoy:spawn([slow()]) || _ <- lists:seq(1, 2 * erlang:system_info(schedulers_online))],
-    [true = buoy_actor:cast(buoy:cast([Spinner]), <<"spin">>, [3000]) || Spinner <- Spinners],
+    [true = buoy_actor:cast(buoy:cast([Spinner]), <<"spin">>, [?SPIN_SECONDS * 1000]) || Spinner <- Spinners],
+    try
+        measure_while_spinning(Ping, Idle, Spinners)
+    after
+        [undefined = buoy:stop([Spinner]) || Spinner <- Spinners]
+    end.
+
+measure_while_spinning(Ping, Idle, Spinners) ->
     timer:sleep(100),
     Busy = latencies(Ping, 50),
     StillSpinning = [Spinner || Spinner <- Spinners, is_spinning(Spinner)],
