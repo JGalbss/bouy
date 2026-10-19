@@ -9,6 +9,8 @@
 #   preempt    the preemption proof on a VM with one scheduler
 #   gc         each kernel of KERNELS on BUOY_ENGINE with gc_share.erl, which records
 #              the time of BEAM's garbage collections in the run
+#   jit        each kernel of the native tier on BUOY_JIT_CLI, with the native tier and
+#              without it (BUOY_JIT=0), and on the baselines of SPEED_JS, ROUNDS times
 #
 # Environment:
 #   SPEED_JS      the JavaScript baselines as name=path pairs, such as
@@ -20,19 +22,21 @@
 #   ENGINE_LABEL  the runtime name of BUOY_ENGINE in the results, "engine" by default, so
 #                 two builds can be compared in one file
 #   KERNELS       the kernels of the single mode, all eight by default
-#   ROUNDS        rounds of the single and gc modes, 5 by default
+#   BUOY_JIT_CLI  the buoy CLI that the jit mode measures. The Erlang tier runs smaller
+#                 sizes, as BUOY_ENGINE does, and the report scales its time.
+#   ROUNDS        rounds of the single, gc, and jit modes, 5 by default
 #   GC_RUNS       the timed runs of each engine kernel in the gc mode, 3 by default
 #   ERL, ERLC     the OTP tools, erl and erlc on PATH by default
 #
 # Every VM gets +hmax of 4 GiB, so a runaway process dies and not the machine, and the
 # script starts one VM at a time.
 #
-# Usage: bench/speed/run.sh single|multicore|preempt|gc <results.jsonl>
+# Usage: bench/speed/run.sh single|multicore|preempt|gc|jit <results.jsonl>
 
 set -eu
 
-mode=${1:?usage: run.sh single|multicore|preempt|gc <results.jsonl>}
-out=${2:?usage: run.sh single|multicore|preempt|gc <results.jsonl>}
+mode=${1:?usage: run.sh single|multicore|preempt|gc|jit <results.jsonl>}
+out=${2:?usage: run.sh single|multicore|preempt|gc|jit <results.jsonl>}
 here=$(cd "$(dirname "$0")" && pwd)
 build=${TMPDIR:-/tmp}/buoy-speed-build
 rounds=${ROUNDS:-5}
@@ -152,6 +156,21 @@ gc() {
                 GC_SHARE_KERNEL="$kernel" GC_SHARE_RUNS="$runs" \
                 "$BUOY_ENGINE" run --semantics reference "$build/engine/$kernel.ts" 1 "$runs" >/dev/null 2>&1 || true
             record "${ENGINE_LABEL:-engine}" "$round" cat "$build/gc.json"
+        done
+    done
+}
+
+# The native tier runs the kernels at full size; the Erlang tier runs the sizes of
+# engine_size with one warm-up and three timed iterations.
+jit() {
+    for round in $(seq 1 "$rounds"); do
+        for kernel in nbody richards deltablue; do
+            for pair in ${SPEED_JS:-}; do
+                record "${pair%%=*}" "$round" "${pair#*=}" "$here/kernels/$kernel.ts"
+            done
+            record buoy:jit "$round" "$BUOY_JIT_CLI" run --semantics reference "$here/kernels/$kernel.ts"
+            record buoy:erlang "$round" env BUOY_JIT=0 "$BUOY_JIT_CLI" run --semantics reference \
+                "$here/kernels/$kernel.ts" 1 3 "$(engine_size "$kernel")"
         done
     done
 }

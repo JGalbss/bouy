@@ -7,6 +7,7 @@
 mod diagnostic;
 mod erlang;
 mod graph;
+mod jit;
 mod library;
 mod lower;
 mod oxc_gaps;

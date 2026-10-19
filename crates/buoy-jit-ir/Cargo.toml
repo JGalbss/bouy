@@ -1,0 +1,12 @@
+[package]
+name = "buoy-jit-ir"
+description = "The typed IR that the Buoy compiler emits for hot typed code and that the native tier compiles to machine code."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

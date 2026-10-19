@@ -369,6 +369,14 @@ pub fn js_string_literal(value: &str, lone_surrogates: bool) -> Expr {
     if !lone_surrogates {
         return Expr::js_string(value);
     }
+    Expr::JsString(string_units(value, lone_surrogates))
+}
+
+/// The UTF-16 code units of a literal, as [`js_string_literal`] reads them.
+pub fn string_units(value: &str, lone_surrogates: bool) -> Vec<u16> {
+    if !lone_surrogates {
+        return value.encode_utf16().collect();
+    }
     let mut units = Vec::new();
     let mut chars = value.chars();
     while let Some(c) = chars.next() {
@@ -380,7 +388,7 @@ pub fn js_string_literal(value: &str, lone_surrogates: bool) -> Expr {
         let mut buffer = [0; 2];
         units.extend_from_slice(c.encode_utf16(&mut buffer));
     }
-    Expr::JsString(units)
+    units
 }
 
 /// An array literal of literals that nests another, such as a table of pairs, as one

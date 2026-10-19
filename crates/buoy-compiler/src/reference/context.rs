@@ -278,6 +278,8 @@ pub struct Lowerer<'a, 'c> {
     pub linking: Linking<'c>,
     /// The layout of the instances of each class node that the lowering asked for.
     pub layouts: HashMap<oxc::semantic::NodeId, Option<std::rc::Rc<[String]>>>,
+    /// The islands of typed code that the native tier runs (contract section 17.11).
+    pub jit: crate::jit::Plan,
 }
 
 impl Lowerer<'_, '_> {

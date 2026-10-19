@@ -245,7 +245,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         self.privates.pop();
         self.frame.sloppy = sloppy;
-        Expr::var(c)
+        self.jit_seal(binding, c)
     }
 
     /// `ClassElementEvaluation` in order: defines the methods and accessors, and evaluates

@@ -215,7 +215,9 @@ fn compile(staging: &Path, objects: &Path) -> Result<(), String> {
     };
     fs::create_dir_all(&source).map_err(failed)?;
     fs::create_dir_all(&ebin).map_err(failed)?;
-    fs::write(ebin.join("buoy_native.so"), NATIVE).map_err(failed)?;
+    for (name, library) in NATIVE {
+        fs::write(ebin.join(name), library).map_err(failed)?;
+    }
     for (name, text) in SOURCES {
         fs::write(source.join(name), text).map_err(failed)?;
         let path = Path::new(name);
@@ -373,7 +375,7 @@ fn record_release(staging: &Path) {
     }
 }
 
-/// FNV-1a over the names and contents of the runtime sources, the NIF library, and the
+/// FNV-1a over the names and contents of the runtime sources, the NIF libraries, and the
 /// installed OTP, so that the `.beam` files always match the OTP release that runs them.
 fn hash(otp: &OsString) -> u64 {
     fnv(SOURCES

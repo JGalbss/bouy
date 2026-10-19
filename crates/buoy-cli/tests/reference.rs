@@ -49,3 +49,30 @@ fn a_dependency_that_does_not_compile_throws_when_it_loads() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The islands of `island-objects.ts` read and write module variables that hold objects
+/// and strings, and the run of each is native (contract section 17.11). Only the last
+/// call, whose global holds a field of another type, goes to the Erlang tier.
+#[test]
+fn islands_that_share_objects_run_natively() {
+    if !common::vm_available() {
+        return;
+    }
+    let output = common::buoy()
+        .current_dir(common::repository())
+        .args(["run", "--semantics", "reference"])
+        .arg(std::path::Path::new("tests/reference").join("island-objects.ts"))
+        .env("BUOY_JIT_TRACE", "1")
+        .output()
+        .expect("buoy runs");
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let outcomes: Vec<&str> = stderr
+        .lines()
+        .filter(|line| line.starts_with("buoy jit: buoy@"))
+        .filter_map(|line| line.rsplit(' ').next())
+        .collect();
+    let mut expected = vec!["native"; 6];
+    expected.push("badtype");
+    assert_eq!(outcomes, expected, "{stderr}");
+}
