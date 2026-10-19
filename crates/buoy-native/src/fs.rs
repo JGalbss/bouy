@@ -20,6 +20,17 @@ use std::time::UNIX_EPOCH;
 
 use rustler::{Binary, Env, NewBinary, Term};
 
+/// `PlatformInit` of Node's `src/node.cc` ignores SIGXFSZ, so a write past `RLIMIT_FSIZE`
+/// fails with EFBIG instead of ending the VM. The VM's port spawner started before this
+/// ran, so child processes keep the default action, as libuv resets it in a child.
+pub fn ignore_file_size_signal() {
+    // SAFETY: SIG_IGN is a valid disposition for SIGXFSZ.
+    #[allow(unsafe_code)]
+    unsafe {
+        libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+    }
+}
+
 /// A call's result: the value, or the negative errno.
 type Outcome<T> = Result<T, i64>;
 

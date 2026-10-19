@@ -50,6 +50,9 @@
 
 -spec binding() -> term().
 binding() ->
+    %% The NIF library ignores SIGXFSZ as it loads, as Node's PlatformInit
+    %% does, so it loads before the first write.
+    _ = code:ensure_loaded(buoy_native),
     Promises = buoy_node:symbol(<<"fs_use_promises_symbol">>),
     Stats = buoy_node:typed_array(<<"Float64Array">>, 2 * ?STAT_FIELDS),
     BigStats = buoy_node:typed_array(<<"BigInt64Array">>, 2 * ?STAT_FIELDS),
