@@ -115,9 +115,35 @@ pub fn are_sloppy(semantic: &Semantic<'_>) -> bool {
     semantic.nodes().iter().all(|node| match node.kind() {
         AstKind::IdentifierReference(reference) if reference.name == SENTINEL => {
             !scoping.scope_flags(node.scope_id()).is_strict_mode()
+                && !is_destructured(semantic, node.id())
         }
         _ => true,
     })
+}
+
+/// Whether the rewritten target of the sentinel `id` is an element of a destructuring
+/// pattern, where a call stays an early error in sloppy code too: Annex B covers only the
+/// target of an assignment, an update, and the head of a `for-in` or `for-of` loop.
+fn is_destructured(semantic: &Semantic<'_>, id: oxc::semantic::NodeId) -> bool {
+    semantic
+        .nodes()
+        .ancestor_kinds(id)
+        .find(|kind| {
+            !matches!(
+                kind,
+                AstKind::ComputedMemberExpression(_) | AstKind::ParenthesizedExpression(_)
+            )
+        })
+        .is_some_and(|kind| {
+            matches!(
+                kind,
+                AstKind::ArrayAssignmentTarget(_)
+                    | AstKind::ObjectAssignmentTarget(_)
+                    | AstKind::AssignmentTargetWithDefault(_)
+                    | AstKind::AssignmentTargetPropertyProperty(_)
+                    | AstKind::AssignmentTargetRest(_)
+            )
+        })
 }
 
 #[cfg(test)]
