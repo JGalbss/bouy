@@ -2947,7 +2947,7 @@ parallel/test-repl-preview.js pass
 parallel/test-repl-programmatic-history-setup-history.js pass
 parallel/test-repl-programmatic-history.js pass
 parallel/test-repl-recoverable.js pass
-parallel/test-repl-require-after-write.js fail
+parallel/test-repl-require-after-write.js pass
 parallel/test-repl-require-cache.js pass
 parallel/test-repl-require-context.js fail
 parallel/test-repl-require-self-referential.js fail
