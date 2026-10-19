@@ -6,3 +6,8 @@ true true
 61 Pair { y: 5, x: 7 }
 50 3 [ 'x', 'y', 'extra' ]
 81 [ 'x', 'y' ]
+proto
+own
+2 2 2
+42
+TypeError

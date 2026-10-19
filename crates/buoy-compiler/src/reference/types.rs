@@ -31,6 +31,11 @@ impl<'a> Lowerer<'a, '_> {
         i64::try_from(index + 1).ok()
     }
 
+    /// Whether the annotations name the class of `object`, as for a slot read.
+    pub fn is_class_instance(&self, object: &'a Expression<'a>) -> bool {
+        self.instance_class(object, 0).is_some()
+    }
+
     fn layout_of(&mut self, class: &'a Class<'a>) -> Option<Rc<[String]>> {
         let id = class.node_id.get();
         if let Some(known) = self.layouts.get(&id) {

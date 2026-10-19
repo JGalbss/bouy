@@ -241,7 +241,9 @@ position({'$shape', _, _, Index, Filter}, K) ->
     end.
 
 %% The bit of a key in the filter of a shape, from its size and first byte. A
-%% shape holds only binary keys, so any other key has no bit.
+%% shape holds only binary keys, so any other key has no bit. The compiler
+%% computes the same bit for the method cache of a call (`shape_key_bit` in
+%% reference/call.rs).
 key_bit(<<C, _/binary>> = K) -> 1 bsl ((byte_size(K) * 7 + C) band 31);
 key_bit(<<>>) -> 1;
 key_bit(_) -> 0.

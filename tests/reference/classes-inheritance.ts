@@ -74,7 +74,10 @@ class Pair {
 }
 
 const points: Point[] = [new Point(1, 2), new Point3(1, 2, 3), new Point(3, 4).shift(1)];
-console.log(points.map((point) => point.norm()), Object.keys(points[1]));
+console.log(
+  points.map((point) => point.norm()),
+  Object.keys(points[1]),
+);
 console.log(Point.prototype.norm.call(new Pair()), Point.prototype.shift.call(new Pair(), 1));
 const moved = new Point(1, 1);
 delete (moved as { y?: number }).y;
@@ -84,3 +87,29 @@ console.log(moved.norm(), moved.shift(2).x, Object.keys(moved));
 const odd = new Point(0, 0);
 Object.defineProperty(odd, "x", { get: () => 9 });
 console.log(odd.norm(), Object.keys(odd));
+
+// A method call on a typed receiver: an own function shadows the prototype's method, a
+// replaced prototype method takes effect, an inherited method and an accessor on the
+// prototype take the ordinary path, and a non-function value throws.
+class Greeter {
+  hello(): string {
+    return "proto";
+  }
+}
+const greeters: Greeter[] = [new Greeter(), new Greeter()];
+(greeters[1] as unknown as { hello: () => string }).hello = () => "own";
+for (const greeter of greeters) console.log(greeter.hello());
+Point.prototype.norm = function (this: Point): number {
+  return this.x;
+};
+const later: Point = new Point(2, 0);
+const deeper: Point = new Point3(1, 1, 1);
+console.log(later.norm(), deeper.norm(), deeper.shift(1).x);
+Object.defineProperty(Point.prototype, "norm", { get: () => () => 42, configurable: true });
+console.log(later.norm());
+Object.defineProperty(Point.prototype, "norm", { value: 7, configurable: true, writable: true });
+try {
+  later.norm();
+} catch (error) {
+  console.log((error as Error).constructor.name);
+}

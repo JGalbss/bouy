@@ -361,7 +361,7 @@ impl Lowerer<'_, '_> {
 }
 
 /// `erlang:element(Index, Tuple)`.
-fn element(index: i64, tuple: Expr) -> Expr {
+pub fn element(index: i64, tuple: Expr) -> Expr {
     Expr::call("erlang", "element", vec![Expr::Integer(index), tuple])
 }
 

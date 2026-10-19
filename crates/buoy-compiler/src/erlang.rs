@@ -20,6 +20,8 @@ pub enum Expr {
     /// `[A, B | Tail]`
     Cons(Vec<Expr>, Box<Expr>),
     Map(Vec<(Expr, Expr)>),
+    /// `#{K := V}`: a map pattern that matches a map holding each key.
+    MapPattern(Vec<(Expr, Expr)>),
     /// A call to a named function, local (`module` is `None`) or remote.
     Call {
         module: Option<String>,
@@ -327,7 +329,8 @@ impl Printer {
                 self.expr(tail);
                 self.out.push(']');
             }
-            Expr::Map(entries) => self.map(entries),
+            Expr::Map(entries) => self.map(entries, "=>"),
+            Expr::MapPattern(entries) => self.map(entries, ":="),
             Expr::Call {
                 module,
                 function,
@@ -402,10 +405,10 @@ impl Printer {
         }
     }
 
-    fn map(&mut self, entries: &[(Expr, Expr)]) {
+    fn map(&mut self, entries: &[(Expr, Expr)], operator: &'static str) {
         let pairs: Vec<Expr> = entries
             .iter()
-            .map(|(key, value)| Expr::Op("=>", Box::new(key.clone()), Box::new(value.clone())))
+            .map(|(key, value)| Expr::Op(operator, Box::new(key.clone()), Box::new(value.clone())))
             .collect();
         self.elements("#{", &pairs, "}");
     }
