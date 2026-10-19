@@ -31,6 +31,7 @@
 -export([function_record/2, proto_for/2]).
 -export([create/0, script_function/1, global_object/1, set_global_proxy/2, function_realm/1, realm_fun/2, callee/1, localize/2, current/1, global_object/0]).
 -export([intrinsics/0, globals/0, method/4]).
+-export([call/3, call_method/3, call_method_computed/3, call_method_value/4]).
 
 families() ->
     [buoy_ref_object,
@@ -165,10 +166,11 @@ current(V) ->
 
 %% Fun as a function of the realm N: the current realm is N while it runs.
 %% Two wraps of one fun are equal terms, so a builtin keeps its identity.
-%% shortcut: a function of realm 0 that a builtin of another realm calls back
-%% runs in that realm, and so does the continuation of an async function of
-%% another realm after an await; a fix would set the realm in every call of
-%% compiled code and in every job.
+%% shortcut: a function of realm 0 that a builtin, a getter, or eval code of
+%% another realm calls runs in that realm, and so does the continuation of an
+%% async function of another realm after an await; only the direct calls of a
+%% classic script enter the callee's realm (call/3). A fix would set the realm
+%% in every call of compiled code and in every job.
 -spec realm_fun(non_neg_integer(), fun((term(), term()) -> term())) -> fun((term(), term()) -> term()).
 realm_fun(N, Fun) -> fun(A, B) -> in_realm(N, Fun, A, B) end.
 
@@ -191,6 +193,25 @@ callee({'$f', Id, Fun} = F) ->
         true -> {'$f', Id, realm_fun(0, Fun)};
         false -> F
     end.
+
+%% The calls of a classic script, which a node:vm context runs in its realm:
+%% a function of realm 0 that the script calls runs in realm 0, as V8 enters
+%% the context of the callee. The calls of other code skip the check.
+-spec call(term(), term(), list()) -> term().
+call(F, This, Args) -> buoy_ref:call(callee_of(F), This, Args).
+
+-spec call_method(term(), buoy_heap:key(), list()) -> term().
+call_method({'$actor', _} = R, K, Args) -> buoy_ref:call_method(R, K, Args);
+call_method(R, K, Args) -> buoy_ref:call_method_value(callee_of(buoy_ref:get(R, K)), R, K, Args).
+
+-spec call_method_computed(term(), term(), list()) -> term().
+call_method_computed(R, K, Args) -> call_method(R, buoy_ref:to_property_key(K), Args).
+
+-spec call_method_value(term(), term(), buoy_heap:key(), list()) -> term().
+call_method_value(F, This, K, Args) -> buoy_ref:call_method_value(callee_of(F), This, K, Args).
+
+callee_of({'$f', _, _} = F) -> callee(F);
+callee_of(V) -> V.
 
 %% GetFunctionRealm: the realm of a function. A proxy and a bound function
 %% take the realm of their target, and a revoked proxy has none.

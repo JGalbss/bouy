@@ -70,7 +70,11 @@ impl<'a> Lowerer<'a, '_> {
             let objects = self.with_objects(ident);
             let (function, this) = self.with_callee(ident, &objects);
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, this, args],
+            ));
         }
         if let Expression::Identifier(ident) = callee
             && let Some(symbol) = self.symbol_of(ident.reference_id.get())
@@ -101,7 +105,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         let args = self.args(&call.arguments);
         self.bind(Expr::call(
-            "buoy_ref",
+            self.call_module(),
             "call",
             vec![function, Expr::undefined(), args],
         ))
@@ -119,7 +123,11 @@ impl<'a> Lowerer<'a, '_> {
             let method = self.get(object.clone(), key);
             let args = self.args(&call.arguments);
             let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, this, args],
+            ));
         }
         let (object, key) = self.member_parts(member);
         // `o?.m()`: the chain ends when `o` is null or undefined.
@@ -133,14 +141,22 @@ impl<'a> Lowerer<'a, '_> {
                 self.chain_guard(method.clone());
             }
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, object, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, object, args],
+            ));
         }
         if call.optional {
             let key = self.fix_key(key);
             let method = self.get(object.clone(), key);
             self.chain_guard(method.clone());
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, object, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, object, args],
+            ));
         }
         if !call.arguments.iter().all(is_pure) {
             // The method is read before the arguments run (ECMA-262 §13.3.6.1).
@@ -151,7 +167,7 @@ impl<'a> Lowerer<'a, '_> {
                 return Expr::undefined();
             };
             return self.bind(Expr::call(
-                "buoy_ref",
+                self.call_module(),
                 "call_method_value",
                 vec![method, object, key, args],
             ));
@@ -159,11 +175,13 @@ impl<'a> Lowerer<'a, '_> {
         let args = self.args(&call.arguments);
         let value = match key {
             MemberKey::Static(key) => {
-                Expr::call("buoy_ref", "call_method", vec![object, key, args])
+                Expr::call(self.call_module(), "call_method", vec![object, key, args])
             }
-            MemberKey::Dynamic(key) => {
-                Expr::call("buoy_ref", "call_method_computed", vec![object, key, args])
-            }
+            MemberKey::Dynamic(key) => Expr::call(
+                self.call_module(),
+                "call_method_computed",
+                vec![object, key, args],
+            ),
             MemberKey::Private(_) => Expr::undefined(),
         };
         self.bind(value)

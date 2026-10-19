@@ -420,6 +420,9 @@ fn lower(
                 early: std::collections::HashSet::new(),
                 using_stacks: Vec::new(),
                 hoisted: std::collections::HashSet::new(),
+                // A classic script of its own, as `vm.Script` compiles it, may run in the
+                // realm of a context and call the functions of another realm.
+                realm_calls: linking.unit().script && !linking.entry && eval.is_none(),
                 linking,
                 interruptible,
             };

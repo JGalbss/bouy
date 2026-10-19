@@ -1286,12 +1286,31 @@ namespace_entries(M) ->
         #{stars := [_ | _] = Stars} ->
             Static = M:'$namespace'(),
             Known = [N || {N, _} <- Static],
-            Candidates = lists:usort([N || I <- Stars, {N, _} <- namespace_entries(lists:nth(I + 1, info(M, requests))),
+            Candidates = lists:usort([N || I <- Stars, N <- exported_names(lists:nth(I + 1, info(M, requests)), [M]),
                                           N =/= <<"default">>, not lists:member(N, Known)]),
             Found = [{N, F} || N <- Candidates, {ok, F} <- [resolve_export(M, N, [])]],
             sort_entries(Static ++ Found);
         _ ->
             M:'$namespace'()
+    end.
+
+%% GetExportedNames: the names that M exports, also through its star exports.
+%% Seen is the exportStarSet, so a cycle of star exports ends.
+exported_names(M, Seen) ->
+    case lists:member(M, Seen) of
+        true ->
+            [];
+        false ->
+            case get(M, info) of
+                #{kind := synthetic, names := Names} ->
+                    Names;
+                #{stars := Stars} ->
+                    Targets = info(M, requests),
+                    [N || {N, _} <- M:'$namespace'()] ++
+                        [N || I <- Stars, N <- exported_names(lists:nth(I + 1, Targets), [M | Seen]), N =/= <<"default">>];
+                _ ->
+                    [N || {N, _} <- namespace_entries(M)]
+            end
     end.
 
 sort_entries(Entries) ->
@@ -1355,7 +1374,8 @@ link_failure(M) ->
             none;
         {none, #{hosted := [Specifier | _]}} ->
             {<<"Error">>, <<"ERR_VM_MODULE_LINK_FAILURE">>,
-             buoy_ref_string:concat([<<"request for '">>, Specifier, <<"' is from a module not been linked">>])};
+             buoy_ref_string:concat([<<"request for '">>, Specifier, <<"' can not be resolved on module '">>,
+                                     info(M, path), <<"' that is not linked">>])};
         {Error, _} ->
             Error
     end.

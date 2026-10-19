@@ -257,9 +257,21 @@ pub struct Lowerer<'a, 'c> {
     pub linking: Linking<'c>,
     /// Whether each turn of a loop checks the deadline of the run (`lower_script`).
     pub interruptible: bool,
+    /// Whether a call enters the realm of its callee (`buoy_ref_realm:call/3`), as the
+    /// calls of a classic script that a `node:vm` context runs must.
+    pub realm_calls: bool,
 }
 
 impl Lowerer<'_, '_> {
+    /// The module of the call operations of the code.
+    pub fn call_module(&self) -> &'static str {
+        if self.realm_calls {
+            "buoy_ref_realm"
+        } else {
+            "buoy_ref"
+        }
+    }
+
     pub fn fresh(&mut self, base: &str) -> String {
         self.counter += 1;
         let clean: String = base
