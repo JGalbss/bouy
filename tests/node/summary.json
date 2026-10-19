@@ -1,15 +1,15 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "8e9418e277a0d7ccb989225be4b9847ecc4561ac",
+  "updated": "666c72b8fc9f57ef06490dc09f32825caaecff87",
   "total": 4419,
   "outcomes": {
-    "pass": 2470,
+    "pass": 2475,
     "rejected": 0,
     "late": 0,
     "skip": 525,
     "never": 0,
-    "fail": 1350,
+    "fail": 1345,
     "timeout": 61,
     "harness_error": 0,
     "crash": 13
@@ -23,9 +23,9 @@
         "timeout": 3
       },
       "parallel": {
-        "pass": 2311,
+        "pass": 2316,
         "skip": 491,
-        "fail": 1210,
+        "fail": 1205,
         "timeout": 54,
         "crash": 13
       },
@@ -41,9 +41,9 @@
         "skip": 343
       },
       "public": {
-        "pass": 2470,
+        "pass": 2475,
         "skip": 182,
-        "fail": 1350,
+        "fail": 1345,
         "timeout": 61,
         "crash": 13
       }
@@ -106,9 +106,9 @@
         "fail": 19
       },
       "domain": {
-        "pass": 30,
+        "pass": 31,
         "skip": 1,
-        "fail": 19
+        "fail": 18
       },
       "events": {
         "pass": 34,
@@ -215,9 +215,9 @@
         "pass": 1
       },
       "test": {
-        "pass": 42,
+        "pass": 43,
         "skip": 5,
-        "fail": 6,
+        "fail": 5,
         "timeout": 12
       },
       "timers": {
@@ -257,9 +257,9 @@
         "crash": 1
       },
       "vm": {
-        "pass": 82,
+        "pass": 85,
         "skip": 1,
-        "fail": 15,
+        "fail": 12,
         "crash": 1
       },
       "worker_threads": {

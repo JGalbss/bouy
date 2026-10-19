@@ -2222,7 +2222,7 @@ node:module.createRequire pass
 node:module.enableCompileCache pass
 node:module.findPackageJSON pass
 node:module.findSourceMap pass
-node:module.flushCompileCache fail
+node:module.flushCompileCache pass
 node:module.getCompileCacheDir pass
 node:module.getSourceMapsSupport pass
 node:module.isBuiltin pass

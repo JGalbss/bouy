@@ -9,8 +9,8 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 2,470 | 4,419 | 55.9% | 1,411 | 13 | 8e9418e | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 3,477 | 4,460 | 78.0% | 983 | 0 | 8e9418e | `tests/node/surface/expectations.txt` |
+| node | node | v25.9.0 | 2,475 | 4,419 | 56.0% | 1,406 | 13 | 666c72b | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,478 | 4,460 | 78.0% | 982 | 0 | 666c72b | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
@@ -951,15 +951,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at 8e9418e. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at 666c72b. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 2,470 | 55.9% | 0 | 0 | 525 | 0 | 1,350 | 61 | 0 | 13 |
+| every test | 4,419 | 2,475 | 56.0% | 0 | 0 | 525 | 0 | 1,345 | 61 | 0 | 13 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 2,470 | 60.6% | 0 | 0 | 182 | 0 | 1,350 | 61 | 0 | 13 |
+| kind: public | 4,076 | 2,475 | 60.7% | 0 | 0 | 182 | 0 | 1,345 | 61 | 0 | 13 |
 
 ### By module
 
@@ -978,7 +978,7 @@ node at v25.9.0, updated at 8e9418e. Evidence: `tests/node/expectations.txt`.
 | dgram | 79 | 5 | 6.3% | 0 | 0 | 11 | 0 | 63 | 0 | 0 | 0 |
 | diagnostics_channel | 56 | 48 | 85.7% | 0 | 0 | 1 | 0 | 6 | 1 | 0 | 0 |
 | dns | 29 | 0 | 0.0% | 0 | 0 | 10 | 0 | 19 | 0 | 0 | 0 |
-| domain | 50 | 30 | 60.0% | 0 | 0 | 1 | 0 | 19 | 0 | 0 | 0 |
+| domain | 50 | 31 | 62.0% | 0 | 0 | 1 | 0 | 18 | 0 | 0 | 0 |
 | events | 40 | 34 | 85.0% | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
 | fs | 343 | 307 | 89.5% | 0 | 0 | 19 | 0 | 13 | 4 | 0 | 0 |
 | http | 394 | 37 | 9.4% | 0 | 0 | 11 | 0 | 346 | 0 | 0 | 0 |
@@ -1002,7 +1002,7 @@ node at v25.9.0, updated at 8e9418e. Evidence: `tests/node/expectations.txt`.
 | stream | 263 | 204 | 77.6% | 0 | 0 | 8 | 0 | 51 | 0 | 0 | 0 |
 | string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| test | 65 | 42 | 64.6% | 0 | 0 | 5 | 0 | 6 | 12 | 0 | 0 |
+| test | 65 | 43 | 66.2% | 0 | 0 | 5 | 0 | 5 | 12 | 0 | 0 |
 | timers | 60 | 46 | 76.7% | 0 | 0 | 12 | 0 | 2 | 0 | 0 | 0 |
 | tls | 220 | 206 | 93.6% | 0 | 0 | 13 | 0 | 0 | 1 | 0 | 0 |
 | trace_events | 29 | 16 | 55.2% | 0 | 0 | 3 | 0 | 10 | 0 | 0 | 0 |
@@ -1010,7 +1010,7 @@ node at v25.9.0, updated at 8e9418e. Evidence: `tests/node/expectations.txt`.
 | url | 42 | 37 | 88.1% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 0 |
 | util | 30 | 13 | 43.3% | 0 | 0 | 10 | 0 | 6 | 0 | 0 | 1 |
 | v8 | 22 | 18 | 81.8% | 0 | 0 | 1 | 0 | 2 | 0 | 0 | 1 |
-| vm | 99 | 82 | 82.8% | 0 | 0 | 1 | 0 | 15 | 0 | 0 | 1 |
+| vm | 99 | 85 | 85.9% | 0 | 0 | 1 | 0 | 12 | 0 | 0 | 1 |
 | worker_threads | 148 | 11 | 7.4% | 0 | 0 | 10 | 0 | 126 | 1 | 0 | 0 |
 | zlib | 63 | 60 | 95.2% | 0 | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 
@@ -1031,7 +1031,7 @@ node at v25.9.0, updated at 8e9418e. Evidence: `tests/node/expectations.txt`.
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | es-module | 222 | 115 | 51.8% | 0 | 0 | 15 | 0 | 89 | 3 | 0 | 0 |
-| parallel | 4,079 | 2,311 | 56.7% | 0 | 0 | 491 | 0 | 1,210 | 54 | 0 | 13 |
+| parallel | 4,079 | 2,316 | 56.8% | 0 | 0 | 491 | 0 | 1,205 | 54 | 0 | 13 |
 | sequential | 118 | 44 | 37.3% | 0 | 0 | 19 | 0 | 51 | 4 | 0 | 0 |
 
 ### Blockers
@@ -1043,20 +1043,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at 8e9418e. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 3,477 | 78.0% | 0 | 0 | 0 | 0 | 983 | 0 | 0 | 0 |
+| every test | 4,460 | 3,478 | 78.0% | 0 | 0 | 0 | 0 | 982 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | deprecated | 129 | 98 | 76.0% | 0 | 0 | 0 | 0 | 31 | 0 | 0 | 0 |
-| documented | 4,331 | 3,379 | 78.0% | 0 | 0 | 0 | 0 | 952 | 0 | 0 | 0 |
+| documented | 4,331 | 3,380 | 78.0% | 0 | 0 | 0 | 0 | 951 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1154,7 +1154,7 @@ node-surface at v25.9.0, updated at 8e9418e. Evidence: `tests/node/surface/expec
 | node:https | 78 | 0 | 0.0% | 0 | 0 | 0 | 0 | 78 | 0 | 0 | 0 |
 | node:inspector | 40 | 0 | 0.0% | 0 | 0 | 0 | 0 | 40 | 0 | 0 | 0 |
 | node:inspector/promises | 40 | 0 | 0.0% | 0 | 0 | 0 | 0 | 40 | 0 | 0 | 0 |
-| node:module | 20 | 19 | 95.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| node:module | 20 | 20 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:net | 119 | 119 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:os | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:path | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |

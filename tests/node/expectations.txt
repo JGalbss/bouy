@@ -1033,7 +1033,7 @@ parallel/test-domain-timers.js pass
 parallel/test-domain-top-level-error-handler-clears-stack.js pass
 parallel/test-domain-top-level-error-handler-throw.js pass
 parallel/test-domain-uncaught-exception.js pass
-parallel/test-domain-vm-promise-isolation.js fail
+parallel/test-domain-vm-promise-isolation.js pass
 parallel/test-domain-with-abort-on-uncaught-exception.js fail
 parallel/test-domexception-cause.js pass
 parallel/test-domexception-subclass.js fail
@@ -3059,7 +3059,7 @@ parallel/test-runner-mocking.js pass
 parallel/test-runner-module-mocking.js fail
 parallel/test-runner-no-isolation-different-cwd.mjs pass
 parallel/test-runner-no-isolation-filtering.js pass
-parallel/test-runner-no-isolation-hooks.mjs fail
+parallel/test-runner-no-isolation-hooks.mjs pass
 parallel/test-runner-no-isolation.mjs pass
 parallel/test-runner-option-validation.js pass
 parallel/test-runner-plan.mjs timeout
@@ -3905,11 +3905,11 @@ parallel/test-vm-module-hastoplevelawait.js pass
 parallel/test-vm-module-import-meta.js pass
 parallel/test-vm-module-instantiate.js pass
 parallel/test-vm-module-link-shared-deps.js pass
-parallel/test-vm-module-link.js fail
+parallel/test-vm-module-link.js pass
 parallel/test-vm-module-linkmodulerequests-circular.js pass
 parallel/test-vm-module-linkmodulerequests-deep.js pass
 parallel/test-vm-module-linkmodulerequests.js pass
-parallel/test-vm-module-modulerequests.js fail
+parallel/test-vm-module-modulerequests.js pass
 parallel/test-vm-module-reevaluate.js pass
 parallel/test-vm-module-referrer-realm.mjs pass
 parallel/test-vm-module-synthetic.js pass
@@ -3939,7 +3939,7 @@ parallel/test-vm-strict-assign.js pass
 parallel/test-vm-strict-mode.js pass
 parallel/test-vm-symbols.js pass
 parallel/test-vm-syntax-error-message.js pass
-parallel/test-vm-syntax-error-stderr.js fail
+parallel/test-vm-syntax-error-stderr.js pass
 parallel/test-vm-timeout-escape-promise-2.js fail
 parallel/test-vm-timeout-escape-promise-module.js fail
 parallel/test-vm-timeout-escape-promise.js fail
