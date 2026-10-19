@@ -30,12 +30,14 @@
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
 -export([set_immediate/1]).
 -export([enter/0, poll/0, polled/2, metrics/0, idle_time/0, idle_time/1]).
+-export([add_handle_wrap/2, remove_handle_wrap/1, handle_wraps/0]).
 
 -define(TIMER, '$buoy_node_timer').
 %% {Ref, Deadline}: the time of now/0 at which the native timer Ref is due.
 -define(DEADLINE, '$buoy_node_timer_deadline').
 -define(IMMEDIATE_REF, '$buoy_node_immediate_ref').
 -define(HANDLES, '$buoy_node_handles').
+-define(HANDLE_WRAPS, '$buoy_node_handle_wraps').
 -define(BASE, '$buoy_node_timer_base').
 -define(PROCESS, '$buoy_node_process').
 -define(EXITING, '$buoy_node_exiting').
@@ -99,6 +101,31 @@ handles() ->
     case erlang:get(?HANDLES) of
         undefined -> 0;
         N -> N
+    end.
+
+%% Node's handle_wrap_queue: the open handle wraps of the realm, each with
+%% Info(Handle), which gives its MemoryInfoName and HandleWrap::HasRef.
+-spec add_handle_wrap(term(), fun((term()) -> {binary(), boolean()})) -> integer().
+add_handle_wrap(Handle, Info) ->
+    Id = erlang:unique_integer([monotonic]),
+    erlang:put(?HANDLE_WRAPS, maps:put(Id, {Handle, Info}, handle_wrap_map())),
+    Id.
+
+-spec remove_handle_wrap(integer()) -> ok.
+remove_handle_wrap(Id) ->
+    erlang:put(?HANDLE_WRAPS, maps:remove(Id, handle_wrap_map())),
+    ok.
+
+%% The ref'd handle wraps and their names, oldest first.
+-spec handle_wraps() -> [{term(), binary()}].
+handle_wraps() ->
+    [{Handle, Name} || {_, {Handle, Info}} <- lists:sort(maps:to_list(handle_wrap_map())),
+                       {Name, true} <- [Info(Handle)]].
+
+handle_wrap_map() ->
+    case erlang:get(?HANDLE_WRAPS) of
+        undefined -> #{};
+        Map -> Map
     end.
 
 %% Runs Fun as a later macrotask, as a callback of libuv's thread pool, with

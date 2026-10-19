@@ -1,6 +1,7 @@
 %% internalBinding('options') (src/node_options.cc): the values of Node's
 %% command-line options, which internal/options reads with getOptionValue.
-%% Buoy honors no option yet, so every value is Node 25.9.0's default.
+%% The values start at Node 25.9.0's defaults; the command line and the
+%% variables of env_args/0 change them.
 -module(buoy_binding_options).
 
 -export([binding/0, value/1]).
@@ -49,7 +50,11 @@ values_map() ->
     Args = buoy_node_process:node_options() ++ buoy_node_process:exec_argv(),
     %% The oracle recorded the values under its own -e.
     Defaults = (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false},
-    apply_args(expand(Args, Expansions), Types, Defaults).
+    apply_args(env_args() ++ expand(Args, Expansions), Types, Defaults).
+
+%% The variables that Node reads as options, before the command line.
+env_args() ->
+    [<<"--use-system-ca">> || os:getenv("NODE_USE_SYSTEM_CA") =:= "1"].
 
 %% An alias of the name, or of `name <arg>` when an argument follows, so
 %% -p code reads as --print --eval code. The depth bounds a cycle of aliases.

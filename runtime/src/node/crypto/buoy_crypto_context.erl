@@ -6,6 +6,7 @@
 -module(buoy_crypto_context).
 
 -export([members/0, options/2, is_context/1, ssl_error/3, ssl_error_value/3, version_atom/1, ticket_keys/1]).
+-export([set_client_cert_engine/2]).
 
 -include_lib("public_key/include/public_key.hrl").
 
@@ -25,7 +26,8 @@ members() ->
         {<<"setCert">>, 1, fun(This, Args) -> set_cert(This, A(1, Args)) end},
         {<<"addCACert">>, 1, fun(This, Args) -> add_ca(This, A(1, Args)) end},
         {<<"addCRL">>, 1, fun(This, Args) -> add_crl(This, A(1, Args)) end},
-        {<<"addRootCerts">>, 0, Set(roots, fun(_) -> true end)},
+        %% GetOrCreateRootCertStore loads the store, and NODE_EXTRA_CA_CERTS, now.
+        {<<"addRootCerts">>, 0, Set(roots, fun(_) -> is_list(roots()) end)},
         {<<"setCipherSuites">>, 1, fun(This, Args) -> set_suites(This, buoy_crypto:string(A(1, Args))) end},
         {<<"setCiphers">>, 1, fun(This, Args) -> set_ciphers(This, buoy_crypto:string(A(1, Args))) end},
         {<<"setSigalgs">>, 1, Set(sigalgs, fun(Args) -> buoy_crypto:string(A(1, Args)) end)},
@@ -41,11 +43,27 @@ members() ->
         {<<"getTicketKeys">>, 0, fun(This, _) -> buoy_crypto:buffer(maps:get(ticket_keys, state(This))) end},
         {<<"setAllowPartialTrustChain">>, 0, Set(partial_chain, fun(_) -> true end)},
         {<<"loadPKCS12">>, 2, fun(This, Args) -> load_pkcs12(This, A(1, Args), A(2, Args)) end},
-        {<<"setClientCertEngine">>, 1, fun(_, _) -> fail(<<"ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED">>, <<"Custom engines not supported by this OpenSSL">>) end},
+        {<<"setClientCertEngine">>, 1, fun ?MODULE:set_client_cert_engine/2},
         {<<"getCertificate">>, 0, fun(This, _) -> certificate(This, leaf) end},
         {<<"getIssuer">>, 0, fun(This, _) -> certificate(This, issuer) end},
         {<<"close">>, 0, fun(_, _) -> undefined end}]),
+    %% _external: the SSL_CTX of a SecureContext as an External; another
+    %% receiver is an Illegal invocation.
+    buoy_heap:define(buoy_heap:get(Class, <<"prototype">>), <<"_external">>,
+                     #{get => buoy_node:fn(<<"get _external">>, 0, fun(This, _) -> _ = state(This), buoy_node:object([]) end),
+                       enumerable => true, configurable => false}),
     [{<<"SecureContext">>, Class}].
+
+%% No engine loads: ENGINE_by_id fails as OpenSSL 3 fails for an engine that
+%% it cannot find, after it tried to load the engine as a shared library.
+-spec set_client_cert_engine(term(), list()) -> no_return().
+set_client_cert_engine(_This, _Args) ->
+    Dso = <<"error:12800067:DSO support routines::could not load the shared library">>,
+    NotFound = <<"error:13000084:engine routines::dso not found">>,
+    E = buoy_heap:error_object('Error', Dso, <<"Error: ", Dso/binary>>),
+    buoy_heap:set(E, <<"opensslErrorStack">>, buoy_heap:new_array(
+        [NotFound, Dso, Dso, <<"error:13000074:engine routines::no such engine">>, NotFound, Dso])),
+    erlang:error({'$throw', E}).
 
 initial() ->
     #{min => ?TLS1_2, max => ?TLS1_3, options => 0, chains => [], keys => [], cas => none, roots => false, crls => [],
@@ -157,12 +175,55 @@ decode_key(Entry, Pass) ->
 %% setCert(cert): a chain, its leaf first.
 set_cert(This, Cert) ->
     case certificates(Cert) of
-        [] -> buoy_crypto:throw_openssl(pem_no_start_line);
-        Chain -> update(This, fun(S) -> S#{chains := maps:get(chains, S) ++ [Chain]} end)
+        [] ->
+            buoy_crypto:throw_openssl(pem_no_start_line);
+        [Leaf | _] = Chain ->
+            strong_enough(Leaf, security_level(maps:get(ciphers, state(This)))) orelse
+                erlang:error({'$throw', ssl_error_value(16#18F, <<"ee key too small">>, ssl)}),
+            update(This, fun(S) -> S#{chains := maps:get(chains, S) ++ [Chain]} end)
     end,
     undefined.
 
-certificates(V) -> [Der || {'Certificate', Der, _} <- public_key:pem_decode(pem(V))].
+%% The security level of a cipher list's @SECLEVEL=n, or OpenSSL 3's
+%% default 2, which getOpenSSLSecLevelCrypto reports.
+security_level(Ciphers) ->
+    case re:run(Ciphers, <<"@SECLEVEL=([0-5])">>, [{capture, all_but_first, binary}]) of
+        {match, [Level]} -> binary_to_integer(Level);
+        nomatch -> 2
+    end.
+
+%% SSL_CTX_use_certificate refuses a leaf whose key is below the level:
+%% 80, 112, 128, 192, or 256 bits of security, the RSA or DSA modulus and
+%% the EC field sizes of SSL_CTX_set_security_level(3).
+strong_enough(_Leaf, 0) ->
+    true;
+strong_enough(Leaf, Level) ->
+    {Modulus, Field} = lists:nth(Level, [{1024, 160}, {2048, 224}, {3072, 256}, {7680, 384}, {15360, 512}]),
+    try public_key:pkix_decode_cert(Leaf, otp) of
+        #'OTPCertificate'{tbsCertificate = #'OTPTBSCertificate'{subjectPublicKeyInfo = Spki}} ->
+            case Spki#'OTPSubjectPublicKeyInfo'.subjectPublicKey of
+                #'RSAPublicKey'{modulus = N} -> bit_length(N) >= Modulus;
+                #'ECPoint'{point = <<4, Coordinates/binary>>} -> byte_size(Coordinates) * 4 >= Field;
+                _ -> true
+            end
+    catch
+        _:_ -> true
+    end.
+
+bit_length(N) -> length(integer_to_list(N, 2)).
+
+%% The certificates of a PEM text, as PEM_read_bio_X509_AUX reads them:
+%% under CERTIFICATE, X509 CERTIFICATE, and TRUSTED CERTIFICATE, whose
+%% DER ends with trust settings after the certificate.
+certificates(V) ->
+    Pem = binary:replace(pem(V), [<<"TRUSTED CERTIFICATE">>, <<"X509 CERTIFICATE">>], <<"CERTIFICATE">>, [global]),
+    [first_element(Der) || {'Certificate', Der, _} <- public_key:pem_decode(Pem)].
+
+first_element(<<16#30, 0:1, Length:7, _/binary>> = Der) -> binary:part(Der, 0, min(2 + Length, byte_size(Der)));
+first_element(<<16#30, 1:1, N:7, Rest/binary>> = Der) when byte_size(Rest) >= N ->
+    <<Length:N/unit:8, _/binary>> = Rest,
+    binary:part(Der, 0, min(2 + N + Length, byte_size(Der)));
+first_element(Der) -> Der.
 
 %% loadPKCS12(pfx, passphrase): the key and its certificate, with the other
 %% certificates of the PFX as its chain and as trusted CAs, as
@@ -185,10 +246,16 @@ load_pkcs12(This, Pfx, Passphrase) ->
     end,
     undefined.
 
+%% addCACert after addRootCerts adds to a copy of the root store, as
+%% GetCertStoreOwnedByThisSecureContext does, so the roots stay trusted.
 add_ca(This, Cert) ->
     Ders = certificates(Cert),
-    update(This, fun(#{cas := Cas} = S) -> S#{cas := case Cas of none -> Ders; _ -> Cas ++ Ders end} end),
+    update(This, fun(S) -> S#{cas := owned_cas(S) ++ Ders} end),
     undefined.
+
+owned_cas(#{cas := none, roots := true}) -> roots();
+owned_cas(#{cas := none}) -> [];
+owned_cas(#{cas := Cas}) -> Cas.
 
 add_crl(This, Crl) ->
     case [Der || {'CertificateList', Der, _} <- public_key:pem_decode(pem(Crl))] of
@@ -271,10 +338,28 @@ cipher_word(Word, U, {Selected, Banned}) ->
     Added = [C || C <- matching(Word, U), not lists:member(C, Selected), not lists:member(C, Banned)],
     {Selected ++ Added, Banned}.
 
-%% The suites of Universe that each part of A+B matches.
+%% The suites of Universe that each part of A+B matches. ssl lists no NULL
+%% cipher, so a name that matches none of them may still name one of
+%% OpenSSL's table. str_to_suite also parses names that no suite has, such
+%% as DHE-RSA-AES256-SHA384, which only a real suite's code passes.
 matching(Word, Universe) ->
     Parts = binary:split(Word, <<"+">>, [global, trim_all]),
-    lists:foldl(fun(Part, Acc) -> [C || C <- Acc, matches_part(Part, C)] end, Universe, Parts).
+    case lists:foldl(fun(Part, Acc) -> [C || C <- Acc, matches_part(Part, C)] end, Universe, Parts) of
+        [] when length(Parts) =:= 1 -> named_suite(Word);
+        Match -> Match
+    end.
+
+named_suite(Name) ->
+    case cipher_alias(Name) of
+        {ok, _} -> [];
+        error ->
+            try ssl:str_to_suite(binary_to_list(Name)) of
+                #{cipher := null} = Suite -> _ = ssl_cipher_format:suite_map_to_bin(Suite), [Suite];
+                _ -> []
+            catch
+                _:_ -> []
+            end
+    end.
 
 %% A name matches as OpenSSL compares it, case and all: its OpenSSL or
 %% IANA name.
@@ -398,8 +483,12 @@ set_dh(This, Dh) ->
 -spec options(term(), client | server) -> [term()].
 options(Context, Role) ->
     S = state(Context),
-    #{min := Min, max := Max} = S,
-    Versions = [version_atom(V) || V <- lists:seq(min(Max, ?TLS1_3), max(Min, ?TLS1), -1), V >= ?TLS1],
+    #{min := Min, max := Max, options := Flags} = S,
+    %% secureOptions: SSL_OP_NO_TLSv1 to SSL_OP_NO_TLSv1_3 drop versions.
+    Dropped = [V || {V, Bit} <- [{?TLS1, 16#04000000}, {?TLS1 + 1, 16#10000000}, {?TLS1_2, 16#08000000}, {?TLS1_3, 16#20000000}],
+                    Flags band Bit =/= 0],
+    Versions = [version_atom(V) || V <- lists:seq(min(Max, ?TLS1_3), max(Min, ?TLS1), -1), V >= ?TLS1,
+                                   not lists:member(V, Dropped)],
     CertsKeys = pairs(maps:get(chains, S), maps:get(keys, S)),
     Ciphers = case {maps:get(ciphers, S), maps:get(suites, S)} of
         {<<>>, <<>>} -> [];
@@ -425,7 +514,13 @@ options(Context, Role) ->
         ++ [C || C <- Ciphers, not NoCert]
         ++ [{eccs, Curves} || Curves <- [maps:get(curves, S)], Curves =/= auto]
         ++ [{dh, Dh} || Dh <- [maps:get(dh, S)], is_binary(Dh), Role =:= server]
-        ++ [{partial_chain, fun(Chain) -> partial(Chain, cacerts(S)) end} || maps:get(partial_chain, S)].
+        ++ [{partial_chain, fun(Chain) -> partial(Chain, cacerts(S)) end} || maps:get(partial_chain, S)]
+        %% OpenSSL names only the ca option's certificates in a certificate
+        %% request (SSL_CTX_add_client_CA), never the root store; ssl's
+        %% clients send no certificate outside the names.
+        ++ [{certificate_authorities, false} || Role =:= server, maps:get(cas, S) =:= none]
+        %% SSL_OP_CIPHER_SERVER_PREFERENCE, which honorCipherOrder sets.
+        ++ [{honor_cipher_order, true} || Role =:= server, Flags band 16#400000 =/= 0].
 
 %% Each certificate chain with the key of its algorithm.
 pairs(Chains, Keys) ->
@@ -457,14 +552,16 @@ cacerts(#{cas := none, roots := true}) -> roots();
 cacerts(#{cas := none}) -> roots();
 cacerts(#{cas := Cas}) -> Cas.
 
-%% Node's root store: the store that tls.setDefaultCACertificates set, or
-%% the bundled roots, with NODE_EXTRA_CA_CERTS. Parsed once per VM.
+%% Node's root store (NewRootCertStore): the store that
+%% tls.setDefaultCACertificates set, or the bundled roots, with the system
+%% store under --use-system-ca and NODE_EXTRA_CA_CERTS. Parsed once per VM.
 roots() ->
     case buoy_crypto_roots:user_roots() of
-        [] ->
+        none ->
             case persistent_term:get({?MODULE, roots}, none) of
                 none ->
-                    Ders = [Der || Pem <- buoy_crypto_root_certs:pems(), {'Certificate', Der, _} <- public_key:pem_decode(Pem)],
+                    Bundled = [Der || Pem <- buoy_crypto_root_certs:pems(), {'Certificate', Der, _} <- public_key:pem_decode(Pem)],
+                    Ders = Bundled ++ buoy_crypto_roots:default_extras(),
                     persistent_term:put({?MODULE, roots}, Ders),
                     Ders;
                 Ders -> Ders

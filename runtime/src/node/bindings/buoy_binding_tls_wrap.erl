@@ -26,6 +26,8 @@
 -define(K_ASYNC, 3).
 -define(UV_EOF, -4095).
 -define(INBOX_LIMIT, 1048576).
+%% The random of a HelloRetryRequest, SHA-256 of "HelloRetryRequest".
+-define(HRR_RANDOM, 16#CF21AD74E59A6111BE1D8C021E65B891C2A211167ABB8C5E079E09E2C8A8339C).
 
 -spec binding() -> term().
 binding() ->
@@ -35,7 +37,7 @@ binding() ->
     A = fun buoy_node:arg/2,
     Write = fun(Encode) -> fun(This, Args) -> write(This, A(1, Args), Encode(A(2, Args))) end end,
     Methods = [
-        {<<"writeBuffer">>, Write(fun buoy_node_encoding:view_bytes/1)},
+        {<<"writeBuffer">>, Write(fun buoy_node_socket:buffer_bytes/1)},
         {<<"writeUtf8String">>, Write(fun(V) -> buoy_node_encoding:encode(utf8, V) end)},
         {<<"writeAsciiString">>, Write(fun(V) -> buoy_node_encoding:encode(latin1, V) end)},
         {<<"writeLatin1String">>, Write(fun(V) -> buoy_node_encoding:encode(latin1, V) end)},
@@ -53,9 +55,9 @@ binding() ->
         {<<"enableKeylogCallback">>, fun(This, _) -> put(This, keylog, true) end},
         {<<"enableTrace">>, fun(_, _) -> undefined end},
         {<<"enableCertCb">>, fun(This, _) -> put(This, cert_cb, true) end},
-        {<<"enableALPNCb">>, fun(_, _) -> undefined end},
+        {<<"enableALPNCb">>, fun(This, _) -> put(This, alpn_cb, true) end},
         {<<"enablePskCallback">>, fun(_, _) -> undefined end},
-        {<<"setPskIdentityHint">>, fun(_, _) -> undefined end},
+        {<<"setPskIdentityHint">>, fun(This, Args) -> set_psk_identity_hint(This, A(1, Args)) end},
         {<<"setALPNProtocols">>, fun(This, Args) -> put(This, alpn, alpn_list(buoy_node_encoding:view_bytes(A(1, Args)))) end},
         {<<"getALPNNegotiatedProtocol">>, fun(This, _) -> info(This, alpn, false) end},
         {<<"setServername">>, fun(This, Args) -> put(This, servername, text(A(1, Args))) end},
@@ -66,7 +68,7 @@ binding() ->
         {<<"loadSession">>, fun(_, _) -> undefined end},
         {<<"endParser">>, fun(_, _) -> undefined end},
         {<<"newSessionDone">>, fun(_, _) -> undefined end},
-        {<<"getTLSTicket">>, fun(_, _) -> undefined end},
+        {<<"getTLSTicket">>, fun(This, _) -> tls_ticket(This) end},
         {<<"getPeerCertificate">>, fun(This, Args) -> peer_certificate(This, buoy_ref:truthy(A(1, Args))) end},
         {<<"getPeerX509Certificate">>, fun(This, _) -> peer_x509(This) end},
         {<<"getCertificate">>, fun(This, _) -> own_certificate(This, legacy) end},
@@ -79,14 +81,14 @@ binding() ->
         {<<"getEphemeralKeyInfo">>, fun(This, _) -> ephemeral_key(This) end},
         {<<"exportKeyingMaterial">>, fun(This, Args) -> export_keying_material(This, A(1, Args), A(2, Args), A(3, Args)) end},
         {<<"verifyError">>, fun(This, _) -> verify_error(This) end},
-        {<<"renegotiate">>, fun(_, _) -> false end},
+        {<<"renegotiate">>, fun(This, _) -> renegotiate(This) end},
         {<<"destroySSL">>, fun(This, _) -> destroy(This), undefined end},
         {<<"setOCSPResponse">>, fun(_, _) -> undefined end},
         {<<"requestOCSP">>, fun(_, _) -> undefined end},
         %% SSL_set_max_send_fragment takes 512 to 16384; ssl keeps its own
         %% record size.
         {<<"setMaxSendFragment">>, fun(_, Args) -> Size = buoy_ref:to_number(A(1, Args)), Size >= 512 andalso Size =< 16384 end},
-        {<<"setKeyCert">>, fun(_, _) -> undefined end},
+        {<<"setKeyCert">>, fun(This, Args) -> put(This, key_cert, A(1, Args)) end},
         {<<"certCbDone">>, fun(This, _) -> cert_cb_done(This) end},
         {<<"receive">>, fun(This, Args) -> encrypted_in(This, {data, buoy_node_encoding:view_bytes(A(1, Args))}), undefined end},
         {<<"writesIssuedByPrevListenerDone">>, fun(_, _) -> undefined end}],
@@ -104,6 +106,20 @@ binding() ->
         {<<"TLSWrap">>, Class}]).
 
 text(V) -> buoy_ref_string:to_utf8(buoy_ref:to_string(V)).
+
+%% SSL_use_psk_identity_hint refuses a hint past PSK_MAX_IDENTITY_LEN, and
+%% TLSWrap reports it through onerror.
+set_psk_identity_hint(This, Hint) ->
+    case byte_size(text(Hint)) > 256 of
+        true ->
+            Message = <<"Failed to set PSK identity hint">>,
+            E = buoy_heap:error_object('Error', Message, <<"Error: ", Message/binary>>),
+            buoy_heap:set(E, <<"code">>, <<"ERR_TLS_PSK_SET_IDENTITY_HINT_FAILED">>),
+            call_js(This, <<"onerror">>, [E]),
+            undefined;
+        false ->
+            undefined
+    end.
 
 %%% State
 
@@ -139,7 +155,9 @@ wrap(Parent, Context, Server) ->
                  session_callbacks => false, keylog => false, cert_cb => false, sni_waiting => none,
                  reading => false, cleartext => [], eof => false, pending => [], writes => #{}, queued => 0,
                  shutdown => none, controller => none, active => false, inbox => [], inbox_size => 0,
-                 peer_eof => false, info => #{}, read => 0, written => 0,
+                 peer_eof => false, info => #{}, read => 0, written => 0, delivered => 0, tls_eof => false,
+                 flight => case Server of true -> off; false -> {sniff, <<>>} end, reneg => off,
+                 kex => case Server of true -> off; false -> {scan, <<>>} end,
                  async_id => new_async_id()}),
     Reading = listen(Parent, Id),
     put(This, reading, Reading),
@@ -179,7 +197,8 @@ begin_handshake(This, Role) ->
     ok = start_ssl(),
     Realm = self(),
     Agent = spawn(fun() -> receive {options, Options} -> agent(Realm, Id, Role, Options) end end),
-    Agent ! {options, ssl_options(S, Role, Agent)},
+    Options = ssl_options(S, Role, Agent),
+    Agent ! {options, case Role of client -> Options; server -> server_options(Options) end},
     save(This, S#{phase := handshaking, agent := Agent}),
     buoy_node_loop:ref_handle(),
     parent_read(Parent, true),
@@ -194,6 +213,10 @@ start_ssl() ->
             %% OpenSSL's server sends two TLS 1.3 tickets.
             application:set_env(ssl, server_session_tickets_amount, 2),
             {ok, _} = application:ensure_all_started(ssl),
+            %% ssl loads a module on its first alert or close_notify; a load
+            %% that waits on the disk then stalls a connection mid-stream.
+            {ok, Modules} = application:get_key(ssl, modules),
+            ok = code:ensure_modules_loaded(Modules),
             persistent_term:put({?MODULE, ssl}, true),
             ok
     end.
@@ -246,9 +269,36 @@ ssl_options(S, Role, Agent) ->
     Tickets = [O || O <- Resume, Tls13 orelse not lists:member(element(1, O), [session_tickets, use_ticket, stateless_tickets_seed]),
                     Older orelse not lists:member(element(1, O), [reuse_sessions, reuse_session])],
     [{cb_info, buoy_tls_transport:cb_info()}, {log_level, none}, {handshake, full}]
-        ++ Verify ++ Sni ++ AlpnOption ++ Tickets ++ SniFun ++ Keylog ++ Base.
+        ++ Verify ++ Sni ++ AlpnOption ++ Tickets ++ SniFun ++ Keylog
+        ++ [{buoy_alpn_cb, true} || Role =:= server, maps:get(alpn_cb, S, false)] ++ Base.
 
 self_realm() -> self().
+
+%% A server connection comes from an ssl listener of the realm, so that ssl
+%% runs its TLS 1.3 ticket tracker, which a socket that ssl upgrades lacks.
+%% Connections with the same context options share one listener; the
+%% options of one connection join at the handshake.
+%% shortcut: a listener lives as long as its realm, so a server that
+%% rotates many contexts keeps a UDP socket and three ssl processes for
+%% each; close a listener with its last SecureContext if that matters.
+server_options(Options) ->
+    Own = [verify, fail_if_no_peer_cert, verify_fun, alpn_preferred_protocols, sni_fun, keep_secrets, buoy_alpn_cb],
+    {Connection, Shared} = lists:partition(fun(O) -> lists:member(element(1, O), Own) end, Options),
+    {listener(Shared), Connection}.
+
+listener(Options) ->
+    Key = {?MODULE, listener, erlang:phash2(Options)},
+    case erlang:get(Key) of
+        undefined ->
+            %% The socket options that an upgraded socket takes from the
+            %% transport: passive, binary.
+            case ssl:listen(0, [{active, false}, {mode, binary} | Options]) of
+                {ok, Listen} -> erlang:put(Key, Listen), Listen;
+                {error, _} = Error -> Error
+            end;
+        Listen ->
+            Listen
+    end.
 
 %% Records each verification error at the agent and lets the handshake go
 %% on; the hostname is tls.js's to check (checkServerIdentity).
@@ -267,6 +317,11 @@ verify_fun(Agent, Cas) ->
                 %% trusted, as OpenSSL trusts it.
                 {bad_cert, selfsigned_peer} ->
                     lists:member(Der, Cas) orelse (Agent ! {verify_error, selfsigned_peer, Der});
+                %% OpenSSL takes an intermediate of the store as trusted and
+                %% then misses its issuer (UNABLE_TO_GET_ISSUER_CERT).
+                {bad_cert, unknown_ca} ->
+                    Reason = case lists:member(Der, Cas) of true -> stored_issuer_missing; false -> unknown_ca end,
+                    Agent ! {verify_error, Reason, Der};
                 {bad_cert, Reason} ->
                     Agent ! {verify_error, Reason, Der};
                 _ ->
@@ -317,19 +372,25 @@ keylog_fun(Realm, Id) ->
        (_) -> ok
     end.
 
+%% A HelloRetryRequest makes ssl ask again for the second ClientHello;
+%% OpenSSL calls the callback once per handshake, so the first answer stays.
 cert_cb(Id, Name, Waiting) ->
     case by_id(Id) of
         undefined ->
             Waiting ! {'$buoy_tls_sni', []};
         This ->
-            S = state(This),
-            save(This, S#{sni_waiting := Waiting}),
-            %% SelectSNIContextCallback names the server on the socket.
-            Owner = buoy_heap:get(This, proplists:get_value(<<"owner_symbol">>, buoy_node:per_isolate_symbols())),
-            buoy_heap:is_object(Owner) andalso buoy_heap:set(Owner, <<"servername">>, buoy_node:string(Name)),
-            Info = buoy_node:object([{<<"servername">>, buoy_node:string(Name)}, {<<"OCSPRequest">>, false}]),
-            call_js(This, <<"oncertcb">>, [Info])
+            cert_cb(This, state(This), Name, Waiting)
     end.
+
+cert_cb(_This, #{sni_answer := Answer}, _Name, Waiting) ->
+    Waiting ! {'$buoy_tls_sni', Answer};
+cert_cb(This, S, Name, Waiting) ->
+    save(This, S#{sni_waiting := Waiting}),
+    %% SelectSNIContextCallback names the server on the socket.
+    Owner = buoy_heap:get(This, proplists:get_value(<<"owner_symbol">>, buoy_node:per_isolate_symbols())),
+    buoy_heap:is_object(Owner) andalso buoy_heap:set(Owner, <<"servername">>, buoy_node:string(Name)),
+    Info = buoy_node:object([{<<"servername">>, buoy_node:string(Name)}, {<<"OCSPRequest">>, false}]),
+    call_js(This, <<"oncertcb">>, [Info]).
 
 %% certCbDone(): the handshake goes on with the context that tls.js set as
 %% sni_context, if it set one.
@@ -338,17 +399,16 @@ cert_cb_done(This) ->
         #{sni_waiting := Waiting} = S when is_pid(Waiting) ->
             save(This, S#{sni_waiting := none}),
             Context = buoy_heap:get(This, <<"sni_context">>),
-            case {buoy_crypto_context:is_context(Context), buoy_heap:is_object(Context)} of
-                {true, _} ->
-                    Waiting ! {'$buoy_tls_sni', [O || {K, _} = O <- buoy_crypto_context:options(Context, server),
-                                                       lists:member(K, [certs_keys, cacerts])]};
-                {false, true} ->
-                    %% CertCbDone: an object that is no SecureContext fails.
-                    Waiting ! {'$buoy_tls_sni', []},
-                    E = buoy_heap:error_object('TypeError', <<"Invalid SNI context">>, <<"TypeError: Invalid SNI context">>),
-                    call_js(This, <<"onerror">>, [E]);
-                _ ->
-                    Waiting ! {'$buoy_tls_sni', []}
+            Answer = case buoy_crypto_context:is_context(Context) of
+                true -> [O || {K, _} = O <- buoy_crypto_context:options(Context, server), lists:member(K, [certs_keys, cacerts])];
+                false -> []
+            end,
+            put(This, sni_answer, Answer),
+            Waiting ! {'$buoy_tls_sni', Answer},
+            %% CertCbDone: an object that is no SecureContext fails.
+            buoy_crypto_context:is_context(Context) orelse not buoy_heap:is_object(Context) orelse begin
+                E = buoy_heap:error_object('TypeError', <<"Invalid SNI context">>, <<"TypeError: Invalid SNI context">>),
+                call_js(This, <<"onerror">>, [E])
             end;
         _ ->
             ok
@@ -363,13 +423,17 @@ keylog(Id, Lines) ->
 
 %%% The agent
 
-agent(Realm, Id, Role, Options) ->
+agent(Realm, Id, Role, Options0) ->
     erlang:monitor(process, Realm),
     Socket = buoy_tls_transport:socket(Realm, Id),
+    {AlpnCallback, Options} = case Options0 of
+        {Listen, Own} -> {proplists:get_bool(buoy_alpn_cb, Own), {Listen, proplists:delete(buoy_alpn_cb, Own)}};
+        _ -> {false, Options0}
+    end,
     Result = try
         case Role of
             client -> ssl:connect(Socket, Options, infinity);
-            server -> ssl:handshake(Socket, Options, infinity)
+            server -> server_handshake(Realm, Id, Socket, Options, AlpnCallback)
         end
     catch
         Class:Reason -> {error, {Class, Reason}}
@@ -379,10 +443,70 @@ agent(Realm, Id, Role, Options) ->
     case Result of
         {ok, Ssl} ->
             Report({handshake, {ok, connection_info(Ssl, Errors, Chain)}}),
-            agent_loop(Ssl, Report, false, false);
+            agent_loop(Ssl, Report, false);
         {error, Reason2} ->
             Report({handshake, {error, Reason2}})
     end.
+
+%% A server stops after the ClientHello, where Node's ALPN callback picks a
+%% protocol of the client's list, and goes on.
+server_handshake(_Realm, _Id, _Socket, {{error, _} = Error, _}, _AlpnCallback) ->
+    Error;
+server_handshake(Realm, Id, Socket, {Listen, Options}, AlpnCallback) ->
+    %% The transport's accept hands out the socket under this key.
+    erlang:put(buoy_tls_accept, Socket),
+    case ssl:transport_accept(Listen, infinity) of
+        {ok, Accepted} -> server_handshake(Realm, Id, Accepted, Options, AlpnCallback);
+        Error -> Error
+    end;
+server_handshake(Realm, Id, Socket, Options, true) ->
+    case ssl:handshake(Socket, [{handshake, hello} | Options], infinity) of
+        {ok, Hello, Ext} -> ssl:handshake_continue(Hello, alpn_select(Realm, Id, alpn_wire(Ext)), infinity);
+        %% handshake/3 of an accepted socket replies with the bare map of
+        %% the ClientHello's extension records.
+        {ok, Ext} when is_map(Ext) -> ssl:handshake_continue(Socket, alpn_select(Realm, Id, alpn_wire(Ext)), infinity);
+        Other -> Other
+    end;
+server_handshake(_Realm, _Id, Socket, Options, false) ->
+    ssl:handshake(Socket, Options, infinity).
+
+alpn_wire(Ext) ->
+    case maps:get(alpn, Ext, undefined) of
+        {alpn, Wire} -> Wire;
+        Wire -> Wire
+    end.
+
+%% The protocol that the ALPN callback chose. None makes ssl refuse the
+%% client's list with no_application_protocol, as SSL_TLSEXT_ERR_ALERT_FATAL
+%% does; OpenSSL calls no callback when the client offers no ALPN.
+alpn_select(Realm, Id, Wire) when is_binary(Wire) ->
+    Self = self(),
+    buoy_node_stream:call(Realm, fun() -> alpn_callback(Id, Wire, Self) end),
+    receive
+        {'$buoy_tls_alpn', Protocol, KeyCert} -> [{alpn_preferred_protocols, [Protocol]} | KeyCert]
+    after 60000 ->
+        []
+    end;
+alpn_select(_Realm, _Id, _None) ->
+    [].
+
+%% setKeyCert in the callback gives this connection the key and the
+%% certificate of another context, as SSL_use_certificate does.
+alpn_callback(Id, Wire, Agent) ->
+    {Offset, KeyCert} = case by_id(Id) of
+        undefined ->
+            {none, []};
+        This ->
+            Chosen = call_js(This, <<"ALPNCallback">>, [buoy_node_encoding:new_buffer(Wire)]),
+            Context = maps:get(key_cert, state(This), undefined),
+            {Chosen, [O || buoy_crypto_context:is_context(Context),
+                           {certs_keys, _} = O <- buoy_crypto_context:options(Context, server)]}
+    end,
+    Protocol = case is_number(Offset) andalso Wire of
+        <<_:(trunc(Offset))/binary, Length, Chosen1:Length/binary, _/binary>> -> Chosen1;
+        _ -> <<0>>
+    end,
+    Agent ! {'$buoy_tls_alpn', Protocol, KeyCert}.
 
 %% The verification messages that ssl's process sent before the handshake
 %% ended: they are in the mailbox before ssl's reply.
@@ -416,7 +540,14 @@ connection_info(Ssl, Errors, Chain) ->
     end,
     #{items => Items, peer => Peer, alpn => Alpn, errors => Errors, chain => Chain}.
 
-agent_loop(Ssl, Report, Reading, Armed) ->
+%% The agent reads in passive mode and never leaves a receive waiting: ssl
+%% stops a connection whose close_notify arrives during a receive, but
+%% keeps one whose close_notify arrives between receives, and it can still
+%% write then, as OpenSSL can after SSL_RECEIVED_SHUTDOWN. Each poll takes
+%% what ssl decrypted: the realm polls after each delivery to ssl, so ssl
+%% has handled it before the receive, and a receive with timeout 0 times
+%% out before ssl takes another message.
+agent_loop(Ssl, Report, Reading) ->
     receive
         {write, Ref, Bytes} ->
             Status = case ssl:send(Ssl, Bytes) of
@@ -424,53 +555,66 @@ agent_loop(Ssl, Report, Reading, Armed) ->
                 {error, Reason} -> {error, Reason}
             end,
             Report({written, Ref, Status}),
-            agent_loop(Ssl, Report, Reading, Armed);
-        {reading, true} when not Armed ->
-            arm(Ssl, Report, true);
-        {reading, Flag} ->
-            agent_loop(Ssl, Report, Flag, Armed);
+            agent_loop(Ssl, Report, Reading);
+        {reading, Flag, Count} ->
+            agent_poll(Ssl, Report, Flag, Count);
+        {poll, Count} ->
+            agent_poll(Ssl, Report, Reading, Count);
         %% The agent owns one ssl socket, and ssl's messages may carry a
         %% copy of its record whose fields differ from the one connect gave.
+        %% ssl sends a ticket as {Sni, Ticket} or, since OTP 27, as the
+        %% ticket's map.
         {ssl, session_ticket, {_Sni, Ticket}} ->
             Report({ticket, Ticket}),
-            agent_loop(Ssl, Report, Reading, Armed);
-        {ssl, _, Data} when is_binary(Data) ->
-            Report({cleartext, Data}),
-            case Reading of
-                true -> arm(Ssl, Report, true);
-                false -> agent_loop(Ssl, Report, false, false)
-            end;
-        {ssl_closed, _} ->
-            Report(cleartext_eof);
-        {ssl_error, _, Reason} ->
-            Report({error, Reason}),
-            agent_loop(Ssl, Report, Reading, Armed);
+            agent_loop(Ssl, Report, Reading);
+        {ssl, session_ticket, Ticket} when is_map(Ticket) ->
+            Report({ticket, Ticket}),
+            agent_loop(Ssl, Report, Reading);
         {shutdown, Ref} ->
-            Status = case ssl:shutdown(Ssl, write) of
+            %% ssl sends close_notify only for read_write; ssl still reads
+            %% after it, and the transport ends only the parent's write side.
+            Status = case ssl:shutdown(Ssl, read_write) of
                 ok -> ok;
                 {error, Reason} -> {error, Reason}
             end,
             Report({shutdown, Ref, Status}),
-            agent_loop(Ssl, Report, Reading, Armed);
+            agent_loop(Ssl, Report, Reading);
+        renegotiate ->
+            case ssl:renegotiate(Ssl) of
+                ok -> Report(renegotiated), agent_loop(Ssl, Report, Reading);
+                {error, closed} -> Report(cleartext_eof);
+                {error, Reason} -> Report({error, Reason}), agent_loop(Ssl, Report, Reading)
+            end;
         {export, From, Ref, Label, Context, Length} ->
             %% The secret stays for the next export (ConsumeSecret false).
             From ! {Ref, try ssl:export_key_materials(Ssl, [Label], [Context], [Length], false) catch _:_ -> error end},
-            agent_loop(Ssl, Report, Reading, Armed);
+            agent_loop(Ssl, Report, Reading);
         close ->
             ssl:close(Ssl);
         {'DOWN', _, process, _, _} ->
             ssl:close(Ssl)
     end.
 
-%% Asks ssl for the next read. A connection that ended while its owner
-%% did not read is gone without an ssl_closed message, as ssl stops a
-%% connection whose passive owner has no receive waiting.
-arm(Ssl, Report, Reading) ->
-    case ssl:setopts(Ssl, [{active, once}]) of
-        ok -> agent_loop(Ssl, Report, Reading, true);
-        %% A passive connection keeps the alert that ended it for setopts.
-        {error, {tls_alert, _} = Alert} -> Report({error, Alert});
-        {error, _} -> Report(cleartext_eof)
+%% Takes the cleartext that ssl holds while the stream reads, then reports
+%% that delivery Count is drained. A connection that ended is gone.
+agent_poll(Ssl, Report, Reading, skip) ->
+    agent_loop(Ssl, Report, Reading);
+agent_poll(Ssl, Report, false, _Count) ->
+    agent_loop(Ssl, Report, false);
+agent_poll(Ssl, Report, true, Count) ->
+    case ssl:recv(Ssl, 0, 0) of
+        {ok, Data} ->
+            Report({cleartext, Data}),
+            agent_poll(Ssl, Report, true, Count);
+        {error, timeout} ->
+            Report({drained, Count}),
+            agent_loop(Ssl, Report, true);
+        %% A passive connection keeps the alert that ended it for recv.
+        {error, {tls_alert, _} = Alert} ->
+            Report({error, Alert}),
+            Report(cleartext_eof);
+        {error, _} ->
+            Report(cleartext_eof)
     end.
 
 %%% Events of the agent, in the realm
@@ -487,12 +631,16 @@ event(This, S, {handshake, {ok, Info}}) ->
     #{agent := Agent, pending := Pending, reading := Reading, server := Server, shutdown := Shutdown} = S,
     [Agent ! {write, Ref, Bytes} || {Ref, Bytes} <- Pending],
     save(This, (state(This))#{pending := []}),
-    Reading andalso (Agent ! {reading, true}),
+    Reading andalso (Agent ! {reading, true, maps:get(delivered, S)}),
     Shutdown =/= none andalso (Agent ! {shutdown, Shutdown}),
+    maps:get(protocol, maps:get(items, Info, #{}), 'tlsv1.3') =/= 'tlsv1.3'
+        andalso put(This, reneg, #{in => {header, <<>>}, out => {header, <<>>}, phase => idle, notify => Server}),
     call_js(This, <<"onhandshakedone">>, []),
+    release_flight(maps:get(id, S)),
     Server =:= false andalso maps:get(session_callbacks, S) andalso tls12_session(This, Info);
 event(This, S, {handshake, {error, Reason}}) ->
     save(This, S#{phase := failed}),
+    release_flight(maps:get(id, S)),
     buoy_node_loop:unref_handle(),
     case Reason of
         closed -> cleartext_end(This);
@@ -503,8 +651,24 @@ event(This, S, {cleartext, Data}) ->
         #{reading := true, cleartext := []} -> deliver(This, Data);
         #{cleartext := Buffered} -> save(This, S#{cleartext := Buffered ++ [Data]})
     end;
+%% The peer's stream ended and ssl holds no more cleartext: the end of the
+%% TLS stream. ssl keeps the connection, which can still write, as a peer's
+%% close_notify comes with the end of its stream.
+event(This, S, {drained, Count}) ->
+    case S of
+        #{peer_eof := true, inbox := [], delivered := Count, tls_eof := false, phase := open} ->
+            save(This, S#{tls_eof := true}),
+            cleartext_end(This);
+        _ ->
+            ok
+    end;
+%% The agent is gone with ssl's connection: the writes that it did not
+%% take are canceled, as TLSWrap's InvokeQueued cancels them.
 event(This, _S, cleartext_eof) ->
-    save(This, (state(This))#{phase := closed}),
+    #{writes := Writes} = S = state(This),
+    save(This, S#{phase := closed, writes := #{}, queued := 0}),
+    Canceled = buoy_node_socket:errno(ecanceled),
+    [buoy_node_socket:later(fun() -> complete(Req, Canceled, This) end) || {Req, _Size} <- maps:values(Writes)],
     cleartext_end(This);
 event(This, S, {written, Ref, Status}) ->
     #{writes := Writes, queued := Queued} = S,
@@ -526,6 +690,9 @@ event(This, S, {ticket, Ticket}) ->
     maps:get(session_callbacks, S) andalso
         call_js(This, <<"onnewsession">>, [buoy_node_encoding:new_buffer(<<>>),
                                           buoy_node_encoding:new_buffer(term_to_binary({tls13_ticket, Ticket}))]);
+event(This, S, renegotiated) ->
+    save(This, S#{renegotiating => false}),
+    call_js(This, <<"onhandshakedone">>, []);
 event(This, _S, {error, Reason}) ->
     call_js(This, <<"onerror">>, [handshake_error(Reason, false)]).
 
@@ -553,7 +720,10 @@ transport(Id, Event) ->
     end,
     ok.
 
-transport_event(_This, S, {send, Data}) ->
+transport_event(This, #{flight := {hold, Held}} = S, {send, Data}) ->
+    save(This, S#{flight := {hold, [Data | Held]}});
+transport_event(This, S, {send, Data}) ->
+    renegotiation(This, out, Data),
     parent_write(maps:get(parent, S), Data);
 transport_event(This, S, {active, Caller, Mode}) ->
     save(This, S#{controller := Caller, active := Mode}),
@@ -632,13 +802,21 @@ parent_event(Id, Event) ->
     end.
 
 encrypted_in(This, {data, Data}) ->
+    sniff(This, Data),
+    key_exchange(This, Data),
+    renegotiation(This, in, Data),
     #{inbox := Inbox, inbox_size := Size, parent := Parent} = S = state(This),
     save(This, S#{inbox := [Data | Inbox], inbox_size := Size + byte_size(Data)}),
     Size + byte_size(Data) > ?INBOX_LIMIT andalso parent_read(Parent, false),
     pump(This);
 encrypted_in(This, eof) ->
-    save(This, (state(This))#{peer_eof := true}),
-    pump(This);
+    S = state(This),
+    save(This, S#{peer_eof := true}),
+    case S of
+        #{phase := open, renegotiating := true} -> pump(This);
+        #{phase := open} -> poll(This);
+        _ -> pump(This)
+    end;
 encrypted_in(This, {error, Status}) ->
     S = state(This),
     case S of
@@ -652,9 +830,203 @@ encrypted_in(This, {error, Status}) ->
 
 transport_socket(#{id := Id}) -> buoy_tls_transport:socket(self(), Id).
 
+%%% Renegotiation
+
+%% renegotiate(): TLS 1.3 has none, as SSL_renegotiate refuses it; ssl
+%% renegotiates an older session, and onhandshakedone follows.
+renegotiate(This) ->
+    case state(This) of
+        #{info := #{items := #{protocol := 'tlsv1.3'}}} ->
+            erlang:error({'$throw', buoy_crypto_context:ssl_error_value(16#10A, <<"wrong ssl version">>, ssl)});
+        #{phase := open, agent := Agent} = S ->
+            save(This, S#{renegotiating => true}),
+            Agent ! renegotiate,
+            undefined;
+        _ ->
+            undefined
+    end.
+
+%% A TLS 1.2 connection sees a renegotiation in its records, whose content
+%% type stays visible: a handshake record from the peer after the handshake
+%% starts one, and the Finished that follows each side's change cipher spec
+%% ends it. A server reports them as SSL_CB_HANDSHAKE_START and _DONE do.
+%% The agent takes no cleartext meanwhile: a receive that times out during
+%% ssl's renegotiation leaves an event that ssl later fails with
+%% unexpected_message. The end of one polls.
+renegotiation(This, Direction, Data) ->
+    case state(This) of
+        #{reneg := #{phase := Phase, notify := Notify} = R} = S ->
+            {Types, Scan} = record_types(Data, maps:get(Direction, R)),
+            Next = lists:foldl(fun(Type, P) -> reneg_step(Direction, Type, P) end, Phase, Types),
+            save(This, S#{reneg := R#{Direction := Scan, phase := reneg_phase(Next)}}),
+            Notify andalso Phase =:= idle andalso Next =/= idle andalso call_js(This, <<"onhandshakestart">>, [buoy_node_loop:now()]),
+            Notify andalso Next =:= done andalso call_js(This, <<"onhandshakedone">>, []),
+            Next =:= done andalso poll(This),
+            ok;
+        _ ->
+            ok
+    end.
+
+renegotiating(#{reneg := #{phase := Phase}}) -> Phase =/= idle;
+renegotiating(_) -> false.
+
+%% Asks the agent of an open connection to take the cleartext of the
+%% deliveries so far, unless ssl renegotiates.
+poll(This) ->
+    case state(This) of
+        #{phase := open, agent := Agent, delivered := Count} = S when is_pid(Agent) ->
+            renegotiating(S) orelse (Agent ! {poll, Count}),
+            ok;
+        _ ->
+            ok
+    end.
+
+reneg_step(in, 22, idle) -> #{in_ccs => false, out_ccs => false, in_fin => false, out_fin => false};
+reneg_step(_, _, idle) -> idle;
+reneg_step(_, _, done) -> done;
+reneg_step(in, 20, P) -> P#{in_ccs := true};
+reneg_step(out, 20, P) -> P#{out_ccs := true};
+reneg_step(in, 22, #{in_ccs := true} = P) -> finished(P#{in_fin := true});
+reneg_step(out, 22, #{out_ccs := true} = P) -> finished(P#{out_fin := true});
+reneg_step(_, _, P) -> P.
+
+finished(#{in_fin := true, out_fin := true}) -> done;
+finished(P) -> P.
+
+reneg_phase(done) -> idle;
+reneg_phase(P) -> P.
+
+%% The content types of the records that Data starts, with the scan state
+%% of a record header split across reads or a body left to skip.
+record_types(Data, Scan) -> record_types(Data, Scan, []).
+
+record_types(<<>>, Scan, Acc) -> {lists:reverse(Acc), Scan};
+record_types(Data, {skip, N}, Acc) when byte_size(Data) =< N -> {lists:reverse(Acc), {skip, N - byte_size(Data)}};
+record_types(Data, {skip, N}, Acc) ->
+    <<_:N/binary, Rest/binary>> = Data,
+    record_types(Rest, {header, <<>>}, Acc);
+record_types(Data, {header, Seen}, Acc) ->
+    case <<Seen/binary, Data/binary>> of
+        <<Type, _:16, Length:16, Rest/binary>> -> record_types(Rest, {skip, Length}, [Type | Acc]);
+        Short -> {lists:reverse(Acc), {header, Short}}
+    end.
+
+%%% The server's key exchange
+
+%% A TLS 1.2 client sees the server's first flight in the clear. It keeps
+%% the body of the ServerKeyExchange, whose DH prime gives the size that
+%% getEphemeralKeyInfo reports and ssl does not. The scan ends at
+%% ServerHelloDone, at a record that is no handshake, or past 64 KiB.
+key_exchange(This, Data) ->
+    case state(This) of
+        #{kex := {scan, Seen}} = S ->
+            All = <<Seen/binary, Data/binary>>,
+            {Handshake, Rest} = handshake_bytes(All, <<>>),
+            Messages = handshake_messages(Handshake),
+            Kex = case lists:keyfind(12, 1, Messages) of
+                {12, Body} -> {params, binary:copy(Body)};
+                false ->
+                    Ended = lists:keymember(14, 1, Messages) orelse not handshake_tail(Rest)
+                        orelse byte_size(All) > 65536,
+                    case Ended of true -> off; false -> {scan, All} end
+            end,
+            save(This, S#{kex := Kex});
+        _ ->
+            ok
+    end.
+
+handshake_bytes(<<22, _:16, Length:16, Record:Length/binary, Rest/binary>>, Acc) ->
+    handshake_bytes(Rest, <<Acc/binary, Record/binary>>);
+handshake_bytes(Rest, Acc) ->
+    {Acc, Rest}.
+
+handshake_messages(<<Type, Length:24, Body:Length/binary, Rest/binary>>) -> [{Type, Body} | handshake_messages(Rest)];
+handshake_messages(_) -> [].
+
+%% The rest of a read: nothing, or the start of a handshake record.
+handshake_tail(<<>>) -> true;
+handshake_tail(<<22, _/binary>>) -> true;
+handshake_tail(_) -> false.
+
+%%% The client's last flight
+
+%% A TLS 1.3 client completes its handshake as it sends its Finished, and
+%% Node's client runs onhandshakedone, where tls.js rejects an unverified
+%% server, before TLSWrap writes that flight out: the server then never
+%% completes. So a client holds what ssl sends after a TLS 1.3 ServerHello
+%% until onhandshakedone has run, and drops it if tls.js destroyed the
+%% socket. A TLS 1.2 client sends its Finished before the server's, so it
+%% holds nothing.
+sniff(This, Data) ->
+    case state(This) of
+        #{flight := {sniff, Seen}} = S ->
+            Flight = case server_hello(<<Seen/binary, Data/binary>>) of
+                more -> {sniff, <<Seen/binary, Data/binary>>};
+                tls13 -> {hold, []};
+                other -> off
+            end,
+            save(This, S#{flight := Flight});
+        _ ->
+            ok
+    end.
+
+%% The version of the server's first flight: tls13 for a ServerHello with
+%% supported_versions 0x0304, more until its record is whole. A change
+%% cipher spec record and a HelloRetryRequest come before the ServerHello.
+server_hello(<<20, _:16, Length:16, _:Length/binary, Rest/binary>>) ->
+    server_hello(Rest);
+server_hello(<<22, _:16, Length:16, Record:Length/binary, Rest/binary>>) ->
+    case Record of
+        <<2, _:24, _:16, ?HRR_RANDOM:256, _/binary>> -> server_hello(Rest);
+        <<2, _:24, _:16, _:32/binary, IdLength, _:IdLength/binary, _:16, _, ExtLength:16, Extensions:ExtLength/binary, _/binary>> ->
+            case supports_tls13(Extensions) of
+                true -> tls13;
+                false -> other
+            end;
+        _ ->
+            other
+    end;
+server_hello(<<22, _/binary>> = Partial) when byte_size(Partial) < 5 -> more;
+server_hello(<<22, _:16, Length:16, Rest/binary>>) when byte_size(Rest) < Length -> more;
+server_hello(<<20, _/binary>>) -> more;
+server_hello(<<>>) -> more;
+server_hello(_) -> other.
+
+supports_tls13(<<43:16, 2:16, 16#0304:16, _/binary>>) -> true;
+supports_tls13(<<_:16, Length:16, _:Length/binary, Rest/binary>>) -> supports_tls13(Rest);
+supports_tls13(_) -> false.
+
+%% After onhandshakedone: the held flight goes out unless tls.js destroyed
+%% the socket.
+release_flight(Id) ->
+    case by_id(Id) of
+        undefined ->
+            ok;
+        This ->
+            S = state(This),
+            case S of
+                #{flight := {hold, Held}} -> [parent_write(maps:get(parent, S), D) || D <- lists:reverse(Held)];
+                _ -> ok
+            end,
+            save(This, (state(This))#{flight := off})
+    end.
+
 %% Passes the waiting bytes to ssl while its active mode takes them.
+%% A destroyed TLSWrap, or one whose socket closed, gives ssl nothing
+%% more, as SSL is freed with it: a server that refuses a renegotiation in
+%% onhandshakestart and destroys the socket never lets ssl answer it.
 pump(This) ->
     S = state(This),
+    Closed = maps:get(phase, S) =:= closed orelse case buoy_node_socket:find(maps:get(parent, S)) of
+        {ok, #{closed := true}} -> true;
+        _ -> false
+    end,
+    case Closed of
+        true -> ok;
+        false -> pump(This, S)
+    end.
+
+pump(This, S) ->
     case S of
         #{controller := Pid, active := Active, inbox := [_ | _] = Inbox, parent := Parent} when is_pid(Pid), Active =/= false ->
             Socket = transport_socket(S),
@@ -665,13 +1037,19 @@ pump(This) ->
                 N when is_integer(N), N > 1 -> N - 1;
                 _ -> Pid ! {buoy_tls_passive, Socket}, false
             end,
-            save(This, S#{inbox := [], inbox_size := 0, active := Next}),
+            Count = maps:get(delivered, S) + 1,
+            save(This, S#{inbox := [], inbox_size := 0, active := Next, delivered := Count}),
             maps:get(inbox_size, S) > ?INBOX_LIMIT andalso parent_read(Parent, true),
+            poll(This),
             ok;
         %% A closed transport tells each activation again, as gen_tcp's
         %% setopts fails on a closed socket: ssl defers a close that came
         %% while its owner did not read, until it activates the transport.
-        #{controller := Pid, active := Active, inbox := [], peer_eof := true} when is_pid(Pid), Active =/= false ->
+        %% An open connection keeps writing after the peer's end, so ssl
+        %% hears of the transport's end only while this side renegotiates,
+        %% which waits on the peer.
+        #{controller := Pid, active := Active, inbox := [], peer_eof := true, phase := Phase} = S1
+          when is_pid(Pid), Active =/= false, Phase =/= open orelse is_map_key(renegotiating, S1) andalso map_get(renegotiating, S1) ->
             Pid ! {buoy_tls_closed, transport_socket(S)},
             save(This, S#{active := false});
         _ ->
@@ -688,7 +1066,8 @@ set_reading(This, Reading) ->
     save(This, S#{reading := Reading}),
     case {S, Reading} of
         {#{phase := idle, server := true}, true} -> begin_handshake(This, server);
-        {#{phase := open, agent := Agent}, _} -> Agent ! {reading, Reading};
+        {#{phase := open, agent := Agent, delivered := Count}, _} ->
+            Agent ! {reading, Reading, case renegotiating(S) of true -> skip; false -> Count end};
         _ -> ok
     end,
     case Reading of
@@ -801,6 +1180,11 @@ destroy(This) ->
         #{sni_waiting := Waiting} when is_pid(Waiting) -> Waiting ! {'$buoy_tls_sni', []};
         _ -> ok
     end,
+    %% TLSWrap::Destroy cancels the writes that wait (InvokeQueued).
+    #{writes := Writes} = state(This),
+    save(This, (state(This))#{writes := #{}, pending := [], queued := 0}),
+    Canceled = buoy_node_socket:errno(ecanceled),
+    [buoy_node_socket:later(fun() -> complete(Req, Canceled, This) end) || {Req, _Size} <- maps:values(Writes)],
     case state(This) of
         #{agent := Agent, phase := Phase, id := Id} = S when is_pid(Agent) ->
             Agent ! close,
@@ -835,6 +1219,26 @@ protocol_name(_) -> null.
 %% The wire format of ALPN, length-prefixed names, as a list.
 alpn_list(<<Length, Name:Length/binary, Rest/binary>>) -> [Name | alpn_list(Rest)];
 alpn_list(_) -> [].
+
+%% getTLSTicket(): the opaque ticket of the session, as
+%% SSL_SESSION_get0_ticket gives it: the last NewSessionTicket of a TLS 1.3
+%% client, or the ticket that it resumed with. ssl has no TLS 1.2 tickets.
+tls_ticket(This) ->
+    Ticket = case state(This) of
+        #{ticket := T} -> T;
+        #{session := Bytes} when is_binary(Bytes) ->
+            case try binary_to_term(Bytes, [safe]) catch error:_ -> none end of
+                {tls13_ticket, T} -> T;
+                _ -> none
+            end;
+        _ -> none
+    end,
+    case Ticket of
+        #{ticket := NewSessionTicket} when tuple_size(NewSessionTicket) >= 5 ->
+            buoy_node_encoding:new_buffer(element(5, NewSessionTicket));
+        _ ->
+            undefined
+    end.
 
 servername(This) ->
     case state(This) of
@@ -890,10 +1294,14 @@ ephemeral_key(This) ->
                 #{ecc := {named_curve, Curve}} -> curve_name(Curve);
                 _ -> undefined
             end,
-            case {Kex, group(Group)} of
-                {rsa, _} -> buoy_node:object([]);
-                {_, {dh, Size}} -> buoy_node:object([{<<"type">>, <<"DH">>}, {<<"size">>, Size}]);
-                {_, {ecdh, Name, Size}} -> buoy_node:object([{<<"type">>, <<"ECDH">>}, {<<"name">>, Name}, {<<"size">>, Size}]);
+            case {Kex, group(Group), maps:get(kex, state(This), off)} of
+                {rsa, _, _} -> buoy_node:object([]);
+                {_, none, {params, <<Length:16, Prime:Length/binary, _/binary>>}}
+                  when Kex =:= dhe_rsa; Kex =:= dhe_dss; Kex =:= dhe_psk; Kex =:= dh_anon ->
+                    Size = length(integer_to_list(binary:decode_unsigned(Prime), 2)),
+                    buoy_node:object([{<<"type">>, <<"DH">>}, {<<"size">>, Size}]);
+                {_, {dh, Size}, _} -> buoy_node:object([{<<"type">>, <<"DH">>}, {<<"size">>, Size}]);
+                {_, {ecdh, Name, Size}, _} -> buoy_node:object([{<<"type">>, <<"ECDH">>}, {<<"name">>, Name}, {<<"size">>, Size}]);
                 _ -> buoy_node:object([])
             end;
         _ -> buoy_node:object([])
@@ -1027,6 +1435,7 @@ x509_error(cert_expired, Der, _) ->
     end;
 x509_error(invalid_signature, _, _) -> {<<"CERT_SIGNATURE_FAILURE">>, <<"certificate signature failure">>};
 x509_error(invalid_issuer, _, _) -> {<<"UNABLE_TO_GET_ISSUER_CERT">>, <<"unable to get issuer certificate">>};
+x509_error(stored_issuer_missing, _, _) -> {<<"UNABLE_TO_GET_ISSUER_CERT">>, <<"unable to get issuer certificate">>};
 x509_error(missing_basic_constraint, _, _) -> {<<"INVALID_CA">>, <<"invalid CA certificate">>};
 x509_error(invalid_key_usage, _, _) -> {<<"INVALID_PURPOSE">>, <<"unsupported certificate purpose">>};
 x509_error({revoked, _}, _, _) -> {<<"CERT_REVOKED">>, <<"certificate revoked">>};

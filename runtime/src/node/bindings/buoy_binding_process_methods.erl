@@ -40,7 +40,7 @@ binding() ->
         {<<"threadCpuUsage">>, F(<<"threadCpuUsage">>, 0, fun(_, Args) -> cpu_usage(A(1, Args)) end)},
         {<<"resourceUsage">>, F(<<"resourceUsage">>, 0, fun(_, Args) -> resource_usage(A(1, Args)) end)},
         {<<"_getActiveRequests">>, F(<<"_getActiveRequests">>, 0, fun(_, _) -> buoy_heap:new_array([]) end)},
-        {<<"_getActiveHandles">>, F(<<"_getActiveHandles">>, 0, fun(_, _) -> buoy_heap:new_array([]) end)},
+        {<<"_getActiveHandles">>, F(<<"_getActiveHandles">>, 0, fun(_, _) -> active_handles() end)},
         {<<"getActiveResourcesInfo">>, F(<<"getActiveResourcesInfo">>, 0, fun(_, _) -> active_resources() end)},
         {<<"_kill">>, F(<<"_kill">>, 0, fun(_, Args) -> kill(A(1, Args), A(2, Args)) end)},
         {<<"_rawDebug">>, F(<<"_rawDebug">>, 0, fun(_, Args) ->
@@ -179,12 +179,22 @@ dlopen(_This, _Args) ->
     buoy_node:throw_code('Error', <<"ERR_DLOPEN_FAILED">>,
                          <<"Buoy cannot load native addons (.node files); use the WebAssembly or pure-JavaScript build of the package">>).
 
-%% GetActiveResourcesInfo: a Timeout for each active timer (timeoutInfo[0]
-%% of lib/internal/timers) and an Immediate for each ref'd immediate
-%% (immediateInfo[kRefCount]).
-%% shortcut: the requests and handles of the bindings are not named yet.
+%% GetActiveHandles: the owner of each ref'd handle wrap (GetOwner), or the
+%% handle itself.
+active_handles() ->
+    Owner = buoy_heap:get(buoy_node:binding(<<"symbols">>), <<"owner_symbol">>),
+    buoy_heap:new_array([case buoy_heap:get(Handle, Owner) of
+                             undefined -> Handle;
+                             Object -> Object
+                         end || {Handle, _} <- buoy_node_loop:handle_wraps()]).
+
+%% GetActiveResourcesInfo: the name of each ref'd handle wrap, a Timeout for
+%% each active timer (timeoutInfo[0] of lib/internal/timers), and an
+%% Immediate for each ref'd immediate (immediateInfo[kRefCount]).
+%% shortcut: the requests of the bindings are not named yet.
 active_resources() ->
     Timers = buoy_node:binding(<<"timers">>),
     Timeouts = buoy_heap:get(buoy_heap:get(Timers, <<"timeoutInfo">>), 0),
     Immediates = buoy_heap:get(buoy_heap:get(Timers, <<"immediateInfo">>), 1),
-    buoy_heap:new_array(lists:duplicate(max(0, Timeouts), <<"Timeout">>) ++ lists:duplicate(max(0, Immediates), <<"Immediate">>)).
+    buoy_heap:new_array([Name || {_, Name} <- buoy_node_loop:handle_wraps()] ++
+                        lists:duplicate(max(0, Timeouts), <<"Timeout">>) ++ lists:duplicate(max(0, Immediates), <<"Immediate">>)).

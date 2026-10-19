@@ -243,10 +243,20 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         Some(Entry::Eval(code)) => {
             options.eval = true;
             let module = is_module(&code, &options.exec_argv);
+            let code = if !module && uses_crypto(&code) {
+                format!("(crypto=>{{{{{code}}}}})(require('node:crypto'))")
+            } else {
+                code
+            };
             run_source(code, module, program_arguments, &options)
         }
         Some(Entry::Print(code)) => {
             options.eval = true;
+            let code = if uses_crypto(&code) {
+                format!("let crypto=require(\"node:crypto\");{{{code}}}")
+            } else {
+                code
+            };
             // The completion value of the code, printed at exit as Node's evalScript does.
             let source = format!(
                 "globalThis.require = require; globalThis.module = module; globalThis.exports = exports;\n\
@@ -262,6 +272,17 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         ),
         None => run_stdin(program_arguments, options),
     }
+}
+
+/// Whether the code names `crypto`, as `/\bcrypto\b/` finds it: eval_string.js then binds
+/// the name to `node:crypto` in place of Web Crypto, for backward compatibility.
+fn uses_crypto(code: &str) -> bool {
+    let is_word = |byte: Option<&u8>| byte.is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_');
+    let bytes = code.as_bytes();
+    code.match_indices("crypto").any(|(start, word)| {
+        let end = start + word.len();
+        !is_word(start.checked_sub(1).and_then(|i| bytes.get(i))) && !is_word(bytes.get(end))
+    })
 }
 
 /// `buoy -` and `buoy` with piped stdin: the script is the text of stdin.
@@ -384,6 +405,15 @@ mod tests {
         );
         assert_eq!(invalid_option(&argv(&["--unhandled-rejections="])), None);
         assert_eq!(invalid_option(&argv(&["--no-warnings"])), None);
+    }
+
+    #[test]
+    fn finds_the_crypto_name_as_node_does() {
+        assert!(uses_crypto("crypto.constants"));
+        assert!(uses_crypto("x = (crypto)"));
+        assert!(!uses_crypto("webcrypto.subtle"));
+        assert!(!uses_crypto("crypto_x + cryptography"));
+        assert!(uses_crypto("$crypto"));
     }
 
     #[test]
