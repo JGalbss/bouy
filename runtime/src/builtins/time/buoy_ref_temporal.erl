@@ -20,7 +20,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, load/1, to_instant/1]).
--export([slots_of/1, duration_slots/1]).
+-export([slots_of/1, find_slots/1, duration_slots/1]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 
@@ -62,7 +62,7 @@ load(?NAMESPACE = Id) ->
         erlang:put({?MODULE, instant}, maps:get(<<"Instant">>, element(3, Record))),
         erlang:put({?MODULE, readers, buoy_heap:realm()},
                    {buoy_ref:get(Host, <<"slotsOf">>), buoy_ref:get(Host, <<"toDurationSlots">>)}),
-        locale_methods(maps:get(<<"Duration">>, element(3, Record))),
+        locale_methods(element(3, Record)),
         Record
     catch
         Class:Reason:Stack ->
@@ -115,19 +115,31 @@ to_instant(T) ->
     _ = erlang:get(?NAMESPACE) =/= undefined orelse load(?NAMESPACE),
     buoy_ref:construct(erlang:get({?MODULE, instant}), [{'$bigint', T * 1000000}]).
 
-%% Temporal.Duration.prototype.toLocaleString formats with Intl.DurationFormat,
-%% which the polyfill does not have.
-locale_methods(Duration) ->
-    Proto = buoy_ref:get(Duration, <<"prototype">>),
-    Method = buoy_ref_realm:builtin(<<"Temporal.Duration.prototype.toLocaleString">>, <<"toLocaleString">>, 0,
+%% The toLocaleString methods of ECMA-402's Temporal section: a Duration formats
+%% with Intl.DurationFormat, and the others with Intl.DateTimeFormat, which the
+%% polyfill replaced with its own.
+locale_methods(Classes) ->
+    [locale_method(Type, maps:get(Type, Classes))
+     || Type <- [<<"Duration">>, <<"Instant">>, <<"PlainDate">>, <<"PlainDateTime">>, <<"PlainMonthDay">>,
+                 <<"PlainTime">>, <<"PlainYearMonth">>, <<"ZonedDateTime">>]],
+    ok.
+
+locale_method(Type, Class) ->
+    Name = <<"Temporal.", Type/binary, ".prototype.toLocaleString">>,
+    Method = buoy_ref_realm:builtin(Name, <<"toLocaleString">>, 0,
                                     fun(This, Args) ->
                                             case slots_of(This) of
-                                                {<<"Duration">>, _} -> ok;
-                                                _ -> buoy_ref:type_error(<<"Temporal.Duration.prototype.toLocaleString called on incompatible receiver">>)
-                                            end,
-                                            buoy_ref_intl_duration_format:format_with(arg(1, Args), arg(2, Args), This)
+                                                {Type, _} = Temporal -> to_locale_string(This, Temporal, arg(1, Args), arg(2, Args));
+                                                _ -> buoy_ref:type_error(<<Name/binary, " called on incompatible receiver">>)
+                                            end
                                     end),
-    buoy_heap:define(Proto, <<"toLocaleString">>, #{value => Method, writable => true, enumerable => false, configurable => true}).
+    buoy_heap:define(buoy_ref:get(Class, <<"prototype">>), <<"toLocaleString">>,
+                     #{value => Method, writable => true, enumerable => false, configurable => true}).
+
+to_locale_string(This, {<<"Duration">>, _}, Locales, Options) ->
+    buoy_ref_intl_duration_format:format_with(Locales, Options, This);
+to_locale_string(_This, Temporal, Locales, Options) ->
+    buoy_ref_intl_date_time_format:temporal_to_locale_string(Temporal, Locales, Options).
 
 %% {Type, Slots} of a Temporal object of this realm, such as {<<"Duration">>,
 %% Slots} with the plain object of its fields, or undefined, without its
@@ -139,6 +151,16 @@ slots_of(Value) ->
         undefined -> undefined;
         Pair -> {buoy_ref:get(Pair, 0), buoy_ref:get(Pair, 1)}
     end.
+
+%% slots_of/1 of a value that may be a Temporal object, without loading the
+%% polyfill: a realm that never read Temporal holds no Temporal object.
+-spec find_slots(term()) -> {binary(), term()} | undefined.
+find_slots(Value) when ?IS_OBJECT(Value) ->
+    case erlang:get({?MODULE, readers, buoy_heap:realm()}) of
+        undefined -> undefined;
+        _ -> slots_of(Value)
+    end;
+find_slots(_Value) -> undefined.
 
 %% The fields of the Temporal.Duration that a string or a duration-like
 %% object gives, as ToTemporalDuration reads them.

@@ -11,7 +11,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, constructor/0]).
--export([to_locale_string/4]).
+-export([to_locale_string/4, temporal_to_locale_string/3]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 -import(buoy_ref_intl, [get_option/5, range_error/1]).
@@ -34,6 +34,8 @@
          {<<"fractionalSecondDigits">>, []},
          {<<"timeZoneName">>, [{<<"short">>, "z"}, {<<"long">>, "zzzz"}, {<<"shortOffset">>, "O"}, {<<"longOffset">>, "OOOO"},
                                {<<"shortGeneric">>, "v"}, {<<"longGeneric">>, "vvvv"}]}]).
+-define(DATE_KEYS, [<<"weekday">>, <<"year">>, <<"month">>, <<"day">>]).
+-define(TIME_KEYS, [<<"dayPeriod">>, <<"hour">>, <<"minute">>, <<"second">>, <<"fractionalSecondDigits">>]).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
@@ -85,8 +87,8 @@ method(<<"Intl.DateTimeFormat.prototype">>, <<"formatToParts">>, This, Args) ->
 method(<<"Intl.DateTimeFormat.prototype">>, Name, This, Args) when Name =:= <<"formatRange">>; Name =:= <<"formatRangeToParts">> ->
     DTF = slots_of(This, Name),
     (arg(1, Args) =:= undefined orelse arg(2, Args) =:= undefined) andalso buoy_ref:type_error(<<"Invalid time value">>),
-    X = buoy_ref:to_number(arg(1, Args)),
-    Y = buoy_ref:to_number(arg(2, Args)),
+    X = date_value(arg(1, Args)),
+    Y = date_value(arg(2, Args)),
     Parts = range_parts(buoy_heap:slots(DTF), X, Y),
     case Name of
         <<"formatRange">> -> text(Parts);
@@ -135,10 +137,15 @@ bound_format(This) ->
         F -> F
     end.
 
-%% The time value of the argument of format and formatToParts: now for
-%% undefined.
+%% ToDateTimeFormattable of the argument of format and formatToParts: now
+%% for undefined, a Temporal object as {temporal, {Type, Slots}}, else a
+%% Number.
 date_value(undefined) -> erlang:system_time(millisecond);
-date_value(Date) -> buoy_ref:to_number(Date).
+date_value(Date) ->
+    case buoy_ref_temporal:find_slots(Date) of
+        undefined -> buoy_ref:to_number(Date);
+        Temporal -> {temporal, Temporal}
+    end.
 
 %% Date.prototype.toLocaleString, toLocaleDateString, and
 %% toLocaleTimeString of the time value T: Required and Defaults are any and
@@ -150,9 +157,33 @@ to_locale_string(T, Locales, Options, Kind) ->
     DTF = create(buoy_ref_realm:current(constructor()), Locales, Options, Kind, Defaults),
     text(format_parts(buoy_heap:slots(DTF), T)).
 
+%% The toLocaleString of a Temporal object other than a Duration (ECMA-402,
+%% Temporal section): a ZonedDateTime formats its instant in its own time
+%% zone and calendar.
+-spec temporal_to_locale_string({binary(), term()}, term(), term()) -> term().
+temporal_to_locale_string({<<"ZonedDateTime">>, Slots}, Locales, Options) ->
+    Zone = buoy_ref:get(buoy_ref:get(Slots, <<"timeZone">>), <<"id">>),
+    DTF = buoy_heap:slots(create(buoy_ref_realm:current(constructor()), Locales, Options, any, all, Zone)),
+    Calendar = calendar_id(Slots),
+    Calendar =:= <<"iso8601">> orelse Calendar =:= maps:get(calendar, DTF) orelse mismatched_calendar(Calendar, DTF),
+    text(format_parts(DTF, {temporal, {<<"Instant">>, Slots}}));
+temporal_to_locale_string({Type, _} = Temporal, Locales, Options) ->
+    {Required, Defaults} = case Type of
+        <<"PlainTime">> -> {time, time};
+        _ when Type =:= <<"PlainDate">>; Type =:= <<"PlainYearMonth">>; Type =:= <<"PlainMonthDay">> -> {date, date};
+        _ -> {any, all}
+    end,
+    DTF = create(buoy_ref_realm:current(constructor()), Locales, Options, Required, Defaults),
+    text(format_parts(buoy_heap:slots(DTF), {temporal, Temporal})).
+
 %%% CreateDateTimeFormat
 
-create(NewTarget, Locales, Options0, Required, Defaults) ->
+create(NewTarget, Locales, Options, Required, Defaults) ->
+    create(NewTarget, Locales, Options, Required, Defaults, undefined).
+
+%% ZonedTimeZone is the toLocaleStringTimeZone of a ZonedDateTime, else
+%% undefined.
+create(NewTarget, Locales, Options0, Required, Defaults, ZonedTimeZone) ->
     Proto = buoy_ref_realm:proto_for(NewTarget, ?PROTO),
     Requested = buoy_ref_intl:canonicalize_locale_list(Locales),
     Options = buoy_ref_intl:coerce_options(Options0),
@@ -178,12 +209,18 @@ create(NewTarget, Locales, Options0, Required, Defaults) ->
         {undefined, null} -> maps:get(default, HcData);
         {undefined, Value} -> Value
     end,
-    {TimeZone, Zone} = time_zone(buoy_ref:get(Options, <<"timeZone">>)),
+    {TimeZone, Zone} = case {buoy_ref:get(Options, <<"timeZone">>), ZonedTimeZone} of
+        {undefined, _} -> time_zone(ZonedTimeZone);
+        {Option, undefined} -> time_zone(Option);
+        {_, _} -> buoy_ref:type_error(<<"Invalid option : timeZone">>)
+    end,
     Components = components(Options, HourCycleResolved),
     _FormatMatcher = get_option(Options, <<"formatMatcher">>, string, [<<"basic">>, <<"best fit">>], <<"best fit">>),
     DateStyle = get_option(Options, <<"dateStyle">>, string, [<<"full">>, <<"long">>, <<"medium">>, <<"short">>], undefined),
     TimeStyle = get_option(Options, <<"timeStyle">>, string, [<<"full">>, <<"long">>, <<"medium">>, <<"short">>], undefined),
     DefaultHour = default_hour(maps:get(locale, Resolved), DataLocale),
+    Base = #{locale => maps:get(locale, Resolved), data_locale => DataLocale, calendar => Cal, nu => NuResolved,
+             components => Components, hc => HourCycleResolved, default_hour => DefaultHour},
     {{Pattern, Override}, DtfHourCycle} =
         case DateStyle =/= undefined orelse TimeStyle =/= undefined of
             true ->
@@ -193,31 +230,58 @@ create(NewTarget, Locales, Options0, Required, Defaults) ->
                 StyleHc = case TimeStyle of undefined -> undefined; _ -> HourCycleResolved end,
                 {style_pattern(DataLocale, Cal, NuResolved, DateStyle, TimeStyle, StyleHc, DefaultHour), StyleHc};
             false ->
-                Present = [P || {P, _} <- Components],
-                Keys = case Required of
-                    date -> [<<"weekday">>, <<"year">>, <<"month">>, <<"day">>];
-                    time -> [<<"dayPeriod">>, <<"hour">>, <<"minute">>, <<"second">>, <<"fractionalSecondDigits">>];
-                    any -> [<<"weekday">>, <<"year">>, <<"month">>, <<"day">>, <<"dayPeriod">>, <<"hour">>, <<"minute">>,
-                            <<"second">>, <<"fractionalSecondDigits">>]
-                end,
-                NeedDefaults = not lists:any(fun(K) -> lists:member(K, Present) end, Keys),
-                Skeleton = lists:append([S || {_, S} <- Components])
-                    ++ case NeedDefaults andalso (Defaults =:= date orelse Defaults =:= all) of true -> "yMd"; false -> "" end
-                    ++ case NeedDefaults andalso (Defaults =:= time orelse Defaults =:= all) of
-                           true -> [hour_char(HourCycleResolved), $m, $s];
-                           false -> ""
-                       end,
-                Hc1 = case lists:member(<<"hour">>, Present) of true -> HourCycleResolved; false -> undefined end,
-                Best = buoy_ref_intl_date_skeleton:best_pattern(DataLocale, Cal, NuResolved, Skeleton, DefaultHour),
-                {{replace_hour_cycle(Best, Hc1), undefined}, Hc1}
+                {Best, Hc1} = get_format(Base, Required, Defaults, all),
+                {{Best, undefined}, Hc1}
         end,
     buoy_heap:new_exotic(intl_date_time_format, Proto,
-                         #{locale => maps:get(locale, Resolved), data_locale => DataLocale, calendar => Cal,
-                           nu => NuResolved, time_zone => TimeZone, zone => Zone, hour_cycle => DtfHourCycle,
-                           date_style => DateStyle, time_style => TimeStyle, pattern => Pattern,
-                           overrides => overrides(Override, DataLocale, Cal, Pattern), bound => undefined,
-                           %% DateIntervalFormat reads the hour cycle from the locale's hc keyword.
-                           interval_hour => case DtfHourCycle of undefined -> DefaultHour; _ -> hour_char(DtfHourCycle) end}).
+                         Base#{time_zone => TimeZone, zone => Zone, hour_cycle => DtfHourCycle,
+                               date_style => DateStyle, time_style => TimeStyle, pattern => Pattern,
+                               overrides => overrides(Override, DataLocale, Cal, Pattern), bound => undefined,
+                               zoned => ZonedTimeZone =/= undefined,
+                               %% DateIntervalFormat reads the hour cycle from the locale's hc keyword.
+                               interval_hour => case DtfHourCycle of undefined -> DefaultHour; _ -> hour_char(DtfHourCycle) end}).
+
+%% GetDateTimeFormat: {Pattern, HourCycle} of the best pattern for the
+%% components of the options that Inherit keeps, with the defaults when no
+%% component that Required names is present, or null when a component of
+%% another kind is. The hour cycle is that of an explicit hour.
+get_format(S, Required, Defaults, Inherit) ->
+    Components = maps:get(components, S),
+    Hc = maps:get(hc, S),
+    Keys = case Required of
+        date -> ?DATE_KEYS;
+        time -> ?TIME_KEYS;
+        year_month -> [<<"year">>, <<"month">>];
+        month_day -> [<<"month">>, <<"day">>];
+        any -> ?DATE_KEYS ++ ?TIME_KEYS
+    end,
+    Kept = case Inherit of
+        all -> Components;
+        relevant ->
+            Era = lists:member(Required, [date, year_month, any]),
+            [C || {P, _} = C <- Components, lists:member(P, Keys) orelse (Era andalso P =:= <<"era">>)]
+    end,
+    Present = [P || {P, _} <- Components],
+    NeedDefaults = not lists:any(fun(K) -> lists:member(K, Present) end, Keys),
+    AnyPresent = lists:any(fun(K) -> lists:member(K, Present) end, ?DATE_KEYS ++ ?TIME_KEYS),
+    case NeedDefaults andalso AnyPresent andalso Inherit =:= relevant of
+        true -> null;
+        false ->
+            Skeleton = lists:append([Letters || {_, Letters} <- Kept])
+                ++ [C || NeedDefaults, C <- default_skeleton(Defaults, Hc, Kept)],
+            Hc1 = case lists:keymember(<<"hour">>, 1, Kept) of true -> Hc; false -> undefined end,
+            Best = buoy_ref_intl_date_skeleton:best_pattern(maps:get(data_locale, S), maps:get(calendar, S), maps:get(nu, S),
+                                                            Skeleton, maps:get(default_hour, S)),
+            {replace_hour_cycle(Best, Hc1), Hc1}
+    end.
+
+default_skeleton(date, _Hc, _Kept) -> "yMd";
+default_skeleton(year_month, _Hc, _Kept) -> "yM";
+default_skeleton(month_day, _Hc, _Kept) -> "Md";
+default_skeleton(time, Hc, _Kept) -> [hour_char(Hc), $m, $s];
+default_skeleton(all, Hc, Kept) -> "yMd" ++ default_skeleton(time, Hc, Kept);
+default_skeleton(zoned, Hc, Kept) ->
+    default_skeleton(all, Hc, Kept) ++ case lists:keymember(<<"timeZoneName">>, 1, Kept) of true -> ""; false -> "z" end.
 
 %% The numbering systems that write the numbers of fields, by pattern letter
 %% or all: the override of a style pattern, as "hebr" or "d=hanidays", else
@@ -480,11 +544,138 @@ runs([C | _] = All) ->
 
 %%% FormatDateTime
 
-%% The parts of the time value X: TimeClip, then the fields of the pattern
-%% for the wall-clock time of the time zone.
+%% The parts of X, a time value or a Temporal object: the fields of its
+%% pattern for the wall-clock time of the time zone.
 format_parts(S, X) ->
-    T = time_clip(X),
-    spaces(buoy_ref_intl_date_fields:format(maps:get(pattern, S), date_fields(S, T), context(S))).
+    {S1, T} = value_format(S, X),
+    spaces(buoy_ref_intl_date_fields:format(maps:get(pattern, S1), date_fields(S1, T), context(S1))).
+
+%% HandleDateTimeValue: {S1, T}, the slots with the pattern, the overrides,
+%% and the zone that format X, and its time value. A plain Temporal object
+%% is the wall-clock time at offset +00:00, and its pattern keeps the
+%% components that apply to its type.
+value_format(S, {temporal, {Type, Slots}}) ->
+    {Kind, T} = case Type of
+        <<"Instant">> ->
+            {'$bigint', Ns} = buoy_ref:get(Slots, <<"epochNanoseconds">>),
+            {instant, floor_div(Ns, 1000000)};
+        <<"PlainDate">> -> check_calendar(S, Slots, true), {plain_date, iso_time(Slots, noon)};
+        <<"PlainYearMonth">> -> check_calendar(S, Slots, false), {plain_year_month, iso_time(Slots, noon)};
+        <<"PlainMonthDay">> -> check_calendar(S, Slots, false), {plain_month_day, iso_time(Slots, noon)};
+        <<"PlainTime">> -> {plain_time, time_of_day(Slots)};
+        <<"PlainDateTime">> -> check_calendar(S, Slots, true), {plain_date_time, iso_time(Slots, Slots)};
+        _ -> buoy_ref:type_error(<<"Intl.DateTimeFormat cannot format a Temporal.", Type/binary,
+                                   "; format its toInstant() or call its toLocaleString()">>)
+    end,
+    case temporal_format(S, Kind) of
+        null -> buoy_ref:type_error(<<"The options of this Intl.DateTimeFormat name no field of a Temporal.", Type/binary>>);
+        {Pattern, Overrides} ->
+            Zone = case Kind of instant -> maps:get(zone, S); _ -> {offset, 0} end,
+            {S#{pattern => Pattern, overrides => Overrides, zone => Zone}, T}
+    end;
+value_format(S, X) ->
+    {S, time_clip(X)}.
+
+%% The calendar of a Temporal object must be that of the format, or the ISO
+%% calendar where IsoToo.
+check_calendar(S, Slots, IsoToo) ->
+    Calendar = calendar_id(Slots),
+    Calendar =:= maps:get(calendar, S) orelse (IsoToo andalso Calendar =:= <<"iso8601">>) orelse mismatched_calendar(Calendar, S).
+
+-spec mismatched_calendar(binary(), map()) -> no_return().
+mismatched_calendar(Calendar, S) ->
+    range_error(buoy_ref_string:concat([<<"The calendar ">>, Calendar, <<" does not match the calendar ">>,
+                                        maps:get(calendar, S), <<" of this Intl.DateTimeFormat">>])).
+
+%% The calendar identifier of the slots of the polyfill: undefined for the
+%% ISO calendar, 0 for the Gregorian one, else an object with an id.
+calendar_id(Slots) ->
+    case buoy_ref:get(Slots, <<"calendar">>) of
+        undefined -> <<"iso8601">>;
+        0 -> <<"gregory">>;
+        Calendar -> buoy_ref:get(Calendar, <<"id">>)
+    end.
+
+%% GetUTCEpochNanoseconds of the ISO date of the slots at the time of day of
+%% Time, in milliseconds.
+iso_time(Slots, Time) ->
+    Days = buoy_ref_tz:days_from_civil(field(Slots, <<"year">>), field(Slots, <<"month">>), field(Slots, <<"day">>)),
+    Days * ?DAY + case Time of noon -> ?DAY div 2; _ -> time_of_day(Time) end.
+
+time_of_day(Slots) ->
+    ((field(Slots, <<"hour">>) * 60 + field(Slots, <<"minute">>)) * 60 + field(Slots, <<"second">>)) * 1000
+        + field(Slots, <<"millisecond">>).
+
+field(Slots, Key) -> trunc(buoy_ref:get(Slots, Key)).
+
+%% The pattern and overrides of a kind of Temporal object: the format of
+%% [[TemporalPlainDateFormat]] and the other slots of CreateDateTimeFormat,
+%% or null. A format of a format call, as V8 makes one.
+temporal_format(S, Kind) ->
+    case temporal_pattern(S, Kind) of
+        null -> null;
+        ?MODULE -> {maps:get(pattern, S), maps:get(overrides, S)};
+        Pattern -> {Pattern, overrides(undefined, maps:get(data_locale, S), maps:get(calendar, S), Pattern)}
+    end.
+
+%% The pattern of a kind, null, or ?MODULE for the pattern of the format.
+temporal_pattern(S, Kind) ->
+    case {maps:get(date_style, S), maps:get(time_style, S)} of
+        {undefined, undefined} ->
+            {Required, Defaults, Inherit} = case Kind of
+                plain_date -> {date, date, relevant};
+                plain_year_month -> {year_month, year_month, relevant};
+                plain_month_day -> {month_day, month_day, relevant};
+                plain_time -> {time, time, relevant};
+                plain_date_time -> {any, all, relevant};
+                instant -> {any, case maps:get(zoned, S) of true -> zoned; false -> all end, all}
+            end,
+            %% The hour cycle applies to a default hour too, as the spec asks; V8
+            %% keeps the locale's for a Date, and the Node oracle with it.
+            case get_format(S, Required, Defaults, Inherit) of
+                null -> null;
+                {Pattern, _} -> replace_hour_cycle(Pattern, maps:get(hc, S))
+            end;
+        {DateStyle, TimeStyle} ->
+            case Kind of
+                instant -> ?MODULE;
+                plain_date_time -> adjust_style(S, ?DATE_KEYS ++ [<<"era">> | ?TIME_KEYS]);
+                _ when Kind =:= plain_time, TimeStyle =/= undefined -> adjust_style(S, ?TIME_KEYS);
+                _ when Kind =:= plain_time; DateStyle =:= undefined -> null;
+                plain_date -> adjust_style(S, [<<"era">> | ?DATE_KEYS]);
+                plain_year_month -> adjust_style(S, [<<"era">>, <<"year">>, <<"month">>]);
+                plain_month_day -> adjust_style(S, [<<"month">>, <<"day">>])
+            end
+    end.
+
+%% AdjustDateTimeStyleFormat: the style pattern when its fields are all
+%% Allowed, else the best pattern for the fields that are, in the hour
+%% cycle of the style.
+adjust_style(S, Allowed) ->
+    Fields = buoy_ref_intl_date_skeleton:skeleton_of(maps:get(pattern, S)),
+    Kept = [C || C <- Fields, lists:member(field_property(C), Allowed)],
+    case Kept =:= [C || C <- Fields, field_property(C) =/= none] of
+        true -> ?MODULE;
+        false ->
+            Best = buoy_ref_intl_date_skeleton:best_pattern(maps:get(data_locale, S), maps:get(calendar, S), maps:get(nu, S),
+                                                            Kept, maps:get(default_hour, S)),
+            replace_hour_cycle(Best, maps:get(hour_cycle, S))
+    end.
+
+%% The component of a field of a pattern, or none for the day period of
+%% the hour.
+field_property($G) -> <<"era">>;
+field_property(C) when C =:= $y; C =:= $Y; C =:= $u; C =:= $U; C =:= $r -> <<"year">>;
+field_property(C) when C =:= $M; C =:= $L -> <<"month">>;
+field_property(C) when C =:= $E; C =:= $c; C =:= $e -> <<"weekday">>;
+field_property($d) -> <<"day">>;
+field_property(C) when C =:= $B; C =:= $b -> <<"dayPeriod">>;
+field_property(C) when C =:= $h; C =:= $H; C =:= $k; C =:= $K; C =:= $j -> <<"hour">>;
+field_property($m) -> <<"minute">>;
+field_property($s) -> <<"second">>;
+field_property($S) -> <<"fractionalSecondDigits">>;
+field_property(C) when C =:= $z; C =:= $Z; C =:= $O; C =:= $v; C =:= $V; C =:= $X; C =:= $x -> <<"timeZoneName">>;
+field_property(_) -> none.
 
 time_clip(X) when is_number(X), abs(X) =< ?MAX_TIME -> trunc(X) + 0;
 time_clip(_) -> range_error(<<"Invalid time value">>).
@@ -577,9 +768,10 @@ spaces(Parts) ->
 
 %%% formatRange
 
-range_parts(S, X, Y) ->
-    T1 = time_clip(X),
-    T2 = time_clip(Y),
+range_parts(S0, X, Y) ->
+    same_type(X, Y) orelse buoy_ref:type_error(<<"The start and the end of a range must be values of the same type">>),
+    {S, T1} = value_format(S0, X),
+    {_, T2} = value_format(S0, Y),
     Ctx = context(S),
     Generator = {maps:get(data_locale, S), maps:get(calendar, S), maps:get(nu, S), maps:get(interval_hour, S)},
     case buoy_ref_intl_date_interval:format(Generator, maps:get(pattern, S), date_fields(S, T1), date_fields(S, T2),
@@ -587,3 +779,9 @@ range_parts(S, X, Y) ->
         single -> [{T, V, shared} || {T, V} <- format_parts(S, T1)];
         Parts -> spaces(Parts)
     end.
+
+%% SameTemporalType, or two values that are not Temporal objects.
+same_type({temporal, {Type, _}}, {temporal, {Type, _}}) -> true;
+same_type({temporal, _}, _) -> false;
+same_type(_, {temporal, _}) -> false;
+same_type(_, _) -> true.
