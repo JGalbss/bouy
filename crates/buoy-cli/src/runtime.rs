@@ -126,14 +126,17 @@ impl Runtime {
 }
 
 /// The variables that starting the VM sets: `erlexec` puts its directories first on
-/// `PATH`, and the start sets the others.
-const REPLACED: [&str; 6] = [
+/// `PATH`, the start sets `ROOTDIR` to `ERL_ROOTDIR`, and the CLI sets
+/// `ERL_CRASH_DUMP_SECONDS` and `BUOY_COMPILER`.
+const REPLACED: [&str; 8] = [
     "PATH",
     "ROOTDIR",
     "BINDIR",
     "EMU",
     "PROGNAME",
     "ERL_ROOTDIR",
+    "ERL_CRASH_DUMP_SECONDS",
+    "BUOY_COMPILER",
 ];
 
 /// The compiled runtime, building it when needed.

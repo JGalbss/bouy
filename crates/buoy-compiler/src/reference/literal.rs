@@ -88,11 +88,10 @@ impl<'a> Lowerer<'a, '_> {
             let value = self.expr(expression);
             args.push(self.bind(value));
         }
-        self.bind(Expr::call(
-            "buoy_ref",
-            "call",
-            vec![function, this, Expr::List(args)],
-        ))
+        self.bind_call(
+            tagged.quasi.span.start,
+            Expr::call("buoy_ref", "call", vec![function, this, Expr::List(args)]),
+        )
     }
 
     /// A regular expression literal: a new `RegExp` each evaluation. The parser has checked

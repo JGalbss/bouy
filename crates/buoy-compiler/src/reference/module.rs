@@ -1127,6 +1127,7 @@ impl<'a> Lowerer<'a, '_> {
         let itself = self
             .needs_callee(function)
             .then(|| self.static_function(name, length, form));
+        let site = self.enter_function(function.node_id.get(), function.span.start);
         let code = self.function_code(
             &function.params,
             FnBody::Block(body),
@@ -1134,6 +1135,7 @@ impl<'a> Lowerer<'a, '_> {
             Callee::Function(itself),
             own,
             function.scope_id.get(),
+            site,
         );
         let Some(new_target) = code.new_target else {
             return vec![Function {

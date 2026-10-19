@@ -27,14 +27,14 @@ binding() ->
         {<<"defineLazyProperties">>, F(<<"defineLazyProperties">>, 4, fun(_, A) -> define_lazy(A) end)},
         {<<"getPromiseDetails">>, F(<<"getPromiseDetails">>, 1, fun(_, A) -> promise_details(buoy_node:arg(1, A)) end)},
         {<<"getProxyDetails">>, F(<<"getProxyDetails">>, 1, fun(_, A) -> proxy_details(buoy_node:arg(1, A), buoy_node:arg(2, A)) end)},
-        {<<"getCallerLocation">>, F(<<"getCallerLocation">>, 0, fun(_, _) -> undefined end)},
+        {<<"getCallerLocation">>, F(<<"getCallerLocation">>, 0, fun(_, _) -> caller_location() end)},
         {<<"previewEntries">>, F(<<"previewEntries">>, 2, fun(_, A) -> preview_entries(buoy_node:arg(1, A), buoy_node:arg(2, A)) end)},
         {<<"getOwnNonIndexProperties">>, F(<<"getOwnNonIndexProperties">>, 2, fun(_, A) ->
             own_non_index(buoy_node:arg(1, A), buoy_node:arg(2, A))
         end)},
         {<<"getConstructorName">>, F(<<"getConstructorName">>, 1, fun(_, A) -> constructor_name(buoy_node:arg(1, A)) end)},
         {<<"getExternalValue">>, F(<<"getExternalValue">>, 1, fun(_, _) -> {'$bigint', 0} end)},
-        {<<"getCallSites">>, F(<<"getCallSites">>, 1, fun(_, _) -> buoy_heap:new_array([]) end)},
+        {<<"getCallSites">>, F(<<"getCallSites">>, 1, fun(_, A) -> call_sites(buoy_node:arg(1, A)) end)},
         {<<"sleep">>, F(<<"sleep">>, 1, fun(_, A) -> timer:sleep(trunc(buoy_ref:to_number(buoy_node:arg(1, A)))), undefined end)},
         {<<"parseEnv">>, F(<<"parseEnv">>, 1, fun(_, A) -> parse_env(buoy_node:arg(1, A)) end)},
         {<<"arrayBufferViewHasBuffer">>, F(<<"arrayBufferViewHasBuffer">>, 1, fun(_, _) -> true end)},
@@ -55,6 +55,40 @@ binding() ->
 
 class(V) when ?IS_OBJECT(V) -> buoy_heap:class_of(V);
 class(_) -> none.
+
+%% getCallSites(frames): the frames below the function of node:util that
+%% calls the binding, at most Count, as plain objects (GetCallSites).
+call_sites(Count) ->
+    Frames = case buoy_stack:capture(trunc(Count) + 1, none) of
+        [_Util | Below] -> Below;
+        [] -> []
+    end,
+    buoy_heap:new_array([call_site(buoy_stack:call_site(Frame)) || Frame <- Frames]).
+
+call_site(#{file := File, line := Line, column := Column} = Site) ->
+    Script = case File of
+        undefined -> <<>>;
+        _ -> File
+    end,
+    Name = case Site of
+        #{kind := wrapper} -> <<>>;
+        #{name := N} -> N
+    end,
+    Module = element(1, maps:get(frame, Site)),
+    buoy_node:object(null, [{<<"functionName">>, Name}, {<<"scriptId">>, integer_to_binary(erlang:phash2(Module))},
+                            {<<"scriptName">>, Script}, {<<"lineNumber">>, Line}, {<<"columnNumber">>, Column},
+                            {<<"column">>, Column}]).
+
+%% getCallerLocation(): [line, column, file] of the caller of the function
+%% that calls the binding, or undefined when it has no caller.
+caller_location() ->
+    case buoy_stack:capture(2, none) of
+        [_, Caller] ->
+            #{file := File, line := Line, column := Column} = buoy_stack:call_site(Caller),
+            buoy_heap:new_array([Line, Column, File]);
+        _ ->
+            undefined
+    end.
 
 is_view(V) -> lists:member(class(V), [typed_array, data_view]).
 

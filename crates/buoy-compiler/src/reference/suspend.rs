@@ -435,7 +435,7 @@ pub fn holds_marker(expr: &Expr) -> bool {
         return true;
     }
     match expr {
-        Expr::Match(_, value) | Expr::Not(value) => holds_marker(value),
+        Expr::Match(_, value) | Expr::Not(value) | Expr::Site(_, value) => holds_marker(value),
         Expr::Case(subject, clauses) => {
             holds_marker(subject)
                 || clauses

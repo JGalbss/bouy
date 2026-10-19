@@ -11,6 +11,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, error_to_string/1, lazy_stack/0, get_stack/2, set_stack/2]).
+-export([capture/2, call_sites/1]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 
@@ -20,6 +21,11 @@
 -define(FORMATTING, '$buoy_formatting_stack').
 %% The stack that the own `stack` accessor of an error formatted or was set to.
 -define(STACK, {'#', ?MODULE, <<"stack">>}).
+%% The frames that the creation of an error or captureStackTrace captured
+%% (buoy_stack), or none when Error.stackTraceLimit was no number.
+-define(FRAMES, {'#', ?MODULE, <<"frames">>}).
+%% What a CallSite answers (buoy_stack:call_site/1).
+-define(SITE, {'#', ?MODULE, <<"site">>}).
 -define(CALL_SITE, [{<<"getThis">>, undefined}, {<<"getTypeName">>, null}, {<<"getFunction">>, undefined},
                     {<<"getFunctionName">>, null}, {<<"getMethodName">>, null}, {<<"getFileName">>, undefined},
                     {<<"getLineNumber">>, null}, {<<"getColumnNumber">>, null}, {<<"getEvalOrigin">>, undefined},
@@ -91,9 +97,13 @@ constructor(Name) -> buoy_ref_realm:constructor(?MODULE, Name).
 call_constructor(Name, _This, Args) -> construct(Name, constructor(Name), Args).
 
 -spec method(binary(), binary(), term(), list()) -> term().
-method(<<"CallSite.prototype">>, Name, _This, _) ->
-    {Name, Value} = lists:keyfind(Name, 1, ?CALL_SITE),
-    Value;
+method(<<"CallSite.prototype">>, Name, This, _) ->
+    case ?IS_OBJECT(This) andalso buoy_heap:private_find(This, ?SITE) of
+        {ok, Site} -> call_site_method(Name, Site);
+        _ ->
+            {Name, Value} = lists:keyfind(Name, 1, ?CALL_SITE),
+            Value
+    end;
 method(<<"Error.prototype">>, <<"toString">>, This, _) ->
     ?IS_OBJECT(This) orelse buoy_ref:type_error(<<"Error.prototype.toString requires that 'this' be an Object">>),
     error_to_string(This);
@@ -103,6 +113,7 @@ method(<<"Error">>, <<"isError">>, _This, Args) ->
 method(<<"Error">>, <<"captureStackTrace">>, _This, Args) ->
     O = arg(1, Args),
     ?IS_OBJECT(O) orelse buoy_ref:type_error(<<"Invalid argument">>),
+    capture(O, buoy_stack:function_start(arg(2, Args))),
     {'$accessor', Get, Set} = lazy_stack(),
     buoy_heap:define(O, <<"stack">>, #{get => Get, set => Set, enumerable => false, configurable => true}),
     undefined.
@@ -185,21 +196,115 @@ keep_stack(O, Stack) when ?IS_OBJECT(O) ->
 keep_stack(_, _) ->
     ok.
 
+%% Captures the frames of the stack into O, at most Error.stackTraceLimit of
+%% the current realm and below the function at Skip (buoy_stack:capture/2).
+-spec capture(term(), {module(), non_neg_integer()} | none) -> ok.
+capture(O, Skip) ->
+    Error = buoy_ref_realm:current(constructor(<<"Error">>)),
+    Frames = case buoy_heap:get_own(Error, <<"stackTraceLimit">>) of
+        {data, Limit, _} when is_number(Limit) -> buoy_stack:capture(frame_count(Limit), Skip);
+        {data, Limit, _} when Limit =:= 'Infinity' -> buoy_stack:capture(1024, Skip);
+        {data, Limit, _} when Limit =:= '-Infinity'; Limit =:= 'NaN' -> [];
+        _ -> none
+    end,
+    buoy_heap:private_put(O, ?FRAMES, Frames).
+
+frame_count(Limit) when Limit =< 0 -> 0;
+frame_count(Limit) -> min(trunc(Limit), 1024).
+
+%% The CallSite objects of the frames that O captured.
+-spec call_sites(term()) -> [term()].
+call_sites(O) ->
+    case ?IS_OBJECT(O) andalso buoy_heap:private_find(O, ?FRAMES) of
+        {ok, Frames} when is_list(Frames) -> [call_site(Frame) || Frame <- Frames];
+        _ -> []
+    end.
+
+call_site(Frame) ->
+    Site = buoy_heap:new_object(buoy_heap:intrinsic('CallSite.prototype')),
+    buoy_heap:private_put(Site, ?SITE, buoy_stack:call_site(Frame)),
+    Site.
+
+%% CallSite.prototype.X of a frame, as V8's CallSiteInfo answers. A method is
+%% a function of a class or of an object literal, which V8 calls with that
+%% receiver; the receiver itself is not kept.
+call_site_method(<<"getThis">>, _) -> undefined;
+call_site_method(<<"getFunction">>, _) -> undefined;
+call_site_method(<<"getTypeName">>, #{holder := Holder}) when is_binary(Holder) -> Holder;
+call_site_method(<<"getTypeName">>, _) -> null;
+call_site_method(<<"getFunctionName">>, #{kind := wrapper}) -> null;
+call_site_method(<<"getFunctionName">>, #{name := <<>>}) -> null;
+call_site_method(<<"getFunctionName">>, #{name := Name}) -> Name;
+call_site_method(<<"getMethodName">>, #{kind := method, name := Name}) when Name =/= <<>> -> Name;
+call_site_method(<<"getMethodName">>, _) -> null;
+call_site_method(<<"getFileName">>, #{file := File}) -> File;
+call_site_method(<<"getScriptNameOrSourceURL">>, #{file := File}) -> File;
+call_site_method(<<"getLineNumber">>, #{line := Line}) -> Line;
+call_site_method(<<"getColumnNumber">>, #{column := Column}) -> Column;
+call_site_method(<<"getEvalOrigin">>, _) -> undefined;
+call_site_method(<<"isToplevel">>, Site) -> is_toplevel(Site);
+call_site_method(<<"isConstructor">>, #{kind := Kind}) -> Kind =:= constructor;
+call_site_method(<<"toString">>, Site) -> site_text(Site);
+call_site_method(Name, _) ->
+    {Name, Value} = lists:keyfind(Name, 1, ?CALL_SITE),
+    Value.
+
+%% A frame whose receiver is the global object or undefined: a function that
+%% no object holds.
+is_toplevel(#{kind := Kind, holder := Holder}) ->
+    Holder =:= undefined andalso Kind =/= constructor.
+
+%% The text of a frame in a stack trace, as V8's CallSiteInfo::Serialize
+%% writes it: `new F (place)`, `Type.method [as key] (place)`, `f (place)`,
+%% or the place alone for an anonymous function.
+site_text(#{kind := Kind, name := Name, holder := Holder} = Site) ->
+    Place = place_text(Site),
+    Described = case {Kind, Name, Holder} of
+        {constructor, _, _} -> [<<"new ">>, anonymous(Name)];
+        {wrapper, _, undefined} -> none;
+        {wrapper, _, _} -> [Holder, <<".<anonymous>">>];
+        {_, <<>>, undefined} -> none;
+        {_, <<>>, _} -> [Holder, <<".<anonymous>">>];
+        {_, _, undefined} -> [Name];
+        {_, _, _} -> method_text(Holder, Name)
+    end,
+    case Described of
+        none -> Place;
+        _ -> buoy_ref_string:from_utf8(iolist_to_binary([Described, <<" (">>, Place, <<")">>]))
+    end.
+
+anonymous(<<>>) -> <<"<anonymous>">>;
+anonymous(Name) -> Name.
+
+method_text(Holder, Name) ->
+    case binary:match(Name, <<Holder/binary, ".">>) of
+        {0, _} -> [Name];
+        _ -> [Holder, <<".">>, Name]
+    end.
+
+place_text(#{file := File, line := Line, column := Column}) ->
+    Script = case File of
+        undefined -> <<"<anonymous>">>;
+        _ -> buoy_ref_string:to_utf8(File)
+    end,
+    buoy_ref_string:from_utf8(iolist_to_binary([Script, $:, integer_to_binary(Line), $:, integer_to_binary(Column)])).
+
 %% V8 hands the error and its structured trace to the PrepareStackTrace
 %% callback of the embedder, which Node sets (internalBinding('errors')), else
 %% to Error.prepareStackTrace of the realm, else it writes the header and the
-%% frames. The engine keeps no JavaScript stack, so the trace is one CallSite
-%% of an anonymous frame, or none when Error.stackTraceLimit is 0. A stack
-%% that formats while another one formats takes the default, as in V8.
+%% frames. A stack that formats while another one formats takes the default,
+%% as in V8. An error that was made while Error.stackTraceLimit was no number
+%% has no stack.
 format_stack(E) ->
-    Error = buoy_ref_realm:current(constructor(<<"Error">>)),
-    Frames = case buoy_heap:get(Error, <<"stackTraceLimit">>) of
-        Limit when is_number(Limit), Limit > 0 -> [buoy_heap:new_object(buoy_heap:intrinsic('CallSite.prototype'))];
-        _ -> []
-    end,
-    case erlang:get(?FORMATTING) of
-        undefined -> prepare_stack(Error, E, Frames);
-        _ -> default_stack(E, Frames)
+    case buoy_heap:private_find(E, ?FRAMES) of
+        {ok, none} -> undefined;
+        _ ->
+            Error = buoy_ref_realm:current(constructor(<<"Error">>)),
+            Frames = call_sites(E),
+            case erlang:get(?FORMATTING) of
+                undefined -> prepare_stack(Error, E, Frames);
+                _ -> default_stack(E, Frames)
+            end
     end.
 
 prepare_stack(Error, E, Frames) ->
@@ -223,4 +328,8 @@ formatting(Format) ->
 
 default_stack(E, Frames) ->
     Header = try error_to_string(E) catch error:{'$throw', _} -> <<"<error>">> end,
-    buoy_ref_string:concat([Header | [<<"\n    at <anonymous>">> || _ <- Frames]]).
+    buoy_ref_string:concat([Header | [buoy_ref_string:concat(<<"\n    at ">>, site_text(site_of(F))) || F <- Frames]]).
+
+site_of(Site) ->
+    {ok, Map} = buoy_heap:private_find(Site, ?SITE),
+    Map.

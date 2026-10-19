@@ -23,7 +23,7 @@
 -export([deferred_namespace/1, ensure_deferred/1, entry/0]).
 -export([hosted_import/3, new_synthetic/3, set_synthetic_export/3, link_requests/2, instantiate/1, evaluate/1]).
 -export([program_module/1, set_realm_host/2, status/1, error_of/1, has_async_graph/1, has_top_level_await/1, requests_of/1, module_requests_of/1, set_host/3, required_facade/1]).
--export([wasm_body/1, wasm_export/2, source_phase/1]).
+-export([wasm_body/1, wasm_export/2, source_phase/1, file_url/1]).
 
 -define(RECORD(M), {'$buoy_module', M}).
 -define(NAMESPACE(M), {'$buoy_namespace', M}).
@@ -1045,7 +1045,7 @@ load_at_run_time(From, Specifier, Mode) ->
     end.
 
 compile_at_run_time(From, Specifier, Mode) ->
-    case os:getenv("BUOY_COMPILER") =/= false andalso erlang:get(?ENTRY) of
+    case buoy_main:compiler() =/= false andalso erlang:get(?ENTRY) of
         Entry when is_atom(Entry), Entry =/= undefined ->
             Main = buoy_ref_string:to_utf8(info(Entry, path)),
             Importer = buoy_ref_string:to_utf8(info(From, path)),
@@ -1308,6 +1308,7 @@ dirname(Path) -> buoy_ref_string:from_utf8(filename:dirname(buoy_ref_string:to_u
 
 %% pathToFileURL: file:// and the path, with the bytes that a URL path may not
 %% hold percent-encoded. The path of a module of a data: URL is its URL.
+-spec file_url(term()) -> term().
 file_url(Path) ->
     case buoy_ref_string:to_utf8(Path) of
         <<"data:", _/binary>> -> Path;
@@ -1448,7 +1449,7 @@ cjs_wrapper(M) ->
     end.
 
 compile_file(File) ->
-    case os:getenv("BUOY_COMPILER") =/= false andalso erlang:get(?ENTRY) of
+    case buoy_main:compiler() =/= false andalso erlang:get(?ENTRY) of
         Entry when is_atom(Entry), Entry =/= undefined ->
             Main = buoy_ref_string:to_utf8(info(Entry, path)),
             case buoy_ref_eval:load_module(Main, File, File, require) of

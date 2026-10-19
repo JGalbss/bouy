@@ -10,7 +10,7 @@
 %% When BUOY_RESULT_FILE names a path, the VM writes the facts of the run there before
 %% it halts (section 1 of the contract).
 
--export([start/0, import/1, finish/2, compile_generated/2]).
+-export([start/0, import/1, finish/2, compile_generated/2, compiler/0, hidden_env/0, unhide_env/1]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -61,24 +61,54 @@ boot() ->
             stop(2, "buoy: usage: -extra <build dir> <entry module> <entry path> <modules> [args...]\n")
     end.
 
-%% The start of the VM sets ROOTDIR, BINDIR, EMU, and PROGNAME, and erlexec puts
-%% its directories first on PATH. The CLI passes the value of each variable in its
-%% own environment as BUOY_HOST_<name>: "=" and the value, or empty when it had
+%% The start of the VM sets ROOTDIR, BINDIR, EMU, and PROGNAME, erlexec puts
+%% its directories first on PATH, and the CLI sets ERL_CRASH_DUMP_SECONDS and
+%% BUOY_COMPILER. The CLI passes the value of each variable in its own
+%% environment as BUOY_HOST_<name>: "=" and the value, or empty when it had
 %% none (Runtime::vm). Restoring them gives the program and its child processes
 %% the environment of the CLI, as Node has, so a child buoy finds the same erl.
+%% The runtime keeps BUOY_COMPILER (compiler/0). ERL_CRASH_DUMP_SECONDS=0 stays
+%% in the environment of the VM, so a later crash writes no erl_crash.dump, and
+%% process.env hides it (hidden_env/0) when the user did not set it.
 -spec restore_host_environment() -> ok.
 restore_host_environment() ->
-    lists:foreach(
+    persistent_term:put({?MODULE, compiler}, os:getenv("BUOY_COMPILER")),
+    Hidden = lists:filter(
         fun(Name) ->
             Host = "BUOY_HOST_" ++ Name,
-            _ = case os:getenv(Host) of
-                false -> true;
-                "=" ++ Value -> os:putenv(Name, Value);
-                _ -> os:unsetenv(Name)
-            end,
-            os:unsetenv(Host)
+            Value = os:getenv(Host),
+            true = os:unsetenv(Host),
+            restore(Name, Value)
         end,
-        ["PATH", "ROOTDIR", "BINDIR", "EMU", "PROGNAME", "ERL_ROOTDIR"]).
+        ["PATH", "ROOTDIR", "BINDIR", "EMU", "PROGNAME", "ERL_ROOTDIR", "ERL_CRASH_DUMP_SECONDS", "BUOY_COMPILER"]),
+    persistent_term:put({?MODULE, hidden_env}, Hidden).
+
+%% Restores Name to the value of the CLI, and says whether the variable stays
+%% in the environment of the VM, hidden from the program.
+restore(_Name, false) -> false;
+restore(Name, "=" ++ Value) -> os:putenv(Name, Value), false;
+restore("ERL_CRASH_DUMP_SECONDS", _) -> true;
+restore(Name, _) -> os:unsetenv(Name), false.
+
+%% The path of the buoy binary that compiles eval code and that
+%% process.execPath names, or false outside `buoy run`.
+-spec compiler() -> string() | false.
+compiler() ->
+    case persistent_term:get({?MODULE, compiler}, undefined) of
+        undefined -> os:getenv("BUOY_COMPILER");
+        Compiler -> Compiler
+    end.
+
+%% The variables of the VM's environment that the program does not see.
+-spec hidden_env() -> [string()].
+hidden_env() -> persistent_term:get({?MODULE, hidden_env}, []).
+
+%% The program sets Name, so it sees the variable from then on.
+-spec unhide_env(string()) -> ok.
+unhide_env(Name) ->
+    Hidden = hidden_env(),
+    lists:member(Name, Hidden) andalso persistent_term:put({?MODULE, hidden_env}, Hidden -- [Name]),
+    ok.
 
 %% Runs the top-level code of Module once, and records that it ran.
 -spec import(module()) -> ok.

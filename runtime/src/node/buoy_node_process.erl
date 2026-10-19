@@ -10,7 +10,7 @@
 -define(TITLE, '$buoy_process_title').
 
 -export([exec_argv/0, create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
--export([getenv/1, environ/0, node_options/0]).
+-export([getenv/1, environ/0, node_options/0, vm_exec_argv/0]).
 -export([version_pairs/0, initial_title/0, preload/0]).
 
 -define(VERSION, <<"v25.9.0">>).
@@ -109,6 +109,7 @@ exec_argv() ->
     end.
 
 %% A worker realm has the execArgv of its Worker options (buoy_binding_worker).
+-spec vm_exec_argv() -> [binary()].
 vm_exec_argv() ->
     case init:get_argument(buoy_exec_argv) of
         {ok, [[Json | _] | _]} ->
@@ -185,7 +186,7 @@ quoted([], Word, Acc) -> words([], Word, Acc).
 %% The path of the buoy binary, which Node's tests start as process.execPath.
 -spec exec_path() -> term().
 exec_path() ->
-    case os:getenv("BUOY_COMPILER") of
+    case buoy_main:compiler() of
         false -> <<"buoy">>;
         Path -> buoy_ref_string:from_utf8(unicode:characters_to_binary(Path))
     end.
@@ -366,7 +367,7 @@ store() -> erlang:get('$buoy_env').
 getenv(Name) ->
     case store() of
         undefined ->
-            os:getenv(Name);
+            lists:member(Name, buoy_main:hidden_env()) =:= false andalso os:getenv(Name);
         Table ->
             case ets:lookup(Table, Name) of
                 [{_, Value}] -> Value;
@@ -376,13 +377,13 @@ getenv(Name) ->
 
 putenv(Name, Value) ->
     case store() of
-        undefined -> try os:putenv(Name, Value) catch error:badarg -> true end;
+        undefined -> ok = buoy_main:unhide_env(Name), try os:putenv(Name, Value) catch error:badarg -> true end;
         Table -> lists:member($=, Name) orelse Name =:= [] orelse ets:insert(Table, {Name, Value})
     end.
 
 unsetenv(Name) ->
     case store() of
-        undefined -> os:unsetenv(Name);
+        undefined -> lists:member(Name, buoy_main:hidden_env()) orelse os:unsetenv(Name);
         Table -> ets:delete(Table, Name)
     end.
 
@@ -390,7 +391,7 @@ unsetenv(Name) ->
 -spec environ() -> [string()].
 environ() ->
     case store() of
-        undefined -> os:getenv();
+        undefined -> [Entry || Entry <- os:getenv(), not lists:member(hd(string:split(Entry, "=")), buoy_main:hidden_env())];
         Table -> [Name ++ "=" ++ Value || {Name, Value} <- lists:sort(ets:tab2list(Table))]
     end.
 

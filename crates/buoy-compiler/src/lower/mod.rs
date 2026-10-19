@@ -218,6 +218,7 @@ pub fn lower_module(module: &graph::Module, graph: &Graph) -> Result<String, Vec
                 Ok(erlang::print_module(&erlang::Module {
                     name: context.name.clone(),
                     functions,
+                    frames: None,
                 }))
             } else {
                 Err(lowerer.reporter.diagnostics)

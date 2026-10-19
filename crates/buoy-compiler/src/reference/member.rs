@@ -5,6 +5,7 @@ use oxc::ast::ast::{
     ChainElement, ChainExpression, ComputedMemberExpression, Expression, MemberExpression,
     PrivateFieldExpression, PropertyKey, StaticMemberExpression,
 };
+use oxc::span::GetSpan;
 
 use super::context::Lowerer;
 use super::literal::number;
@@ -164,7 +165,9 @@ impl<'a> Lowerer<'a, '_> {
             self.chain_guard(object.clone());
         }
         let key = self.static_member_key(&member.object, member.property.name.as_str());
-        self.get(object, key)
+        let value = self.get(object, key);
+        self.mark_last(member.property.span.start);
+        value
     }
 
     /// The key `o.name`: a slot when the class of `o` expects `name` at a position of
@@ -219,7 +222,9 @@ impl<'a> Lowerer<'a, '_> {
             self.chain_guard(object.clone());
         }
         let key = self.computed_key(&member.expression);
-        self.get(object, key)
+        let value = self.get(object, key);
+        self.mark_last(member.object.span().end);
+        value
     }
 
     pub fn private_member(&mut self, member: &'a PrivateFieldExpression<'a>) -> Expr {
@@ -228,7 +233,9 @@ impl<'a> Lowerer<'a, '_> {
             self.chain_guard(object.clone());
         }
         let key = self.private_key(member.field.name.as_str());
-        self.get(object, MemberKey::Private(key))
+        let value = self.get(object, MemberKey::Private(key));
+        self.mark_last(member.field.span.start);
+        value
     }
 
     /// The object and the key of a member expression, lowered in order.

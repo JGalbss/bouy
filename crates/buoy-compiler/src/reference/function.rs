@@ -59,6 +59,7 @@ impl<'a> Lowerer<'a, '_> {
         callee: Callee,
         own: Option<Expr>,
         scope: Option<ScopeId>,
+        site: u32,
     ) -> Code {
         let this_param = self.fresh("This");
         let args = self.fresh("Args");
@@ -73,6 +74,7 @@ impl<'a> Lowerer<'a, '_> {
             kind,
             sloppy: scope.is_some() && self.is_sloppy(scope),
             withs: outer.withs.clone(),
+            site,
             ..Frame::default()
         };
         match callee {
@@ -250,7 +252,11 @@ impl<'a> Lowerer<'a, '_> {
             reads.visit_function_body(block);
             vars.visit_function_body(block);
         }
-        let mut code = Vec::new();
+        let start = self
+            .functions
+            .get(self.frame.site as usize)
+            .map_or(0, |function| function.start);
+        let mut code = vec![self.stack_check(start)];
         if own_arguments {
             code.extend(self.receiver(&reads));
         }
@@ -550,7 +556,7 @@ impl<'a> Lowerer<'a, '_> {
             init: None,
             instance: None,
         });
-        let fun = self.function_fun(function, Callee::Method(frame));
+        let fun = self.function_fun(function, Callee::Method(frame), span.start);
         let kind = match kind {
             "method" => method_kind(function.r#async, function.generator),
             other => other,
@@ -594,6 +600,7 @@ impl<'a> Lowerer<'a, '_> {
             (None, Some(body)) => FnBody::Block(body),
             (None, None) => return Expr::undefined(),
         };
+        let site = self.enter_function(arrow.node_id.get(), arrow.span.start);
         let code = self.function_code(
             &arrow.params,
             body,
@@ -601,6 +608,7 @@ impl<'a> Lowerer<'a, '_> {
             Callee::Arrow,
             None,
             arrow.scope_id.get(),
+            site,
         );
         let fun = code.fun();
         let kind = if arrow.r#async { "async" } else { "arrow" };
@@ -670,7 +678,7 @@ impl<'a> Lowerer<'a, '_> {
             (symbol, saved)
         });
         let itself = cell.clone().filter(|_| callee).map(|cell| cell_get(&cell));
-        let fun = self.function_fun(function, Callee::Function(itself));
+        let fun = self.function_fun(function, Callee::Function(itself), function.span.start);
         let kind = match method_kind(function.r#async, function.generator) {
             "method" if reads_new_target && self.is_sloppy(function.scope_id.get()) => "sloppy_nt",
             "method" if reads_new_target => "normal_nt",
@@ -723,13 +731,19 @@ impl<'a> Lowerer<'a, '_> {
 
     /// The Erlang fun of a non-arrow function: `fun(This, Args) -> ... end`, or the maker
     /// of a generator.
-    pub fn function_fun(&mut self, function: &'a Function<'a>, callee: Callee) -> Expr {
+    pub fn function_fun(
+        &mut self,
+        function: &'a Function<'a>,
+        callee: Callee,
+        start: u32,
+    ) -> Expr {
         let Some(body) = &function.body else {
             return Expr::undefined();
         };
         let kind = kind_of(function.r#async, function.generator);
         let maker = matches!(kind, Kind::Generator | Kind::AsyncGenerator);
         let own = maker.then(|| self.fresh("Own"));
+        let site = self.enter_function(function.node_id.get(), start);
         let code = self.function_code(
             &function.params,
             FnBody::Block(body),
@@ -737,6 +751,7 @@ impl<'a> Lowerer<'a, '_> {
             callee,
             own.clone().map(Expr::var),
             function.scope_id.get(),
+            site,
         );
         let fun = code.fun();
         match own {

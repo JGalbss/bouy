@@ -878,7 +878,8 @@ owner_name(Module) ->
 
 -spec env(binary()) -> binary() | undefined.
 env(Name) ->
-    case os:getenv(unicode:characters_to_list(Name)) of
+    Text = unicode:characters_to_list(Name),
+    case lists:member(Text, buoy_main:hidden_env()) =:= false andalso os:getenv(Text) of
         false -> undefined;
         Value -> unicode:characters_to_binary(Value)
     end.

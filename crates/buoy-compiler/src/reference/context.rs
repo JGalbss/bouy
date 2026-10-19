@@ -229,6 +229,9 @@ pub struct Frame<'a> {
     pub in_function: bool,
     /// In a class field initializer, where eval code may not read `arguments`.
     pub in_field: bool,
+    /// The index of the function in the table of functions of the module (`sites`): 0 for
+    /// the top-level code.
+    pub site: u32,
 }
 
 pub struct Lowerer<'a, 'c> {
@@ -285,6 +288,8 @@ pub struct Lowerer<'a, 'c> {
     /// Whether a call enters the realm of its callee (`buoy_ref_realm:call/3`), as the
     /// calls of a classic script that a `node:vm` context runs must.
     pub realm_calls: bool,
+    /// The functions of the module, for its stack traces (`sites`).
+    pub functions: Vec<crate::erlang::FunctionSite>,
 }
 
 impl Lowerer<'_, '_> {

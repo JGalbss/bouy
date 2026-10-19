@@ -51,13 +51,14 @@ impl<'a> Lowerer<'a, '_> {
 
     pub fn call(&mut self, call: &'a CallExpression<'a>) -> Expr {
         let callee = strip(&call.callee);
+        let offset = call_offset(callee, call.callee.span());
         if let Expression::Super(_) = callee {
             let parent = self.super_constructor();
             let args = self.args(&call.arguments);
             return self.super_constructor_call(parent, args);
         }
         if let Some(member) = callee.as_member_expression() {
-            return self.method_call(call, member);
+            return self.method_call(call, member, offset);
         }
         if let Expression::ChainExpression(chain) = callee
             && let Some(member) = chain.expression.as_member_expression()
@@ -67,7 +68,9 @@ impl<'a> Lowerer<'a, '_> {
                 self.chain_guard(function.clone());
             }
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call(
+            return self.bind_call(
+                offset,
+                Expr::call(
                 self.call_module(),
                 "call",
                 vec![function, this, args],
@@ -88,7 +91,9 @@ impl<'a> Lowerer<'a, '_> {
             let objects = self.with_objects(ident);
             let (function, this) = self.with_callee(ident, &objects);
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call(
+            return self.bind_call(
+                offset,
+                Expr::call(
                 self.call_module(),
                 "call",
                 vec![function, this, args],
@@ -103,17 +108,19 @@ impl<'a> Lowerer<'a, '_> {
             match self.tops.get(&symbol).cloned() {
                 Some(Top::Function { name, .. }) if !call.optional => {
                     let args = self.args(&call.arguments);
-                    return self.bind(Expr::local_call(&name, vec![Expr::undefined(), args]));
+                    return self.bind_call(
+                        offset,
+                        Expr::local_call(&name, vec![Expr::undefined(), args]),
+                    );
                 }
                 Some(Top::Buoy(name)) => return self.buoy_call(&name, call),
                 Some(Top::Import(binding)) if !call.optional => {
                     if let Some((module, function)) = self.linking.direct_function(&binding) {
                         let args = self.args(&call.arguments);
-                        return self.bind(Expr::call(
-                            &module,
-                            &function,
-                            vec![Expr::undefined(), args],
-                        ));
+                        return self.bind_call(
+                            offset,
+                            Expr::call(&module, &function, vec![Expr::undefined(), args]),
+                        );
                     }
                 }
                 _ => {}
@@ -124,11 +131,14 @@ impl<'a> Lowerer<'a, '_> {
             self.chain_guard(function.clone());
         }
         let args = self.args(&call.arguments);
-        self.bind(Expr::call(
-            self.call_module(),
-            "call",
-            vec![function, Expr::undefined(), args],
-        ))
+        self.bind_call(
+            offset,
+            Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, Expr::undefined(), args],
+            ),
+        )
     }
 
     /// A call of a member: `o.m(...)`, `o[k](...)`, `o.#m(...)`, `super.m(...)`, and their
@@ -137,6 +147,7 @@ impl<'a> Lowerer<'a, '_> {
         &mut self,
         call: &'a CallExpression<'a>,
         member: &'a MemberExpression<'a>,
+        offset: u32,
     ) -> Expr {
         if let MemberExpression::StaticMemberExpression(static_member) = member
             && !call.optional
@@ -153,7 +164,9 @@ impl<'a> Lowerer<'a, '_> {
                 vec![Expr::js_string(global)],
             ));
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call(
+            return self.bind_call(
+                offset,
+                Expr::call(
                 self.call_module(),
                 "call",
                 vec![function, this, args],
@@ -164,7 +177,9 @@ impl<'a> Lowerer<'a, '_> {
             let method = self.get(object.clone(), key);
             let args = self.args(&call.arguments);
             let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
-            return self.bind(Expr::call(
+            return self.bind_call(
+                offset,
+                Expr::call(
                 self.call_module(),
                 "call",
                 vec![method, this, args],
@@ -182,7 +197,9 @@ impl<'a> Lowerer<'a, '_> {
                 self.chain_guard(method.clone());
             }
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call(
+            return self.bind_call(
+                offset,
+                Expr::call(
                 self.call_module(),
                 "call",
                 vec![method, object, args],
@@ -193,7 +210,9 @@ impl<'a> Lowerer<'a, '_> {
             let method = self.get(object.clone(), key);
             self.chain_guard(method.clone());
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call(
+            return self.bind_call(
+                offset,
+                Expr::call(
                 self.call_module(),
                 "call",
                 vec![method, object, args],
@@ -207,7 +226,9 @@ impl<'a> Lowerer<'a, '_> {
             let (MemberKey::Static(key) | MemberKey::Slot(key, _)) = key else {
                 return Expr::undefined();
             };
-            return self.bind(Expr::call(
+            return self.bind_call(
+                offset,
+                Expr::call(
                 self.call_module(),
                 "call_method_value",
                 vec![method, object, key, args],
@@ -232,7 +253,7 @@ impl<'a> Lowerer<'a, '_> {
             ),
             MemberKey::Private(_) => Expr::undefined(),
         };
-        self.bind(value)
+        self.bind_call(offset, value)
     }
 
     /// `o.m(args)` where the annotations name the class of `o`: the method read of
@@ -356,11 +377,14 @@ impl<'a> Lowerer<'a, '_> {
         let scope = self.eval_scope(ident);
         let lexical = self.eval_lexical(ident);
         let context = self.eval_context_map();
-        self.bind(Expr::call(
-            "buoy_ref_eval",
-            "direct",
-            vec![eval, args, mode, this, scope, lexical, context],
-        ))
+        self.bind_call(
+            ident.span.start,
+            Expr::call(
+                "buoy_ref_eval",
+                "direct",
+                vec![eval, args, mode, this, scope, lexical, context],
+            ),
+        )
     }
 
     /// The context map of a direct eval (`EvalContext`): what the place of the call gives
@@ -588,7 +612,10 @@ impl<'a> Lowerer<'a, '_> {
     pub fn new_expression(&mut self, new: &'a NewExpression<'a>) -> Expr {
         let constructor = self.expr(&new.callee);
         let args = self.args(&new.arguments);
-        self.bind(Expr::call("buoy_ref", "construct", vec![constructor, args]))
+        self.bind_call(
+            new.span.start,
+            Expr::call("buoy_ref", "construct", vec![constructor, args]),
+        )
     }
 }
 
@@ -632,4 +659,22 @@ fn object_entry(object: &super::with::WithScope) -> Expr {
         Expr::js_string(marker),
         Expr::var(object.object.clone()),
     ])
+}
+
+/// Where V8 places a call in a stack trace: at the property of a method call, at the
+/// start of a named callee, and else at the arguments, right after the callee.
+fn call_offset(callee: &Expression<'_>, span: oxc::span::Span) -> u32 {
+    match callee {
+        Expression::StaticMemberExpression(member) => member.property.span.start,
+        Expression::PrivateFieldExpression(member) => member.field.span.start,
+        Expression::ChainExpression(chain) => match &chain.expression {
+            oxc::ast::ast::ChainElement::StaticMemberExpression(member) => {
+                member.property.span.start
+            }
+            _ => span.end,
+        },
+        Expression::Identifier(ident) => ident.span.start,
+        Expression::Super(_) => span.start,
+        _ => span.end,
+    }
 }

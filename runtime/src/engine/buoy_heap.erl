@@ -736,11 +736,15 @@ deferred_key(_M, <<"then">>) -> absent;
 deferred_key(_M, {'$sym', _, _}) -> ordinary;
 deferred_key(M, _K) -> ok = buoy_module:ensure_deferred(M), export.
 
-%% A live binding of a module namespace (buoy_module) reads its module.
+%% A live binding of a module namespace (buoy_module) reads its module. The
+%% call of a getter is no tail call, so a getter that reads itself grows the
+%% stack until it throws a RangeError (buoy_stack).
 resolve({'$live', Read}, _Receiver) -> Read();
 resolve({'$accessor', undefined, _}, _Receiver) -> undefined;
-resolve({'$accessor', Getter, _}, Receiver) -> call(Getter, Receiver, []);
+resolve({'$accessor', Getter, _}, Receiver) -> kept(call(Getter, Receiver, []));
 resolve(V, _Receiver) -> V.
+
+kept(Value) -> Value.
 
 %% `o[k] = v` in strict code: [[Set]] with o as the receiver, and a TypeError
 %% when it fails. The common cases write the record at once.
@@ -1910,7 +1914,8 @@ error_object(Proto, Message, Stack) ->
     {'$o', Id}.
 
 %% An error object of the intrinsic class Name, or with the prototype Proto,
-%% whose stack formats on its first read (buoy_ref_error:lazy_stack/0).
+%% with the frames of the stack where it was made, whose stack formats on its
+%% first read (buoy_ref_error:lazy_stack/0).
 -spec error_object(atom() | value(), binary()) -> value().
 error_object(Name, Message) when is_atom(Name) ->
     error_object(intrinsic(list_to_atom(atom_to_list(Name) ++ ".prototype")), Message);
@@ -1919,6 +1924,7 @@ error_object(Proto, Message) ->
     Attrs = #{<<"message">> => ?WRITABLE bor ?CONFIGURABLE, <<"stack">> => ?CONFIGURABLE},
     Id = next_id(),
     erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, none}),
+    ok = buoy_ref_error:capture({'$o', Id}, none),
     {'$o', Id}.
 
 -spec throw_error(atom(), binary()) -> no_return().

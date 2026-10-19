@@ -51,6 +51,46 @@ pub enum Expr {
     },
     Op(&'static str, Box<Expr>, Box<Expr>),
     Not(Box<Expr>),
+    /// An expression whose code runs at `Site` of the JavaScript source: the printer
+    /// records the line where it starts in the table of `'$frames'/0`.
+    Site(Site, Box<Expr>),
+}
+
+/// A place of the JavaScript source: a byte offset of the source text, and the index of
+/// the function around it in `Frames::functions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Site {
+    pub offset: u32,
+    pub function: u32,
+}
+
+/// What the stack traces of the reference engine need to know about the code of a module:
+/// its source text and its functions. The printer adds `'$frames'/0`, which returns
+/// `{Script, Lines, Functions}`: `Script` is the name of the script or `none`, `Lines` holds a record of four 24-bit integers for each line of
+/// the Erlang code where a place starts, in order (the line, then the line and the
+/// UTF-16 column of the place, both from 1, then the index of its function), and
+/// `Functions` holds `{Name, Start, Kind, Class}` for each function, where `Start` is the
+/// offset where the function starts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Frames {
+    /// The name of the script in stack traces, when the compiler knows it, such as
+    /// `node:internal/util` for a built-in module of Node.
+    pub script: Option<String>,
+    pub source: String,
+    /// The columns of the first line before the code: the wrapper of a `CommonJS` module.
+    pub shift: u32,
+    pub functions: Vec<FunctionSite>,
+}
+
+/// A function of the source: its name for stack traces, where it starts, its kind
+/// (`function`, `method`, `get`, `set`, `constructor`, `wrapper`, or `top`), and the
+/// class or object that holds a method (`Object` for an object literal).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionSite {
+    pub name: String,
+    pub start: u32,
+    pub kind: &'static str,
+    pub holder: Option<String>,
 }
 
 /// `Patterns when Guards -> Body`. Guard alternatives are joined with `;`.
@@ -80,6 +120,7 @@ pub struct Function {
 pub struct Module {
     pub name: String,
     pub functions: Vec<Function>,
+    pub frames: Option<Frames>,
 }
 
 impl Expr {
@@ -200,7 +241,7 @@ impl Clause {
 pub fn print_module(module: &Module) -> String {
     let mut printer = Printer::default();
     let _ = writeln!(printer.out, "-module({}).", atom(&module.name));
-    let exports: Vec<String> = module
+    let mut exports: Vec<String> = module
         .functions
         .iter()
         .map(|function| {
@@ -211,6 +252,9 @@ pub fn print_module(module: &Module) -> String {
             format!("{}/{arity}", atom(&function.name))
         })
         .collect();
+    if module.frames.is_some() {
+        exports.push("'$frames'/0".to_owned());
+    }
     let _ = writeln!(printer.out, "-export([{}]).", exports.join(", "));
     printer
         .out
@@ -218,6 +262,9 @@ pub fn print_module(module: &Module) -> String {
     for function in &module.functions {
         printer.out.push('\n');
         printer.function(function);
+    }
+    if let Some(frames) = &module.frames {
+        printer.frames(frames);
     }
     printer.out
 }
@@ -235,11 +282,113 @@ struct Printer {
     /// subtree once for each level above it, which is exponential in the depth of the
     /// continuations that `await` makes.
     one_line: bool,
+    /// The lines of `out` before byte `counted`.
+    lines: u32,
+    counted: usize,
+    /// The line where each place starts, in order of the lines.
+    sites: Vec<(u32, Site)>,
+    /// The place before a fun, which the code after the fun is at again.
+    resume: Option<Site>,
 }
 
+/// The place of code that is no JavaScript function, such as `'__init__'/0`: a frame there
+/// is no frame of a stack trace.
+const NO_SITE: Site = Site {
+    offset: u32::MAX,
+    function: u32::MAX,
+};
+
 impl Printer {
+    /// The line of the next character of `out`, from 1.
+    fn line(&mut self) -> u32 {
+        let new = self.out.as_bytes()[self.counted..]
+            .iter()
+            .filter(|byte| **byte == b'\n')
+            .count();
+        self.lines += u32::try_from(new).unwrap_or(u32::MAX);
+        self.counted = self.out.len();
+        self.lines + 1
+    }
+
+    /// Records that the code from the current line on is at `site`. Two places start on
+    /// two lines, so a frame of the Erlang stack names one place.
+    fn site(&mut self, site: Site) {
+        self.resume = None;
+        let mut line = self.line();
+        if let Some(&(last, previous)) = self.sites.last()
+            && last == line
+        {
+            if previous == site {
+                return;
+            }
+            self.newline();
+            line = self.line();
+        }
+        self.sites.push((line, site));
+    }
+
+    /// The code after a fun is at the place before the fun again, from the next line on,
+    /// unless a place of its own comes first.
+    fn resume_after(&mut self, before: Option<Site>) {
+        let after = self.sites.last().map(|&(_, site)| site);
+        if let Some(before) = before
+            && after != Some(before)
+        {
+            self.resume = Some(before);
+        }
+    }
+
+    /// `'$frames'/0` of `frames`.
+    fn frames(&mut self, frames: &Frames) {
+        let places = positions(&frames.source, frames.shift, &self.sites);
+        let mut lines = Vec::with_capacity(self.sites.len() * 12);
+        for (line, site) in &self.sites {
+            let (js_line, column) = places
+                .get(&site.offset)
+                .copied()
+                .unwrap_or((0, 0));
+            for value in [*line, js_line, column, site.function] {
+                lines.extend_from_slice(&value.min(0x00FF_FFFF).to_be_bytes()[1..]);
+            }
+        }
+        let functions: Vec<String> = frames
+            .functions
+            .iter()
+            .map(|function| {
+                format!(
+                    "{{{}, {}, {}, {}}}",
+                    binary(&function.name),
+                    function.start,
+                    atom(function.kind),
+                    function
+                        .holder
+                        .as_deref()
+                        .map_or_else(|| "undefined".to_owned(), binary)
+                )
+            })
+            .collect();
+        let script = frames
+            .script
+            .as_deref()
+            .map_or_else(|| "none".to_owned(), binary);
+        let _ = write!(
+            self.out,
+            "\n'$frames'() ->\n    {{{script},\n     {},\n     {{{}}}}}.\n",
+            raw_binary(&lines),
+            functions.join(",\n      ")
+        );
+        // The code passes the result of each JavaScript call through `'$r'/1`, so the call
+        // is no tail call and its caller stays on the stack (`reference::sites`).
+        self.out.push_str("\n'$r'(Value) -> Value.\n");
+    }
+
     fn function(&mut self, function: &Function) {
         let name = atom(&function.name);
+        // A function of the module that is no JavaScript function has no place, until
+        // the place of the function that it holds.
+        self.resume = None;
+        let line = self.line();
+        self.sites.push((line, NO_SITE));
         for (index, clause) in function.clauses.iter().enumerate() {
             if index > 0 {
                 self.out.push_str(";\n");
@@ -296,6 +445,10 @@ impl Printer {
 
     fn newline(&mut self) {
         self.out.push('\n');
+        if let Some(site) = self.resume.take() {
+            let line = self.line();
+            self.sites.push((line, site));
+        }
         for _ in 0..self.indent {
             self.out.push_str(INDENT);
         }
@@ -392,6 +545,15 @@ impl Printer {
                 self.out.push_str("not ");
                 self.operand(value);
             }
+            Expr::Site(site, value) => {
+                // A place needs a line of its own, which no inline form gives.
+                if self.one_line {
+                    self.out.push('\n');
+                    return;
+                }
+                self.site(*site);
+                self.expr(value);
+            }
         }
     }
 
@@ -473,6 +635,14 @@ impl Printer {
     /// A single-clause fun keeps its head on the current line. A fun with several clauses
     /// puts each clause on its own line.
     fn fun(&mut self, name: Option<&str>, clauses: &[Clause]) {
+        let before = self.sites.last().map(|&(_, site)| site);
+        self.fun_clauses(name, clauses);
+        if !self.one_line {
+            self.resume_after(before);
+        }
+    }
+
+    fn fun_clauses(&mut self, name: Option<&str>, clauses: &[Clause]) {
         self.out.push_str("fun");
         if let [clause] = clauses {
             if let Some(name) = name {
@@ -566,6 +736,47 @@ fn inline(expr: &Expr) -> Option<String> {
     };
     printer.expr(expr);
     (!printer.overflows()).then_some(printer.out)
+}
+
+/// The line and the UTF-16 column, both from 1, of the offset of each place in `source`,
+/// as V8 counts them: `\n`, `\r`, `\r\n`, U+2028, and U+2029 end a line. `shift` columns of
+/// the first line come before the code.
+fn positions(
+    source: &str,
+    shift: u32,
+    sites: &[(u32, Site)],
+) -> std::collections::HashMap<u32, (u32, u32)> {
+    let mut offsets: Vec<u32> = sites.iter().map(|(_, site)| site.offset).collect();
+    offsets.sort_unstable();
+    offsets.dedup();
+    let mut places = std::collections::HashMap::with_capacity(offsets.len());
+    let mut wanted = offsets.into_iter().peekable();
+    let (mut line, mut column) = (1_u32, 0_u32);
+    let mut chars = source.char_indices().peekable();
+    loop {
+        let at = chars.peek().map_or(source.len(), |&(index, _)| index);
+        while let Some(&offset) = wanted.peek()
+            && offset as usize <= at
+        {
+            let column = if line == 1 { column.saturating_sub(shift) } else { column };
+            places.insert(offset, (line, column + 1));
+            wanted.next();
+        }
+        let Some((_, c)) = chars.next() else {
+            break;
+        };
+        match c {
+            '\r' if chars.peek().is_some_and(|&(_, next)| next == '\n') => {
+                column += 1;
+            }
+            '\n' | '\r' | '\u{2028}' | '\u{2029}' => {
+                line += 1;
+                column = 0;
+            }
+            _ => column += u32::try_from(c.len_utf16()).unwrap_or(1),
+        }
+    }
+    places
 }
 
 const RESERVED: &[&str] = &[

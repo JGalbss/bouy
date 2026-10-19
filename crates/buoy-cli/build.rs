@@ -342,7 +342,11 @@ fn node_module(runtime: &Path, id: &str, out: &Path) -> PathBuf {
         Some(parameters.len()),
         &[],
         &[],
-        &buoy_compiler::EvalContext::default(),
+        &buoy_compiler::EvalContext {
+            code_column: parameters.len() + 3,
+            script: Some(format!("node:{id}")),
+            ..buoy_compiler::EvalContext::default()
+        },
     )
     .unwrap_or_else(|diagnostics| {
         panic!(

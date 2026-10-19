@@ -155,6 +155,8 @@ impl EvalRequest {
             dynamic_function: false,
             frames: self.frames,
             source,
+            code_column: 0,
+            script: None,
         };
         let compiled = if let Some(identifier) = &self.form.hosted_module {
             buoy_compiler::compile_hosted_module(text, &module, identifier)

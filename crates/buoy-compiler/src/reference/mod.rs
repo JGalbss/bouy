@@ -53,6 +53,7 @@ mod loops;
 mod member;
 mod module;
 mod pattern;
+mod sites;
 mod stmt;
 mod suspend;
 mod types;
@@ -92,15 +93,17 @@ pub fn lower_unit(
         return Ok(erlang::print_module(&erlang::Module {
             name: module.name.clone(),
             functions: linking.json_functions(),
+            frames: None,
         }));
     }
     if module.kind == Kind::Wasm {
         return Ok(erlang::print_module(&erlang::Module {
             name: module.name.clone(),
             functions: linking.wasm_functions(),
+            frames: None,
         }));
     }
-    lower(linking, None, &[], false)
+    lower(linking, None, &[], false, None)
 }
 
 /// What the code of a direct eval may use from the place of its call (ECMA-262 §19.2.1.1,
@@ -127,6 +130,12 @@ pub struct EvalContext {
     pub frames: bool,
     /// Where the module finds its source text.
     pub source: EvalSource,
+    /// The columns of the first line of the source text before the code, such as the
+    /// wrapper that Node puts around the code of a built-in module: stack traces count
+    /// the columns of the first line from there.
+    pub code_column: usize,
+    /// The name of the script in stack traces, such as `node:internal/util`.
+    pub script: Option<String>,
 }
 
 /// Where the module of eval code finds its source text.
@@ -303,6 +312,7 @@ pub fn lower_hosted_module(
     name: &str,
     path: std::path::PathBuf,
 ) -> Result<String, Vec<Diagnostic>> {
+    let script = path.to_string_lossy().into_owned();
     let graph = graph::hosted(source, name, path)?;
     let links = link::link(&graph);
     // A module of node:vm checks the deadline of `evaluate({ timeout })` in its loops.
@@ -316,6 +326,7 @@ pub fn lower_hosted_module(
         None,
         &[],
         true,
+        Some(script),
     )
 }
 
@@ -369,7 +380,7 @@ fn lower_one_script(
         link: &link,
         entry: false,
     };
-    lower(linking, eval, scope, interruptible)
+    lower(linking, eval, scope, interruptible, None)
 }
 
 /// The names that sloppy eval code declares in its variable environment: its top-level
@@ -423,6 +434,7 @@ fn lower(
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
     interruptible: bool,
+    script: Option<String>,
 ) -> Result<String, Vec<Diagnostic>> {
     let module = linking.unit();
     let context = eval.map(|(_, context)| context.clone()).unwrap_or_default();
@@ -486,7 +498,9 @@ fn lower(
                 } else {
                     crate::jit::Plan::default()
                 },
+                functions: Vec::new(),
             };
+            lowerer.top_function();
             let mut functions = if module.kind == Kind::CommonJs {
                 lowerer.commonjs_functions(program, &module.source)
             } else if lowerer.eval.is_some() {
@@ -497,9 +511,21 @@ fn lower(
             };
             functions.extend(lowerer.jit_programs());
             if lowerer.reporter.diagnostics.is_empty() {
+                // The code of a `CommonJS` module starts after its wrapper on the first line.
+                let shift = if module.kind == Kind::CommonJs {
+                    graph::CJS_WRAPPER.len()
+                } else {
+                    context.code_column
+                };
                 Ok(erlang::print_module(&erlang::Module {
                     name: module.name.clone(),
                     functions,
+                    frames: Some(erlang::Frames {
+                        script: script.clone().or_else(|| context.script.clone()),
+                        source: module.source.clone(),
+                        shift: u32::try_from(shift).unwrap_or(0),
+                        functions: std::mem::take(&mut lowerer.functions),
+                    }),
                 }))
             } else {
                 Err(lowerer.reporter.diagnostics)
@@ -513,5 +539,6 @@ pub fn broken_module(linking: Linking<'_>, diagnostics: &[Diagnostic]) -> String
     erlang::print_module(&erlang::Module {
         name: linking.unit().name.clone(),
         functions: linking.broken_functions(diagnostics),
+        frames: None,
     })
 }

@@ -205,7 +205,13 @@ impl<'a> Lowerer<'a, '_> {
             init,
             instance: Some(class.node_id.get()),
         };
-        let construct = self.construct_fun(constructor, &frame, parent.is_some());
+        let site = match constructor {
+            Some(constructor) => {
+                self.enter_function(constructor.value.node_id.get(), class.span.start)
+            }
+            None => self.enter_constructor(class.node_id.get(), class.span.start),
+        };
+        let construct = self.construct_fun(constructor, &frame, parent.is_some(), site);
         self.pre.push(Expr::call(
             "buoy_ref_class",
             "set_construct",
@@ -492,7 +498,8 @@ impl<'a> Lowerer<'a, '_> {
             MethodDefinitionKind::Set => "set",
             _ => method_kind(method.value.r#async, method.value.generator),
         };
-        let fun = self.function_fun(&method.value, Callee::Method(Some(frame)));
+        let start = self.method_span(method).start;
+        let fun = self.function_fun(&method.value, Callee::Method(Some(frame)), start);
         let source = self.source_span(self.method_span(method));
         let value = self.bind(Expr::call(
             "buoy_ref_class",
@@ -641,6 +648,7 @@ impl<'a> Lowerer<'a, '_> {
         constructor: Option<&'a MethodDefinition<'a>>,
         class: &ClassFrame,
         derived: bool,
+        site: u32,
     ) -> Expr {
         let new_target = self.fresh("NewTarget");
         let args = self.fresh("Args");
@@ -654,6 +662,7 @@ impl<'a> Lowerer<'a, '_> {
             new_target: Some(new_target.clone()),
             in_function: true,
             withs: outer.withs.clone(),
+            site,
             ..Frame::default()
         };
         let mut code = Vec::new();

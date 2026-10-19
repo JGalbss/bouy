@@ -286,7 +286,7 @@ shadow_evaluate(Source, N) ->
 -spec warm_up() -> ok.
 warm_up() ->
     Source = <<"0">>,
-    try os:getenv("BUOY_COMPILER") =/= false andalso compile(Source, [], erlang:md5(term_to_binary({Source, []}))) of
+    try buoy_main:compiler() =/= false andalso compile(Source, [], erlang:md5(term_to_binary({Source, []}))) of
         _ -> ok
     catch
         error:_ -> ok
@@ -424,7 +424,7 @@ compiler() ->
     end.
 
 start_compiler() ->
-    Compiler = case os:getenv("BUOY_COMPILER") of
+    Compiler = case buoy_main:compiler() of
         false -> type_error(<<"eval and new Function need the Buoy compiler: run the program with `buoy run`">>);
         C -> C
     end,

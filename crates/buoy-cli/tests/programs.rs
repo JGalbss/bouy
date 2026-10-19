@@ -625,6 +625,40 @@ fn the_program_sees_the_path_of_its_caller() {
     assert!(output.status.success(), "{:?}", output.status);
 }
 
+/// The node form hides the variables that the CLI and the start of the VM set from
+/// `process.env` and from the environment of a child process, as Node has none of them.
+#[test]
+fn the_node_form_hides_the_variables_of_the_cli() {
+    if !common::vm_available() {
+        return;
+    }
+    let names = [
+        "ERL_CRASH_DUMP_SECONDS",
+        "BUOY_COMPILER",
+        "ROOTDIR",
+        "BINDIR",
+        "EMU",
+        "PROGNAME",
+    ];
+    let mut command = common::buoy();
+    for name in names {
+        command.env_remove(name);
+    }
+    command.args([
+        "-e",
+        &format!(
+            "const names = {names:?};
+             const child = require('child_process').execFileSync('/usr/bin/env').toString();
+             console.log(names.filter((name) => name in process.env ||
+               Object.keys(process.env).includes(name) || child.includes(`${{name}}=`)));"
+        ),
+    ]);
+    let common::Run { output, timed_out } = common::run(&mut command, common::deadline());
+    assert!(!timed_out);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "[]\n");
+    assert!(output.status.success(), "{:?}", output.status);
+}
+
 /// A reader that closes stdout early ends the program, as `node app.ts | head -1` does.
 #[test]
 fn a_closed_stdout_ends_the_program() {
@@ -663,7 +697,15 @@ fn a_closed_stdout_ends_the_program() {
 fn the_program_sees_the_environment_of_the_cli() {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let mut command = buoy("host-environment.ts");
-    for name in ["ROOTDIR", "BINDIR", "EMU", "PROGNAME", "ERL_ROOTDIR"] {
+    for name in [
+        "ROOTDIR",
+        "BINDIR",
+        "EMU",
+        "PROGNAME",
+        "ERL_ROOTDIR",
+        "ERL_CRASH_DUMP_SECONDS",
+        "BUOY_COMPILER",
+    ] {
         command.env_remove(name);
     }
     check_on_vm(
