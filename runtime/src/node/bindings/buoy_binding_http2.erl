@@ -444,7 +444,7 @@ close(This, Code, SocketClosed) ->
             end,
             Pings = maps:get(pings, session(This)),
             update(This, fun(S) -> S#{pings => []} end),
-            [buoy_node_loop:set_immediate(fun() -> ping_done(Cb, Start, false, undefined) end) || {Cb, Start} <- Pings],
+            [buoy_node_loop:set_immediate(fun() -> ping_done(Ping, Start, false, undefined) end) || {Ping, Start} <- Pings],
             emit_session_statistics(This),
             undefined;
         _ ->
@@ -497,30 +497,36 @@ settings_done(Callback, Start, Ack) ->
     buoy_heap:is_callable(Callback) andalso
         buoy_heap:call(Callback, undefined, [Ack, (hrtime() - Start) / 1.0e6]).
 
+%% Http2Session::AddPing: each ping is an AsyncWrap of its own, whose
+%% ondone runs through MakeCallback and which is destroyed after it.
 ping(This, Payload, Callback) ->
     S = session(This),
     Start = hrtime(),
+    Ping = buoy_node:object([{<<"ondone">>, Callback}]),
+    buoy_binding_async_wrap:wrap(Ping, <<"HTTP2PING">>),
     case length(maps:get(pings, S)) >= maps:get(max_pings, S) of
         true ->
-            ping_done(Callback, Start, false, undefined),
+            ping_done(Ping, Start, false, undefined),
             false;
         false ->
             Bytes = case buoy_heap:is_object(Payload) of
                 true -> buoy_node_encoding:view_bytes(Payload);
                 false -> <<Start:64/little>>
             end,
-            update(This, fun(St) -> St#{pings => maps:get(pings, St) ++ [{Callback, Start}]} end),
+            update(This, fun(St) -> St#{pings => maps:get(pings, St) ++ [{Ping, Start}]} end),
             scoped(This, fun() -> put_h2(This, buoy_h2:submit_ping(h2(This), Bytes)) end),
             true
     end.
 
-ping_done(Callback, Start, Ack, Payload) ->
+ping_done(Ping, Start, Ack, Payload) ->
     Buf = case Payload of
         undefined -> undefined;
         _ -> buoy_node_encoding:new_buffer(Payload)
     end,
-    buoy_heap:is_callable(Callback) andalso
-        buoy_heap:call(Callback, undefined, [Ack, (hrtime() - Start) / 1.0e6, Buf]).
+    Ondone = buoy_heap:get(Ping, <<"ondone">>),
+    buoy_heap:is_callable(Ondone) andalso
+        buoy_binding_async_wrap:make_callback(Ping, Ondone, [Ack, (hrtime() - Start) / 1.0e6, Buf]),
+    buoy_binding_async_wrap:emit_destroy(Ping).
 
 origin(This, String, Count) ->
     Text = buoy_node_encoding:encode(latin1, String),
@@ -875,10 +881,10 @@ frame_received(This, 6, #{flags := Flags, opaque_data := Payload}) ->
     case Flags band 1 of
         1 ->
             case maps:get(pings, session(This)) of
-                [{Callback, Start} | Rest] ->
+                [{Ping, Start} | Rest] ->
                     update(This, fun(S) -> S#{pings => Rest} end),
                     count(This, ping_rtt, fun(_) -> hrtime() - Start end),
-                    ping_done(Callback, Start, true, Payload);
+                    ping_done(Ping, Start, true, Payload);
                 [] ->
                     call_session(This, error, [?ERR_PROTO])
             end;
