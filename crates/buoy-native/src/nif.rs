@@ -320,6 +320,16 @@ fn intl_calendar_date(calendar: &str, epoch_days: i64) -> Option<(i32, u8, u8, b
     })
 }
 
+/// The CLDR locale data of `scripts/intl-cldr.escript`, in the external term format, which
+/// `buoy_intl_cldr` decodes once per VM.
+#[rustler::nif]
+fn intl_cldr(env: Env<'_>) -> Binary<'_> {
+    let data = intl::CLDR;
+    let mut binary = OwnedBinary::new(data.len());
+    binary.as_mut_slice().copy_from_slice(data);
+    binary.release(env)
+}
+
 /// The exponent by which compact notation scales a number of the magnitude in the locale
 /// `tag`, short or long (`ComputeExponentForMagnitude` of ECMA-402).
 #[rustler::nif]

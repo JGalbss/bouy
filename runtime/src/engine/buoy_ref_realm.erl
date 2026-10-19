@@ -66,6 +66,7 @@ families() ->
      buoy_ref_intl_collator,
      buoy_ref_intl_locale,
      buoy_ref_intl_plural_rules,
+     buoy_ref_intl_number_format,
      ?MODULE].
 
 %%% Installation

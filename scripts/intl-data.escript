@@ -9,7 +9,7 @@
 %% (process.versions.cldr), such as https://github.com/unicode-org/cldr-json/tree/48.0.0,
 %% with cldr-bcp47/bcp47/timezone.json and
 %% cldr-core/supplemental/{calendarPreferenceData,timeData,weekData,numberingSystems,
-%% currencyData}.json, and cldr-core/{availableLocales,defaultContent}.json.
+%% currencyData,likelySubtags}.json, and cldr-core/{availableLocales,defaultContent}.json.
 -mode(compile).
 
 main([Dir, Output]) ->
@@ -24,9 +24,10 @@ main([Dir, Output]) ->
     Version = string:prefix(filename:basename(filename:dirname(filename:absname(Dir))), "cldr-json-"),
     Available = maps:get(<<"full">>, maps:get(<<"availableLocales">>, Read("cldr-core/availableLocales.json"))),
     DefaultContent = maps:get(<<"defaultContent">>, Read("cldr-core/defaultContent.json")),
+    Likely = Supplemental("likelySubtags"),
     Body = [header(),
             list_function("available_locales", "The locales of CLDR and their default content locales, such as en-US (the [[AvailableLocales]] of each service).",
-                          lists:usort(Available ++ DefaultContent)),
+                          lists:usort(Available ++ DefaultContent ++ script_aliases(Available ++ DefaultContent, Likely))),
             list_function("calendars", "The calendars of Temporal and DateTimeFormat (AvailableCalendars).", calendars()),
             list_function("currencies", "The ISO 4217 codes of the currencies in use (AvailableCanonicalCurrencies).",
                           currencies(Supplemental("currencyData"))),
@@ -149,3 +150,24 @@ region(<<A, B, _/binary>>, _V) -> string:uppercase(<<A, B>>).
 group(Zones) ->
     Regions = lists:usort([R || {_, R} <- Zones]),
     [{R, lists:usort([N || {N, R1} <- Zones, R1 =:= R])} || R <- Regions].
+
+%% The locale without its script for each locale language-Script-REGION whose
+%% script is the likely one of language-REGION, such as zh-TW for
+%% zh-Hant-TW, as ICU's data installs them for the default scripts.
+script_aliases(Locales, Likely) ->
+    [<<Language/binary, "-", Region/binary>>
+     || L <- Locales, [Language, Script, Region] <- [binary:split(L, <<"-">>, [global])],
+        byte_size(Script) =:= 4, byte_size(Region) =/= 4,
+        likely_script(Language, Region, Likely) =:= Script].
+
+%% The script of language-REGION by the Add Likely Subtags lookup of UTS #35.
+likely_script(Language, Region, Likely) ->
+    Full = case Likely of
+        #{<<Language/binary, "-", Region/binary>> := F} -> F;
+        #{Language := F} -> F;
+        _ -> <<>>
+    end,
+    case binary:split(Full, <<"-">>, [global]) of
+        [_, Script | _] when byte_size(Script) =:= 4 -> Script;
+        _ -> none
+    end.

@@ -8,7 +8,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, constructor/0]).
--export([select/4]).
+-export([select/4, select_range/4]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 -import(buoy_ref_intl, [get_option/5]).
@@ -129,6 +129,7 @@ categories(Type, Locale) ->
 
 %% PluralRuleSelectRange: CLDR's plural ranges hold cardinal categories, and
 %% a pair that they do not list is other, as ICU4C answers.
+-spec select_range(binary(), binary(), binary(), binary()) -> binary().
 select_range(Type, Locale, Start, End) ->
     case Type of
         <<"cardinal">> -> rule_set(fun(Name) -> buoy_intl_plurals:range(Name, Start, End) end, Locale, <<"other">>);

@@ -9,6 +9,9 @@ pub mod casemap;
 pub mod collator;
 pub mod number;
 
+/// The CLDR locale data that `scripts/intl-cldr.escript` writes from cldr-json.
+pub static CLDR: &[u8] = include_bytes!("../../data/cldr.etf");
+
 use icu_locale::subtags::{Language, Region, Script};
 use icu_locale::{
     Direction, LanguageIdentifier, Locale, LocaleCanonicalizer, LocaleDirectionality,

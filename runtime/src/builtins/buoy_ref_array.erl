@@ -452,9 +452,10 @@ proto(<<"join">>, O, Args) ->
         S -> buoy_ref:to_string(S)
     end,
     guarded(O, fun() -> join(O, Len, Sep, fun join_text/1) end);
-proto(<<"toLocaleString">>, O, _Args) ->
+proto(<<"toLocaleString">>, O, Args) ->
     Len = length_of(O),
-    guarded(O, fun() -> join(O, Len, <<",">>, fun locale_text/1) end);
+    LocaleArgs = [arg(1, Args), arg(2, Args)],
+    guarded(O, fun() -> join(O, Len, <<",">>, fun(V) -> locale_text(V, LocaleArgs) end) end);
 proto(<<"toString">>, O, _Args) ->
     case buoy_ref:get(O, <<"join">>) of
         {'$f', _, _} = Join -> buoy_ref:call(Join, O, []);
@@ -882,9 +883,10 @@ join_text(undefined) -> <<>>;
 join_text(null) -> <<>>;
 join_text(V) -> buoy_ref:to_string(V).
 
-locale_text(undefined) -> <<>>;
-locale_text(null) -> <<>>;
-locale_text(V) -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, [])).
+%% ECMA-402 passes the locales and options on to each element.
+locale_text(undefined, _Args) -> <<>>;
+locale_text(null, _Args) -> <<>>;
+locale_text(V, Args) -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, Args)).
 
 %%% Sorting
 

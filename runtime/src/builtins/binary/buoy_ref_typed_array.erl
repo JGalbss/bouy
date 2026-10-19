@@ -797,10 +797,10 @@ proto(<<"join">>, O, _, Len, Args) ->
         S -> buoy_ref:to_string(S)
     end,
     buoy_ref_string:concat(lists:join(Sep, [case get(O, K) of undefined -> <<>>; V -> buoy_ref:to_string(V) end || K <- seq(0, Len - 1)]));
-proto(<<"toLocaleString">>, O, _, Len, _Args) ->
+proto(<<"toLocaleString">>, O, _, Len, Args) ->
     buoy_ref_string:concat(lists:join(<<",">>, [case get(O, K) of
                                                      V when V =:= undefined; V =:= null -> <<>>;
-                                                     V -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, []))
+                                                     V -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, [arg(1, Args), arg(2, Args)]))
                                                  end || K <- seq(0, Len - 1)]));
 proto(<<"map">>, O, _, Len, Args) ->
     F = callable(arg(1, Args)),
