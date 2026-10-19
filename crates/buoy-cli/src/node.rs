@@ -220,7 +220,9 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
     // script is named. The REPL evaluates the code of -e first.
     let terminal = std::io::stdin().is_terminal();
     match entry {
-        Some(Entry::Eval(_) | Entry::Print(_)) if force_repl => run_repl(program_arguments, options),
+        Some(Entry::Eval(_) | Entry::Print(_)) if force_repl => {
+            run_repl(program_arguments, options)
+        }
         Some(Entry::Script(script)) if script == "-" && (force_repl || terminal) => {
             run_repl(program_arguments, options)
         }
