@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 pub use outcome::{Facts, Outcome, RunResult, classify};
 
 /// The reason codes of a skip (section 3.5). A new code needs review.
-pub const SKIP_REASONS: [&str; 8] = [
+pub const SKIP_REASONS: [&str; 9] = [
     "needs-dom",
     "can-block",
     "v8-flag",
@@ -43,6 +43,7 @@ pub const SKIP_REASONS: [&str; 8] = [
     "node-inspector",
     "node-permission-model",
     "node-behavior",
+    "test-defect",
 ];
 
 /// The host variables that a run keeps: the home directory, the cache of the runtime, and

@@ -158,14 +158,21 @@ A skip means that the test can never apply to Buoy. A test that Buoy cannot run 
 | `node-inspector`        | The test drives the inspector or `node inspect`.                            |
 | `node-permission-model` | The test checks Node's permission model.                                    |
 | `node-behavior`         | A test262 proposal test that Node's own `lib/` contradicts (section 3.5.1). |
+| `test-defect`           | A test262 test that fails on every engine in one mode (section 3.5.1).      |
 
 A skip counts in the denominator. The dashboard shows skips by reason, so a reader can compute the rate over the tests that apply.
 
-#### 3.5.1 Tests that contradict Node
+#### 3.5.1 Reviewed skips of test files
 
-A `node-behavior` skip names one test262 file by its path. The proposal that the test checks requires a behavior that Node's own `lib/` contradicts, and Buoy runs that `lib/` unchanged. Each entry is a review decision:
+A `node-behavior` or `test-defect` skip names one test262 file by its path, and a reviewer approves each one. A skip with a `mode` takes only the run of that mode, `strict` or `nonstrict`, and the other run still counts.
+
+A `node-behavior` file checks a proposal that requires a behavior that Node's own `lib/` contradicts, and Buoy runs that `lib/` unchanged:
 
 - The 10 files of `built-ins/Error/prototype/stack` (the error stack accessor proposal, stage 2) that require an error without an own `stack` property, or a `stack` write that only takes a string. Node 25 gives each error an own `stack` (V8). `isErrorLike` of `lib/internal/process/promises.js` tests it with `hasOwnProperty`, and `lib/internal/per_context/domexception.js` assigns a `stack` that can be undefined. Buoy keeps the own property and also has the `Error.prototype.stack` accessor of the proposal, so the other 25 files of the directory pass.
+
+A `test-defect` file fails in one mode on every engine, Node included:
+
+- The strict runs of the 13 files of `staging/sm/strict` that include `sm/non262-strict-shell.js`. Its `completesNormally` and `raisesException` run the sloppy case through a direct `eval` in the harness, and a strict run makes the harness strict, so the sloppy case runs as strict code. SpiderMonkey runs these files as sloppy scripts only. Node fails each strict run and passes each sloppy run.
 
 ### 3.6 Results and summaries
 

@@ -53,11 +53,13 @@ const VM_RUNNER: &str = include_str!("../../../../runtime/test/engine/buoy_test2
 const CONFIG: &str = include_str!("../../../../tests/test262/config.json");
 
 /// One skip of `CONFIG`: the tests whose id starts with `path`, or that name `feature` or
-/// `flag`. An id is the path under the `test` directory of the checkout.
+/// `flag`, in every run or only in the runs of `mode` (`strict` or `nonstrict`). An id is
+/// the path under the `test` directory of the checkout.
 struct Skip {
     path: Option<String>,
     feature: Option<String>,
     flag: Option<String>,
+    mode: Option<String>,
     reason: String,
 }
 
@@ -73,6 +75,7 @@ static SKIPS: LazyLock<Vec<Skip>> = LazyLock::new(|| {
             path: text(skip, "path"),
             feature: text(skip, "feature"),
             flag: text(skip, "flag"),
+            mode: text(skip, "mode"),
             reason: text(skip, "reason").unwrap_or_default(),
         })
         .collect()
@@ -414,7 +417,7 @@ fn write_program(test262: &Path, scratch: &Path, test: &Test) -> Written {
     };
     let meta = frontmatter(&source);
     let id = relative(&test262.join("test"), &test.path);
-    if let Some(reason) = skip_reason(&id, &meta) {
+    if let Some(reason) = skip_reason(&id, &meta, test.mode) {
         return Written::Decided(Outcome::Skip(reason));
     }
     let (program, prelude_lines) = match program(test262, &meta, &source, test.mode) {
@@ -494,13 +497,15 @@ fn timeout_ms(options: &Options, meta: &Frontmatter) -> u64 {
     options.timeout_ms
 }
 
-fn skip_reason(id: &str, meta: &Frontmatter) -> Option<&'static str> {
+fn skip_reason(id: &str, meta: &Frontmatter, mode: Mode) -> Option<&'static str> {
+    let run = if mode.is_strict() { "strict" } else { "nonstrict" };
     SKIPS
         .iter()
         .find(|skip| {
-            skip.path.as_ref().is_some_and(|path| id.starts_with(path.as_str()))
+            let selected = skip.path.as_ref().is_some_and(|path| id.starts_with(path.as_str()))
                 || skip.feature.as_ref().is_some_and(|feature| meta.features.contains(feature))
-                || skip.flag.as_ref().is_some_and(|flag| meta.has_flag(flag))
+                || skip.flag.as_ref().is_some_and(|flag| meta.has_flag(flag));
+            selected && skip.mode.as_ref().is_none_or(|skipped| skipped == run)
         })
         .map(|skip| skip.reason.as_str())
 }
