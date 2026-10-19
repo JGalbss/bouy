@@ -378,7 +378,9 @@ fn unblock_sigterm() -> bool {
 #[cfg(unix)]
 #[allow(unsafe_code)]
 mod signals {
-    use std::ffi::{c_char, c_int, c_void};
+    use std::ffi::c_void;
+    #[cfg(target_os = "macos")]
+    use std::ffi::{c_char, c_int};
     use std::ptr;
 
     /// Unblocks SIGTERM on the calling thread. The signature is a thread function's.
