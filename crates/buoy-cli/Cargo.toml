@@ -14,9 +14,6 @@ path = "src/main.rs"
 [dependencies]
 buoy-compiler.workspace = true
 clap.workspace = true
-# Not linked: the dependency makes `cargo build -p buoy-cli` build the NIF library of the
-# native tier, which the CLI finds in `deps/` next to itself (src/native.rs).
-buoy-jit = { path = "../buoy-jit" }
 
 # build.rs compiles the vendored Temporal polyfill into a runtime module.
 [build-dependencies]

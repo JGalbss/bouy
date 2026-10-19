@@ -9,8 +9,8 @@
 %%         deopt -> <the Erlang tier>
 %%     end
 %%
-%% `enter/4` compiles the IR once per VM with the NIF library `buoy_jit`, whose path
-%% `BUOY_JIT` gives without the `.so`, and keeps the code in a persistent term. It runs
+%% `enter/4` compiles the IR once per VM with the NIF library `buoy_jit.so`, which the CLI
+%% writes next to the runtime's .beam files, and keeps the code in a persistent term. It runs
 %% `Prepare`, which checks that the classes and intrinsics of the island are as their
 %% definitions made them and returns `{Classes, Globals}`: each class of the island with
 %% the keys of its fields, and the values of the variables that the island reads or
@@ -31,13 +31,17 @@
 %% A process that bails this often from one island stops trying it.
 -define(MAX_BAILS, 4).
 
+%% `BUOY_JIT=0` keeps every call in the Erlang tier. A runtime without the library, such
+%% as the build of rebar3, does the same.
 init() ->
     persistent_term:put({?MODULE, trace}, os:getenv("BUOY_JIT_TRACE", "") =/= ""),
-    case os:getenv("BUOY_JIT", "") of
-        Path when Path =:= ""; Path =:= "0"; Path =:= "off" ->
+    case {os:getenv("BUOY_JIT", ""), code:where_is_file("buoy_jit.so")} of
+        {Off, _} when Off =:= "0"; Off =:= "off" ->
             ok;
-        Path ->
-            case erlang:load_nif(Path, 0) of
+        {_, non_existing} ->
+            ok;
+        {_, Path} ->
+            case erlang:load_nif(filename:rootname(Path), 0) of
                 ok -> persistent_term:put({?MODULE, loaded}, true);
                 {error, _} -> ok
             end,

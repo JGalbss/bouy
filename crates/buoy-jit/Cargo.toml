@@ -8,10 +8,10 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
-# The VM loads the library with erlang:load_nif/2. The rlib lets the CLI depend on the
-# crate, so that building the CLI builds the library.
+# The VM loads the library with erlang:load_nif/2. crates/buoy-cli/build.rs builds it and
+# embeds it in the buoy binary.
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 buoy-jit-ir = { path = "../buoy-jit-ir" }

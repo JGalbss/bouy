@@ -1,6 +1,5 @@
 //! `buoy`: compiles a TypeScript program to Erlang and runs it on one BEAM VM.
 
-mod jit;
 mod node;
 mod runtime;
 
@@ -424,12 +423,6 @@ fn start_program(
     // `process.execPath` names it, as an absolute path without symbolic links, as Node's does.
     if let Ok(compiler) = env::current_exe().and_then(|path| path.canonicalize()) {
         vm.env("BUOY_COMPILER", compiler);
-    }
-    // `BUOY_JIT=0` keeps every call in the Erlang tier.
-    if env::var_os("BUOY_JIT").is_none()
-        && let Some(library) = jit::library()
-    {
-        vm.env("BUOY_JIT", library);
     }
     start(vm)
 }

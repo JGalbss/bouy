@@ -176,7 +176,6 @@ name = "buoy-cli"
 version = "0.1.0"
 dependencies = [
  "buoy-compiler",
- "buoy-jit",
  "buoy-suites",
  "clap",
 ]

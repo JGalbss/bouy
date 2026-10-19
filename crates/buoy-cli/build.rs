@@ -6,7 +6,8 @@
 //! It also compiles the vendored Temporal polyfill into one more runtime source,
 //! `buoy_temporal.erl`, with the reference compiler (see `temporal_module`), each Node
 //! built-in of `runtime/node/builtins.txt` into a runtime source `buoy_node@<id>.erl` (see
-//! `node_modules`), and the NIF library of `crates/buoy-native` (see `native_library`).
+//! `node_modules`), and the NIF libraries of `crates/buoy-native` and `crates/buoy-jit`
+//! (see `native_library`).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -69,12 +70,24 @@ fn runtime_sources(directory: &Path) -> Vec<PathBuf> {
     sources
 }
 
-/// Builds `crates/buoy-native` for the target in release mode, with a cargo of its own in
-/// `target/native`, and returns the code that embeds the library as `NATIVE` and its
-/// hash as `NATIVE_HASH`. Cargo cannot hand one crate's cdylib to another crate's build.
+/// The NIF libraries that the CLI embeds: each crate, by its directory under `crates`,
+/// and the Erlang module that loads it. The crates that a library depends on follow.
+const NATIVE_LIBRARIES: [(&str, &str, &[&str]); 2] = [
+    ("buoy-native", "buoy_native", &[]),
+    ("buoy-jit", "buoy_jit", &["buoy-jit-ir"]),
+];
+
+/// Builds the crates of `NATIVE_LIBRARIES` for the target in release mode, with a cargo of
+/// its own in `target/native`, and returns the code that embeds each library as
+/// `<module>.so` in `NATIVE` and the hash of them all as `NATIVE_HASH`. Cargo cannot hand
+/// one crate's cdylib to another crate's build.
 fn native_library(workspace: &Path, out: &Path) -> String {
-    let crate_dir = workspace.join("crates/buoy-native");
-    println!("cargo:rerun-if-changed={}", crate_dir.display());
+    for (crate_name, _, dependencies) in NATIVE_LIBRARIES {
+        for name in dependencies.iter().chain([&crate_name]) {
+            let crate_dir = workspace.join("crates").join(name);
+            println!("cargo:rerun-if-changed={}", crate_dir.display());
+        }
+    }
     println!(
         "cargo:rerun-if-changed={}",
         workspace.join("Cargo.lock").display()
@@ -86,15 +99,12 @@ fn native_library(workspace: &Path, out: &Path) -> String {
         .nth(4)
         .expect("OUT_DIR lies in the target directory")
         .join("native");
-    let status = std::process::Command::new(env::var_os("CARGO").expect("cargo sets CARGO"))
-        .args([
-            "build",
-            "--release",
-            "--package",
-            "buoy-native",
-            "--target",
-            &target,
-        ])
+    let mut cargo = std::process::Command::new(env::var_os("CARGO").expect("cargo sets CARGO"));
+    cargo.args(["build", "--release", "--target", &target]);
+    for (crate_name, _, _) in NATIVE_LIBRARIES {
+        cargo.args(["--package", crate_name]);
+    }
+    let status = cargo
         .arg("--manifest-path")
         .arg(workspace.join("Cargo.toml"))
         .arg("--target-dir")
@@ -104,31 +114,42 @@ fn native_library(workspace: &Path, out: &Path) -> String {
         .env_remove("CLIPPY_ARGS")
         .status()
         .expect("cargo runs");
-    assert!(status.success(), "cargo could not build crates/buoy-native");
-    let file = if target.contains("apple") {
-        "libbuoy_native.dylib"
-    } else {
-        "libbuoy_native.so"
-    };
-    let built = target_dir.join(&target).join("release").join(file);
-    let library = out.join("buoy_native.so");
-    let bytes = fs::read(&built).unwrap_or_else(|error| panic!("{}: {error}", built.display()));
-    fs::write(&library, &bytes).expect("OUT_DIR is writable");
-    let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
-    });
+    assert!(status.success(), "cargo could not build the NIF libraries");
+    let suffix = if target.contains("apple") { "dylib" } else { "so" };
+    let mut table = String::from(
+        "/// The NIF libraries: the file name in `ebin`, where the module of the same name loads\n\
+         /// it, and the contents.\npub const NATIVE: &[(&str, &[u8])] = &[\n",
+    );
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for (_, module, _) in NATIVE_LIBRARIES {
+        let built = target_dir
+            .join(&target)
+            .join("release")
+            .join(format!("lib{module}.{suffix}"));
+        let library = out.join(format!("{module}.so"));
+        let bytes =
+            fs::read(&built).unwrap_or_else(|error| panic!("{}: {error}", built.display()));
+        fs::write(&library, &bytes).expect("OUT_DIR is writable");
+        hash = bytes.iter().fold(hash, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+        let _ = writeln!(
+            table,
+            "    (\"{module}.so\", include_bytes!({:?})),",
+            library.display().to_string()
+        );
+    }
     let digits = format!("{hash:016x}");
-    format!(
-        "/// The NIF library `buoy_native.so` that `buoy_native.erl` loads.\n\
-         pub const NATIVE: &[u8] = include_bytes!({:?});\n\
-         /// The FNV-1a hash of `NATIVE`.\n\
+    let _ = write!(
+        table,
+        "];\n/// The FNV-1a hash of the libraries of `NATIVE`.\n\
          pub const NATIVE_HASH: u64 = 0x{}_{}_{}_{};\n",
-        library.display().to_string(),
         &digits[..4],
         &digits[4..8],
         &digits[8..12],
         &digits[12..]
-    )
+    );
+    table
 }
 
 /// `*.erl`, `*.hrl`, and `*.app.src`.
