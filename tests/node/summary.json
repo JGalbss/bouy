@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "f3627c0244817ccc50fb2011f6c6c4055cffa376",
+  "updated": "424ab8726a30e624e88edc0da5a7f35fd0ccaa83",
   "total": 4419,
   "outcomes": {
-    "pass": 2381,
+    "pass": 2382,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1394,
-    "timeout": 48,
+    "fail": 1395,
+    "timeout": 46,
     "harness_error": 0,
     "crash": 13
   },
@@ -23,10 +23,10 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 2270,
+        "pass": 2271,
         "skip": 545,
-        "fail": 1208,
-        "timeout": 43,
+        "fail": 1209,
+        "timeout": 41,
         "crash": 13
       },
       "sequential": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2381,
+        "pass": 2382,
         "skip": 240,
-        "fail": 1394,
-        "timeout": 48,
+        "fail": 1395,
+        "timeout": 46,
         "crash": 13
       }
     },
@@ -168,10 +168,10 @@
         "crash": 1
       },
       "process": {
-        "pass": 100,
+        "pass": 101,
         "skip": 8,
-        "fail": 19,
-        "timeout": 4
+        "fail": 20,
+        "timeout": 2
       },
       "punycode": {
         "pass": 1

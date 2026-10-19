@@ -19,13 +19,18 @@
 -define(NODE_METHODS, [<<"dir">>, <<"time">>, <<"timeEnd">>, <<"timeLog">>, <<"trace">>, <<"assert">>, <<"clear">>,
                        <<"count">>, <<"countReset">>, <<"group">>, <<"groupEnd">>, <<"table">>, <<"dirxml">>,
                        <<"groupCollapsed">>]).
+%% The methods that V8's console adds after Console (buoy_binding_inspector),
+%% with their lengths.
+-define(V8_METHODS, [{<<"profile">>, 0}, {<<"profileEnd">>, 0}, {<<"timeStamp">>, 0}, {<<"context">>, 1},
+                     {<<"createTask">>, 0}]).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
     Methods = [{Name, F, 7} || {Name, F} <- ?METHODS(<<"console">>, [{Name, 0} || Name <- ?PRINTS ++ ?NODE_METHODS])],
     Get = buoy_ref_realm:builtin(<<"get console.Console">>, <<"get Console">>, 0, fun(_This, _Args) -> node_member(<<"Console">>) end),
     Set = buoy_ref_realm:builtin(<<"set console.Console">>, <<"set Console">>, 1, fun(This, Args) -> define_member(This, <<"Console">>, buoy_ref_realm:arg(1, Args)) end),
-    Members = Methods ++ [{<<"Console">>, {'$accessor', Get, Set}, 6}, {?SYM(toStringTag), <<"console">>, 4}],
+    V8 = [{Name, F, 7} || {Name, F} <- ?METHODS(<<"console">>, ?V8_METHODS)],
+    Members = Methods ++ [{<<"Console">>, {'$accessor', Get, Set}, 6} | V8] ++ [{?SYM(toStringTag), <<"console">>, 4}],
     [{'console', buoy_ref_realm:record(object, ?OBJECT_PROTO, Members, none)}].
 
 -spec globals() -> [{binary(), term()}].

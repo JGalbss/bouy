@@ -760,11 +760,11 @@ node:console.Console.prototype.timeEnd pass
 node:console.Console.prototype.timeLog pass
 node:console.Console.prototype.trace pass
 node:console.Console.prototype.warn pass
-node:console.assert fail
+node:console.assert pass
 node:console.error pass
-node:console.profile fail
-node:console.profileEnd fail
-node:console.timeStamp fail
+node:console.profile pass
+node:console.profileEnd pass
+node:console.timeStamp pass
 node:crypto fail
 node:crypto.Certificate fail
 node:crypto.Certificate.exportChallenge fail

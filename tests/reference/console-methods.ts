@@ -1,6 +1,9 @@
 // The global console has every method of Node's console, also in a program
 // that has loaded no Node module before it calls them. A log function taken
-// before the first group follows the group.
+// before the first group follows the group. The methods that V8's console adds
+// are there too.
+console.log(typeof console.timeStamp, typeof console.profile, console.assert.length);
+console.log(console.createTask("task").run(() => "ran"));
 const log = console.log;
 console.group("group");
 console.log("inside");

@@ -2804,8 +2804,8 @@ parallel/test-process-ppid.js pass
 parallel/test-process-prototype.js pass
 parallel/test-process-raw-debug.js pass
 parallel/test-process-really-exit.js pass
-parallel/test-process-redirect-warnings-env.js timeout
-parallel/test-process-redirect-warnings.js timeout
+parallel/test-process-redirect-warnings-env.js fail
+parallel/test-process-redirect-warnings.js pass
 parallel/test-process-ref-unref.js pass
 parallel/test-process-release.js pass
 parallel/test-process-remove-all-signal-listeners.js pass
