@@ -4,7 +4,9 @@
 //! `'$uninitialized'` until the declaration runs, and a read before then throws a
 //! `ReferenceError`: the temporal dead zone.
 
-use oxc::ast::ast::{ForStatementLeft, FormalParameters, Statement, SwitchCase, SwitchStatement};
+use oxc::ast::ast::{
+    ForStatementLeft, FormalParameters, Statement, SwitchCase, SwitchStatement, VariableDeclaration,
+};
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
@@ -49,6 +51,26 @@ impl<'a> Lowerer<'a, '_> {
                 && self.read_early(symbol, end, &hoisted)
             {
                 code.push(self.early_cell(symbol));
+            }
+        }
+        code
+    }
+
+    /// The cells of the lexical bindings of the head of a `for` loop that their own
+    /// initializers read, such as a closure that the initializer makes.
+    pub fn early_head(&mut self, declaration: &'a VariableDeclaration<'a>) -> Vec<Expr> {
+        let mut code = Vec::new();
+        if !declaration.kind.is_lexical() {
+            return code;
+        }
+        for declarator in &declaration.declarations {
+            for id in declarator.id.get_binding_identifiers() {
+                if let Some(symbol) = id.symbol_id.get()
+                    && !self.frame.env.contains_key(&symbol)
+                    && self.read_early(symbol, declarator.span.end, &[])
+                {
+                    code.push(self.early_cell(symbol));
+                }
             }
         }
         code

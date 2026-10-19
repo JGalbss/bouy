@@ -129,7 +129,11 @@ impl<'a> Lowerer<'a, '_> {
         let saved_env = self.frame.env.clone();
         match &statement.init {
             _ if !init => {}
-            Some(ForStatementInit::VariableDeclaration(declaration)) => self.variables(declaration),
+            Some(ForStatementInit::VariableDeclaration(declaration)) => {
+                let early = self.early_head(declaration);
+                self.pre.extend(early);
+                self.variables(declaration);
+            }
             Some(other) => {
                 if let Some(expression) = other.as_expression() {
                     self.effect(expression);
