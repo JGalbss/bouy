@@ -213,6 +213,10 @@ start_ssl() ->
             %% OpenSSL's server sends two TLS 1.3 tickets.
             application:set_env(ssl, server_session_tickets_amount, 2),
             {ok, _} = application:ensure_all_started(ssl),
+            %% ssl loads a module on its first alert or close_notify; a load
+            %% that waits on the disk then stalls a connection mid-stream.
+            {ok, Modules} = application:get_key(ssl, modules),
+            ok = code:ensure_modules_loaded(Modules),
             persistent_term:put({?MODULE, ssl}, true),
             ok
     end.
