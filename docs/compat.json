@@ -3283,16 +3283,16 @@
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "287fefb",
+      "updated": "853b704",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 3952,
+        "pass": 4375,
         "rejected": 0,
         "late": 0,
         "skip": 0,
-        "never": 0,
-        "fail": 508,
+        "never": 80,
+        "fail": 5,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3300,12 +3300,14 @@
       "groups": {
         "docs": {
           "deprecated": {
-            "pass": 110,
-            "fail": 19
+            "pass": 125,
+            "never": 2,
+            "fail": 2
           },
           "documented": {
-            "pass": 3842,
-            "fail": 489
+            "pass": 4250,
+            "never": 78,
+            "fail": 3
           }
         },
         "module": {
@@ -3493,8 +3495,7 @@
             "pass": 1
           },
           "console": {
-            "pass": 1,
-            "fail": 22
+            "pass": 23
           },
           "crypto": {
             "pass": 4
@@ -3512,8 +3513,7 @@
             "pass": 1
           },
           "module": {
-            "pass": 2,
-            "fail": 1
+            "pass": 3
           },
           "navigator": {
             "pass": 2
@@ -3538,8 +3538,7 @@
             "pass": 48
           },
           "node:console": {
-            "pass": 22,
-            "fail": 4
+            "pass": 26
           },
           "node:crypto": {
             "pass": 401
@@ -3573,10 +3572,10 @@
             "pass": 318
           },
           "node:http2": {
-            "fail": 112
+            "pass": 112
           },
           "node:https": {
-            "fail": 78
+            "pass": 78
           },
           "node:inspector": {
             "never": 40
@@ -3621,7 +3620,7 @@
             "pass": 27
           },
           "node:repl": {
-            "fail": 28
+            "pass": 28
           },
           "node:sea": {
             "pass": 6
@@ -3660,7 +3659,7 @@
             "pass": 6
           },
           "node:tls": {
-            "fail": 126
+            "pass": 126
           },
           "node:trace_events": {
             "pass": 3
