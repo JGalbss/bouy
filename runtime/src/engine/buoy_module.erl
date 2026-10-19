@@ -882,7 +882,9 @@ import_traced(From, Specifier, Options, Phase) ->
             none -> buoy_ref:to_string(Specifier);
             Type -> buoy_ref_string:concat([buoy_ref:to_string(Specifier), <<0>>, Type])
         end,
-        case target(From, Text, import) of
+        case has_query_or_fragment(Specifier) orelse target(From, Text, import) of
+            true ->
+                node_import(From, Specifier, Options, Phase, Resolve, Reject);
             {_Path, Module} when is_atom(Module), Module =/= none ->
                 validate_attributes(Module, Options),
                 import_target(Module, Phase, Resolve, Reject);
@@ -974,6 +976,15 @@ load_dynamic(Target, Resolve, Reject) ->
     catch
         error:Reason:Stack -> Reject(buoy_ref:caught(Reason, Stack))
     end.
+
+%% Whether a path or file: URL specifier has a query or a fragment. Node's
+%% loader keys a module by its URL, so ./a.mjs?x is another module than
+%% ./a.mjs, with the source text of the file at its load: Node's ESM loader
+%% loads it, and not the module of the program at that path.
+has_query_or_fragment(Specifier) ->
+    Text = buoy_ref_string:to_utf8(buoy_ref:to_string(Specifier)),
+    (relative(Text) orelse binary:match(Text, <<"file:">>) =:= {0, 5})
+        andalso binary:match(Text, [<<"?">>, <<"#">>]) =/= nomatch.
 
 %% The import attributes of import(): the type of a text or bytes module, or
 %% none. The request key of such a module holds its type after a NUL, as the
@@ -1555,8 +1566,13 @@ instantiate(M) ->
 -spec program_module(term()) -> {ok, module()} | none.
 program_module(Url) ->
     Graph = case erlang:get(?GRAPH) of undefined -> #{}; G -> G end,
+    %% A URL with a query or a fragment names another module than the file.
     Path = case buoy_ref_string:to_utf8(Url) of
-        <<"file://", Rest/binary>> -> buoy_ref_string:from_utf8(uri_string:percent_decode(hd(binary:split(Rest, [<<"?">>, <<"#">>]))));
+        <<"file://", Rest/binary>> ->
+            case binary:match(Rest, [<<"?">>, <<"#">>]) of
+                nomatch -> buoy_ref_string:from_utf8(uri_string:percent_decode(Rest));
+                _ -> none
+            end;
         <<"data:", _/binary>> -> Url;
         _ -> none
     end,

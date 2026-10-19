@@ -186,6 +186,14 @@ port.on('message', (message) => {
     port.postMessage({ type: UP_AND_RUNNING });
     const { join } = require('path');
     switch (doEval) {
+      case 'internal': {
+        // Currently the only user of internal eval is the async loader hook thread.
+        assert(filename === 'internal/modules/esm/worker', `Unexpected internal eval ${filename}`);
+        const setupModuleWorker = require('internal/modules/esm/worker');
+        setupModuleWorker(workerData, publicPort);
+        break;
+      }
+
       case 'classic': {
         const name = '[worker eval]';
         ObjectDefineProperty(process, '_eval', {

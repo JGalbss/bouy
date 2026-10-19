@@ -59,7 +59,8 @@ binding() ->
         {<<"Worker">>, Worker},
         {<<"getEnvMessagePort">>, F(<<"getEnvMessagePort">>, 0, fun(_, _) -> env_port() end)},
         {<<"threadId">>, ThreadId}, {<<"threadName">>, Name}, {<<"isMainThread">>, Info =:= undefined},
-        {<<"isInternalThread">>, false}, {<<"ownsProcessState">>, Info =:= undefined},
+        {<<"isInternalThread">>, is_map(Info) andalso maps:get(internal, Info, false)},
+        {<<"ownsProcessState">>, Info =:= undefined},
         {<<"kMaxYoungGenerationSizeMb">>, ?K_YOUNG}, {<<"kMaxOldGenerationSizeMb">>, ?K_OLD}, {<<"kCodeRangeSizeMb">>, ?K_CODE},
         {<<"kStackSizeMb">>, ?K_STACK}, {<<"kTotalResourceLimitCount">>, 4},
         {<<"resourceLimits">>, limits_array(Limits)},
@@ -141,7 +142,8 @@ new_worker(This, Args) ->
     buoy_heap:set(This, <<"threadId">>, ThreadId),
     buoy_heap:set(This, <<"threadName">>, Name),
     save(This, #{thread_id => ThreadId, name => Name, pipe => Pipe, env => Env, exec_argv => ExecArgv,
-                 limits => Limits, url => A(1), refed => false, status => created, async_id => AsyncId}),
+                 limits => Limits, url => A(1), refed => false, status => created, async_id => AsyncId,
+                 internal => A(6) =:= true}),
     undefined.
 
 %% The env of the worker: a copy of this realm's (null), this realm's own
@@ -245,9 +247,10 @@ limits_array(Limits) ->
 %% startThread(): the process of the worker, and the watcher that reports its
 %% end. The handle stays a root of the heap until then.
 start_thread(This) ->
-    #{thread_id := ThreadId, name := Name, pipe := Pipe, env := Env, exec_argv := ExecArgv, limits := Limits} = S = state(This),
+    #{thread_id := ThreadId, name := Name, pipe := Pipe, env := Env, exec_argv := ExecArgv, limits := Limits,
+      internal := Internal} = S = state(This),
     Init = #{thread_id => ThreadId, name => Name, pipe => Pipe, env => Env, exec_argv => ExecArgv,
-             limits => Limits, graph => buoy_module:graph()},
+             limits => Limits, graph => buoy_module:graph(), internal => Internal},
     Parent = self(),
     Key = make_ref(),
     Worker = spawn(?MODULE, thread_main, [Init]),
