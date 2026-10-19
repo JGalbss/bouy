@@ -1,0 +1,2 @@
+namespace: object Module
+  Retrier: class/1 {pending, retry, retrying, working}

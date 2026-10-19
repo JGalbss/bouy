@@ -1,0 +1,2 @@
+module.exports: object
+  isArrayBuffer: function/1 (false, false, false, false, false, false, false, false, false)

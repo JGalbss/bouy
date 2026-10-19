@@ -1,0 +1,8 @@
+namespace: object Module
+  RUNTIME_MODULE_ID: string
+  RolldownMagicString: class/0 {append, appendLeft, appendRight, clone, filename, generateDecodedMap, generateMap, getIndentString, hasChanged, ignoreList, indent, indentExclusionRanges, insert, isEmpty, isRolldownMagicString, lastChar, lastLine, length, move, offset, original, overwrite, prepend, prependLeft, prependRight, relocate, remove, replace, replaceAll, replaceRegex, reset, slice, snip, toString, trim, trimEnd, trimLines, trimStart, update}
+  VERSION: string
+  build: function/1
+  defineConfig: function/1
+  rolldown: function/1
+  watch: function/1

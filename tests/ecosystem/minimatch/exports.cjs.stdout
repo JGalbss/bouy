@@ -1,0 +1,11 @@
+module.exports: function/3
+  GLOBSTAR: object
+  Minimatch: class/2 {_matchGlobStarBodySections, _matchGlobstar, _matchOne, braceExpand, debug, make, makeRe, match, matchOne, parse, parseNegate}
+    GLOBSTAR: object
+    defaults: function/1
+  braceExpand: function/2
+  defaults: function/1
+  filter: function/2
+  makeRe: function/2
+  match: function/3
+  sep: string

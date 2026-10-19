@@ -1,0 +1,9 @@
+namespace: object Module
+  decode: function/1
+  decodeGeneratedRanges: function/1
+  decodeOriginalScopes: function/1
+  decodeRangeMappings: function/1
+  encode: function/1
+  encodeGeneratedRanges: function/1
+  encodeOriginalScopes: function/1
+  encodeRangeMappings: function/1

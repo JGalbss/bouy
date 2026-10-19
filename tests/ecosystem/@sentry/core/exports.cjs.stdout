@@ -1,0 +1,127 @@
+module.exports: object Module
+  ANTHROPIC_AI_INTEGRATION_NAME: string
+  CONSOLE_LEVELS: object Array
+  Client: class/1 {_captureEvent, _clearOutcomes, _flushOutcomes, _isClientDoneProcessing, _isEnabled, _prepareEvent, _process, _processEvent, _setupIntegrations, _updateSessionFromEvent, addEventProcessor, addIntegration, captureEvent, captureException, captureMessage, captureSession, close, dispose, emit, flush, getDataCollectionOptions, getDsn, getEventProcessors, getIntegrationByName, getIntegrationNames, getOptions, getSdkMetadata, getTransport, init, on, recordDroppedEvent, registerCleanup, sendEnvelope, sendEvent, sendSession}
+  DEFAULT_ENVIRONMENT: string
+  DEFAULT_RETRY_AFTER: number
+  DEV_ENVIRONMENT: string
+  GEN_AI_CONVERSATION_ID_ATTRIBUTE: string
+  GEN_AI_INPUT_MESSAGES_ORIGINAL_LENGTH_ATTRIBUTE: string
+  GEN_AI_REQUEST_MODEL_ATTRIBUTE: string
+  GEN_AI_SYSTEM_INSTRUCTIONS_ATTRIBUTE: string
+  GLOBAL_OBJ: object global
+    atob: function/1
+    btoa: function/1
+    clearImmediate: function/1
+    clearInterval: function/1
+    clearTimeout: function/1
+    crypto: object Crypto
+    fetch: function/1
+    global: object global
+    localStorage: object
+    navigator: object
+    performance: object Performance
+    queueMicrotask: function/1
+    sessionStorage: object
+    setImmediate: function/1
+    setInterval: function/2
+    setTimeout: function/2
+    structuredClone: function/2
+  GOOGLE_GENAI_INTEGRATION_NAME: string
+  HTTP_ON_CLIENT_REQUEST: string
+  HTTP_ON_SERVER_REQUEST: string
+  INTERNAL_getSegmentSpan: function/1
+  LANGCHAIN_INTEGRATION_NAME: string
+  LANGGRAPH_INTEGRATION_NAME: string
+  LAST_STEP_ONLY_USAGE_KEYS: object Set
+  LRUMap: class/1 {clear, get, keys, remove, set, size, values}
+  MAX_BAGGAGE_STRING_LENGTH: number
+  MAX_BODY_BYTE_LENGTH: number
+  MULTIPLEXED_TRANSPORT_EXTRA_KEY: string
+  OPENAI_INTEGRATION_NAME: string
+  SDK_VERSION: string
+  SEMANTIC_ATTRIBUTE_CACHE_HIT: string
+  SEMANTIC_ATTRIBUTE_CACHE_ITEM_SIZE: string
+  SEMANTIC_ATTRIBUTE_CACHE_KEY: string
+  SEMANTIC_ATTRIBUTE_EXCLUSIVE_TIME: string
+  SEMANTIC_ATTRIBUTE_HTTP_REQUEST_METHOD: string
+  SEMANTIC_ATTRIBUTE_PROFILE_ID: string
+  SEMANTIC_ATTRIBUTE_SENTRY_CUSTOM_SPAN_NAME: string
+  SEMANTIC_ATTRIBUTE_SENTRY_ENVIRONMENT: string
+  SEMANTIC_ATTRIBUTE_SENTRY_IDLE_SPAN_FINISH_REASON: string
+  SEMANTIC_ATTRIBUTE_SENTRY_MEASUREMENT_UNIT: string
+  SEMANTIC_ATTRIBUTE_SENTRY_MEASUREMENT_VALUE: string
+  SEMANTIC_ATTRIBUTE_SENTRY_OP: string
+  SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN: string
+  SEMANTIC_ATTRIBUTE_SENTRY_PREVIOUS_TRACE_SAMPLE_RATE: string
+  SEMANTIC_ATTRIBUTE_SENTRY_RELEASE: string
+  SEMANTIC_ATTRIBUTE_SENTRY_SAMPLE_RATE: string
+  SEMANTIC_ATTRIBUTE_SENTRY_SDK_INTEGRATIONS: string
+  SEMANTIC_ATTRIBUTE_SENTRY_SDK_NAME: string
+  SEMANTIC_ATTRIBUTE_SENTRY_SDK_VERSION: string
+  SEMANTIC_ATTRIBUTE_SENTRY_SEGMENT_ID: string
+  SEMANTIC_ATTRIBUTE_SENTRY_SEGMENT_NAME: string
+  SEMANTIC_ATTRIBUTE_SENTRY_SOURCE: string
+  SEMANTIC_ATTRIBUTE_SENTRY_STATUS_MESSAGE: string
+  SEMANTIC_ATTRIBUTE_URL_FULL: string
+  SEMANTIC_ATTRIBUTE_USER_EMAIL: string
+  SEMANTIC_ATTRIBUTE_USER_ID: string
+  SEMANTIC_ATTRIBUTE_USER_IP_ADDRESS: string
+  SEMANTIC_ATTRIBUTE_USER_USERNAME: string
+  SEMANTIC_LINK_ATTRIBUTE_LINK_TYPE: string
+  SENTRY_API_VERSION: string
+  SENTRY_BAGGAGE_KEY_PREFIX: string
+  SENTRY_BAGGAGE_KEY_PREFIX_REGEX: object RegExp
+  SENTRY_BUFFER_FULL_ERROR: symbol
+  SPAN_KIND: object
+    CLIENT: number
+    CONSUMER: number
+    INTERNAL: number
+    PRODUCER: number
+    SERVER: number
+  SPAN_STATUS_ERROR: number
+  SPAN_STATUS_OK: number
+  SPAN_STATUS_UNSET: number
+  SUPPRESS_TRACING_KEY: string
+  Scope: class/0 {_notifyScopeListeners, addAttachment, addBreadcrumb, addEventProcessor, addScopeListener, captureEvent, captureException, captureMessage, clear, clearAttachments, clearBreadcrumbs, clone, getClient, getLastBreadcrumb, getPropagationContext, getScopeData, getSession, getUser, lastEventId, removeAttribute, setAttribute, setAttributes, setClient, setContext, setConversationId, setExtra, setExtras, setFingerprint, setLastEventId, setLevel, setPropagationContext, setSDKProcessingMetadata, setSession, setTag, setTags, setTransactionName, setUser, update}
+  SentryError: function/1
+  SentryNonRecordingSpan: class/0 {addEvent, addLink, addLinks, end, isRecording, recordException, setAttribute, setAttributes, setStatus, spanContext, updateName}
+  SentrySpan: class/0 {_convertSpanToTransaction, _onSpanEnded, addEvent, addLink, addLinks, end, getSpanJSON, getStreamedSpanJSON, isRecording, isStandaloneSpan, recordException, setAttribute, setAttributes, setStatus, spanContext, updateName, updateStartTime}
+  ServerRuntimeClient: class/1 {_prepareEvent, _setUpMetricsProcessing, captureCheckIn, captureEvent, captureException, dispose, eventFromException, eventFromMessage, registerCleanup}
+  SpanBuffer: class/2 {_removeTrace, add, drain, flush}
+  SyncPromise: class/1 {_executeHandlers, _runExecutor, catch, finally, then}
+  TRACEPARENT_REGEXP: object RegExp
+  TRACING_DEFAULTS: object
+    childSpanTimeout: number
+    finalTimeout: number
+    idleTimeout: number
+  UNKNOWN_FUNCTION: string
+  _INTERNAL_FLAG_BUFFER_SIZE: number
+  _INTERNAL_MAX_FLAGS_PER_SPAN: number
+  _INTERNAL_addFeatureFlagToActiveSpan: function/2
+  _INTERNAL_buildPostgresConnectionContext: function/1
+  _INTERNAL_captureLog: function/1
+  _INTERNAL_captureMetric: function/2
+  _INTERNAL_captureSerializedLog: function/2
+  _INTERNAL_captureSerializedMetric: function/2
+  _INTERNAL_cleanupToolCallSpanContext: function/1
+  _INTERNAL_clearAiProviderSkips: function/0
+  _INTERNAL_copyFlagsFromScopeToEvent: function/1
+  _INTERNAL_createTracingChannelBinding: function/2
+  _INTERNAL_enhanceErrorWithSentryInfo: function/1
+  _INTERNAL_filterCookies: function/2
+  _INTERNAL_filterKeyValueData: function/3
+  _INTERNAL_filterQueryParams: function/2
+  _INTERNAL_flushLogsBuffer: function/2
+  _INTERNAL_flushMetricsBuffer: function/2
+  _INTERNAL_getLangChainEmbeddingsSpanOptions: function/2
+  _INTERNAL_getLangGraphCreateAgentSpanOptions: function/1
+  _INTERNAL_getSpanContextForToolCallId: function/1
+  _INTERNAL_getSqlQuerySummary: function/1
+  _INTERNAL_getTracingHeadersForFetchRequest: function/4
+  _INTERNAL_insertFlagToScope: function/2
+  _INTERNAL_mergeLangChainCallbackHandler: function/2
+  _INTERNAL_reconstructPostgresQuery: function/1
+  _INTERNAL_safeDateNow: function/0
+  _INTERNAL_safeMathRandom: function/0
+  ... 382 more keys

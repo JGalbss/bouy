@@ -1,0 +1,4 @@
+module.exports: function/4
+  _cleanupOnExit: function/1
+  _getTmpname: function/1
+  sync: function/3

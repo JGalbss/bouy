@@ -1,0 +1,3 @@
+module.exports: object
+  FSWatcher: class/1 {_addPathCloser, _awaitWriteFinish, _closeFile, _closePath, _emit, _getGlobIgnored, _getWatchHelpers, _getWatchedDir, _handleError, _hasReadPermissions, _incrReadyCount, _isIgnored, _isntIgnored, _readdirp, _remove, _throttle, add, close, emitWithAll, getWatched, unwatch}
+  watch: function/2

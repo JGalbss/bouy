@@ -1,0 +1,9 @@
+namespace: object Module
+  default: object
+    fromTokenFile: function/0
+    fromWebToken: function/1
+  fromTokenFile: function/0
+  fromWebToken: function/1
+  module.exports: object
+    fromTokenFile: function/0
+    fromWebToken: function/1

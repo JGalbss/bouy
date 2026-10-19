@@ -1,0 +1,7 @@
+module.exports: function/0
+  data: object
+    browsers: object
+    prefixes: object
+  defaults: object Array
+  info: function/0
+  postcss: boolean

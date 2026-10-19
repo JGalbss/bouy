@@ -1,0 +1,6 @@
+module.exports: object
+  Address4: class/1 {_endAddress, _startAddress, bigInt, binaryZeroPad, correctForm, endAddress, endAddressExclusive, getBitsBase2, groupForV6, isBenchmarking, isBroadcast, isCGNAT, isDocumentation, isGlobal, isLinkLocal, isLoopback, isMulticast, isPrivate, isReserved, isUnspecified, mask, networkForm, nextNetwork, offset, parse, reverseForm, startAddress, startAddressExclusive, subnetMaskAddress, toArray, toGroup6, toHex, wildcardMask, withSubnetMask}
+  Address6: class/2 {_endAddress, _startAddress, bigInt, binaryZeroPad, canonicalForm, correctForm, decimal, embeddedIPv4, endAddress, endAddressExclusive, getBits, getBitsBase16, getBitsBase2, getBitsPastSubnet, getScope, getType, group, href, inspect6to4, inspectTeredo, is4, is6to4, isBenchmarking, isBroadcast, isCGNAT, isCanonical, isDocumentation, isGlobal, isLinkLocal, isLoopback, isMapped4, isMulticast, isPrivate, isTeredo, isULA, isUnspecified, link, mask, microsoftTranscription, networkForm, nextNetwork, offset, parse, parse4in6, possibleSubnets, regularExpression, regularExpressionString, reverseForm, startAddress, startAddressExclusive, subnetMaskAddress, to4, to4in6, to6to4, toAddress4Nat64, toByteArray, toUnsignedByteArray, wildcardMask, withSubnetMask}
+  AddressError: function/2
+  v6: object
+    helpers: object

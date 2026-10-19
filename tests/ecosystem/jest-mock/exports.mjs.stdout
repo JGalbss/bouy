@@ -1,0 +1,6 @@
+namespace: object Module
+  ModuleMocker: class/1 {_createMockFunction, _defaultMockConfig, _defaultMockState, _ensureMockConfig, _ensureMockState, _findReplacedProperty, _generateMock, _getSlots, _makeComponent, _makeWhenDispatcherImpl, _resetWhenCalledWithSubMocks, _spyOnProperty, _typeOf, clearAllMocks, clearMocksOnScope, fn, generateFromMetadata, getMetadata, isMockFunction, mocked, replaceProperty, resetAllMocks, restoreAllMocks, spyOn}
+  fn: function/1
+  mocked: function/2
+  replaceProperty: function/3
+  spyOn: function/3

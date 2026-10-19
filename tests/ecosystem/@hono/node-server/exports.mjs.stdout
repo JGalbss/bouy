@@ -1,0 +1,6 @@
+namespace: object Module
+  RequestError: function/2
+  createAdaptorServer: function/1
+  getRequestListener: function/1
+  serve: function/2
+  upgradeWebSocket: function/0

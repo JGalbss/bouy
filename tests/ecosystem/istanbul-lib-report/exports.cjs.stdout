@@ -1,0 +1,4 @@
+module.exports: object
+  ReportBase: class/0 {execute}
+  createContext: function/1
+  getDefaultWatermarks: function/0

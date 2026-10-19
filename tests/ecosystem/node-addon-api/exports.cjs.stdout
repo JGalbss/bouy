@@ -1,0 +1,7 @@
+module.exports: object
+  gyp: string
+  include: string
+  include_dir: string
+  isNodeApiBuiltin: boolean
+  needsFlag: boolean
+  targets: string

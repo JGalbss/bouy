@@ -1,0 +1,25 @@
+namespace: object Module
+  ALIGN_OPTIONS: object Array
+  Anchor: object
+    $$typeof: symbol
+    render: function/2
+  Arrow: object
+    $$typeof: symbol
+    render: function/2
+  Content: object
+    $$typeof: symbol
+    render: function/2
+  Popper: function/1
+  PopperAnchor: object
+    $$typeof: symbol
+    render: function/2
+  PopperArrow: object
+    $$typeof: symbol
+    render: function/2
+  PopperContent: object
+    $$typeof: symbol
+    render: function/2
+  Root: function/1
+  SIDE_OPTIONS: object Array
+  createPopperScope: function/0
+    scopeName: string

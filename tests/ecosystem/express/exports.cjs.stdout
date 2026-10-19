@@ -1,0 +1,105 @@
+module.exports: function/0
+  Route: class/1 {_handlesMethod, _methods, acl, all, bind, checkout, connect, copy, delete, dispatch, get, head, link, lock, m-search, merge, mkactivity, mkcalendar, mkcol, move, notify, options, patch, post, propfind, proppatch, purge, put, query, rebind, report, search, source, subscribe, trace, unbind, unlink, unlock, unsubscribe}
+  Router: function/1
+    Route: class/1 {_handlesMethod, _methods, acl, all, bind, checkout, connect, copy, delete, dispatch, get, head, link, lock, m-search, merge, mkactivity, mkcalendar, mkcol, move, notify, options, patch, post, propfind, proppatch, purge, put, query, rebind, report, search, source, subscribe, trace, unbind, unlink, unlock, unsubscribe}
+  application: object
+    acl: function/1
+    all: function/1
+    bind: function/1
+    checkout: function/1
+    connect: function/1
+    copy: function/1
+    defaultConfiguration: function/0
+    delete: function/1
+    disable: function/1
+    disabled: function/1
+    enable: function/1
+    enabled: function/1
+    engine: function/2
+    get: function/1
+    handle: function/3
+    head: function/1
+    init: function/0
+    link: function/1
+    listen: function/0
+    lock: function/1
+    m-search: function/1
+    merge: function/1
+    mkactivity: function/1
+    mkcalendar: function/1
+    mkcol: function/1
+    move: function/1
+    notify: function/1
+    options: function/1
+    param: function/2
+    patch: function/1
+    path: function/0
+    post: function/1
+    propfind: function/1
+    proppatch: function/1
+    purge: function/1
+    put: function/1
+    query: function/1
+    rebind: function/1
+    render: function/3
+    report: function/1
+    route: function/1
+    search: function/1
+    set: function/2
+    source: function/1
+    subscribe: function/1
+    trace: function/1
+    unbind: function/1
+    unlink: function/1
+    unlock: function/1
+    unsubscribe: function/1
+    use: function/1
+  json: function/1
+  raw: function/1
+  request: object
+    accepts: function/0
+    acceptsCharsets: function/0
+    acceptsEncodings: function/0
+    acceptsLanguages: function/0
+    fresh: throws TypeError
+    get: function/1
+    header: function/1
+    host: throws TypeError
+    hostname: throws TypeError
+    ip: throws TypeError
+    ips: throws TypeError
+    is: function/1
+    path: throws TypeError
+    protocol: throws TypeError
+    query: throws TypeError
+    range: function/2
+    secure: throws TypeError
+    stale: throws TypeError
+    subdomains: throws TypeError
+    xhr: boolean
+  response: object
+    append: function/2
+    attachment: function/1
+    clearCookie: function/2
+    contentType: function/1
+    cookie: function/3
+    download: function/4
+    format: function/1
+    get: function/1
+    header: function/2
+    json: function/1
+    jsonp: function/1
+    links: function/1
+    location: function/1
+    redirect: function/1
+    render: function/3
+    send: function/1
+    sendFile: function/3
+    sendStatus: function/1
+    set: function/2
+    status: function/1
+    type: function/1
+    vary: function/1
+  static: function/2
+  text: function/1
+  urlencoded: function/1

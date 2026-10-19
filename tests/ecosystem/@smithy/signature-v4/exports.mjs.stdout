@@ -1,0 +1,136 @@
+namespace: object Module
+  ALGORITHM_IDENTIFIER: string
+  ALGORITHM_IDENTIFIER_V4A: string
+  ALGORITHM_QUERY_PARAM: string
+  ALWAYS_UNSIGNABLE_HEADERS: object
+    authorization: boolean
+    cache-control: boolean
+    connection: boolean
+    expect: boolean
+    from: boolean
+    keep-alive: boolean
+    max-forwards: boolean
+    pragma: boolean
+    referer: boolean
+    te: boolean
+    trailer: boolean
+    transfer-encoding: boolean
+    upgrade: boolean
+    user-agent: boolean
+    x-amzn-trace-id: boolean
+  AMZ_DATE_HEADER: string
+  AMZ_DATE_QUERY_PARAM: string
+  AUTH_HEADER: string
+  CREDENTIAL_QUERY_PARAM: string
+  DATE_HEADER: string
+  EVENT_ALGORITHM_IDENTIFIER: string
+  EXPIRES_QUERY_PARAM: string
+  GENERATED_HEADERS: object Array
+  HOST_HEADER: string
+  KEY_TYPE_IDENTIFIER: string
+  MAX_CACHE_SIZE: number
+  MAX_PRESIGNED_TTL: number
+  PROXY_HEADER_PATTERN: object RegExp
+  REGION_SET_PARAM: string
+  SEC_HEADER_PATTERN: object RegExp
+  SHA256_HEADER: string
+  SIGNATURE_HEADER: string
+  SIGNATURE_QUERY_PARAM: string
+  SIGNED_HEADERS_QUERY_PARAM: string
+  SignatureV4: class/1 {getSignature, getSigningKey, presign, sign, signEvent, signMessage, signRequest, signString}
+  SignatureV4Base: class/1 {createCanonicalRequest, createStringToSign, formatDate, getCanonicalHeaderList, getCanonicalPath, validateResolvedCredentials}
+  TOKEN_HEADER: string
+  TOKEN_QUERY_PARAM: string
+  UNSIGNABLE_PATTERNS: object Array
+  UNSIGNED_PAYLOAD: string
+  clearCredentialCache: function/0
+  createScope: function/3
+  default: object
+    ALGORITHM_IDENTIFIER: string
+    ALGORITHM_IDENTIFIER_V4A: string
+    ALGORITHM_QUERY_PARAM: string
+    ALWAYS_UNSIGNABLE_HEADERS: object
+    AMZ_DATE_HEADER: string
+    AMZ_DATE_QUERY_PARAM: string
+    AUTH_HEADER: string
+    CREDENTIAL_QUERY_PARAM: string
+    DATE_HEADER: string
+    EVENT_ALGORITHM_IDENTIFIER: string
+    EXPIRES_QUERY_PARAM: string
+    GENERATED_HEADERS: object Array
+    HOST_HEADER: string
+    KEY_TYPE_IDENTIFIER: string
+    MAX_CACHE_SIZE: number
+    MAX_PRESIGNED_TTL: number
+    PROXY_HEADER_PATTERN: object RegExp
+    REGION_SET_PARAM: string
+    SEC_HEADER_PATTERN: object RegExp
+    SHA256_HEADER: string
+    SIGNATURE_HEADER: string
+    SIGNATURE_QUERY_PARAM: string
+    SIGNED_HEADERS_QUERY_PARAM: string
+    SignatureV4: class/1 {getSignature, getSigningKey, presign, sign, signEvent, signMessage, signRequest, signString}
+    SignatureV4Base: class/1 {createCanonicalRequest, createStringToSign, formatDate, getCanonicalHeaderList, getCanonicalPath, validateResolvedCredentials}
+    TOKEN_HEADER: string
+    TOKEN_QUERY_PARAM: string
+    UNSIGNABLE_PATTERNS: object Array
+    UNSIGNED_PAYLOAD: string
+    clearCredentialCache: function/0
+    createScope: function/3
+    getCanonicalHeaders: function/3
+    getCanonicalQuery: function/1
+    getPayloadHash: function/2
+    getSigningKey: function/5
+    hasHeader: function/2
+    moveHeadersToQuery: function/1
+    prepareRequest: function/1
+    signatureV4aContainer: object
+  getCanonicalHeaders: function/3
+  getCanonicalQuery: function/1
+  getPayloadHash: function/2
+  getSigningKey: function/5
+  hasHeader: function/2
+  module.exports: object
+    ALGORITHM_IDENTIFIER: string
+    ALGORITHM_IDENTIFIER_V4A: string
+    ALGORITHM_QUERY_PARAM: string
+    ALWAYS_UNSIGNABLE_HEADERS: object
+    AMZ_DATE_HEADER: string
+    AMZ_DATE_QUERY_PARAM: string
+    AUTH_HEADER: string
+    CREDENTIAL_QUERY_PARAM: string
+    DATE_HEADER: string
+    EVENT_ALGORITHM_IDENTIFIER: string
+    EXPIRES_QUERY_PARAM: string
+    GENERATED_HEADERS: object Array
+    HOST_HEADER: string
+    KEY_TYPE_IDENTIFIER: string
+    MAX_CACHE_SIZE: number
+    MAX_PRESIGNED_TTL: number
+    PROXY_HEADER_PATTERN: object RegExp
+    REGION_SET_PARAM: string
+    SEC_HEADER_PATTERN: object RegExp
+    SHA256_HEADER: string
+    SIGNATURE_HEADER: string
+    SIGNATURE_QUERY_PARAM: string
+    SIGNED_HEADERS_QUERY_PARAM: string
+    SignatureV4: class/1 {getSignature, getSigningKey, presign, sign, signEvent, signMessage, signRequest, signString}
+    SignatureV4Base: class/1 {createCanonicalRequest, createStringToSign, formatDate, getCanonicalHeaderList, getCanonicalPath, validateResolvedCredentials}
+    TOKEN_HEADER: string
+    TOKEN_QUERY_PARAM: string
+    UNSIGNABLE_PATTERNS: object Array
+    UNSIGNED_PAYLOAD: string
+    clearCredentialCache: function/0
+    createScope: function/3
+    getCanonicalHeaders: function/3
+    getCanonicalQuery: function/1
+    getPayloadHash: function/2
+    getSigningKey: function/5
+    hasHeader: function/2
+    moveHeadersToQuery: function/1
+    prepareRequest: function/1
+    signatureV4aContainer: object
+  moveHeadersToQuery: function/1
+  prepareRequest: function/1
+  signatureV4aContainer: object
+    SignatureV4a: null

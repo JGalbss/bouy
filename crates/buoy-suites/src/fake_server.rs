@@ -1,4 +1,4 @@
-//! The fake model server of `runtime/test/buoy_fake_openai.erl` (contract section 14),
+//! The fake model server of `runtime/test/library/buoy_fake_openai.erl` (contract section 14),
 //! started once for the process. It serves the `OpenAI` and Anthropic APIs. The child keeps
 //! the stdin pipe of the server open, and the server halts when the pipe closes, as this
 //! process ends.
@@ -27,11 +27,11 @@ fn start() -> Result<Server, String> {
     let compiled = Command::new("erlc")
         .arg("-o")
         .arg(&build)
-        .arg(crate::repository().join("runtime/test/buoy_fake_openai.erl"))
+        .arg(crate::repository().join("runtime/test/library/buoy_fake_openai.erl"))
         .status()
         .map_err(|error| format!("cannot run erlc: {error}"))?;
     if !compiled.success() {
-        return Err("runtime/test/buoy_fake_openai.erl does not compile".to_owned());
+        return Err("runtime/test/library/buoy_fake_openai.erl does not compile".to_owned());
     }
     let mut child = Command::new("erl")
         .arg("-noshell")

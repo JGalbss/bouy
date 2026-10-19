@@ -1,0 +1,6 @@
+namespace: object Module
+  customAlphabet: function/1
+  customRandom: function/3
+  nanoid: function/0
+  random: function/1
+  urlAlphabet: string

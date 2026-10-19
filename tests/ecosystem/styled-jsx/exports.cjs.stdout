@@ -1,0 +1,6 @@
+module.exports: object
+  StyleRegistry: function/1
+  createStyleRegistry: function/0
+  style: function/1
+    dynamic: function/1
+  useStyleRegistry: function/0

@@ -1,0 +1,3 @@
+module.exports: object
+  format: function/1
+  parse: function/2

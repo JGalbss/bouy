@@ -1,0 +1,12 @@
+namespace: object Module
+  Root: object
+    $$typeof: symbol
+    render: function/2
+  Slot: object
+    $$typeof: symbol
+    render: function/2
+  Slottable: function/1
+    __radixId: symbol
+    displayName: string
+  createSlot: function/1
+  createSlottable: function/1

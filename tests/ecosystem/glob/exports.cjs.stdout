@@ -1,0 +1,12 @@
+module.exports: function/3
+  Glob: class/3 {_emitMatch, _finish, _makeAbs, _mark, _process, _processGlobStar, _processGlobStar2, _processReaddir, _processReaddir2, _processSimple, _processSimple2, _readdir, _readdirEntries, _readdirError, _readdirInGlobStar, _realpath, _realpathSet, _stat, _stat2, abort, pause, resume}
+  GlobSync: class/2 {_emitMatch, _finish, _makeAbs, _mark, _process, _processGlobStar, _processReaddir, _processSimple, _readdir, _readdirEntries, _readdirError, _readdirInGlobStar, _stat}
+  glob: function/3
+    Glob: class/3 {_emitMatch, _finish, _makeAbs, _mark, _process, _processGlobStar, _processGlobStar2, _processReaddir, _processReaddir2, _processSimple, _processSimple2, _readdir, _readdirEntries, _readdirError, _readdirInGlobStar, _realpath, _realpathSet, _stat, _stat2, abort, pause, resume}
+    GlobSync: class/2 {_emitMatch, _finish, _makeAbs, _mark, _process, _processGlobStar, _processReaddir, _processSimple, _readdir, _readdirEntries, _readdirError, _readdirInGlobStar, _stat}
+    glob: function/3
+    hasMagic: function/2
+    sync: function/2
+  hasMagic: function/2
+  sync: function/2
+    GlobSync: class/2 {_emitMatch, _finish, _makeAbs, _mark, _process, _processGlobStar, _processReaddir, _processSimple, _readdir, _readdirEntries, _readdirError, _readdirInGlobStar, _stat}

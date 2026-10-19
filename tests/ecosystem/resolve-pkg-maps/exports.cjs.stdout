@@ -1,0 +1,3 @@
+module.exports: object
+  resolveExports: function/3
+  resolveImports: function/3

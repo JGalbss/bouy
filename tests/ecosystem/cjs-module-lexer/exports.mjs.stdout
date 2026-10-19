@@ -1,0 +1,4 @@
+namespace: object Module
+  init: function/0
+  initSync: function/0
+  parse: function/1

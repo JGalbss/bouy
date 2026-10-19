@@ -1,0 +1,3 @@
+module.exports: object
+  declare: function/1
+  declarePreset: function/1

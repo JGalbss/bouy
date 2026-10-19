@@ -1,0 +1,69 @@
+module.exports: object
+  BlockScope: function/3
+  CatchClauseDefinition: function/2
+  CatchScope: function/3
+  ClassFieldInitializerScope: function/3
+  ClassNameDefinition: function/2
+  ClassScope: function/3
+  ClassStaticBlockScope: function/3
+  ConditionalTypeScope: function/3
+  DefinitionType: object
+    CatchClause: string
+    ClassName: string
+    FunctionName: string
+    ImplicitGlobalVariable: string
+    ImportBinding: string
+    Parameter: string
+    TSEnumMember: string
+    TSEnumName: string
+    TSModuleName: string
+    Type: string
+    Variable: string
+  ESLintScopeVariable: function/0
+  ForScope: function/3
+  FunctionExpressionNameScope: function/3
+  FunctionNameDefinition: function/2
+  FunctionScope: class/4 {isValidResolution}
+  FunctionTypeScope: function/3
+  GlobalScope: class/2 {addVariables, close, defineImplicitVariable}
+  ImplicitGlobalVariableDefinition: function/2
+  ImplicitLibVariable: function/3
+  ImportBindingDefinition: function/3
+  MappedTypeScope: function/3
+  ModuleScope: function/3
+  ParameterDefinition: function/3
+  PatternVisitor: class/3 {ArrayExpression, ArrayPattern, AssignmentExpression, AssignmentPattern, CallExpression, Decorator, Identifier, MemberExpression, Property, RestElement, SpreadElement, TSTypeAnnotation}
+  Reference: class/6 {isRead, isReadOnly, isReadWrite, isTypeReference, isValueReference, isWrite, isWriteOnly}
+  ScopeManager: class/1 {acquire, addGlobals, getDeclaredVariables, isES6, isGlobalReturn, isImpliedStrict, isModule, isStrictModeSupported, nestBlockScope, nestCatchScope, nestClassFieldInitializerScope, nestClassScope, nestClassStaticBlockScope, nestConditionalTypeScope, nestForScope, nestFunctionExpressionNameScope, nestFunctionScope, nestFunctionTypeScope, nestGlobalScope, nestMappedTypeScope, nestModuleScope, nestScope, nestSwitchScope, nestTSEnumScope, nestTSModuleScope, nestTypeScope, nestWithScope, variables}
+  ScopeType: object
+    block: string
+    catch: string
+    class: string
+    classFieldInitializer: string
+    classStaticBlock: string
+    conditionalType: string
+    for: string
+    function: string
+    functionExpressionName: string
+    functionType: string
+    global: string
+    mappedType: string
+    module: string
+    switch: string
+    tsEnum: string
+    tsModule: string
+    type: string
+    with: string
+  SwitchScope: function/3
+  TSEnumMemberDefinition: function/2
+  TSEnumNameDefinition: function/2
+  TSEnumScope: function/3
+  TSModuleNameDefinition: function/2
+  TSModuleScope: function/3
+  TypeDefinition: function/2
+  TypeScope: function/3
+  Variable: class/0 {isTypeVariable, isValueVariable}
+  VariableDefinition: function/3
+  Visitor: class/1 {visitPattern}
+  WithScope: class/3 {close}
+  analyze: function/2

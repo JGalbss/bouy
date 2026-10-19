@@ -1,0 +1,48 @@
+module.exports: object
+  CORE_SCHEMA: object
+    compiledExplicit: object Array
+    compiledImplicit: object Array
+    compiledTypeMap: object
+    explicit: object Array
+    implicit: object Array
+  DEFAULT_SCHEMA: object
+    compiledExplicit: object Array
+    compiledImplicit: object Array
+    compiledTypeMap: object
+    explicit: object Array
+    implicit: object Array
+  FAILSAFE_SCHEMA: object
+    compiledExplicit: object Array
+    compiledImplicit: object Array
+    compiledTypeMap: object
+    explicit: object Array
+    implicit: object Array
+  JSON_SCHEMA: object
+    compiledExplicit: object Array
+    compiledImplicit: object Array
+    compiledTypeMap: object
+    explicit: object Array
+    implicit: object Array
+  Schema: class/1 {extend}
+  Type: function/2
+  YAMLException: class/2 {toString}
+  dump: function/2
+  load: function/2
+  loadAll: function/3
+  safeDump: function/0
+  safeLoad: function/0
+  safeLoadAll: function/0
+  types: object
+    binary: object
+    bool: object
+    float: object
+    int: object
+    map: object
+    merge: object
+    null: object
+    omap: object
+    pairs: object
+    seq: object
+    set: object
+    str: object
+    timestamp: object

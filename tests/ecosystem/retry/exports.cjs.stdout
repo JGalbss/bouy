@@ -1,0 +1,5 @@
+module.exports: object
+  createTimeout: function/2
+  operation: function/1
+  timeouts: function/1
+  wrap: function/3

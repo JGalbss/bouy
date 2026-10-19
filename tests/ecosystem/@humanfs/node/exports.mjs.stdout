@@ -1,0 +1,5 @@
+namespace: object Module
+  Hfs: class/1 {append, arrayBuffer, bytes, copy, copyAll, createDirectory, delete, deleteAll, isBaseImpl, isDirectory, isFile, json, lastModified, list, logEnd, logStart, move, moveAll, resetImpl, setImpl, size, text, walk, write}
+  NodeHfs: function/0
+  NodeHfsImpl: class/0 {append, bytes, copy, copyAll, createDirectory, delete, deleteAll, isDirectory, isFile, lastModified, list, move, moveAll, size, write}
+  hfs: object

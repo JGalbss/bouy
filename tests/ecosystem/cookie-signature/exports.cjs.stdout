@@ -1,0 +1,3 @@
+module.exports: object
+  sign: function/2
+  unsign: function/2

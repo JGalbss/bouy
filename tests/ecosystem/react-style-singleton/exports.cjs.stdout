@@ -1,0 +1,4 @@
+module.exports: object
+  styleHookSingleton: function/0
+  styleSingleton: function/0
+  stylesheetSingleton: function/0

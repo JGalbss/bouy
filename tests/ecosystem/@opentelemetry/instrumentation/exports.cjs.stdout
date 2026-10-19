@@ -1,0 +1,16 @@
+module.exports: object
+  InstrumentationBase: class/3 {_extractPackageVersion, _onRequire, _warnOnPreloadedModules, disable, enable, isEnabled}
+  InstrumentationNodeModuleDefinition: function/5
+  InstrumentationNodeModuleFile: function/4
+  SemconvStability: object
+    1: string
+    2: string
+    3: string
+    DUPLICATE: number
+    OLD: number
+    STABLE: number
+  isWrapped: function/1 (false, false, false, false, false, false, false, false, false)
+  registerInstrumentations: function/1
+  safeExecuteInTheMiddle: function/3
+  safeExecuteInTheMiddleAsync: function/3
+  semconvStabilityFromStr: function/2
