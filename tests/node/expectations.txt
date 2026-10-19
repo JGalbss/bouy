@@ -3086,7 +3086,7 @@ parallel/test-runner-watch-mode-complex.mjs linux=timeout,macos=fail
 parallel/test-runner-worker-id.js fail
 parallel/test-runner-xfail.js pass
 parallel/test-safe-get-env.js skip
-parallel/test-sea-get-asset-keys.js fail
+parallel/test-sea-get-asset-keys.js pass
 parallel/test-security-revert-unknown.js fail
 parallel/test-set-http-max-http-headers.js timeout
 parallel/test-set-incoming-message-header.js pass
