@@ -6,3 +6,4 @@ agpq
 aa1ca3
 holder holder holder
 [ '1', 2, 'k' ]
+[ 2, false, 1, true, 1, true ] [ 1, false, 2, true, 1, false ] [ 1, null, 2, true, 2, 3 ]

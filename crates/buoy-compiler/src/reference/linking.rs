@@ -159,6 +159,20 @@ impl<'c> Linking<'c> {
                     })
             }))
             .collect();
+        // The modules that the code requires by a literal specifier, which buoy_build
+        // compiles ahead once this module loads.
+        let mut requires: Vec<String> = unit
+            .requests
+            .iter()
+            .filter_map(|request| match &request.resolved {
+                Resolved::Unit(target, _) if request.mode == Mode::Require => {
+                    Some(self.module_of(*target))
+                }
+                _ => None,
+            })
+            .collect();
+        requires.sort();
+        requires.dedup();
         let extra = self.hosted_info();
         constant(
             "$module",
@@ -167,6 +181,10 @@ impl<'c> Linking<'c> {
                     (Expr::atom("kind"), Expr::atom(kind)),
                     (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
                     (Expr::atom("requests"), Expr::List(requests)),
+                    (
+                        Expr::atom("requires"),
+                        Expr::List(requires.into_iter().map(Expr::atom).collect()),
+                    ),
                     (
                         Expr::atom("async"),
                         Expr::atom(if unit.record.has_await {

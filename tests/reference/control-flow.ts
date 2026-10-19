@@ -86,3 +86,19 @@ function lastKeys(): unknown[] {
   return [key, item, box.p];
 }
 console.log(lastKeys());
+
+// The right side of a logical assignment runs only when the assignment does not
+// short-circuit, so a variable that it assigns keeps its value otherwise.
+function shortCircuit(flag: boolean | null | number) {
+  let a = 1;
+  let and = flag;
+  and &&= ((a = 2), false);
+  let b = 1;
+  let or = flag;
+  or ||= ((b = 2), true);
+  let c = 1;
+  let nullish = flag;
+  nullish ??= ((c = 2), 3);
+  return [a, and, b, or, c, nullish];
+}
+console.log(shortCircuit(true), shortCircuit(false), shortCircuit(null));

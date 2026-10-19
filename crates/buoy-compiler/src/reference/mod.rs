@@ -89,15 +89,17 @@ pub fn lower_unit(
     }
     // A JSON, text, or bytes module holds its source as a constant for the runtime.
     if matches!(module.kind, Kind::Json | Kind::Text | Kind::Bytes) {
-        return Ok(erlang::print_module(&erlang::Module {
+        return Ok(erlang::print_module(erlang::Module {
             name: module.name.clone(),
             functions: linking.json_functions(),
+            dependency: false,
         }));
     }
     if module.kind == Kind::Wasm {
-        return Ok(erlang::print_module(&erlang::Module {
+        return Ok(erlang::print_module(erlang::Module {
             name: module.name.clone(),
             functions: linking.wasm_functions(),
+            dependency: false,
         }));
     }
     lower(linking, None, &[], false)
@@ -497,9 +499,10 @@ fn lower(
             };
             functions.extend(lowerer.jit_programs());
             if lowerer.reporter.diagnostics.is_empty() {
-                Ok(erlang::print_module(&erlang::Module {
+                Ok(erlang::print_module(erlang::Module {
                     name: module.name.clone(),
                     functions,
+                    dependency: is_dependency(&module.path),
                 }))
             } else {
                 Err(lowerer.reporter.diagnostics)
@@ -508,10 +511,17 @@ fn lower(
     )?
 }
 
+/// Whether `path` is a file of a package: under a `node_modules` directory.
+fn is_dependency(path: &std::path::Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == "node_modules")
+}
+
 /// The Erlang module of a module that does not compile.
 pub fn broken_module(linking: Linking<'_>, diagnostics: &[Diagnostic]) -> String {
-    erlang::print_module(&erlang::Module {
+    erlang::print_module(erlang::Module {
         name: linking.unit().name.clone(),
         functions: linking.broken_functions(diagnostics),
+        dependency: false,
     })
 }

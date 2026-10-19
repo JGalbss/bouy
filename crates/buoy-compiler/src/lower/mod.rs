@@ -215,9 +215,10 @@ pub fn lower_module(module: &graph::Module, graph: &Graph) -> Result<String, Vec
             };
             let functions = lowerer.module_functions(program);
             if lowerer.reporter.diagnostics.is_empty() {
-                Ok(erlang::print_module(&erlang::Module {
+                Ok(erlang::print_module(erlang::Module {
                     name: context.name.clone(),
                     functions,
+                    dependency: false,
                 }))
             } else {
                 Err(lowerer.reporter.diagnostics)

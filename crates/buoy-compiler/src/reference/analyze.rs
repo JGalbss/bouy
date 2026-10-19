@@ -11,7 +11,7 @@ use oxc::ast::ast::{
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::{NodeId, ScopeFlags, ScopeId, Scoping, Semantic, SymbolId};
-use oxc::span::Span;
+use oxc::span::{GetSpan, Span};
 
 /// The variables that live in heap cells.
 pub struct Analysis {
@@ -180,6 +180,15 @@ fn guarded_write(nodes: &oxc::semantic::AstNodes<'_>, node: NodeId, declared: Sp
             | AstKind::AssignmentPattern(_)
             | AstKind::FormalParameter(_)
                 if in_expression =>
+            {
+                return true;
+            }
+            // The right side of `x &&= y`, `x ||= y`, and `x ??= y` runs only when the
+            // assignment does not short-circuit.
+            AstKind::AssignmentExpression(assignment)
+                if in_expression
+                    && assignment.operator.is_logical()
+                    && contains(assignment.right.span(), nodes.get_node(node).kind().span()) =>
             {
                 return true;
             }

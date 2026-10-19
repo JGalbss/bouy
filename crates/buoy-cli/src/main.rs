@@ -654,7 +654,9 @@ fn write_result(diagnostics: &[Diagnostic], status: u8) {
 }
 
 /// Writes each module to `<project>/.buoy/build/src/` and returns the build directory.
-/// A file whose contents are unchanged is left alone.
+/// A file whose contents are unchanged is left alone. A changed module loses its compiled
+/// `.beam`, which the VM loads from the code path, so no stale code runs before
+/// `buoy_build` compiles the new source.
 fn write(project: &Project) -> Result<PathBuf, String> {
     let build = project.root.join(".buoy").join("build");
     let failed = |path: &Path, error: io::Error| {
@@ -667,6 +669,7 @@ fn write(project: &Project) -> Result<PathBuf, String> {
         if fs::read_to_string(&path).is_ok_and(|current| current == module.erlang) {
             continue;
         }
+        let _ = fs::remove_file(build.join("ebin").join(format!("{}.beam", module.name)));
         let staging = path.with_extension(format!("erl.{}", std::process::id()));
         fs::write(&staging, &module.erlang).map_err(|error| failed(&staging, error))?;
         fs::rename(&staging, &path).map_err(|error| failed(&path, error))?;

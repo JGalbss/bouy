@@ -95,7 +95,7 @@ hold(File, Entry, Loader) ->
     Loader ! {loaded, File, self()},
     Compiled = receive
         {loaded, File, {ok, {Module, _, _}}} -> {ok, Module, none};
-        {loaded, File, error} -> buoy_main:compile_generated(File, [binary, return_errors, nowarn_unused_vars])
+        {loaded, File, error} -> buoy_build:compile_generated(File, [binary, return_errors, nowarn_unused_vars])
     end,
     case Compiled of
         {ok, Name, Binary} ->

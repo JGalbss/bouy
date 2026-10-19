@@ -1,5 +1,7 @@
 //! A small Erlang syntax tree and a printer that produces readable source `erlc` accepts.
 
+mod captures;
+
 use std::fmt::Write as _;
 
 /// An Erlang expression. Patterns use the same type.
@@ -80,7 +82,16 @@ pub struct Function {
 pub struct Module {
     pub name: String,
     pub functions: Vec<Function>,
+    /// Whether the module is a file of a package in `node_modules`, which compiles without
+    /// the optimizing passes of the Erlang compiler: such code spends its time in the
+    /// runtime, and the passes take most of the compile time of a large package.
+    pub dependency: bool,
 }
+
+/// The options that turn off the optimizing passes of the Erlang compiler, as
+/// `buoy_ref_eval` compiles a module that a running program loads.
+const UNOPTIMIZED: &str = ", no_ssa_opt, no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, \
+     no_copt, no_bsm_opt, no_fun_opt, no_module_opt";
 
 impl Expr {
     pub fn var(name: impl Into<String>) -> Self {
@@ -197,7 +208,8 @@ impl Clause {
 }
 
 /// Prints `module` as Erlang source.
-pub fn print_module(module: &Module) -> String {
+pub fn print_module(mut module: Module) -> String {
+    captures::pack(&mut module.functions);
     let mut printer = Printer::default();
     let _ = writeln!(printer.out, "-module({}).", atom(&module.name));
     let exports: Vec<String> = module
@@ -212,9 +224,11 @@ pub fn print_module(module: &Module) -> String {
         })
         .collect();
     let _ = writeln!(printer.out, "-export([{}]).", exports.join(", "));
-    printer
-        .out
-        .push_str("-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function]).\n");
+    let unoptimized = if module.dependency { UNOPTIMIZED } else { "" };
+    let _ = writeln!(
+        printer.out,
+        "-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function{unoptimized}])."
+    );
     for function in &module.functions {
         printer.out.push('\n');
         printer.function(function);

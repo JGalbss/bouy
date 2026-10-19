@@ -5,14 +5,13 @@
 %% The CLI starts one VM with
 %%   erl +Bd -noshell -noinput -mode minimal -boot <runtime>/buoy -pa <runtime ebin>
 %%       -eval 'buoy_main:start()' -extra <build dir> <entry module> <entry path> <module,...> [args...]
-%% start/0 compiles each changed module of <build dir>/src into <build dir>/ebin,
+%% start/0 compiles the entry module of <build dir>/src into <build dir>/ebin and
+%% starts buoy_build, which compiles each other module when the program first loads it,
 %% starts the buoy application, runs the top-level code of the entry module, and halts.
 %% When BUOY_RESULT_FILE names a path, the VM writes the facts of the run there before
 %% it halts (section 1 of the contract).
 
--export([start/0, import/1, finish/2, compile_generated/2]).
-
--include_lib("kernel/include/file.hrl").
+-export([start/0, import/1, finish/2, stop/2]).
 
 -spec start() -> no_return().
 start() ->
@@ -53,7 +52,7 @@ boot() ->
     case init:get_plain_arguments() of
         [Build, Entry, EntryPath, Modules | Args] ->
             persistent_term:put({buoy, argv}, [<<"buoy">> | [unicode:characters_to_binary(Arg) || Arg <- [EntryPath | Args]]]),
-            case compile_modules(Build, split(Modules)) of
+            case buoy_build:start(Build, list_to_atom(Entry), [list_to_atom(M) || M <- split(Modules)]) of
                 ok -> run(list_to_atom(Entry));
                 {error, Report} -> stop(2, Report)
             end;
@@ -89,6 +88,7 @@ import(Module) ->
             ok;
         false ->
             persistent_term:put(Key, true),
+            ok = buoy_build:ensure(Module),
             _ = Module:'__init__'(),
             ok
     end.
@@ -194,96 +194,6 @@ split(Modules) ->
         Modules
     ),
     [Name || Name <- Names, Name =/= []].
-
-%% The CLI has written <build dir>/src, so only ebin may be missing. The file
-%% module is loaded at boot, and filelib is not.
-compile_modules(Build, Modules) ->
-    Ebin = filename:join(Build, "ebin"),
-    case file:make_dir(Ebin) of
-        ok -> ok;
-        {error, eexist} -> ok;
-        {error, Reason} -> stop(1, io_lib:format("buoy: cannot write ~ts: ~ts~n", [Ebin, file:format_error(Reason)]))
-    end,
-    true = code:add_patha(Ebin),
-    case compile_parallel(Build, Ebin, Modules) of
-        [] -> ok;
-        Errors -> {error, Errors}
-    end.
-
-%% A program that loads packages from node_modules has hundreds of modules, so up to
-%% eight processes compile them, each a share of the list.
-compile_parallel(Build, Ebin, Modules) ->
-    Jobs = max(1, min(8, erlang:system_info(schedulers_online))),
-    Shares = [[M || {I, M} <- lists:enumerate(0, Modules), I rem Jobs =:= J] || J <- lists:seq(0, Jobs - 1)],
-    Workers = [spawn_monitor(fun() -> exit({compiled, lists:flatmap(fun(M) -> compile_module(Build, Ebin, M) end, Share)}) end)
-               || Share <- Shares, Share =/= []],
-    lists:flatmap(fun({Pid, Ref}) ->
-                          receive
-                              {'DOWN', Ref, process, Pid, {compiled, Errors}} -> Errors;
-                              {'DOWN', Ref, process, Pid, Reason} ->
-                                  [io_lib:format("buoy: compiling the program failed: ~tp~n", [Reason])]
-                          end
-                  end, Workers).
-
-%% Compiles one module when its source changed since the last build, and loads it.
-compile_module(Build, Ebin, Module) ->
-    Source = filename:join([Build, "src", Module ++ ".erl"]),
-    Beam = filename:join(Ebin, Module ++ ".beam"),
-    Stamp = filename:join(Ebin, Module ++ ".md5"),
-    {ok, Text} = file:read_file(Source),
-    Hash = erlang:md5([Text, erlang:system_info(otp_release)]),
-    case file:read_file(Stamp) of
-        {ok, Hash} ->
-            case file:read_file_info(Beam) of
-                {ok, #file_info{type = regular}} -> [];
-                _ -> compile_source(Source, Beam, Stamp, Hash)
-            end;
-        _ ->
-            compile_source(Source, Beam, Stamp, Hash)
-    end.
-
-compile_source(Source, Beam, Stamp, Hash) ->
-    case compile_generated(Source, [binary, return_errors, nowarn_unused_vars]) of
-        {ok, Module, Binary} ->
-            ok = replace(Beam, Binary),
-            ok = replace(Stamp, Hash),
-            {module, Module} = code:load_binary(Module, Beam, Binary),
-            [];
-        {error, Errors, _Warnings} ->
-            [format_error(File, Error) || {File, FileErrors} <- Errors, Error <- FileErrors];
-        error ->
-            [io_lib:format("buoy: the Erlang compiler crashed on ~ts (a compiler bug)~n", [Source])]
-    end.
-
-%% compile:file/2 for a module that the Buoy compiler wrote. Such code needs no
-%% erl_lint, whose time grows with the square of the funs of one function, so
-%% the module compiles from its forms without it. A form that does not parse
-%% goes to compile:file/2, which reports it.
--spec compile_generated(file:filename(), [term()]) -> term().
-compile_generated(Source, Options) ->
-    case epp:parse_file(Source, []) of
-        {ok, Forms} ->
-            case lists:keymember(error, 1, Forms) of
-                false -> compile:forms(Forms, [from_abstr, no_lint, {source, Source} | Options]);
-                true -> compile:file(Source, Options)
-            end;
-        {error, _} ->
-            compile:file(Source, Options)
-    end.
-
-%% Writes File through a temporary file and a rename, so a concurrent reader never sees
-%% a partial file.
-replace(File, Contents) ->
-    Temporary = File ++ "." ++ os:getpid(),
-    ok = file:write_file(Temporary, Contents),
-    file:rename(Temporary, File).
-
-format_error(File, {Location, Module, Descriptor}) ->
-    io_lib:format("buoy: generated Erlang does not compile (a compiler bug): ~ts:~w: ~ts~n",
-                  [File, line(Location), Module:format_error(Descriptor)]).
-
-line({Line, _Column}) -> Line;
-line(Line) -> Line.
 
 %% A failure of the VM before or around the program: the facts record the report as
 %% the Erlang reason.

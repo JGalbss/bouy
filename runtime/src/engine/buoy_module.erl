@@ -113,7 +113,7 @@ report_uncaught(Error) ->
 -spec evaluate_dependencies(module()) -> ok.
 evaluate_dependencies(Module) ->
     erlang:put(?ACTOR, true),
-    _ = code:ensure_loaded(Module),
+    ok = buoy_build:ensure(Module),
     case erlang:function_exported(Module, '$module', 0) of
         true ->
             #{requests := Requests} = Module:'$module'(),
@@ -127,6 +127,7 @@ evaluate_dependencies(Module) ->
 record(M) ->
     case erlang:get(?RECORD(M)) of
         undefined ->
+            ok = buoy_build:ensure(M),
             R = new_record(M, M:'$module'()),
             erlang:put(?RECORD(M), R),
             R;

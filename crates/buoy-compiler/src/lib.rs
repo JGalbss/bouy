@@ -244,8 +244,8 @@ fn compile_graph(graph: &reference::graph::Graph, root: &Path) -> Result<Project
         .iter()
         .flat_map(|unit| unit.broken.iter().cloned())
         .collect();
-    for (index, unit) in graph.units.iter().enumerate() {
-        let erlang = match reference::lower_unit(graph, index, &links[index], index == 0) {
+    for ((index, unit), lowered) in graph.units.iter().enumerate().zip(lower_units(graph, &links)) {
+        let erlang = match lowered {
             Ok(erlang) => erlang,
             Err(mut found) if index == 0 => {
                 diagnostics.append(&mut found);
@@ -279,6 +279,60 @@ fn compile_graph(graph: &reference::graph::Graph, root: &Path) -> Result<Project
     let mut project = finish(root.to_path_buf(), entry_name, modules, diagnostics)?;
     project.deferred = deferred;
     Ok(project)
+}
+
+/// The stack of a thread that lowers a module. The lowering recurses over the syntax tree,
+/// and minified code nests deeply.
+const LOWER_STACK_BYTES: usize = 256 << 20;
+
+/// Lowers each unit of `graph` on up to eight threads, which take the largest sources first,
+/// so that one large module does not finish last. The results keep the order of the units.
+fn lower_units(
+    graph: &reference::graph::Graph,
+    links: &[reference::link::Linked],
+) -> Vec<Result<String, Vec<Diagnostic>>> {
+    let count = graph.units.len();
+    let mut order: Vec<usize> = (0..count).collect();
+    order.sort_by_key(|&index| std::cmp::Reverse(graph.units[index].source.len()));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .clamp(1, 8)
+        .min(count);
+    let lower = || {
+        let mut lowered = Vec::new();
+        while let Some(&index) = order.get(next.fetch_add(1, std::sync::atomic::Ordering::Relaxed)) {
+            lowered.push((
+                index,
+                reference::lower_unit(graph, index, &links[index], index == 0),
+            ));
+        }
+        lowered
+    };
+    let mut results: Vec<Option<Result<String, Vec<Diagnostic>>>> =
+        std::iter::repeat_with(|| None).take(count).collect();
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                std::thread::Builder::new()
+                    .stack_size(LOWER_STACK_BYTES)
+                    .spawn_scoped(scope, lower)
+                    .expect("the lowering thread starts")
+            })
+            .collect();
+        for worker in workers {
+            let lowered = worker
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+            for (index, result) in lowered {
+                results[index] = Some(result);
+            }
+        }
+    });
+    results
+        .into_iter()
+        .map(|result| result.expect("each unit is lowered"))
+        .collect()
 }
 
 fn finish(
