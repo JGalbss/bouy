@@ -186,13 +186,14 @@ impl Linker<'_> {
         linked
     }
 
-    /// The first static request that resolution did not find.
+    /// The first static request that resolution did not find, of either phase: an
+    /// `import source` loads its module too.
     fn missing(&self, index: usize) -> Option<LinkError> {
         self.unit(index)
             .record
-            .order
+            .module_requests
             .iter()
-            .find_map(|(specifier, _)| match self.target(index, specifier) {
+            .find_map(|request| match self.target(index, &request.specifier) {
                 Some(Resolved::Missing(failure)) => Some(LinkError {
                     kind: "Error",
                     code: Some(failure.code),

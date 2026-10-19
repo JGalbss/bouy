@@ -26,6 +26,11 @@ try {
 } catch (error) {
   console.log("load before link", (error as { code: string }).code);
 }
+try {
+  await import("./modules/load-before-link-source.mjs");
+} catch (error) {
+  console.log("source load before link", (error as { code: string }).code);
+}
 const order: string[] = [];
 const pending = import("./modules/locale-en.ts").then(() => order.push("import"));
 Promise.resolve().then(() => order.push("microtask"));
