@@ -1794,7 +1794,7 @@ parallel/test-http-perf_hooks.js pass
 parallel/test-http-pipe-fs.js pass
 parallel/test-http-pipeline-assertionerror-finish.js pass
 parallel/test-http-pipeline-flood.js pass
-parallel/test-http-pipeline-requests-connection-leak.js timeout
+parallel/test-http-pipeline-requests-connection-leak.js pass
 parallel/test-http-pipeline-socket-parser-typeerror.js pass
 parallel/test-http-proxy.js pass
 parallel/test-http-raw-headers.js pass
@@ -2106,7 +2106,7 @@ parallel/test-http2-request-remove-connect-listener.js pass
 parallel/test-http2-request-response-proto.js pass
 parallel/test-http2-res-corked.js pass
 parallel/test-http2-res-writable-properties.js pass
-parallel/test-http2-reset-flood.js fail
+parallel/test-http2-reset-flood.js pass
 parallel/test-http2-respond-errors.js skip
 parallel/test-http2-respond-file-204.js pass
 parallel/test-http2-respond-file-304.js pass
