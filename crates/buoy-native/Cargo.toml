@@ -1,6 +1,6 @@
 [package]
 name = "buoy-native"
-description = "The NIF library of the runtime: JSON.parse, the RegExp matcher, the CLDR data of Intl, the fs calls that ERTS lacks, the zlib, brotli, and zstd codecs of Node's zlib module, Argon2, Keccak, and scrypt for its crypto module, WebAssembly on Wasmtime, and the SQLite of node:sqlite."
+description = "The NIF library of the runtime: JSON.parse, the RegExp matcher, the case maps and replaceAll of strings, the CLDR data of Intl, the fs calls that ERTS lacks, the zlib, brotli, and zstd codecs of Node's zlib module, Argon2, Keccak, and scrypt for its crypto module, WebAssembly on Wasmtime, and the SQLite of node:sqlite."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -377,24 +377,47 @@ runs([C | Rest], Run, Acc) when C >= 16#D800, C =< 16#DFFF ->
 runs([C | Rest], Run, Acc) -> runs(Rest, [C | Run], Acc).
 
 %% The full Unicode case mappings, with the Final_Sigma rule that
-%% string:lowercase/1 leaves out.
-lowercase(B) when is_binary(B) ->
+%% string:lowercase/1 leaves out. The native library maps them in time slices
+%% (crates/buoy-native/src/string.rs); OTP's tables map them without it.
+lowercase(S) -> change_case(S, false).
+
+uppercase(S) -> change_case(S, true).
+
+change_case(S, Upper) ->
+    case buoy_native:available() of
+        true ->
+            {Bytes, Wide} = case S of
+                {'$u16', B} -> {B, true};
+                B -> {B, false}
+            end,
+            native_case(Bytes, Wide, Upper, 0, []);
+        false when Upper -> otp_uppercase(S);
+        false -> otp_lowercase(S)
+    end.
+
+native_case(Bytes, Wide, Upper, From, Parts) ->
+    case buoy_native:string_case(Bytes, Wide, Upper, From) of
+        {done, Part} -> concat(lists:reverse([Part | Parts]));
+        {more, Next, Part} -> native_case(Bytes, Wide, Upper, Next, [Part | Parts])
+    end.
+
+otp_lowercase(B) when is_binary(B) ->
     case is_ascii(B) of
         true -> string:lowercase(B);
         false -> map_scalars(B, fun lowercase_scalars/1)
     end;
-lowercase(S) -> map_scalars(S, fun lowercase_scalars/1).
+otp_lowercase(S) -> map_scalars(S, fun lowercase_scalars/1).
 
 lowercase_scalars(Scalars) ->
     Marked = final_sigmas(Scalars, []),
     unicode:characters_to_list(string:lowercase(Marked)).
 
-uppercase(B) when is_binary(B) ->
+otp_uppercase(B) when is_binary(B) ->
     case is_ascii(B) of
         true -> string:uppercase(B);
         false -> map_scalars(B, fun uppercase_scalars/1)
     end;
-uppercase(S) -> map_scalars(S, fun uppercase_scalars/1).
+otp_uppercase(S) -> map_scalars(S, fun uppercase_scalars/1).
 
 uppercase_scalars(Scalars) -> unicode:characters_to_list(string:uppercase(Scalars)).
 

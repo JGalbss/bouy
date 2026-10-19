@@ -1,8 +1,9 @@
 //! The NIF library of the runtime, which `buoy_native.erl` loads into the VM.
 //!
 //! It holds the native built-ins of section 17.10 of `docs/design/beam-runtime.md`,
-//! `JSON.parse` (`json`) and the `RegExp` matcher (`regexp`), which run on the scheduler of
-//! their process in time slices (`slice`), so BEAM preemption holds while they run.
+//! `JSON.parse` (`json`), the `RegExp` matcher (`regexp`), and the case maps and
+//! `replaceAll` of strings (`string`), which run on the scheduler of their process in
+//! time slices (`slice`), so BEAM preemption holds while they run.
 //!
 //! It also holds the CLDR data and algorithms of `Intl` (`intl`, docs/design/intl.md).
 //! `fs` holds the file system calls of `internalBinding('fs')` that ERTS lacks, and `inotify`
@@ -42,6 +43,8 @@ mod signal;
 mod slice;
 #[cfg(not(test))]
 mod sqlite;
+#[cfg(not(test))]
+mod string;
 #[cfg(not(test))]
 mod wasm;
 mod zlib;

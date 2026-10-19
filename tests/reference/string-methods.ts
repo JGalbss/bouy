@@ -40,3 +40,40 @@ console.log(
   String.fromCharCode(65, 0x10041),
   "abc"[Symbol.iterator]().next().value,
 );
+
+// Case maps and replaceAll of strings longer than one native call: a sum of the code
+// units at their positions stands for each result.
+function digest(s: string): string {
+  let sum = 0;
+  for (let i = 0; i < s.length; i++) sum = (sum * 31 + s.charCodeAt(i) * (i + 1)) % 1000000007;
+  return `${s.length}:${sum}`;
+}
+const latin = "Aß µ ÿz Ñ×Þ é! ".repeat(40000);
+console.log(
+  digest(latin.toUpperCase()),
+  digest(latin.toLowerCase()),
+  digest(latin.toUpperCase().toLowerCase()),
+);
+const greek = "ΟΔΟΣ ΑΣ. ΣΑ Σ ΑΣ' Σ😀 ".repeat(3000) + "ΑΣ";
+console.log(
+  digest(greek.toLowerCase()),
+  digest(greek.toUpperCase()),
+  greek.toLowerCase().slice(-6),
+);
+const lone = "a\uD800ΣB\uDC00".repeat(5000);
+console.log(digest(lone.toLowerCase()), digest(lone.toUpperCase()));
+const csv = "id,item-7,σ,x\n".repeat(30000);
+console.log(
+  digest(csv.replaceAll(",", ";")),
+  digest(csv.replaceAll("item-", "")),
+  digest(csv.replaceAll(",", "→")),
+  digest(csv.replaceAll("σ", "s")),
+  digest(csv.replaceAll("\n", "")),
+  digest(latin.replaceAll("ß µ", "_")),
+  digest(latin.replaceAll("none", "x")),
+);
+console.log(
+  "䄀䈀".replaceAll("B", "x") === "䄀䈀",
+  "aaaa".replaceAll("aa", "b"),
+  "x$y".replaceAll("$", "$$"),
+);

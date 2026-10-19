@@ -28,6 +28,7 @@
 -on_load(load/0).
 
 -export([available/0, json_parse/5, regexp_compile/3, regexp_search/6, regexp_search_all/5]).
+-export([string_case/4, string_replace_all/7]).
 -export([zlib_open/6, brotli_open/2, zstd_open/3]).
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
 -export([intl_canonicalize/1, intl_maximize/1, intl_minimize/1, intl_is_right_to_left/1]).
@@ -70,6 +71,22 @@ load() ->
 %% Whether the library is loaded.
 -spec available() -> boolean().
 available() -> persistent_term:get(?MODULE, false).
+
+%% toLowerCase (false) or toUpperCase (true) of the code units of a string from
+%% From on, one or two bytes each, as far as one call goes
+%% (crates/buoy-native/src/string.rs). Part is an engine string.
+-spec string_case(binary(), boolean(), boolean(), non_neg_integer()) ->
+          {done, buoy_ref_string:js_string()} | {more, non_neg_integer(), buoy_ref_string:js_string()}.
+string_case(_Text, _Wide, _Upper, _From) -> erlang:nif_error(nif_not_loaded).
+
+%% replaceAll of a nonempty string Search by a Replacement without $ patterns,
+%% from the unit From on, as far as one call goes. {rest, Next, Part} says that
+%% no occurrence starts at Next or later.
+-spec string_replace_all(binary(), boolean(), binary(), boolean(), binary(), boolean(), non_neg_integer()) ->
+          {done, buoy_ref_string:js_string()}
+        | {more | rest, non_neg_integer(), buoy_ref_string:js_string()}.
+string_replace_all(_Text, _Wide, _Search, _SearchWide, _Replacement, _ReplacementWide, _From) ->
+    erlang:nif_error(nif_not_loaded).
 
 %% JSON.parse without a reviver (crates/buoy-native/src/json.rs).
 -spec json_parse(binary(), boolean(), {term(), term()}, pos_integer(), start | reference()) ->

@@ -92,6 +92,88 @@ pub enum Ty {
     Array(Box<Ty>),
     /// A string: a sequence of UTF-16 code units.
     Str,
+    /// A typed array of the element type, such as a `Float64Array`. Its elements are
+    /// numbers, which a write converts to the element type.
+    Typed(TypedKind),
+}
+
+/// The element type of a typed array (ECMA-262 Table 71), apart from the BigInt and
+/// float16 types, which the native tier does not lower.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypedKind {
+    Int8,
+    Uint8,
+    Uint8Clamped,
+    Int16,
+    Uint16,
+    Int32,
+    Uint32,
+    Float32,
+    Float64,
+}
+
+impl TypedKind {
+    /// The kind of the constructor of this name, such as `Float64Array`.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "Int8Array" => Self::Int8,
+            "Uint8Array" => Self::Uint8,
+            "Uint8ClampedArray" => Self::Uint8Clamped,
+            "Int16Array" => Self::Int16,
+            "Uint16Array" => Self::Uint16,
+            "Int32Array" => Self::Int32,
+            "Uint32Array" => Self::Uint32,
+            "Float32Array" => Self::Float32,
+            "Float64Array" => Self::Float64,
+            _ => return None,
+        })
+    }
+
+    /// The bytes of an element.
+    #[must_use]
+    pub fn size(self) -> usize {
+        match self {
+            Self::Int8 | Self::Uint8 | Self::Uint8Clamped => 1,
+            Self::Int16 | Self::Uint16 => 2,
+            Self::Int32 | Self::Uint32 | Self::Float32 => 4,
+            Self::Float64 => 8,
+        }
+    }
+
+    /// The name of the kind in the engine (`buoy_ref_buffer:kinds/0`).
+    #[must_use]
+    pub fn engine_name(self) -> &'static str {
+        match self {
+            Self::Int8 => "int8",
+            Self::Uint8 => "uint8",
+            Self::Uint8Clamped => "uint8c",
+            Self::Int16 => "int16",
+            Self::Uint16 => "uint16",
+            Self::Int32 => "int32",
+            Self::Uint32 => "uint32",
+            Self::Float32 => "float32",
+            Self::Float64 => "float64",
+        }
+    }
+
+    /// The kind of an engine name.
+    #[must_use]
+    pub fn from_engine_name(name: &str) -> Option<Self> {
+        [
+            Self::Int8,
+            Self::Uint8,
+            Self::Uint8Clamped,
+            Self::Int16,
+            Self::Uint16,
+            Self::Int32,
+            Self::Uint32,
+            Self::Float32,
+            Self::Float64,
+        ]
+        .into_iter()
+        .find(|kind| kind.engine_name() == name)
+    }
 }
 
 impl Ty {
@@ -100,7 +182,7 @@ impl Ty {
     pub fn is_reference(&self) -> bool {
         matches!(
             self,
-            Self::Null | Self::Object(_) | Self::Any | Self::Array(_) | Self::Str
+            Self::Null | Self::Object(_) | Self::Any | Self::Array(_) | Self::Str | Self::Typed(_)
         )
     }
 }
@@ -202,12 +284,13 @@ pub enum Expr {
     /// bail with [`Bail::Nullish`].
     Field(Box<Expr>, ClassId, u32),
     SetField(Box<Expr>, ClassId, u32, Box<Expr>),
-    /// The length of an array or a string.
+    /// The length of an array, a typed array, or a string.
     Length(Box<Expr>),
-    /// An element of an array. An index outside the elements reads `undefined` from an
-    /// array of references and bails from any other array.
+    /// An element of an array or a typed array. An index outside the elements reads
+    /// `undefined` from an array of references and bails from any other array.
     Index(Box<Expr>, Box<Expr>),
-    /// Writes an element. The index may be the length, which appends.
+    /// Writes an element. The index of an array may be the length, which appends; an
+    /// index of a typed array outside its elements bails.
     SetIndex(Box<Expr>, Box<Expr>, Box<Expr>),
     /// Appends an element, and is the new length.
     Push(Box<Expr>, Box<Expr>),
@@ -235,6 +318,8 @@ pub enum Expr {
     ArrayOf(Ty, Vec<Expr>),
     /// A new array of a length, with every element the value.
     ArrayFill(Ty, Box<Expr>, Box<Expr>),
+    /// A new typed array of a length, with every element zero: `new Float64Array(n)`.
+    NewTyped(TypedKind, Box<Expr>),
     Math(MathFn, Vec<Expr>),
     /// Evaluates each expression, and is the value of the last.
     Seq(Vec<Expr>),

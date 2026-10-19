@@ -1047,6 +1047,35 @@ replace_string(S, SearchValue, ReplaceValue, Count) ->
         false -> buoy_ref:to_string(ReplaceValue)
     end,
     SearchLength = buoy_ref_string:length_of(Search),
+    case Count =:= all andalso SearchLength > 0 andalso not Functional andalso is_literal(Template)
+         andalso buoy_native:available() of
+        true -> native_replace_all(S, Search, Template);
+        false -> replace_positions(S, Search, SearchLength, Functional, Template, Count)
+    end.
+
+%% Whether a replacement template has no $ pattern, so it is its own substitution.
+is_literal(B) when is_binary(B) -> binary:match(B, <<"$">>) =:= nomatch;
+is_literal({'$u16', B}) -> [Pos || {Pos, _} <- binary:matches(B, <<0, $$>>), Pos rem 2 =:= 0] =:= [].
+
+%% replaceAll of a string by a literal in the native library, in time slices: each
+%% call gives the text of a piece of S, and the pieces join in one copy.
+native_replace_all(S, Search, Template) ->
+    {Bytes, Wide} = units(S),
+    {SearchBytes, SearchWide} = units(Search),
+    {TemplateBytes, TemplateWide} = units(Template),
+    Step = fun Step(From, Parts) ->
+                   case buoy_native:string_replace_all(Bytes, Wide, SearchBytes, SearchWide, TemplateBytes, TemplateWide, From) of
+                       {done, Part} -> [Part | Parts];
+                       {rest, Next, Part} -> [buoy_ref_string:slice(S, Next, buoy_ref_string:length_of(S)), Part | Parts];
+                       {more, Next, Part} -> Step(Next, [Part | Parts])
+                   end
+           end,
+    buoy_ref_string:concat(lists:reverse(Step(0, []))).
+
+units({'$u16', B}) -> {B, true};
+units(B) -> {B, false}.
+
+replace_positions(S, Search, SearchLength, Functional, Template, Count) ->
     Positions = positions(S, Search, 0, max(1, SearchLength), Count),
     Replace = fun(Position) ->
                       case Functional of

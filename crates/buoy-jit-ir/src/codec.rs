@@ -4,10 +4,12 @@
 
 use std::fmt;
 
-use super::{Bail, Binary, Class, Expr, Function, MathFn, Method, Program, Stmt, Ty, Unary};
+use super::{
+    Bail, Binary, Class, Expr, Function, MathFn, Method, Program, Stmt, Ty, TypedKind, Unary,
+};
 
 /// The first bytes of an encoded program, with the version of the format.
-const MAGIC: &[u8; 4] = b"BNI3";
+const MAGIC: &[u8; 4] = b"BNI4";
 
 /// Bytes that are not a program of this version.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -276,6 +278,17 @@ tags!(Binary {
     Eq,
     Ne
 });
+tags!(TypedKind {
+    Int8,
+    Uint8,
+    Uint8Clamped,
+    Int16,
+    Uint16,
+    Int32,
+    Uint32,
+    Float32,
+    Float64
+});
 tags!(MathFn {
     Sqrt,
     Abs,
@@ -335,6 +348,7 @@ variants!(Ty {
     5 => Any,
     6 => Array(element),
     7 => Str,
+    8 => Typed(kind),
 });
 
 variants!(Stmt {
@@ -379,6 +393,7 @@ variants!(Expr {
     28 => Text(parts),
     29 => Fail(reason, ty),
     30 => Block(stmts, value),
+    31 => NewTyped(kind, length),
 });
 
 #[cfg(test)]
@@ -391,7 +406,11 @@ mod tests {
             classes: vec![Class {
                 name: "Body".to_owned(),
                 parent: None,
-                fields: vec![Ty::Num, Ty::Array(Box::new(Ty::Object(0)))],
+                fields: vec![
+                    Ty::Num,
+                    Ty::Array(Box::new(Ty::Object(0))),
+                    Ty::Typed(TypedKind::Uint8Clamped),
+                ],
                 methods: vec![Method {
                     name: "step".to_owned(),
                     function: 0,
@@ -420,6 +439,7 @@ mod tests {
                         body: vec![Stmt::Break(0), Stmt::Bail(Bail::Throw)],
                         test_after: false,
                     },
+                    Stmt::Expr(Expr::NewTyped(TypedKind::Float32, Box::new(Expr::Num(4.0)))),
                     Stmt::Return(Some(Expr::Math(
                         MathFn::Sqrt,
                         vec![Expr::Field(Box::new(Expr::Local(0)), 0, 0)],
