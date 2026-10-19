@@ -449,20 +449,23 @@ pub extern "C" fn buoy_math(code: i32, a: f64, b: f64) -> f64 {
 }
 
 /// Removes the first element of an array of references and returns it, or `undefined`
-/// when the array is empty.
+/// when the array is empty. The elements stay in place and the array starts one word
+/// later, so a shift takes constant time, as the index bias of `ArrayStorage` in
+/// `JavaScriptCore` makes it.
 pub extern "C" fn buoy_shift(array: u64) -> u64 {
     // SAFETY: `array` is a live array of the run's heap, with the layout of
     // `codegen::array`, whose elements are words.
     unsafe {
         let header = array as *mut u64;
-        let length = usize::try_from(*header.add(1)).unwrap_or(0);
+        let length = *header.add(1);
         if length == 0 {
             return 1;
         }
         let data = *header.add(3) as *mut u64;
         let first = data.read();
-        std::ptr::copy(data.add(1), data, length - 1);
-        *header.add(1) = (length - 1) as u64;
+        *header.add(1) = length - 1;
+        *header.add(2) -= 1;
+        *header.add(3) = data.add(1) as u64;
         first
     }
 }
