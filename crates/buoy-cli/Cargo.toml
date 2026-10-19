@@ -15,6 +15,10 @@ path = "src/main.rs"
 buoy-compiler.workspace = true
 clap.workspace = true
 
+# Clears FD_CLOEXEC on the runtime lock, so the VM that `exec` starts inherits it.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", default-features = false, features = ["fs"] }
+
 # build.rs compiles the vendored Temporal polyfill into a runtime module.
 [build-dependencies]
 buoy-compiler.workspace = true
