@@ -11,6 +11,8 @@
 
 -export([binding/0]).
 
+-dialyzer({no_return, [invalid/1]}).
+
 -define(CHANNEL, {'#', ?MODULE, <<"channel">>}).
 -define(AF_INET, 2).
 -define(AF_INET6, 30).

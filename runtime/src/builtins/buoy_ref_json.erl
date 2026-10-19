@@ -676,7 +676,7 @@ specials() ->
 
 escape(S, [{Pos, 1} | Rest], From) ->
     [binary:part(S, From, Pos - From), escape_unit(binary:at(S, Pos)) | escape(S, Rest, Pos + 1)];
-escape(S, [], From) -> binary:part(S, From, byte_size(S) - From).
+escape(S, [], From) -> [binary:part(S, From, byte_size(S) - From)].
 
 escape_units(<<H:16, L:16, Rest/binary>>) when H >= 16#D800, H =< 16#DBFF, L >= 16#DC00, L =< 16#DFFF ->
     [<<H:16, L:16>> | escape_units(Rest)];

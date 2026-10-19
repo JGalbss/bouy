@@ -12,6 +12,8 @@
 
 %% These only throw, on purpose.
 -dialyzer({no_return, [fail/2, set_client_cert_engine/2]}).
+%% str_to_suite/1 gives the NULL ciphers too, which its spec leaves out.
+-dialyzer({no_match, [named_suite/1]}).
 
 -define(TLS1, 16#301).
 -define(TLS1_1, 16#302).

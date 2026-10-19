@@ -19,6 +19,11 @@
 
 -export([binding/0, transport/2]).
 
+%% ssl takes the socket of a cb_info transport, which its specs leave out, and
+%% handshake/3 of an accepted socket gives the bare map of the ClientHello.
+-dialyzer({no_fail_call, [agent/4]}).
+-dialyzer({no_match, [server_handshake/5]}).
+
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
 -define(K_OFFSET, 1).

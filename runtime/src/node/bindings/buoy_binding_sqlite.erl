@@ -14,6 +14,10 @@
 
 -export([binding/0, command/2]).
 
+%% Each holds a fun that only throws, such as the constructor of a class that
+%% the binding makes instances of.
+-dialyzer({no_return, [database_class/0, illegal_class/2, database_path/2, tag_store_proto/0, iterator_proto/0]}).
+
 -define(DB, {'#', ?MODULE, <<"db">>}).
 -define(STMT, {'#', ?MODULE, <<"stmt">>}).
 -define(SESSION, {'#', ?MODULE, <<"session">>}).

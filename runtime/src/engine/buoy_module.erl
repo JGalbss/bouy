@@ -1011,14 +1011,11 @@ runtime_target(From, Specifier, Mode) ->
     Base = filename:dirname(buoy_ref_string:to_utf8(info(From, path))),
     case relative(Path) of
         true ->
-            Full = normalize(filename:join(Base, Path)),
-            Candidates = case Mode of
-                import -> [Full];
-                require -> [Full, <<Full/binary, ".js">>, <<Full/binary, ".json">>, <<Full/binary, "/index.js">>, <<Full/binary, "/index.json">>]
-            end,
-            case [{C, maps:get(buoy_ref_string:from_utf8(C), Graph)} || C <- Candidates, is_map_key(buoy_ref_string:from_utf8(C), Graph)] of
-                [{C, Module} | _] -> {buoy_ref_string:from_utf8(C), Module};
-                [] -> load_at_run_time(From, Path, Mode)
+            %% import() names the file exactly; Node's CommonJS loader resolves a require.
+            Full = buoy_ref_string:from_utf8(normalize(filename:join(Base, Path))),
+            case Graph of
+                #{Full := Module} -> {Full, Module};
+                _ -> load_at_run_time(From, Path, Mode)
             end;
         false ->
             case is_builtin(Specifier) of

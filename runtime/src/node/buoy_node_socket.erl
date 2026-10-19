@@ -31,6 +31,10 @@
 -export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1, hold/3]).
 -export_type([kind/0]).
 
+%% socket:open/2 fails with the domain option on macOS, which has no SO_DOMAIN;
+%% its spec leaves that error out.
+-dialyzer({no_match, [open_inherited/2]}).
+
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
 -define(K_OFFSET, 1).

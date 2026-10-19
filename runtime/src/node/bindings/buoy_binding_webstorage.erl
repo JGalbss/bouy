@@ -12,6 +12,9 @@
 
 -export([binding/0]).
 
+%% The constructor of Storage only throws.
+-dialyzer({no_return, [binding/0]}).
+
 -define(IN_MEMORY, <<":memory:">>).
 -define(SQLITE_CONSTRAINT, 19).
 -define(SCHEMA_VERSION, 1).

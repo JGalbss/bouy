@@ -27,8 +27,17 @@ parts(Format, Time) ->
 
 %% The polyfill finds the offset of a named zone from the wall-clock fields
 %% of formatToParts, and its canonical identifier from resolvedOptions.
-format_to_parts_test() ->
-    realm(fun() ->
+%% Intl reads its locale data from the NIF library of buoy_native, which the
+%% runtime of the CLI loads and a bare rebar3 run lacks; the Intl tests of
+%% test262 and Node cover these cases there.
+with_intl(Test) ->
+    case buoy_native:available() of
+        true -> [fun() -> realm(Test) end];
+        false -> []
+    end.
+
+format_to_parts_test_() ->
+    with_intl(fun() ->
                   Format = format([{<<"timeZone">>, <<"US/EASTERN">>}]),
                   Resolved = buoy_ref:call_method(Format, <<"resolvedOptions">>, []),
                   ?assertEqual(<<"America/New_York">>, buoy_heap:get(Resolved, <<"timeZone">>)),
@@ -44,8 +53,8 @@ format_to_parts_test() ->
                                parts(format([{<<"timeZone">>, <<"-05:30">>}]), 1625140800000))
           end).
 
-an_unknown_zone_is_a_range_error_test() ->
-    realm(fun() ->
+an_unknown_zone_is_a_range_error_test_() ->
+    with_intl(fun() ->
                   ?assertError({'$throw', _}, format([{<<"timeZone">>, <<"Mars/Olympus_Mons">>}])),
                   Format = fun(Options) -> buoy_ref:call_method(format([{<<"timeZone">>, <<"UTC">>} | Options]), <<"format">>, [1577977445000]) end,
                   ?assertEqual(<<"1/2/2020">>, Format([])),

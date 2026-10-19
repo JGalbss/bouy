@@ -299,7 +299,8 @@ mod tests {
     }
 
     /// Each suite in `bench/programs` has limits, and each limit names a Buoy metric of the
-    /// latest committed results file.
+    /// latest committed results file that runs every suite. A run of a few suites, which
+    /// `--suites` records, names no metric of the others.
     #[test]
     fn the_committed_limits_match_the_suites_and_the_results() {
         let limits = load_limits(&bench().join("thresholds.json")).expect("the committed limits");
@@ -316,8 +317,17 @@ mod tests {
             .filter_map(|entry| Some(entry.ok()?.path()))
             .collect();
         files.sort();
-        let latest = files.last().expect("a committed results file");
-        let results = [load_results(latest).expect("a results file")];
+        let latest = files
+            .iter()
+            .rev()
+            .map(|file| load_results(file).expect("a results file"))
+            .find(|recorded| {
+                suites
+                    .iter()
+                    .all(|suite| recorded.suites.iter().any(|found| &found.name == suite))
+            })
+            .expect("a committed results file of every suite");
+        let results = [latest];
         let rows = rows(&limits, &results).expect("each limit names a metric");
         assert_eq!(
             rows.len(),

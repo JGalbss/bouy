@@ -110,8 +110,8 @@
                  window_update_queued = false :: boolean(),
                  %% The window that we may send into.
                  remote_window :: integer(),
-                 %% none | active | deferred: the provider of DATA frames.
-                 data = none :: none | active | deferred,
+                 %% none | pending | active | deferred: the provider of DATA frames.
+                 data = none :: none | pending | active | deferred,
                  data_end_stream = true :: boolean(),
                  weight = 16 :: pos_integer(),
                  dep = 0 :: non_neg_integer(),
