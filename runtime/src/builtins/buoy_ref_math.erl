@@ -30,7 +30,11 @@ math_functions() ->
      {<<"random">>, 0}, {<<"round">>, 1}, {<<"sign">>, 1}, {<<"sin">>, 1}, {<<"sinh">>, 1}, {<<"sqrt">>, 1},
      {<<"sumPrecise">>, 1}, {<<"tan">>, 1}, {<<"tanh">>, 1}, {<<"trunc">>, 1}].
 
-math(<<"pow">>, Args) -> buoy_ref_number:power(arg(1, Args), arg(2, Args));
+%% Math.pow converts both arguments, in order, before Number::exponentiate.
+math(<<"pow">>, Args) ->
+    Base = buoy_ref:to_number(arg(1, Args)),
+    Exponent = buoy_ref:to_number(arg(2, Args)),
+    buoy_ref_number:power(Base, Exponent);
 math(Name, Args) -> buoy_ref_number:canonical(buoy_math:(binary_to_existing_atom(Name))(Args)).
 
 %%% Math.f16round

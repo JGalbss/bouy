@@ -32,6 +32,7 @@
 //! - `analyze`: the facts the lowering needs before it emits code.
 
 mod analyze;
+mod block_function;
 mod call;
 mod class;
 mod context;
@@ -80,7 +81,8 @@ pub fn lower_unit(
     if !module.broken.is_empty() {
         return Ok(broken_module(linking, &module.broken));
     }
-    if module.kind == Kind::Json {
+    // A JSON, text, or bytes module holds its source as a constant for the runtime.
+    if matches!(module.kind, Kind::Json | Kind::Text | Kind::Bytes) {
         return Ok(erlang::print_module(&erlang::Module {
             name: module.name.clone(),
             functions: linking.json_functions(),
@@ -96,6 +98,25 @@ pub struct EvalContext {
     pub place: EvalPlace,
     /// The private names that the call sees (`privates`, their keys in this order).
     pub privates: Vec<String>,
+    /// The code is part of the runtime, such as the Temporal polyfill: a static member of
+    /// a standard global, such as `Math.sign`, reads the value that the runtime installed,
+    /// and an array iterates without its user-visible iterator. Node's lib gets the same
+    /// from its primordials, and Bun's builtin modules from their intrinsics.
+    pub internal: bool,
+    /// The names that `let`, `const`, and classes bind between a direct eval and the
+    /// variables of its function: a block function of the eval code does not reach a
+    /// name that one of them shadows (Annex B.3.3.3).
+    pub lexical: Vec<String>,
+    /// The code is the source text of `CreateDynamicFunction`, one function expression:
+    /// its name, `anonymous`, binds nothing inside it.
+    pub dynamic_function: bool,
+    /// The program that runs the code records each call of a function, for the legacy
+    /// `caller` and `arguments` of a sloppy function (`--frames`).
+    pub frames: bool,
+    /// The module reads its source text from the runtime, which keeps the text that came
+    /// with the module (`buoy_ref_eval:source/1`), instead of holding it as a literal,
+    /// which the VM would scan and parse again.
+    pub source_outside: bool,
 }
 
 /// Where a direct eval is called, which decides what its code may use.
@@ -212,7 +233,7 @@ pub fn lower_eval(
     source: String,
     name: &str,
     strict: bool,
-    function: bool,
+    function: Option<usize>,
     lexical: &[String],
     scope: &[String],
     context: &EvalContext,
@@ -233,20 +254,25 @@ pub fn lower_eval(
             )]);
         }
     }
-    if function {
+    if let Some(parameters_end) = function {
         let complete = with_js_program(&path, &source, |program, _| {
-            is_one_function(program, source.len())
+            is_one_function(program, parameters_end)
         })?;
         if !complete {
             let reporter = Reporter::new(&path, &source);
             return Err(vec![reporter.at(
                 0,
                 Code::Syntax,
-                "the body of a Function closes the function early".to_owned(),
+                "the parameters or the body of a Function close the function early".to_owned(),
             )]);
         }
     }
-    lower_one_script(path, name, source, Some((strict, context)), scope)
+    let context = EvalContext {
+        lexical: lexical.to_vec(),
+        dynamic_function: function.is_some(),
+        ..context.clone()
+    };
+    lower_one_script(path, name, source, Some((strict, &context)), scope)
 }
 
 /// Lowers a classic script of its own (`compile_script` of the crate), named `name`.
@@ -268,7 +294,10 @@ fn lower_one_script(
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
+    // Eval code records its calls when the program that runs it does (`frames` of the
+    // context), and the runtime's own code never does.
     let graph = Graph {
+        reflects_calls: false,
         units: vec![graph::Unit {
             path,
             name: name.to_owned(),
@@ -322,8 +351,8 @@ fn declared_var_names(
 }
 
 /// Whether the program is one parenthesized function expression that ends where the source
-/// does, before its closing parenthesis.
-fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool {
+/// does, before its closing parenthesis, and whose parameter list ends at `parameters_end`.
+fn is_one_function(program: &oxc::ast::ast::Program<'_>, parameters_end: usize) -> bool {
     use oxc::ast::ast::{Expression, Statement};
     let [Statement::ExpressionStatement(statement)] = program.body.as_slice() else {
         return false;
@@ -332,7 +361,8 @@ fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool 
         return false;
     };
     matches!(&inner.expression, Expression::FunctionExpression(function)
-        if function.span.end as usize + 1 == length)
+        if function.span.end as usize + 1 == program.source_text.len()
+            && function.params.span.end as usize == parameters_end)
 }
 
 fn lower(
@@ -363,6 +393,7 @@ fn lower(
                 return Err(reporter.diagnostics);
             }
             let analysis = analyze::analyze(program, semantic);
+            let frames = context.frames || linking.graph.reflects_calls;
             let mut lowerer = Lowerer {
                 semantic,
                 analysis: &analysis,
@@ -388,6 +419,8 @@ fn lower(
                 early: std::collections::HashSet::new(),
                 using_stacks: Vec::new(),
                 hoisted: std::collections::HashSet::new(),
+                block_functions: Vec::new(),
+                frames,
                 linking,
             };
             let functions = if module.kind == Kind::CommonJs {

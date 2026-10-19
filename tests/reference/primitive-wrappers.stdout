@@ -6,3 +6,5 @@ true true true
 ff UP
 $3.50 true
 TypeError
+[ true, true, false ] [ true, true, false ]
+strict delete of a string's length: TypeError

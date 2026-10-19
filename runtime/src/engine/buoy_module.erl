@@ -18,7 +18,7 @@
 -export([uninitialized/2, hoisted/1]).
 -export([dynamic_import/4, meta/1, require/2]).
 -export([define_namespace/3, broken/1]).
--export([deferred_namespace/1, ensure_deferred/1]).
+-export([deferred_namespace/1, ensure_deferred/1, entry/0]).
 
 -define(RECORD(M), {'$buoy_module', M}).
 -define(NAMESPACE(M), {'$buoy_namespace', M}).
@@ -34,6 +34,11 @@
 -define(ENUMERABLE, 2).
 
 %%% Entry points
+
+%% The entry module of the program of this realm process, from which a
+%% ShadowRealm's importValue resolves.
+-spec entry() -> module() | undefined.
+entry() -> erlang:get(?ENTRY).
 
 %% Links and evaluates the program from its entry module. Returns the promise
 %% of the evaluation when the graph awaits, else undefined. An error of a
@@ -111,8 +116,23 @@ has_tla(M) -> info(M, async).
 %%% whose imports did not resolve throws its error here.
 
 link_graph(M) ->
+    load_graph(M, []),
     Marked = link_graph(M, []),
     lists:foreach(fun(L) -> set(L, status, linked) end, Marked).
+
+%% LoadRequestedModules: a request that did not resolve, or a module that does
+%% not parse, fails the graph before any import is linked, in the order that
+%% loading meets them.
+load_graph(M, Seen) ->
+    case lists:member(M, Seen) orelse get(M, status) =/= new of
+        true ->
+            Seen;
+        false ->
+            case {maps:get(loaded, get(M, info), true), info(M, error)} of
+                {false, {_, _, _} = Error} -> erlang:error({'$throw', link_error(Error)});
+                _ -> lists:foldl(fun load_graph/2, [M | Seen], requests(M))
+            end
+    end.
 
 link_graph(M, Marked) ->
     case get(M, status) of
@@ -252,10 +272,10 @@ gather_async(M, Found, Seen) ->
             {Found, Seen};
         false ->
             Seen1 = [M | Seen],
-            case kind(M) =:= esm andalso get(M, status) of
-                S when S =:= evaluating; S =:= evaluated; S =:= evaluating_async; S =:= false ->
+            case kind(M) =/= esm orelse get(M, status) =:= evaluating orelse scc_evaluated(M) of
+                true ->
                     {Found, Seen1};
-                _ ->
+                false ->
                     case has_tla(M) of
                         true ->
                             {add_new([M], Found), Seen1};
@@ -477,13 +497,17 @@ ready_for_sync(M, Seen) ->
         true ->
             true;
         false ->
-            case get(M, status) of
-                evaluated -> true;
+            case scc_evaluated(M) orelse get(M, status) of
+                true -> true;
                 evaluating -> false;
                 evaluating_async -> false;
                 _ -> not has_tla(M) andalso lists:all(fun(R) -> ready_for_sync(R, [M | Seen]) end, requests(M))
             end
     end.
+
+%% IsModuleSCCEvaluated: a module of a cycle is done when the root of its
+%% cycle is, which awaits after the other modules of the cycle evaluated.
+scc_evaluated(M) -> get(get(M, cycle_root), status) =:= evaluated.
 
 %% [[DefineOwnProperty]] of a namespace: it succeeds only when it changes nothing.
 -spec define_namespace(term(), term(), map()) -> boolean().
@@ -626,8 +650,10 @@ dynamic_import(From, Specifier, Options, Phase) ->
 import_traced(From, Specifier, Options, Phase) ->
     {P, Resolve, Reject} = buoy_jobs:capability(),
     try
-        Text = buoy_ref:to_string(Specifier),
-        check_options(Options),
+        Text = case check_options(Options) of
+            none -> buoy_ref:to_string(Specifier);
+            Type -> buoy_ref_string:concat([buoy_ref:to_string(Specifier), <<0>>, Type])
+        end,
         Phase =:= source andalso
             buoy_heap:throw_error('SyntaxError', buoy_ref_string:concat([<<"Source phase import object is not defined for module '">>, Text, <<"'">>])),
         Target = case target(From, Text, import) of
@@ -667,19 +693,26 @@ load_dynamic(Target, Resolve, Reject) ->
         error:Reason:Stack -> Reject(buoy_ref:caught(Reason, Stack))
     end.
 
+%% The import attributes of import(): the type of a text or bytes module, or
+%% none. The request key of such a module holds its type after a NUL, as the
+%% compiler writes it (TYPE_SEPARATOR of the graph).
 check_options(undefined) ->
-    ok;
+    none;
 check_options(Options) ->
     buoy_heap:is_object(Options) orelse buoy_ref:type_error(<<"The second argument of import() must be an object">>),
     case buoy_heap:get(Options, <<"with">>) of
         undefined ->
-            ok;
+            none;
         With ->
             buoy_heap:is_object(With) orelse buoy_ref:type_error(<<"The 'with' option of import() must be an object">>),
-            lists:foreach(fun(K) ->
-                                  ?IS_STRING(buoy_heap:get(With, K)) orelse
-                                      buoy_ref:type_error(<<"Import attribute values must be strings">>)
-                          end, buoy_heap:enumerable_keys(With))
+            Attributes = [{K, buoy_heap:get(With, K)} || K <- buoy_heap:enumerable_keys(With)],
+            lists:foreach(fun({_, V}) ->
+                                  ?IS_STRING(V) orelse buoy_ref:type_error(<<"Import attribute values must be strings">>)
+                          end, Attributes),
+            case lists:keyfind(<<"type">>, 1, Attributes) of
+                {_, Type} when Type =:= <<"text">>; Type =:= <<"bytes">> -> Type;
+                _ -> none
+            end
     end.
 
 %% What Specifier of From names: the compiled table of the module, then the
@@ -800,11 +833,22 @@ encode_byte(B) ->
 load_foreign(M) ->
     Exports = case kind(M) of
         cjs -> buoy_heap:get(load_cjs(M), <<"exports">>);
-        json -> buoy_heap:get(load_json(M), <<"exports">>)
+        json -> buoy_heap:get(load_json(M), <<"exports">>);
+        %% `with { type: "text" }` and `with { type: "bytes" }`: the text of the
+        %% file, or its bytes over an immutable buffer, as the default export.
+        text -> buoy_ref_string:from_utf8(M:'$json'());
+        bytes -> immutable_bytes(binary:decode_hex(M:'$json'()))
     end,
     Snapshot = maps:from_list([{Name, snapshot_value(Name, Exports)} || {Name, _} <- M:'$namespace'()]),
     erlang:put(?FOREIGN(M), Snapshot),
     ok.
+
+immutable_bytes(Bytes) ->
+    Buffer = buoy_ref_buffer:allocate(byte_size(Bytes)),
+    Typed = buoy_ref:construct(buoy_ref_realm:global(<<"Uint8Array">>), [Buffer]),
+    byte_size(Bytes) > 0 andalso buoy_ref_buffer:write(Buffer, 0, Bytes),
+    buoy_ref_buffer:freeze(Buffer),
+    Typed.
 
 snapshot_value(<<"default">>, Exports) -> Exports;
 snapshot_value(<<"module.exports">>, Exports) -> Exports;

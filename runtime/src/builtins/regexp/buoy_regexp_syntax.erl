@@ -386,16 +386,7 @@ hex(Digits) -> list_to_integer(Digits, 16).
 %% RegExpUnicodeEscapeSequence after \u. With UnicodeMode: \u{CodePoint} and a
 %% surrogate pair of two escapes.
 unicode_escape([${ | S], true) ->
-    {Digits, S1} = lists:splitwith(fun(C) -> ?IS_HEX(C) end, S),
-    case {Digits, S1} of
-        {[_ | _], [$} | S2]} ->
-            C = hex(Digits),
-            case C =< 16#10FFFF of
-                true -> {ok, C, S2};
-                false -> error
-            end;
-        _ -> error
-    end;
+    braced_code_point(S, 0, false);
 unicode_escape([A, B, C, D | S], Unicode) when ?IS_HEX(A), ?IS_HEX(B), ?IS_HEX(C), ?IS_HEX(D) ->
     Lead = hex([A, B, C, D]),
     case {Unicode, S} of
@@ -409,6 +400,17 @@ unicode_escape([A, B, C, D | S], Unicode) when ?IS_HEX(A), ?IS_HEX(B), ?IS_HEX(C
         _ -> {ok, Lead, S}
     end;
 unicode_escape(_S, _Unicode) -> error.
+
+%% The CodePoint of \u{...}: its digits, which may have any count of leading
+%% zeros, read one at a time, so a pattern with millions of them makes no
+%% list and no large integer.
+braced_code_point([C | S], Value, _Any) when ?IS_HEX(C) ->
+    case Value * 16 + list_to_integer([C], 16) of
+        Next when Next =< 16#10FFFF -> braced_code_point(S, Next, true);
+        _ -> error
+    end;
+braced_code_point([$} | S], Value, true) -> {ok, Value, S};
+braced_code_point(_S, _Value, _Any) -> error.
 
 %% \p{...} or \P{...} after the letter: the escape and the rest.
 property_escape(Negated, [${ | S], P) ->

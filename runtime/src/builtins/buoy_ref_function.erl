@@ -148,7 +148,7 @@ source_text(F) ->
         {_, {'$f', {_Form, buoy_temporal, _, _}, _}} -> native_text(F);
         {#{source := {Module, Start, End}}, _} -> slice(Module, Start, End);
         {_, {'$f', {_Form, Module, Name, _}, _}} -> module_function_text(F, Module, Name);
-        {_, {'$f', {fn, Module, Name, _, sloppy}, _}} -> module_function_text(F, Module, Name);
+        {_, {'$f', {_Form, Module, Name, _, sloppy}, _}} -> module_function_text(F, Module, Name);
         {#{kind := class}, _} -> buoy_ref_string:concat([<<"class ">>, name_of(F), <<" { }">>]);
         _ -> native_text(F)
     end.

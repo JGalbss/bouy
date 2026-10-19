@@ -2,6 +2,7 @@
 //! tail call: of the join fun of the rest of the block, of a loop fun, or of the function
 //! end. So `return v` is just the value, and loops do not grow the stack.
 
+use oxc::ast::AstKind;
 use oxc::ast::ast::{
     BindingPattern, Declaration, IfStatement, LabeledStatement, Statement, SwitchStatement,
     VariableDeclarationKind,
@@ -21,16 +22,24 @@ impl<'a> Lowerer<'a, '_> {
     pub fn stmts(&mut self, list: Vec<&'a Statement<'a>>, k: &Cont<'a>) -> Vec<Expr> {
         let saved = std::mem::take(&mut self.pre);
         let saved_hoisted = self.hoisted.clone();
+        let saved_cells: Vec<Option<String>> = self
+            .block_functions
+            .iter()
+            .map(|function| function.cell.clone())
+            .collect();
         let mut code = self.hoist(&list);
-        let mut list = list;
-        let mut index = 0;
+        // The statements still to lower, the last first, so that the body of a block
+        // joins the list at its end without a copy of the rest.
+        let mut pending: Vec<&'a Statement<'a>> = list.into_iter().rev().collect();
         loop {
-            let Some(statement) = list.get(index).copied() else {
+            let Some(statement) = pending.pop() else {
                 code.extend(self.jump(k));
                 break;
             };
             if is_using(statement) {
-                code.extend(self.using_block(&list[index..], k));
+                pending.push(statement);
+                let rest: Vec<_> = pending.into_iter().rev().collect();
+                code.extend(self.using_block(&rest, k));
                 break;
             }
             // A block with `using` declarations disposes at its own end, so it stays a
@@ -38,20 +47,16 @@ impl<'a> Lowerer<'a, '_> {
             if let Statement::BlockStatement(inner) = statement
                 && !inner.body.iter().any(is_using)
             {
-                let mut spliced: Vec<&'a Statement<'a>> = inner.body.iter().collect();
-                code.extend(self.hoist(&spliced));
-                spliced.extend_from_slice(&list[index + 1..]);
-                list = spliced;
-                index = 0;
+                let body: Vec<&'a Statement<'a>> = inner.body.iter().collect();
+                code.extend(self.hoist(&body));
+                pending.extend(body.into_iter().rev());
                 continue;
             }
             if is_simple(statement) {
                 code.extend(self.simple(statement));
-                index += 1;
                 continue;
             }
-            let rest = &list[index + 1..];
-            if rest.is_empty() || !completes_normally(statement) {
+            if pending.is_empty() || !completes_normally(statement) {
                 code.extend(self.stmt(statement, k));
                 break;
             }
@@ -61,7 +66,7 @@ impl<'a> Lowerer<'a, '_> {
             let join = self.fresh("K");
             let saved_env = self.frame.env.clone();
             let params = self.rebind_params(&vars);
-            let rest_code = self.stmts(rest.to_vec(), k);
+            let rest_code = self.stmts(pending.into_iter().rev().collect(), k);
             self.frame.env = saved_env;
             code.push(Expr::matches(
                 Expr::var(join.clone()),
@@ -86,6 +91,9 @@ impl<'a> Lowerer<'a, '_> {
         }
         self.pre = saved;
         self.hoisted = saved_hoisted;
+        for (function, cell) in self.block_functions.iter_mut().zip(saved_cells) {
+            function.cell = cell;
+        }
         self.seal(code)
     }
 
@@ -95,18 +103,37 @@ impl<'a> Lowerer<'a, '_> {
     /// the properties that the code gave the first, as `Buffer.prototype` in Node's
     /// lib/buffer.js.
     pub fn hoist(&mut self, list: &[&'a Statement<'a>]) -> Vec<Expr> {
+        // The block cells of the shared block functions come first, so that every function
+        // of the block can close over them.
+        let mut blocks = Vec::new();
+        let mut block_cells: Vec<(String, &oxc::ast::ast::Function<'a>)> = Vec::new();
+        let symbol_of = |function: &oxc::ast::ast::Function<'a>| {
+            function.id.as_ref().and_then(|id| id.symbol_id.get())
+        };
+        for statement in list {
+            if let Some(function) = declared_function(statement)
+                && self.is_block_function(function)
+                && !self.has_block_cell(function)
+            {
+                let shared = block_cells
+                    .iter()
+                    .find(|(_, other)| symbol_of(other) == symbol_of(function))
+                    .map(|(cell, _)| cell.clone());
+                let (cell, code) = self.block_function_cell(function, shared);
+                blocks.extend(code);
+                block_cells.push((cell, function));
+            }
+        }
         let functions: Vec<_> = list
             .iter()
-            .filter_map(|statement| match statement {
-                Statement::FunctionDeclaration(function) => function
-                    .id
-                    .as_ref()
-                    .and_then(|id| id.symbol_id.get())
+            .filter_map(|statement| declared_function(statement))
+            .filter(|function| !self.is_block_function(function))
+            .filter_map(|function| {
+                symbol_of(function)
                     .filter(|symbol| {
                         !self.tops.contains_key(symbol) && !self.hoisted.contains(symbol)
                     })
-                    .map(|symbol| (symbol, function)),
-                _ => None,
+                    .map(|symbol| (symbol, function))
             })
             .collect();
         let saved = std::mem::take(&mut self.pre);
@@ -133,7 +160,12 @@ impl<'a> Lowerer<'a, '_> {
             self.pre.push(cell_set(&cell, value));
             self.hoisted.insert(*symbol);
         }
-        std::mem::replace(&mut self.pre, saved)
+        for (cell, function) in block_cells {
+            let value = self.function_value(function, None);
+            self.pre.push(cell_set(&cell, value));
+        }
+        blocks.extend(std::mem::replace(&mut self.pre, saved));
+        blocks
     }
 
     /// The variables declared outside `span` that `visit` assigns and that are versions
@@ -202,9 +234,44 @@ impl<'a> Lowerer<'a, '_> {
             Statement::ClassDeclaration(class) if !class.declare => {
                 self.class_declaration(class);
             }
+            Statement::FunctionDeclaration(function) => {
+                let code = self.block_function_evaluation(function);
+                self.pre.extend(code);
+            }
             _ => {}
         }
         std::mem::replace(&mut self.pre, saved)
+    }
+
+    /// The simple catch parameter of the name of the `var` `id` in a catch clause around
+    /// the declaration, inside its function. oxc binds such a parameter as a shadow of the
+    /// var, outside the bindings of its scope.
+    fn catch_parameter_shadowing(
+        &self,
+        id: &oxc::ast::ast::BindingIdentifier<'a>,
+        symbol: SymbolId,
+    ) -> Option<SymbolId> {
+        for ancestor in self.semantic.nodes().ancestors(id.node_id.get()) {
+            match ancestor.kind() {
+                AstKind::Function(_)
+                | AstKind::ArrowFunctionExpression(_)
+                | AstKind::StaticBlock(_)
+                | AstKind::Program(_) => return None,
+                AstKind::CatchClause(clause) => {
+                    if let Some(parameter) = &clause.param
+                        && let BindingPattern::BindingIdentifier(binding) = &parameter.pattern
+                        && binding.name == id.name
+                    {
+                        // oxc may give the parameter the symbol of the var: the write then
+                        // reaches the parameter's binding in the catch clause all the same.
+                        let _ = symbol;
+                        return binding.symbol_id.get();
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     pub fn variables(&mut self, declaration: &'a oxc::ast::ast::VariableDeclaration<'a>) {
@@ -225,6 +292,13 @@ impl<'a> Lowerer<'a, '_> {
                 let objects = self.with_objects_for(Some(symbol), id.name.as_str());
                 if !objects.is_empty() {
                     self.with_var_initializer(id.name.as_str(), symbol, &objects, init);
+                    continue;
+                }
+                // A `var` in a catch block whose simple parameter has its name: the
+                // initializer writes the parameter (Annex B.3.4).
+                if let Some(parameter) = self.catch_parameter_shadowing(id, symbol) {
+                    let value = self.named_expr(init, binding_name(&declarator.id));
+                    let _ = self.assign_symbol(parameter, value, id.span);
                     continue;
                 }
             }
@@ -444,6 +518,16 @@ impl<'a> Lowerer<'a, '_> {
         let discriminant = self.bind(discriminant);
         let early = self.early_case_bindings(statement);
         self.pre.extend(early);
+        // The cases share one block, so each function declaration of a case exists from
+        // the start of the switch, as in a block.
+        let functions: Vec<&'a Statement<'a>> = statement
+            .cases
+            .iter()
+            .flat_map(|case| case.consequent.iter())
+            .filter(|item| declared_function(item).is_some())
+            .collect();
+        let hoisted = self.hoist(&functions);
+        self.pre.extend(hoisted);
         let mut code = std::mem::take(&mut self.pre);
         let vars = self.assigned_in(statement.span, |visitor| {
             for case in &statement.cases {
@@ -661,4 +745,14 @@ pub fn is_simple(statement: &Statement<'_>) -> bool {
             | Statement::ExportDefaultDeclaration(_)
             | Statement::DebuggerStatement(_)
     )
+}
+
+/// The function that a statement declares: a function declaration, also behind labels,
+/// which sloppy code allows (Annex B.3.1).
+fn declared_function<'a, 's>(statement: &'s Statement<'a>) -> Option<&'s oxc::ast::ast::Function<'a>> {
+    match statement {
+        Statement::FunctionDeclaration(function) => Some(function),
+        Statement::LabeledStatement(labeled) => declared_function(&labeled.body),
+        _ => None,
+    }
 }

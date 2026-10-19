@@ -1,6 +1,7 @@
 //! The NIF library of the runtime, which `buoy_native.erl` loads into the VM.
 //!
-//! It holds the codecs behind `internalBinding('zlib')` (docs/design/node-builtins.md):
+//! It holds the CLDR data and algorithms of `Intl` (`intl`, docs/design/intl.md), and the
+//! codecs behind `internalBinding('zlib')` (docs/design/node-builtins.md):
 //! each stream is a resource that owns one zlib, brotli, or zstd context, and each module
 //! ports the matching context class of Node's `src/node_zlib.cc`. A write runs on a dirty
 //! CPU scheduler, as Node runs it on the libuv thread pool, so a slow compression never
@@ -11,6 +12,7 @@
 #![cfg_attr(test, allow(dead_code))]
 
 mod brotli;
+pub mod intl;
 // The NIF glue links against the VM's `enif_*` symbols, which a test binary lacks.
 #[cfg(not(test))]
 mod nif;

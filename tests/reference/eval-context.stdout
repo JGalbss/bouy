@@ -9,3 +9,4 @@ SyntaxError TypeError
 [ true, 'TypeError' ]
 undefined undefined undefined 1
 a[/]b gi SyntaxError
+2 2 20

@@ -14,6 +14,7 @@
 
 -include("buoy_ref.hrl").
 
+-export([shadow_evaluate/2, source/1]).
 -export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4]).
 
 -import(buoy_ref, [type_error/1]).
@@ -40,7 +41,8 @@ indirect(Value) -> Value.
 %% `eval(...)` where eval is the name of the global: a direct eval when it
 %% still is the intrinsic, else a plain call.
 %% Scope holds the caller's scope innermost first: [{Name, Cell}] for its
-%% bindings (a copy for an immutable one, whose name starts with `!`), with
+%% bindings (a copy for an immutable one, whose name starts with `!`, and
+%% the cell of a `const`, whose name starts with `#`), with
 %% {<<"@with">>, Object} for a `with` object and
 %% {<<"@vars">>, Object} for the variables of a function. Lexical holds the
 %% names that sloppy eval code may not declare with `var`, and Context what
@@ -132,7 +134,10 @@ create_function(Kind, Args, NewTarget) ->
         async_generator -> <<"(async function* anonymous(">>
     end,
     Source = buoy_ref_string:concat([Prefix, P, <<"\n) {\n">>, B, <<"\n})">>]),
-    F = run(Source, ["--function"], ?GLOBAL, [], #{}),
+    %% The compiler checks that the parameter list ends after P, at the closing
+    %% parenthesis that follows it, as the parameters must parse on their own.
+    ParametersEnd = byte_size(buoy_ref_string:to_utf8(buoy_ref_string:concat(Prefix, P))) + 2,
+    F = run(Source, ["--function=" ++ integer_to_list(ParametersEnd)], ?GLOBAL, [], #{}),
     case NewTarget of
         undefined -> F;
         _ -> buoy_heap:set_prototype_of(F, buoy_ref_realm:proto_for(NewTarget, kind_prototype(Kind)))
@@ -164,7 +169,12 @@ compile_script(Source) ->
 %% Flags are the options of `buoy compile-eval`. A source text that is only
 %% comments, or one regular expression literal, needs no module: programs
 %% such as test262's character sweeps make tens of thousands of them.
-run(Source, Flags, This, Scope, Context) ->
+run(Source, Flags0, This, Scope, Context) ->
+    %% The functions of eval code record their calls when the program does.
+    Flags = case erlang:get('$buoy_frames') of
+        undefined -> Flags0;
+        _ -> ["--frames" | Flags0]
+    end,
     case trivial(Source) of
         empty ->
             undefined;
@@ -178,6 +188,31 @@ run(Source, Flags, This, Scope, Context) ->
             end,
             Module:'__eval__'(This, Scope, Context)
     end.
+
+%% PerformShadowRealmEval: the code compiles where evaluate runs, so that a
+%% syntax error throws in the caller's realm, and runs as an indirect eval in
+%% the realm N. An error of the code comes back as {error, Value}.
+-spec shadow_evaluate(term(), pos_integer()) -> {ok, term()} | {error, term()}.
+shadow_evaluate(Source, N) ->
+    Code = case trivial(Source) of
+        empty ->
+            fun() -> undefined end;
+        {regexp, Body, RegExpFlags} ->
+            fun() -> buoy_ref_regexp:literal(buoy_ref_string:from_units(Body), buoy_ref_string:to_utf8(buoy_ref_string:from_units(RegExpFlags))) end;
+        code ->
+            Key = erlang:md5(term_to_binary({Source, []})),
+            Module = case cached(Key) of
+                {ok, M} -> M;
+                none -> compile(Source, [], Key)
+            end,
+            fun() -> Module:'__eval__'(?GLOBAL, [], #{}) end
+    end,
+    Run = buoy_ref_realm:realm_fun(N, fun(_, _) ->
+                                              try {ok, Code()}
+                                              catch error:Reason:Stack -> {error, buoy_ref:caught(Reason, Stack)}
+                                              end
+                                      end),
+    Run(undefined, undefined).
 
 %% Starts the compiler process of the VM and waits for its first answer, so
 %% that the start of the Buoy binary does not count against the first program
@@ -256,27 +291,61 @@ line_terminator(C) -> C =:= 10 orelse C =:= 13 orelse C =:= 16#2028 orelse C =:=
 %% port, which a registered process owns, so that each eval costs a message
 %% and not a new OS process. A request is the flags and the module name, one
 %% on each line, then an empty line and the source text; an answer is a
-%% status byte and the text. The server process also compiles and loads the
-%% Erlang module, so the realm's heap and dictionary stay out of it.
+%% status byte and the text. The server only turns source text into Erlang;
+%% a process of the caller's own compiles and loads that Erlang, so evals of
+%% several realms compile at once, and the realm's heap and dictionary stay
+%% out of it. The name of each module is unique, so two realms that compile
+%% the same text at once load two modules, and the table keeps either.
 compile(Source, Flags, Key) ->
     Name = "buoy_eval_" ++ integer_to_list(erlang:unique_integer([positive])),
     Request = [lists:join("\n", Flags ++ [Name]), "\n\n", buoy_ref_string:to_utf8(Source)],
-    case call_compiler({Key, list_to_atom(Name)}, iolist_to_binary(Request)) of
-        {module, Module} -> Module;
-        {diagnostic, Diagnostic} -> report(Diagnostic);
-        {failed, Output} -> type_error(buoy_ref_string:from_utf8(<<"the Buoy compiler failed: ", Output/binary>>))
+    case call_compiler(iolist_to_binary(Request)) of
+        <<0, Size:32, Erlang:Size/binary, Text/binary>> ->
+            Module = list_to_atom(Name),
+            true = ets:insert(buoy_eval_modules, {Module, Text}),
+            loaded(load_apart(Key, Module, Erlang));
+        <<2, Diagnostic/binary>> -> report(Diagnostic);
+        <<_, Output/binary>> -> loaded({failed, Output})
     end.
 
-call_compiler(Target, Request) ->
+loaded({module, Module}) -> Module;
+loaded({failed, Output}) -> type_error(buoy_ref_string:from_utf8(<<"the Buoy compiler failed: ", Output/binary>>)).
+
+call_compiler(Request) ->
     Server = compiler(),
     Ref = erlang:monitor(process, Server),
-    Server ! {compile, self(), Ref, Target, Request},
+    Server ! {raw, self(), Ref, Request},
     receive
-        {Ref, Answer} ->
+        {Ref, {answer, Answer}} ->
             erlang:demonitor(Ref, [flush]),
             Answer;
         {'DOWN', Ref, process, _, Reason} ->
             type_error(buoy_ref_string:from_utf8(unicode:characters_to_binary(io_lib:format("the Buoy compiler stopped: ~0tP", [Reason, 8]))))
+    end.
+
+%% The source text of the eval module Module, which its '$source'/0 reads: the
+%% compiler sends it beside the module, so the VM never scans it as a literal.
+-spec source(module()) -> binary().
+source(Module) ->
+    [{_, Text}] = ets:lookup(buoy_eval_modules, Module),
+    Text.
+
+%% load/3 in a process linked to the caller, which a timeout or a kill of the
+%% caller stops too.
+load_apart(Key, Module, Erlang) ->
+    Caller = self(),
+    {Pid, Ref} = spawn_opt(fun() ->
+                                   Result = try load(Key, Module, Erlang)
+                                            catch Class:Reason -> {failed, unicode:characters_to_binary(io_lib:format("~p: ~0tP", [Class, Reason, 8]))}
+                                            end,
+                                   Caller ! {self(), Result}
+                           end, [link, monitor]),
+    receive
+        {Pid, Result} ->
+            erlang:demonitor(Ref, [flush]),
+            Result;
+        {'DOWN', Ref, process, Pid, Reason} ->
+            {failed, unicode:characters_to_binary(io_lib:format("the Erlang compiler stopped: ~0tP", [Reason, 8]))}
     end.
 
 %% The compiler process of the VM, started on first use.
@@ -319,16 +388,6 @@ serve(Port) ->
             end,
             From ! {Ref, {answer, Answer}},
             serve(Port);
-        {compile, From, Ref, {Key, Module}, Request} ->
-            true = port_command(Port, Request),
-            Answer = receive
-                {Port, {data, <<0, Erlang/binary>>}} -> load(Key, Module, Erlang);
-                {Port, {data, <<2, Diagnostic/binary>>}} -> {diagnostic, Diagnostic};
-                {Port, {data, <<_, Output/binary>>}} -> {failed, Output};
-                {Port, {exit_status, Status}} -> exit({compiler_exit, Status})
-            end,
-            From ! {Ref, Answer},
-            serve(Port);
         {Port, {exit_status, Status}} ->
             exit({compiler_exit, Status})
     end.
@@ -355,7 +414,9 @@ load_module(Main, Importer, Specifier, Mode) ->
             [Path, Modules] = binary:split(Rest, <<"\n">>),
             Loaded = load_modules(Modules, []),
             [{Entry, _} | _] = Loaded,
-            {program, Path, Entry, Entry:'$graph'()};
+            %% The answer names every module of the program, also one that the
+            %% VM loaded before as a module of another program, without '$graph'/0.
+            {program, Path, Entry, [{buoy_ref_string:from_utf8(P), M} || {M, P} <- Loaded]};
         <<2, Diagnostic/binary>> ->
             case binary:split(Diagnostic, <<"\t">>) of
                 [Code, Message] -> {error, Code, Message};
@@ -389,9 +450,9 @@ split3(Text) ->
 compile_loaded(Module, Erlang) ->
     {ok, Tokens, _} = erl_scan:string(unicode:characters_to_list(Erlang)),
     Forms = [Form || FormTokens <- split_forms(Tokens, [], []), {ok, Form} <- [erl_parse:parse_form(FormTokens)]],
-    Options = [binary, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process, no_ssa_opt,
-               no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt, no_fun_opt,
-               no_module_opt, no_line_info],
+    Options = [binary, from_abstr, no_lint, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process,
+               no_ssa_opt, no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt,
+               no_fun_opt, no_module_opt, no_line_info],
     {ok, Module, Binary} = compile:forms(Forms, Options),
     code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary).
 
@@ -406,13 +467,15 @@ report(Output) ->
     buoy_heap:throw_error(Name, buoy_ref_string:from_utf8(Message)).
 
 %% Eval code mostly runs once, so the module compiles without the optimizing
-%% passes, in this process.
+%% passes, in this process. It also skips erl_lint (no_lint), which the Buoy
+%% compiler's output does not need and which takes time quadratic in the funs
+%% of one function: 1000 methods in one object literal took minutes.
 load(Key, Module, Erlang) ->
     {ok, Tokens, _} = erl_scan:string(unicode:characters_to_list(Erlang)),
     Forms = [Form || FormTokens <- split_forms(Tokens, [], []), {ok, Form} <- [erl_parse:parse_form(FormTokens)]],
-    Options = [binary, return_errors, nowarn_unused_vars, nowarn_unused_function, no_spawn_compiler_process,
-               no_ssa_opt, no_bool_opt, no_share_opt, no_recv_opt, no_postopt, no_type_opt, no_copt, no_bsm_opt,
-               no_fun_opt, no_module_opt, no_line_info],
+    Options = [binary, return_errors, from_abstr, no_lint, nowarn_unused_vars, nowarn_unused_function,
+               no_spawn_compiler_process, no_ssa_opt, no_bool_opt, no_share_opt, no_recv_opt, no_postopt,
+               no_type_opt, no_copt, no_bsm_opt, no_fun_opt, no_module_opt, no_line_info],
     case compile:forms(Forms, Options) of
         {ok, Module, Binary} ->
             {module, Module} = code:load_binary(Module, atom_to_list(Module) ++ ".erl", Binary),

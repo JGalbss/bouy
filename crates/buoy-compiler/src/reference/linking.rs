@@ -96,15 +96,17 @@ impl<'c> Linking<'c> {
             ]),
             None => Expr::atom("none"),
         };
-        self.module_info_with(error)
+        self.module_info_with(error, self.link.load_failed)
     }
 
-    fn module_info_with(&self, error: Expr) -> Function {
+    fn module_info_with(&self, error: Expr, load_failed: bool) -> Function {
         let unit = self.unit();
         let kind = match unit.kind {
             Kind::Esm => "esm",
             Kind::CommonJs => "cjs",
             Kind::Json => "json",
+            Kind::Text => "text",
+            Kind::Bytes => "bytes",
         };
         let requests = unit
             .record
@@ -143,6 +145,10 @@ impl<'c> Linking<'c> {
                     }),
                 ),
                 (Expr::atom("error"), error),
+                (
+                    Expr::atom("loaded"),
+                    Expr::atom(if load_failed { "false" } else { "true" }),
+                ),
             ]),
         )
     }
@@ -271,7 +277,7 @@ impl<'c> Linking<'c> {
             vec![Expr::atom(self.unit().name.clone())],
         );
         vec![
-            self.module_info_with(error),
+            self.module_info_with(error, true),
             constant("$namespace", Expr::List(vec![])),
             self.resolver(),
             constant("$body", broken.clone()),
@@ -363,6 +369,9 @@ impl<'a> Lowerer<'a, '_> {
             _ => None,
         });
         let mut body = Vec::new();
+        if self.frames {
+            body.push(Expr::call("buoy_ref", "frames_start", vec![]));
+        }
         if let Some(wrapper) = wrapper {
             let value = self.expr(wrapper);
             body.append(&mut self.pre);
@@ -495,16 +504,21 @@ impl<'a> Lowerer<'a, '_> {
             Some(oxc::ast::ast::ImportPhase::Defer) => "defer",
             None => "evaluation",
         };
+        let referrer = self.referrer();
         self.bind(Expr::call(
             "buoy_module",
             "dynamic_import",
-            vec![
-                Expr::atom(self.module.clone()),
-                specifier,
-                options,
-                Expr::atom(phase),
-            ],
+            vec![referrer, specifier, options, Expr::atom(phase)],
         ))
+    }
+
+    /// The module that an `import()` resolves from (GetActiveScriptOrModule): this one, or
+    /// for eval code the script or module of the code that called eval.
+    pub fn referrer(&self) -> Expr {
+        if self.eval.is_some() {
+            return Expr::var(super::module::EVAL_REFERRER);
+        }
+        Expr::atom(self.module.clone())
     }
 
     /// `import.meta`

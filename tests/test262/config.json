@@ -3,6 +3,62 @@
   "timeout_ms": 10000,
   "skip": [
     { "flag": "CanBlockIsFalse", "reason": "can-block" },
-    { "feature": "IsHTMLDDA", "reason": "needs-dom" }
+    { "feature": "IsHTMLDDA", "reason": "needs-dom" },
+    {
+      "path": "built-ins/Error/prototype/stack/getter-error-as-prototype.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/getter-foreign-new-target.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/getter-receiver-is-proxy.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/instance-no-own-stack.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/instance-not-enumerable.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/setter-creates-own-property.js",
+      "reason": "node-behavior"
+    },
+    { "path": "built-ins/Error/prototype/stack/setter-cross-realm.js", "reason": "node-behavior" },
+    { "path": "built-ins/Error/prototype/stack/setter-empty-string.js", "reason": "node-behavior" },
+    {
+      "path": "built-ins/Error/prototype/stack/setter-non-extensible-receiver.js",
+      "reason": "node-behavior"
+    },
+    {
+      "path": "built-ins/Error/prototype/stack/setter-via-assignment.js",
+      "reason": "node-behavior"
+    },
+    { "path": "staging/sm/strict/10.4.2.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/10.6.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/12.10.1.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/15.10.7.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/15.3.5.1.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/15.3.5.2.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/15.5.5.1.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/15.5.5.2.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/8.12.5.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/8.12.7-2.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/8.12.7.js", "mode": "strict", "reason": "test-defect" },
+    { "path": "staging/sm/strict/8.7.2.js", "mode": "strict", "reason": "test-defect" },
+    {
+      "path": "staging/sm/strict/eval-variable-environment.js",
+      "mode": "strict",
+      "reason": "test-defect"
+    },
+    {
+      "path": "staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js",
+      "reason": "outdated-test"
+    },
+    { "path": "staging/sm/regress/regress-602621.js", "reason": "outdated-test" }
   ]
 }

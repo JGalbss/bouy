@@ -34,7 +34,11 @@ impl<'a> Lowerer<'a, '_> {
             .map(|argument| match argument {
                 Argument::SpreadElement(spread) => {
                     let value = self.expr(&spread.argument);
-                    self.bind(Expr::call("buoy_ref_iterator", "to_list", vec![value]))
+                    self.bind(Expr::call(
+                        "buoy_ref_iterator",
+                        &self.iteration("to_list"),
+                        vec![value],
+                    ))
                 }
                 other => match other.as_expression() {
                     Some(expression) => Expr::List(vec![self.expr(expression)]),
@@ -55,11 +59,21 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(member) = callee.as_member_expression() {
             return self.method_call(call, member);
         }
-        // A call of the name `eval` is a direct eval also through a `with` object.
+        if let Expression::ChainExpression(chain) = callee
+            && let Some(member) = chain.expression.as_member_expression()
+        {
+            let (function, this) = self.chain_reference(member);
+            if call.optional {
+                self.chain_guard(function.clone());
+            }
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+        }
+        // A call of the name `eval` is a direct eval also through a `with` object, a
+        // parameter, or a variable, when the value is the intrinsic %eval%.
         if let Expression::Identifier(ident) = callee
             && ident.name == "eval"
             && !call.optional
-            && self.symbol_of(ident.reference_id.get()).is_none()
         {
             return self.direct_eval(ident, call);
         }
@@ -72,9 +86,11 @@ impl<'a> Lowerer<'a, '_> {
             let args = self.args(&call.arguments);
             return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
         }
+        // A static call, unless the name is the cell of a block function in its block.
         if let Expression::Identifier(ident) = callee
             && let Some(symbol) = self.symbol_of(ident.reference_id.get())
             && !self.frame.env.contains_key(&symbol)
+            && self.block_cell(symbol, ident.span).is_none()
         {
             match self.tops.get(&symbol).cloned() {
                 Some(Top::Function { name, .. }) if !call.optional => {
@@ -114,6 +130,23 @@ impl<'a> Lowerer<'a, '_> {
         call: &'a CallExpression<'a>,
         member: &'a MemberExpression<'a>,
     ) -> Expr {
+        if let MemberExpression::StaticMemberExpression(static_member) = member
+            && !call.optional
+            && let Some((global, key)) = self.primordial(static_member)
+        {
+            let function = self.bind(Expr::call(
+                "buoy_ref_realm",
+                "primordial",
+                vec![Expr::js_string(global), key],
+            ));
+            let this = self.bind(Expr::call(
+                "buoy_ref",
+                "global",
+                vec![Expr::js_string(global)],
+            ));
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+        }
         if let Expression::Super(_) = member.object() {
             let (object, key) = self.member_parts(member);
             let method = self.get(object.clone(), key);
@@ -176,10 +209,10 @@ impl<'a> Lowerer<'a, '_> {
         call: &'a CallExpression<'a>,
     ) -> Expr {
         let objects = self.with_objects(ident);
-        let eval = if objects.is_empty() {
-            self.identifier_read(ident)
-        } else {
-            self.with_read(ident, &objects)
+        let eval = match self.symbol_of(ident.reference_id.get()) {
+            _ if !objects.is_empty() => self.with_read(ident, &objects),
+            Some(symbol) => self.read_symbol(symbol, ident.span),
+            None => self.identifier_read(ident),
         };
         let args = self.args(&call.arguments);
         let mode = Expr::atom(if self.frame.sloppy {
@@ -241,6 +274,7 @@ impl<'a> Lowerer<'a, '_> {
         if !privates.is_empty() {
             entries.push(("privates", Expr::List(privates)));
         }
+        entries.push(("referrer", self.referrer()));
         Expr::Map(
             entries
                 .into_iter()
@@ -284,8 +318,17 @@ impl<'a> Lowerer<'a, '_> {
                     continue;
                 }
                 // An immutable binding, such as the name of a class or of a function
-                // expression, reaches the eval as a copy, marked with `!`.
+                // expression, reaches the eval as a copy, marked with `!`. A `const`
+                // reaches it as its cell, marked with `#`, which any write throws on.
+                // A catch parameter, marked with `?`, is no home for a `var` of the eval
+                // code, which goes to the function's variables (Annex B.3.4).
+                let flags = scoping.symbol_flags(*symbol);
+                let catch = flags.is_catch_variable();
                 let (entry, cell) = match self.frame.env.get(symbol).cloned() {
+                    Some(Local::Cell(cell)) if catch => (format!("?{name}"), Expr::var(cell)),
+                    Some(Local::Cell(cell)) if flags.is_const_variable() => {
+                        (format!("#{name}"), Expr::var(cell))
+                    }
                     Some(Local::Cell(cell)) if self.class_bindings.contains(symbol) => (
                         format!("!{name}"),
                         self.bind(Expr::call("buoy_heap", "cell", vec![cell_get(&cell)])),

@@ -6,13 +6,14 @@
 //! `require`, `module`, `__filename`, and `__dirname` as parameters.
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use oxc::ast::ast::{
     Argument, CallExpression, Declaration, ExportDefaultDeclarationKind, Expression,
-    ImportDeclarationSpecifier, ImportExpression, ModuleExportName, ObjectPropertyKind, Program,
-    PropertyKey, SimpleAssignmentTarget, Statement,
+    ImportAttributeKey, ImportDeclarationSpecifier, ImportExpression, ModuleExportName,
+    ObjectPropertyKind, Program, PropertyKey, SimpleAssignmentTarget, Statement, WithClause,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::Semantic;
@@ -32,6 +33,16 @@ pub const CJS_WRAPPER: &str = "(function (exports, require, module, __filename, 
 pub struct Graph {
     /// The modules in discovery order. The entry module comes first.
     pub units: Vec<Unit>,
+    /// Whether the code of the program may read the legacy `caller` or `arguments` of a
+    /// function, so that each function records its call (`reflects_calls`).
+    pub reflects_calls: bool,
+}
+
+/// Whether `source` may read the legacy `caller` or `arguments` of a function. The text
+/// test also finds the names in the strings that eval code or `Function` compiles.
+#[must_use]
+pub fn reflects_calls(source: &str) -> bool {
+    source.contains("caller") || source.contains(".arguments")
 }
 
 /// One module file.
@@ -70,6 +81,53 @@ pub enum Kind {
     Esm,
     CommonJs,
     Json,
+    /// `with { type: "text" }`: the text of the file as the default export (import-text).
+    Text,
+    /// `with { type: "bytes" }`: the bytes of the file in a `Uint8Array` over an immutable
+    /// `ArrayBuffer` (import-bytes). The source holds them in hexadecimal.
+    Bytes,
+}
+
+/// The separator of a request key that carries a module type, such as `./a.txt\0text`.
+/// A module of another type is a module record of its own, so the requests, the imports,
+/// and the units of the graph key by the pair. The runtime forms the same key for an
+/// `import()` with the attribute (`buoy_module:dynamic_import/4`).
+pub const TYPE_SEPARATOR: char = '\0';
+
+/// The request key of `specifier` under the import attributes `with`: the specifier with
+/// the type of a text or bytes module after the separator, else the specifier.
+fn typed(specifier: &str, with: Option<&WithClause<'_>>) -> String {
+    let module_type = with.and_then(|with| {
+        with.with_entries.iter().find_map(|entry| {
+            let key = match &entry.key {
+                ImportAttributeKey::Identifier(name) => name.name.as_str(),
+                ImportAttributeKey::StringLiteral(literal) => literal.value.as_str(),
+            };
+            (key == "type").then(|| entry.value.value.as_str())
+        })
+    });
+    match module_type {
+        Some(module_type @ ("text" | "bytes")) => {
+            format!("{specifier}{TYPE_SEPARATOR}{module_type}")
+        }
+        _ => specifier.to_owned(),
+    }
+}
+
+/// The specifier of a request key and the kind of module that its type names.
+fn untyped(key: &str) -> (&str, Option<Kind>) {
+    match key.split_once(TYPE_SEPARATOR) {
+        Some((specifier, "text")) => (specifier, Some(Kind::Text)),
+        Some((specifier, "bytes")) => (specifier, Some(Kind::Bytes)),
+        _ => (key, None),
+    }
+}
+
+/// The key of a typed module in the index of the graph: the path with the type after the
+/// separator, so that the file can be a module of each type.
+fn typed_path(path: &Path, kind: Kind) -> PathBuf {
+    let module_type = if kind == Kind::Text { "text" } else { "bytes" };
+    PathBuf::from(format!("{}{TYPE_SEPARATOR}{module_type}", path.display()))
 }
 
 impl Kind {
@@ -84,7 +142,7 @@ impl Kind {
             SourceType::mjs()
         };
         match self {
-            Self::Esm | Self::Json => base.with_module(true),
+            Self::Esm | Self::Json | Self::Text | Self::Bytes => base.with_module(true),
             Self::CommonJs => base.with_script(true),
         }
     }
@@ -158,9 +216,25 @@ pub fn load(
     let mut index: HashMap<PathBuf, usize> = HashMap::new();
     let mut names: HashMap<String, PathBuf> = HashMap::new();
     let mut queue = VecDeque::from([entry.to_path_buf()]);
-    index.insert(entry.to_path_buf(), 0);
+    // A classic script is not a module: an import of its own file loads that file again as
+    // a module of its own, so the script holds no path that a request can find.
+    let entry_key = if script {
+        PathBuf::new()
+    } else {
+        entry.to_path_buf()
+    };
+    index.insert(entry_key, 0);
     while let Some(path) = queue.pop_front() {
-        let name = unit_name(root, &path);
+        if let (file, Some(kind)) = untyped(&path.to_string_lossy()) {
+            units.push(typed_unit(root, Path::new(file), kind));
+            continue;
+        }
+        let mut name = unit_name(root, &path);
+        // The module of the file keeps the name that any program gives it, because a VM
+        // loads a module once for all its programs; the script takes a name of its own.
+        if script && units.is_empty() {
+            name.push_str("@script");
+        }
         let scanned = match names.insert(name.clone(), path.clone()) {
             Some(other) => Err(vec![Reporter::new(&path, "").at(
                 0,
@@ -213,7 +287,56 @@ pub fn load(
             script: script && units.is_empty(),
         });
     }
-    Ok(Graph { units })
+    let reflects_calls = units.iter().any(|unit| reflects_calls(&unit.source));
+    Ok(Graph {
+        units,
+        reflects_calls,
+    })
+}
+
+/// A text or bytes module of the file at `path`. A file that cannot be read makes a broken
+/// unit, which throws when the program loads it.
+fn typed_unit(root: &Path, path: &Path, kind: Kind) -> Unit {
+    let suffix = if kind == Kind::Text {
+        "@text"
+    } else {
+        "@bytes"
+    };
+    let (source, broken) = match fs::read(path) {
+        Ok(bytes) if kind == Kind::Bytes => (
+            bytes.iter().fold(String::new(), |mut hex, byte| {
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            }),
+            Vec::new(),
+        ),
+        // UTF-8 decode, which replaces a bad sequence and drops a byte order mark.
+        Ok(bytes) => {
+            let text = String::from_utf8_lossy(&bytes);
+            (
+                text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned(),
+                Vec::new(),
+            )
+        }
+        Err(error) => (
+            String::new(),
+            vec![Reporter::new(path, "").at(
+                0,
+                Code::BadImport,
+                format!("cannot read {}: {error}", path.display()),
+            )],
+        ),
+    };
+    Unit {
+        path: path.to_path_buf(),
+        name: format!("{}{suffix}", unit_name(root, path)),
+        source,
+        kind,
+        record: Record::default(),
+        requests: Vec::new(),
+        broken,
+        script: false,
+    }
 }
 
 /// The requests of a module: its string specifiers, then the bare strings that a
@@ -236,11 +359,15 @@ fn requests_of(
         {
             continue;
         }
-        let target = match resolver.resolve(&specifier, path, mode) {
-            Ok(Target::File(found)) if resolve_only && !index.contains_key(&found) => {
+        let (plain, kind) = untyped(&specifier);
+        let target = match (resolver.resolve(plain, path, mode), kind) {
+            (Ok(Target::File(found)), None) if resolve_only && !index.contains_key(&found) => {
                 Resolved::Path(found)
             }
-            result => resolved_of(result, index, queue),
+            (Ok(Target::File(found)), Some(kind)) => {
+                resolved_of(Ok(Target::File(typed_path(&found, kind))), index, queue)
+            }
+            (result, _) => resolved_of(result, index, queue),
         };
         requests.push(Request {
             specifier,
@@ -583,10 +710,11 @@ impl<'a> Facts<'_, 'a> {
                     if !import.import_kind.is_value() {
                         continue;
                     }
-                    let specifier = import.source.value.as_str();
-                    if specifier == "buoy" {
+                    if import.source.value == "buoy" {
                         continue;
                     }
+                    let key = typed(import.source.value.as_str(), import.with_clause.as_deref());
+                    let specifier = key.as_str();
                     let deferred = matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Defer));
                     let mut kept = import.specifiers.is_none();
                     for item in import.specifiers.iter().flatten() {
@@ -688,7 +816,8 @@ impl<'a> Facts<'_, 'a> {
                 if !export.export_kind.is_value() {
                     return;
                 }
-                let specifier = export.source.value.as_str();
+                let key = typed(export.source.value.as_str(), export.with_clause.as_deref());
+                let specifier = key.as_str();
                 let mut any = false;
                 for item in &export.specifiers {
                     if !item.export_kind.is_value() {
@@ -737,7 +866,8 @@ impl<'a> Facts<'_, 'a> {
                 if !export.export_kind.is_value() {
                     return;
                 }
-                let specifier = export.source.value.as_str();
+                let key = typed(export.source.value.as_str(), export.with_clause.as_deref());
+                let specifier = key.as_str();
                 match &export.exported {
                     Some(exported) => self.record.indirect.push((
                         export_name(exported),
@@ -884,7 +1014,13 @@ fn is_exports(expression: &Expression<'_>) -> bool {
 impl<'a> Visit<'a> for Requests {
     fn visit_import_expression(&mut self, it: &ImportExpression<'a>) {
         match string_of(&it.source) {
-            Some(specifier) => self.found.push((specifier, Mode::Import, false)),
+            Some(specifier) => {
+                let key = match it.options.as_ref().and_then(options_type) {
+                    Some(module_type) => format!("{specifier}{TYPE_SEPARATOR}{module_type}"),
+                    None => specifier,
+                };
+                self.found.push((key, Mode::Import, false));
+            }
             None => self.computed(Some(&it.source)),
         }
         walk::walk_import_expression(self, it);
@@ -1045,4 +1181,41 @@ impl Requests {
             }
         }
     }
+}
+
+/// The text or bytes type of the options of an `import()` that names it literally, such as
+/// `{ with: { type: "text" } }`.
+fn options_type<'b>(options: &'b Expression<'_>) -> Option<&'b str> {
+    let Expression::ObjectExpression(options) = options.without_parentheses() else {
+        return None;
+    };
+    let with = options
+        .properties
+        .iter()
+        .find_map(|property| match property {
+            ObjectPropertyKind::ObjectProperty(property)
+                if !property.computed && property.key.static_name().as_deref() == Some("with") =>
+            {
+                Some(&property.value)
+            }
+            _ => None,
+        })?;
+    let Expression::ObjectExpression(with) = with.without_parentheses() else {
+        return None;
+    };
+    with.properties.iter().find_map(|property| match property {
+        ObjectPropertyKind::ObjectProperty(property)
+            if !property.computed && property.key.static_name().as_deref() == Some("type") =>
+        {
+            match &property.value {
+                Expression::StringLiteral(literal)
+                    if matches!(literal.value.as_str(), "text" | "bytes") =>
+                {
+                    Some(literal.value.as_str())
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    })
 }

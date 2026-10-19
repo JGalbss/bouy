@@ -122,8 +122,9 @@ function(Fun, Name, Length, normal) ->
     buoy_ref:named_fn(Fun, Name, Length);
 function(Fun, Name, Length, sloppy) ->
     buoy_ref:named_fn(Fun, Name, Length, sloppy);
-function(Fun3, Name, Length, normal_nt) ->
-    F = buoy_ref:named_fn(fun(This, Args) -> Fun3(This, Args, undefined) end, Name, Length),
+function(Fun3, Name, Length, Kind) when Kind =:= normal_nt; Kind =:= sloppy_nt ->
+    Ordinary = case Kind of normal_nt -> normal; sloppy_nt -> sloppy end,
+    F = buoy_ref:named_fn(fun(This, Args) -> Fun3(This, Args, undefined) end, Name, Length, Ordinary),
     Construct = in_realm(fun(NewTarget, Args) -> buoy_ref_class:new_target_construct(Fun3, NewTarget, Args) end),
     buoy_heap:set_slots(F, (buoy_heap:slots(F))#{kind => normal, construct => Construct}),
     F;

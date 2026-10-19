@@ -41,7 +41,7 @@
 
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
--export([function/1, function/4, call/3, construct/3, is_constructor/1]).
+-export([function/1, function/4, function/5, reflect_calls/1, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
@@ -265,16 +265,54 @@ function(Fun) -> {'$f', next_id(), Fun}.
 %% A function with a record: a name, a length, and internal slots, such as the
 %% construct behaviour of a class.
 -spec function(fun((value(), list()) -> value()), binary(), value(), map()) -> value().
-function(Fun, Name, Length, Slots) ->
+function(Fun, Name, Length, Slots) -> function(Fun, Name, Length, Slots, []).
+
+%% function/4 with more own properties after name and length, each read-only
+%% and not configurable, such as the caller and arguments of a sloppy
+%% function. The slot `prototype => lazy` marks an ordinary function whose
+%% prototype object own_prototype/3 makes when code first uses a property of
+%% the function, as V8 makes it lazily: most functions are only called.
+-spec function(fun((value(), list()) -> value()), binary(), value(), map(), [{key(), value()}]) -> value().
+function(Fun, Name, Length, Slots, Fixed) ->
     Id = next_id(),
-    Props = #{<<"length">> => Length, <<"name">> => Name},
-    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
+    Props = maps:merge(#{<<"length">> => Length, <<"name">> => Name}, maps:from_list(Fixed)),
+    Attrs = maps:merge(#{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE}, maps:from_list([{K, 0} || {K, _} <- Fixed])),
+    Keys = lists:reverse([K || {K, _} <- Fixed], [<<"name">>, <<"length">>]),
     {Fun1, Slots1} = case erlang:get(?REALM_KEY) of
         undefined -> {Fun, Slots};
         N -> {buoy_ref_realm:realm_fun(N, Fun), Slots#{realm => N}}
     end,
-    erlang:put(Id, {function, function_prototype(), Props, [<<"name">>, <<"length">>], Attrs, Slots1}),
+    erlang:put(Id, {function, function_prototype(), Props, Keys, Attrs, Slots1}),
     {'$f', Id, Fun1}.
+
+%% The caller and arguments properties of the sloppy function F read the calls
+%% that the program records (buoy_ref:legacy_caller/1), when it records them.
+-spec reflect_calls(value()) -> value().
+reflect_calls({'$f', Id, _} = F) ->
+    case erlang:get('$buoy_frames') of
+        undefined ->
+            F;
+        _ ->
+            {function, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+            Live = #{<<"caller">> => {'$live', fun() -> buoy_ref:legacy_caller(Id) end},
+                     <<"arguments">> => {'$live', fun() -> buoy_ref:legacy_arguments(Id) end}},
+            erlang:put(Id, {function, P, maps:merge(Props, Live), Keys, Attrs, Slots}),
+            F
+    end.
+
+%% The prototype property of an ordinary function F: an object of the realm of
+%% F whose constructor is F, writable, not enumerable, and not configurable. Its
+%% key goes after the keys that the function had when it was made.
+own_prototype(Id, F, {function, P, Props, Keys, Attrs, Slots}) ->
+    ProtoId = next_id(),
+    erlang:put(ProtoId, {object, intrinsic(maps:get(realm, Slots, 0), 'Object.prototype'), #{<<"constructor">> => F},
+                         [<<"constructor">>], #{<<"constructor">> => ?WRITABLE bor ?CONFIGURABLE}, none}),
+    Proto = {'$o', ProtoId},
+    {Added, Initial} = lists:splitwith(fun(K) -> not lists:member(K, [<<"caller">>, <<"arguments">>, <<"name">>, <<"length">>]) end, Keys),
+    R = {function, P, Props#{<<"prototype">> => Proto}, Added ++ [<<"prototype">> | Initial],
+         Attrs#{<<"prototype">> => ?WRITABLE}, maps:remove(prototype, Slots)},
+    erlang:put(Id, R),
+    R.
 
 -spec call(value(), value(), list()) -> value().
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
@@ -347,6 +385,7 @@ get({'$o', Id} = O, K, Receiver) ->
 get({'$f', Id, _} = F, K, Receiver) ->
     case erlang:get(Id) of
         undefined -> from_record(fn_record(F), K, Receiver);
+        {function, _, _, _, _, #{prototype := lazy}} = R when K =:= <<"prototype">> -> from_record(own_prototype(Id, F, R), K, Receiver);
         R -> from_record(R, K, Receiver)
     end.
 
@@ -470,7 +509,13 @@ assign({'$o', Id} = O, K, V, Mode) ->
         _ ->
             strict_set(O, K, V, Mode)
     end;
+assign({'$f', Id, _} = F, <<"prototype">> = K, V, Mode) ->
+    _ = id_for_write(F),
+    assign_function(Id, F, K, V, Mode);
 assign({'$f', Id, _} = F, K, V, Mode) ->
+    assign_function(Id, F, K, V, Mode).
+
+assign_function(Id, F, K, V, Mode) ->
     case erlang:get(Id) of
         {function, P, Props, Keys, Attrs, Slots} = R ->
             case Props of
@@ -714,9 +759,17 @@ delete_property(O, K) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             buoy_ref_proxy:delete_property(Handler, K);
-        {deferred_namespace, _, _, _, _, M} = R ->
-            deferred_key(M, K),
-            own_of(R, K) =:= none;
+        %% [[Delete]] of a namespace fails for an export and does not read its binding.
+        {namespace, _, Props, _, _, _} when not is_tuple(K); element(1, K) =/= '$sym' ->
+            not is_map_key(K, Props);
+        %% A deferred namespace has no own "then", and an export key evaluates
+        %% its module (GetModuleExportsList).
+        {deferred_namespace, _, Props, _, _, M} = R ->
+            case deferred_key(M, K) of
+                absent -> true;
+                ordinary -> ordinary_delete(O, R, K);
+                export -> not is_map_key(K, Props)
+            end;
         {typed_array, _, _, _, _, _} = R ->
             case typed_index(K) of
                 {index, N} -> buoy_ref_typed_array:element_delete(O, N);
@@ -747,13 +800,15 @@ remove_own(O, K) ->
     ok.
 
 %% V8's message names the receiver: #<Class> for an object, [object Array]
-%% for an array.
+%% for an array, and [object Module] for a namespace, whose properties the
+%% message must not read.
 -spec cannot_delete(value(), key()) -> no_return().
 cannot_delete(O, K) ->
     Receiver = case O of
         {'$o', _} ->
             case class_of(O) of
                 array -> [<<" of [object Array]">>];
+                Namespace when Namespace =:= namespace; Namespace =:= deferred_namespace -> [<<" of [object Module]">>];
                 _ -> [<<" of #<">>, receiver_name(O, 0), <<">">>]
             end;
         _ -> []
@@ -1232,6 +1287,7 @@ fn_record({'$f', Id, _} = F) ->
         undefined when is_atom(Id) -> intrinsic_record(Id, F);
         undefined when is_tuple(Id) -> static_function_record(F);
         undefined -> {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}};
+        {function, _, _, _, _, #{prototype := lazy}} = R -> own_prototype(Id, F, R);
         R -> R
     end.
 
@@ -1250,17 +1306,17 @@ static_function_record({'$f', {builtin, Name} = Id, _}) ->
             R
     end;
 %% A module-level normal function of sloppy code is {'$f', {fn, Module, Name,
-%% Length, sloppy}, Fun}: it has the caller and arguments properties that V8
-%% gives it, both null.
+%% Length, sloppy}, Fun}: it has the caller and arguments properties of a
+%% sloppy function (buoy_ref:finish_fn/2).
 static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) ->
     Proto = new_object(?OBJECT_PROTO),
-    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => null},
+    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => undefined},
     Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE, <<"prototype">> => ?WRITABLE, <<"arguments">> => 0, <<"caller">> => 0},
     Keys = [<<"prototype">>, <<"caller">>, <<"arguments">>, <<"name">>, <<"length">>],
-    Record = {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}},
-    erlang:put(Id, Record),
+    erlang:put(Id, {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}}),
+    reflect_calls(F),
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
-    Record;
+    erlang:get(Id);
 %% A module-level function declaration is {'$f', {fn, Module, Name, Length}, Fun}.
 %% Each realm makes its record, with a new prototype object, on first use.
 static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
@@ -1272,6 +1328,17 @@ static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
     Record;
 %% A generator, an async function, or a function that reads new.target.
+%% A module-level sloppy function that reads new.target is
+%% {'$f', {fn_nt, Module, Name, Length, sloppy}, Fun}.
+static_function_record({'$f', {fn_nt, Module, Name, Length, sloppy} = Id, _} = F) ->
+    %% Keys are newest first: prototype, then caller and arguments, as for a
+    %% sloppy function without new.target.
+    {function, P, Props, [<<"prototype">> | Older], Attrs, Slots} = buoy_ref_generator:static_record(fn_nt, Module, Name, Length, F),
+    erlang:put(Id, {function, P, Props#{<<"arguments">> => null, <<"caller">> => undefined},
+                    [<<"prototype">>, <<"caller">>, <<"arguments">> | Older],
+                    Attrs#{<<"arguments">> => 0, <<"caller">> => 0}, Slots}),
+    reflect_calls(F),
+    erlang:get(Id);
 static_function_record({'$f', {Form, Module, Name, Length} = Id, _} = F) ->
     Record = buoy_ref_generator:static_record(Form, Module, Name, Length, F),
     erlang:put(Id, Record),
@@ -1313,6 +1380,7 @@ id_for_write({'$o', Id} = O) ->
 id_for_write({'$f', Id, _} = F) ->
     case erlang:get(Id) of
         undefined -> erlang:put(Id, fn_record(F));
+        {function, _, _, _, _, #{prototype := lazy}} = R -> own_prototype(Id, F, R);
         _ -> ok
     end,
     Id.
@@ -1431,7 +1499,8 @@ error_object(Proto, Message, Stack) ->
     Props = #{<<"message">> => Message, <<"stack">> => Stack},
     Attrs = #{<<"message">> => ?WRITABLE bor ?CONFIGURABLE, <<"stack">> => ?WRITABLE bor ?CONFIGURABLE},
     Id = next_id(),
-    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, none}),
+    %% The slots hold the stack, which the getter of Error.prototype.stack reads.
+    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, Stack}),
     {'$o', Id}.
 
 -spec throw_error(atom(), binary()) -> no_return().
@@ -1747,7 +1816,7 @@ in({'$array_buffer', N, Bytes, Max}, Made) ->
     buoy_ref_buffer:write(O, 0, Bytes),
     {O, Made#{N => O}};
 in({'$shared_array_buffer', N, Slots}, Made) ->
-    O = new_exotic(shared_array_buffer, {'$o', 'SharedArrayBuffer.prototype'}, Slots),
+    O = new_exotic(shared_array_buffer, intrinsic('SharedArrayBuffer.prototype'), Slots),
     {O, Made#{N => O}};
 in({'$typed_array', N, Kind, BufferTerm, Offset, Length}, Made) ->
     {Buffer, Made1} = in(BufferTerm, Made),

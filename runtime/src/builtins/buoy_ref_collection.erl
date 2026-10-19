@@ -158,20 +158,10 @@ closing(State, Step) ->
     try Step()
     catch
         error:{'$throw', _} = Reason:Stack ->
-            close(State),
+            buoy_ref_iterator:close_quietly(State),
             erlang:raise(error, Reason, Stack)
     end.
 
-close({protocol, Iterator, _}) ->
-    try
-        case buoy_ref:get(Iterator, <<"return">>) of
-            R when R =:= undefined; R =:= null -> ok;
-            Return -> buoy_ref:call(Return, Iterator, [])
-        end
-    catch
-        error:{'$throw', _} -> ok
-    end;
-close(_) -> ok.
 
 %%% The entries
 
@@ -360,10 +350,13 @@ set_proto(<<"forEach">>, S, Args) ->
 set_proto(<<"values">>, S, _) -> iterator(set_iterator, S, values);
 set_proto(<<"keys">>, S, _) -> iterator(set_iterator, S, values);
 set_proto(<<"entries">>, S, _) -> iterator(set_iterator, S, entries);
+%% union and symmetricDifference get the keys iterator of the other set, and
+%% read its next method, before they copy this set.
 set_proto(<<"union">>, S, Args) ->
     Other = set_record(arg(1, Args)),
+    {Iterator, Next} = other_iterator(Other),
     Result = copy(S),
-    other_keys(Other, fun(K) -> put_entry(Result, K, member), continue end),
+    key_steps(Iterator, Next, fun(K) -> put_entry(Result, K, member), continue end, ok),
     Result;
 set_proto(<<"intersection">>, S, Args) ->
     Other = set_record(arg(1, Args)),
@@ -402,14 +395,15 @@ set_proto(<<"difference">>, S, Args) ->
     Result;
 set_proto(<<"symmetricDifference">>, S, Args) ->
     Other = set_record(arg(1, Args)),
+    {Iterator, Next} = other_iterator(Other),
     Result = copy(S),
-    other_keys(Other, fun(K) ->
-                              case has_key(S, K) of
-                                  true -> remove_entry(Result, K);
-                                  false -> put_entry(Result, K, member)
-                              end,
-                              continue
-                      end),
+    key_steps(Iterator, Next, fun(K) ->
+                                      case has_key(S, K) of
+                                          true -> remove_entry(Result, K);
+                                          false -> put_entry(Result, K, member)
+                                      end,
+                                      continue
+                              end, ok),
     Result;
 set_proto(<<"isSubsetOf">>, S, Args) ->
     Other = set_record(arg(1, Args)),
@@ -454,9 +448,9 @@ set_proto(<<"isDisjointFrom">>, S, Args) ->
                               end, true)
     end.
 
-new_set() -> buoy_heap:new_exotic(set, {'$o', 'Set.prototype'}, empty()).
+new_set() -> buoy_heap:new_exotic(set, buoy_heap:intrinsic('Set.prototype'), empty()).
 
-copy(S) -> buoy_heap:new_exotic(set, {'$o', 'Set.prototype'}, slots(S)).
+copy(S) -> buoy_heap:new_exotic(set, buoy_heap:intrinsic('Set.prototype'), slots(S)).
 
 %% GetSetRecord: {Object, Size, Has, Keys}.
 set_record(V) ->
@@ -485,12 +479,17 @@ in_other({Object, _, Has, _}, K) -> buoy_ref:truthy(buoy_ref:call(Has, Object, [
 %% continue, or {stop, Result} to close the iterator and return Result.
 other_keys(Record, F) -> other_keys(Record, F, ok).
 
-other_keys({Object, _, _, Keys}, F, Default) ->
+other_keys(Record, F, Default) ->
+    {Iterator, Next} = other_iterator(Record),
+    key_steps(Iterator, Next, F, Default).
+
+%% GetIteratorFromMethod of the keys method of a set record.
+other_iterator({Object, _, _, Keys}) ->
     Iterator = buoy_ref:call(Keys, Object, []),
     ?IS_OBJECT(Iterator) orelse type_error(<<"The keys iterator must be an object">>),
     Next = buoy_ref:get(Iterator, <<"next">>),
     buoy_heap:is_callable(Next) orelse type_error(<<"The next method of the keys iterator must be a function">>),
-    key_steps(Iterator, Next, F, Default).
+    {Iterator, Next}.
 
 key_steps(Iterator, Next, F, Default) ->
     Result = buoy_ref:call(Next, Iterator, []),
@@ -501,7 +500,7 @@ key_steps(Iterator, Next, F, Default) ->
             case F(key(buoy_ref:get(Result, <<"value">>))) of
                 continue -> key_steps(Iterator, Next, F, Default);
                 {stop, Value} ->
-                    close({protocol, Iterator, Next}),
+                    buoy_ref_iterator:close(Iterator),
                     Value
             end
     end.
@@ -510,8 +509,8 @@ key_steps(Iterator, Next, F, Default) ->
 
 iterator(Class, C, Kind) ->
     Proto = case Class of
-        map_iterator -> {'$o', 'MapIterator.prototype'};
-        set_iterator -> {'$o', 'SetIterator.prototype'}
+        map_iterator -> buoy_heap:intrinsic('MapIterator.prototype');
+        set_iterator -> buoy_heap:intrinsic('SetIterator.prototype')
     end,
     buoy_heap:new_exotic(Class, Proto, {C, -1, Kind}).
 
@@ -613,7 +612,7 @@ take(Iter, Count) ->
 group_by(Items, F) ->
     (Items =:= undefined orelse Items =:= null) andalso type_error(<<"Map.groupBy called on null or undefined">>),
     callable(F),
-    M = buoy_heap:new_exotic(map, {'$o', 'Map.prototype'}, empty()),
+    M = buoy_heap:new_exotic(map, buoy_heap:intrinsic('Map.prototype'), empty()),
     State = buoy_ref_iterator:iterate(Items),
     group_steps(State, F, M, 0),
     M.

@@ -75,12 +75,17 @@ struct EvalRequest {
     /// Compile the code as strict code.
     #[arg(long)]
     strict: bool,
-    /// The source is the function that the `Function` constructor builds.
+    /// The source is the function that the `Function` constructor builds, whose parameter
+    /// list ends at this byte offset, after its closing parenthesis.
     #[arg(long)]
-    function: bool,
+    function: Option<usize>,
     /// The source is a classic script of its own, as a host's `evalScript` runs it.
     #[arg(long)]
     script: bool,
+    /// The program records each call of a function, for the legacy `caller` and
+    /// `arguments` of a sloppy function.
+    #[arg(long)]
+    frames: bool,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -117,11 +122,17 @@ struct Served {
 
 impl EvalRequest {
     /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`.
-    fn compile(self, text: &str) -> Result<String, String> {
+    /// With `source_outside`, the module reads its source text from the runtime.
+    fn compile(self, text: &str, source_outside: bool) -> Result<String, String> {
         let module = self.module.unwrap_or_default();
         let context = EvalContext {
             place: self.place,
             privates: self.private,
+            internal: false,
+            lexical: Vec::new(),
+            dynamic_function: false,
+            frames: self.frames,
+            source_outside,
         };
         let compiled = if self.script {
             buoy_compiler::compile_eval_script(text, &module)
@@ -235,7 +246,7 @@ fn compile_eval(mut request: EvalRequest) -> ExitCode {
         Ok(text) => text,
         Err(error) => return fail(&format!("cannot read {}: {error}", source.display())),
     };
-    match request.compile(&text) {
+    match request.compile(&text, false) {
         Ok(erlang) => {
             print!("{erlang}");
             ExitCode::SUCCESS
@@ -251,8 +262,8 @@ fn compile_eval(mut request: EvalRequest) -> ExitCode {
 /// and each answer is a frame: a 4-byte big-endian length, then the bytes, as Erlang's
 /// `{packet, 4}` port option writes and reads them. A request is the options of a
 /// compilation and the module name, one on each line, then an empty line and the source
-/// text. An answer is a status byte, 0 with the Erlang module or 2 with the diagnostic,
-/// then the text.
+/// text. An answer is a status byte, then 0 with the 4-byte big-endian size of the Erlang
+/// module, the module, and the source text that its spans index, or 2 with the diagnostic.
 fn serve_eval() -> ExitCode {
     use std::io::{Read, Write};
     let mut input = io::stdin().lock();
@@ -273,10 +284,27 @@ fn serve_eval() -> ExitCode {
             load_answer(request)
         } else {
             match Served::try_parse_from(arguments) {
-                Ok(Served { request }) => match request.compile(text) {
-                    Ok(erlang) => [&[0], erlang.as_bytes()].concat(),
-                    Err(diagnostic) => [&[DIAGNOSTICS], diagnostic.as_bytes()].concat(),
-                },
+                Ok(Served { request }) => {
+                    // A script holds its source; other eval code gets it after the module.
+                    let source = if request.script {
+                        String::new()
+                    } else {
+                        buoy_compiler::eval_text(text, request.strict)
+                    };
+                    match request.compile(text, true) {
+                        Ok(erlang) => match u32::try_from(erlang.len()) {
+                            Ok(size) => [
+                                &[0][..],
+                                &size.to_be_bytes(),
+                                erlang.as_bytes(),
+                                source.as_bytes(),
+                            ]
+                            .concat(),
+                            Err(_) => [&[1][..], b"an eval module is larger than 4 GB"].concat(),
+                        },
+                        Err(diagnostic) => [&[DIAGNOSTICS], diagnostic.as_bytes()].concat(),
+                    }
+                }
                 Err(error) => [&[1], error.to_string().as_bytes()].concat(),
             }
         };

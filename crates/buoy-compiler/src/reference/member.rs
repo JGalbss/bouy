@@ -2,8 +2,8 @@
 //! property reads and writes of the runtime.
 
 use oxc::ast::ast::{
-    ChainElement, ChainExpression, ComputedMemberExpression, Expression, PrivateFieldExpression,
-    PropertyKey, StaticMemberExpression,
+    ChainElement, ChainExpression, ComputedMemberExpression, Expression, MemberExpression,
+    PrivateFieldExpression, PropertyKey, StaticMemberExpression,
 };
 
 use super::context::Lowerer;
@@ -75,10 +75,44 @@ impl<'a> Lowerer<'a, '_> {
             ChainElement::ComputedMemberExpression(member) => me.computed_member(member),
             ChainElement::PrivateFieldExpression(member) => me.private_member(member),
         });
+        self.end_chain(code, &Expr::undefined())
+    }
+
+    /// The function and the `this` of a parenthesized chain that a call calls, such as
+    /// `(a?.b)()`: the chain is a reference, so `a` is the `this` of the call
+    /// (ECMA-262 §13.3.6.1). Both are undefined when the chain ends early.
+    pub fn chain_reference(&mut self, member: &'a MemberExpression<'a>) -> (Expr, Expr) {
+        let code = self.branch(|me| {
+            let object = me.expr(member.object());
+            let object = me.bind(object);
+            if member.optional() {
+                me.chain_guard(object.clone());
+            }
+            let key = me.member_key(member);
+            let function = me.get(object.clone(), key);
+            Expr::Tuple(vec![function, object])
+        });
+        let ended = Expr::Tuple(vec![Expr::undefined(), Expr::undefined()]);
+        let reference = self.end_chain(code, &ended);
+        let function = self.bind(Expr::call(
+            "erlang",
+            "element",
+            vec![Expr::Integer(1), reference.clone()],
+        ));
+        let this = self.bind(Expr::call(
+            "erlang",
+            "element",
+            vec![Expr::Integer(2), reference],
+        ));
+        (function, this)
+    }
+
+    /// The value of the code of a chain, or `ended` when one of its guards ends it.
+    pub fn end_chain(&mut self, code: Vec<Expr>, ended: &Expr) -> Expr {
         if code.iter().any(holds_marker) {
             // An `await` or a `yield` cannot split an Erlang `try`, so each guard of this
             // chain becomes a case whose last clause holds the rest of the chain.
-            let mut code = nest_guards(code);
+            let mut code = nest_guards(code, ended);
             let value = code.pop().unwrap_or_else(Expr::undefined);
             self.pre.extend(code);
             return self.bind(value);
@@ -89,7 +123,7 @@ impl<'a> Lowerer<'a, '_> {
                 class: Expr::atom("throw"),
                 reason: Expr::atom(CHAIN),
                 stack: "_".to_owned(),
-                body: vec![Expr::undefined()],
+                body: vec![ended.clone()],
             }],
             after: vec![],
         })
@@ -109,6 +143,13 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn static_member(&mut self, member: &'a StaticMemberExpression<'a>) -> Expr {
+        if let Some((global, key)) = self.primordial(member) {
+            return self.bind(Expr::call(
+                "buoy_ref_realm",
+                "primordial",
+                vec![Expr::js_string(global), key],
+            ));
+        }
         if let Expression::Super(_) = member.object {
             let object = self.super_reference();
             return self.get(
@@ -124,6 +165,32 @@ impl<'a> Lowerer<'a, '_> {
             object,
             MemberKey::Static(static_key(member.property.name.as_str())),
         )
+    }
+
+    /// The global and the key of a static member such as `Math.sign` that internal code
+    /// reads (`EvalContext::internal`): a standard global that no scope binds.
+    pub fn primordial(&self, member: &'a StaticMemberExpression<'a>) -> Option<(&'a str, Expr)> {
+        let Expression::Identifier(ident) = &member.object else {
+            return None;
+        };
+        let name = ident.name.as_str();
+        (self.eval_context.internal
+            && !member.optional
+            && PRIMORDIAL_GLOBALS.contains(&name)
+            && self.symbol_of(ident.reference_id.get()).is_none()
+            && self.eval_binding(name).is_none()
+            && self.with_objects(ident).is_empty())
+        .then(|| (name, static_key(member.property.name.as_str())))
+    }
+
+    /// The function of a module of the runtime that starts an iteration: the variant for
+    /// internal code, which iterates an array without its user-visible iterator.
+    pub fn iteration(&self, function: &str) -> String {
+        if self.eval_context.internal {
+            format!("{function}_internal")
+        } else {
+            function.to_owned()
+        }
     }
 
     pub fn computed_member(&mut self, member: &'a ComputedMemberExpression<'a>) -> Expr {
@@ -152,10 +219,7 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// The object and the key of a member expression, lowered in order.
-    pub fn member_parts(
-        &mut self,
-        member: &'a oxc::ast::ast::MemberExpression<'a>,
-    ) -> (Expr, MemberKey) {
+    pub fn member_parts(&mut self, member: &'a MemberExpression<'a>) -> (Expr, MemberKey) {
         if let Expression::Super(_) = member.object() {
             let this = self.this_expr();
             let this = self.bind(this);
@@ -168,15 +232,15 @@ impl<'a> Lowerer<'a, '_> {
         (object, key)
     }
 
-    pub fn member_key(&mut self, member: &'a oxc::ast::ast::MemberExpression<'a>) -> MemberKey {
+    pub fn member_key(&mut self, member: &'a MemberExpression<'a>) -> MemberKey {
         match member {
-            oxc::ast::ast::MemberExpression::StaticMemberExpression(member) => {
+            MemberExpression::StaticMemberExpression(member) => {
                 MemberKey::Static(static_key(member.property.name.as_str()))
             }
-            oxc::ast::ast::MemberExpression::ComputedMemberExpression(member) => {
+            MemberExpression::ComputedMemberExpression(member) => {
                 self.computed_key(&member.expression)
             }
-            oxc::ast::ast::MemberExpression::PrivateFieldExpression(member) => {
+            MemberExpression::PrivateFieldExpression(member) => {
                 MemberKey::Private(self.private_key(member.field.name.as_str()))
             }
         }
@@ -282,21 +346,46 @@ pub fn index_of(name: &str) -> Option<i64> {
         .filter(|index| *index <= 4_294_967_294)
 }
 
+/// The standard globals whose static members internal code reads as the runtime installed
+/// them.
+const PRIMORDIAL_GLOBALS: &[&str] = &[
+    "Array",
+    "ArrayBuffer",
+    "BigInt",
+    "Boolean",
+    "DataView",
+    "Date",
+    "Error",
+    "JSON",
+    "Map",
+    "Math",
+    "Number",
+    "Object",
+    "Promise",
+    "Reflect",
+    "RegExp",
+    "Set",
+    "String",
+    "Symbol",
+    "WeakMap",
+    "WeakSet",
+];
+
 /// The code of an optional chain with each guard as a case: `undefined` for a nullish
 /// value, else the rest of the chain.
-fn nest_guards(mut code: Vec<Expr>) -> Vec<Expr> {
+fn nest_guards(mut code: Vec<Expr>, ended: &Expr) -> Vec<Expr> {
     let Some(index) = code.iter().position(is_guard) else {
         return code;
     };
-    let rest = nest_guards(code.split_off(index + 1));
+    let rest = nest_guards(code.split_off(index + 1), ended);
     let Some(Expr::Case(subject, _)) = code.pop() else {
         return code;
     };
     code.push(Expr::Case(
         subject,
         vec![
-            Clause::new(Expr::undefined(), vec![Expr::undefined()]),
-            Clause::new(Expr::atom("null"), vec![Expr::undefined()]),
+            Clause::new(Expr::undefined(), vec![ended.clone()]),
+            Clause::new(Expr::atom("null"), vec![ended.clone()]),
             Clause::new(Expr::var("_"), rest),
         ],
     ));

@@ -124,15 +124,9 @@ to_length(V) ->
 -spec is_array(term()) -> boolean().
 is_array(V) -> buoy_ref_object:is_array(V).
 
-%% IsConstructor: a function with a [[Construct]].
+%% IsConstructor: a function with a [[Construct]], or a proxy of one.
 -spec is_constructor(term()) -> boolean().
-is_constructor({'$f', _, _} = F) ->
-    case buoy_heap:slots(F) of
-        #{construct := _} -> true;
-        #{kind := normal} -> true;
-        _ -> false
-    end;
-is_constructor(_) -> false.
+is_constructor(F) -> buoy_heap:is_constructor(F).
 
 %% ArrayCreate with %Array.prototype%.
 -spec array_create(non_neg_integer()) -> term().
@@ -158,10 +152,9 @@ species(O, Len) ->
         true ->
             C = case buoy_ref:get(O, <<"constructor">>) of
                 C0 when ?IS_OBJECT(C0) ->
-                    case foreign_array(C0) orelse buoy_ref:get(C0, ?SYM(species)) of
+                    case foreign_array(C0) of
                         true -> undefined;
-                        null -> undefined;
-                        S -> S
+                        false -> species_of(C0)
                     end;
                 C0 -> C0
             end,
@@ -173,6 +166,13 @@ species(O, Len) ->
                     is_constructor(C) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
                     {object, buoy_ref:construct(C, [Len])}
             end
+    end.
+
+%% C[@@species], where null means the default constructor.
+species_of(C) ->
+    case buoy_ref:get(C, ?SYM(species)) of
+        null -> undefined;
+        S -> S
     end.
 
 %% Whether C is %Array% of a realm other than the current one, which
@@ -452,9 +452,10 @@ proto(<<"join">>, O, Args) ->
         S -> buoy_ref:to_string(S)
     end,
     guarded(O, fun() -> join(O, Len, Sep, fun join_text/1) end);
-proto(<<"toLocaleString">>, O, _Args) ->
+proto(<<"toLocaleString">>, O, Args) ->
     Len = length_of(O),
-    guarded(O, fun() -> join(O, Len, <<",">>, fun locale_text/1) end);
+    LocaleArgs = [arg(1, Args), arg(2, Args)],
+    guarded(O, fun() -> join(O, Len, <<",">>, fun(V) -> locale_text(V, LocaleArgs) end) end);
 proto(<<"toString">>, O, _Args) ->
     case buoy_ref:get(O, <<"join">>) of
         {'$f', _, _} = Join -> buoy_ref:call(Join, O, []);
@@ -882,9 +883,10 @@ join_text(undefined) -> <<>>;
 join_text(null) -> <<>>;
 join_text(V) -> buoy_ref:to_string(V).
 
-locale_text(undefined) -> <<>>;
-locale_text(null) -> <<>>;
-locale_text(V) -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, [])).
+%% ECMA-402 passes the locales and options on to each element.
+locale_text(undefined, _Args) -> <<>>;
+locale_text(null, _Args) -> <<>>;
+locale_text(V, Args) -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, Args)).
 
 %%% Sorting
 
@@ -1154,9 +1156,9 @@ from_array_like(C, O, Mapper) ->
             A
     end.
 
-%% Whether Array.from and Array.of make a new array of %Array%: this is not
-%% a constructor, or is %Array% itself.
-fresh_constructor(C) -> C =:= constructor() orelse not is_constructor(C).
+%% Whether Array.from and Array.of make a new array of %Array% of the
+%% current realm: this is not a constructor, or is that %Array% itself.
+fresh_constructor(C) -> C =:= buoy_ref_realm:current(constructor()) orelse not is_constructor(C).
 
 mapped(none, V, _K) -> V;
 mapped({F, This}, V, K) -> buoy_ref:call(F, This, [V, K]).

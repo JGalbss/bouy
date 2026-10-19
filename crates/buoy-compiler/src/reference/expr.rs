@@ -4,8 +4,8 @@
 
 use oxc::ast::ast::{
     AssignmentExpression, AssignmentTarget, BinaryExpression, ConditionalExpression, Expression,
-    IdentifierReference, LogicalExpression, SimpleAssignmentTarget, UnaryExpression,
-    UpdateExpression,
+    IdentifierReference, LogicalExpression, MemberExpression, SimpleAssignmentTarget,
+    UnaryExpression, UpdateExpression,
 };
 use oxc::span::GetSpan;
 use oxc::syntax::operator::{
@@ -141,6 +141,12 @@ impl<'a> Lowerer<'a, '_> {
                 let value = self.expr(&assignment.right);
                 self.assign_name_value(ident, value)
             }
+            AssignmentTarget::AssignmentTargetIdentifier(ident)
+                if self.semantic.source_text()[assignment.span.start as usize..]
+                    .starts_with('(') =>
+            {
+                self.assign_identifier(ident, assignment.operator, &assignment.right, None)
+            }
             other => match other.as_simple_assignment_target() {
                 Some(target) => self.assign_simple(target, assignment.operator, &assignment.right),
                 None => self.unsupported(assignment.span, "this assignment"),
@@ -156,7 +162,8 @@ impl<'a> Lowerer<'a, '_> {
     ) -> Expr {
         match target {
             SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
-                self.assign_identifier(ident, operator, right)
+                let name = Some(Expr::js_string(ident.name.as_str()));
+                self.assign_identifier(ident, operator, right, name)
             }
             SimpleAssignmentTarget::TSAsExpression(inner) => {
                 self.assign_expression(&inner.expression, operator, right)
@@ -199,23 +206,32 @@ impl<'a> Lowerer<'a, '_> {
             Expression::ParenthesizedExpression(inner) => {
                 self.assign_expression(&inner.expression, operator, right)
             }
-            Expression::Identifier(ident) => self.assign_identifier(ident, operator, right),
+            Expression::Identifier(ident) => {
+                let name = Some(Expr::js_string(ident.name.as_str()));
+                self.assign_identifier(ident, operator, right, name)
+            }
             other => self.unsupported(other.span(), "this assignment target"),
         }
     }
 
     /// `x op= right` for an identifier: a local, a module variable, or a global. An
-    /// anonymous function gets the name `x`.
+    /// anonymous function gets `name`, the name `x` unless the target is parenthesized.
     pub fn assign_identifier(
         &mut self,
         ident: &'a IdentifierReference<'a>,
         operator: AssignmentOperator,
         right: &'a Expression<'a>,
+        name: Option<Expr>,
     ) -> Expr {
-        let name = Some(Expr::js_string(ident.name.as_str()));
         let objects = self.with_objects(ident);
         if !objects.is_empty() {
             let reference = self.with_resolve(&objects, ident.name.as_str());
+            if let Some(logical) = logical_operator(operator) {
+                let current = self.with_read_ref(ident, &reference);
+                return self.logical_write(logical, current, right, name, |me, value| {
+                    me.with_write_ref(ident, &reference, value)
+                });
+            }
             let value = if operator == AssignmentOperator::Assign {
                 self.named_expr(right, name)
             } else {
@@ -243,6 +259,12 @@ impl<'a> Lowerer<'a, '_> {
                 ));
                 return value;
             }
+            if let Some(logical) = logical_operator(operator) {
+                let current = self.identifier_read(ident);
+                return self.logical_write(logical, current, right, name, |me, value| {
+                    me.set_global(ident.name.as_str(), value)
+                });
+            }
             let value = if operator == AssignmentOperator::Assign {
                 self.named_expr(right, name)
             } else {
@@ -256,8 +278,37 @@ impl<'a> Lowerer<'a, '_> {
             return self.assign_symbol(symbol, value, ident.span);
         }
         let current = self.read_symbol(symbol, ident.span);
+        // A version of an Erlang variable takes the write after the case: writing the
+        // current value back is not observable, and a write in one clause would not reach
+        // the code after the case.
+        if let Some(logical) = logical_operator(operator)
+            && !self.is_versioned(symbol, ident.span)
+        {
+            return self.logical_write(logical, current, right, name, |me, value| {
+                me.assign_symbol(symbol, value, ident.span)
+            });
+        }
         let value = self.combine(operator, current, right, name);
         self.assign_symbol(symbol, value, ident.span)
+    }
+
+    /// `x &&= right`, `x ||= right`, and `x ??= right`: `write` runs only when the
+    /// assignment does not short-circuit, so a constant or a setter sees no write.
+    fn logical_write(
+        &mut self,
+        logical: LogicalOperator,
+        current: Expr,
+        right: &'a Expression<'a>,
+        name: Option<Expr>,
+        write: impl FnOnce(&mut Self, Expr) -> Expr,
+    ) -> Expr {
+        let current = self.bind(current);
+        let other = self.branch(|me| {
+            let value = me.named_expr(right, name);
+            let value = me.bind(value);
+            write(me, value)
+        });
+        self.bind(logical_case(logical, current, other, false))
     }
 
     /// `typeof x`: "undefined" for a name that nothing declares.
@@ -303,9 +354,11 @@ impl<'a> Lowerer<'a, '_> {
                 !(ident.name == "arguments" && self.frame.arguments.is_some())
                     && self.eval_binding(ident.name.as_str()).is_none()
             }
+            // The binding of a block function in its block is lexical: delete is false.
             Some(symbol) => {
                 !self.frame.env.contains_key(&symbol)
                     && matches!(self.tops.get(&symbol), Some(Top::Global(_)))
+                    && self.block_binding(symbol, ident.span).is_none()
             }
         };
         if !global {
@@ -361,6 +414,17 @@ impl<'a> Lowerer<'a, '_> {
     /// Stores `value` in the binding `name` of the caller of a direct eval, else in the
     /// global.
     fn set_binding(&mut self, name: &str, value: Expr) {
+        // A write of a `const` throws in any code, after the read of its dead zone.
+        if self.is_eval_const(name) {
+            let cell = self.eval_binding(name).unwrap_or_default();
+            self.pre.push(Expr::call(
+                "buoy_ref_class",
+                "initialized",
+                vec![super::context::cell_get(&cell), Expr::js_string(name)],
+            ));
+            self.pre.push(Expr::call("buoy_ref", "const_error", vec![]));
+            return;
+        }
         // Strict code may not write an immutable binding; sloppy code writes nothing.
         if self.is_eval_constant(name) {
             if !self.frame.sloppy {
@@ -596,42 +660,56 @@ impl<'a> Lowerer<'a, '_> {
                 self.effect(&unary.argument);
                 Expr::undefined()
             }
-            UnaryOperator::Delete => match strip(&unary.argument).as_member_expression() {
-                Some(member) => {
-                    let (object, key) = self.member_parts(member);
-                    if super_parts(&object).is_some() {
-                        return self.bind(Expr::call(
-                            "buoy_heap",
-                            "throw_error",
-                            vec![
-                                Expr::atom("ReferenceError"),
-                                Expr::js_string("Unsupported reference to 'super'"),
-                            ],
-                        ));
-                    }
-                    let (fixed, computed) = if self.frame.sloppy {
-                        ("sloppy_delete", "sloppy_delete_computed")
-                    } else {
-                        ("delete", "delete_computed")
-                    };
-                    let value = match key {
-                        MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key]),
-                        MemberKey::Dynamic(key) => {
-                            Expr::call("buoy_ref", computed, vec![object, key])
-                        }
-                        MemberKey::Private(_) => Expr::atom("true"),
-                    };
-                    self.bind(value)
+            UnaryOperator::Delete => match strip(&unary.argument) {
+                Expression::Identifier(ident) => self.delete_identifier(ident),
+                // `delete a?.b` deletes `b`, and is true when the chain ends early.
+                Expression::ChainExpression(chain)
+                    if chain.expression.as_member_expression().is_some() =>
+                {
+                    let code = self.branch(|me| match chain.expression.as_member_expression() {
+                        Some(member) => me.delete_member(member),
+                        None => Expr::atom("true"),
+                    });
+                    self.end_chain(code, &Expr::atom("true"))
                 }
-                None => match strip(&unary.argument) {
-                    Expression::Identifier(ident) => self.delete_identifier(ident),
-                    other => {
+                other => match other.as_member_expression() {
+                    Some(member) => self.delete_member(member),
+                    None => {
                         self.effect(other);
                         Expr::atom("true")
                     }
                 },
             },
         }
+    }
+
+    /// `delete o.k`: the delete of the property, after the guard of an optional `o?.k`.
+    fn delete_member(&mut self, member: &'a MemberExpression<'a>) -> Expr {
+        let (object, key) = self.member_parts(member);
+        if super_parts(&object).is_some() {
+            return self.bind(Expr::call(
+                "buoy_heap",
+                "throw_error",
+                vec![
+                    Expr::atom("ReferenceError"),
+                    Expr::js_string("Unsupported reference to 'super'"),
+                ],
+            ));
+        }
+        if member.optional() {
+            self.chain_guard(object.clone());
+        }
+        let (fixed, computed) = if self.frame.sloppy {
+            ("sloppy_delete", "sloppy_delete_computed")
+        } else {
+            ("delete", "delete_computed")
+        };
+        let value = match key {
+            MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key]),
+            MemberKey::Dynamic(key) => Expr::call("buoy_ref", computed, vec![object, key]),
+            MemberKey::Private(_) => Expr::atom("true"),
+        };
+        self.bind(value)
     }
 }
 

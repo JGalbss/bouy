@@ -129,7 +129,11 @@ impl<'a> Lowerer<'a, '_> {
         let saved_env = self.frame.env.clone();
         match &statement.init {
             _ if !init => {}
-            Some(ForStatementInit::VariableDeclaration(declaration)) => self.variables(declaration),
+            Some(ForStatementInit::VariableDeclaration(declaration)) => {
+                let early = self.early_head(declaration);
+                self.pre.extend(early);
+                self.variables(declaration);
+            }
             Some(other) => {
                 if let Some(expression) = other.as_expression() {
                     self.effect(expression);
@@ -210,7 +214,7 @@ impl<'a> Lowerer<'a, '_> {
                 k,
             );
         }
-        let state = Expr::call("buoy_ref_iterator", "iterate", vec![right]);
+        let state = Expr::call("buoy_ref_iterator", &self.iteration("iterate"), vec![right]);
         self.each(
             &statement.left,
             &statement.body,
@@ -226,13 +230,17 @@ impl<'a> Lowerer<'a, '_> {
         statement: &'a ForInStatement<'a>,
         k: &Cont<'a>,
     ) -> Vec<Expr> {
+        // `for (var a = init in o)` in sloppy code: the initializer runs once, before the
+        // object (Annex B.3.5).
+        if let ForStatementLeft::VariableDeclaration(declaration) = &statement.left
+            && declaration.kind.is_var()
+        {
+            self.variables(declaration);
+        }
         let head = self.head_bindings(&statement.left, statement.right.span());
         let right = self.expr(&statement.right);
         self.end_head_bindings(head);
-        let state = Expr::Tuple(vec![
-            Expr::atom("list"),
-            Expr::call("buoy_ref_iterator", "for_in_keys", vec![right]),
-        ]);
+        let state = Expr::call("buoy_ref_iterator", "for_in", vec![right]);
         self.each(
             &statement.left,
             &statement.body,
@@ -260,7 +268,12 @@ impl<'a> Lowerer<'a, '_> {
         let labels = std::mem::take(&mut self.frame.labels);
         let initial_state = self.bind_var("State", state);
         let mut code = std::mem::take(&mut self.pre);
-        let vars = self.assigned_in(span, |visitor| visitor.visit_statement(body));
+        // The head writes its target on each step, so the code after the loop sees the
+        // last value.
+        let vars = self.assigned_in(span, |visitor| {
+            visitor.visit_for_statement_left(left);
+            visitor.visit_statement(body);
+        });
         let initial: Vec<Expr> = std::iter::once(initial_state.clone())
             .chain(vars.iter().map(|v| self.carried(*v)))
             .collect();

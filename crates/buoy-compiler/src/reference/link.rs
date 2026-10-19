@@ -47,6 +47,9 @@ pub struct Linked {
     /// The namespace: each export name, in code unit order, and what it reads.
     pub namespace: Vec<(String, Binding)>,
     pub error: Option<LinkError>,
+    /// Whether `error` comes from loading, a request that did not resolve, which the
+    /// whole graph reports before any error of linking.
+    pub load_failed: bool,
 }
 
 enum Resolution {
@@ -128,6 +131,7 @@ impl Linker<'_> {
         if unit.kind == Kind::Esm {
             linked.exported_locals = dedupe(self.locals[index].iter().map(|(_, l)| l.clone()));
             linked.error = self.missing(index);
+            linked.load_failed = linked.error.is_some();
             for (local, specifier, imported) in unit.record.imports.clone() {
                 let found = self.import(index, &specifier, &imported);
                 match found {

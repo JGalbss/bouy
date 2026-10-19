@@ -16,8 +16,10 @@
 -export([super_construct/3, construct_parent/3, this_of/1, bind_this/2, derived_return/2, new_target_construct/3]).
 -export([super_get/3, super_set/4, sloppy_super_set/4]).
 -export([private_name/1, private_names/1, private_get/2, private_set/3, private_in/2, private_add/3, add_private_methods/2]).
+-export([auto_accessor/2]).
 
 -define(UNINITIALIZED, '$uninitialized').
+-define(CONSTRUCT_ERROR, '$buoy_construct_error').
 
 %%% Class definition
 
@@ -53,17 +55,14 @@ set_construct(C, Construct) ->
         #{realm := N} -> buoy_ref_realm:realm_fun(N, Construct);
         _ -> Construct
     end,
-    buoy_heap:set_slots(C, Slots#{construct => Construct1}).
+    buoy_heap:set_slots(C, Slots#{construct => fun(NewTarget, Args) -> constructed(Construct1(NewTarget, Args)) end}).
 
-is_constructor({'$f', _, _} = F) ->
-    case buoy_heap:slots(F) of
-        #{construct := _} -> true;
-        #{kind := normal} -> true;
-        #{kind := class} -> true;
-        _ -> false
-    end;
-is_constructor(_) ->
-    false.
+%% [[Construct]] throws the errors of a derived constructor's result after it
+%% leaves the constructor, so in the realm of the caller (ECMA-262 §10.2.2).
+constructed({?CONSTRUCT_ERROR, Name, Message}) -> buoy_heap:throw_error(Name, Message);
+constructed(V) -> V.
+
+is_constructor(F) -> buoy_heap:is_constructor(F).
 
 %% The function object of a method, an accessor, or another function that
 %% NamedEvaluation names from a property key. Kind is method, get, set,
@@ -76,6 +75,10 @@ method(Fun, Key, Length, Kind) ->
 %% method/4 with the place of its source text, {Module, Start, End}, for
 %% Function.prototype.toString.
 -spec method(term(), term(), non_neg_integer(), atom(), {module(), non_neg_integer(), non_neg_integer()}) -> term().
+method(Fun, Key, Length, Kind, Source) when Kind =:= normal; Kind =:= sloppy ->
+    %% The source goes into the record that the function is made with, so that
+    %% its prototype stays lazy (buoy_heap:function/5).
+    buoy_ref:named_fn(Fun, function_name(Key, <<>>), Length, {Kind, Source});
 method(Fun, Key, Length, Kind, Source) ->
     F = method(Fun, Key, Length, Kind),
     buoy_heap:set_slots(F, (buoy_heap:slots(F))#{source => Source}),
@@ -191,10 +194,15 @@ base_return(_This, V) when ?IS_OBJECT(V) -> V;
 base_return(This, _V) -> This.
 
 %% The result of a derived constructor that returns V.
+%% The errors are values here, which constructed/1 throws in the caller's realm.
 -spec derived_return({'$c', pos_integer()}, term()) -> term().
 derived_return(_Cell, V) when ?IS_OBJECT(V) -> V;
-derived_return(Cell, undefined) -> this_of(Cell);
-derived_return(_Cell, _V) -> buoy_ref:type_error(<<"Derived constructors may only return object or undefined">>).
+derived_return(Cell, undefined) ->
+    case buoy_heap:cell_get(Cell) of
+        ?UNINITIALIZED -> {?CONSTRUCT_ERROR, 'ReferenceError', <<"Must call super constructor in derived class before accessing 'this' or returning from derived constructor">>};
+        This -> This
+    end;
+derived_return(_Cell, _V) -> {?CONSTRUCT_ERROR, 'TypeError', <<"Derived constructors may only return object or undefined">>}.
 
 %% The [[Construct]] of a function that reads new.target: Body takes it as a
 %% third argument.
@@ -213,17 +221,7 @@ new_target_construct(Body, NewTarget, Args) ->
 -spec super_get(term(), term(), term()) -> term().
 super_get(null, K, _This) ->
     buoy_ref:type_error(<<"Cannot read properties of null (reading '", (key_text(buoy_ref:to_property_key(K)))/binary, "')">>);
-super_get(Base, K, This) -> lookup(Base, buoy_ref:to_property_key(K), This).
-
-lookup(null, _K, _Receiver) ->
-    undefined;
-lookup(O, K, Receiver) ->
-    case buoy_heap:get_own(O, K) of
-        {data, V, _} -> V;
-        {accessor, undefined, _, _} -> undefined;
-        {accessor, G, _, _} -> buoy_ref:call(G, Receiver, []);
-        none -> lookup(buoy_heap:prototype_of(O), K, Receiver)
-    end.
+super_get(Base, K, This) -> buoy_heap:get(Base, buoy_ref:to_property_key(K), This).
 
 %% super.k = V: [[Set]] on Base with this as receiver. Strict code throws
 %% when [[Set]] returns false, and sloppy code ignores it.
@@ -297,13 +295,34 @@ missing(O, P, What) when ?IS_OBJECT(O) ->
 missing(O, P, What) ->
     buoy_ref:type_error(<<"Cannot ", What/binary, " private member ", (key_text(P))/binary, " from ", (describe(O))/binary>>).
 
-%% PrivateFieldAdd: a TypeError when the object has the element already.
+%% PrivateFieldAdd: a TypeError when the object has the element already, or
+%% when it is not extensible (the nonextensible-applies-to-private proposal).
 -spec private_add(term(), tuple(), term()) -> term().
 private_add(O, P, V) ->
     find(O, P) =:= error orelse
         buoy_ref:type_error(<<"Cannot initialize ", (key_text(P))/binary, " twice on the same object">>),
+    ensure_extensible(O, P),
     buoy_heap:private_put(O, P, V),
     V.
+
+%% O.[[Extensible]]. A proxy has no such slot, so its private elements are
+%% added without a call of its isExtensible trap.
+ensure_extensible(O, P) ->
+    case buoy_heap:class_of(O) =:= proxy orelse buoy_heap:is_extensible(O) of
+        true -> ok;
+        false -> buoy_ref:type_error(<<"Cannot define private field ", (key_text(P))/binary, " on a non-extensible object">>)
+    end.
+
+%% The getter and the setter of `accessor Key`, which read and write the
+%% private name Storage of `this` (MakeAutoAccessorGetter, MakeAutoAccessorSetter).
+-spec auto_accessor(term(), tuple()) -> {term(), term()}.
+auto_accessor(Key, Storage) ->
+    Get = method(fun(This, _Args) -> private_get(This, Storage) end, Key, 0, get),
+    Set = method(fun(This, Args) ->
+                         private_set(This, Storage, case Args of [V | _] -> V; [] -> undefined end),
+                         undefined
+                 end, Key, 1, set),
+    {Get, Set}.
 
 %% PrivateMethodOrAccessorAdd for each method: {P, method | get | set, F}. A
 %% getter and a setter of one name make one accessor.
@@ -313,6 +332,7 @@ add_private_methods(O, Methods) ->
     [begin
          find(O, P) =:= error orelse
              buoy_ref:type_error(<<"Cannot initialize private methods of class ", (key_text(P))/binary, " twice on the same object">>),
+         ensure_extensible(O, P),
          buoy_heap:private_put(O, P, Slot)
      end || {P, Slot} <- lists:reverse(Elements)],
     ok.

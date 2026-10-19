@@ -164,12 +164,10 @@ alloc(NewTarget) ->
         {'$f', {builtin, <<"RegExp">>}, _} -> ?PROTO;
         _ -> buoy_ref_realm:proto_for(NewTarget, 'RegExp.prototype')
     end,
-    %% [[LegacyFeaturesEnabled]]: RegExp itself, not a subclass, made the object.
-    Legacy = case NewTarget of
-        {'$f', {builtin, <<"RegExp">>}, _} -> true;
-        _ -> false
-    end,
-    O = buoy_heap:new_exotic(regexp, Proto, #{legacy => Legacy}),
+    %% [[LegacyFeaturesEnabled]]: the %RegExp% of the current realm, not a
+    %% subclass, made the object, which remembers its [[Realm]].
+    Legacy = NewTarget =:= buoy_ref_realm:current(constructor()),
+    O = buoy_heap:new_exotic(regexp, Proto, #{legacy => Legacy, realm => buoy_heap:realm()}),
     buoy_heap:define(O, <<"lastIndex">>, #{value => undefined, writable => true, enumerable => false, configurable => false}).
 
 %% RegExpInitialize.
@@ -193,7 +191,7 @@ initialize(O, Pattern, Flags) ->
 -spec literal(buoy_ref_string:js_string(), binary()) -> term().
 literal(Source, Flags) ->
     {_Program, Names} = program(Source, Flags),
-    O = buoy_heap:new_exotic(regexp, buoy_heap:intrinsic('RegExp.prototype'), #{legacy => true, source => Source, flags => Flags, names => Names}),
+    O = buoy_heap:new_exotic(regexp, buoy_heap:intrinsic('RegExp.prototype'), #{legacy => true, realm => buoy_heap:realm(), source => Source, flags => Flags, names => Names}),
     buoy_heap:define(O, <<"lastIndex">>, #{value => 0, writable => true, enumerable => false, configurable => false}).
 
 %% The matcher of an initialized RegExp. The object keeps its source and flags,
@@ -289,6 +287,10 @@ proto(<<"toString">>, This, _Args) ->
     buoy_ref_string:concat([<<"/">>, Source, <<"/">>, Flags]);
 proto(<<"compile">>, This, Args) ->
     R = this_regexp(This, <<"compile">>),
+    %% The legacy RegExp features: compile works only on a RegExp of its own realm that
+    %% %RegExp% itself made.
+    maps:get(realm, buoy_heap:slots(R), 0) =:= buoy_heap:realm() orelse
+        type_error(<<"RegExp.prototype.compile requires a RegExp of its own realm">>),
     maps:get(legacy, buoy_heap:slots(R)) orelse type_error(<<"RegExp.prototype.compile requires a RegExp that RegExp itself made">>),
     {Pattern, Flags} = case is_regexp_object(arg(1, Args)) of
         true ->
@@ -600,26 +602,8 @@ iterator_step(O, {R, S, Global, Unicode, false}) ->
     end.
 
 %% SpeciesConstructor(R, %RegExp%).
-species_constructor(R) ->
-    case buoy_ref:get(R, <<"constructor">>) of
-        undefined -> constructor();
-        C when ?IS_OBJECT(C) ->
-            case buoy_ref:get(C, ?SYM(species)) of
-                Species when Species =:= undefined; Species =:= null -> constructor();
-                Species ->
-                    is_constructor(Species) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
-                    Species
-            end;
-        _ -> type_error(<<"The .constructor property is not an object">>)
-    end.
+species_constructor(R) -> buoy_ref_buffer:species_constructor(R, constructor()).
 
-is_constructor({'$f', _, _} = F) ->
-    case buoy_heap:slots(F) of
-        #{construct := _} -> true;
-        #{kind := normal} -> true;
-        _ -> false
-    end;
-is_constructor(_) -> false.
 
 symbol_replace(R, S, ReplaceValue) ->
     Length = buoy_ref_string:length_of(S),
@@ -752,8 +736,10 @@ same_value(A, B) when is_float(A), is_float(B) -> <<A/float>> =:= <<B/float>>;
 same_value(A, B) when is_number(A), is_number(B) -> A =:= B;
 same_value(A, B) -> A =:= B.
 
+%% The fast path also needs a primitive limit: ToUint32 of an object runs its
+%% valueOf after the splitter exists, and that code may replace exec.
 symbol_split(R, S, Limit) ->
-    case pristine(R) andalso erlang:get({builtin, <<"RegExp">>}) =:= undefined of
+    case pristine(R) andalso erlang:get({builtin, <<"RegExp">>}) =:= undefined andalso not ?IS_OBJECT(Limit) of
         true -> fast_split(R, S, Limit);
         false -> generic_split(R, S, Limit)
     end.

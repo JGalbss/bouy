@@ -26,3 +26,6 @@ asked
 conditional answer
 conditional not asked
 { value: 5, done: true } closes: 1
+FailingWeakMap set throws
+FailingWeakSet add throws
+0 number

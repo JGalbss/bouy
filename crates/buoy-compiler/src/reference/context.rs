@@ -19,8 +19,8 @@ use crate::erlang::{Clause, Expr, Function};
 pub enum Top {
     /// A function declaration: the Erlang function `'name'/2`, its `length`, and the
     /// form of its static function value (`fn`, `sloppy` for a normal function of sloppy
-    /// code, `async`, `generator`, `async_generator`, or `fn_nt` for a function that reads
-    /// `new.target`).
+    /// code, `async`, `generator`, `async_generator`, or `fn_nt` and `sloppy_nt` for a
+    /// function that reads `new.target`).
     Function {
         name: String,
         length: usize,
@@ -253,6 +253,11 @@ pub struct Lowerer<'a, 'c> {
     /// The function declarations that the code of the enclosing block already set when
     /// the block began, which the rest of the block must not create again.
     pub hoisted: std::collections::HashSet<SymbolId>,
+    /// The function declarations in the blocks of sloppy code (Annex B.3.3).
+    pub block_functions: Vec<super::block_function::BlockFunction>,
+    /// Each function records its call for the legacy `caller` and `arguments` of a sloppy
+    /// function (`Graph::reflects_calls`).
+    pub frames: bool,
     /// What the module's imports and exports refer to.
     pub linking: Linking<'c>,
 }
@@ -282,7 +287,30 @@ impl Lowerer<'_, '_> {
     }
 
     pub fn symbol_of(&self, reference: Option<oxc::semantic::ReferenceId>) -> Option<SymbolId> {
-        reference.and_then(|id| self.semantic.scoping().get_reference(id).symbol_id())
+        let id = reference?;
+        let symbol = self.semantic.scoping().get_reference(id).symbol_id()?;
+        if self.is_dynamic_function_name(symbol) {
+            return None;
+        }
+        // A reference outside the block of a block function that Annex B does not hoist.
+        if self.is_hidden_reference(symbol, id) {
+            return self.outer_binding(symbol);
+        }
+        Some(symbol)
+    }
+
+    /// Whether `symbol` is the name of the function of `CreateDynamicFunction`, which the
+    /// function's code reads as a global (ECMA-262 §20.2.1.1.1): the one function
+    /// expression of the program, whose own scope holds its name.
+    fn is_dynamic_function_name(&self, symbol: SymbolId) -> bool {
+        let scoping = self.semantic.scoping();
+        self.eval_context.dynamic_function
+            && matches!(
+                self.semantic.nodes().kind(scoping.symbol_declaration(symbol)),
+                oxc::ast::AstKind::Function(function) if function.is_expression()
+            )
+            && scoping.scope_parent_id(scoping.symbol_scope_id(symbol))
+                == Some(scoping.root_scope_id())
     }
 
     /// The current value of a variable: its version, or the read of its cell.
@@ -346,10 +374,20 @@ impl Lowerer<'_, '_> {
     /// Whether the binding `name` of the caller of a direct eval is immutable, such as the
     /// name of a function expression: its scope entry starts with `!`.
     pub fn is_eval_constant(&self, name: &str) -> bool {
+        self.eval_entry_starts(name, '!')
+    }
+
+    /// Whether the binding `name` of the caller of a direct eval is a `const`: its scope
+    /// entry starts with `#`.
+    pub fn is_eval_const(&self, name: &str) -> bool {
+        self.eval_entry_starts(name, '#')
+    }
+
+    fn eval_entry_starts(&self, name: &str, mark: char) -> bool {
         self.eval_bindings
             .iter()
             .find(|(binding, _)| binding_name(binding) == name)
-            .is_some_and(|(binding, _)| binding.starts_with('!'))
+            .is_some_and(|(binding, _)| binding.starts_with(mark))
     }
 
     /// The nesting order of the next reified `try` or finally frame.
@@ -397,9 +435,14 @@ impl Lowerer<'_, '_> {
     }
 }
 
-/// The name of a scope entry of a direct eval, without the `!` of an immutable binding.
+/// The name of a scope entry of a direct eval, without the `!` of an immutable binding, the
+/// `#` of a `const`, or the `?` of a catch parameter.
 pub fn binding_name(entry: &str) -> &str {
-    entry.strip_prefix('!').unwrap_or(entry)
+    entry
+        .strip_prefix('!')
+        .or_else(|| entry.strip_prefix('#'))
+        .or_else(|| entry.strip_prefix('?'))
+        .unwrap_or(entry)
 }
 
 pub fn cell_get(name: &str) -> Expr {

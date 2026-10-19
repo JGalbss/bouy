@@ -58,10 +58,14 @@ impl<'a> Lowerer<'a, '_> {
                 )
             })
             .collect();
-        let site = Expr::Tuple(vec![
+        let mut site = vec![
             Expr::atom(self.module.clone()),
             Expr::Integer(i64::from(tagged.quasi.span.start)),
-        ]);
+        ];
+        if self.eval.is_some() {
+            site.push(Expr::var(super::module::EVAL_SITE));
+        }
+        let site = Expr::Tuple(site);
         let callee = strip(&tagged.tag);
         let member = callee
             .as_member_expression()
@@ -114,6 +118,9 @@ impl<'a> Lowerer<'a, '_> {
             .elements
             .iter()
             .any(|element| matches!(element, ArrayExpressionElement::Elision(_)));
+        if let Some(tree) = constant_tree(array) {
+            return self.bind(Expr::call("buoy_ref", "array_tree", vec![tree]));
+        }
         if !spread {
             // A long literal builds its list in chunks, each bound to a variable, so the
             // values of one chunk stay live at a time: BEAM has 1024 registers.
@@ -163,7 +170,7 @@ impl<'a> Lowerer<'a, '_> {
             .collect();
         self.bind(Expr::call(
             "buoy_ref",
-            "array_spread",
+            &self.iteration("array_spread"),
             vec![Expr::List(parts)],
         ))
     }
@@ -354,6 +361,35 @@ pub fn js_string_literal(value: &str, lone_surrogates: bool) -> Expr {
         units.extend_from_slice(c.encode_utf16(&mut buffer));
     }
     Expr::JsString(units)
+}
+
+/// An array literal of literals that nests another, such as a table of pairs, as one
+/// Erlang term: `{'$array', Items}` for each array and `'$hole'` for each elision. The code
+/// then builds the arrays from the term in one call, as `JavaScriptCore`'s
+/// `op_new_array_buffer` does from a constant buffer, so a table of thousands of rows is
+/// not thousands of variables in one Erlang function.
+fn constant_tree(array: &ArrayExpression<'_>) -> Option<Expr> {
+    let nested = array
+        .elements
+        .iter()
+        .any(|element| matches!(element, ArrayExpressionElement::ArrayExpression(_)));
+    if !nested {
+        return None;
+    }
+    constant_array(array)
+}
+
+fn constant_array(array: &ArrayExpression<'_>) -> Option<Expr> {
+    let items = array
+        .elements
+        .iter()
+        .map(|element| match element {
+            ArrayExpressionElement::Elision(_) => Some(Expr::atom("$hole")),
+            ArrayExpressionElement::ArrayExpression(inner) => constant_array(inner),
+            other => other.as_expression().and_then(literal),
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(Expr::Tuple(vec![Expr::atom("$array"), Expr::List(items)]))
 }
 
 /// The value of a module-level `const` initializer that can be inlined.

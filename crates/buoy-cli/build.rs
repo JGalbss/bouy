@@ -154,7 +154,7 @@ fn is_runtime_source(path: &Path) -> bool {
 const TEMPORAL_EDITS: &[(&str, &str)] = &[
     (
         "!function() {\n  \"use strict\";\n",
-        "\"use strict\";\nconst { Intl, nowNanoseconds } = this;\n",
+        "\"use strict\";\nconst { Intl, nowNanoseconds, exactDivide } = this;\n",
     ),
     // The namespace is a lazy global, so reading it here would load the polyfill again.
     (
@@ -165,10 +165,20 @@ const TEMPORAL_EDITS: &[(&str, &str)] = &[
         "return BigInt(Date.now()) * bigNanoInMilli;",
         "return nowNanoseconds();",
     ),
+    // Duration.prototype.total converts the exact quotient to a Number (TotalTimeDuration
+    // and NudgeToCalendarUnit); the polyfill divided in floating point.
+    (
+        "return days * (nanoInUtcDay / divisorNano) + (Math.trunc(timeNano / divisorNano) + timeNano % divisorNano / divisorNano);",
+        "return exactDivide(bigNano, BigInt(divisorNano));",
+    ),
+    (
+        "return interpolateRelativeUnitWindow(unitWindow, Number(endEpochNano - unitWindow.I) / Number(unitWindow.O - unitWindow.I));",
+        "return exactDivide(BigInt(unitWindow.ve) * (unitWindow.O - unitWindow.I) + (endEpochNano - unitWindow.I) * BigInt(unitWindow.qe - unitWindow.ve), unitWindow.O - unitWindow.I);",
+    ),
 ];
 
 /// The tail of the script, which installs the globals and closes the wrapper. The code ends
-/// with the namespace in its place.
+/// with the namespace in its place, after it hands the slot readers to its host object.
 const TEMPORAL_TAIL: &str = "  const DateTimeFormat = createDateTimeFormatClass(";
 
 /// Compiles the polyfill at `vendored` into `out/buoy_temporal.erl`, whose `'__eval__'/3`
@@ -189,15 +199,25 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
     let tail = edited
         .find(TEMPORAL_TAIL)
         .expect("the polyfill ends by installing its globals");
-    let source = format!("{}Temporal;\n", &edited[..tail]);
+    // The host object also receives the readers of the internal slots, which Intl's
+    // DurationFormat and DateTimeFormat use to read Temporal objects without their getters.
+    let source = format!(
+        "{}this.slotsOf = getTemporalBrandingAndSlots;\nthis.toDurationSlots = toDurationSlots;\nTemporal;\n",
+        &edited[..tail]
+    );
     let erlang = buoy_compiler::compile_eval(
         &source,
         "buoy_temporal",
         false,
-        false,
+        None,
         &[],
         &[],
-        &buoy_compiler::EvalContext::default(),
+        // The polyfill is part of the runtime: like a native Temporal, it must not observe
+        // a program that replaces `Math.sign` or the array iterator.
+        &buoy_compiler::EvalContext {
+            internal: true,
+            ..buoy_compiler::EvalContext::default()
+        },
     )
     .unwrap_or_else(|diagnostics| {
         panic!(
@@ -287,13 +307,14 @@ fn node_module(runtime: &Path, id: &str, out: &Path) -> PathBuf {
     let code = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("{} holds the built-in {id}: {error}", path.display()));
     // The code starts on the line of the wrapper, so its line numbers stay.
-    let source = format!("(function ({}) {{ {code}\n}})", node_parameters(id));
+    let parameters = format!("(function ({})", node_parameters(id));
+    let source = format!("{parameters} {{ {code}\n}})");
     let name = node_module_name(id);
     let erlang = buoy_compiler::compile_eval(
         &source,
         &name,
         false,
-        true,
+        Some(parameters.len()),
         &[],
         &[],
         &buoy_compiler::EvalContext::default(),

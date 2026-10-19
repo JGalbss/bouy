@@ -1,6 +1,6 @@
 [package]
 name = "buoy-native"
-description = "The NIF library of the runtime: the zlib, brotli, and zstd codecs of Node's zlib module."
+description = "The NIF library of the runtime: the CLDR data of Intl, and the zlib, brotli, and zstd codecs of Node's zlib module."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +20,15 @@ rustler = { version = "0.39", default-features = false, features = [
   "allocator",
   "nif_version_2_15",
 ] }
+# ICU4X, the Unicode Consortium's ICU in Rust, with CLDR compiled in, for Intl.
+icu_locale = { version = "2.3", default-features = false, features = ["compiled_data"] }
+icu_calendar = { version = "2.3", default-features = false, features = ["compiled_data"] }
+icu_casemap = { version = "2.3", default-features = false, features = ["compiled_data"] }
+icu_collator = { version = "2.3", default-features = false, features = ["compiled_data"] }
+icu_decimal = { version = "2.3", default-features = false, features = ["compiled_data", "unstable"] }
+icu_segmenter = { version = "2.3", default-features = false, features = ["compiled_data"] }
+# Data that every scheduler thread of the VM shares: Arc instead of Rc.
+icu_provider = { version = "2.3", default-features = false, features = ["sync"] }
 # zlib in safe Rust, with zlib's C API, messages, and flush modes.
 libz-rs-sys = { version = "=0.6.8", default-features = false, features = ["std", "rust-allocator"] }
 # Brotli in safe Rust.

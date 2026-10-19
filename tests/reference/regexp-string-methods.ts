@@ -69,3 +69,13 @@ console.log(
   new Loud("b").test("abc"),
   "ab".match(new Loud("b"))?.[0],
 );
+// The limit converts after the splitter exists, so its valueOf may replace exec.
+const savedExec = RegExp.prototype.exec;
+const splitByA = /a/[Symbol.split]("abba", {
+  valueOf() {
+    RegExp.prototype.exec = () => null;
+    return 100;
+  },
+} as unknown as number);
+RegExp.prototype.exec = savedExec;
+console.log(splitByA);

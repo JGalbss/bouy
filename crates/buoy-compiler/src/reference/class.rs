@@ -9,8 +9,8 @@
 //! [[Construct]] fun, and then runs the static fields and blocks in order.
 
 use oxc::ast::ast::{
-    BindingPattern, Class, ClassElement, Expression, MethodDefinition, MethodDefinitionKind,
-    PropertyDefinition, PropertyDefinitionType, PropertyKey, StaticBlock,
+    AccessorProperty, AccessorPropertyType, BindingPattern, Class, ClassElement, Expression,
+    MethodDefinition, MethodDefinitionKind, PropertyDefinitionType, PropertyKey, StaticBlock,
 };
 use oxc::ast_visit::Visit;
 use oxc::semantic::SymbolId;
@@ -34,8 +34,17 @@ struct Elements<'a> {
 
 /// A field or a static block, which runs after the methods are defined.
 enum Deferred<'a> {
-    Field(Expr, &'a PropertyDefinition<'a>, bool),
+    Field(Field<'a>),
     Block(&'a StaticBlock<'a>),
+}
+
+/// A field: the key that it defines, private or not, its initializer, and the name that
+/// `NamedEvaluation` gives an anonymous function of the initializer.
+struct Field<'a> {
+    key: Expr,
+    private: bool,
+    value: Option<&'a Expression<'a>>,
+    name: Expr,
 }
 
 impl<'a> Lowerer<'a, '_> {
@@ -128,6 +137,8 @@ impl<'a> Lowerer<'a, '_> {
             None => (None, None),
         };
         self.declare_privates(class);
+        // All parts of a class are strict code, its heritage and computed keys too.
+        let sloppy = std::mem::replace(&mut self.frame.sloppy, false);
         let binding = class.id.as_ref().and_then(|id| id.symbol_id.get());
         // The binding outside the class, which the code after the class sees again.
         let saved = binding.map(|symbol| {
@@ -168,12 +179,21 @@ impl<'a> Lowerer<'a, '_> {
             self.pre
                 .push(Expr::call("erlang", "put", vec![key, Expr::var(c.clone())]));
         }
-        if let Some(cell) = &inner {
+        // A computed key runs before the class binding has its value, so a key that reads
+        // the binding reads a cell in its dead zone (ECMA-262 §15.7.14, step 29).
+        let keyed = binding.filter(|&symbol| self.reads_within(symbol, &computed_keys(class)));
+        let inner = match (inner, keyed) {
+            (None, Some(symbol)) => self.class_binding_cell(symbol),
+            (inner, _) => inner,
+        };
+        if let Some(cell) = inner.as_ref().filter(|_| keyed.is_none()) {
             self.pre.push(cell_set(cell, Expr::var(c.clone())));
         }
         // The class binding inside the body is the class itself.
         if let Some(symbol) = binding {
-            self.frame.env.insert(symbol, Local::Var(c.clone()));
+            if keyed.is_none() {
+                self.frame.env.insert(symbol, Local::Var(c.clone()));
+            }
             self.class_bindings.push(symbol);
         }
         let Elements {
@@ -182,6 +202,10 @@ impl<'a> Lowerer<'a, '_> {
             private_methods,
             static_private_methods,
         } = self.class_elements(class, &c, &proto);
+        if let (Some(symbol), Some(cell)) = (keyed, &inner) {
+            self.pre.push(cell_set(cell, Expr::var(c.clone())));
+            self.frame.env.insert(symbol, Local::Var(c.clone()));
+        }
         let init = self.init_fun(&c, &proto, private_methods, instance);
         let frame = ClassFrame {
             home: proto.clone(),
@@ -223,6 +247,7 @@ impl<'a> Lowerer<'a, '_> {
             }
         }
         self.privates.pop();
+        self.frame.sloppy = sloppy;
         Expr::var(c)
     }
 
@@ -260,7 +285,12 @@ impl<'a> Lowerer<'a, '_> {
                     }
                     let private = matches!(property.key, PropertyKey::PrivateIdentifier(_));
                     let key = self.property_key(&property.key, property.computed);
-                    let field = Deferred::Field(key, property, private);
+                    let field = Deferred::Field(Field {
+                        name: key.clone(),
+                        key,
+                        private,
+                        value: property.value.as_ref(),
+                    });
                     if property.r#static {
                         elements.statics.push(field);
                     } else {
@@ -269,12 +299,72 @@ impl<'a> Lowerer<'a, '_> {
                 }
                 ClassElement::StaticBlock(block) => elements.statics.push(Deferred::Block(block)),
                 ClassElement::AccessorProperty(accessor) => {
-                    self.unsupported(accessor.span, "`accessor` fields");
+                    if accessor.r#type == AccessorPropertyType::TSAbstractAccessorProperty {
+                        continue;
+                    }
+                    let home = if accessor.r#static { c } else { proto };
+                    let field = self.auto_accessor(accessor, home, &mut elements);
+                    if accessor.r#static {
+                        elements.statics.push(field);
+                    } else {
+                        elements.instance.push(field);
+                    }
                 }
                 ClassElement::TSIndexSignature(_) => {}
             }
         }
         elements
+    }
+
+    /// `accessor key = value`: a getter and a setter of `key` on `home` over a new private
+    /// name, and the field of that name, which `value` initializes (the decorators
+    /// proposal, `MakeAutoAccessorGetter` and `MakeAutoAccessorSetter`).
+    fn auto_accessor(
+        &mut self,
+        accessor: &'a AccessorProperty<'a>,
+        home: &str,
+        elements: &mut Elements<'a>,
+    ) -> Deferred<'a> {
+        let private = matches!(accessor.key, PropertyKey::PrivateIdentifier(_));
+        let key = self.property_key(&accessor.key, accessor.computed);
+        let storage = self.bind(Expr::call(
+            "buoy_ref_class",
+            "private_name",
+            vec![Expr::js_string("accessor storage")],
+        ));
+        let pair = self.bind(Expr::call(
+            "buoy_ref_class",
+            "auto_accessor",
+            vec![key.clone(), storage.clone()],
+        ));
+        for (index, slot) in [(1, "get"), (2, "set")] {
+            let function = Expr::call("erlang", "element", vec![int(index), pair.clone()]);
+            if private {
+                let element = Expr::Tuple(vec![key.clone(), Expr::atom(slot), function]);
+                if accessor.r#static {
+                    elements.static_private_methods.push(element);
+                } else {
+                    elements.private_methods.push(element);
+                }
+            } else {
+                self.pre.push(Expr::call(
+                    "buoy_ref_class",
+                    "define_method",
+                    vec![
+                        Expr::var(home.to_owned()),
+                        key.clone(),
+                        function,
+                        Expr::atom(slot),
+                    ],
+                ));
+            }
+        }
+        Deferred::Field(Field {
+            key: storage,
+            private: true,
+            value: accessor.value.as_ref(),
+            name: key,
+        })
     }
 
     /// A new private name for each `#name` that the class body declares.
@@ -468,10 +558,15 @@ impl<'a> Lowerer<'a, '_> {
     /// The code of a field or a static block, with `this` the instance or the class.
     fn deferred(&mut self, this: &str, element: Deferred<'a>) -> Vec<Expr> {
         match element {
-            Deferred::Field(key, property, private) => {
+            Deferred::Field(Field {
+                key,
+                private,
+                value,
+                name,
+            }) => {
                 self.frame.in_field = true;
-                let value = match &property.value {
-                    Some(value) => self.named_expr(value, Some(key.clone())),
+                let value = match value {
+                    Some(value) => self.named_expr(value, Some(name)),
                     None => Expr::undefined(),
                 };
                 self.frame.in_field = false;
@@ -754,4 +849,23 @@ pub fn method_kind(is_async: bool, generator: bool) -> &'static str {
 
 fn int(value: usize) -> Expr {
     Expr::Integer(i64::try_from(value).unwrap_or(0))
+}
+
+/// The spans of the computed keys of the elements of `class`.
+fn computed_keys(class: &Class<'_>) -> Vec<oxc::span::Span> {
+    class
+        .body
+        .body
+        .iter()
+        .filter_map(|element| match element {
+            ClassElement::MethodDefinition(method) if method.computed => Some(method.key.span()),
+            ClassElement::PropertyDefinition(property) if property.computed => {
+                Some(property.key.span())
+            }
+            ClassElement::AccessorProperty(accessor) if accessor.computed => {
+                Some(accessor.key.span())
+            }
+            _ => None,
+        })
+        .collect()
 }

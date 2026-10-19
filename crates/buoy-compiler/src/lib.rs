@@ -9,6 +9,7 @@ mod erlang;
 mod graph;
 mod library;
 mod lower;
+mod oxc_gaps;
 mod parse;
 mod reference;
 mod resolve;
@@ -257,7 +258,9 @@ fn finish(
 /// completion value. Strict code keeps its `var` names to
 /// itself; sloppy code makes them properties of the global object. With `function`, the
 /// source must be one parenthesized function expression, as the `Function` constructor
-/// builds it, so a body cannot close the function early. `lexical` names the bindings that
+/// builds it, whose parameter list ends at the byte offset `function` names (after its
+/// closing parenthesis), so neither the parameters nor the body can close the function
+/// early. `lexical` names the bindings that
 /// sloppy direct eval code may not declare with `var`. `scope` names the
 /// local bindings of the caller of a direct eval, which `'__eval__'/3` gets as cells, and
 /// `context` what the place of the call permits, such as `super.x` in a method.
@@ -265,18 +268,25 @@ pub fn compile_eval(
     source: &str,
     name: &str,
     strict: bool,
-    function: bool,
+    function: Option<usize>,
     lexical: &[String],
     scope: &[String],
     context: &EvalContext,
 ) -> Result<String, Vec<Diagnostic>> {
-    // The directive goes first, and a hashbang comment stays a comment after it.
-    let source = match (strict, source.strip_prefix("#!")) {
+    let directed = eval_text(source, strict);
+    let function = function.map(|end| end + directed.len() - source.len());
+    reference::lower_eval(directed, name, strict, function, lexical, scope, context)
+}
+
+/// The text that `compile_eval` compiles: strict code gets the directive first, and a
+/// hashbang comment stays a comment after it. The spans of the module index this text.
+#[must_use]
+pub fn eval_text(source: &str, strict: bool) -> String {
+    match (strict, source.strip_prefix("#!")) {
         (true, Some(rest)) => format!("\"use strict\";\n//{rest}"),
         (true, None) => format!("\"use strict\";\n{source}"),
         (false, _) => source.to_owned(),
-    };
-    reference::lower_eval(source, name, strict, function, lexical, scope, context)
+    }
 }
 
 /// Compiles a classic script at run time (reference semantics) into the Erlang module

@@ -4,7 +4,9 @@
 //! `'$uninitialized'` until the declaration runs, and a read before then throws a
 //! `ReferenceError`: the temporal dead zone.
 
-use oxc::ast::ast::{ForStatementLeft, FormalParameters, Statement, SwitchCase, SwitchStatement};
+use oxc::ast::ast::{
+    ForStatementLeft, FormalParameters, Statement, SwitchCase, SwitchStatement, VariableDeclaration,
+};
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
@@ -49,6 +51,26 @@ impl<'a> Lowerer<'a, '_> {
                 && self.read_early(symbol, end, &hoisted)
             {
                 code.push(self.early_cell(symbol));
+            }
+        }
+        code
+    }
+
+    /// The cells of the lexical bindings of the head of a `for` loop that their own
+    /// initializers read, such as a closure that the initializer makes.
+    pub fn early_head(&mut self, declaration: &'a VariableDeclaration<'a>) -> Vec<Expr> {
+        let mut code = Vec::new();
+        if !declaration.kind.is_lexical() {
+            return code;
+        }
+        for declarator in &declaration.declarations {
+            for id in declarator.id.get_binding_identifiers() {
+                if let Some(symbol) = id.symbol_id.get()
+                    && !self.frame.env.contains_key(&symbol)
+                    && self.read_early(symbol, declarator.span.end, &[])
+                {
+                    code.push(self.early_cell(symbol));
+                }
             }
         }
         code
@@ -158,21 +180,31 @@ impl<'a> Lowerer<'a, '_> {
     /// own, apart from the binding outside the class, which the class initializes once it
     /// exists (`ClassDefinitionEvaluation`, ECMA-262 §15.7.14).
     pub fn heritage_binding(&mut self, symbol: SymbolId, heritage: Span) -> Option<String> {
-        let nodes = self.semantic.nodes();
-        let read = self
-            .semantic
-            .scoping()
-            .get_resolved_references(symbol)
-            .any(|reference| contains(heritage, nodes.get_node(reference.node_id()).span()));
-        if !read {
+        if !self.reads_within(symbol, &[heritage]) {
             return None;
         }
+        self.class_binding_cell(symbol)
+    }
+
+    /// A cell for the inner binding of a class name, in its dead zone until the class
+    /// initializes it.
+    pub fn class_binding_cell(&mut self, symbol: SymbolId) -> Option<String> {
         let cell = self.early_cell(symbol);
         self.pre.push(cell);
         match self.frame.env.get(&symbol) {
             Some(Local::Cell(cell)) => Some(cell.clone()),
             _ => None,
         }
+    }
+
+    /// Whether a reference to `symbol` lies in one of `spans`.
+    pub fn reads_within(&self, symbol: SymbolId, spans: &[Span]) -> bool {
+        let nodes = self.semantic.nodes();
+        self.semantic
+            .scoping()
+            .get_resolved_references(symbol)
+            .map(|reference| nodes.get_node(reference.node_id()).span())
+            .any(|read| spans.iter().any(|span| contains(*span, read)))
     }
 
     /// Whether a reference to `symbol` comes before `end` or inside a hoisted function.

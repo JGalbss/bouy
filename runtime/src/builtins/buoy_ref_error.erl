@@ -1,6 +1,11 @@
 %% The Error family: Error, the native errors, AggregateError, and
 %% SuppressedError, with Error.prototype.toString, Error.isError, and V8's
 %% Error.captureStackTrace and Error.stackTraceLimit.
+%%
+%% Error.prototype.stack is the accessor of the error stack accessor proposal:
+%% its getter reads the stack that an error keeps in its slots. Each error
+%% also keeps V8's own `stack` property, because Node code and npm packages
+%% read it as an own property and assign any value to it.
 -module(buoy_ref_error).
 
 -include("buoy_ref.hrl").
@@ -15,7 +20,7 @@
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
     Subclasses = [<<"DataCloneError">>, <<"AggregateError">>, <<"SuppressedError">> | ?NATIVE],
-    [{'Error.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Error.prototype">>, [{<<"toString">>, 0}]) ++ [{<<"name">>, <<"Error">>}, {<<"message">>, <<>>}, {<<"constructor">>, constructor(<<"Error">>)}], none)}]
+    [{'Error.prototype', record(object, ?OBJECT_PROTO, ?METHODS(<<"Error.prototype">>, [{<<"toString">>, 0}]) ++ [{<<"name">>, <<"Error">>}, {<<"message">>, <<>>}, {<<"constructor">>, constructor(<<"Error">>)}, {<<"stack">>, stack_accessor(), 4}], none)}]
     ++ [{prototype_id(N), record(object, {'$o', 'Error.prototype'}, [{<<"name">>, N}, {<<"message">>, <<>>}, {<<"constructor">>, constructor(N)}], none)} || N <- Subclasses]
     ++ [{{builtin, <<"Error">>}, ctor_record(<<"Error">>, 1, {'$o', 'Error.prototype'}, ?METHODS(<<"Error">>, [{<<"captureStackTrace">>, 2}, {<<"isError">>, 1}]) ++ [{<<"stackTraceLimit">>, 10, 7}], fun(NT, Args) -> construct(<<"Error">>, NT, Args) end)}]
     ++ [{{builtin, N}, subclass_record(N)} || N <- [<<"AggregateError">>, <<"SuppressedError">> | ?NATIVE]].
@@ -30,6 +35,32 @@ subclass_record(Name) ->
     setelement(2, ctor_record(Name, Length, {'$o', prototype_id(Name)}, [], fun(NT, Args) -> construct(Name, NT, Args) end), constructor(<<"Error">>)).
 
 prototype_id(Name) -> binary_to_atom(<<Name/binary, ".prototype">>).
+
+stack_accessor() ->
+    {'$accessor', buoy_ref_realm:builtin(<<"get Error.prototype.stack">>, <<"get stack">>, 0, fun(This, _) -> get_stack(This) end),
+     buoy_ref_realm:builtin(<<"set Error.prototype.stack">>, <<"set stack">>, 1, fun(This, Args) -> set_stack(This, arg(1, Args)) end)}.
+
+get_stack(E) ->
+    ?IS_OBJECT(E) orelse buoy_ref:type_error(<<"get Error.prototype.stack requires that 'this' be an Object">>),
+    case buoy_heap:class_of(E) of
+        error -> buoy_heap:slots(E);
+        _ -> undefined
+    end.
+
+%% The setter and SetterThatIgnoresPrototypeProperties(this, %Error.prototype%, "stack", V).
+set_stack(E, V) ->
+    ?IS_OBJECT(E) orelse buoy_ref:type_error(<<"set Error.prototype.stack requires that 'this' be an Object">>),
+    ?IS_STRING(V) orelse buoy_ref:type_error(<<"Error.prototype.stack must be set to a string">>),
+    E =:= buoy_ref_realm:current({'$o', 'Error.prototype'}) andalso
+        buoy_ref:type_error(<<"Cannot assign to read only property 'stack' of object 'Error.prototype'">>),
+    case buoy_heap:get_own(E, <<"stack">>) of
+        none ->
+            buoy_heap:define_own_property(E, <<"stack">>, #{value => V, writable => true, enumerable => true, configurable => true})
+                orelse buoy_ref:type_error(<<"Cannot define property stack, object is not extensible">>);
+        _ ->
+            buoy_heap:set(E, <<"stack">>, V)
+    end,
+    undefined.
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{N, constructor(N)} || N <- ?NAMES].
@@ -79,7 +110,9 @@ construct(Name, NewTarget, Args) ->
         <<>> -> Name;
         _ -> buoy_ref_string:concat([Name, <<": ">>, Message])
     end,
-    buoy_heap:set(E, <<"stack">>, buoy_ref_string:concat(Header, <<"\n    at <anonymous>">>)),
+    Stack = buoy_ref_string:concat(Header, <<"\n    at <anonymous>">>),
+    buoy_heap:set(E, <<"stack">>, Stack),
+    buoy_heap:set_slots(E, Stack),
     case ?IS_OBJECT(OptionsArg) andalso buoy_heap:has(OptionsArg, <<"cause">>) of
         true -> hidden(E, <<"cause">>, buoy_ref:get(OptionsArg, <<"cause">>));
         false -> ok
