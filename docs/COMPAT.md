@@ -9,14 +9,14 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 2,300 | 4,419 | 52.0% | 1,524 | 12 | fb6850c | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 3,461 | 4,460 | 77.6% | 999 | 0 | 04d1005 | `tests/node/surface/expectations.txt` |
+| node | node | v25.9.0 | 2,967 | 4,419 | 67.1% | 854 | 15 | ede66c4 | `tests/node/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,952 | 4,460 | 88.6% | 508 | 0 | 287fefb | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/equivalence.rs` |
 | corpora | equivalence/ai | Node 25.9.0 | 7 | 7 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/ai.rs` |
-| corpora | programs |  | 36 | 36 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/programs.rs` |
+| corpora | programs |  | 41 | 41 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/programs.rs` |
 | corpora | npm |  | 0 | 19 | 0.0% | 0 | 0 |  | `crates/buoy-cli/tests/ecosystem.rs` |
 | corpora | equivalence/ai-zod |  | 0 | 4 | 0.0% | 1 | 0 |  | `crates/buoy-cli/tests/ecosystem.rs` |
 | corpora | equivalence/anthropic |  | 0 | 2 | 0.0% | 0 | 0 |  | `crates/buoy-cli/tests/ecosystem.rs` |
@@ -951,15 +951,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at fb6850c. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at ede66c4. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 2,300 | 52.0% | 0 | 0 | 583 | 0 | 1,470 | 54 | 0 | 12 |
+| every test | 4,361 | 2,967 | 68.0% | 0 | 0 | 525 | 0 | 802 | 52 | 0 | 15 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 2,300 | 56.4% | 0 | 0 | 240 | 0 | 1,470 | 54 | 0 | 12 |
+| kind: public | 4,076 | 2,967 | 72.8% | 0 | 0 | 240 | 0 | 802 | 52 | 0 | 15 |
 
 ### By module
 
@@ -968,50 +968,51 @@ node at v25.9.0, updated at fb6850c. Evidence: `tests/node/expectations.txt`.
 | module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | assert | 14 | 8 | 57.1% | 0 | 0 | 1 | 0 | 3 | 0 | 0 | 2 |
-| async_hooks | 56 | 33 | 58.9% | 0 | 0 | 5 | 0 | 18 | 0 | 0 | 0 |
+| async_hooks | 56 | 29 | 51.8% | 0 | 0 | 11 | 0 | 16 | 0 | 0 | 0 |
 | buffer | 69 | 58 | 84.1% | 0 | 0 | 6 | 0 | 5 | 0 | 0 | 0 |
-| child_process | 114 | 76 | 66.7% | 0 | 0 | 7 | 0 | 24 | 7 | 0 | 0 |
-| cluster | 88 | 23 | 26.1% | 0 | 0 | 2 | 0 | 52 | 11 | 0 | 0 |
+| child_process | 114 | 102 | 89.5% | 0 | 0 | 7 | 0 | 2 | 2 | 0 | 1 |
+| cluster | 88 | 81 | 92.0% | 0 | 0 | 2 | 0 | 2 | 2 | 0 | 1 |
 | console | 22 | 17 | 77.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 3 |
 | constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| crypto | 161 | 152 | 94.4% | 0 | 0 | 9 | 0 | 0 | 0 | 0 | 0 |
-| dgram | 79 | 5 | 6.3% | 0 | 0 | 11 | 0 | 63 | 0 | 0 | 0 |
-| diagnostics_channel | 56 | 48 | 85.7% | 0 | 0 | 1 | 0 | 6 | 1 | 0 | 0 |
-| dns | 29 | 0 | 0.0% | 0 | 0 | 10 | 0 | 19 | 0 | 0 | 0 |
+| crypto | 161 | 149 | 92.5% | 0 | 0 | 9 | 0 | 2 | 1 | 0 | 0 |
+| dgram | 79 | 68 | 86.1% | 0 | 0 | 11 | 0 | 0 | 0 | 0 | 0 |
+| diagnostics_channel | 56 | 28 | 50.0% | 0 | 0 | 3 | 0 | 24 | 1 | 0 | 0 |
+| dns | 29 | 19 | 65.5% | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 |
 | domain | 50 | 31 | 62.0% | 0 | 0 | 1 | 0 | 18 | 0 | 0 | 0 |
 | events | 40 | 34 | 85.0% | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
 | fs | 343 | 309 | 90.1% | 0 | 0 | 20 | 0 | 11 | 3 | 0 | 0 |
-| http | 394 | 37 | 9.4% | 0 | 0 | 15 | 0 | 342 | 0 | 0 | 0 |
-| http2 | 274 | 242 | 88.3% | 0 | 0 | 32 | 0 | 0 | 0 | 0 | 0 |
-| https | 65 | 63 | 96.9% | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| http | 394 | 375 | 95.2% | 0 | 0 | 15 | 0 | 3 | 1 | 0 | 0 |
+| http2 | 274 | 238 | 86.9% | 0 | 0 | 32 | 0 | 1 | 3 | 0 | 0 |
+| https | 65 | 58 | 89.2% | 0 | 0 | 2 | 0 | 5 | 0 | 0 | 0 |
 | inspector | 114 | 0 | 0.0% | 0 | 0 | 114 | 0 | 0 | 0 | 0 | 0 |
 | module | 280 | 158 | 56.4% | 0 | 0 | 16 | 0 | 102 | 4 | 0 | 0 |
-| net | 162 | 19 | 11.7% | 0 | 0 | 7 | 0 | 134 | 2 | 0 | 0 |
+| net | 162 | 151 | 93.2% | 0 | 0 | 10 | 0 | 1 | 0 | 0 | 0 |
 | os | 8 | 2 | 25.0% | 0 | 0 | 2 | 0 | 4 | 0 | 0 | 0 |
-| other | 616 | 232 | 37.7% | 0 | 0 | 178 | 0 | 201 | 3 | 0 | 2 |
+| other | 616 | 237 | 38.5% | 0 | 0 | 178 | 0 | 195 | 4 | 0 | 2 |
 | path | 17 | 17 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| perf_hooks | 27 | 20 | 74.1% | 0 | 0 | 2 | 0 | 4 | 0 | 0 | 1 |
-| process | 131 | 94 | 71.8% | 0 | 0 | 8 | 0 | 24 | 5 | 0 | 0 |
+| perf_hooks | 27 | 21 | 77.8% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 1 |
+| process | 131 | 92 | 70.2% | 0 | 0 | 8 | 0 | 26 | 5 | 0 | 0 |
 | punycode | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | querystring | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | quic | 9 | 6 | 66.7% | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
 | readline | 22 | 13 | 59.1% | 0 | 0 | 7 | 0 | 2 | 0 | 0 | 0 |
 | repl | 106 | 4 | 3.8% | 0 | 0 | 14 | 0 | 77 | 9 | 0 | 2 |
-| sea | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| sea | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sqlite | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | stream | 263 | 204 | 77.6% | 0 | 0 | 8 | 0 | 51 | 0 | 0 | 0 |
 | string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | test | 65 | 43 | 66.2% | 0 | 0 | 5 | 0 | 5 | 12 | 0 | 0 |
 | timers | 60 | 46 | 76.7% | 0 | 0 | 12 | 0 | 2 | 0 | 0 | 0 |
-| tls | 220 | 206 | 93.6% | 0 | 0 | 13 | 0 | 0 | 1 | 0 | 0 |
+| tls | 220 | 154 | 70.0% | 0 | 0 | 15 | 0 | 42 | 9 | 0 | 0 |
 | trace_events | 29 | 16 | 55.2% | 0 | 0 | 3 | 0 | 10 | 0 | 0 | 0 |
 | tty | 3 | 2 | 66.7% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | url | 42 | 37 | 88.1% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 0 |
 | util | 30 | 13 | 43.3% | 0 | 0 | 10 | 0 | 6 | 0 | 0 | 1 |
 | v8 | 22 | 18 | 81.8% | 0 | 0 | 1 | 0 | 2 | 0 | 0 | 1 |
 | vm | 99 | 87 | 87.9% | 0 | 0 | 1 | 0 | 10 | 0 | 0 | 1 |
-| worker_threads | 148 | 11 | 7.4% | 0 | 0 | 10 | 0 | 126 | 1 | 0 | 0 |
+| wasi | 26 | 21 | 80.8% | 0 | 0 | 0 | 0 | 2 | 3 | 0 | 0 |
+| worker_threads | 148 | 119 | 80.4% | 0 | 0 | 12 | 0 | 15 | 1 | 0 | 1 |
 | zlib | 63 | 60 | 95.2% | 0 | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 
 </details>
@@ -1030,10 +1031,9 @@ node at v25.9.0, updated at fb6850c. Evidence: `tests/node/expectations.txt`.
 
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es-module | 222 | 66 | 29.7% | 0 | 0 | 16 | 0 | 139 | 1 | 0 | 0 |
-| parallel | 4,079 | 2,191 | 53.7% | 0 | 0 | 545 | 0 | 1,283 | 48 | 0 | 12 |
-| sequential | 118 | 43 | 36.4% | 0 | 0 | 22 | 0 | 48 | 5 | 0 | 0 |
-| wasi | 26 | 21 | 80.8% | 0 | 0 | 0 | 0 | 2 | 3 | 0 | 0 |
+| es-module | 222 | 116 | 52.3% | 0 | 0 | 15 | 0 | 88 | 3 | 0 | 0 |
+| parallel | 4,079 | 2,834 | 69.5% | 0 | 0 | 545 | 0 | 640 | 45 | 0 | 15 |
+| sequential | 118 | 67 | 56.8% | 0 | 0 | 22 | 0 | 23 | 6 | 0 | 0 |
 
 ### Blockers
 
@@ -1044,20 +1044,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 287fefb. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 3,478 | 78.0% | 0 | 0 | 0 | 0 | 982 | 0 | 0 | 0 |
+| every test | 4,460 | 3,952 | 88.6% | 0 | 0 | 0 | 0 | 508 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| deprecated | 129 | 98 | 76.0% | 0 | 0 | 0 | 0 | 31 | 0 | 0 | 0 |
-| documented | 4,331 | 3,380 | 78.0% | 0 | 0 | 0 | 0 | 951 | 0 | 0 | 0 |
+| deprecated | 129 | 110 | 85.3% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| documented | 4,331 | 3,842 | 88.7% | 0 | 0 | 0 | 0 | 489 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1074,8 +1074,8 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | CloseEvent | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CompressionStream | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CountQueuingStrategy | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| CryptoKey | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| Crypto | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CryptoKey | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CustomEvent | 20 | 20 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | DOMException | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | DecompressionStream | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1087,7 +1087,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | Headers | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | MessageChannel | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | MessageEvent | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| MessagePort | 21 | 17 | 81.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| MessagePort | 21 | 21 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Navigator | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Performance | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | PerformanceEntry | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1105,7 +1105,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | Request | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Response | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Storage | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| SubtleCrypto | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| SubtleCrypto | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TextDecoder | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TextDecoderStream | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TextEncoder | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1127,7 +1127,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | clearInterval | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | clearTimeout | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | console | 23 | 1 | 4.3% | 0 | 0 | 0 | 0 | 22 | 0 | 0 | 0 |
-| crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| crypto | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | exports | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | fetch | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | global | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1141,11 +1141,11 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | node:child_process | 28 | 28 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:cluster | 48 | 48 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:console | 26 | 22 | 84.6% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| node:crypto | 401 | 0 | 0.0% | 0 | 0 | 0 | 0 | 401 | 0 | 0 | 0 |
+| node:crypto | 401 | 401 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:dgram | 43 | 43 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:diagnostics_channel | 13 | 13 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:dns | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
-| node:dns/promises | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
+| node:dns | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:dns/promises | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:domain | 27 | 27 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:events | 49 | 49 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:fs | 241 | 239 | 99.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
@@ -1153,8 +1153,8 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | node:http | 318 | 318 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:http2 | 112 | 0 | 0.0% | 0 | 0 | 0 | 0 | 112 | 0 | 0 | 0 |
 | node:https | 78 | 0 | 0.0% | 0 | 0 | 0 | 0 | 78 | 0 | 0 | 0 |
-| node:inspector | 40 | 0 | 0.0% | 0 | 0 | 0 | 0 | 40 | 0 | 0 | 0 |
-| node:inspector/promises | 40 | 0 | 0.0% | 0 | 0 | 0 | 0 | 40 | 0 | 0 | 0 |
+| node:inspector | 40 | 0 | 0.0% | 0 | 0 | 0 | 40 | 0 | 0 | 0 | 0 |
+| node:inspector/promises | 40 | 0 | 0.0% | 0 | 0 | 0 | 40 | 0 | 0 | 0 | 0 |
 | node:module | 20 | 20 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:net | 119 | 119 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:os | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1189,7 +1189,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | node:v8 | 72 | 70 | 97.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | node:vm | 16 | 16 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:wasi | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:worker_threads | 84 | 80 | 95.2% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| node:worker_threads | 84 | 84 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:zlib | 553 | 553 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | performance | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | process | 87 | 87 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -2491,7 +2491,7 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node native bindings
 
-Buoy implements 449 of the 895 members that src/ of Node sets on its 70 `internalBinding` objects (50.2%). `cargo run --release -p buoy-suites -- node-bindings` reads them from Node's source into `tests/node/bindings.json`. A member counts when the module of its binding names it and passes it to no stub helper, so a module that builds its names, such as the accessors of `report`, counts low. Each function and class that a binding lacks throws `ERR_BUOY_NOT_IMPLEMENTED` with its name.
+Buoy implements 663 of the 895 members that src/ of Node sets on its 70 `internalBinding` objects (74.1%). `cargo run --release -p buoy-suites -- node-bindings` reads them from Node's source into `tests/node/bindings.json`. A member counts when the module of its binding names it and passes it to no stub helper, so a module that builds its names, such as the accessors of `report`, counts low. Each function and class that a binding lacks throws `ERR_BUOY_NOT_IMPLEMENTED` with its name.
 
 <details><summary>70 groups</summary>
 
@@ -2500,16 +2500,16 @@ Buoy implements 449 of the 895 members that src/ of Node sets on its 70 `interna
 | `async_context_frame` | 2 | 2 | 100.0% | `runtime/src/node/bindings/buoy_binding_async_context_frame.erl` |  |
 | `async_wrap` | 16 | 16 | 100.0% | `runtime/src/node/bindings/buoy_binding_async_wrap.erl` |  |
 | `blob` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_blob.erl` |  |
-| `block_list` | 4 | 0 | 0.0% | stub |  |
+| `block_list` | 4 | 4 | 100.0% | `runtime/src/node/bindings/buoy_binding_block_list.erl` |  |
 | `buffer` | 35 | 35 | 100.0% | `runtime/src/node/bindings/buoy_binding_buffer.erl` |  |
 | `builtins` | 9 | 7 | 77.8% | `runtime/src/node/bindings/buoy_binding_builtins.erl` |  |
-| `cares_wrap` | 18 | 0 | 0.0% | stub |  |
+| `cares_wrap` | 18 | 18 | 100.0% | `runtime/src/node/bindings/buoy_binding_cares_wrap.erl` |  |
 | `cjs_lexer` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_cjs_lexer.erl` |  |
 | `config` | 12 | 11 | 91.7% | `runtime/src/node/bindings/buoy_binding_config.erl` |  |
 | `constants` | 6 | 3 | 50.0% | `runtime/src/node/bindings/buoy_binding_constants.erl` |  |
 | `contextify` | 10 | 10 | 100.0% | `runtime/src/node/bindings/buoy_binding_contextify.erl` |  |
 | `credentials` | 14 | 14 | 100.0% | `runtime/src/node/bindings/buoy_binding_credentials.erl` |  |
-| `crypto` | 144 | 0 | 0.0% | stub | HAVE_OPENSSL |
+| `crypto` | 144 | 144 | 100.0% | `runtime/src/node/bindings/buoy_binding_crypto.erl` | HAVE_OPENSSL |
 | `diagnostics_channel` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_diagnostics_channel.erl` |  |
 | `encoding_binding` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_encoding_binding.erl` |  |
 | `errors` | 9 | 9 | 100.0% | `runtime/src/node/bindings/buoy_binding_errors.erl` |  |
@@ -2517,15 +2517,15 @@ Buoy implements 449 of the 895 members that src/ of Node sets on its 70 `interna
 | `fs_dir` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_fs_dir.erl` |  |
 | `fs_event_wrap` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_fs_event_wrap.erl` |  |
 | `heap_utils` | 3 | 2 | 66.7% | `runtime/src/node/bindings/buoy_binding_heap_utils.erl` |  |
-| `http2` | 24 | 0 | 0.0% | stub |  |
-| `http_parser` | 4 | 0 | 0.0% | stub |  |
+| `http2` | 24 | 11 | 45.8% | `runtime/src/node/bindings/buoy_binding_http2.erl` |  |
+| `http_parser` | 4 | 4 | 100.0% | `runtime/src/node/bindings/buoy_binding_http_parser.erl` |  |
 | `icu` | 6 | 0 | 0.0% | stub | NODE_HAVE_I18N_SUPPORT |
-| `inspector` | 16 | 0 | 0.0% | stub |  |
+| `inspector` | 16 | 2 | 12.5% | `runtime/src/node/bindings/buoy_binding_inspector.erl` |  |
 | `internal_only_v8` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_internal_only_v8.erl` |  |
-| `js_stream` | 1 | 0 | 0.0% | stub |  |
+| `js_stream` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_js_stream.erl` |  |
 | `js_udp_wrap` | 1 | 0 | 0.0% | stub |  |
 | `locks` | 5 | 5 | 100.0% | `runtime/src/node/bindings/buoy_binding_locks.erl` |  |
-| `messaging` | 11 | 6 | 54.5% | `runtime/src/node/bindings/buoy_binding_messaging.erl` |  |
+| `messaging` | 11 | 11 | 100.0% | `runtime/src/node/bindings/buoy_binding_messaging.erl` |  |
 | `mksnapshot` | 7 | 5 | 71.4% | `runtime/src/node/bindings/buoy_binding_mksnapshot.erl` |  |
 | `module_wrap` | 14 | 14 | 100.0% | `runtime/src/node/bindings/buoy_binding_module_wrap.erl` |  |
 | `modules` | 13 | 13 | 100.0% | `runtime/src/node/bindings/buoy_binding_modules.erl` |  |
@@ -2544,28 +2544,28 @@ Buoy implements 449 of the 895 members that src/ of Node sets on its 70 `interna
 | `signal_wrap` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_signal_wrap.erl` |  |
 | `spawn_sync` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_spawn_sync.erl` |  |
 | `sqlite` | 5 | 5 | 100.0% | `runtime/src/node/bindings/buoy_binding_sqlite.erl` | HAVE_SQLITE |
-| `stream_pipe` | 1 | 0 | 0.0% | stub |  |
+| `stream_pipe` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_stream_pipe.erl` |  |
 | `stream_wrap` | 7 | 7 | 100.0% | `runtime/src/node/bindings/buoy_binding_stream_wrap.erl` |  |
 | `string_decoder` | 10 | 10 | 100.0% | `runtime/src/node/bindings/buoy_binding_string_decoder.erl` |  |
 | `symbols` | 23 | 0 | 0.0% | `runtime/src/node/bindings/buoy_binding_symbols.erl` |  |
 | `task_queue` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_task_queue.erl` |  |
-| `tcp_wrap` | 3 | 0 | 0.0% | stub |  |
+| `tcp_wrap` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_tcp_wrap.erl` |  |
 | `timers` | 7 | 7 | 100.0% | `runtime/src/node/bindings/buoy_binding_timers.erl` |  |
-| `tls_wrap` | 3 | 0 | 0.0% | stub | HAVE_OPENSSL |
+| `tls_wrap` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_tls_wrap.erl` | HAVE_OPENSSL |
 | `trace_events` | 6 | 6 | 100.0% | `runtime/src/node/bindings/buoy_binding_trace_events.erl` |  |
-| `tty_wrap` | 2 | 1 | 50.0% | `runtime/src/node/bindings/buoy_binding_tty_wrap.erl` |  |
+| `tty_wrap` | 2 | 2 | 100.0% | `runtime/src/node/bindings/buoy_binding_tty_wrap.erl` |  |
 | `types` | 27 | 27 | 100.0% | `runtime/src/node/bindings/buoy_binding_types.erl` |  |
-| `udp_wrap` | 3 | 0 | 0.0% | stub |  |
+| `udp_wrap` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_udp_wrap.erl` |  |
 | `url` | 9 | 9 | 100.0% | `runtime/src/node/bindings/buoy_binding_url.erl` |  |
 | `url_pattern` | 1 | 0 | 0.0% | stub |  |
 | `util` | 18 | 18 | 100.0% | `runtime/src/node/bindings/buoy_binding_util.erl` |  |
 | `uv` | 3 | 3 | 100.0% | `runtime/src/node/bindings/buoy_binding_uv.erl` |  |
 | `v8` | 40 | 40 | 100.0% | `runtime/src/node/bindings/buoy_binding_v8.erl` |  |
-| `wasi` | 1 | 0 | 0.0% | stub |  |
-| `wasm_web_api` | 1 | 0 | 0.0% | stub |  |
+| `wasi` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_wasi.erl` |  |
+| `wasm_web_api` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_wasm_web_api.erl` |  |
 | `watchdog` | 1 | 0 | 0.0% | stub |  |
 | `webstorage` | 2 | 2 | 100.0% | `runtime/src/node/bindings/buoy_binding_webstorage.erl` | HAVE_SQLITE |
-| `worker` | 13 | 12 | 92.3% | `runtime/src/node/bindings/buoy_binding_worker.erl` |  |
+| `worker` | 13 | 13 | 100.0% | `runtime/src/node/bindings/buoy_binding_worker.erl` |  |
 | `zlib` | 7 | 6 | 85.7% | `runtime/src/node/bindings/buoy_binding_zlib.erl` |  |
 
 </details>
@@ -2579,7 +2579,7 @@ The test of each corpus fails when a program breaks its rule, so these counts ho
 | conformance | 72 | pass 72 | each program prints what Node printed | `crates/buoy-cli/tests/conformance.rs` |
 | equivalence/effect | 23 | pass 23 | each program prints what Node printed | `crates/buoy-cli/tests/equivalence.rs` |
 | equivalence/ai | 7 | pass 7 | each program prints what Node printed | `crates/buoy-cli/tests/ai.rs` |
-| programs | 36 | pass 36 | each test checks the contract | `crates/buoy-cli/tests/programs.rs` |
+| programs | 41 | pass 41 | each test checks the contract | `crates/buoy-cli/tests/programs.rs` |
 | npm | 19 | rejected 19 | each program has the outcome of `tests/npm/expectations.txt` | `crates/buoy-cli/tests/ecosystem.rs` |
 | equivalence/ai-zod | 4 | rejected 3, fail 1 | each program has the outcome of `tests/equivalence/ai-zod/expectations.txt` | `crates/buoy-cli/tests/ecosystem.rs` |
 | equivalence/anthropic | 2 | rejected 2 | each program has the outcome of `tests/equivalence/anthropic/expectations.txt` | `crates/buoy-cli/tests/ecosystem.rs` |
