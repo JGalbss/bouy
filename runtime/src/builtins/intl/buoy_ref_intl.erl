@@ -14,7 +14,7 @@
 -export([canonicalize_locale_list/1, canonicalize_tag/1, canonicalize_uvalue/2, default_locale/0]).
 -export([base_name/1, language/1, script/1, region/1, variants/1]).
 -export([unicode_extension/1, extension_components/1, insert_extension/3, remove_extension/1]).
--export([lookup_matcher/2, resolve_locale/5, filter_locales/3]).
+-export([lookup_matcher/2, resolve_locale/5, resolve_options/5, filter_locales/3, options_object/1]).
 -export([coerce_options/1, get_option/5, range_error/1, is_type/1, is_language/1, is_script/1, is_region/1, is_variant/1]).
 
 -import(buoy_ref_realm, [arg/2, record/4]).
@@ -26,7 +26,8 @@
 intrinsics() ->
     [{'Intl', record(object, ?OBJECT_PROTO,
                      ?METHODS(<<"Intl">>, [{<<"getCanonicalLocales">>, 1}, {<<"supportedValuesOf">>, 1}])
-                     ++ [{<<"Locale">>, buoy_ref_intl_locale:constructor()}, {?SYM(toStringTag), <<"Intl">>, 4}],
+                     ++ [{<<"Collator">>, buoy_ref_intl_collator:constructor()}, {<<"Locale">>, buoy_ref_intl_locale:constructor()},
+                         {?SYM(toStringTag), <<"Intl">>, 4}],
                      none)}].
 
 -spec globals() -> [{binary(), term()}].
@@ -41,12 +42,23 @@ method(<<"Intl">>, <<"supportedValuesOf">>, _This, Args) ->
 
 %% AvailableCanonical* of ECMA-402 section 6: each sorted by code units.
 supported_values(<<"calendar">>) -> buoy_ref_intl_data:calendars();
-supported_values(<<"collation">>) -> buoy_ref_intl_data:collations();
+supported_values(<<"collation">>) -> collations();
 supported_values(<<"currency">>) -> buoy_ref_intl_data:currencies();
 supported_values(<<"numberingSystem">>) -> buoy_ref_intl_data:numbering_systems();
 supported_values(<<"timeZone">>) -> buoy_ref_intl_data:time_zones();
 supported_values(<<"unit">>) -> buoy_ref_intl_data:units();
 supported_values(Key) -> range_error(buoy_ref_string:concat([<<"Invalid key : ">>, Key])).
+
+%% The collation types that ICU4X has data for in some available locale, so
+%% that Intl.Collator supports each one: made once per VM.
+collations() ->
+    case persistent_term:get({?MODULE, collations}, undefined) of
+        undefined ->
+            Types = lists:usort([T || L <- buoy_ref_intl_data:available_locales(), T <- buoy_native:intl_collation_types(L)]),
+            persistent_term:put({?MODULE, collations}, Types),
+            Types;
+        Types -> Types
+    end.
 
 -spec range_error(term()) -> no_return().
 range_error(Message) -> buoy_heap:throw_error('RangeError', Message).
@@ -367,6 +379,38 @@ resolve_locale(Available, Requested, Options, Relevant, LocaleData) ->
         _ -> insert_extension(Found, [], Supported)
     end,
     Result#{locale => Locale, data_locale => Found}.
+
+%% ResolveOptions: the localeMatcher option, then each resolution option of
+%% Descriptors, [{Key, Property, Type, Values}], whose value must match the
+%% type nonterminal, then ResolveLocale over the available locales.
+-spec resolve_options([binary()], term(), [{binary(), binary(), string | boolean, [term()] | empty}], [binary()],
+                      fun((binary(), binary()) -> [term()])) -> map().
+resolve_options(Requested, Options, Descriptors, Relevant, LocaleData) ->
+    Matcher = get_option(Options, <<"localeMatcher">>, string, [<<"lookup">>, <<"best fit">>], <<"best fit">>),
+    Opt = lists:foldl(
+        fun({Key, Property, Type, Values}, Acc) ->
+                case get_option(Options, Property, Type, Values, undefined) of
+                    undefined -> Acc;
+                    Value ->
+                        Text = case Value of
+                            true -> <<"true">>;
+                            false -> <<"false">>;
+                            _ -> Value
+                        end,
+                        is_type(Text) orelse range_error(buoy_ref_string:concat([<<"Invalid ">>, Property, <<" : ">>, Text])),
+                        Acc#{Key => Text}
+                end
+        end, #{<<"localeMatcher">> => Matcher}, Descriptors),
+    resolve_locale(buoy_ref_intl_data:available_locales(), Requested, Opt, Relevant, LocaleData).
+
+%% An object with a data property for each pair whose value is not
+%% undefined, as resolvedOptions makes it.
+-spec options_object([{binary(), term()}]) -> term().
+options_object(Pairs) ->
+    O = buoy_heap:new_object(?OBJECT_PROTO),
+    [buoy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true})
+     || {K, V} <- Pairs, V =/= undefined],
+    O.
 
 %% FilterLocales: the requested locales that an available locale matches, as
 %% an array.

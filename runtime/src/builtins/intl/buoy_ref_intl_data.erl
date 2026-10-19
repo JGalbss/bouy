@@ -2,7 +2,7 @@
 %% The CLDR data of Intl that ICU4X does not give (buoy_ref_intl, buoy_ref_intl_locale).
 -module(buoy_ref_intl_data).
 
--export([available_locales/0, calendars/0, collations/0, currencies/0, numbering_systems/0, time_zones/0, units/0]).
+-export([available_locales/0, calendars/0, currencies/0, numbering_systems/0, time_zones/0, units/0]).
 -export([region_calendars/1, hour_cycle/1, week/1, region_time_zones/1]).
 
 %% The locales of CLDR and their default content locales, such as en-US (the [[AvailableLocales]] of each service).
@@ -14,11 +14,6 @@ available_locales() ->
 -spec calendars() -> [binary()].
 calendars() ->
     [<<"buddhist">>, <<"chinese">>, <<"coptic">>, <<"dangi">>, <<"ethioaa">>, <<"ethiopic">>, <<"gregory">>, <<"hebrew">>, <<"indian">>, <<"islamic-civil">>, <<"islamic-tbla">>, <<"islamic-umalqura">>, <<"iso8601">>, <<"japanese">>, <<"persian">>, <<"roc">>].
-
-%% The collation types of ICU's data (AvailableCanonicalCollations).
--spec collations() -> [binary()].
-collations() ->
-    [<<"compat">>, <<"dict">>, <<"emoji">>, <<"eor">>, <<"phonebk">>, <<"phonetic">>, <<"pinyin">>, <<"searchjl">>, <<"stroke">>, <<"trad">>, <<"unihan">>, <<"zhuyin">>].
 
 %% The ISO 4217 codes of the currencies in use (AvailableCanonicalCurrencies).
 -spec currencies() -> [binary()].

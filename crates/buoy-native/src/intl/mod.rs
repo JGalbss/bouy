@@ -4,6 +4,7 @@
 //! ECMA-402 in the engine, here `buoy_ref_intl*.erl`, and the locale data and algorithms
 //! in ICU.
 
+pub mod casemap;
 pub mod collator;
 
 use icu_locale::subtags::{Language, Region, Script};

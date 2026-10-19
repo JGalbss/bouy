@@ -22,6 +22,7 @@ rustler = { version = "0.39", default-features = false, features = [
 ] }
 # ICU4X, the Unicode Consortium's ICU in Rust, with CLDR compiled in, for Intl.
 icu_locale = { version = "2.3", default-features = false, features = ["compiled_data"] }
+icu_casemap = { version = "2.3", default-features = false, features = ["compiled_data"] }
 icu_collator = { version = "2.3", default-features = false, features = ["compiled_data"] }
 # Data that every scheduler thread of the VM shares: Arc instead of Rc.
 icu_provider = { version = "2.3", default-features = false, features = ["sync"] }

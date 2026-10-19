@@ -63,6 +63,7 @@ families() ->
      buoy_ref_eval,
      buoy_ref_temporal,
      buoy_ref_intl,
+     buoy_ref_intl_collator,
      buoy_ref_intl_locale,
      ?MODULE].
 

@@ -281,6 +281,30 @@ fn intl_collation_types(tag: &str) -> Vec<&'static str> {
     intl::collator::types(tag)
 }
 
+/// `toLocaleLowerCase` or `toLocaleUpperCase` of a big-endian UTF-16 binary in the
+/// language `tag`.
+#[rustler::nif]
+fn intl_change_case<'a>(env: Env<'a>, tag: &str, text: Binary, upper: bool) -> Binary<'a> {
+    let units: Vec<u16> = text
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_be_bytes(*pair))
+        .collect();
+    let changed = intl::casemap::change_case(tag, &units, upper);
+    let mut binary = OwnedBinary::new(changed.len() * 2);
+    for (slot, unit) in binary
+        .as_mut_slice()
+        .as_chunks_mut::<2>()
+        .0
+        .iter_mut()
+        .zip(changed)
+    {
+        *slot = unit.to_be_bytes();
+    }
+    binary.release(env)
+}
+
 mod atoms {
     rustler::atoms! { base, accent, case }
 }

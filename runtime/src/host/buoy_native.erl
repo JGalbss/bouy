@@ -11,7 +11,7 @@
 -export([zlib_open/6, brotli_open/2, zstd_open/3]).
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
 -export([intl_canonicalize/1, intl_maximize/1, intl_minimize/1, intl_is_right_to_left/1]).
--export([intl_collator_new/3, intl_collator_compare/3, intl_collation_types/1]).
+-export([intl_collator_new/3, intl_collator_compare/3, intl_collation_types/1, intl_change_case/3]).
 
 -export_type([stream/0, failure/0]).
 
@@ -90,3 +90,8 @@ intl_collator_compare(_Collator, _Left, _Right) -> erlang:nif_error(nif_not_load
 %% The collation types that ICU4X has for a locale or its fallbacks.
 -spec intl_collation_types(binary()) -> [binary()].
 intl_collation_types(_Tag) -> erlang:nif_error(nif_not_loaded).
+
+%% toLocaleLowerCase (false) or toLocaleUpperCase (true) of a big-endian
+%% UTF-16 binary in the case tailoring of a language.
+-spec intl_change_case(binary(), binary(), boolean()) -> binary().
+intl_change_case(_Language, _Text, _Upper) -> erlang:nif_error(nif_not_loaded).
