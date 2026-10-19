@@ -18,6 +18,8 @@
 
 -define(SESSION, {'#', ?MODULE, <<"session">>}).
 -define(STREAM, {'#', ?MODULE, <<"stream">>}).
+%% Set while a read of a native handle runs the session outside JavaScript.
+-define(TOP_LEVEL, {?MODULE, top_level}).
 -define(CALLBACKS, {?MODULE, callbacks}).
 -define(STATE, {?MODULE, state}).
 
@@ -253,17 +255,24 @@ maybe_schedule_write(This) ->
 
 %% consume(handle): the session reads and writes the socket's handle.
 consume(This, Handle) ->
-    update(This, fun(S) -> S#{socket => Handle} end),
+    update(This, fun(S) -> S#{socket => Handle, top_level => not buoy_binding_js_stream:is_js_stream(Handle)} end),
     Prev = buoy_stream_base:push_listener(Handle, fun(Bytes) -> on_stream_read(This, Bytes) end),
     update(This, fun(S) -> S#{prev_onread => Prev} end),
     undefined.
 
-%% Http2Session::OnStreamRead and ConsumeHTTP2Data.
+%% Http2Session::OnStreamRead.
 on_stream_read(This, Bytes) ->
     count(This, data_received, byte_size(Bytes)),
+    consume_data(This, Bytes).
+
+%% Http2Session::ConsumeHTTP2Data. A receive that paused while a write was
+%% in progress keeps the rest and sends nothing until that write is done.
+consume_data(This, Bytes) ->
     case session(This) of
-        #{destroyed := false} ->
-            scoped(This, fun() ->
+        #{destroyed := false} = Session ->
+            update(This, fun(S) -> S#{receive_paused => false} end),
+            maps:get(top_level, Session, false) andalso erlang:put(?TOP_LEVEL, true),
+            try_top_level(fun() -> scoped(This, fun() ->
                 {Ret, H} = buoy_h2:mem_recv(h2(This), Bytes),
                 put_h2(This, H),
                 case Ret of
@@ -272,13 +281,15 @@ on_stream_read(This, Bytes) ->
                             #{destroyed := false} -> send_pending(This);
                             _ -> ok
                         end;
+                    paused ->
+                        update(This, fun(S) -> S#{receive_paused => true} end);
                     Code ->
                         Custom = maps:get(custom_error, session(This), null),
                         update(This, fun(S) -> maps:remove(custom_error, S) end),
                         call_session(This, error, [Code, Custom])
                 end,
                 maybe_stop_reading(This)
-            end),
+            end) end),
             undefined;
         _ ->
             undefined
@@ -368,10 +379,12 @@ after_write(This, Status) ->
             call_owner(This, <<"ondone">>, []),
             update(This, fun(St) -> St#{reading_stopped => false} end),
             socket_call(This, <<"readStart">>, []);
-        #{write_scheduled := false} ->
-            maybe_schedule_write(This);
         _ ->
-            ok
+            maps:get(receive_paused, session(This), false) andalso consume_data(This, <<>>),
+            case session(This) of
+                #{write_scheduled := false, destroyed := false} -> maybe_schedule_write(This);
+                _ -> ok
+            end
     end,
     undefined.
 
@@ -688,10 +701,15 @@ on(This, {data_chunk, Id, Data, _Flags}) ->
                     case Reading of
                         true -> put_h2(This, buoy_h2:consume_stream(h2(This), Id, byte_size(Data)));
                         false -> update_stream(Stream, fun(St) -> St#{paused_consumed => maps:get(paused_consumed, St) + byte_size(Data)} end)
+                    end,
+                    %% OnDataChunkReceived waits for a write in progress
+                    %% before it takes more input.
+                    case maps:get(write_in_progress, session(This)) of
+                        true -> pause;
+                        false -> ok
                     end
             end
-    end,
-    ok;
+    end;
 on(This, {stream_close, Id, Code}) ->
     case find_stream(This, Id) of
         undefined -> ok;
@@ -918,19 +936,41 @@ frame_received(_, _, _) ->
 call_session(This, Name, Args) ->
     case maps:get(Name, erlang:get(?CALLBACKS), undefined) of
         undefined -> undefined;
-        F -> buoy_heap:call(F, This, Args)
+        F -> make_callback(fun() -> buoy_heap:call(F, This, Args) end)
     end.
 
 call_stream_callback(Stream, Name, Args) ->
     case maps:get(Name, erlang:get(?CALLBACKS), undefined) of
         undefined -> undefined;
-        F -> in_frame(Stream, fun() -> buoy_heap:call(F, Stream, Args) end)
+        F -> make_callback(fun() -> in_frame(Stream, fun() -> buoy_heap:call(F, Stream, Args) end) end)
     end.
 
 %% Stream::MakeCallback runs in the async context frame of the stream's
 %% creation, which a client request takes from its PendingRequest.
 emit_stream_read(Stream, Data) ->
-    in_frame(Stream, fun() -> buoy_stream_base:emit_read(Stream, Data) end).
+    make_callback(fun() -> in_frame(Stream, fun() -> buoy_stream_base:emit_read(Stream, Data) end) end).
+
+%% A read of a native handle reaches the session from the loop, so each of
+%% its callbacks is a MakeCallback at the top of the stack: the microtasks
+%% and ticks run after it (InternalCallbackScope::Close). The 'stream'
+%% event that onSessionHeaders queues thus runs before the next frame. A
+%% JSStream's read comes from JavaScript, where they wait.
+make_callback(Fun) ->
+    case erlang:erase(?TOP_LEVEL) of
+        true ->
+            try
+                Result = Fun(),
+                buoy_node_loop:after_callback(),
+                Result
+            after
+                erlang:put(?TOP_LEVEL, true)
+            end;
+        _ ->
+            Fun()
+    end.
+
+try_top_level(Fun) ->
+    try Fun() after erlang:erase(?TOP_LEVEL) end.
 
 in_frame(Stream, Fun) ->
     Prior = buoy_jobs:context(),
