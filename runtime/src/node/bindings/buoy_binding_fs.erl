@@ -588,6 +588,26 @@ write_string(Args) ->
 write_bytes(1, Bytes, _) -> put_bytes(standard_io, Bytes);
 write_bytes(2, Bytes, _) -> put_bytes(buoy_ref:stderr(), Bytes);
 write_bytes(Fd, Bytes, Position) ->
+    case fds() of
+        #{Fd := _} -> write_file(Fd, Bytes, Position);
+        _ -> write_socket(Fd, Bytes)
+    end.
+
+%% A descriptor that a socket of the VM owns, such as the IPC channel's
+%% (process.channel.fd): write(2) on it sends, as it does in Node.
+write_socket(Fd, Bytes) ->
+    case [S || S <- socket:which_sockets(), socket:getopt(S, {otp, fd}) =:= {ok, Fd}] of
+        [Socket | _] ->
+            case socket:send(Socket, Bytes) of
+                ok -> byte_size(Bytes);
+                {error, {Reason, _}} -> uv_error(Reason, <<"write">>, undefined);
+                {error, Reason} -> uv_error(Reason, <<"write">>, undefined)
+            end;
+        [] ->
+            uv_error(ebadf, <<"write">>, undefined)
+    end.
+
+write_file(Fd, Bytes, Position) ->
     {File, _, Access} = file(Fd, <<"write">>),
     Access =:= read andalso uv_error(ebadf, <<"write">>, undefined),
     Result = case position(Position) of
