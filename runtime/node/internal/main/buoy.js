@@ -213,8 +213,14 @@ function initializeHeapSnapshotSignalHandlers() {
 }
 
 // --require: the modules that load before the main script, as
-// loadPreloadModules of pre_execution loads them.
+// loadPreloadModules of pre_execution loads them. node --test with
+// --test-isolation=none loads them in the runner instead, in the scope of its
+// root test, as prepareTestRunnerMainExecution leaves them to it.
 function loadPreloadModules() {
+  if (getOptionValue('--test') &&
+      require('internal/test_runner/utils').parseCommandLine().isolation === 'none') {
+    return;
+  }
   const preloadModules = getOptionValue('--require');
   if (preloadModules.length > 0) {
     require('internal/modules/cjs/loader').Module._preloadModules(preloadModules);
