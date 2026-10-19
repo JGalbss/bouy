@@ -20,6 +20,8 @@ pub enum MemberKey {
     Static(Expr),
     Dynamic(Expr),
     Private(Expr),
+    /// A static key that `layout` expects at this position of the object's shape.
+    Slot(Expr, i64),
 }
 
 /// The object of a `super.k` member expression: the prototype of the home object, read
@@ -161,10 +163,21 @@ impl<'a> Lowerer<'a, '_> {
         if member.optional {
             self.chain_guard(object.clone());
         }
-        self.get(
-            object,
-            MemberKey::Static(static_key(member.property.name.as_str())),
-        )
+        let key = self.static_member_key(&member.object, member.property.name.as_str());
+        self.get(object, key)
+    }
+
+    /// The key `o.name`: a slot when the class of `o` expects `name` at a position of
+    /// its shape (`types`).
+    fn static_member_key(&mut self, object: &'a Expression<'a>, name: &str) -> MemberKey {
+        let key = static_key(name);
+        // A string past Latin-1 is a two-byte string, which no shape holds.
+        let one_byte =
+            matches!(&key, Expr::JsString(units) if units.iter().all(|unit| *unit < 256));
+        match one_byte.then(|| self.slot_position(object, name)).flatten() {
+            Some(position) => MemberKey::Slot(key, position),
+            None => MemberKey::Static(key),
+        }
     }
 
     /// The global and the key of a static member such as `Math.sign` that internal code
@@ -235,7 +248,7 @@ impl<'a> Lowerer<'a, '_> {
     pub fn member_key(&mut self, member: &'a MemberExpression<'a>) -> MemberKey {
         match member {
             MemberExpression::StaticMemberExpression(member) => {
-                MemberKey::Static(static_key(member.property.name.as_str()))
+                self.static_member_key(&member.object, member.property.name.as_str())
             }
             MemberExpression::ComputedMemberExpression(member) => {
                 self.computed_key(&member.expression)
@@ -275,7 +288,7 @@ impl<'a> Lowerer<'a, '_> {
     pub fn get(&mut self, object: Expr, key: MemberKey) -> Expr {
         if let Some((base, this)) = super_parts(&object) {
             let key = match key {
-                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Static(key) | MemberKey::Private(key) | MemberKey::Slot(key, _) => key,
                 MemberKey::Dynamic(value) => Expr::call("buoy_ref", "to_property_key", vec![value]),
             };
             return self.bind(Expr::call(
@@ -286,6 +299,21 @@ impl<'a> Lowerer<'a, '_> {
         }
         let value = match key {
             MemberKey::Static(key) => Expr::call("buoy_ref", "get", vec![object, key]),
+            MemberKey::Slot(key, position) => {
+                let object = self.bind(object);
+                let miss = Expr::call(
+                    "buoy_heap",
+                    "get_slot",
+                    vec![object.clone(), key.clone(), Expr::Integer(position)],
+                );
+                self.slot_case(
+                    object,
+                    key,
+                    position,
+                    |_, record| vec![element(position + 2, record)],
+                    miss,
+                )
+            }
             MemberKey::Dynamic(key) => Expr::call("buoy_ref", "get_computed", vec![object, key]),
             MemberKey::Private(key) => {
                 Expr::call("buoy_ref_class", "private_get", vec![object, key])
@@ -303,7 +331,7 @@ impl<'a> Lowerer<'a, '_> {
         };
         if let Some((base, this)) = super_parts(&object) {
             let key = match key {
-                MemberKey::Static(key) | MemberKey::Private(key) => key,
+                MemberKey::Static(key) | MemberKey::Private(key) | MemberKey::Slot(key, _) => key,
                 MemberKey::Dynamic(value) => {
                     self.bind(Expr::call("buoy_ref", "to_property_key", vec![value]))
                 }
@@ -316,7 +344,38 @@ impl<'a> Lowerer<'a, '_> {
             return;
         }
         let call = match key {
-            MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key, value]),
+            MemberKey::Slot(key, position) if !self.frame.sloppy => {
+                let object = self.bind(object);
+                let value = self.bind(value);
+                let miss = Expr::call(
+                    "buoy_heap",
+                    "set_slot",
+                    vec![
+                        object.clone(),
+                        key.clone(),
+                        value.clone(),
+                        Expr::Integer(position),
+                    ],
+                );
+                let stored = value.clone();
+                self.slot_case(
+                    object,
+                    key,
+                    position,
+                    |id, record| {
+                        let written = Expr::call(
+                            "erlang",
+                            "setelement",
+                            vec![Expr::Integer(position + 2), record, stored.clone()],
+                        );
+                        vec![Expr::call("erlang", "put", vec![id, written]), stored]
+                    },
+                    miss,
+                )
+            }
+            MemberKey::Static(key) | MemberKey::Slot(key, _) => {
+                Expr::call("buoy_ref", fixed, vec![object, key, value])
+            }
             MemberKey::Dynamic(key) => Expr::call("buoy_ref", computed, vec![object, key, value]),
             MemberKey::Private(key) => {
                 Expr::call("buoy_ref_class", "private_set", vec![object, key, value])
@@ -324,6 +383,50 @@ impl<'a> Lowerer<'a, '_> {
         };
         self.pre.push(call);
     }
+}
+
+impl Lowerer<'_, '_> {
+    /// The inline cache of a slot access: `hit` runs on the entry `{Shape, Proto, V1, ...}`
+    /// of a shaped object whose shape holds `key` at `position`, the check of
+    /// `buoy_heap:get_slot/3`, and `miss` runs otherwise. JSC compares the structure at
+    /// each access site; here the guard compares the key, so a subclass instance hits too.
+    fn slot_case(
+        &mut self,
+        object: Expr,
+        key: Expr,
+        position: i64,
+        hit: impl FnOnce(Expr, Expr) -> Vec<Expr>,
+        miss: Expr,
+    ) -> Expr {
+        let id = Expr::var(self.fresh("Id"));
+        let record = Expr::var(self.fresh("R"));
+        let shape = element(1, record.clone());
+        let keys = element(3, shape.clone());
+        let guard = Expr::op(
+            "andalso",
+            Expr::call("erlang", "is_tuple", vec![shape]),
+            Expr::op("=:=", element(position, keys), key),
+        );
+        let lookup = Expr::case(
+            Expr::call("erlang", "get", vec![id.clone()]),
+            vec![
+                Clause::guarded(record.clone(), vec![guard], hit(id.clone(), record)),
+                Clause::new(Expr::var("_"), vec![miss.clone()]),
+            ],
+        );
+        Expr::case(
+            object,
+            vec![
+                Clause::new(Expr::Tuple(vec![Expr::atom("$o"), id]), vec![lookup]),
+                Clause::new(Expr::var("_"), vec![miss]),
+            ],
+        )
+    }
+}
+
+/// `erlang:element(Index, Tuple)`.
+pub fn element(index: i64, tuple: Expr) -> Expr {
+    Expr::call("erlang", "element", vec![Expr::Integer(index), tuple])
 }
 
 /// A property key known at compile time: an array index is an integer.

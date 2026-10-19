@@ -11,7 +11,7 @@ use oxc::span::GetSpan;
 use super::analyze::contains;
 use super::context::{Local, Lowerer, Top, binding_name, cell_get};
 use super::expr::strip;
-use super::member::{MemberKey, super_parts};
+use super::member::{MemberKey, element, super_parts};
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -180,7 +180,7 @@ impl<'a> Lowerer<'a, '_> {
             let key = self.fix_key(key);
             let method = self.get(object.clone(), key.clone());
             let args = self.args(&call.arguments);
-            let MemberKey::Static(key) = key else {
+            let (MemberKey::Static(key) | MemberKey::Slot(key, _)) = key else {
                 return Expr::undefined();
             };
             return self.bind(Expr::call(
@@ -191,7 +191,13 @@ impl<'a> Lowerer<'a, '_> {
         }
         let args = self.args(&call.arguments);
         let value = match key {
-            MemberKey::Static(key) => {
+            MemberKey::Static(key) | MemberKey::Slot(key, _)
+                if self.is_class_instance(member.object()) =>
+            {
+                let args = self.bind(args);
+                self.cached_method_call(object, key, args)
+            }
+            MemberKey::Static(key) | MemberKey::Slot(key, _) => {
                 Expr::call("buoy_ref", "call_method", vec![object, key, args])
             }
             MemberKey::Dynamic(key) => {
@@ -200,6 +206,100 @@ impl<'a> Lowerer<'a, '_> {
             MemberKey::Private(_) => Expr::undefined(),
         };
         self.bind(value)
+    }
+
+    /// `o.m(args)` where the annotations name the class of `o`: the method read of
+    /// `buoy_heap:method/2` inline. When the filter of the own shape of `o` lacks the bit
+    /// of `m`, a prototype whose map holds `m` as a function gives the method at once, and
+    /// any other prototype goes to `buoy_heap:inherited_method/3`; any other object calls
+    /// `buoy_ref:call_method/3`. Bun: `JavaScriptCore`'s `get_by_id` inline cache for a call
+    /// checks the structure and loads the prototype's slot without a call. BEAM code cannot
+    /// be patched, so the filter bit of the key comes from the compiler.
+    fn cached_method_call(&mut self, object: Expr, key: Expr, args: Expr) -> Expr {
+        let id = Expr::var(self.fresh("Id"));
+        let record = Expr::var(self.fresh("R"));
+        let proto = Expr::var(self.fresh("Proto"));
+        let proto_id = Expr::var(self.fresh("P"));
+        let fun = Expr::var(self.fresh("M"));
+        let bit = shape_key_bit(&key);
+        let method = Expr::Tuple(vec![Expr::atom("$f"), Expr::var("_"), fun.clone()]);
+        let proto_record = Expr::Tuple(vec![
+            Expr::atom("object"),
+            Expr::var("_"),
+            Expr::MapPattern(vec![(key.clone(), method)]),
+            Expr::var("_"),
+            Expr::var("_"),
+            Expr::var("_"),
+        ]);
+        let inherited = Expr::call(
+            "buoy_ref",
+            "call_method_value",
+            vec![
+                Expr::call(
+                    "buoy_heap",
+                    "inherited_method",
+                    vec![proto.clone(), key.clone(), object.clone()],
+                ),
+                object.clone(),
+                key.clone(),
+                args.clone(),
+            ],
+        );
+        let miss = Expr::call(
+            "buoy_ref",
+            "call_method",
+            vec![object.clone(), key, args.clone()],
+        );
+        let otherwise = |miss: &Expr| Clause::new(Expr::var("_"), vec![miss.clone()]);
+        let call = Expr::case(
+            Expr::call("erlang", "get", vec![proto_id.clone()]),
+            vec![
+                Clause::new(
+                    proto_record,
+                    vec![Expr::Apply(Box::new(fun), vec![object.clone(), args])],
+                ),
+                otherwise(&inherited),
+            ],
+        );
+        let prototype = Expr::case(
+            proto.clone(),
+            vec![
+                Clause::guarded(
+                    Expr::Tuple(vec![Expr::atom("$o"), proto_id.clone()]),
+                    vec![Expr::call("erlang", "is_integer", vec![proto_id])],
+                    vec![call],
+                ),
+                otherwise(&inherited),
+            ],
+        );
+        let shape = element(1, record.clone());
+        let lacks_key = Expr::op(
+            "=:=",
+            Expr::op("band", element(5, shape.clone()), Expr::Integer(bit)),
+            Expr::Integer(0),
+        );
+        let entry = Expr::case(
+            Expr::call("erlang", "get", vec![id.clone()]),
+            vec![
+                Clause::guarded(
+                    record.clone(),
+                    vec![Expr::op(
+                        "andalso",
+                        Expr::call("erlang", "is_tuple", vec![shape]),
+                        lacks_key,
+                    )],
+                    vec![Expr::matches(proto, element(2, record)), prototype],
+                ),
+                otherwise(&miss),
+            ],
+        );
+        Expr::case(
+            object,
+            vec![
+                Clause::new(Expr::Tuple(vec![Expr::atom("$o"), id]), vec![entry]),
+                otherwise(&miss),
+            ],
+        )
     }
 
     /// A direct eval. The runtime checks that `eval` is still the intrinsic.
@@ -462,6 +562,20 @@ impl<'a> Lowerer<'a, '_> {
         let constructor = self.expr(&new.callee);
         let args = self.args(&new.arguments);
         self.bind(Expr::call("buoy_ref", "construct", vec![constructor, args]))
+    }
+}
+
+/// The bit of a key in the filter of a shape, as `buoy_heap:key_bit/1` computes it: from
+/// the size and the first byte of a one-byte string, 1 for the empty string, and none for
+/// any other key, which no shape holds.
+fn shape_key_bit(key: &Expr) -> i64 {
+    match key {
+        Expr::JsString(units) if units.iter().all(|unit| *unit < 256) => {
+            units.first().map_or(1, |first| {
+                1_i64 << ((units.len() * 7 + usize::from(*first)) % 32)
+            })
+        }
+        _ => 0,
     }
 }
 

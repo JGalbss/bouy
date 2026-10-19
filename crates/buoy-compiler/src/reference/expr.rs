@@ -15,7 +15,7 @@ use oxc::syntax::operator::{
 use super::context::{Kind, Local, Lowerer, Top, boolean_case};
 use super::literal::{bigint, js_string_literal, number};
 use super::member::{MemberKey, super_parts};
-use crate::erlang::{Clause, Expr};
+use crate::erlang::{CatchClause, Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
     pub fn expr(&mut self, expression: &'a Expression<'a>) -> Expr {
@@ -492,7 +492,10 @@ impl<'a> Lowerer<'a, '_> {
             let other = self.branch(|me| me.named_expr(right, name));
             return self.bind(logical_case(logical, current, other, false));
         }
+        // The current value is read before the right side runs (ECMA-262 §13.15.2).
+        let current = self.bind(current);
         let value = self.expr(right);
+        let value = self.bind(value);
         let function = match operator {
             AssignmentOperator::Addition => "add",
             AssignmentOperator::Subtraction => "sub",
@@ -507,7 +510,32 @@ impl<'a> Lowerer<'a, '_> {
             AssignmentOperator::BitwiseXOR => "bit_xor",
             _ => "bit_and",
         };
-        self.bind(Expr::call("buoy_ref", function, vec![current, value]))
+        let value = self.operator_call(function, current, value);
+        self.bind(value)
+    }
+
+    /// The numeric value before `++` or `--` and the value after it: inline for an
+    /// integer within ±2^53, else through `buoy_ref`.
+    fn update_values(&mut self, function: &str, value: Expr) -> (Expr, Expr) {
+        let value = self.bind(value);
+        let old = self.bind(guarded(
+            &value,
+            is("is_integer", &value),
+            value.clone(),
+            Expr::call("buoy_ref", "to_numeric", vec![value.clone()]),
+        ));
+        let (operator, bound) = if function == "increment" {
+            ("+", Expr::op("<", old.clone(), Expr::Integer(SAFE)))
+        } else {
+            ("-", Expr::op(">", old.clone(), Expr::Integer(-SAFE)))
+        };
+        let new = self.bind(guarded(
+            &old,
+            and(is("is_integer", &old), bound),
+            Expr::op(operator, old.clone(), Expr::Integer(1)),
+            Expr::call("buoy_ref", function, vec![old.clone()]),
+        ));
+        (old, new)
     }
 
     pub fn update(&mut self, update: &'a UpdateExpression<'a>) -> Expr {
@@ -521,21 +549,18 @@ impl<'a> Lowerer<'a, '_> {
                 if !objects.is_empty() {
                     let reference = self.with_resolve(&objects, ident.name.as_str());
                     let old = self.with_read_ref(ident, &reference);
-                    let old = self.bind(Expr::call("buoy_ref", "to_numeric", vec![old]));
-                    let new = self.bind(Expr::call("buoy_ref", function, vec![old.clone()]));
+                    let (old, new) = self.update_values(function, old);
                     let new = self.with_write_ref(ident, &reference, new);
                     return if update.prefix { new } else { old };
                 }
                 let Some(symbol) = self.symbol_of(ident.reference_id.get()) else {
                     let old = self.identifier_read(ident);
-                    let old = self.bind(Expr::call("buoy_ref", "to_numeric", vec![old]));
-                    let new = self.bind(Expr::call("buoy_ref", function, vec![old.clone()]));
+                    let (old, new) = self.update_values(function, old);
                     let new = self.set_global(ident.name.as_str(), new);
                     return if update.prefix { new } else { old };
                 };
                 let old = self.read_symbol(symbol, ident.span);
-                let old = self.bind(Expr::call("buoy_ref", "to_numeric", vec![old]));
-                let new = self.bind(Expr::call("buoy_ref", function, vec![old.clone()]));
+                let (old, new) = self.update_values(function, old);
                 let new = self.assign_symbol(symbol, new, ident.span);
                 if update.prefix { new } else { old }
             }
@@ -544,8 +569,7 @@ impl<'a> Lowerer<'a, '_> {
                     let (object, key) = self.member_parts(member);
                     let key = self.member_key_of(&object, key);
                     let old = self.get(object.clone(), key.clone());
-                    let old = self.bind(Expr::call("buoy_ref", "to_numeric", vec![old]));
-                    let new = self.bind(Expr::call("buoy_ref", function, vec![old.clone()]));
+                    let (old, new) = self.update_values(function, old);
                     self.set(object, key, new.clone());
                     if update.prefix { new } else { old }
                 }
@@ -559,6 +583,7 @@ impl<'a> Lowerer<'a, '_> {
     fn member_key_of(&mut self, object: &Expr, key: MemberKey) -> MemberKey {
         match key {
             MemberKey::Static(key) => MemberKey::Static(key),
+            MemberKey::Slot(key, position) => MemberKey::Slot(key, position),
             MemberKey::Private(key) => MemberKey::Private(key),
             MemberKey::Dynamic(value) => MemberKey::Static(self.bind(Expr::call(
                 "buoy_ref",
@@ -569,30 +594,34 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn binary(&mut self, binary: &'a BinaryExpression<'a>) -> Expr {
+        // Bound in order, so the left operand is read before the right one runs, and the
+        // inline cases of `operator_call` can repeat both.
         let left = self.expr(&binary.left);
+        let left = self.bind(left);
         let right = self.expr(&binary.right);
+        let right = self.bind(right);
         let call = |function: &str, args: Vec<Expr>| Expr::call("buoy_ref", function, args);
         let value = match binary.operator {
             BinaryOperator::StrictEquality => strict_eq(left, right),
             BinaryOperator::StrictInequality => Expr::not(strict_eq(left, right)),
             BinaryOperator::Equality => call("loose_eq", vec![left, right]),
             BinaryOperator::Inequality => Expr::not(call("loose_eq", vec![left, right])),
-            BinaryOperator::LessThan => call("lt", vec![left, right]),
-            BinaryOperator::LessEqualThan => call("le", vec![left, right]),
-            BinaryOperator::GreaterThan => call("gt", vec![left, right]),
-            BinaryOperator::GreaterEqualThan => call("ge", vec![left, right]),
-            BinaryOperator::Addition => call("add", vec![left, right]),
-            BinaryOperator::Subtraction => call("sub", vec![left, right]),
-            BinaryOperator::Multiplication => call("mul", vec![left, right]),
-            BinaryOperator::Division => call("divide", vec![left, right]),
+            BinaryOperator::LessThan => self.operator_call("lt", left, right),
+            BinaryOperator::LessEqualThan => self.operator_call("le", left, right),
+            BinaryOperator::GreaterThan => self.operator_call("gt", left, right),
+            BinaryOperator::GreaterEqualThan => self.operator_call("ge", left, right),
+            BinaryOperator::Addition => self.operator_call("add", left, right),
+            BinaryOperator::Subtraction => self.operator_call("sub", left, right),
+            BinaryOperator::Multiplication => self.operator_call("mul", left, right),
+            BinaryOperator::Division => self.operator_call("divide", left, right),
             BinaryOperator::Remainder => call("remainder", vec![left, right]),
             BinaryOperator::Exponential => call("power", vec![left, right]),
             BinaryOperator::ShiftLeft => call("shift_left", vec![left, right]),
-            BinaryOperator::ShiftRight => call("shift_right", vec![left, right]),
+            BinaryOperator::ShiftRight => self.operator_call("shift_right", left, right),
             BinaryOperator::ShiftRightZeroFill => call("shift_right_unsigned", vec![left, right]),
-            BinaryOperator::BitwiseOR => call("bit_or", vec![left, right]),
-            BinaryOperator::BitwiseXOR => call("bit_xor", vec![left, right]),
-            BinaryOperator::BitwiseAnd => call("bit_and", vec![left, right]),
+            BinaryOperator::BitwiseOR => self.operator_call("bit_or", left, right),
+            BinaryOperator::BitwiseXOR => self.operator_call("bit_xor", left, right),
+            BinaryOperator::BitwiseAnd => self.operator_call("bit_and", left, right),
             BinaryOperator::In => call("in", vec![left, right]),
             BinaryOperator::Instanceof => call("instance_of", vec![left, right]),
         };
@@ -705,7 +734,9 @@ impl<'a> Lowerer<'a, '_> {
             ("delete", "delete_computed")
         };
         let value = match key {
-            MemberKey::Static(key) => Expr::call("buoy_ref", fixed, vec![object, key]),
+            MemberKey::Static(key) | MemberKey::Slot(key, _) => {
+                Expr::call("buoy_ref", fixed, vec![object, key])
+            }
             MemberKey::Dynamic(key) => Expr::call("buoy_ref", computed, vec![object, key]),
             MemberKey::Private(_) => Expr::atom("true"),
         };
@@ -730,7 +761,208 @@ pub fn strict_eq(left: Expr, right: Expr) -> Expr {
     if simple(&left) || simple(&right) {
         return Expr::op("=:=", left, right);
     }
-    Expr::call("buoy_ref", "strict_eq", vec![left, right])
+    if !(is_operand(&left) && is_operand(&right)) {
+        return Expr::call("buoy_ref", "strict_eq", vec![left, right]);
+    }
+    // buoy_ref:strict_eq/2 inline: equal terms other than NaN, or numbers that compare
+    // equal, such as 0 and -0.0.
+    let same = and(
+        Expr::op("=:=", left.clone(), right.clone()),
+        Expr::op("=/=", left.clone(), Expr::atom("NaN")),
+    );
+    let numbers = and(
+        and(is("is_number", &left), is("is_number", &right)),
+        Expr::op("==", left, right),
+    );
+    Expr::op("orelse", same, numbers)
+}
+
+/// The largest integer that a JavaScript number holds exactly, 2^53 - 1.
+const SAFE: i64 = 9_007_199_254_740_991;
+
+impl Lowerer<'_, '_> {
+    /// `buoy_ref:Function(Left, Right)`, with the operands that are Erlang numbers of the
+    /// right kind computed inline, where the inline result is the runtime's: comparisons of
+    /// numbers, `+` and `-` of integers with a result within ±2^53, the bitwise operators
+    /// on int32 values, and `+`, `-`, `*`, and `/` with a float operand. Bun:
+    /// `JavaScriptCore`'s baseline JIT emits an int32 and a double fast path for each
+    /// operator and calls out on the slow path; this is that split in Erlang guards.
+    fn operator_call(&mut self, function: &str, left: Expr, right: Expr) -> Expr {
+        if !(is_operand(&left) && is_operand(&right)) {
+            return Expr::call("buoy_ref", function, vec![left, right]);
+        }
+        let slow = Expr::call("buoy_ref", function, vec![left.clone(), right.clone()]);
+        let mut clauses: Vec<Clause> = integer_fast_path(function, &left, &right)
+            .map(|(guard, fast)| Clause::guarded(Expr::var("_"), vec![guard], vec![fast]))
+            .into_iter()
+            .collect();
+        if let Some(clause) = self.float_fast_path(function, &left, &right, &slow) {
+            clauses.push(clause);
+        }
+        if clauses.is_empty() {
+            return slow;
+        }
+        clauses.push(Clause::new(Expr::var("_"), vec![slow]));
+        Expr::case(left, clauses)
+    }
+
+    /// `+`, `-`, or `*` of two numbers of which one is a float, or `/` of two numbers: the
+    /// Erlang operation, whose result is canonical unless it is integral
+    /// (`buoy_ref_number:canonical/1` turns 2.0 into 2), and the runtime call when Erlang
+    /// raises `badarith` for a result past the doubles or a division by zero.
+    fn float_fast_path(
+        &mut self,
+        function: &str,
+        left: &Expr,
+        right: &Expr,
+        slow: &Expr,
+    ) -> Option<Clause> {
+        let operator = match function {
+            "add" => "+",
+            "sub" => "-",
+            "mul" => "*",
+            "divide" => "/",
+            _ => return None,
+        };
+        let numbers = and(is("is_number", left), is("is_number", right));
+        // `/` of two integers is a float in Erlang too; the integer paths cover the rest.
+        let guard = if operator == "/" {
+            numbers
+        } else {
+            and(
+                numbers,
+                Expr::op("orelse", is("is_float", left), is("is_float", right)),
+            )
+        };
+        let computed = Expr::Try {
+            body: vec![Expr::op(operator, left.clone(), right.clone())],
+            catches: vec![CatchClause {
+                class: Expr::atom("error"),
+                reason: Expr::atom("badarith"),
+                stack: "_".to_owned(),
+                body: vec![slow.clone()],
+            }],
+            after: vec![],
+        };
+        let result = Expr::var(self.fresh("F"));
+        let fraction = Expr::op(
+            "-",
+            result.clone(),
+            Expr::call("erlang", "trunc", vec![result.clone()]),
+        );
+        let canonical = Expr::case(
+            computed,
+            vec![
+                Clause::guarded(
+                    result.clone(),
+                    vec![Expr::op("/=", fraction, Expr::Float(0.0))],
+                    vec![result.clone()],
+                ),
+                Clause::new(
+                    result.clone(),
+                    vec![Expr::call("buoy_ref_number", "canonical", vec![result])],
+                ),
+            ],
+        );
+        Some(Clause::guarded(
+            Expr::var("_"),
+            vec![guard],
+            vec![canonical],
+        ))
+    }
+}
+
+/// The guard and the inline result of the integer and comparison fast path of an operator.
+fn integer_fast_path(function: &str, left: &Expr, right: &Expr) -> Option<(Expr, Expr)> {
+    let both = |test: &str| and(is(test, left), is(test, right));
+    let fast = match function {
+        "lt" => (
+            both("is_number"),
+            Expr::op("<", left.clone(), right.clone()),
+        ),
+        "le" => (
+            both("is_number"),
+            Expr::op("=<", left.clone(), right.clone()),
+        ),
+        "gt" => (
+            both("is_number"),
+            Expr::op(">", left.clone(), right.clone()),
+        ),
+        "ge" => (
+            both("is_number"),
+            Expr::op(">=", left.clone(), right.clone()),
+        ),
+        "add" | "sub" => {
+            let operator = if function == "add" { "+" } else { "-" };
+            let result = Expr::op(operator, left.clone(), right.clone());
+            let within = and(
+                Expr::op("=<", result.clone(), Expr::Integer(SAFE)),
+                Expr::op(">=", result.clone(), Expr::Integer(-SAFE)),
+            );
+            (and(both("is_integer"), within), result)
+        }
+        "bit_and" | "bit_or" | "bit_xor" => {
+            let operator = match function {
+                "bit_and" => "band",
+                "bit_or" => "bor",
+                _ => "bxor",
+            };
+            (
+                and(int32(left), int32(right)),
+                Expr::op(operator, left.clone(), right.clone()),
+            )
+        }
+        "shift_right" => {
+            let count = and(
+                is("is_integer", right),
+                and(
+                    Expr::op(">=", right.clone(), Expr::Integer(0)),
+                    Expr::op("=<", right.clone(), Expr::Integer(31)),
+                ),
+            );
+            (
+                and(int32(left), count),
+                Expr::op("bsr", left.clone(), right.clone()),
+            )
+        }
+        _ => return None,
+    };
+    Some(fast)
+}
+
+/// An operand that the inline code may repeat and test: a variable or a number literal.
+fn is_operand(value: &Expr) -> bool {
+    matches!(value, Expr::Var(_) | Expr::Integer(_) | Expr::Float(_))
+}
+
+/// `case Subject of _ when Guard -> Fast; _ -> Slow end`.
+fn guarded(subject: &Expr, guard: Expr, fast: Expr, slow: Expr) -> Expr {
+    Expr::case(
+        subject.clone(),
+        vec![
+            Clause::guarded(Expr::var("_"), vec![guard], vec![fast]),
+            Clause::new(Expr::var("_"), vec![slow]),
+        ],
+    )
+}
+
+fn is(test: &str, value: &Expr) -> Expr {
+    Expr::call("erlang", test, vec![value.clone()])
+}
+
+fn and(left: Expr, right: Expr) -> Expr {
+    Expr::op("andalso", left, right)
+}
+
+/// Whether the value is an integer within int32, which `ToInt32` keeps.
+fn int32(value: &Expr) -> Expr {
+    and(
+        is("is_integer", value),
+        and(
+            Expr::op(">=", value.clone(), Expr::Integer(-2_147_483_648)),
+            Expr::op("=<", value.clone(), Expr::Integer(2_147_483_647)),
+        ),
+    )
 }
 
 pub fn logical_case(

@@ -27,6 +27,8 @@
 //! - `linking`: the interface of a module to the loader of the runtime.
 //! - `module`: module-level names, `'$body'/0`, `'$class'/1`, and module variables.
 //! - `function`, `class`, `suspend`: functions, classes, and `await`/`yield`.
+//! - `layout`, `types`: the keys that the instances of a class are expected to have, in
+//!   order, and the class that an expression holds an instance of.
 //! - `stmt`, `loops`, `exception`: statements, loops, and `try`.
 //! - `expr`, `variable`, `member`, `call`, `literal`, `pattern`: expressions.
 //! - `analyze`: the facts the lowering needs before it emits code.
@@ -41,6 +43,7 @@ mod exception;
 mod expr;
 mod function;
 pub mod graph;
+mod layout;
 pub mod link;
 mod linking;
 mod literal;
@@ -50,6 +53,7 @@ mod module;
 mod pattern;
 mod stmt;
 mod suspend;
+mod types;
 mod variable;
 mod with;
 
@@ -422,6 +426,7 @@ fn lower(
                 block_functions: Vec::new(),
                 frames,
                 linking,
+                layouts: HashMap::new(),
             };
             let functions = if module.kind == Kind::CommonJs {
                 lowerer.commonjs_functions(program, &module.source)

@@ -495,16 +495,9 @@ proto(<<"reverse">>, O, _) ->
     reverse(O, 0, Len - 1),
     O;
 proto(<<"shift">>, O, _) ->
-    case length_of(O) of
-        0 ->
-            set_length(O, 0),
-            undefined;
-        Len ->
-            First = get(O, 0),
-            move(O, 1, Len - 1, -1),
-            delete(O, Len - 1),
-            set_length(O, Len - 1),
-            First
+    case buoy_heap:array_shift(O) of
+        {ok, First} -> First;
+        none -> shift(O)
     end;
 proto(<<"unshift">>, O, Items) ->
     Len = length_of(O),
@@ -773,6 +766,19 @@ reverse(O, Lower, Upper) when Lower < Upper ->
     end,
     reverse(O, Lower + 1, Upper - 1);
 reverse(_O, _Lower, _Upper) -> ok.
+
+shift(O) ->
+    case length_of(O) of
+        0 ->
+            set_length(O, 0),
+            undefined;
+        Len ->
+            First = get(O, 0),
+            move(O, 1, Len - 1, -1),
+            delete(O, Len - 1),
+            set_length(O, Len - 1),
+            First
+    end.
 
 %% Moves the elements From..To by Shift, in the order that keeps the source
 %% intact: ascending for a shift down, descending for a shift up.

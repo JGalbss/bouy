@@ -736,7 +736,12 @@ impl<'a> Lowerer<'a, '_> {
             } else {
                 (None, None)
             };
-            self.frame.class = Some(super::context::ClassFrame { home, class, init });
+            self.frame.class = Some(super::context::ClassFrame {
+                home,
+                class,
+                init,
+                instance: None,
+            });
         }
         if !context.privates.is_empty() {
             let keys = take(self, "privates");

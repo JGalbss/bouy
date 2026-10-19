@@ -58,3 +58,80 @@ class Base {
 const Wrapped = new Proxy(Base, {});
 class FromProxy extends Wrapped {}
 console.log(new FromProxy().kind, new FromProxy() instanceof Base);
+// A base method reads the fields of a subclass instance, whose own keys start with the
+// keys of the base class; a method borrowed by an object of another class still reads
+// that object's own keys.
+class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+  norm(): number {
+    return this.x * this.x + this.y * this.y;
+  }
+  shift(dx: number): this {
+    this.x += dx;
+    return this;
+  }
+}
+
+class Point3 extends Point {
+  z = 0;
+  label: string;
+  constructor(x: number, y: number, z: number) {
+    super(x, y);
+    this.z = z;
+    this.label = `p${z}`;
+  }
+  norm(): number {
+    return super.norm() + this.z * this.z;
+  }
+}
+
+class Pair {
+  y = 5;
+  x = 6;
+}
+
+const points: Point[] = [new Point(1, 2), new Point3(1, 2, 3), new Point(3, 4).shift(1)];
+console.log(
+  points.map((point) => point.norm()),
+  Object.keys(points[1]),
+);
+console.log(Point.prototype.norm.call(new Pair()), Point.prototype.shift.call(new Pair(), 1));
+const moved = new Point(1, 1);
+delete (moved as { y?: number }).y;
+(moved as { y?: number }).y = 7;
+(moved as unknown as { extra: boolean }).extra = true;
+console.log(moved.norm(), moved.shift(2).x, Object.keys(moved));
+const odd = new Point(0, 0);
+Object.defineProperty(odd, "x", { get: () => 9 });
+console.log(odd.norm(), Object.keys(odd));
+
+// A method call on a typed receiver: an own function shadows the prototype's method, a
+// replaced prototype method takes effect, an inherited method and an accessor on the
+// prototype take the ordinary path, and a non-function value throws.
+class Greeter {
+  hello(): string {
+    return "proto";
+  }
+}
+const greeters: Greeter[] = [new Greeter(), new Greeter()];
+(greeters[1] as unknown as { hello: () => string }).hello = () => "own";
+for (const greeter of greeters) console.log(greeter.hello());
+Point.prototype.norm = function (this: Point): number {
+  return this.x;
+};
+const later: Point = new Point(2, 0);
+const deeper: Point = new Point3(1, 1, 1);
+console.log(later.norm(), deeper.norm(), deeper.shift(1).x);
+Object.defineProperty(Point.prototype, "norm", { get: () => () => 42, configurable: true });
+console.log(later.norm());
+Object.defineProperty(Point.prototype, "norm", { value: 7, configurable: true, writable: true });
+try {
+  later.norm();
+} catch (error) {
+  console.log((error as Error).constructor.name);
+}

@@ -242,7 +242,7 @@ call_in_realm({'$f', _, Fun} = F, This, Args) ->
 
 %% r.k(args): the method of the receiver, called with the receiver as this.
 -spec call_method(term(), buoy_heap:key(), list()) -> term().
-call_method({'$o', _} = O, K, Args) -> invoke(buoy_heap:get(O, K), O, K, Args);
+call_method({'$o', _} = O, K, Args) -> invoke(buoy_heap:method(O, K), O, K, Args);
 call_method({'$actor', Pid}, K, Args) -> buoy_jobs:actor_call(Pid, K, Args);
 call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 
@@ -564,7 +564,8 @@ keep(New, _Old) -> New.
 %% A class field: CreateDataPropertyOrThrow, which ignores setters.
 -spec define_field(term(), buoy_heap:key(), term()) -> term().
 define_field(O, K, V) ->
-    buoy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true}),
+    _ = buoy_heap:add_field(O, K, V)
+        orelse buoy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true}),
     V.
 
 %%% Literals

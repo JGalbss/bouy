@@ -57,7 +57,7 @@ load(?NAMESPACE = Id) ->
         %% it calls, such as the Set constructor, iterate arrays as a native
         %% Temporal would, whatever a program wrote to the array iterator.
         {'$o', Made} = buoy_ref_iterator:internally(fun() -> Module:'__eval__'(Host, [], #{}) end),
-        Record = erlang:get(Made),
+        Record = buoy_heap:record({'$o', Made}),
         erlang:put(Id, Record),
         erlang:put({?MODULE, instant}, maps:get(<<"Instant">>, element(3, Record))),
         erlang:put({?MODULE, readers, buoy_heap:realm()},

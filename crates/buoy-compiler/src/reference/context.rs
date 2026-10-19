@@ -145,6 +145,22 @@ pub struct ClassFrame {
     pub class: Option<String>,
     /// The fun that adds the private methods and the fields of the class to `this`.
     pub init: Option<String>,
+    /// The class node of the instance that `this` is, in the instance code of a class
+    /// (`types`).
+    pub instance: Option<oxc::semantic::NodeId>,
+}
+
+impl ClassFrame {
+    /// The frame of a static element of the class in the variable `class`, whose `this`
+    /// is the class.
+    pub fn statics(class: &str) -> Self {
+        Self {
+            home: class.to_owned(),
+            class: Some(class.to_owned()),
+            init: None,
+            instance: None,
+        }
+    }
 }
 
 /// A statement whose code must run when control leaves it abruptly: a `try` with a
@@ -260,6 +276,8 @@ pub struct Lowerer<'a, 'c> {
     pub frames: bool,
     /// What the module's imports and exports refer to.
     pub linking: Linking<'c>,
+    /// The layout of the instances of each class node that the lowering asked for.
+    pub layouts: HashMap<oxc::semantic::NodeId, Option<std::rc::Rc<[String]>>>,
 }
 
 impl Lowerer<'_, '_> {
