@@ -2972,33 +2972,33 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "666c72b",
+      "updated": "a3e1c0c",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 2475,
+        "pass": 2478,
         "rejected": 0,
         "late": 0,
         "skip": 525,
         "never": 0,
-        "fail": 1345,
-        "timeout": 61,
+        "fail": 1340,
+        "timeout": 63,
         "harness_error": 0,
         "crash": 13
       },
       "groups": {
         "directory": {
           "es-module": {
-            "pass": 115,
+            "pass": 116,
             "skip": 15,
-            "fail": 89,
+            "fail": 88,
             "timeout": 3
           },
           "parallel": {
-            "pass": 2316,
+            "pass": 2318,
             "skip": 491,
-            "fail": 1205,
-            "timeout": 54,
+            "fail": 1201,
+            "timeout": 56,
             "crash": 13
           },
           "sequential": {
@@ -3013,10 +3013,10 @@
             "skip": 343
           },
           "public": {
-            "pass": 2475,
+            "pass": 2478,
             "skip": 182,
-            "fail": 1345,
-            "timeout": 61,
+            "fail": 1340,
+            "timeout": 63,
             "crash": 13
           }
         },
@@ -3109,9 +3109,9 @@
             "skip": 114
           },
           "module": {
-            "pass": 157,
+            "pass": 158,
             "skip": 16,
-            "fail": 103,
+            "fail": 102,
             "timeout": 4
           },
           "net": {
@@ -3128,8 +3128,8 @@
           "other": {
             "pass": 237,
             "skip": 162,
-            "fail": 211,
-            "timeout": 4,
+            "fail": 209,
+            "timeout": 6,
             "crash": 2
           },
           "path": {
@@ -3229,9 +3229,9 @@
             "crash": 1
           },
           "vm": {
-            "pass": 85,
+            "pass": 87,
             "skip": 1,
-            "fail": 12,
+            "fail": 10,
             "crash": 1
           },
           "worker_threads": {

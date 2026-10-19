@@ -127,7 +127,7 @@ es-module/test-esm-type-field-errors-2.js pass
 es-module/test-esm-type-field-errors.js fail
 es-module/test-esm-type-field.mjs pass
 es-module/test-esm-type-main.mjs pass
-es-module/test-esm-undefined-cjs-global-like-variables.js fail
+es-module/test-esm-undefined-cjs-global-like-variables.js pass
 es-module/test-esm-unknown-extension.js fail
 es-module/test-esm-url-extname.js skip
 es-module/test-esm-util-types.mjs pass
@@ -3931,8 +3931,8 @@ parallel/test-vm-script-after-evaluate.js pass
 parallel/test-vm-script-throw-in-tostring.js pass
 parallel/test-vm-set-property-proxy.js pass
 parallel/test-vm-set-proto-null-on-globalthis.js pass
-parallel/test-vm-sigint-existing-handler.js fail
-parallel/test-vm-sigint.js fail
+parallel/test-vm-sigint-existing-handler.js pass
+parallel/test-vm-sigint.js pass
 parallel/test-vm-source-map-url.js pass
 parallel/test-vm-static-this.js pass
 parallel/test-vm-strict-assign.js pass
@@ -3957,9 +3957,9 @@ parallel/test-warn-tls-wrap-deprecation.js pass
 parallel/test-wasm.mjs fail
 parallel/test-watch-file-shared-dependency.mjs skip
 parallel/test-watch-mode-files_watcher.mjs skip
-parallel/test-watch-mode-kill-signal-default.mjs fail
+parallel/test-watch-mode-kill-signal-default.mjs timeout
 parallel/test-watch-mode-kill-signal-invalid.mjs fail
-parallel/test-watch-mode-kill-signal-override.mjs fail
+parallel/test-watch-mode-kill-signal-override.mjs timeout
 parallel/test-weakref.js pass
 parallel/test-web-locks-query.js fail
 parallel/test-web-locks.js fail

@@ -9,7 +9,7 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 2,475 | 4,419 | 56.0% | 1,406 | 13 | 666c72b | `tests/node/expectations.txt` |
+| node | node | v25.9.0 | 2,478 | 4,419 | 56.1% | 1,403 | 13 | a3e1c0c | `tests/node/expectations.txt` |
 | node api surface | node-surface | v25.9.0 | 3,478 | 4,460 | 78.0% | 982 | 0 | 666c72b | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
@@ -951,15 +951,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at 666c72b. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at a3e1c0c. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,419 | 2,475 | 56.0% | 0 | 0 | 525 | 0 | 1,345 | 61 | 0 | 13 |
+| every test | 4,419 | 2,478 | 56.1% | 0 | 0 | 525 | 0 | 1,340 | 63 | 0 | 13 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 2,475 | 60.7% | 0 | 0 | 182 | 0 | 1,345 | 61 | 0 | 13 |
+| kind: public | 4,076 | 2,478 | 60.8% | 0 | 0 | 182 | 0 | 1,340 | 63 | 0 | 13 |
 
 ### By module
 
@@ -985,10 +985,10 @@ node at v25.9.0, updated at 666c72b. Evidence: `tests/node/expectations.txt`.
 | http2 | 274 | 245 | 89.4% | 0 | 0 | 29 | 0 | 0 | 0 | 0 | 0 |
 | https | 65 | 64 | 98.5% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | inspector | 114 | 0 | 0.0% | 0 | 0 | 114 | 0 | 0 | 0 | 0 | 0 |
-| module | 280 | 157 | 56.1% | 0 | 0 | 16 | 0 | 103 | 4 | 0 | 0 |
+| module | 280 | 158 | 56.4% | 0 | 0 | 16 | 0 | 102 | 4 | 0 | 0 |
 | net | 162 | 19 | 11.7% | 0 | 0 | 7 | 0 | 134 | 2 | 0 | 0 |
 | os | 8 | 2 | 25.0% | 0 | 0 | 2 | 0 | 4 | 0 | 0 | 0 |
-| other | 616 | 237 | 38.5% | 0 | 0 | 162 | 0 | 211 | 4 | 0 | 2 |
+| other | 616 | 237 | 38.5% | 0 | 0 | 162 | 0 | 209 | 6 | 0 | 2 |
 | path | 17 | 17 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | perf_hooks | 27 | 20 | 74.1% | 0 | 0 | 2 | 0 | 4 | 0 | 0 | 1 |
 | process | 131 | 94 | 71.8% | 0 | 0 | 8 | 0 | 24 | 5 | 0 | 0 |
@@ -1010,7 +1010,7 @@ node at v25.9.0, updated at 666c72b. Evidence: `tests/node/expectations.txt`.
 | url | 42 | 37 | 88.1% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 0 |
 | util | 30 | 13 | 43.3% | 0 | 0 | 10 | 0 | 6 | 0 | 0 | 1 |
 | v8 | 22 | 18 | 81.8% | 0 | 0 | 1 | 0 | 2 | 0 | 0 | 1 |
-| vm | 99 | 85 | 85.9% | 0 | 0 | 1 | 0 | 12 | 0 | 0 | 1 |
+| vm | 99 | 87 | 87.9% | 0 | 0 | 1 | 0 | 10 | 0 | 0 | 1 |
 | worker_threads | 148 | 11 | 7.4% | 0 | 0 | 10 | 0 | 126 | 1 | 0 | 0 |
 | zlib | 63 | 60 | 95.2% | 0 | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 
@@ -1030,8 +1030,8 @@ node at v25.9.0, updated at 666c72b. Evidence: `tests/node/expectations.txt`.
 
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es-module | 222 | 115 | 51.8% | 0 | 0 | 15 | 0 | 89 | 3 | 0 | 0 |
-| parallel | 4,079 | 2,316 | 56.8% | 0 | 0 | 491 | 0 | 1,205 | 54 | 0 | 13 |
+| es-module | 222 | 116 | 52.3% | 0 | 0 | 15 | 0 | 88 | 3 | 0 | 0 |
+| parallel | 4,079 | 2,318 | 56.8% | 0 | 0 | 491 | 0 | 1,201 | 56 | 0 | 13 |
 | sequential | 118 | 44 | 37.3% | 0 | 0 | 19 | 0 | 51 | 4 | 0 | 0 |
 
 ### Blockers
