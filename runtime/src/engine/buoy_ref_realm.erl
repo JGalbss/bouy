@@ -68,6 +68,7 @@ families() ->
      buoy_ref_intl_plural_rules,
      buoy_ref_intl_number_format,
      buoy_ref_intl_list_format,
+     buoy_ref_intl_date_time_format,
      buoy_ref_intl_duration_format,
      buoy_ref_intl_display_names,
      buoy_ref_intl_relative_time_format,

@@ -40,6 +40,8 @@ main([Dir, Output]) ->
                             [{R, [calendar_type(C) || C <- Cs]} || {R, Cs} <- maps:to_list(Supplemental("calendarPreferenceData"))], "[]"),
             region_function("hour_cycle", "The preferred hour cycle of a region or of a language_REGION, or none.",
                             hour_cycles(Supplemental("timeData")), "none"),
+            region_function("hour_cycle_12", "The first 12-hour cycle that a region or a language_REGION allows, or none.",
+                            allowed_cycles(Supplemental("timeData"), "hK"), "none"),
             region_function("week", "{FirstDay, Weekend} of a region, with ISO day numbers, or none.",
                             weeks(Supplemental("weekData")), "none"),
             region_function("region_time_zones", "The primary time zone identifiers of a region, sorted, or [].",
@@ -53,7 +55,7 @@ header() ->
     ["%% The CLDR data of Intl that ICU4X does not give (buoy_ref_intl, buoy_ref_intl_locale).\n",
      "-module(buoy_ref_intl_data).\n\n",
      "-export([available_locales/0, calendars/0, currencies/0, numbering_systems/0, time_zones/0, units/0]).\n",
-     "-export([region_calendars/1, hour_cycle/1, week/1, region_time_zones/1]).\n"].
+     "-export([region_calendars/1, hour_cycle/1, hour_cycle_12/1, week/1, region_time_zones/1]).\n"].
 
 list_function(Name, Doc, Items) ->
     io_lib:format("~n%% ~s~n-spec ~s() -> [binary()].~n~s() ->~n    [~s].~n",
@@ -101,6 +103,14 @@ units() ->
 %% The preferred hour cycle of each region or language_REGION of timeData.
 hour_cycles(Data) ->
     [{K, hour_cycle(binary:first(maps:get(<<"_preferred">>, V)))} || {K, V} <- maps:to_list(Data)].
+
+%% The first hour cycle of the allowed formats whose hour symbol is one of
+%% Symbols, of each region or language_REGION of timeData.
+allowed_cycles(Data, Symbols) ->
+    [{K, hour_cycle(hd(Found))} || {K, V} <- maps:to_list(Data),
+                                   Found <- [[binary:first(T) || T <- binary:split(maps:get(<<"_allowed">>, V), <<" ">>, [global, trim_all]),
+                                                                 lists:member(binary:first(T), Symbols)]],
+                                   Found =/= []].
 
 hour_cycle($h) -> <<"h12">>;
 hour_cycle($H) -> <<"h23">>;

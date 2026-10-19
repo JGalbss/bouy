@@ -6,7 +6,7 @@
 %% on its first read.
 -module(buoy_intl_cldr).
 
--export([get/2, get/3, locales/1, currency_digits/1, numbering_digits/1]).
+-export([get/2, get/3, locales/1, own/1, currency_digits/1, numbering_digits/1, supplemental/1]).
 
 %% The entry Key of Locale, a language tag without extensions, or undefined.
 -spec get(binary(), term()) -> term().
@@ -72,6 +72,14 @@ parent(Locale) ->
                 Matches -> binary:part(Locale, 0, element(1, lists:last(Matches)))
             end
     end.
+
+%% The entries of one locale of the chain that differ from its parent.
+-spec own(binary()) -> map().
+own(Locale) -> entries(Locale).
+
+%% A table of the supplemental data, such as metazones.
+-spec supplemental(atom()) -> term().
+supplemental(Name) -> maps:get(Name, data()).
 
 entries(Locale) ->
     case persistent_term:get({?MODULE, locale, Locale}, undefined) of

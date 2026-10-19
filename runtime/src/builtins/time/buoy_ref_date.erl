@@ -180,9 +180,9 @@ proto(<<"toTimeString">>, T, _O, _) -> date_string(T, time);
 proto(<<"toUTCString">>, 'NaN', _O, _) -> <<"Invalid Date">>;
 proto(<<"toUTCString">>, T, _O, _) ->
     iolist_to_binary([weekday_name(T), ", ", pad(date(T), 2), " ", month_name(T), " ", year_text(year(T)), " ", clock(T), " GMT"]);
-proto(<<"toLocaleString">>, T, _O, _) -> locale(T, both);
-proto(<<"toLocaleDateString">>, T, _O, _) -> locale(T, date);
-proto(<<"toLocaleTimeString">>, T, _O, _) -> locale(T, time).
+proto(<<"toLocaleString">>, T, _O, Args) -> buoy_ref_intl_date_time_format:to_locale_string(T, arg(1, Args), arg(2, Args), any);
+proto(<<"toLocaleDateString">>, T, _O, Args) -> buoy_ref_intl_date_time_format:to_locale_string(T, arg(1, Args), arg(2, Args), date);
+proto(<<"toLocaleTimeString">>, T, _O, Args) -> buoy_ref_intl_date_time_format:to_locale_string(T, arg(1, Args), arg(2, Args), time).
 
 %% The arguments of a setter, by the names of its fields.
 fields(Names, Args) ->
@@ -399,30 +399,6 @@ iso(T) ->
         true -> "+" ++ pad(Y, 6)
     end,
     iolist_to_binary([Year, "-", pad(month(T) + 1, 2), "-", pad(date(T), 2), "T", clock(T), ".", pad(millisecond(T), 3), "Z"]).
-
-%% The en-US forms of toLocaleString, as Node prints them.
-locale('NaN', _Part) -> <<"Invalid Date">>;
-locale(T, Part) ->
-    L = local(T),
-    %% The year of the era, as ICU writes it: 1 BC is year 0 of the calendar.
-    EraYear = case year(L) of
-        Y when Y =< 0 -> 1 - Y;
-        Y -> Y
-    end,
-    Date = [integer_to_list(month(L) + 1), "/", integer_to_list(date(L)), "/", integer_to_list(EraYear)],
-    H = hour(L),
-    {H12, Suffix} = case H of
-        0 -> {12, "AM"};
-        _ when H < 12 -> {H, "AM"};
-        12 -> {12, "PM"};
-        _ -> {H - 12, "PM"}
-    end,
-    Time = [integer_to_list(H12), ":", pad(minute(L), 2), ":", pad(second(L), 2), <<" "/utf8>>, Suffix],
-    buoy_ref_string:from_utf8(iolist_to_binary(case Part of
-        both -> [Date, ", ", Time];
-        date -> Date;
-        time -> Time
-    end)).
 
 %%% Date.parse
 

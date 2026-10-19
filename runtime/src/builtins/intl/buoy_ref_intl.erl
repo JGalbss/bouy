@@ -27,6 +27,7 @@ intrinsics() ->
     [{'Intl', record(object, ?OBJECT_PROTO,
                      ?METHODS(<<"Intl">>, [{<<"getCanonicalLocales">>, 1}, {<<"supportedValuesOf">>, 1}])
                      ++ [{<<"Collator">>, buoy_ref_intl_collator:constructor()}, {<<"Locale">>, buoy_ref_intl_locale:constructor()},
+                         {<<"DateTimeFormat">>, buoy_ref_intl_date_time_format:constructor()},
                          {<<"DisplayNames">>, buoy_ref_intl_display_names:constructor()},
                          {<<"DurationFormat">>, buoy_ref_intl_duration_format:constructor()},
                          {<<"ListFormat">>, buoy_ref_intl_list_format:constructor()},
@@ -375,6 +376,11 @@ resolve_locale(Available, Requested, Options, Relevant, LocaleData) ->
                         end,
                         case Canonical =/= Value0 andalso lists:member(Canonical, Data) of
                             true -> {Canonical, none};
+                            false -> {Value0, Keyword0}
+                        end;
+                    null ->
+                        case Value0 =/= null andalso lists:member(null, Data) of
+                            true -> {null, none};
                             false -> {Value0, Keyword0}
                         end;
                     _ -> {Value0, Keyword0}

@@ -29,9 +29,16 @@ main([Dir, Output]) ->
     Deltas = maps:map(fun(L, E) -> term_to_binary(delta(E, resolved_parent(L, Parents, Entries)), [{compressed, 9}]) end,
                       Entries),
     Version = string:prefix(filename:basename(filename:dirname(filename:absname(Dir))), "cldr-json-"),
+    Tz = maps:get(<<"tz">>, maps:get(<<"u">>, maps:get(<<"keyword">>, Read("cldr-bcp47/bcp47/timezone.json")))),
     Data = #{version => list_to_binary(Version), parents => Parents, locales => Deltas,
              currency_digits => currency_digits(Supplemental("currencyData")),
-             numbering_digits => numbering_digits(Supplemental("numberingSystems"))},
+             numbering_digits => numbering_digits(Supplemental("numberingSystems")),
+             metazones => metazones(maps:get(<<"metazoneInfo">>, Supplemental("metaZones"))),
+             golden_zones => golden_zones(maps:get(<<"metazones">>, Supplemental("metaZones"))),
+             primary_zones => Supplemental("primaryZones"),
+             zone_regions => zone_regions(Tz),
+             zone_canonical => zone_canonical(Tz),
+             day_periods => day_periods(maps:get(<<"dayPeriodRuleSet">>, maps:get(<<"supplemental">>, Read("cldr-core/supplemental/dayPeriods.json"))))},
     ok = filelib:ensure_dir(Output),
     ok = file:write_file(Output, term_to_binary(Data, [{compressed, 9}, deterministic]));
 main(_) ->
@@ -77,8 +84,13 @@ entries(Dir, Read, L) ->
                         false -> #{}
                     end
             end,
+    Dates = fun(File) ->
+                    maps:get(<<"dates">>, maps:get(Locale, maps:get(<<"main">>, Read("cldr-dates-full/main/" ++ L ++ "/" ++ File ++ ".json"))))
+            end,
+    Gregorian = maps:get(<<"gregorian">>, maps:get(<<"calendars">>, Dates("ca-gregorian"))),
     maps:from_list(number_entries(Numbers) ++ currency_entries(Currencies) ++ unit_entries(Units) ++ list_entries(Lists)
-                   ++ field_entries(Fields) ++ name_entries(Names)).
+                   ++ field_entries(Fields) ++ name_entries(Names) ++ calendar_entries(<<"gregory">>, Gregorian)
+                   ++ zone_name_entries(maps:get(<<"timeZoneNames">>, Dates("timeZoneNames")))).
 
 %%% numbers.json
 
@@ -227,7 +239,110 @@ name_key(Kind, Code) ->
         _ -> skip
     end.
 
+%%% Calendars of cldr-dates-full
+
+%% The names, patterns, and skeletons of a calendar, {cal, Calendar, ...},
+%% without the alternative and plural variants that ICU does not read.
+calendar_entries(Cal, C) ->
+    Named = fun(Table, Key) -> [{{cal, Cal, Key, Context, binary_to_atom(Width)}, plain(Names)}
+                                || {Context0, Widths} <- maps:to_list(maps:get(Table, C, #{})),
+                                   Context <- [binary_to_atom(Context0)], {Width, Names} <- maps:to_list(Widths)] end,
+    Eras = maps:get(<<"eras">>, C, #{}),
+    DateTime = maps:get(<<"dateTimeFormats">>, C, #{}),
+    AtTime = maps:get(<<"standard">>, maps:get(<<"dateTimeFormats-atTime">>, C, #{}), #{}),
+    Intervals = maps:get(<<"intervalFormats">>, DateTime, #{}),
+    Named(<<"months">>, months) ++ Named(<<"days">>, days) ++ Named(<<"dayPeriods">>, day_periods)
+    ++ [{{cal, Cal, eras, Width}, plain(maps:get(Key, Eras))} || {Key, Width} <- [{<<"eraNames">>, long}, {<<"eraAbbr">>, short},
+                                                                                 {<<"eraNarrow">>, narrow}], maps:is_key(Key, Eras)]
+    ++ [{{cal, Cal, Kind, binary_to_atom(Style)}, P} || {Table, Kind} <- [{<<"dateFormats">>, date_format}, {<<"timeFormats">>, time_format}],
+                                                       {Style, P} <- maps:to_list(maps:get(Table, C, #{})), is_plain_key(Style)]
+    ++ [{{cal, Cal, date_time, binary_to_atom(Style)}, P} || {Style, P} <- maps:to_list(DateTime), is_binary(P), is_plain_key(Style)]
+    ++ [{{cal, Cal, date_time_at, binary_to_atom(Style)}, P} || {Style, P} <- maps:to_list(AtTime), is_plain_key(Style)]
+    ++ [{{cal, Cal, available, Skeleton}, P} || {Skeleton, P} <- maps:to_list(maps:get(<<"availableFormats">>, DateTime, #{})),
+                                               is_plain_key(Skeleton)]
+    ++ [{{cal, Cal, append, Field}, P} || {Field, P} <- maps:to_list(maps:get(<<"appendItems">>, DateTime, #{}))]
+    ++ [{{cal, Cal, interval, Skeleton}, plain(Diffs)} || {Skeleton, Diffs} <- maps:to_list(Intervals), is_map(Diffs),
+                                                         is_plain_key(Skeleton)]
+    ++ [{{cal, Cal, interval_fallback}, P} || #{<<"intervalFormatFallback">> := P} <- [Intervals]].
+
+plain(Map) -> maps:filter(fun(K, _) -> is_plain_key(K) end, Map).
+
+is_plain_key(Key) -> binary:match(Key, [<<"-alt-">>, <<"-count-">>]) =:= nomatch.
+
+%%% timeZoneNames.json
+
+%% The formats of time zone names {tz_format, Name}, the names and exemplar
+%% city of each zone with its own {tz_zone, Id}, and the names of each
+%% metazone {tz_meta, Name}.
+zone_name_entries(T) ->
+    [{{tz_format, Key}, V} || {Key, V} <- maps:to_list(T), is_binary(V)]
+    ++ [{{tz_zone, Id}, V} || {Id, V} <- zones(<<>>, maps:get(<<"zone">>, T, #{}))]
+    ++ [{{tz_meta, Name}, V} || {Name, V} <- maps:to_list(maps:get(<<"metazone">>, T, #{}))].
+
+%% The zones of the nested zone table, as {"Area/City", Names}.
+zones(Prefix, Table) ->
+    lists:append([case is_zone(V) of
+                       true -> [{<<Prefix/binary, K/binary>>, V}];
+                       false -> zones(<<Prefix/binary, K/binary, "/">>, V)
+                   end || {K, V} <- maps:to_list(Table), is_map(V)]).
+
+is_zone(V) ->
+    maps:is_key(<<"exemplarCity">>, V) orelse maps:is_key(<<"long">>, V) orelse maps:is_key(<<"short">>, V)
+        orelse maps:is_key(<<"_type">>, V).
+
 %%% Supplemental data
+
+%% The metazones of each zone over time, #{Zone => [{From, To, Metazone}]},
+%% with From and To in milliseconds since the epoch or undefined.
+metazones(Info) ->
+    maps:from_list([{Zone, [{epoch(maps:get(<<"_from">>, U, undefined)), epoch(maps:get(<<"_to">>, U, undefined)), maps:get(<<"_mzone">>, U)}
+                            || #{<<"usesMetazone">> := U} <- Uses]}
+                    || {Zone, Uses} <- zones(<<>>, maps:get(<<"timezone">>, Info), fun is_list/1)]).
+
+zones(Prefix, Table, IsLeaf) ->
+    lists:append([case IsLeaf(V) of
+                       true -> [{<<Prefix/binary, K/binary>>, V}];
+                       false -> zones(<<Prefix/binary, K/binary, "/">>, V, IsLeaf)
+                   end || {K, V} <- maps:to_list(Table)]).
+
+%% "1970-01-01 00:00" as milliseconds since the epoch.
+epoch(undefined) -> undefined;
+epoch(<<Y:4/binary, "-", Mo:2/binary, "-", D:2/binary, " ", H:2/binary, ":", Mi:2/binary>>) ->
+    Seconds = calendar:datetime_to_gregorian_seconds({{binary_to_integer(Y), binary_to_integer(Mo), binary_to_integer(D)},
+                                                      {binary_to_integer(H), binary_to_integer(Mi), 0}})
+        - calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
+    Seconds * 1000.
+
+%% The zone of each metazone in each territory, #{{Metazone, Territory} => Zone}.
+golden_zones(MapZones) ->
+    maps:from_list([{{maps:get(<<"_other">>, Z), maps:get(<<"_territory">>, Z)}, maps:get(<<"_type">>, Z)}
+                    || #{<<"mapZone">> := Z} <- MapZones]).
+
+%% The region of each zone identifier and alias: the first two letters of
+%% its BCP 47 key, or its _region.
+zone_regions(Tz) ->
+    maps:from_list([{Alias, Region} || {Key, V} <- maps:to_list(Tz), is_map(V), maps:is_key(<<"_alias">>, V), Key =/= <<"unk">>,
+                                        Region <- [case V of #{<<"_region">> := R} -> R; _ -> string:uppercase(binary:part(Key, 0, 2)) end],
+                                        Alias <- binary:split(maps:get(<<"_alias">>, V), <<" ">>, [global, trim_all])]).
+
+%% The CLDR canonical identifier of each zone identifier and alias: the first
+%% alias of its BCP 47 key, which names the zone in CLDR's data.
+zone_canonical(Tz) ->
+    maps:from_list([{Alias, hd(Aliases)} || {Key, V} <- maps:to_list(Tz), is_map(V), maps:is_key(<<"_alias">>, V), Key =/= <<"unk">>,
+                                            Aliases <- [binary:split(maps:get(<<"_alias">>, V), <<" ">>, [global, trim_all])],
+                                            Alias <- Aliases]).
+
+%% The day period rules of each language, [{Period, {at, Minute}} |
+%% {Period, {from, Minute, Before}}], with minutes since midnight.
+day_periods(Rules) ->
+    maps:map(fun(_, Periods) ->
+                     [{Name, case R of
+                                 #{<<"_at">> := At} -> {at, minutes(At)};
+                                 #{<<"_from">> := From, <<"_before">> := Before} -> {from, minutes(From), minutes(Before)}
+                             end} || {Name, R} <- maps:to_list(Periods)]
+             end, Rules).
+
+minutes(<<H:2/binary, ":", M:2/binary>>) -> binary_to_integer(H) * 60 + binary_to_integer(M).
 
 %% CurrencyDigits: the fraction digits of each currency that differs from 2.
 currency_digits(Data) ->

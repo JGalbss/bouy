@@ -10,7 +10,8 @@
 %% of the namespace under 'Temporal'. A realm that never reads Temporal
 %% pays nothing.
 %%
-%% The Intl.DateTimeFormat here is the part that the polyfill uses, in the
+%% The DateTimeFormat here, Temporal.DateTimeFormat, is the part of
+%% Intl.DateTimeFormat that the polyfill uses to compute calendar fields, in the
 %% en-US locale: the system zone, a zone of the tz database by identifier
 %% (buoy_ref_tz), the wall-clock fields of an instant in a zone, and a
 %% plain text form for toLocaleString. It is not a global.
@@ -24,14 +25,14 @@
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 
 -define(NAMESPACE, 'Temporal').
--define(PROTO, 'Intl.DateTimeFormat.prototype').
+-define(PROTO, 'Temporal.DateTimeFormat.prototype').
 -define(DAY, 86400000).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() ->
     [{?NAMESPACE, {lazy, ?MODULE}},
-     {?PROTO, record(object, ?OBJECT_PROTO, ?METHODS(<<"Intl.DateTimeFormat.prototype">>, [{<<"resolvedOptions">>, 0}, {<<"formatToParts">>, 1}, {<<"format">>, 1}]), none)},
-     {{builtin, <<"Intl.DateTimeFormat">>}, ctor_record(<<"DateTimeFormat">>, 0, {'$o', ?PROTO}, [], fun construct/2)}].
+     {?PROTO, record(object, ?OBJECT_PROTO, ?METHODS(<<"Temporal.DateTimeFormat.prototype">>, [{<<"resolvedOptions">>, 0}, {<<"formatToParts">>, 1}, {<<"format">>, 1}]), none)},
+     {{builtin, <<"Temporal.DateTimeFormat">>}, ctor_record(<<"DateTimeFormat">>, 0, {'$o', ?PROTO}, [], fun construct/2)}].
 
 -spec globals() -> [{binary(), term()}].
 globals() -> [{<<"Temporal">>, {'$o', ?NAMESPACE}}].
@@ -48,7 +49,7 @@ load(?NAMESPACE = Id) ->
         orelse buoy_ref:type_error(<<"Temporal needs the buoy_temporal module: run the program with `buoy run`">>),
     erlang:put(Id, {object, ?OBJECT_PROTO, #{}, [], #{}, none}),
     try
-        Intl = buoy_heap:object(?OBJECT_PROTO, [{<<"DateTimeFormat">>, buoy_ref_realm:constructor(?MODULE, <<"Intl.DateTimeFormat">>)}]),
+        Intl = buoy_heap:object(?OBJECT_PROTO, [{<<"DateTimeFormat">>, buoy_ref_realm:constructor(?MODULE, <<"Temporal.DateTimeFormat">>)}]),
         Clock = buoy_ref_realm:builtin(<<"Temporal.nowNanoseconds">>, fun(_, _) -> {'$bigint', erlang:system_time(nanosecond)} end),
         Divide = buoy_ref_realm:builtin(<<"Temporal.exactDivide">>, fun(_, [{'$bigint', N}, {'$bigint', D} | _]) -> exact_divide(N, D) end),
         Host = buoy_heap:object(?OBJECT_PROTO, [{<<"Intl">>, Intl}, {<<"nowNanoseconds">>, Clock}, {<<"exactDivide">>, Divide}]),
@@ -158,7 +159,7 @@ readers() ->
 %%% Intl.DateTimeFormat
 
 -spec call_constructor(binary(), term(), list()) -> term().
-call_constructor(<<"Intl.DateTimeFormat">>, _This, Args) -> construct(undefined, Args).
+call_constructor(<<"Temporal.DateTimeFormat">>, _This, Args) -> construct(undefined, Args).
 
 %% The slots of a format: {TimeZone, Calendar, Shape}, where Shape names
 %% the fields and styles that format/1 writes.
@@ -212,14 +213,14 @@ offset(Zone, T) ->
     end.
 
 -spec method(binary(), binary(), term(), list()) -> term().
-method(<<"Intl.DateTimeFormat.prototype">>, <<"resolvedOptions">>, This, _Args) ->
+method(<<"Temporal.DateTimeFormat.prototype">>, <<"resolvedOptions">>, This, _Args) ->
     {Zone, Calendar, _} = slots(This),
     buoy_heap:object(?OBJECT_PROTO, [{<<"locale">>, <<"en-US">>}, {<<"calendar">>, Calendar}, {<<"numberingSystem">>, <<"latn">>}, {<<"timeZone">>, Zone}]);
-method(<<"Intl.DateTimeFormat.prototype">>, <<"formatToParts">>, This, Args) ->
+method(<<"Temporal.DateTimeFormat.prototype">>, <<"formatToParts">>, This, Args) ->
     {Zone, Calendar, _} = slots(This),
     buoy_heap:new_array([buoy_heap:object(?OBJECT_PROTO, [{<<"type">>, Type}, {<<"value">>, text(V)}])
                          || {Type, V} <- calendar_parts(Calendar, parts(Zone, arg(1, Args)))]);
-method(<<"Intl.DateTimeFormat.prototype">>, <<"format">>, This, Args) ->
+method(<<"Temporal.DateTimeFormat.prototype">>, <<"format">>, This, Args) ->
     {Zone, _, Shape} = slots(This),
     [{_, M}, {_, D}, {_, Y}, {_, Era}, {_, H}, {_, Min}, {_, S}] = parts(Zone, arg(1, Args)),
     Has = fun(Keys) -> lists:any(fun(K) -> lists:member(K, Shape) end, Keys) end,
