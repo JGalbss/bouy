@@ -216,8 +216,18 @@ enum Entry {
     TestRunner,
 }
 
-/// Runs the invocation whose arguments, after the binary, are `arguments`.
-pub fn run(arguments: &[OsString]) -> ExitCode {
+/// What a command line of the node form asks for.
+struct Invocation {
+    options: Options,
+    entry: Option<Entry>,
+    print_version: bool,
+    force_repl: bool,
+    /// The index of the first argument of the program.
+    rest: usize,
+}
+
+/// Reads the node options up to the script, the code of `-e` or `-p`, or `--`.
+fn parse(arguments: &[OsString]) -> Invocation {
     let mut options = Options::default();
     let mut entry = None;
     let mut print_version = false;
@@ -275,6 +285,24 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
     if entry.is_none() && is_test_runner(&options.exec_argv) {
         entry = Some(Entry::TestRunner);
     }
+    Invocation {
+        options,
+        entry,
+        print_version,
+        force_repl,
+        rest: index.min(arguments.len()),
+    }
+}
+
+/// Runs the invocation whose arguments, after the binary, are `arguments`.
+pub fn run(arguments: &[OsString]) -> ExitCode {
+    let Invocation {
+        mut options,
+        entry,
+        print_version,
+        force_repl,
+        rest,
+    } = parse(arguments);
     let errors = invalid_options(&options.exec_argv);
     if !errors.is_empty() {
         let program = env::args_os().next().map_or_else(
@@ -291,7 +319,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     buoy_compiler::set_user_conditions(user_conditions(&options.exec_argv));
-    let program_arguments = &arguments[index.min(arguments.len())..];
+    let program_arguments = &arguments[rest..];
     // node.cc: -i starts the REPL even with -e, and so does a terminal on stdin when no
     // script is named. The REPL evaluates the code of -e first.
     let terminal = std::io::stdin().is_terminal();
@@ -309,22 +337,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                 .collect();
             run_stdin(&arguments, options)
         }
-        Some(Entry::Script(script)) => {
-            let Some(entry) = buoy_compiler::resolve_main(Path::new(&script)) else {
-                return module_not_found(&script);
-            };
-            let entry = entry.as_path();
-            let place = entry.canonicalize().unwrap_or_else(|_| entry.to_path_buf());
-            let source = std::fs::read_to_string(entry).unwrap_or_default();
-            let report = |diagnostics: &[Diagnostic]| {
-                report(diagnostics, &source, &place.display().to_string())
-            };
-            let project = match super::compile_reporting(entry, Semantics::Reference, report) {
-                Ok(project) => project,
-                Err(code) => return code,
-            };
-            super::start_program(&project, entry, program_arguments, &options)
-        }
+        Some(Entry::Script(script)) => run_script(&script, program_arguments, &options),
         Some(Entry::Eval(code)) => {
             options.eval = true;
             let module = is_module(&code, &options.exec_argv);
@@ -333,43 +346,30 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             } else {
                 code
             };
-            run_source(code, module, "[eval]", program_arguments, &options)
+            run_source(&code, module, "[eval]", program_arguments, &options)
         }
         Some(Entry::Print(code)) => {
             options.eval = true;
-            let code = if uses_crypto(&code) {
-                format!("let crypto=require(\"node:crypto\");{{{code}}}")
-            } else {
-                code
-            };
-            // The completion value of the code, printed at exit as Node's evalScript does.
-            let source = format!(
-                "globalThis.require = require; globalThis.module = module; globalThis.exports = exports;\n\
-                 globalThis.__filename = '[eval]'; globalThis.__dirname = '.';\n\
-                 const result = (0, eval)({});\n\
-                 process.on('exit', () => console.log(result));\n",
-                json_string(&code)
-            );
-            run_source(source, false, "[eval]", program_arguments, &options)
-        }
-        Some(Entry::TestRunner) => {
-            options.eval = true;
-            // The test runner is the main script of the bootstrap (internal/main/buoy),
-            // which the first read of `process` runs.
             run_source(
-                "process;".to_owned(),
+                &print_source(&code),
                 false,
                 "[eval]",
                 program_arguments,
                 &options,
             )
         }
+        Some(Entry::TestRunner) => {
+            options.eval = true;
+            // The test runner is the main script of the bootstrap (internal/main/buoy),
+            // which the first read of `process` runs.
+            run_source("process;", false, "[eval]", program_arguments, &options)
+        }
         None if force_repl || terminal => run_repl(program_arguments, options),
         None => run_stdin(program_arguments, options),
     }
 }
 
-/// Whether the code names `crypto`, as `/\bcrypto\b/` finds it: eval_string.js then binds
+/// Whether the code names `crypto`, as `/\bcrypto\b/` finds it: `eval_string.js` then binds
 /// the name to `node:crypto` in place of Web Crypto, for backward compatibility.
 fn uses_crypto(code: &str) -> bool {
     let is_word = |byte: Option<&u8>| byte.is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_');
@@ -380,12 +380,46 @@ fn uses_crypto(code: &str) -> bool {
     })
 }
 
+/// `buoy <script>`: the file that `Module.runMain` resolves, compiled and started. A
+/// syntax error prints as Node prints it.
+fn run_script(script: &str, arguments: &[OsString], options: &Options) -> ExitCode {
+    let Some(entry) = buoy_compiler::resolve_main(Path::new(script)) else {
+        return module_not_found(script);
+    };
+    let entry = entry.as_path();
+    let place = entry.canonicalize().unwrap_or_else(|_| entry.to_path_buf());
+    let source = std::fs::read_to_string(entry).unwrap_or_default();
+    let report =
+        |diagnostics: &[Diagnostic]| report(diagnostics, &source, &place.display().to_string());
+    match super::compile_reporting(entry, Semantics::Reference, report) {
+        Ok(project) => super::start_program(&project, entry, arguments, options),
+        Err(code) => code,
+    }
+}
+
+/// The program of `-p`: the code's completion value, printed at exit as Node's
+/// `evalScript` does.
+fn print_source(code: &str) -> String {
+    let code = if uses_crypto(code) {
+        format!("let crypto=require(\"node:crypto\");{{{code}}}")
+    } else {
+        code.to_owned()
+    };
+    format!(
+        "globalThis.require = require; globalThis.module = module; globalThis.exports = exports;\n\
+         globalThis.__filename = '[eval]'; globalThis.__dirname = '.';\n\
+         const result = (0, eval)({});\n\
+         process.on('exit', () => console.log(result));\n",
+        json_string(&code)
+    )
+}
+
 /// The REPL: an empty program whose bootstrap runs `internal/main/repl` after
 /// `internal/main/buoy`, as node.cc picks it for the main script.
 fn run_repl(arguments: &[OsString], mut options: Options) -> ExitCode {
     options.eval = true;
     options.repl = true;
-    run_source(String::new(), false, "[eval]", arguments, &options)
+    run_source("", false, "[eval]", arguments, &options)
 }
 
 /// The values of `--conditions` and `-C`, in order.
@@ -419,13 +453,13 @@ fn run_stdin(arguments: &[OsString], mut options: Options) -> ExitCode {
     }
     options.eval = true;
     let module = is_module(&code, &options.exec_argv);
-    run_source(code, module, "[stdin]", arguments, &options)
+    run_source(&code, module, "[stdin]", arguments, &options)
 }
 
 /// Compiles the code as the module `[eval]` of the working directory, so it resolves its
 /// imports from there, and starts it. `place` names the code in the report of a syntax error.
 fn run_source(
-    code: String,
+    code: &str,
     module: bool,
     place: &str,
     arguments: &[OsString],
@@ -433,9 +467,9 @@ fn run_source(
 ) -> ExitCode {
     let directory = env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
     let entry = directory.join(if module { "[eval].mjs" } else { "[eval].cjs" });
-    match buoy_compiler::compile_source(&entry, code.clone()) {
+    match buoy_compiler::compile_source(&entry, code.to_owned()) {
         Ok(project) => super::start_program(&project, &entry, arguments, options),
-        Err(diagnostics) => ExitCode::from(report(&diagnostics, &code, place)),
+        Err(diagnostics) => ExitCode::from(report(&diagnostics, code, place)),
     }
 }
 
@@ -464,8 +498,10 @@ fn report(diagnostics: &[Diagnostic], source: &str, place: &str) -> u8 {
 /// throws with the absolute path, and status 1.
 fn module_not_found(script: &str) -> ExitCode {
     let path: PathBuf = env::current_dir()
-        .map(|directory| directory.join(script))
-        .unwrap_or_else(|_| PathBuf::from(script))
+        .map_or_else(
+            |_| PathBuf::from(script),
+            |directory| directory.join(script),
+        )
         .components()
         .filter(|component| !matches!(component, std::path::Component::CurDir))
         .collect();

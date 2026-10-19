@@ -65,16 +65,8 @@ impl<'a> Lowerer<'a, '_> {
         let outer = std::mem::take(&mut self.frame);
         let outer_pre = std::mem::take(&mut self.pre);
         let own_arguments = !matches!(callee, Callee::Arrow);
-        let reads_new_target = match (&callee, body) {
-            (Callee::Function(_), FnBody::Block(block)) if kind == Kind::Sync => {
-                let mut uses = UsesNewTarget(false);
-                uses.visit_formal_parameters(params);
-                uses.visit_function_body(block);
-                uses.0
-            }
-            _ => false,
-        };
-        let new_target_param = reads_new_target.then(|| self.fresh("NewTarget"));
+        let new_target_param =
+            reads_new_target(&callee, body, kind, params).then(|| self.fresh("NewTarget"));
         let names_itself = matches!(&callee, Callee::Function(Some(_)));
         let mut frame = Frame {
             env: outer.env.clone(),
@@ -822,4 +814,20 @@ impl<'a> Visit<'a> for UsesNewTarget {
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// Whether a sync function reads `new.target` in its parameters or its body.
+fn reads_new_target(
+    callee: &Callee,
+    body: FnBody<'_>,
+    kind: Kind,
+    params: &FormalParameters<'_>,
+) -> bool {
+    let (Callee::Function(_), FnBody::Block(block)) = (callee, body) else {
+        return false;
+    };
+    let mut uses = UsesNewTarget(false);
+    uses.visit_formal_parameters(params);
+    uses.visit_function_body(block);
+    kind == Kind::Sync && uses.0
 }

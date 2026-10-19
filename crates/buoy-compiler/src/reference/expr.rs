@@ -701,13 +701,14 @@ impl<'a> Lowerer<'a, '_> {
                     });
                     self.end_chain(code, &Expr::atom("true"))
                 }
-                other => match other.as_member_expression() {
-                    Some(member) => self.delete_member(member),
-                    None => {
+                other => {
+                    if let Some(member) = other.as_member_expression() {
+                        self.delete_member(member)
+                    } else {
                         self.effect(other);
                         Expr::atom("true")
                     }
-                },
+                }
             },
         }
     }

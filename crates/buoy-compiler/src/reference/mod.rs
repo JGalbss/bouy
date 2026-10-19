@@ -125,10 +125,19 @@ pub struct EvalContext {
     /// The program that runs the code records each call of a function, for the legacy
     /// `caller` and `arguments` of a sloppy function (`--frames`).
     pub frames: bool,
-    /// The module reads its source text from the runtime, which keeps the text that came
-    /// with the module (`buoy_ref_eval:source/1`), instead of holding it as a literal,
-    /// which the VM would scan and parse again.
-    pub source_outside: bool,
+    /// Where the module finds its source text.
+    pub source: EvalSource,
+}
+
+/// Where the module of eval code finds its source text.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum EvalSource {
+    /// A literal in the module.
+    #[default]
+    Literal,
+    /// The runtime, which keeps the text that came with the module
+    /// (`buoy_ref_eval:source/1`), so that the VM does not scan and parse it again.
+    Runtime,
 }
 
 /// Where a direct eval is called, which decides what its code may use.

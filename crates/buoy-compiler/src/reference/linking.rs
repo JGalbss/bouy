@@ -159,75 +159,7 @@ impl<'c> Linking<'c> {
                     })
             }))
             .collect();
-        // A module that the host links lists its requests and its `export *` requests.
-        let hosted: Vec<Expr> = unit
-            .requests
-            .iter()
-            .filter(|request| matches!(request.resolved, Resolved::Hosted(_)))
-            .map(|request| Expr::js_string(&request.specifier))
-            .collect();
-        let mut extra = Vec::new();
-        if !hosted.is_empty() {
-            let stars = self
-                .link
-                .hosted_stars
-                .iter()
-                .map(|request| Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)))
-                .collect();
-            // The names that the module imports from each request, which the runtime
-            // checks when it instantiates the module, as V8 resolves each import.
-            let mut imports: Vec<(usize, String)> = Vec::new();
-            for binding in self
-                .link
-                .imports
-                .values()
-                .chain(self.link.namespace.iter().map(|(_, binding)| binding))
-            {
-                if let Binding::Hosted {
-                    request,
-                    name: Some(name),
-                } = binding
-                    && !imports.contains(&(*request, name.clone()))
-                {
-                    imports.push((*request, name.clone()));
-                }
-            }
-            imports.sort();
-            let imports = imports
-                .iter()
-                .map(|(request, name)| {
-                    Expr::Tuple(vec![
-                        Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
-                        Expr::js_string(name),
-                    ])
-                })
-                .collect();
-            // The ModuleRequests of getModuleRequests: the specifier, the attributes, and
-            // the phase, 1 for source and 2 for evaluation, as module_wrap.cc numbers them.
-            let module_requests = unit
-                .record
-                .module_requests
-                .iter()
-                .map(|request| {
-                    let attributes = request
-                        .attributes
-                        .iter()
-                        .map(|(key, value)| {
-                            Expr::Tuple(vec![Expr::js_string(key), Expr::js_string(value)])
-                        })
-                        .collect();
-                    Expr::Tuple(vec![
-                        Expr::js_string(&request.specifier),
-                        Expr::List(attributes),
-                        Expr::Integer(if request.source_phase { 1 } else { 2 }),
-                    ])
-                })
-                .collect();
-            extra.push((Expr::atom("hosted"), Expr::List(hosted)));
-            extra.push((Expr::atom("module_requests"), Expr::List(module_requests)));
-            extra.push((Expr::atom("stars"), Expr::List(stars)));
-            extra.push((Expr::atom("imports"), Expr::List(imports)));
-        }
+        let extra = self.hosted_info();
         constant(
             "$module",
             Expr::Map(
@@ -400,6 +332,83 @@ impl<'c> Linking<'c> {
                     body: vec![broken],
                 }],
             },
+        ]
+    }
+
+    /// The entries of `'$module'/0` that a module that the host links has: its requests,
+    /// its module requests, its `export *` requests, and the names it imports.
+    fn hosted_info(&self) -> Vec<(Expr, Expr)> {
+        let unit = self.unit();
+        // A module that the host links lists its requests and its `export *` requests.
+        let hosted: Vec<Expr> = unit
+            .requests
+            .iter()
+            .filter(|request| matches!(request.resolved, Resolved::Hosted(_)))
+            .map(|request| Expr::js_string(&request.specifier))
+            .collect();
+        if hosted.is_empty() {
+            return Vec::new();
+        }
+        let stars = self
+            .link
+            .hosted_stars
+            .iter()
+            .map(|request| Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)))
+            .collect();
+        // The names that the module imports from each request, which the runtime
+        // checks when it instantiates the module, as V8 resolves each import.
+        let mut imports: Vec<(usize, String)> = Vec::new();
+        for binding in self
+            .link
+            .imports
+            .values()
+            .chain(self.link.namespace.iter().map(|(_, binding)| binding))
+        {
+            if let Binding::Hosted {
+                request,
+                name: Some(name),
+            } = binding
+                && !imports.contains(&(*request, name.clone()))
+            {
+                imports.push((*request, name.clone()));
+            }
+        }
+        imports.sort();
+        let imports = imports
+            .iter()
+            .map(|(request, name)| {
+                Expr::Tuple(vec![
+                    Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
+                    Expr::js_string(name),
+                ])
+            })
+            .collect();
+        // The ModuleRequests of getModuleRequests: the specifier, the attributes, and
+        // the phase, 1 for source and 2 for evaluation, as module_wrap.cc numbers them.
+        let module_requests = unit
+            .record
+            .module_requests
+            .iter()
+            .map(|request| {
+                let attributes = request
+                    .attributes
+                    .iter()
+                    .map(|(key, value)| {
+                        Expr::Tuple(vec![Expr::js_string(key), Expr::js_string(value)])
+                    })
+                    .collect();
+                Expr::Tuple(vec![
+                    Expr::js_string(&request.specifier),
+                    Expr::List(attributes),
+                    Expr::Integer(if request.source_phase { 1 } else { 2 }),
+                ])
+            })
+            .collect();
+        vec![
+            (Expr::atom("hosted"), Expr::List(hosted)),
+            (Expr::atom("module_requests"), Expr::List(module_requests)),
+            (Expr::atom("stars"), Expr::List(stars)),
+            (Expr::atom("imports"), Expr::List(imports)),
         ]
     }
 

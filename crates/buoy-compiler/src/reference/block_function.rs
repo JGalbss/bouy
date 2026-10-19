@@ -246,16 +246,15 @@ impl<'a> Lowerer<'a, '_> {
         function: &Function<'a>,
         shared: Option<String>,
     ) -> (String, Vec<Expr>) {
-        let (cell, code) = match shared {
-            Some(cell) => (cell, Vec::new()),
-            None => {
-                let cell = self.fresh("Block");
-                let code = vec![Expr::matches(
-                    Expr::var(cell.clone()),
-                    Expr::call("buoy_heap", "cell", vec![Expr::undefined()]),
-                )];
-                (cell, code)
-            }
+        let (cell, code) = if let Some(cell) = shared {
+            (cell, Vec::new())
+        } else {
+            let cell = self.fresh("Block");
+            let code = vec![Expr::matches(
+                Expr::var(cell.clone()),
+                Expr::call("buoy_heap", "cell", vec![Expr::undefined()]),
+            )];
+            (cell, code)
         };
         for block_function in &mut self.block_functions {
             if block_function.declaration == function.span {

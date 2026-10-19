@@ -149,15 +149,7 @@ impl<'a> Lowerer<'a, '_> {
             )
         });
         let (parent, inner) = self.heritage(class, binding, heritage_key);
-        let constructor = class.body.body.iter().find_map(|element| match element {
-            ClassElement::MethodDefinition(method)
-                if method.kind == MethodDefinitionKind::Constructor
-                    && method.value.body.is_some() =>
-            {
-                Some(&**method)
-            }
-            _ => None,
-        });
+        let constructor = explicit_constructor(class);
         let length = constructor.map_or(0, |method| length_of(&method.value.params));
         let c = self.fresh("C");
         let proto = self.fresh("Proto");
@@ -233,19 +225,25 @@ impl<'a> Lowerer<'a, '_> {
             self.pre
                 .push(Expr::Apply(Box::new(fun), vec![Expr::var(c.clone())]));
         }
-        if let Some((symbol, previous, early)) = saved {
-            self.class_bindings.pop();
-            match previous {
-                Some(local) => self.frame.env.insert(symbol, local),
-                None => self.frame.env.remove(&symbol),
-            };
-            if !early {
-                self.early.remove(&symbol);
-            }
-        }
+        self.restore_class_binding(saved);
         self.privates.pop();
         self.frame.sloppy = sloppy;
         self.jit_seal(binding, c)
+    }
+
+    /// The binding outside a class, which the code after the class sees again.
+    fn restore_class_binding(&mut self, saved: Option<(SymbolId, Option<Local>, bool)>) {
+        let Some((symbol, previous, early)) = saved else {
+            return;
+        };
+        self.class_bindings.pop();
+        match previous {
+            Some(local) => self.frame.env.insert(symbol, local),
+            None => self.frame.env.remove(&symbol),
+        };
+        if !early {
+            self.early.remove(&symbol);
+        }
     }
 
     /// `ClassElementEvaluation` in order: defines the methods and accessors, and evaluates
@@ -851,6 +849,18 @@ pub fn method_kind(is_async: bool, generator: bool) -> &'static str {
         (false, true) => "generator",
         (true, true) => "async_generator",
     }
+}
+
+/// The constructor that the class body defines, if any.
+fn explicit_constructor<'r, 'a>(class: &'r Class<'a>) -> Option<&'r MethodDefinition<'a>> {
+    class.body.body.iter().find_map(|element| match element {
+        ClassElement::MethodDefinition(method)
+            if method.kind == MethodDefinitionKind::Constructor && method.value.body.is_some() =>
+        {
+            Some(&**method)
+        }
+        _ => None,
+    })
 }
 
 fn int(value: usize) -> Expr {

@@ -380,7 +380,7 @@ impl<'a> Lowerer<'a, '_> {
         let mut functions = vec![self.eval_function(&body, directive)];
         functions.push(self.class_dispatch());
         let mut sources = source_functions(program, source);
-        if self.eval_context.source_outside
+        if self.eval_context.source == super::EvalSource::Runtime
             && let Some(text) = sources
                 .iter_mut()
                 .find(|function| function.name == "$source")

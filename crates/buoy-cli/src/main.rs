@@ -12,7 +12,7 @@ use std::io::{self, IsTerminal as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use buoy_compiler::{Diagnostic, EvalContext, EvalPlace, Project, Semantics};
+use buoy_compiler::{Diagnostic, EvalContext, EvalPlace, EvalSource, Project, Semantics};
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
@@ -85,21 +85,12 @@ struct EvalRequest {
     /// list ends at this byte offset, after its closing parenthesis.
     #[arg(long)]
     function: Option<usize>,
-    /// The source is a classic script of its own, as a host's `evalScript` runs it.
-    #[arg(long)]
-    script: bool,
     /// The program records each call of a function, for the legacy `caller` and
     /// `arguments` of a sloppy function.
     #[arg(long)]
     frames: bool,
-    /// The script checks the deadline of its run at each turn of a loop, for the
-    /// `timeout` of `vm.Script`.
-    #[arg(long)]
-    interruptible: bool,
-    /// The source is an ES module whose requests the host links at run time, as
-    /// `vm.SourceTextModule` compiles it, with this identifier.
-    #[arg(long)]
-    hosted_module: Option<String>,
+    #[command(flatten)]
+    form: SourceForm,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -122,6 +113,22 @@ struct EvalRequest {
     source: Option<PathBuf>,
 }
 
+/// What the source text is when it is no eval code: a script or a module of its own.
+#[derive(Debug, clap::Args)]
+struct SourceForm {
+    /// The source is a classic script of its own, as a host's `evalScript` runs it.
+    #[arg(long)]
+    script: bool,
+    /// The source is an ES module whose requests the host links at run time, as
+    /// `vm.SourceTextModule` compiles it, with this identifier.
+    #[arg(long)]
+    hosted_module: Option<String>,
+    /// The script or module checks the deadline of its run at each turn of a loop, for
+    /// the `timeout` of `vm.Script`.
+    #[arg(long)]
+    interruptible: bool,
+}
+
 fn parse_place(name: &str) -> Result<EvalPlace, String> {
     EvalPlace::from_name(name).ok_or_else(|| format!("no eval place `{name}`"))
 }
@@ -136,9 +143,9 @@ struct Served {
 
 impl EvalRequest {
     /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`,
-    /// and for a `SyntaxError` also `\t<line>\t<column>` of the error in the text. With
-    /// `source_outside`, the module reads its source text from the runtime.
-    fn compile(self, text: &str, source_outside: bool) -> Result<String, String> {
+    /// and for a `SyntaxError` also `\t<line>\t<column>` of the error in the text. `source`
+    /// says where the module finds its source text.
+    fn compile(self, text: &str, source: EvalSource) -> Result<String, String> {
         let module = self.module.unwrap_or_default();
         let context = EvalContext {
             place: self.place,
@@ -147,12 +154,12 @@ impl EvalRequest {
             lexical: Vec::new(),
             dynamic_function: false,
             frames: self.frames,
-            source_outside,
+            source,
         };
-        let compiled = if let Some(identifier) = &self.hosted_module {
+        let compiled = if let Some(identifier) = &self.form.hosted_module {
             buoy_compiler::compile_hosted_module(text, &module, identifier)
-        } else if self.script {
-            buoy_compiler::compile_eval_script(text, &module, self.interruptible)
+        } else if self.form.script {
+            buoy_compiler::compile_eval_script(text, &module, self.form.interruptible)
         } else {
             buoy_compiler::compile_eval(
                 text,
@@ -282,7 +289,7 @@ fn compile_eval(mut request: EvalRequest) -> ExitCode {
         Ok(text) => text,
         Err(error) => return fail(&format!("cannot read {}: {error}", source.display())),
     };
-    match request.compile(&text, false) {
+    match request.compile(&text, EvalSource::Literal) {
         Ok(erlang) => {
             print!("{erlang}");
             ExitCode::SUCCESS
@@ -328,12 +335,12 @@ fn serve_eval() -> ExitCode {
             match Served::try_parse_from(arguments) {
                 Ok(Served { request }) => {
                     // A script holds its source; other eval code gets it after the module.
-                    let source = if request.script || request.hosted_module.is_some() {
+                    let source = if request.form.script || request.form.hosted_module.is_some() {
                         String::new()
                     } else {
                         buoy_compiler::eval_text(text, request.strict)
                     };
-                    match request.compile(text, true) {
+                    match request.compile(text, EvalSource::Runtime) {
                         Ok(erlang) => match u32::try_from(erlang.len()) {
                             Ok(size) => [
                                 &[0][..],

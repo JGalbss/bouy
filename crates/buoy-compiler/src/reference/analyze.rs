@@ -134,7 +134,7 @@ fn eval_visible(scoping: &Scoping) -> Vec<SymbolId> {
         .into_iter()
         .flatten()
         .copied();
-    for reference in unbound.chain(bound).collect::<Vec<_>>().iter() {
+    for reference in &unbound.chain(bound).collect::<Vec<_>>() {
         let scope = scoping.get_reference(*reference).scope_id();
         for ancestor in scoping.scope_ancestors(scope) {
             found.extend(scoping.get_bindings(ancestor).values().copied());
