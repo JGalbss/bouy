@@ -37,6 +37,8 @@
 -define(K_BYTES_WRITTEN, 2).
 -define(K_ASYNC, 3).
 -define(UV_EOF, -4095).
+%% TRACING_CATEGORY_NODE2(net, native).
+-define(NET_NATIVE, <<"node,node.net,node.net.native">>).
 
 -type kind() :: tcp | pipe | udp.
 
@@ -614,7 +616,12 @@ onconnection(Handle, Status, Client) ->
 %% An error that Delayed holds also reports through oncomplete, as libuv
 %% delays ECONNREFUSED; another one returns at once.
 -spec connect(term(), term(), map(), [atom()] | all) -> integer().
-connect(Handle, Req, #{family := Domain} = Address, Delayed) ->
+connect(Handle, Req, Address, Delayed) ->
+    Status = start_connect(Handle, Req, Address, Delayed),
+    Status =:= 0 andalso buoy_trace:event($b, ?NET_NATIVE, <<"connect">>, erlang:phash2(Req), connect_args(Address)),
+    Status.
+
+start_connect(Handle, Req, #{family := Domain} = Address, Delayed) ->
     case ensure(Handle, Domain) of
         {ok, Socket} ->
             S = state(Handle),
@@ -643,7 +650,14 @@ connect(Handle, Req, #{family := Domain} = Address, Delayed) ->
             Errno
     end.
 
+%% The arguments of the trace event of a connect, as TCPWrap::Connect and
+%% PipeWrap::Connect give them.
+connect_args(#{family := local, path := Path}) -> [{<<"pipe_path">>, Path}];
+connect_args(#{addr := Addr, port := Port}) -> [{<<"ip">>, list_to_binary(inet:ntoa(Addr))}, {<<"port">>, Port}].
+
+%% ConnectionWrap::AfterConnect.
 connected(Handle, Req, Status) ->
+    buoy_trace:event($e, ?NET_NATIVE, <<"connect">>, erlang:phash2(Req), [{<<"status">>, Status}]),
     case state(Handle) of
         #{connect := Req} = S -> save(Handle, S#{connect := none});
         _ -> ok
