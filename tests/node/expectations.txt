@@ -388,7 +388,7 @@ parallel/test-buffer-zero-fill.js pass
 parallel/test-c-ares.js fail
 parallel/test-child-process-advanced-serialization-largebuffer.js pass
 parallel/test-child-process-advanced-serialization-splitted-length-field.js pass
-parallel/test-child-process-advanced-serialization.js timeout
+parallel/test-child-process-advanced-serialization.js crash
 parallel/test-child-process-bad-stdio.js skip
 parallel/test-child-process-can-write-to-stdout.js pass
 parallel/test-child-process-constructor.js pass
@@ -516,7 +516,7 @@ parallel/test-cli-syntax-piped-bad.js fail
 parallel/test-cli-syntax-piped-good.js fail
 parallel/test-client-request-destroy.js pass
 parallel/test-cluster-accept-fail.js skip
-parallel/test-cluster-advanced-serialization.js timeout
+parallel/test-cluster-advanced-serialization.js crash
 parallel/test-cluster-basic.js pass
 parallel/test-cluster-bind-privileged-port.js linux=fail,macos=pass
 parallel/test-cluster-bind-twice.js pass
@@ -4201,8 +4201,8 @@ parallel/test-worker-relative-path.js pass
 parallel/test-worker-resource-limits.js fail
 parallel/test-worker-safe-getters.js pass
 parallel/test-worker-sharedarraybuffer-from-worker-thread.js pass
-parallel/test-worker-stack-overflow-stack-size.js crash
-parallel/test-worker-stack-overflow.js timeout
+parallel/test-worker-stack-overflow-stack-size.js timeout
+parallel/test-worker-stack-overflow.js crash
 parallel/test-worker-stdio-flush-inflight.js pass
 parallel/test-worker-stdio-flush.js pass
 parallel/test-worker-stdio-from-preload-module.js pass
