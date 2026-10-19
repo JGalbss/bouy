@@ -220,8 +220,10 @@ pub fn load(
             continue;
         }
         let mut name = unit_name(root, &path);
-        if script && !units.is_empty() && path == entry {
-            name.push_str("@module");
+        // The module of the file keeps the name that any program gives it, because a VM
+        // loads a module once for all its programs; the script takes a name of its own.
+        if script && units.is_empty() {
+            name.push_str("@script");
         }
         let scanned = match names.insert(name.clone(), path.clone()) {
             Some(other) => Err(vec![Reporter::new(&path, "").at(
