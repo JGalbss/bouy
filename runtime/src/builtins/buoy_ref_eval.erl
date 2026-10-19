@@ -15,12 +15,14 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4, cjs_lexer/1, contains_module_syntax/2, syntax_position/1]).
--export([interrupt/0, run_until/2]).
+-export([interrupt/0, run_until/2, run_watched/2]).
 
 -import(buoy_ref, [type_error/1]).
 
 -define(GLOBAL, buoy_ref_realm:global_object()).
 -define(DEADLINE, '$buoy_deadline').
+%% The check of run_watched/2 that interruptible code calls at each turn of a loop.
+-define(WATCH, '$buoy_interrupt_watch').
 %% The private slot of a SyntaxError of a compilation: [Line, Column].
 -define(SYNTAX_POSITION, {'$sym', {private, buoy_syntax_position}, <<"syntax position">>}).
 
@@ -198,14 +200,30 @@ run_until(Ms, Fun) ->
         end
     end.
 
+%% Runs Fun until Interrupted() holds at a turn of a loop of interruptible
+%% code: {ok, Value}, or interrupted, as a break on SIGINT of node:vm needs.
+-spec run_watched(fun(() -> boolean()), fun(() -> term())) -> {ok, term()} | interrupted.
+run_watched(Interrupted, Fun) ->
+    Outer = erlang:put(?WATCH, Interrupted),
+    try {ok, Fun()}
+    catch throw:{?WATCH, Interrupted} -> interrupted
+    after
+        case Outer of
+            undefined -> erlang:erase(?WATCH);
+            _ -> erlang:put(?WATCH, Outer)
+        end
+    end.
+
 %% The check of interruptible code at each turn of a loop.
 -spec interrupt() -> ok.
 interrupt() ->
     case erlang:get(?DEADLINE) of
         undefined -> ok;
-        Deadline ->
-            erlang:monotonic_time(millisecond) < Deadline orelse erlang:throw({?DEADLINE, Deadline}),
-            ok
+        Deadline -> erlang:monotonic_time(millisecond) < Deadline orelse erlang:throw({?DEADLINE, Deadline})
+    end,
+    case erlang:get(?WATCH) of
+        undefined -> ok;
+        Watch -> Watch() andalso erlang:throw({?WATCH, Watch}), ok
     end.
 
 %% Flags are the options of `buoy compile-eval`. A source text that is only

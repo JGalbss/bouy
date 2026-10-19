@@ -15,6 +15,7 @@
 -export([get/4, set/5, has/3, has_binding/3, delete_property/3, own_keys/2, get_own_property/3, define_own_property/4]).
 
 -define(SCRIPT, {'#', ?MODULE, <<"script">>}).
+-define(WATCHDOGS, '$buoy_sigint_watchdogs').
 -define(SOURCE, {'#', ?MODULE, <<"source">>}).
 
 %% The globals of V8's realm that a new context has; the realm of the engine
@@ -43,7 +44,7 @@ binding() ->
     Script = buoy_node:constructor(<<"ContextifyScript">>, 8, fun(This, Args) -> new_script(This, Args) end),
     Proto = buoy_heap:get(Script, <<"prototype">>),
     buoy_heap:define(Proto, <<"runInContext">>, #{value => F(<<"runInContext">>, 0, fun(This, Args) ->
-        run_in_context(This, A(1, Args), A(2, Args))
+        run_in_context(This, A(1, Args), A(2, Args), A(4, Args) =:= true)
     end), writable => true, enumerable => true, configurable => true}),
     buoy_heap:define(Proto, <<"createCachedData">>, #{value => F(<<"createCachedData">>, 0, fun(This, _) ->
         {ok, Source} = buoy_heap:private_find(This, ?SOURCE),
@@ -54,9 +55,11 @@ binding() ->
         {<<"makeContext">>, F(<<"makeContext">>, 0, fun(_, Args) -> make_context(A(1, Args), A(6, Args), A(7, Args)) end)},
         {<<"compileFunction">>, F(<<"compileFunction">>, 0, fun(_, Args) -> compile_function(Args) end)},
         {<<"constants">>, Constants},
-        {<<"startSigintWatchdog">>, F(<<"startSigintWatchdog">>, 0, fun(_, _) -> undefined end)},
-        {<<"stopSigintWatchdog">>, F(<<"stopSigintWatchdog">>, 0, fun(_, _) -> false end)},
-        {<<"watchdogHasPendingSigint">>, F(<<"watchdogHasPendingSigint">>, 0, fun(_, _) -> false end)},
+        {<<"startSigintWatchdog">>, F(<<"startSigintWatchdog">>, 0, fun(_, _) -> start_sigint_watchdog() end)},
+        {<<"stopSigintWatchdog">>, F(<<"stopSigintWatchdog">>, 0, fun(_, _) -> stop_sigint_watchdog() end)},
+        {<<"watchdogHasPendingSigint">>, F(<<"watchdogHasPendingSigint">>, 0, fun(_, _) ->
+            lists:any(fun buoy_binding_signal_wrap:has_pending_sigint/1, watchdogs())
+        end)},
         %% containsModuleSyntax(code, filename, resourceName, cjsVar): a string
         %% cjsVar compiles the code without the variables of the wrapper.
         {<<"containsModuleSyntax">>, F(<<"containsModuleSyntax">>, 2, fun(_, Args) ->
@@ -167,26 +170,73 @@ source_map_url(Code) ->
         nomatch -> undefined
     end.
 
-%% runInContext(contextifiedObject or null, timeout, ...): the completion value
-%% of the script in the realm of the context, or in this realm for null. A
-%% timeout runs the script compiled to check its deadline, as V8's watchdog
-%% stops a run.
-run_in_context(This, Context, Timeout) ->
+%% runInContext(contextifiedObject or null, timeout, displayErrors,
+%% breakOnSigint, ...): the completion value of the script in the realm of
+%% the context, or in this realm for null. A timeout or a break on SIGINT
+%% runs the script compiled to check them at each turn of a loop, as V8's
+%% watchdogs stop a run.
+run_in_context(This, Context, Timeout, BreakOnSigint) ->
     Module = case buoy_heap:is_object(This) andalso buoy_heap:private_find(This, ?SCRIPT) of
         {ok, M} -> M;
         _ -> buoy_ref:type_error(<<"Illegal invocation">>)
     end,
-    case is_integer(Timeout) andalso Timeout >= 0 of
+    HasTimeout = is_integer(Timeout) andalso Timeout >= 0,
+    case HasTimeout orelse BreakOnSigint of
         false ->
             run(Module, Context);
         true ->
             {ok, Source} = buoy_heap:private_find(This, ?SOURCE),
             Interruptible = buoy_ref_eval:compile_script(Source, ["--interruptible"]),
-            case buoy_ref_eval:run_until(Timeout, fun() -> run(Interruptible, Context) end) of
-                {ok, Value} -> Value;
-                timeout -> buoy_node:throw_code('Error', <<"ERR_SCRIPT_EXECUTION_TIMEOUT">>,
-                                                iolist_to_binary(["Script execution timed out after ", integer_to_binary(Timeout), "ms"]))
+            Run = fun() -> run(Interruptible, Context) end,
+            Timed = case HasTimeout of
+                true -> fun() -> timed(Timeout, Run) end;
+                false -> Run
+            end,
+            case BreakOnSigint of
+                true -> break_on_sigint(Timed);
+                false -> Timed()
             end
+    end.
+
+timed(Timeout, Run) ->
+    case buoy_ref_eval:run_until(Timeout, Run) of
+        {ok, Value} -> Value;
+        timeout -> buoy_node:throw_code('Error', <<"ERR_SCRIPT_EXECUTION_TIMEOUT">>,
+                                        iolist_to_binary(["Script execution timed out after ", integer_to_binary(Timeout), "ms"]))
+    end.
+
+%% A SIGINT during the run ends it with ERR_SCRIPT_EXECUTION_INTERRUPTED, and
+%% no listener of the realm gets it, as Node's SigintWatchdog takes it.
+break_on_sigint(Run) ->
+    Watch = buoy_binding_signal_wrap:watch_sigint(),
+    Result = try buoy_ref_eval:run_watched(fun() -> buoy_binding_signal_wrap:has_pending_sigint(Watch) end, Run)
+             after buoy_binding_signal_wrap:unwatch_sigint(Watch)
+             end,
+    case Result of
+        {ok, Value} -> Value;
+        interrupted -> buoy_node:throw_code('Error', <<"ERR_SCRIPT_EXECUTION_INTERRUPTED">>,
+                                            <<"Script execution was interrupted by `SIGINT`">>)
+    end.
+
+%% startSigintWatchdog and stopSigintWatchdog, which the REPL calls around
+%% the code that it evaluates: stop returns whether a SIGINT came.
+start_sigint_watchdog() ->
+    erlang:put(?WATCHDOGS, [buoy_binding_signal_wrap:watch_sigint() | watchdogs()]),
+    undefined.
+
+stop_sigint_watchdog() ->
+    case watchdogs() of
+        [Watch | Rest] ->
+            erlang:put(?WATCHDOGS, Rest),
+            buoy_binding_signal_wrap:unwatch_sigint(Watch);
+        [] ->
+            false
+    end.
+
+watchdogs() ->
+    case erlang:get(?WATCHDOGS) of
+        undefined -> [];
+        List -> List
     end.
 
 %% A context with a microtask queue of its own runs its microtasks after the

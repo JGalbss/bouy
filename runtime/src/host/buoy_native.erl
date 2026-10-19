@@ -9,6 +9,7 @@
 
 -export([zlib_open/6, brotli_open/2, zstd_open/3]).
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
+-export([sigint_handle/1, sigint_default/0]).
 
 -export_type([stream/0, failure/0]).
 
@@ -53,3 +54,12 @@ stream_reset(_Stream) -> erlang:nif_error(nif_not_loaded).
 
 -spec stream_close(stream()) -> true.
 stream_close(_Stream) -> erlang:nif_error(nif_not_loaded).
+
+%% Sends each SIGINT that the VM gets to Target as {notify, sigint}, which
+%% OTP's os:set_signal/2 cannot catch. False when the pipe cannot open.
+-spec sigint_handle(pid()) -> boolean().
+sigint_handle(_Target) -> erlang:nif_error(nif_not_loaded).
+
+%% Gives SIGINT back its disposition from before sigint_handle/1.
+-spec sigint_default() -> boolean().
+sigint_default() -> erlang:nif_error(nif_not_loaded).
