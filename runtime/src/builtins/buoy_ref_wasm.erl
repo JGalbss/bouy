@@ -55,14 +55,14 @@ intrinsics() ->
             {?SYM(toStringTag), <<"WebAssembly">>, 4}],
     [{'WebAssembly', record(object, ?OBJECT_PROTO, Namespace, none)},
      {'WebAssembly.JSTag', record(object, {'$o', proto_id(<<"Tag">>)}, [], none)}]
-    ++ class(<<"Module">>, [], [], operations(<<"WebAssembly.Module">>, [{<<"imports">>, 1}, {<<"exports">>, 1}, {<<"customSections">>, 2}]))
-    ++ class(<<"Instance">>, [], [<<"exports">>], [])
-    ++ class(<<"Memory">>, [{<<"grow">>, 1}], [<<"buffer">>], [])
-    ++ class(<<"Table">>, [{<<"grow">>, 1}, {<<"set">>, 1}, {<<"get">>, 1}], [<<"length">>], [])
-    ++ class(<<"Global">>, [{<<"valueOf">>, 0}], [<<"value">>], [])
-    ++ class(<<"Tag">>, [], [], [])
-    ++ class(<<"Exception">>, [{<<"getArg">>, 2}, {<<"is">>, 1}], [], [])
-    ++ class(<<"Suspending">>, [], [], [])
+    ++ class(<<"Module">>, [], operations(<<"WebAssembly.Module">>, [{<<"imports">>, 1}, {<<"exports">>, 1}, {<<"customSections">>, 2}]))
+    ++ class(<<"Instance">>, [<<"exports">>], [])
+    ++ class(<<"Memory">>, [{<<"grow">>, 1}, <<"buffer">>], [])
+    ++ class(<<"Table">>, [<<"length">>, {<<"grow">>, 1}, {<<"set">>, 1}, {<<"get">>, 1}], [])
+    ++ class(<<"Global">>, [{<<"valueOf">>, 0}, <<"value">>], [])
+    ++ class(<<"Tag">>, [], [])
+    ++ class(<<"Exception">>, [{<<"getArg">>, 2}, {<<"is">>, 1}], [])
+    ++ class(<<"Suspending">>, [], [])
     ++ lists:append([error_class(N) || N <- ?ERRORS])
     ++ abstract_module_source().
 
@@ -89,8 +89,9 @@ abstract_module_source() ->
 
 operations(Owner, Names) -> [{K, V, ?OPERATION} || {K, V} <- ?METHODS(Owner, Names)].
 
-%% The prototype and the constructor of the interface Name.
-class(Name, Operations, Attributes, Statics) ->
+%% The prototype and the constructor of the interface Name. Members are
+%% operations {Name, Arity} and attribute names, in the order of V8.
+class(Name, Members, Statics) ->
     Owner = <<"WebAssembly.", Name/binary, ".prototype">>,
     Parent = case Name of
         <<"Module">> -> {'$o', 'AbstractModuleSource.prototype'};
@@ -98,11 +99,13 @@ class(Name, Operations, Attributes, Statics) ->
     end,
     Proto = record(object, Parent,
                    [{<<"constructor">>, constructor(Name)}]
-                   ++ operations(Owner, Operations)
-                   ++ [attribute(Owner, A) || A <- Attributes]
+                   ++ [member(Owner, M) || M <- Members]
                    ++ [{?SYM(toStringTag), <<"WebAssembly.", Name/binary>>, 4}], none),
     [{proto_id(Name), Proto},
      {{builtin, id(Name)}, ctor_record(Name, 1, {'$o', proto_id(Name)}, Statics, fun(NT, Args) -> construct(Name, NT, Args) end)}].
+
+member(Owner, {Name, Arity}) -> hd(operations(Owner, [{Name, Arity}]));
+member(Owner, Name) -> attribute(Owner, Name).
 
 %% An attribute of Web IDL: a getter, and a setter for value of Global.
 attribute(Owner, Name) ->

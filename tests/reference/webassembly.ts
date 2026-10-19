@@ -126,3 +126,24 @@ console.log(
   Atomics.load(words, 0),
   Atomics.notify(words, 0, 1),
 );
+
+// The shape of the namespace and its interfaces: each own key in order, with its kind,
+// its length, and its attributes.
+const shape = (value: object): string =>
+  Reflect.ownKeys(value)
+    .map((key) => {
+      const d = Object.getOwnPropertyDescriptor(value, key);
+      const kind = d?.get ? "get" : typeof d?.value;
+      const length = typeof d?.value === "function" ? d.value.length : "";
+      const flags = `${d?.enumerable ? "e" : ""}${d?.writable ? "w" : ""}${d?.configurable ? "c" : ""}`;
+      return `${String(key)}:${kind}${length}:${flags}`;
+    })
+    .join(" ");
+console.log("WebAssembly", shape(WebAssembly));
+for (const name of Reflect.ownKeys(WebAssembly)) {
+  const value: unknown = Reflect.get(WebAssembly, name);
+  if (typeof value === "function") {
+    console.log(String(name), shape(value));
+    if (value.prototype) console.log(`${String(name)}.prototype`, shape(value.prototype));
+  }
+}

@@ -36,3 +36,34 @@ true
 rejected CompileError
 80
 0 5 7 1 3 0
+WebAssembly compile:function1:ewc validate:function1:ewc instantiate:function1:ewc Module:function1:wc Instance:function1:wc Table:function1:wc Memory:function1:wc Global:function1:wc Tag:function1:wc JSTag:object:c Exception:function1:wc CompileError:function1:wc LinkError:function1:wc RuntimeError:function1:wc compileStreaming:function1:ewc instantiateStreaming:function1:ewc Suspending:function1:wc promising:function1:ewc SuspendError:function1:wc Symbol(Symbol.toStringTag):string:c
+compile length:number:c name:string:c
+validate length:number:c name:string:c
+instantiate length:number:c name:string:c
+Module length:number:c name:string:c prototype:object: imports:function1:ewc exports:function1:ewc customSections:function2:ewc
+Module.prototype constructor:function1:wc Symbol(Symbol.toStringTag):string:c
+Instance length:number:c name:string:c prototype:object:
+Instance.prototype constructor:function1:wc exports:get:ec Symbol(Symbol.toStringTag):string:c
+Table length:number:c name:string:c prototype:object:
+Table.prototype constructor:function1:wc length:get:ec grow:function1:ewc set:function1:ewc get:function1:ewc Symbol(Symbol.toStringTag):string:c
+Memory length:number:c name:string:c prototype:object:
+Memory.prototype constructor:function1:wc grow:function1:ewc buffer:get:ec Symbol(Symbol.toStringTag):string:c
+Global length:number:c name:string:c prototype:object:
+Global.prototype constructor:function1:wc valueOf:function0:ewc value:get:ec Symbol(Symbol.toStringTag):string:c
+Tag length:number:c name:string:c prototype:object:
+Tag.prototype constructor:function1:wc Symbol(Symbol.toStringTag):string:c
+Exception length:number:c name:string:c prototype:object:
+Exception.prototype constructor:function1:wc getArg:function2:ewc is:function1:ewc Symbol(Symbol.toStringTag):string:c
+CompileError length:number:c name:string:c prototype:object:
+CompileError.prototype constructor:function1:wc name:string:wc message:string:wc
+LinkError length:number:c name:string:c prototype:object:
+LinkError.prototype constructor:function1:wc name:string:wc message:string:wc
+RuntimeError length:number:c name:string:c prototype:object:
+RuntimeError.prototype constructor:function1:wc name:string:wc message:string:wc
+compileStreaming length:number:c name:string:c
+instantiateStreaming length:number:c name:string:c
+Suspending length:number:c name:string:c prototype:object:
+Suspending.prototype constructor:function1:wc Symbol(Symbol.toStringTag):string:c
+promising length:number:c name:string:c
+SuspendError length:number:c name:string:c prototype:object:
+SuspendError.prototype constructor:function1:wc name:string:wc message:string:wc
