@@ -478,15 +478,18 @@ all(Promises) ->
 %%% Unhandled rejections: a promise rejected without a handler at the end of
 %%% a job ends the program, as in Node.
 
-%% In a realm that runs Node's lib, its rejection callback tracks them instead.
+%% In a realm that runs Node's lib, its rejection callback tracks them instead,
+%% unless the realm ignores them (check_unhandled/0).
 track(P) ->
     {rejected, Reason, _} = buoy_heap:slots(P),
-    buoy_node_loop:reject_hook(0, P, Reason)
+    (node_tracks() andalso buoy_node_loop:reject_hook(0, P, Reason))
         orelse erlang:put(?UNHANDLED, [P | pending_list(?UNHANDLED)]).
 
 untrack(P) ->
-    buoy_node_loop:reject_hook(1, P, undefined)
+    (node_tracks() andalso buoy_node_loop:reject_hook(1, P, undefined))
         orelse erlang:put(?UNHANDLED, lists:delete(P, pending_list(?UNHANDLED))).
+
+node_tracks() -> erlang:get('$buoy_rejections') =/= ignore.
 
 pending_list(Key) ->
     case erlang:get(Key) of

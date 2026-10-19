@@ -269,11 +269,22 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
 /// Copies the fixtures of each directory of the tests into the scratch tree, where each
 /// test is written at its own relative path, so that a test imports its fixtures by the
 /// specifiers it names. A `package.json` of `"type": "module"` makes every `.js` file
-/// an ES module, as test262 expects.
+/// an ES module, as test262 expects. The package `<module source>` is the module with a
+/// module source that `INTERPRETING.md` asks the host for: an empty WebAssembly module.
 fn copy_fixtures(test262: &Path, scratch: &Path, tests: &[Test]) -> Result<(), String> {
     let source = scratch.join("src");
     fs::write(source.join("package.json"), "{\"type\":\"module\"}\n")
         .map_err(|error| format!("cannot write the scratch package.json: {error}"))?;
+    let module_source = source.join("node_modules/<module source>");
+    fs::create_dir_all(&module_source)
+        .and_then(|()| {
+            fs::write(
+                module_source.join("package.json"),
+                "{\"exports\":\"./empty.wasm\"}\n",
+            )
+        })
+        .and_then(|()| fs::write(module_source.join("empty.wasm"), b"\0asm\x01\0\0\0"))
+        .map_err(|error| format!("cannot write the <module source> package: {error}"))?;
     let dirs: HashSet<&Path> = tests.iter().filter_map(|test| test.path.parent()).collect();
     for dir in dirs {
         let target = source.join(relative(test262, dir));
