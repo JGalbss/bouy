@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "4543f248501d08de11f03ffafd1db2ce6e6bce61",
+  "updated": "8f5ba30fcdc34087c8c5116483f202dea84c21aa",
   "total": 4419,
   "outcomes": {
-    "pass": 2296,
+    "pass": 2366,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1473,
-    "timeout": 55,
+    "fail": 1382,
+    "timeout": 76,
     "harness_error": 0,
     "crash": 12
   },
@@ -23,17 +23,17 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 2187,
+        "pass": 2256,
         "skip": 545,
-        "fail": 1286,
-        "timeout": 49,
+        "fail": 1197,
+        "timeout": 69,
         "crash": 12
       },
       "sequential": {
-        "pass": 43,
+        "pass": 44,
         "skip": 22,
-        "fail": 48,
-        "timeout": 5
+        "fail": 46,
+        "timeout": 6
       }
     },
     "kind": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2296,
+        "pass": 2366,
         "skip": 240,
-        "fail": 1473,
-        "timeout": 55,
+        "fail": 1382,
+        "timeout": 76,
         "crash": 12
       }
     },
@@ -56,9 +56,9 @@
         "crash": 2
       },
       "async_hooks": {
-        "pass": 30,
+        "pass": 29,
         "skip": 11,
-        "fail": 15
+        "fail": 16
       },
       "buffer": {
         "pass": 58,
@@ -87,8 +87,10 @@
         "skip": 1
       },
       "crypto": {
-        "pass": 152,
-        "skip": 9
+        "pass": 137,
+        "skip": 9,
+        "fail": 13,
+        "timeout": 2
       },
       "dgram": {
         "pass": 5,
@@ -96,14 +98,15 @@
         "fail": 63
       },
       "diagnostics_channel": {
-        "pass": 46,
+        "pass": 28,
         "skip": 3,
-        "fail": 6,
+        "fail": 24,
         "timeout": 1
       },
       "dns": {
+        "pass": 18,
         "skip": 10,
-        "fail": 19
+        "timeout": 1
       },
       "domain": {
         "pass": 30,
@@ -121,17 +124,22 @@
         "timeout": 4
       },
       "http": {
-        "pass": 37,
+        "pass": 372,
         "skip": 15,
-        "fail": 342
+        "fail": 4,
+        "timeout": 3
       },
       "http2": {
-        "pass": 242,
-        "skip": 32
+        "pass": 214,
+        "skip": 32,
+        "fail": 18,
+        "timeout": 10
       },
       "https": {
-        "pass": 63,
-        "skip": 2
+        "pass": 49,
+        "skip": 2,
+        "fail": 9,
+        "timeout": 5
       },
       "inspector": {
         "skip": 114
@@ -154,9 +162,9 @@
         "fail": 4
       },
       "other": {
-        "pass": 231,
+        "pass": 223,
         "skip": 178,
-        "fail": 202,
+        "fail": 210,
         "timeout": 3,
         "crash": 2
       },
@@ -170,9 +178,9 @@
         "crash": 1
       },
       "process": {
-        "pass": 94,
+        "pass": 92,
         "skip": 8,
-        "fail": 24,
+        "fail": 26,
         "timeout": 5
       },
       "punycode": {
@@ -205,9 +213,9 @@
         "skip": 2
       },
       "stream": {
-        "pass": 204,
+        "pass": 203,
         "skip": 8,
-        "fail": 51
+        "fail": 52
       },
       "string_decoder": {
         "pass": 3
@@ -227,8 +235,9 @@
         "fail": 2
       },
       "tls": {
-        "pass": 204,
+        "pass": 12,
         "skip": 15,
+        "fail": 192,
         "timeout": 1
       },
       "trace_events": {
@@ -264,9 +273,9 @@
         "crash": 1
       },
       "worker_threads": {
-        "pass": 11,
+        "pass": 7,
         "skip": 12,
-        "fail": 124,
+        "fail": 128,
         "timeout": 1
       },
       "zlib": {
