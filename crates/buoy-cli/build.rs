@@ -178,7 +178,7 @@ const TEMPORAL_EDITS: &[(&str, &str)] = &[
 ];
 
 /// The tail of the script, which installs the globals and closes the wrapper. The code ends
-/// with the namespace in its place.
+/// with the namespace in its place, after it hands the slot readers to its host object.
 const TEMPORAL_TAIL: &str = "  const DateTimeFormat = createDateTimeFormatClass(";
 
 /// Compiles the polyfill at `vendored` into `out/buoy_temporal.erl`, whose `'__eval__'/3`
@@ -199,7 +199,12 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
     let tail = edited
         .find(TEMPORAL_TAIL)
         .expect("the polyfill ends by installing its globals");
-    let source = format!("{}Temporal;\n", &edited[..tail]);
+    // The host object also receives the readers of the internal slots, which Intl's
+    // DurationFormat and DateTimeFormat use to read Temporal objects without their getters.
+    let source = format!(
+        "{}this.slotsOf = getTemporalBrandingAndSlots;\nthis.toDurationSlots = toDurationSlots;\nTemporal;\n",
+        &edited[..tail]
+    );
     let erlang = buoy_compiler::compile_eval(
         &source,
         "buoy_temporal",

@@ -28,6 +28,7 @@ intrinsics() ->
                      ?METHODS(<<"Intl">>, [{<<"getCanonicalLocales">>, 1}, {<<"supportedValuesOf">>, 1}])
                      ++ [{<<"Collator">>, buoy_ref_intl_collator:constructor()}, {<<"Locale">>, buoy_ref_intl_locale:constructor()},
                          {<<"DisplayNames">>, buoy_ref_intl_display_names:constructor()},
+                         {<<"DurationFormat">>, buoy_ref_intl_duration_format:constructor()},
                          {<<"ListFormat">>, buoy_ref_intl_list_format:constructor()},
                          {<<"NumberFormat">>, buoy_ref_intl_number_format:constructor()},
                          {<<"PluralRules">>, buoy_ref_intl_plural_rules:constructor()},

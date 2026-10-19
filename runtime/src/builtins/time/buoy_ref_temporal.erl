@@ -19,6 +19,7 @@
 -include("buoy_ref.hrl").
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, load/1, to_instant/1]).
+-export([slots_of/1, duration_slots/1]).
 
 -import(buoy_ref_realm, [arg/2, record/4, ctor_record/5]).
 
@@ -58,6 +59,9 @@ load(?NAMESPACE = Id) ->
         Record = erlang:get(Made),
         erlang:put(Id, Record),
         erlang:put({?MODULE, instant}, maps:get(<<"Instant">>, element(3, Record))),
+        erlang:put({?MODULE, readers, buoy_heap:realm()},
+                   {buoy_ref:get(Host, <<"slotsOf">>), buoy_ref:get(Host, <<"toDurationSlots">>)}),
+        locale_methods(maps:get(<<"Duration">>, element(3, Record))),
         Record
     catch
         Class:Reason:Stack ->
@@ -109,6 +113,47 @@ bits(X, Count) -> bits(X bsr 1, Count + 1).
 to_instant(T) ->
     _ = erlang:get(?NAMESPACE) =/= undefined orelse load(?NAMESPACE),
     buoy_ref:construct(erlang:get({?MODULE, instant}), [{'$bigint', T * 1000000}]).
+
+%% Temporal.Duration.prototype.toLocaleString formats with Intl.DurationFormat,
+%% which the polyfill does not have.
+locale_methods(Duration) ->
+    Proto = buoy_ref:get(Duration, <<"prototype">>),
+    Method = buoy_ref_realm:builtin(<<"Temporal.Duration.prototype.toLocaleString">>, <<"toLocaleString">>, 0,
+                                    fun(This, Args) ->
+                                            case slots_of(This) of
+                                                {<<"Duration">>, _} -> ok;
+                                                _ -> buoy_ref:type_error(<<"Temporal.Duration.prototype.toLocaleString called on incompatible receiver">>)
+                                            end,
+                                            buoy_ref_intl_duration_format:format_with(arg(1, Args), arg(2, Args), This)
+                                    end),
+    buoy_heap:define(Proto, <<"toLocaleString">>, #{value => Method, writable => true, enumerable => false, configurable => true}).
+
+%% {Type, Slots} of a Temporal object of this realm, such as {<<"Duration">>,
+%% Slots} with the plain object of its fields, or undefined, without its
+%% getters.
+-spec slots_of(term()) -> {binary(), term()} | undefined.
+slots_of(Value) ->
+    {SlotsOf, _} = readers(),
+    case buoy_ref:call(SlotsOf, undefined, [Value]) of
+        undefined -> undefined;
+        Pair -> {buoy_ref:get(Pair, 0), buoy_ref:get(Pair, 1)}
+    end.
+
+%% The fields of the Temporal.Duration that a string or a duration-like
+%% object gives, as ToTemporalDuration reads them.
+-spec duration_slots(term()) -> term().
+duration_slots(Value) ->
+    {_, ToDuration} = readers(),
+    buoy_ref:call(ToDuration, undefined, [Value]).
+
+readers() ->
+    Key = {?MODULE, readers, buoy_heap:realm()},
+    case erlang:get(Key) of
+        undefined ->
+            _ = buoy_ref:get(buoy_heap:intrinsic(?NAMESPACE), <<"Duration">>),
+            erlang:get(Key);
+        Readers -> Readers
+    end.
 
 %%% Intl.DateTimeFormat
 
