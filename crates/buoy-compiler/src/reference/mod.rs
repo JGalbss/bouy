@@ -110,6 +110,9 @@ pub struct EvalContext {
     /// The code is the source text of `CreateDynamicFunction`, one function expression:
     /// its name, `anonymous`, binds nothing inside it.
     pub dynamic_function: bool,
+    /// The program that runs the code records each call of a function, for the legacy
+    /// `caller` and `arguments` of a sloppy function (`--frames`).
+    pub frames: bool,
 }
 
 /// Where a direct eval is called, which decides what its code may use.
@@ -287,7 +290,10 @@ fn lower_one_script(
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
 ) -> Result<String, Vec<Diagnostic>> {
+    // Eval code records its calls when the program that runs it does (`frames` of the
+    // context), and the runtime's own code never does.
     let graph = Graph {
+        reflects_calls: false,
         units: vec![graph::Unit {
             path,
             name: name.to_owned(),
@@ -383,6 +389,7 @@ fn lower(
                 return Err(reporter.diagnostics);
             }
             let analysis = analyze::analyze(program, semantic);
+            let frames = context.frames || linking.graph.reflects_calls;
             let mut lowerer = Lowerer {
                 semantic,
                 analysis: &analysis,
@@ -409,6 +416,7 @@ fn lower(
                 using_stacks: Vec::new(),
                 hoisted: std::collections::HashSet::new(),
                 block_functions: Vec::new(),
+                frames,
                 linking,
             };
             let functions = if module.kind == Kind::CommonJs {

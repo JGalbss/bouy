@@ -19,8 +19,8 @@ use crate::erlang::{Clause, Expr, Function};
 pub enum Top {
     /// A function declaration: the Erlang function `'name'/2`, its `length`, and the
     /// form of its static function value (`fn`, `sloppy` for a normal function of sloppy
-    /// code, `async`, `generator`, `async_generator`, or `fn_nt` for a function that reads
-    /// `new.target`).
+    /// code, `async`, `generator`, `async_generator`, or `fn_nt` and `sloppy_nt` for a
+    /// function that reads `new.target`).
     Function {
         name: String,
         length: usize,
@@ -255,6 +255,9 @@ pub struct Lowerer<'a, 'c> {
     pub hoisted: std::collections::HashSet<SymbolId>,
     /// The function declarations in the blocks of sloppy code (Annex B.3.3).
     pub block_functions: Vec<super::block_function::BlockFunction>,
+    /// Each function records its call for the legacy `caller` and `arguments` of a sloppy
+    /// function (`Graph::reflects_calls`).
+    pub frames: bool,
     /// What the module's imports and exports refer to.
     pub linking: Linking<'c>,
 }

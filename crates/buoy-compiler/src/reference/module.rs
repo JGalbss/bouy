@@ -195,9 +195,12 @@ impl<'a> Lowerer<'a, '_> {
                 if let Some(body) = &function.body {
                     uses.visit_function_body(body);
                 }
-                if uses.0 {
+                let sloppy = self.is_sloppy(function.scope_id.get());
+                if uses.0 && sloppy {
+                    "sloppy_nt"
+                } else if uses.0 {
                     "fn_nt"
-                } else if self.is_sloppy(function.scope_id.get()) {
+                } else if sloppy {
                     "sloppy"
                 } else {
                     "fn"
@@ -496,6 +499,9 @@ impl<'a> Lowerer<'a, '_> {
             self.stmts(statements, &Cont::Value(value))
         });
         let mut body = self.dead_zone();
+        if self.frames {
+            body.insert(0, Expr::call("buoy_ref", "frames_start", vec![]));
+        }
         body.extend(code);
         Function {
             name: "$body".to_owned(),
@@ -1135,12 +1141,16 @@ impl<'a> Lowerer<'a, '_> {
     /// A normal function of sloppy code carries `sloppy` as a fifth element of its id.
     pub fn static_function(&self, name: &str, length: usize, form: &str) -> Expr {
         let mut id = vec![
-            Expr::atom(if form == "sloppy" { "fn" } else { form }),
+            Expr::atom(match form {
+                "sloppy" => "fn",
+                "sloppy_nt" => "fn_nt",
+                other => other,
+            }),
             Expr::atom(self.module.clone()),
             Expr::js_string(if name == "*default*" { "default" } else { name }),
             Expr::Integer(i64::try_from(length).unwrap_or(0)),
         ];
-        if form == "sloppy" {
+        if form.starts_with("sloppy") {
             id.push(Expr::atom("sloppy"));
         }
         Expr::Tuple(vec![

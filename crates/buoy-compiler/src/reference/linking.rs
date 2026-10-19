@@ -369,6 +369,9 @@ impl<'a> Lowerer<'a, '_> {
             _ => None,
         });
         let mut body = Vec::new();
+        if self.frames {
+            body.push(Expr::call("buoy_ref", "frames_start", vec![]));
+        }
         if let Some(wrapper) = wrapper {
             let value = self.expr(wrapper);
             body.append(&mut self.pre);

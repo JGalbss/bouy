@@ -82,6 +82,10 @@ struct EvalRequest {
     /// The source is a classic script of its own, as a host's `evalScript` runs it.
     #[arg(long)]
     script: bool,
+    /// The program records each call of a function, for the legacy `caller` and
+    /// `arguments` of a sloppy function.
+    #[arg(long)]
+    frames: bool,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -126,6 +130,7 @@ impl EvalRequest {
             internal: false,
             lexical: Vec::new(),
             dynamic_function: false,
+            frames: self.frames,
         };
         let compiled = if self.script {
             buoy_compiler::compile_eval_script(text, &module)

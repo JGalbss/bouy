@@ -41,7 +41,7 @@
 
 -export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
 -export([array_push/2, array_set_items/2]).
--export([function/1, function/4, function/5, call/3, construct/3, is_constructor/1]).
+-export([function/1, function/4, function/5, reflect_calls/1, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
@@ -284,6 +284,21 @@ function(Fun, Name, Length, Slots, Fixed) ->
     end,
     erlang:put(Id, {function, function_prototype(), Props, Keys, Attrs, Slots1}),
     {'$f', Id, Fun1}.
+
+%% The caller and arguments properties of the sloppy function F read the calls
+%% that the program records (buoy_ref:legacy_caller/1), when it records them.
+-spec reflect_calls(value()) -> value().
+reflect_calls({'$f', Id, _} = F) ->
+    case erlang:get('$buoy_frames') of
+        undefined ->
+            F;
+        _ ->
+            {function, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+            Live = #{<<"caller">> => {'$live', fun() -> buoy_ref:legacy_caller(Id) end},
+                     <<"arguments">> => {'$live', fun() -> buoy_ref:legacy_arguments(Id) end}},
+            erlang:put(Id, {function, P, maps:merge(Props, Live), Keys, Attrs, Slots}),
+            F
+    end.
 
 %% The prototype property of an ordinary function F: an object of the realm of
 %% F whose constructor is F, writable, not enumerable, and not configurable. Its
@@ -1298,10 +1313,10 @@ static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) 
     Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => undefined},
     Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE, <<"prototype">> => ?WRITABLE, <<"arguments">> => 0, <<"caller">> => 0},
     Keys = [<<"prototype">>, <<"caller">>, <<"arguments">>, <<"name">>, <<"length">>],
-    Record = {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}},
-    erlang:put(Id, Record),
+    erlang:put(Id, {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}}),
+    reflect_calls(F),
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
-    Record;
+    erlang:get(Id);
 %% A module-level function declaration is {'$f', {fn, Module, Name, Length}, Fun}.
 %% Each realm makes its record, with a new prototype object, on first use.
 static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
@@ -1313,6 +1328,17 @@ static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
     Record;
 %% A generator, an async function, or a function that reads new.target.
+%% A module-level sloppy function that reads new.target is
+%% {'$f', {fn_nt, Module, Name, Length, sloppy}, Fun}.
+static_function_record({'$f', {fn_nt, Module, Name, Length, sloppy} = Id, _} = F) ->
+    %% Keys are newest first: prototype, then caller and arguments, as for a
+    %% sloppy function without new.target.
+    {function, P, Props, [<<"prototype">> | Older], Attrs, Slots} = buoy_ref_generator:static_record(fn_nt, Module, Name, Length, F),
+    erlang:put(Id, {function, P, Props#{<<"arguments">> => null, <<"caller">> => undefined},
+                    [<<"prototype">>, <<"caller">>, <<"arguments">> | Older],
+                    Attrs#{<<"arguments">> => 0, <<"caller">> => 0}, Slots}),
+    reflect_calls(F),
+    erlang:get(Id);
 static_function_record({'$f', {Form, Module, Name, Length} = Id, _} = F) ->
     Record = buoy_ref_generator:static_record(Form, Module, Name, Length, F),
     erlang:put(Id, Record),

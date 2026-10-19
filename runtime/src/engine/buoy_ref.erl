@@ -15,6 +15,7 @@
 -export([mapped_arguments/3, function_name/2, literal_proto/2, tdz_error/1]).
 -export([with_object/1, with_has/2, with_get/3, with_set/4, const_error/0]).
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
+-export([frames_start/0, frame_enter/1, frame_leave/1, legacy_caller/1, legacy_arguments/1]).
 -export([arguments_object/1, throw_type_error/2, named_fn/3, named_fn/4, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
 -export([array/1, array_holes/1, array_tree/1, array_spread/1, array_spread_internal/1, chunk/1, object_spread/2, object_rest/2, template/1, template_object/3]).
@@ -414,8 +415,10 @@ tdz_error(Name) ->
 -spec named_fn(fun((term(), list()) -> term()), buoy_ref_string:js_string(), non_neg_integer(), fn_kind() | {fn_kind(), tuple()}) -> term().
 named_fn(Fun, Name, Length, Kind) ->
     case kind(Kind) of
-        Ordinary when Ordinary =:= normal; Ordinary =:= sloppy ->
-            buoy_heap:function(Fun, Name, Length, (slots(Kind))#{prototype => lazy}, fixed(Ordinary));
+        normal ->
+            buoy_heap:function(Fun, Name, Length, (slots(Kind))#{prototype => lazy}, []);
+        sloppy ->
+            buoy_heap:reflect_calls(buoy_heap:function(Fun, Name, Length, (slots(Kind))#{prototype => lazy}, fixed(sloppy)));
         Other ->
             finish_fn(buoy_heap:function(Fun, Name, Length, slots(Kind)), Other)
     end.
@@ -428,14 +431,65 @@ kind({Kind, _Source}) -> Kind;
 kind(Kind) -> Kind.
 
 %% A sloppy function is a normal one with own caller and arguments
-%% properties, as V8 gives it. arguments is null, as in V8 outside a call.
-%% caller is undefined: the engine keeps no stack of callers, and undefined
-%% is the value of an engine without the extension (ECMA-262 §17.1).
+%% properties. In a program that records its calls (frames_start/0), they are
+%% live: the legacy function reflection of V8, legacy_caller/1 and
+%% legacy_arguments/1. Elsewhere arguments is null, as in V8 outside a call,
+%% and caller is undefined, the value of an engine without the extension
+%% (ECMA-262 §17.1).
 slot_kind(sloppy) -> normal;
 slot_kind(Kind) -> Kind.
 
-fixed(sloppy) -> [{<<"arguments">>, null}, {<<"caller">>, undefined}];
-fixed(normal) -> [].
+fixed(sloppy) -> [{<<"arguments">>, null}, {<<"caller">>, undefined}].
+
+%%% Legacy function reflection
+
+%% A program whose code may read the caller or the arguments of a function
+%% records each call while it runs: '$buoy_frames' holds the calls,
+%% innermost first, as {Function, Args} for a sloppy ordinary function and
+%% hidden for any other one. Eval code and the runtime's own functions record
+%% nothing, so a call through them is not seen.
+-spec frames_start() -> ok.
+frames_start() ->
+    erlang:get('$buoy_frames') =:= undefined andalso erlang:put('$buoy_frames', []),
+    ok.
+
+%% The start of a call: returns the calls before it, which frame_leave/1
+%% restores when the call ends, also by an exception.
+-spec frame_enter({term(), list()} | hidden) -> list() | undefined.
+frame_enter(Entry) ->
+    Saved = erlang:get('$buoy_frames'),
+    erlang:put('$buoy_frames', [Entry | case Saved of undefined -> []; _ -> Saved end]),
+    Saved.
+
+-spec frame_leave(list() | undefined) -> ok.
+frame_leave(Saved) ->
+    erlang:put('$buoy_frames', Saved),
+    ok.
+
+%% F.caller of a sloppy function: the function of the call below the
+%% innermost call of F, when that one is a sloppy ordinary function, and null
+%% when F does not run or its caller is any other code.
+-spec legacy_caller(term()) -> term().
+legacy_caller(Id) ->
+    case calls_of(Id) of
+        [_, {Caller, _} | _] -> Caller;
+        _ -> null
+    end.
+
+%% F.arguments of a sloppy function: a new arguments object of the innermost
+%% call of F, or null when F does not run.
+-spec legacy_arguments(term()) -> term().
+legacy_arguments(Id) ->
+    case calls_of(Id) of
+        [{_, Args} | _] -> arguments_object(Args);
+        _ -> null
+    end.
+
+%% The recorded calls from the innermost call of the function Id.
+calls_of(Id) ->
+    lists:dropwhile(fun({{'$f', Own, _}, _}) -> Own =/= Id;
+                       (_) -> true
+                    end, case erlang:get('$buoy_frames') of undefined -> []; Frames -> Frames end).
 
 finish_fn(F, async) ->
     buoy_heap:set_prototype_of(F, buoy_heap:intrinsic(buoy_ref_function:kind_prototype_id(async)));

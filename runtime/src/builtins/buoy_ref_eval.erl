@@ -169,7 +169,12 @@ compile_script(Source) ->
 %% Flags are the options of `buoy compile-eval`. A source text that is only
 %% comments, or one regular expression literal, needs no module: programs
 %% such as test262's character sweeps make tens of thousands of them.
-run(Source, Flags, This, Scope, Context) ->
+run(Source, Flags0, This, Scope, Context) ->
+    %% The functions of eval code record their calls when the program does.
+    Flags = case erlang:get('$buoy_frames') of
+        undefined -> Flags0;
+        _ -> ["--frames" | Flags0]
+    end,
     case trivial(Source) of
         empty ->
             undefined;

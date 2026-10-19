@@ -75,6 +75,7 @@ impl<'a> Lowerer<'a, '_> {
             _ => false,
         };
         let new_target_param = reads_new_target.then(|| self.fresh("NewTarget"));
+        let names_itself = matches!(&callee, Callee::Function(Some(_)));
         let mut frame = Frame {
             env: outer.env.clone(),
             kind,
@@ -148,6 +149,11 @@ impl<'a> Lowerer<'a, '_> {
                 code
             }
         };
+        let code = if self.frames {
+            self.record_call(code, &args, kind == Kind::Sync && names_itself)
+        } else {
+            code
+        };
         self.frame = outer;
         self.pre = outer_pre;
         Code {
@@ -156,6 +162,35 @@ impl<'a> Lowerer<'a, '_> {
             new_target: new_target_param,
             body: code,
         }
+    }
+
+    /// The body of a function that records its call while it runs, for the legacy `caller`
+    /// and `arguments` of a sloppy function: `{Itself, Args}` for a sloppy function, which
+    /// another function may name as its caller, and `hidden` for any other one, whose
+    /// callees have the caller null.
+    fn record_call(&mut self, code: Vec<Expr>, args: &str, ordinary: bool) -> Vec<Expr> {
+        let entry = match &self.frame.callee {
+            Some(itself) if ordinary && self.frame.sloppy => {
+                Expr::Tuple(vec![itself.clone(), Expr::var(args.to_owned())])
+            }
+            _ => Expr::atom("hidden"),
+        };
+        let saved = self.fresh("Frames");
+        vec![
+            Expr::matches(
+                Expr::var(saved.clone()),
+                Expr::call("buoy_ref", "frame_enter", vec![entry]),
+            ),
+            Expr::Try {
+                body: code,
+                catches: vec![],
+                after: vec![Expr::call(
+                    "buoy_ref",
+                    "frame_leave",
+                    vec![Expr::var(saved)],
+                )],
+            },
+        ]
     }
 
     /// `buoy_ref_generator:start_async(Own, fun(Resolve, Reject, Yield) -> ... end)`: the
@@ -640,6 +675,7 @@ impl<'a> Lowerer<'a, '_> {
         let itself = cell.clone().filter(|_| callee).map(|cell| cell_get(&cell));
         let fun = self.function_fun(function, Callee::Function(itself));
         let kind = match method_kind(function.r#async, function.generator) {
+            "method" if reads_new_target && self.is_sloppy(function.scope_id.get()) => "sloppy_nt",
             "method" if reads_new_target => "normal_nt",
             "method" if self.is_sloppy(function.scope_id.get()) => "sloppy",
             "method" => "normal",
@@ -675,6 +711,11 @@ impl<'a> Lowerer<'a, '_> {
     pub fn needs_callee(&self, function: &'a Function<'a>) -> bool {
         if function.scope_id.get().is_none() || !self.is_sloppy(function.scope_id.get()) {
             return false;
+        }
+        // A sloppy function that records its calls names itself as the caller of the
+        // functions that it calls.
+        if self.frames && !function.r#async && !function.generator {
+            return true;
         }
         let mut uses = UsesArguments::default();
         if let Some(body) = &function.body {

@@ -33,6 +33,16 @@ pub const CJS_WRAPPER: &str = "(function (exports, require, module, __filename, 
 pub struct Graph {
     /// The modules in discovery order. The entry module comes first.
     pub units: Vec<Unit>,
+    /// Whether the code of the program may read the legacy `caller` or `arguments` of a
+    /// function, so that each function records its call (`reflects_calls`).
+    pub reflects_calls: bool,
+}
+
+/// Whether `source` may read the legacy `caller` or `arguments` of a function. The text
+/// test also finds the names in the strings that eval code or `Function` compiles.
+#[must_use]
+pub fn reflects_calls(source: &str) -> bool {
+    source.contains("caller") || source.contains(".arguments")
 }
 
 /// One module file.
@@ -277,7 +287,11 @@ pub fn load(
             script: script && units.is_empty(),
         });
     }
-    Ok(Graph { units })
+    let reflects_calls = units.iter().any(|unit| reflects_calls(&unit.source));
+    Ok(Graph {
+        units,
+        reflects_calls,
+    })
 }
 
 /// A text or bytes module of the file at `path`. A file that cannot be read makes a broken
