@@ -1,18 +1,18 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "db60a3ad702ff8fbf888a5e142560e138af1b76f",
+  "updated": "1b2b2c26ed2884e58ce9a5e8c9484c342639eab8",
   "total": 4419,
   "outcomes": {
-    "pass": 1964,
+    "pass": 2376,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1798,
-    "timeout": 62,
+    "fail": 1398,
+    "timeout": 49,
     "harness_error": 0,
-    "crash": 12
+    "crash": 13
   },
   "groups": {
     "directory": {
@@ -23,17 +23,17 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 1859,
+        "pass": 2265,
         "skip": 545,
-        "fail": 1607,
-        "timeout": 56,
-        "crash": 12
+        "fail": 1212,
+        "timeout": 44,
+        "crash": 13
       },
       "sequential": {
-        "pass": 39,
+        "pass": 45,
         "skip": 22,
-        "fail": 52,
-        "timeout": 5
+        "fail": 47,
+        "timeout": 4
       }
     },
     "kind": {
@@ -41,11 +41,11 @@
         "skip": 343
       },
       "public": {
-        "pass": 1964,
+        "pass": 2376,
         "skip": 240,
-        "fail": 1798,
-        "timeout": 62,
-        "crash": 12
+        "fail": 1398,
+        "timeout": 49,
+        "crash": 13
       }
     },
     "module": {
@@ -56,9 +56,9 @@
         "crash": 2
       },
       "async_hooks": {
-        "pass": 15,
+        "pass": 30,
         "skip": 11,
-        "fail": 30
+        "fail": 15
       },
       "buffer": {
         "pass": 58,
@@ -66,10 +66,10 @@
         "fail": 5
       },
       "child_process": {
-        "pass": 72,
+        "pass": 74,
         "skip": 7,
         "fail": 25,
-        "timeout": 10
+        "timeout": 8
       },
       "cluster": {
         "pass": 25,
@@ -78,9 +78,8 @@
         "timeout": 11
       },
       "console": {
-        "pass": 17,
+        "pass": 18,
         "skip": 1,
-        "fail": 1,
         "crash": 3
       },
       "constants": {
@@ -96,29 +95,29 @@
         "fail": 63
       },
       "diagnostics_channel": {
-        "pass": 40,
+        "pass": 46,
         "skip": 3,
-        "fail": 11,
-        "timeout": 2
+        "fail": 6,
+        "timeout": 1
       },
       "dns": {
         "skip": 10,
         "fail": 19
       },
       "domain": {
-        "pass": 27,
+        "pass": 30,
         "skip": 2,
-        "fail": 21
+        "fail": 18
       },
       "events": {
         "pass": 34,
         "skip": 6
       },
       "fs": {
-        "pass": 98,
+        "pass": 304,
         "skip": 20,
-        "fail": 219,
-        "timeout": 6
+        "fail": 14,
+        "timeout": 5
       },
       "http": {
         "pass": 37,
@@ -149,14 +148,13 @@
         "timeout": 2
       },
       "os": {
-        "pass": 2,
-        "skip": 2,
-        "fail": 4
+        "pass": 6,
+        "skip": 2
       },
       "other": {
-        "pass": 215,
+        "pass": 231,
         "skip": 178,
-        "fail": 217,
+        "fail": 201,
         "timeout": 4,
         "crash": 2
       },
@@ -164,17 +162,16 @@
         "pass": 17
       },
       "perf_hooks": {
-        "pass": 15,
+        "pass": 20,
         "skip": 3,
-        "fail": 7,
-        "timeout": 1,
+        "fail": 3,
         "crash": 1
       },
       "process": {
-        "pass": 94,
+        "pass": 99,
         "skip": 8,
-        "fail": 24,
-        "timeout": 5
+        "fail": 20,
+        "timeout": 4
       },
       "punycode": {
         "pass": 1
@@ -187,16 +184,15 @@
         "skip": 3
       },
       "readline": {
-        "pass": 13,
-        "skip": 7,
-        "fail": 2
+        "pass": 15,
+        "skip": 7
       },
       "repl": {
-        "pass": 4,
+        "pass": 75,
         "skip": 14,
-        "fail": 77,
-        "timeout": 9,
-        "crash": 2
+        "fail": 12,
+        "timeout": 2,
+        "crash": 3
       },
       "sea": {
         "fail": 1
@@ -206,9 +202,9 @@
         "skip": 2
       },
       "stream": {
-        "pass": 201,
+        "pass": 205,
         "skip": 8,
-        "fail": 54
+        "fail": 50
       },
       "string_decoder": {
         "pass": 3
@@ -223,9 +219,9 @@
         "timeout": 6
       },
       "timers": {
-        "pass": 42,
+        "pass": 46,
         "skip": 12,
-        "fail": 6
+        "fail": 2
       },
       "tls": {
         "pass": 204,
@@ -233,9 +229,9 @@
         "timeout": 1
       },
       "trace_events": {
-        "pass": 4,
+        "pass": 14,
         "skip": 3,
-        "fail": 22
+        "fail": 12
       },
       "tty": {
         "pass": 2,
@@ -271,9 +267,8 @@
         "timeout": 1
       },
       "zlib": {
-        "pass": 2,
-        "skip": 3,
-        "fail": 58
+        "pass": 60,
+        "skip": 3
       }
     },
     "skip reason": {
