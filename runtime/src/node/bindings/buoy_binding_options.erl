@@ -1,6 +1,7 @@
 %% internalBinding('options') (src/node_options.cc): the values of Node's
 %% command-line options, which internal/options reads with getOptionValue.
-%% Buoy honors no option yet, so every value is Node 25.9.0's default.
+%% The values start at Node 25.9.0's defaults; the command line and the
+%% variables of env_args/0 change them.
 -module(buoy_binding_options).
 
 -export([binding/0, value/1]).
@@ -46,7 +47,11 @@ values_map() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
-    apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())).
+    apply_args(env_args() ++ expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())).
+
+%% The variables that Node reads as options, before the command line.
+env_args() ->
+    [<<"--use-system-ca">> || os:getenv("NODE_USE_SYSTEM_CA") =:= "1"].
 
 expand(Args, Expansions) ->
     lists:append([maps:get(normalize(A), Expansions, [A]) || A <- Args]).

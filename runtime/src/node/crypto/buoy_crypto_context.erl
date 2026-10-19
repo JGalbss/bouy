@@ -26,7 +26,8 @@ members() ->
         {<<"setCert">>, 1, fun(This, Args) -> set_cert(This, A(1, Args)) end},
         {<<"addCACert">>, 1, fun(This, Args) -> add_ca(This, A(1, Args)) end},
         {<<"addCRL">>, 1, fun(This, Args) -> add_crl(This, A(1, Args)) end},
-        {<<"addRootCerts">>, 0, Set(roots, fun(_) -> true end)},
+        %% GetOrCreateRootCertStore loads the store, and NODE_EXTRA_CA_CERTS, now.
+        {<<"addRootCerts">>, 0, Set(roots, fun(_) -> is_list(roots()) end)},
         {<<"setCipherSuites">>, 1, fun(This, Args) -> set_suites(This, buoy_crypto:string(A(1, Args))) end},
         {<<"setCiphers">>, 1, fun(This, Args) -> set_ciphers(This, buoy_crypto:string(A(1, Args))) end},
         {<<"setSigalgs">>, 1, Set(sigalgs, fun(Args) -> buoy_crypto:string(A(1, Args)) end)},
@@ -245,10 +246,16 @@ load_pkcs12(This, Pfx, Passphrase) ->
     end,
     undefined.
 
+%% addCACert after addRootCerts adds to a copy of the root store, as
+%% GetCertStoreOwnedByThisSecureContext does, so the roots stay trusted.
 add_ca(This, Cert) ->
     Ders = certificates(Cert),
-    update(This, fun(#{cas := Cas} = S) -> S#{cas := case Cas of none -> Ders; _ -> Cas ++ Ders end} end),
+    update(This, fun(S) -> S#{cas := owned_cas(S) ++ Ders} end),
     undefined.
+
+owned_cas(#{cas := none, roots := true}) -> roots();
+owned_cas(#{cas := none}) -> [];
+owned_cas(#{cas := Cas}) -> Cas.
 
 add_crl(This, Crl) ->
     case [Der || {'CertificateList', Der, _} <- public_key:pem_decode(pem(Crl))] of

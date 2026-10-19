@@ -35,20 +35,31 @@ system() ->
 %% under --use-system-ca or NODE_USE_SYSTEM_CA=1, then NODE_EXTRA_CA_CERTS.
 -spec default_extras() -> [binary()].
 default_extras() ->
-    System = lists:member(<<"--use-system-ca">>, buoy_node_process:exec_argv())
-        orelse os:getenv("NODE_USE_SYSTEM_CA") =:= "1",
+    System = buoy_binding_options:value(<<"--use-system-ca">>),
     [D || System, D <- system()] ++ extra().
 
-%% The certificates of the file that NODE_EXTRA_CA_CERTS names.
+%% The certificates of the file that NODE_EXTRA_CA_CERTS names, read once
+%% per VM as Node reads extra_root_certs_file.
 extra() ->
-    case os:getenv("NODE_EXTRA_CA_CERTS") of
-        false -> [];
-        "" -> [];
-        Path ->
-            case file:read_file(Path) of
-                {ok, Text} -> [Der || {<<"CERTIFICATE">>, Der, _} <- buoy_crypto_der:pem_blocks(Text)];
-                {error, _} -> []
-            end
+    case persistent_term:get({?MODULE, extra}, none) of
+        none ->
+            Ders = load_extra(os:getenv("NODE_EXTRA_CA_CERTS")),
+            persistent_term:put({?MODULE, extra}, Ders),
+            Ders;
+        Ders -> Ders
+    end.
+
+load_extra(false) -> [];
+load_extra("") -> [];
+load_extra(Path) ->
+    case file:read_file(Path) of
+        {ok, Text} -> [Der || {<<"CERTIFICATE">>, Der, _} <- buoy_crypto_der:pem_blocks(Text)];
+        {error, Reason} ->
+            %% The text of ERR_error_string_n for the errno of BIO_new_file.
+            Code = 16#80000000 bor -buoy_binding_fs:uv_errno(Reason),
+            io:format(standard_error, "Warning: Ignoring extra certs from `~ts`, load failed: error:~8.16.0B:system library::~ts~n",
+                      [Path, Code, buoy_binding_fs:strerror(Reason)]),
+            []
     end.
 
 %% resetRootCertStore(certs): the store of the PEM texts certs, strings or
