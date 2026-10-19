@@ -21,8 +21,8 @@
 
 -compile({no_auto_import, [link/1, unlink/1]}).
 
--export([binding/0, uv_error/3, uv_error/4, uv_errno/1, errno_exception/4, strerror/1, request/2, path/1, encoded/2,
-         read_info/2, read_stats/2, read_dir/1, result/1, reason/1, stat_array/3, stat_pair/3, int/1,
+-export([binding/0, uv_error/3, uv_error/4, uv_error/5, uv_errno/1, errno_exception/4, strerror/1, request/2, path/1,
+         encoded/2, read_info/2, read_stats/2, read_dir/1, result/1, reason/1, stat_array/3, stat_pair/3, int/1,
          inherited_file/1]).
 -export_type([stats/0]).
 
@@ -282,8 +282,14 @@ uv_error(Reason, Syscall, Path) -> uv_error(Reason, Syscall, Path, undefined).
 %% with errno, code, syscall, path, and dest.
 -spec uv_error(atom(), binary(), binary() | undefined, binary() | undefined) -> no_return().
 uv_error(Reason, Syscall, Path, Dest) ->
+    uv_error(Reason, Syscall, Path, Dest, fun(Message) -> Message end).
+
+%% A UVException whose message Detail makes from the message of libuv.
+-spec uv_error(atom(), binary(), binary() | undefined, binary() | undefined, fun((binary()) -> iodata())) ->
+    no_return().
+uv_error(Reason, Syscall, Path, Dest, Detail) ->
     {Errno, Code, Message} = errno(Reason),
-    Text = iolist_to_binary([Code, <<": ">>, Message, <<", ">>, Syscall,
+    Text = iolist_to_binary([Code, <<": ">>, Detail(Message), <<", ">>, Syscall,
                              case Path of undefined -> <<>>; _ -> [<<" '">>, Path, <<"'">>] end,
                              case Dest of undefined -> <<>>; _ -> [<<" -> '">>, Dest, <<"'">>] end]),
     Js = buoy_ref_string:from_utf8(Text),

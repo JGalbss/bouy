@@ -774,7 +774,7 @@ parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js pass
 parallel/test-crypto-worker-thread.js pass
 parallel/test-crypto-x509.js skip
 parallel/test-crypto.js pass
-parallel/test-cwd-enoent-improved-message.js fail
+parallel/test-cwd-enoent-improved-message.js pass
 parallel/test-cwd-enoent-preload.js fail
 parallel/test-cwd-enoent-repl.js fail
 parallel/test-cwd-enoent.js fail

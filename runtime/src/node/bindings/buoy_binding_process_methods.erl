@@ -29,10 +29,7 @@ binding() ->
             undefined
         end)},
         {<<"hrtimeBuffer">>, Hr},
-        {<<"cwd">>, F(<<"cwd">>, 0, fun(_, _) ->
-            {ok, Dir} = file:get_cwd(),
-            buoy_node:string(Dir)
-        end)},
+        {<<"cwd">>, F(<<"cwd">>, 0, fun(_, _) -> cwd() end)},
         {<<"chdir">>, F(<<"chdir">>, 0, fun(_, Args) -> chdir(A(1, Args)) end)},
         {<<"umask">>, F(<<"umask">>, 0, fun(_, Args) -> umask(A(1, Args)) end)},
         {<<"memoryUsage">>, F(<<"memoryUsage">>, 0, fun(_, Args) -> memory_usage(A(1, Args)) end)},
@@ -68,6 +65,21 @@ binding() ->
         {<<"abort">>, F(<<"abort">>, 0, fun ?MODULE:abort/2)},
         {<<"causeSegfault">>, F(<<"causeSegfault">>, 0, fun ?MODULE:segfault/2)}
     ] ++ buoy_node:stubs(<<"process_methods">>, [<<"_debugProcess">>, <<"_debugEnd">>, <<"execve">>])).
+
+%% Cwd of src/node_process_methods.cc, with its hint for a removed working
+%% directory.
+cwd() ->
+    case file:get_cwd() of
+        {ok, Dir} ->
+            buoy_node:string(Dir);
+        {error, Reason} ->
+            Hint = case Reason of
+                enoent -> <<", the current working directory was likely removed without changing the working directory">>;
+                _ -> <<>>
+            end,
+            buoy_binding_fs:uv_error(Reason, <<"uv_cwd">>, undefined, undefined,
+                                     fun(Message) -> [<<"process.cwd failed with error ">>, Message, Hint] end)
+    end.
 
 chdir(Dir) ->
     Path = buoy_ref_string:to_utf8(buoy_ref:to_string(Dir)),
