@@ -124,6 +124,9 @@ const CHOICE_OPTIONS: [(&str, &[&str], &str); 1] = [(
     "invalid value for --unhandled-rejections",
 )];
 
+/// The version of Node that `-v` prints, the release that the tests freeze their output at.
+const NODE_VERSION: &str = include_str!("../../../.node-version");
+
 /// `ExitCode::kInvalidCommandLineArgument` of Node.
 const INVALID_COMMAND_LINE_ARGUMENT: u8 = 9;
 
@@ -161,6 +164,7 @@ enum Entry {
 pub fn run(arguments: &[OsString]) -> ExitCode {
     let mut options = Options::default();
     let mut entry = None;
+    let mut print_version = false;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].to_string_lossy().into_owned();
@@ -191,6 +195,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                 break;
             }
             _ if argument.starts_with('-') && argument.len() > 1 => {
+                print_version |= argument == "-v" || argument == "--version";
                 options.exec_argv.push(argument.clone());
                 if VALUE_OPTIONS.contains(&argument.as_str())
                     && let Some(value) = arguments.get(index)
@@ -212,6 +217,10 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         );
         eprintln!("{program}: {error}");
         return ExitCode::from(INVALID_COMMAND_LINE_ARGUMENT);
+    }
+    if print_version {
+        println!("v{}", NODE_VERSION.trim());
+        return ExitCode::SUCCESS;
     }
     let program_arguments = &arguments[index.min(arguments.len())..];
     match entry {
