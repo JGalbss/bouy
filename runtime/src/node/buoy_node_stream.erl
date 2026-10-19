@@ -189,10 +189,9 @@ read_start(Handle, false) ->
     0.
 
 %% A handle that stops reading is inactive, as after uv_read_stop, so it no
-%% longer keeps the loop alive.
+%% longer keeps the loop alive; it keeps its ref for the next readStart.
 read_stop(Handle) ->
     update(Handle, fun(S) -> S#{reading := false} end),
-    set_ref(Handle, false),
     0.
 
 set_ref(Handle, Refed) ->

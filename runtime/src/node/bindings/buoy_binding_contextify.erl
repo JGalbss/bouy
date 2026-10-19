@@ -220,9 +220,11 @@ break_on_sigint(Run) ->
 
 %% startSigintWatchdog and stopSigintWatchdog, which the REPL calls around
 %% the code that it evaluates: stop returns whether a SIGINT came.
+%% True, as SigintWatchdogHelper::Start reports that it started; the REPL
+%% throws ERR_CANNOT_WATCH_SIGINT on any other value.
 start_sigint_watchdog() ->
     erlang:put(?WATCHDOGS, [buoy_binding_signal_wrap:watch_sigint() | watchdogs()]),
-    undefined.
+    true.
 
 stop_sigint_watchdog() ->
     case watchdogs() of
