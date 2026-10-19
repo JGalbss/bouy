@@ -38,6 +38,20 @@ mod sys {
         pub fn signal(signum: c_int, handler: usize) -> usize;
         pub fn pipe(fds: *mut c_int) -> c_int;
         pub fn write(fd: c_int, buffer: *const c_void, count: usize) -> isize;
+        pub fn kill(pid: c_int, signum: c_int) -> c_int;
+    }
+}
+
+/// `kill(2)` of `process.kill` and of a child's handle: 0, or the negative errno, as uv
+/// returns it. A shell's `kill` took a process and tens of milliseconds for each signal.
+#[allow(unsafe_code)]
+#[rustler::nif]
+fn os_kill(pid: c_int, signum: c_int) -> c_int {
+    // SAFETY: kill(2) takes plain integers.
+    if unsafe { sys::kill(pid, signum) } == 0 {
+        0
+    } else {
+        -std::io::Error::last_os_error().raw_os_error().unwrap_or(1)
     }
 }
 

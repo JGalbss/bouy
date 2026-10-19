@@ -16,6 +16,8 @@
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(UV_EINVAL, -22).
+%% The handles that listen for a signal that OTP cannot catch: #{Key => Signum}.
+-define(EMULATED, {?MODULE, emulated}).
 
 %% The signals of os:set_signal/2, by their numbers on this OS.
 signals() ->
@@ -61,7 +63,7 @@ start(This, Number) ->
         false when Signum0 >= 1, Signum0 =< 31, Signum0 =/= 9, Signum0 =/= 17, Signum0 =/= 19 ->
             Key = {?MODULE, listening, erlang:unique_integer([positive])},
             erlang:put(Key, This),
-            erlang:put({?MODULE, emulated, Key}, Signum0),
+            erlang:put(?EMULATED, (emulated())#{Key => Signum0}),
             S = state(This),
             save(This, S#{signal => {emulated, Key}}),
             maps:get(refed, S, true) andalso buoy_node_loop:ref_handle(),
@@ -150,7 +152,7 @@ stop(This) ->
     case maps:get(signal, S, none) of
         {emulated, Key} ->
             erlang:erase(Key),
-            erlang:erase({?MODULE, emulated, Key}),
+            erlang:put(?EMULATED, maps:remove(Key, emulated())),
             maps:get(refed, S, true) andalso buoy_node_loop:unref_handle(),
             save(This, S#{signal => none});
         {Name, Key} ->
@@ -225,11 +227,17 @@ deliver(Key, Signum) ->
             buoy_heap:is_callable(Onsignal) andalso buoy_heap:call(Onsignal, This, [Signum])
     end.
 
+emulated() ->
+    case erlang:get(?EMULATED) of
+        undefined -> #{};
+        Emulated -> Emulated
+    end.
+
 %% A signal that the program sends to itself and that OTP cannot catch: its
 %% listeners run as later callbacks. False when none listens.
 -spec emulate(integer()) -> boolean().
 emulate(Signum) ->
-    Keys = [Key || {{?MODULE, emulated, Key}, S} <- erlang:get(), S =:= Signum],
+    Keys = [Key || Key := S <- emulated(), S =:= Signum],
     Realm = self(),
     [buoy_node_stream:call(Realm, fun() -> deliver(Key, Signum) end) || Key <- Keys],
     Keys =/= [].
