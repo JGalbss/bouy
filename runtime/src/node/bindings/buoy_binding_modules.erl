@@ -5,7 +5,7 @@
 %% imports and exports as their JSON text when they are an object or an array.
 -module(buoy_binding_modules).
 
--export([binding/0]).
+-export([binding/0, scope_type/1]).
 
 -include("buoy_ref.hrl").
 
@@ -158,6 +158,15 @@ traverse(Directory) ->
                 none -> traverse(filename:dirname(Directory));
                 Package -> Package
             end
+    end.
+
+%% The type of the package scope of the file URL Url, and the path of its
+%% package.json, or none outside a package scope.
+-spec scope_type(binary()) -> {binary(), term()} | none.
+scope_type(Url) ->
+    case package_scope(Url) of
+        {found, Package} -> {Package#package.type, Package#package.path};
+        {missing, _} -> none
     end.
 
 %% GetPackageScopeConfig: the package.json of the nearest directory of the

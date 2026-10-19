@@ -64,9 +64,15 @@ run(Entry) ->
             P
     end.
 
-%% A rejection of the evaluation of the program ends it, as an uncaught error.
--spec report_uncaught(term()) -> no_return().
-report_uncaught(Error) -> buoy_ref:report_uncaught(Error).
+%% A rejection of the evaluation of the program is an uncaught error: with
+%% Node loaded, its _fatalException decides, as for the rejected entry of
+%% runEntryPointWithESMLoader, else the program ends.
+-spec report_uncaught(term()) -> term().
+report_uncaught(Error) ->
+    case buoy_node:ready() of
+        true -> buoy_node_loop:uncaught(Error, true);
+        false -> buoy_ref:report_uncaught(Error)
+    end.
 
 %% In an actor realm, whose top-level code does not run: evaluates the
 %% modules that Module imports, so that its class sees them initialized.
@@ -346,13 +352,85 @@ execute(M) ->
     _ = body(M),
     ok.
 
-%% The top-level code of M, in the realm of its context of node:vm.
+%% The top-level code of M, in the realm of its context of node:vm. An ES
+%% module of the program that reads a variable of CommonJS gets the advice of
+%% Node's ESM loader in its ReferenceError.
 body(M) ->
     case erlang:get(?HOST(M)) of
         {Realm, _, _} when Realm =/= 0 ->
             (buoy_ref_realm:realm_fun(Realm, fun(_, _) -> M:'$body'() end))(undefined, undefined);
+        undefined ->
+            try
+                M:'$body'()
+            catch
+                error:{'$throw', E} = Reason:Stack ->
+                    explain_cjs_global(M, E),
+                    erlang:raise(error, Reason, Stack)
+            end;
         _ ->
             M:'$body'()
+    end.
+
+%% explainCommonJSGlobalLikeNotDefinedError of lib/internal/modules/esm/
+%% module_job.js: a ReferenceError of require, module, exports, __filename,
+%% or __dirname in an ES module says why, and the stack shows the new message,
+%% as V8 formats the stack when it is first read.
+explain_cjs_global(M, E) ->
+    Names = [<<"require">>, <<"module">>, <<"exports">>, <<"__filename">>, <<"__dirname">>],
+    Message = kind(M) =:= esm andalso buoy_heap:is_object(E) andalso
+        buoy_heap:class_of(E) =:= error andalso text(buoy_heap:get(E, <<"message">>)),
+    case is_binary(Message) andalso text(buoy_heap:get(E, <<"name">>)) =:= <<"ReferenceError">> andalso
+         [N || N <- Names, Message =:= <<N/binary, " is not defined">>] of
+        [Name] ->
+            {Explained, Code} = case has_top_level_await(M) of
+                true -> {ambiguous_message(Name), <<"ERR_AMBIGUOUS_MODULE_SYNTAX">>};
+                false -> {scope_message(M, Name, Message), undefined}
+            end,
+            Stack = text(buoy_heap:get(E, <<"stack">>)),
+            buoy_heap:set(E, <<"message">>, buoy_ref_string:from_utf8(Explained)),
+            Code =:= undefined orelse buoy_heap:set(E, <<"code">>, Code),
+            case is_binary(Stack) andalso binary:split(Stack, Message) of
+                [Before, After] ->
+                    buoy_heap:set(E, <<"stack">>, buoy_ref_string:from_utf8(<<Before/binary, Explained/binary, After/binary>>));
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+%% The UTF-8 text of a JavaScript string, or none for another value.
+text(V) ->
+    case buoy_ref:typeof(V) of
+        <<"string">> -> buoy_ref_string:to_utf8(V);
+        _ -> none
+    end.
+
+ambiguous_message(Name) ->
+    Advice = case Name of
+        <<"require">> -> <<"replace require() with import">>;
+        <<"__filename">> -> <<"use import.meta.filename instead">>;
+        <<"__dirname">> -> <<"use import.meta.dirname instead">>;
+        _ -> <<"use export instead of module.exports/exports">>
+    end,
+    <<"Cannot determine intended module format because both '", Name/binary, "' and top-level await are present. ",
+      "If the code is intended to be CommonJS, wrap await in an async function. ",
+      "If the code is intended to be an ES module, ", Advice/binary, ".">>.
+
+scope_message(M, Name, Message) ->
+    Scoped = case Name of
+        <<"require">> -> <<Message/binary, " in ES module scope, you can use import instead">>;
+        _ -> <<Message/binary, " in ES module scope">>
+    end,
+    Path = buoy_ref_string:to_utf8(info(M, path)),
+    IsFile = binary:first(Path) =:= $/,
+    case IsFile andalso filename:extension(Path) =:= <<".js">> andalso buoy_binding_modules:scope_type(file_url(info(M, path))) of
+        {<<"module">>, PackageJson} ->
+            <<Scoped/binary, "\nThis file is being treated as an ES module because it has a '.js' file extension and '",
+              (buoy_ref_string:to_utf8(PackageJson))/binary, "' contains \"type\": \"module\". ",
+              "To treat it as a CommonJS script, rename it to use the '.cjs' file extension.">>;
+        _ ->
+            Scoped
     end.
 
 %% ExecuteAsyncModule
@@ -361,8 +439,12 @@ execute_async(M) ->
         catch
             error:Reason:Stack -> buoy_jobs:rejected(buoy_ref:caught(Reason, Stack))
         end,
-    buoy_jobs:perform_then(P, fun(_) -> async_fulfilled(M), undefined end,
-                           fun(E) -> async_rejected(M, E), undefined end, undefined).
+    Rejected = fun(E) ->
+                       erlang:get(?HOST(M)) =:= undefined andalso explain_cjs_global(M, E),
+                       async_rejected(M, E),
+                       undefined
+               end,
+    buoy_jobs:perform_then(P, fun(_) -> async_fulfilled(M), undefined end, Rejected, undefined).
 
 %% GatherAvailableAncestors
 gather(M, List) ->
