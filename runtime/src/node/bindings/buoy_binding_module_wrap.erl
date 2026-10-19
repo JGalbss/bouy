@@ -164,10 +164,28 @@ link_modules(This, Modules) ->
         buoy_node:throw_code('Error', <<"ERR_VM_MODULE_LINK_FAILURE">>,
                              iolist_to_binary(["Expected ", integer_to_binary(length(Requests)),
                                                " modules, got ", integer_to_binary(length(Given))])),
+    ok = check_cache_keys(lists:zip(Requests, Given), #{}, 0),
     BySpecifier = lists:zip([S || {S, _, _} <- Requests], Given),
     Targets = [element(2, lists:keyfind(S, 1, BySpecifier)) || S <- buoy_module:requests_of(M)],
     ok = buoy_module:link_requests(M, Targets),
     undefined.
+
+%% ModuleWrap::Link: the requests of one module cache key, the specifier and
+%% the attributes, must link to one module, whatever their phase.
+check_cache_keys([], _Seen, _Index) ->
+    ok;
+check_cache_keys([{{S, Attributes, _Phase}, Module} | Rest], Seen, Index) ->
+    case Seen of
+        #{{S, Attributes} := {_, Module}} ->
+            check_cache_keys(Rest, Seen, Index + 1);
+        #{{S, Attributes} := {First, _}} ->
+            buoy_node:throw_code('TypeError', <<"ERR_MODULE_LINK_MISMATCH">>,
+                                 iolist_to_binary(["Module request '", buoy_ref_string:to_utf8(S), "' at index ",
+                                                   integer_to_binary(Index), " must be linked to the same module requested at index ",
+                                                   integer_to_binary(First)]));
+        _ ->
+            check_cache_keys(Rest, Seen#{{S, Attributes} => {Index, Module}}, Index + 1)
+    end.
 
 instantiate(This) ->
     M = wrapped(This),
