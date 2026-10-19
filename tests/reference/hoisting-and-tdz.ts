@@ -85,7 +85,9 @@ function shortCircuitWrites(): unknown[] {
   let named: unknown = null;
   let unnamed: unknown = null;
   named ??= function (): void {};
-  unnamed ??= function (): void {};
+  // The parentheses keep the function anonymous (NamedEvaluation applies to a bare name).
+  // prettier-ignore
+  (unnamed) ??= function (): void {};
   const outcomes: unknown[] = [];
   for (const attempt of [() => (off &&= true), () => (on ||= false), () => (on &&= false)]) {
     try {

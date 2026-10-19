@@ -840,13 +840,21 @@ fn the_node_form_reports_code_that_does_not_parse_as_a_syntax_error() {
     let path = "tests/programs/diagnostics/buoy200-redeclared.ts";
     let mut command = common::buoy();
     command.current_dir(common::repository()).arg(path);
+    let place = common::repository()
+        .join(path)
+        .canonicalize()
+        .expect("the program exists");
+    let version = include_str!("../../../.node-version").trim();
+    // Node's report of the SyntaxError that the loader throws: the place and line, the
+    // source line, a caret under the column, the error, and the version.
     check(
         &mut command,
         &Outcome {
             stdout: "",
             stderr: &format!(
-                "{path}:1:7: BUOY200: Identifier `total` has already been declared\n\n\
-                 SyntaxError: Identifier `total` has already been declared\n"
+                "{}:1\nconst total = 1;\n      ^\n\n\
+                 SyntaxError: Identifier 'total' has already been declared\n\nNode.js v{version}\n",
+                place.display()
             ),
             status: 1,
         },

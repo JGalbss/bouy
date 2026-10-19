@@ -18,6 +18,8 @@
 -define(NAMES, [<<"Error">>, <<"AggregateError">>, <<"SuppressedError">> | ?NATIVE]).
 
 -define(FORMATTING, '$buoy_formatting_stack').
+%% The stack that the own `stack` accessor of an error formatted or was set to.
+-define(STACK, {'#', ?MODULE, <<"stack">>}).
 -define(CALL_SITE, [{<<"getThis">>, undefined}, {<<"getTypeName">>, null}, {<<"getFunction">>, undefined},
                     {<<"getFunctionName">>, null}, {<<"getMethodName">>, null}, {<<"getFileName">>, undefined},
                     {<<"getLineNumber">>, null}, {<<"getColumnNumber">>, null}, {<<"getEvalOrigin">>, undefined},
@@ -153,10 +155,10 @@ error_to_string(E) ->
 
 %%% The stack
 
-%% The `stack` of an error, as V8 installs it: an own property that formats
+%% The `stack` of an error, as V8 installs it: an own accessor that formats
 %% the stack on its first read, so it shows the name, message, and code that
 %% the error has by then, as Node's errors set them after their constructor.
-%% It reads like a data property from then on.
+%% It stays an accessor, and later reads give the same text.
 -spec lazy_stack() -> {'$accessor', term(), term()}.
 lazy_stack() ->
     {'$accessor', buoy_ref_realm:builtin(<<"get stack">>, fun ?MODULE:get_stack/2),
@@ -164,19 +166,22 @@ lazy_stack() ->
 
 -spec get_stack(term(), list()) -> term().
 get_stack(This, _Args) ->
-    Stack = format_stack(This),
-    keep_stack(This, Stack),
-    Stack.
+    case ?IS_OBJECT(This) andalso buoy_heap:private_find(This, ?STACK) of
+        {ok, Kept} ->
+            Kept;
+        _ ->
+            Stack = format_stack(This),
+            keep_stack(This, Stack),
+            Stack
+    end.
 
 -spec set_stack(term(), list()) -> undefined.
 set_stack(This, Args) ->
     keep_stack(This, arg(1, Args)),
     undefined.
 
-%% A frozen error keeps the accessor, which formats again on each read.
 keep_stack(O, Stack) when ?IS_OBJECT(O) ->
-    _ = buoy_heap:define_own_property(O, <<"stack">>, #{value => Stack, writable => true, enumerable => false, configurable => true}),
-    ok;
+    buoy_heap:private_put(O, ?STACK, Stack);
 keep_stack(_, _) ->
     ok.
 
