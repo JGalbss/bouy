@@ -1,16 +1,16 @@
 {
   "suite": "node",
   "version": "v25.9.0",
-  "updated": "f163d9abd2625aa8cf66d21d3c80e1739cbf80c5",
+  "updated": "ff06aba1791c71889d853cba35573eda2f68c197",
   "total": 4419,
   "outcomes": {
-    "pass": 2457,
+    "pass": 2456,
     "rejected": 0,
     "late": 0,
     "skip": 583,
     "never": 0,
-    "fail": 1301,
-    "timeout": 66,
+    "fail": 1303,
+    "timeout": 65,
     "harness_error": 0,
     "crash": 12
   },
@@ -23,10 +23,10 @@
         "timeout": 1
       },
       "parallel": {
-        "pass": 2339,
+        "pass": 2338,
         "skip": 545,
-        "fail": 1124,
-        "timeout": 59,
+        "fail": 1126,
+        "timeout": 58,
         "crash": 12
       },
       "sequential": {
@@ -41,10 +41,10 @@
         "skip": 343
       },
       "public": {
-        "pass": 2457,
+        "pass": 2456,
         "skip": 240,
-        "fail": 1301,
-        "timeout": 66,
+        "fail": 1303,
+        "timeout": 65,
         "crash": 12
       }
     },
@@ -227,10 +227,10 @@
         "fail": 2
       },
       "tls": {
-        "pass": 147,
+        "pass": 146,
         "skip": 15,
-        "fail": 48,
-        "timeout": 10
+        "fail": 50,
+        "timeout": 9
       },
       "trace_events": {
         "pass": 16,

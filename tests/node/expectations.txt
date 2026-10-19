@@ -3548,7 +3548,7 @@ parallel/test-tls-client-renegotiation-13.js pass
 parallel/test-tls-client-renegotiation-limit.js fail
 parallel/test-tls-client-resume-12.js pass
 parallel/test-tls-client-resume.js pass
-parallel/test-tls-client-verify.js pass
+parallel/test-tls-client-verify.js fail
 parallel/test-tls-clientcertengine-invalid-arg-type.js pass
 parallel/test-tls-clientcertengine-unsupported.js skip
 parallel/test-tls-close-error.js pass
@@ -3557,7 +3557,7 @@ parallel/test-tls-close-notify.js skip
 parallel/test-tls-cnnic-whitelist.js pass
 parallel/test-tls-connect-abort-controller.js pass
 parallel/test-tls-connect-address-family.js pass
-parallel/test-tls-connect-allow-half-open-option.js pass
+parallel/test-tls-connect-allow-half-open-option.js fail
 parallel/test-tls-connect-given-socket.js timeout
 parallel/test-tls-connect-hints-option.js pass
 parallel/test-tls-connect-hwm-option.js pass
@@ -3644,7 +3644,7 @@ parallel/test-tls-ocsp-callback.js fail
 parallel/test-tls-off-thread-cert-loading-disabled.js pass
 parallel/test-tls-off-thread-cert-loading-system.js fail
 parallel/test-tls-off-thread-cert-loading.js fail
-parallel/test-tls-on-empty-socket.js timeout
+parallel/test-tls-on-empty-socket.js pass
 parallel/test-tls-onread-static-buffer.js pass
 parallel/test-tls-options-boolean-check.js pass
 parallel/test-tls-over-http-tunnel.js fail
