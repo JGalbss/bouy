@@ -171,7 +171,7 @@ verify_message(#{kind := Kind, pub := Pub}, Data, Sig, _) ->
 sign_digest(#{kind := Kind} = K, Md, Digest, Padding, Salt) when Kind =:= rsa; Kind =:= rsa_pss ->
     Opts = rsa_options(K, Md, Padding, sign_salt(K, Md, Padding, Salt)),
     #{size := Size} = Md,
-    Bytes = (bit_length(maps:get(n, K)) + 7) div 8,
+    Bytes = (buoy_crypto:bit_length(maps:get(n, K)) + 7) div 8,
     (Padding =:= ?RSA_PKCS1_PADDING andalso Bytes < Size + 11 + digest_info_size(Md)) andalso
         buoy_crypto:fail({openssl, digest_too_big}),
     try crypto:sign(rsa, otp_md(Md), {digest, Digest}, rsa_private(K), Opts)
@@ -228,7 +228,7 @@ rsa_private(#{e := E, n := N, d := D, p := P, q := Q, dp := DP, dq := DQ, qi := 
 sign_salt(K, #{size := HLen}, ?RSA_PKCS1_PSS_PADDING, Salt) when Salt =:= undefined; Salt =:= -2 ->
     case buoy_crypto_pkey:pss_params(K) of
         undefined ->
-            Bits = bit_length(maps:get(n, K)),
+            Bits = buoy_crypto:bit_length(maps:get(n, K)),
             EmLen = (Bits + 7) div 8 - case (Bits - 1) band 7 of 0 -> 1; _ -> 0 end,
             EmLen - HLen - 2;
         _ -> Salt
@@ -261,14 +261,11 @@ rsa_options(_, _, ?RSA_PKCS1_PADDING, _) ->
 rsa_options(_, _, _, _) ->
     buoy_crypto:fail({openssl, illegal_padding}).
 
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
-
 %%% Signature encodings
 
 %% The size of each of r and s of a DSA or ECDSA signature (getBytesOfRS).
 rs_size(#{kind := ec, curve := Curve}) -> {ok, (buoy_crypto_pkey:curve_bits(Curve) + 7) div 8};
-rs_size(#{kind := dsa, q := Q}) -> {ok, (bit_length(Q) + 7) div 8};
+rs_size(#{kind := dsa, q := Q}) -> {ok, (buoy_crypto:bit_length(Q) + 7) div 8};
 rs_size(_) -> none.
 
 encode_signature(K, Sig, ?P1363) ->

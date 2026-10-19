@@ -13,8 +13,9 @@ members() ->
      {<<"secureBuffer">>, buoy_node:fn(<<"secureBuffer">>, 1, fun(_, Args) ->
          buoy_node:typed_array(<<"Uint8Array">>, buoy_crypto:to_uint32(buoy_node:arg(1, Args)))
      end)},
-     %% Buoy keeps no secure heap, as Node without --secure-heap.
-     {<<"secureHeapUsed">>, buoy_node:fn(<<"secureHeapUsed">>, 0, fun(_, _) -> {'$bigint', 0} end)}].
+     %% undefined while no secure heap is initialized (CRYPTO_secure_malloc_initialized):
+     %% Buoy keeps none, as Node without --secure-heap.
+     {<<"secureHeapUsed">>, buoy_node:fn(<<"secureHeapUsed">>, 0, fun(_, _) -> undefined end)}].
 
 %% new RandomBytesJob(mode, buffer, offset, size): the bytes go into the
 %% buffer when the job is done.
@@ -30,7 +31,7 @@ random_prime_job([Bits, Safe | Rest]) ->
     case Add of
         undefined -> ok;
         _ when Add > 0 ->
-            bit_length(Add) > Bits andalso
+            buoy_crypto:bit_length(Add) > Bits andalso
                 buoy_node:throw_code('RangeError', <<"ERR_OUT_OF_RANGE">>, <<"invalid options.add">>),
             is_integer(Rem) andalso Add =< Rem andalso
                 buoy_node:throw_code('RangeError', <<"ERR_OUT_OF_RANGE">>, <<"invalid options.rem">>);
@@ -78,7 +79,7 @@ generate_prime(Bits, Safe, Add, Rem) ->
 search(Bits, Safe, Add, Rem, Start, Step, Residues, K) ->
     Offset = K * Step,
     Candidate = Start + Offset,
-    case bit_length(Candidate) > Bits of
+    case buoy_crypto:bit_length(Candidate) > Bits of
         true -> generate_prime(Bits, Safe, Add, Rem);
         false ->
             case sieved(Residues, Offset, Safe) andalso probable(Candidate, Safe) of
@@ -101,7 +102,7 @@ sieved([{P, R} | Rest], Offset, Safe) ->
 %% exponentiation, and the full Miller-Rabin rounds confirm the rest.
 probable(N, Safe) ->
     Q = N bsr 1,
-    pow(2, N - 1, N) =:= 1 andalso (not Safe orelse pow(2, Q - 1, Q) =:= 1) andalso
+    buoy_crypto:mod_pow(2, N - 1, N) =:= 1 andalso (not Safe orelse buoy_crypto:mod_pow(2, Q - 1, Q) =:= 1) andalso
         is_prime(N, 0) andalso (not Safe orelse is_prime(Q, 0)).
 
 candidate(Bits, Safe, undefined, _) when Bits >= 2 ->
@@ -123,7 +124,7 @@ candidate(Bits, Safe, Add, Rem) when is_integer(Add), Add > 0 ->
         true -> 5;
         false -> 3
     end,
-    case bit_length(C) < Bits orelse C < Small of
+    case buoy_crypto:bit_length(C) < Bits orelse C < Small of
         true -> C + Add;
         false -> C
     end;
@@ -133,9 +134,6 @@ candidate(_, _, _, _) ->
 random_bits(Bits) ->
     Bytes = (Bits + 7) div 8,
     binary:decode_unsigned(crypto:strong_rand_bytes(Bytes)) band ((1 bsl Bits) - 1).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
 
 %% Miller-Rabin with Checks rounds, or the rounds that OpenSSL 3 takes for
 %% the size (64, or 128 above 2048 bits) when Checks is 0, after trial
@@ -153,7 +151,7 @@ is_prime(N, Checks) ->
                 _ -> Checks
             end,
             {D, S} = odd_part(N - 1, 0),
-            lists:all(fun(_) -> witness(N, D, S, 2 + rand_below(N - 3)) end, lists:seq(1, Rounds))
+            lists:all(fun(_) -> witness(N, D, S, 2 + buoy_crypto:rand_below(N - 3)) end, lists:seq(1, Rounds))
     end.
 
 small_factor(N) ->
@@ -201,21 +199,16 @@ sieve([P | Rest]) -> [P | sieve([X || X <- Rest, X rem P =/= 0])].
 odd_part(D, S) when D band 1 =:= 0 -> odd_part(D bsr 1, S + 1);
 odd_part(D, S) -> {D, S}.
 
-%% A random integer in [0, N).
-rand_below(N) when N =< 1 -> 0;
-rand_below(N) -> binary:decode_unsigned(crypto:strong_rand_bytes((bit_length(N) + 7) div 8 + 8)) rem N.
-
 %% Whether N is a probable prime to the base A.
 witness(N, D, S, A) ->
-    X = pow(A, D, N),
+    X = buoy_crypto:mod_pow(A, D, N),
     X =:= 1 orelse X =:= N - 1 orelse squares(X, S - 1, N).
 
 squares(_, 0, _) -> false;
 squares(X, R, N) ->
-    case pow(X, 2, N) of
+    case buoy_crypto:mod_pow(X, 2, N) of
         Y when Y =:= N - 1 -> true;
         1 -> false;
         Y -> squares(Y, R - 1, N)
     end.
 
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).

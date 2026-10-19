@@ -9,7 +9,7 @@
 -include_lib("kernel/include/file.hrl").
 -include("buoy_ref.hrl").
 
--export([clone_in/1]).
+-export([from_clone/1]).
 -export([binding/0]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
@@ -60,13 +60,13 @@ instance(Index, State) ->
     Class = element(Index, erlang:get({?MODULE, classes})),
     Object = buoy_node:object(buoy_heap:get(Class, <<"prototype">>), []),
     buoy_heap:private_put(Object, ?STATE, State),
-    Index =:= 1 andalso buoy_binding_messaging:mark_cloneable(Object, ?MODULE, State),
+    Index =:= 1 andalso buoy_binding_messaging:set_cloneable(Object, ?MODULE, State),
     Object.
 
 %% The BlobHandle of a message in the realm that receives it, which shares
 %% the parts of the sender's, as Blob::Wrap of BlobTransferData does.
--spec clone_in({blob, [part()]}) -> term().
-clone_in(State) ->
+-spec from_clone({blob, [part()]}) -> term().
+from_clone(State) ->
     _ = buoy_node:binding(<<"blob">>),
     instance(1, State).
 

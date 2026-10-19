@@ -15,7 +15,7 @@
 -export([write_public/3, write_private/5, spki/1, pkcs8/1]).
 -export([is_private/1, complete/1, public/1]).
 -export([curve/1, curve_by_name/1, curve_name/1, curve_info/1, curve_bits/1, decode_point/2, encode_point/3, on_curve/2]).
--export([pss_params/1]).
+-export([pss_params/1, pbe_decrypt/3, bmp_password/1]).
 
 %% Functions that only throw.
 -dialyzer({no_return, [fail/1]}).
@@ -241,11 +241,11 @@ private_from(?RSA, _, Inner) -> rsa_private_decode(Inner);
 private_from(?RSA_PSS, Params, Inner) -> (rsa_private_decode(Inner))#{kind := rsa_pss, pss => pss_decode(Params)};
 private_from(?DSA, {seq, [{int, P}, {int, Q}, {int, G}]}, Inner) ->
     {int, X} = decode(Inner),
-    #{kind => dsa, p => P, q => Q, g => G, x => X, y => crypto_pow(G, X, P)};
+    #{kind => dsa, p => P, q => Q, g => G, x => X, y => buoy_crypto:mod_pow(G, X, P)};
 private_from(Oid, Params, Inner) when Oid =:= ?DH; Oid =:= ?DH_X942 ->
     {int, X} = decode(Inner),
     #{p := P, g := G} = K = dh_params(Oid, Params),
-    K#{x => X, y => crypto_pow(G, X, P)};
+    K#{x => X, y => buoy_crypto:mod_pow(G, X, P)};
 private_from(?EC, Params, Inner) -> sec1_decode(Inner, Params);
 private_from(Oid, none, Inner) ->
     {_, Kind} = lists:keyfind(Oid, 1, oid_kinds()),
@@ -256,8 +256,6 @@ raw_private(Kind, Inner) when Kind =:= ed25519; Kind =:= ed448; Kind =:= x25519;
     #{kind => Kind, priv => Priv, pub => derive_okp_public(Kind, Priv)};
 raw_private(Kind, Inner) ->
     buoy_crypto_pqc:private_decode(Kind, Inner).
-
-crypto_pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
 
 %% RSASSA-PSS-params, or none for a key of any parameters.
 pss_decode(none) -> undefined;
@@ -298,11 +296,20 @@ is_encrypted_pkcs8(_) -> false.
 %% The PrivateKeyInfo inside an EncryptedPrivateKeyInfo.
 decrypt_pkcs8(_, undefined) -> fail(interrupted_or_cancelled);
 decrypt_pkcs8(Der, Passphrase) ->
-    {Scheme, Data} = der_or_fail(fun() ->
-        {seq, [{seq, [{oid, ?PBES2}, {seq, [KdfSpec, EncSpec]}]}, {octets, D}]} = decode(Der),
-        {{KdfSpec, EncSpec}, D}
+    {Algorithm, Data} = der_or_fail(fun() ->
+        {seq, [{seq, _} = A, {octets, D}]} = decode(Der),
+        {A, D}
     end),
-    {{seq, [{oid, ?PBKDF2}, {seq, [{octets, Salt}, {int, Iter} | KdfRest]}]}, {seq, [{oid, CipherOid} | CipherParams]}} = Scheme,
+    pbe_decrypt(Algorithm, Data, Passphrase).
+
+%% Data decrypted under the password-based encryption Algorithm, an
+%% AlgorithmIdentifier: PBES2 with PBKDF2 (RFC 8018), or a PBE of PKCS #12
+%% (RFC 7292, appendix C) with 3DES. OpenSSL's default provider has no RC2
+%% or RC4, so their PBEs are unsupported, as in Node. A null passphrase is
+%% no password, which differs from the empty one in PKCS #12.
+-spec pbe_decrypt(buoy_crypto_der:value(), binary(), binary() | null) -> binary().
+pbe_decrypt({seq, [{oid, ?PBES2}, {seq, [{seq, [{oid, ?PBKDF2}, {seq, [{octets, Salt}, {int, Iter} | KdfRest]}]},
+                                         {seq, [{oid, CipherOid} | CipherParams]}]}]}, Data, Passphrase) ->
     Cipher = case [Name || {Name, Oid} <- cipher_oids(), Oid =:= CipherOid] of
         [Name] -> pbe_cipher(Name);
         [] -> fail(unsupported)
@@ -312,12 +319,42 @@ decrypt_pkcs8(Der, Passphrase) ->
         [] -> <<"sha1">>
     end,
     {ok, Md} = buoy_crypto_hash:digest(Prf),
-    Key = buoy_crypto_kdf:pbkdf2(Md, Passphrase, Salt, Iter, maps:get(key, Cipher)),
+    Key = buoy_crypto_kdf:pbkdf2(Md, password_bytes(Passphrase), Salt, Iter, maps:get(key, Cipher)),
     IV = case CipherParams of
         [{octets, V}] -> V;
         _ -> <<>>
     end,
-    crypt(Cipher, Key, IV, Data, false).
+    crypt(Cipher, Key, IV, Data, false);
+pbe_decrypt({seq, [{oid, {1,2,840,113549,1,12,1,N}}, {seq, [{octets, Salt}, {int, Iter}]}]}, Data, Passphrase)
+  when N =:= 3; N =:= 4 ->
+    {ok, Sha1} = buoy_crypto_hash:digest(<<"sha1">>),
+    Password = bmp_password(Passphrase),
+    IV = buoy_crypto_kdf:pkcs12(Sha1, 2, Password, Salt, Iter, 8),
+    %% Two-key 3DES (N = 4) is 3DES with the first key again.
+    Key3 = case N of
+        3 -> buoy_crypto_kdf:pkcs12(Sha1, 1, Password, Salt, Iter, 24);
+        4 -> two_key(buoy_crypto_kdf:pkcs12(Sha1, 1, Password, Salt, Iter, 16))
+    end,
+    crypt(pbe_cipher(<<"des-ede3-cbc">>), Key3, IV, Data, false);
+pbe_decrypt(_, _, _) ->
+    fail(unsupported).
+
+%% The password of the PKCS #12 key derivation: the UTF-8 passphrase as a
+%% BMPString with two zero bytes, or its bytes as Latin-1 when it is no
+%% UTF-8, as PKCS12_key_gen_utf8 reads it.
+-spec bmp_password(binary() | null) -> binary().
+bmp_password(null) -> <<>>;
+bmp_password(Passphrase) ->
+    Utf16 = case unicode:characters_to_binary(Passphrase, utf8, {utf16, big}) of
+        B when is_binary(B) -> B;
+        _ -> << <<0, C>> || <<C>> <= Passphrase >>
+    end,
+    <<Utf16/binary, 0, 0>>.
+
+two_key(<<K1:8/binary, _/binary>> = Key) -> <<Key/binary, K1/binary>>.
+
+password_bytes(null) -> <<>>;
+password_bytes(Passphrase) -> Passphrase.
 
 %% The ciphers of OpenSSL's key encryption that OTP's crypto runs, with the
 %% OIDs that PBES2 names them by.
@@ -625,14 +662,11 @@ curve_info(Curve) -> crypto_ec_curves:curve(Curve).
 -spec curve_bits(atom()) -> pos_integer().
 curve_bits(Curve) ->
     Order = binary:decode_unsigned(element(4, curve_info(Curve))),
-    bit_length(Order).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
+    buoy_crypto:bit_length(Order).
 
 field_bytes(Curve) ->
     case element(1, curve_info(Curve)) of
-        {prime_field, P} -> (bit_length(binary:decode_unsigned(P)) + 7) div 8;
+        {prime_field, P} -> (buoy_crypto:bit_length(binary:decode_unsigned(P)) + 7) div 8;
         {characteristic_two_field, M, _} -> (M + 7) div 8
     end.
 
@@ -657,7 +691,7 @@ decompress(Curve, X, Odd) ->
             P = binary:decode_unsigned(PB),
             A = binary:decode_unsigned(AB),
             B = binary:decode_unsigned(BB),
-            Rhs = (pow(X, 3, P) + A * X + B) rem P,
+            Rhs = (buoy_crypto:mod_pow(X, 3, P) + A * X + B) rem P,
             case sqrt_mod(Rhs, P) of
                 {ok, Y0} when Y0 band 1 =:= Odd -> {ok, {X, Y0}};
                 {ok, Y0} -> {ok, {X, (P - Y0) rem P}};
@@ -666,21 +700,19 @@ decompress(Curve, X, Odd) ->
         _ -> error
     end.
 
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
-
 %% A square root of A modulo the prime P (Tonelli-Shanks), or error.
 sqrt_mod(0, _) -> {ok, 0};
 sqrt_mod(A, P) ->
-    case pow(A, (P - 1) div 2, P) of
-        1 when P rem 4 =:= 3 -> {ok, pow(A, (P + 1) div 4, P)};
+    case buoy_crypto:mod_pow(A, (P - 1) div 2, P) of
+        1 when P rem 4 =:= 3 -> {ok, buoy_crypto:mod_pow(A, (P + 1) div 4, P)};
         1 -> {ok, tonelli(A, P)};
         _ -> error
     end.
 
 tonelli(A, P) ->
     {Q, S} = odd(P - 1, 0),
-    Z = hd([Z || Z <- lists:seq(2, 1000), pow(Z, (P - 1) div 2, P) =:= P - 1]),
-    tonelli_loop(S, pow(Z, Q, P), pow(A, Q, P), pow(A, (Q + 1) div 2, P), P).
+    Z = hd([Z || Z <- lists:seq(2, 1000), buoy_crypto:mod_pow(Z, (P - 1) div 2, P) =:= P - 1]),
+    tonelli_loop(S, buoy_crypto:mod_pow(Z, Q, P), buoy_crypto:mod_pow(A, Q, P), buoy_crypto:mod_pow(A, (Q + 1) div 2, P), P).
 
 odd(Q, S) when Q band 1 =:= 0 -> odd(Q bsr 1, S + 1);
 odd(Q, S) -> {Q, S}.
@@ -688,11 +720,11 @@ odd(Q, S) -> {Q, S}.
 tonelli_loop(_, _, 1, R, _) -> R;
 tonelli_loop(M, C, T, R, P) ->
     I = least_i(T, 1, P),
-    B = pow(C, 1 bsl (M - I - 1), P),
+    B = buoy_crypto:mod_pow(C, 1 bsl (M - I - 1), P),
     tonelli_loop(I, B * B rem P, T * B * B rem P, R * B rem P, P).
 
 least_i(T, I, P) ->
-    case pow(T, 1 bsl I, P) of
+    case buoy_crypto:mod_pow(T, 1 bsl I, P) of
         1 -> I;
         _ -> least_i(T, I + 1, P)
     end.

@@ -9,7 +9,8 @@
 -export([bytes/1, data/2, is_buffer_source/1, array_buffer/1, buffer/1, encoding/2, encode/2, encode_output/3]).
 -export([class/3, fn/3, method/3, state/2, put_state/2, state_key/1, guard/1]).
 -export([fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, error_value/1, openssl_message/1]).
--export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2]).
+-export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2, bit_length/1, has_room/1]).
+-export([mod_pow/3, rand_below/1]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
 -dialyzer({no_return, [fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, illegal/0]}).
@@ -62,6 +63,29 @@ encode_output(Bytes, Encoding, Default) -> encode(Bytes, encoding(Encoding, Defa
 
 %% Whether A and B are the same bytes, in a time that does not depend on
 %% where they differ (CRYPTO_memcmp).
+%% The bits of a non-negative integer, as BN_num_bits counts them. It reads
+%% the bytes once: a bit-by-bit shift loop is quadratic in the size.
+-spec bit_length(non_neg_integer()) -> non_neg_integer().
+bit_length(0) -> 0;
+bit_length(N) ->
+    <<Top, _/binary>> = Bytes = binary:encode_unsigned(N),
+    (byte_size(Bytes) - 1) * 8 + length(integer_to_list(Top, 2)).
+
+%% B to the power E modulo M, on OpenSSL's BN_mod_exp.
+-spec mod_pow(non_neg_integer(), non_neg_integer(), pos_integer()) -> non_neg_integer().
+mod_pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
+
+%% A random integer in [0, N), from 64 more random bits than N has, so the
+%% bias of the remainder is below 2^-64.
+-spec rand_below(pos_integer()) -> non_neg_integer().
+rand_below(N) when N =< 1 -> 0;
+rand_below(N) -> binary:decode_unsigned(crypto:strong_rand_bytes((bit_length(N) + 7) div 8 + 8)) rem N.
+
+%% Whether the VM can hold Bytes more under BUOY_MAX_MEMORY. A NIF whose
+%% allocation fails aborts the VM, so a job asks first.
+-spec has_room(non_neg_integer()) -> boolean().
+has_room(Bytes) -> Bytes < buoy_guard:limit(os:getenv("BUOY_MAX_MEMORY", "")) - erlang:memory(total).
+
 -spec equal_bytes(binary(), binary()) -> boolean().
 equal_bytes(<<>>, <<>>) -> true;
 equal_bytes(A, B) when byte_size(A) =:= byte_size(B) -> crypto:hash_equals(A, B);
@@ -226,6 +250,8 @@ reason(key_size_too_small) -> {prov, 171, <<"key size too small">>};
 reason(pub_exponent_out_of_range) -> {rsa, 178, <<"pub exponent out of range">>};
 reason(provider_keymgmt_failure) -> {evp, 233, <<"provider keymgmt failure">>};
 reason(unsupported) -> {evp, 16#8010C, <<"unsupported">>};
+reason(decode_error) -> {evp, 114, <<"decode error">>};
+reason(xts_duplicated_keys) -> {prov, 149, <<"xts duplicated keys">>};
 reason(pem_no_start_line) -> {pem, 108, <<"no start line">>};
 reason(pem_asn1_lib) -> {pem, 16#8000D, <<"ASN1 lib">>};
 reason(pem_unsupported_cipher) -> {pem, 113, <<"unsupported cipher">>};

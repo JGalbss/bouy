@@ -5,7 +5,7 @@
 %% of crypto_spkac.cc under crypto.Certificate.
 -module(buoy_crypto_x509).
 
--export([members/0, certificate/1, decode/1]).
+-export([members/0, certificate/1, decode/1, from_clone/1, holds_private_key/2]).
 
 -define(SAN, {2,5,29,17}).
 -define(AIA, {1,3,6,1,5,5,7,1,1}).
@@ -145,11 +145,17 @@ certificate(Der) ->
     {ok, Cert} = decode(Der),
     handle(Cert).
 
+%% A handle clones for messaging with its certificate, as
+%% X509Certificate::CloneForMessaging does.
 handle(Cert) ->
     Class = class(),
     Handle = buoy_heap:construct(Class, [], Class),
     buoy_crypto:put_state(Handle, {x509, Cert}),
+    buoy_binding_messaging:set_cloneable(Handle, ?MODULE, Cert),
     Handle.
+
+-spec from_clone(map()) -> term().
+from_clone(Cert) -> handle(Cert).
 
 class() ->
     Key = {?MODULE, class, erlang:get('$buoy_realm')},
@@ -195,7 +201,11 @@ cert(This) -> buoy_crypto:state(This, x509).
 js(undefined) -> undefined;
 js(Text) -> buoy_node_encoding:decode_utf8(Text).
 
-public_key(#{spki := Spki}) -> buoy_crypto_pkey:parse_public_der(Spki, 2).
+%% X509_get_pubkey: a subject key that does not parse is an EVP decode error.
+public_key(#{spki := Spki}) ->
+    try buoy_crypto_pkey:parse_public_der(Spki, 2)
+    catch error:{crypto_failure, _} -> buoy_crypto:fail({openssl, decode_error})
+    end.
 
 ext(#{extensions := Exts}, Oid) ->
     case lists:keyfind(Oid, 1, Exts) of
@@ -447,6 +457,15 @@ check_private_key(This, Args) ->
     {private, K} = buoy_crypto_keys:key_data(buoy_node:arg(1, Args)),
     same_key(public_key(cert(This)), buoy_crypto_pkey:public(K)).
 
+%% Whether the certificate of the DER Der holds the public key of the
+%% private key K (a key of buoy_crypto_pkey), as X509_check_private_key.
+-spec holds_private_key(binary(), term()) -> boolean().
+holds_private_key(Der, K) ->
+    case decode(Der) of
+        {ok, Cert} -> same_key(public_key(Cert), buoy_crypto_pkey:public(K));
+        error -> false
+    end.
+
 same_key(#{kind := ec, curve := C, pub := A}, #{kind := ec, curve := C, pub := B}) ->
     buoy_crypto_pkey:decode_point(C, A) =:= buoy_crypto_pkey:decode_point(C, B);
 same_key(A, B) -> maps:without([explicit, x942], A) =:= maps:without([explicit, x942], B).
@@ -600,7 +619,7 @@ key_fields(#{kind := Kind, n := N, e := E}) when Kind =:= rsa; Kind =:= rsa_pss 
      {<<"exponent">>, <<"0x", (string:lowercase(integer_to_binary(E, 16)))/binary>>},
      {<<"pubkey">>, buoy_crypto:buffer(buoy_crypto_der:encode({seq, [{seq, [{oid, {1,2,840,113549,1,1,1}}, null]},
                                                                       {bits, buoy_crypto_der:encode({seq, [{int, N}, {int, E}]})}]}))},
-     {<<"bits">>, bit_length(N)}];
+     {<<"bits">>, buoy_crypto:bit_length(N)}];
 key_fields(#{kind := ec, curve := Curve, pub := Pub}) ->
     [{<<"pubkey">>, buoy_crypto:buffer(Pub)}, {<<"bits">>, buoy_crypto_pkey:curve_bits(Curve)}];
 key_fields(_) -> [].
@@ -636,5 +655,3 @@ name_key(Oid) ->
         Name -> Name
     end.
 
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.

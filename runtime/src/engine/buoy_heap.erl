@@ -2332,7 +2332,8 @@ out_entries(Entries, Seen) ->
 out_list(Items, Seen) ->
     lists:mapfoldl(fun out/2, Seen, Items).
 
-%% Builds the clone of Term in this realm.
+%% Builds the clone of Term in this realm, of the intrinsics of the current
+%% realm, as StructuredDeserialize makes it in the target realm.
 -spec clone_in(term()) -> value().
 clone_in(Term) ->
     {Value, _} = in(Term, #{}),
@@ -2345,20 +2346,20 @@ in({'$host', N, Tag, DataTerm}, Made) ->
     O = (erlang:get(?CLONE_HOOK))({Tag, Data}),
     {O, Made1#{N => O}};
 in({'$object', N, Pairs}, Made) ->
-    O = new_object(?OBJECT_PROTO),
+    O = new_object(intrinsic('Object.prototype')),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) -> {V1, M1} = in(V, M), {{K, V1}, M1} end, Made#{N => O}, Pairs),
     {'$o', Id} = O,
     {Props, Keys} = lists:foldl(fun({K, V}, {Ps, Ks}) -> {Ps#{K => V}, add_key(K, Ps, Ks)} end, {#{}, []}, Values),
-    erlang:put(Id, {object, ?OBJECT_PROTO, Props, Keys, #{}, none}),
+    erlang:put(Id, {object, intrinsic('Object.prototype'), Props, Keys, #{}, none}),
     {O, Made1};
 in({'$array', N, Length, Pairs}, Made) ->
     O = new_array([]),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) -> {V1, M1} = in(V, M), {{K, V1}, M1} end, Made#{N => O}, Pairs),
     {'$o', Id} = O,
-    erlang:put(Id, {array, ?ARRAY_PROTO, #{}, [], #{}, {Length, maps:from_list(Values)}}),
+    erlang:put(Id, {array, intrinsic('Array.prototype'), #{}, [], #{}, {Length, maps:from_list(Values)}}),
     {O, Made1};
 in({'$map', N, Entries}, Made) ->
-    O = new_exotic(map, {'$o', 'Map.prototype'}, {#{}, 0}),
+    O = new_exotic(map, intrinsic('Map.prototype'), {#{}, 0}),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) ->
                                              {K1, M1} = in(K, M),
                                              {V1, M2} = in(V, M1),
@@ -2368,16 +2369,16 @@ in({'$map', N, Entries}, Made) ->
     set_slots(O, {Index, length(Values)}),
     {O, Made1};
 in({'$set', N, Members}, Made) ->
-    O = new_exotic(set, {'$o', 'Set.prototype'}, {#{}, 0}),
+    O = new_exotic(set, intrinsic('Set.prototype'), {#{}, 0}),
     {Values, Made1} = lists:mapfoldl(fun in/2, Made#{N => O}, Members),
     set_slots(O, {maps:from_list([{K, Seq} || {Seq, K} <- lists:enumerate(0, Values)]), length(Values)}),
     {O, Made1};
 in({'$wrapper', N, Class, Primitive}, Made) ->
     Proto = case Class of
-        number -> {'$o', 'Number.prototype'};
-        string -> {'$o', 'String.prototype'};
-        boolean -> {'$o', 'Boolean.prototype'};
-        bigint -> {'$o', 'BigInt.prototype'}
+        number -> intrinsic('Number.prototype');
+        string -> intrinsic('String.prototype');
+        boolean -> intrinsic('Boolean.prototype');
+        bigint -> intrinsic('BigInt.prototype')
     end,
     O = case Class of
         string -> buoy_ref_string:wrap(Primitive, Proto);
@@ -2393,23 +2394,23 @@ in({'$shared_array_buffer', N, Slots}, Made) ->
     {O, Made#{N => O}};
 in({'$typed_array', N, Kind, BufferTerm, Offset, Length}, Made) ->
     {Buffer, Made1} = in(BufferTerm, Made),
-    Proto = {'$o', binary_to_atom(<<(buoy_ref_buffer:kind_name(Kind))/binary, ".prototype">>)},
+    Proto = intrinsic(binary_to_atom(<<(buoy_ref_buffer:kind_name(Kind))/binary, ".prototype">>)),
     O = new_exotic(typed_array, Proto, {Kind, Buffer, Offset, Length}),
     {O, Made1#{N => O}};
 in({'$data_view', N, BufferTerm, Offset, Length}, Made) ->
     {Buffer, Made1} = in(BufferTerm, Made),
-    O = new_exotic(data_view, {'$o', 'DataView.prototype'}, {Buffer, Offset, Length}),
+    O = new_exotic(data_view, intrinsic('DataView.prototype'), {Buffer, Offset, Length}),
     {O, Made1#{N => O}};
 in({'$date', N, Ms}, Made) ->
-    O = new_exotic(date, {'$o', 'Date.prototype'}, Ms),
+    O = new_exotic(date, intrinsic('Date.prototype'), Ms),
     {O, Made#{N => O}};
 in({'$regexp', N, Source, Flags}, Made) ->
     O = buoy_ref_regexp:literal(Source, Flags),
     {O, Made#{N => O}};
 in({'$error', N, Name, Message, Stack}, Made) ->
     Proto = case lists:member(Name, [<<"Error">>, <<"TypeError">>, <<"RangeError">>, <<"SyntaxError">>, <<"ReferenceError">>]) of
-        true -> {'$o', binary_to_atom(<<Name/binary, ".prototype">>)};
-        false -> {'$o', 'Error.prototype'}
+        true -> intrinsic(binary_to_atom(<<Name/binary, ".prototype">>));
+        false -> intrinsic('Error.prototype')
     end,
     O = error_object(Proto, Message, Stack),
     {O, Made#{N => O}};

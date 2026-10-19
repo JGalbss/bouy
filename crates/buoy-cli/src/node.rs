@@ -130,28 +130,82 @@ const NODE_VERSION: &str = include_str!("../../../.node-version");
 /// `ExitCode::kInvalidCommandLineArgument` of Node.
 const INVALID_COMMAND_LINE_ARGUMENT: u8 = 9;
 
-/// The error of the first option of `exec_argv` whose value Node rejects, which Node
-/// reports before any JavaScript runs.
-fn invalid_option(exec_argv: &[String]) -> Option<&'static str> {
+/// The options of `exec_argv` as names and values, with `_` read as `-` in a name, as
+/// Node reads it. A value option without `=` takes the next item as its value.
+fn parse_options(exec_argv: &[String]) -> Vec<(String, Option<&str>)> {
     let mut items = exec_argv.iter();
+    let mut options = Vec::new();
     while let Some(item) = items.next() {
         let (name, inline) = item
             .split_once('=')
             .map_or((item.as_str(), None), |(name, value)| (name, Some(value)));
         let name = name.replace('_', "-");
-        let Some((_, choices, error)) =
-            CHOICE_OPTIONS.iter().find(|(option, _, _)| *option == name)
-        else {
-            continue;
-        };
-        let value = inline
-            .or_else(|| items.next().map(String::as_str))
-            .unwrap_or("");
-        if !value.is_empty() && !choices.contains(&value) {
-            return Some(error);
+        let value = inline.or_else(|| {
+            VALUE_OPTIONS
+                .contains(&name.as_str())
+                .then(|| items.next().map(String::as_str))
+                .flatten()
+        });
+        options.push((name, value));
+    }
+    options
+}
+
+/// The errors of `PerProcessOptions::CheckOptions` and then of
+/// `EnvironmentOptions::CheckOptions` in node v25.9.0 for `exec_argv`. Node prints each
+/// one before any JavaScript runs.
+fn invalid_options(exec_argv: &[String]) -> Vec<&'static str> {
+    let options = parse_options(exec_argv);
+    let value = |option: &str| {
+        options
+            .iter()
+            .rev()
+            .find(|(name, _)| name == option)
+            .and_then(|(_, value)| *value)
+    };
+    // The last of `--flag` and `--no-flag` wins.
+    let is_set = |flag: &str| {
+        options
+            .iter()
+            .rev()
+            .find_map(|(name, _)| match name.strip_prefix("--no-") {
+                Some(negated) if flag.strip_prefix("--") == Some(negated) => Some(false),
+                _ => (name == flag).then_some(true),
+            })
+            .unwrap_or(false)
+    };
+    let number = |option: &str| value(option).and_then(|text| text.parse::<i64>().ok());
+    let mut errors = Vec::new();
+    if is_set("--use-openssl-ca") && is_set("--use-bundled-ca") {
+        errors.push("either --use-openssl-ca or --use-bundled-ca can be used, not both");
+    }
+    if is_set("--use-openssl-ca") && is_set("--use-system-ca") {
+        errors.push("either --use-openssl-ca or --use-system-ca can be used, not both");
+    }
+    // A secure heap below 2 bytes is off.
+    let heap = number("--secure-heap").unwrap_or(0);
+    if heap >= 2 {
+        if heap & (heap - 1) != 0 {
+            errors.push("--secure-heap must be a power of 2");
+        }
+        let min = number("--secure-heap-min")
+            .unwrap_or(2)
+            .min(heap)
+            .min(i64::from(i32::MAX))
+            .max(2);
+        if min & (min - 1) != 0 {
+            errors.push("--secure-heap-min must be a power of 2");
         }
     }
-    None
+    for (option, choices, error) in CHOICE_OPTIONS {
+        if let Some(value) = value(option)
+            && !value.is_empty()
+            && !choices.contains(&value)
+        {
+            errors.push(error);
+        }
+    }
+    errors
 }
 
 enum Entry {
@@ -210,12 +264,15 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             }
         }
     }
-    if let Some(error) = invalid_option(&options.exec_argv) {
+    let errors = invalid_options(&options.exec_argv);
+    if !errors.is_empty() {
         let program = env::args_os().next().map_or_else(
             || "buoy".to_owned(),
             |name| name.to_string_lossy().into_owned(),
         );
-        eprintln!("{program}: {error}");
+        for error in errors {
+            eprintln!("{program}: {error}");
+        }
         return ExitCode::from(INVALID_COMMAND_LINE_ARGUMENT);
     }
     if print_version {
@@ -391,20 +448,52 @@ mod tests {
                 .map(|item| (*item).to_owned())
                 .collect::<Vec<_>>()
         };
+        let unhandled = vec!["invalid value for --unhandled-rejections"];
         assert_eq!(
-            invalid_option(&argv(&["--unhandled-rejections=foobar"])),
-            Some("invalid value for --unhandled-rejections")
+            invalid_options(&argv(&["--unhandled-rejections=foobar"])),
+            unhandled
         );
         assert_eq!(
-            invalid_option(&argv(&["--unhandled_rejections", "foobar"])),
-            Some("invalid value for --unhandled-rejections")
+            invalid_options(&argv(&["--unhandled_rejections", "foobar"])),
+            unhandled
+        );
+        assert!(invalid_options(&argv(&["--unhandled-rejections=strict"])).is_empty());
+        assert!(invalid_options(&argv(&["--unhandled-rejections="])).is_empty());
+        assert!(invalid_options(&argv(&["--no-warnings"])).is_empty());
+    }
+
+    /// The per-process checks of test-openssl-ca-options and test-crypto-secure-heap.
+    #[test]
+    fn rejects_conflicting_ca_stores_and_a_secure_heap_off_powers_of_2() {
+        let argv = |items: &[&str]| {
+            items
+                .iter()
+                .map(|item| (*item).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            invalid_options(&argv(&["--use-bundled-ca", "--use-openssl-ca"])),
+            vec!["either --use-openssl-ca or --use-bundled-ca can be used, not both"]
+        );
+        assert!(
+            invalid_options(&argv(&[
+                "--use-bundled-ca",
+                "--use-openssl-ca",
+                "--no-use-openssl-ca"
+            ]))
+            .is_empty()
         );
         assert_eq!(
-            invalid_option(&argv(&["--unhandled-rejections=strict"])),
-            None
+            invalid_options(&argv(&["--secure-heap=3", "--secure-heap-min=3"])),
+            vec![
+                "--secure-heap must be a power of 2",
+                "--secure-heap-min must be a power of 2"
+            ]
         );
-        assert_eq!(invalid_option(&argv(&["--unhandled-rejections="])), None);
-        assert_eq!(invalid_option(&argv(&["--no-warnings"])), None);
+        assert!(
+            invalid_options(&argv(&["--secure-heap", "65536", "--secure-heap-min=4"])).is_empty()
+        );
+        assert!(invalid_options(&argv(&["--secure-heap=1", "--secure-heap-min=3"])).is_empty());
     }
 
     #[test]

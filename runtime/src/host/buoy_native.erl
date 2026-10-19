@@ -11,6 +11,9 @@
 %% caller loops until it is done. They are an accelerator: when the library is
 %% missing, available/0 is false and each caller runs its Erlang
 %% implementation, which has the same results.
+%%
+%% It also runs Argon2, the Keccak sponge, and the ROMix of scrypt for
+%% internalBinding('crypto'), which OTP's crypto lacks.
 -module(buoy_native).
 
 -on_load(load/0).
@@ -25,6 +28,7 @@
 -export([fs_stat/2, fs_fstat/1, fs_readdir/1, fs_utimes/4, fs_futimes/3, fs_chmod/3, fs_fchmod/2, fs_chown/4, fs_fchown/3,
          fs_access/2, fs_statfs/1, fs_watch/1, fs_unwatch/1]).
 -export([unblock_sigterm/0]).
+-export([argon2/9, keccak/5, scrypt_romix/2]).
 
 -export_type([stream/0, failure/0]).
 
@@ -223,3 +227,23 @@ fs_unwatch(_Wd) -> erlang:nif_error(nif_not_loaded).
 %% which the CLI held blocked through the boot of the VM arrives now.
 -spec unblock_sigterm() -> boolean().
 unblock_sigterm() -> erlang:nif_error(nif_not_loaded).
+%% Argon2 of type 0 (d), 1 (i), or 2 (id), version 0x13, of the message,
+%% nonce, secret, and associated data, with Lanes lanes, a tag of TagLen
+%% bytes, Memory KiB, and Passes passes: the tag, or error for parameters
+%% that Argon2 rejects. It allocates Memory KiB, and a failed allocation
+%% aborts the VM, so the caller checks that the memory fits first.
+-spec argon2(0..2, binary(), binary(), binary(), binary(), pos_integer(), pos_integer(), pos_integer(),
+             pos_integer()) -> binary() | error.
+argon2(_Type, _Message, _Nonce, _Secret, _AssociatedData, _Lanes, _TagLen, _Memory, _Passes) ->
+    erlang:nif_error(nif_not_loaded).
+
+%% The Keccak sponge of Rounds rounds and Rate bytes: Input absorbed with
+%% the domain byte Delimiter and pad10*1, then Length bytes squeezed.
+-spec keccak(1..24, pos_integer(), byte(), binary(), non_neg_integer()) -> binary().
+keccak(_Rounds, _Rate, _Delimiter, _Input, _Length) -> erlang:nif_error(nif_not_loaded).
+
+%% ROMix of scrypt (RFC 7914) on one block of 128 * r bytes with the cost
+%% N, a power of 2. It allocates N blocks, and a failed allocation aborts
+%% the VM, so the caller checks that they fit first.
+-spec scrypt_romix(binary(), pos_integer()) -> binary().
+scrypt_romix(_Block, _Cost) -> erlang:nif_error(nif_not_loaded).

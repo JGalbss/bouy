@@ -10,6 +10,9 @@
 
 -include_lib("public_key/include/public_key.hrl").
 
+%% These only throw, on purpose.
+-dialyzer({no_return, [fail/2, set_client_cert_engine/2]}).
+
 -define(TLS1, 16#301).
 -define(TLS1_1, 16#302).
 -define(TLS1_2, 16#303).
@@ -42,8 +45,8 @@ members() ->
         {<<"setTicketKeys">>, 1, Set(ticket_keys, fun(Args) -> buoy_crypto:bytes(A(1, Args)) end)},
         {<<"getTicketKeys">>, 0, fun(This, _) -> buoy_crypto:buffer(maps:get(ticket_keys, state(This))) end},
         {<<"setAllowPartialTrustChain">>, 0, Set(partial_chain, fun(_) -> true end)},
-        {<<"loadPKCS12">>, 2, fun(This, Args) -> load_pkcs12(This, A(1, Args), A(2, Args)) end},
-        {<<"setClientCertEngine">>, 1, fun ?MODULE:set_client_cert_engine/2},
+        {<<"loadPKCS12">>, 2, fun load_pkcs12/2},
+        {<<"setClientCertEngine">>, 1, fun set_client_cert_engine/2},
         {<<"getCertificate">>, 0, fun(This, _) -> certificate(This, leaf) end},
         {<<"getIssuer">>, 0, fun(This, _) -> certificate(This, issuer) end},
         {<<"close">>, 0, fun(_, _) -> undefined end}]),
@@ -225,27 +228,6 @@ first_element(<<16#30, 1:1, N:7, Rest/binary>> = Der) when byte_size(Rest) >= N 
     binary:part(Der, 0, min(2 + N + Length, byte_size(Der)));
 first_element(Der) -> Der.
 
-%% loadPKCS12(pfx, passphrase): the key and its certificate, with the other
-%% certificates of the PFX as its chain and as trusted CAs, as
-%% SecureContext::LoadPKCS12 does. Its errors are plain, with OpenSSL's text.
-load_pkcs12(This, Pfx, Passphrase) ->
-    Pass = case Passphrase of
-        undefined -> none;
-        P -> buoy_crypto:bytes(P)
-    end,
-    case buoy_crypto_pkcs12:parse(buoy_crypto:bytes(Pfx), Pass) of
-        {ok, Key, Leaf, Extra} ->
-            update(This, fun(#{chains := Chains, keys := Keys, cas := Cas} = S) ->
-                Trusted = case Cas of none -> roots() ++ Extra; _ -> Cas ++ Extra end,
-                S#{chains := Chains ++ [[Leaf | Extra]], keys := Keys ++ [Key], cas := Trusted}
-            end);
-        {error, unsupported} ->
-            fail(<<"ERR_CRYPTO_UNSUPPORTED_OPERATION">>, <<"Unsupported PKCS12 PFX data">>);
-        {error, Reason} ->
-            erlang:error({'$throw', buoy_heap:error_object('Error', Reason, <<"Error: ", Reason/binary>>)})
-    end,
-    undefined.
-
 %% addCACert after addRootCerts adds to a copy of the root store, as
 %% GetCertStoreOwnedByThisSecureContext does, so the roots stay trusted.
 add_ca(This, Cert) ->
@@ -257,9 +239,25 @@ owned_cas(#{cas := none, roots := true}) -> roots();
 owned_cas(#{cas := none}) -> [];
 owned_cas(#{cas := Cas}) -> Cas.
 
+%% loadPKCS12(pfx, passphrase): the key and the chain of a PFX, as setKey
+%% and setCert take them, and its extra certificates as CAs too. A context
+%% on the root store keeps it, as GetCertStoreOwnedByThisSecureContext
+%% copies the root store before it adds (owned_cas/1).
+load_pkcs12(This, Args) ->
+    Passphrase = case Args of
+        [_, P | _] -> buoy_crypto:bytes(P);
+        _ -> null
+    end,
+    #{key := Key, cert := Cert, extra := Extra} = buoy_crypto_pkcs12:parse(buoy_crypto:bytes(buoy_node:arg(1, Args)), Passphrase),
+    update(This, fun(#{chains := Chains, keys := Keys, cas := Cas} = S) ->
+        S#{chains := Chains ++ [[Cert | Extra]], keys := Keys ++ [Key],
+           cas := case Extra of [] -> Cas; _ -> owned_cas(S) ++ Extra end}
+    end),
+    undefined.
+
 add_crl(This, Crl) ->
     case [Der || {'CertificateList', Der, _} <- public_key:pem_decode(pem(Crl))] of
-        [] -> buoy_crypto:throw_openssl(pem_no_start_line);
+        [] -> fail(<<"ERR_CRYPTO_OPERATION_FAILED">>, <<"Failed to parse CRL">>);
         Ders -> update(This, fun(S) -> S#{crls := maps:get(crls, S) ++ Ders} end)
     end,
     undefined.

@@ -1,5 +1,6 @@
 //! The NIFs of `buoy_native.erl`: one resource for each handle of
-//! `internalBinding('zlib')`, and the calls of Node's `CompressionStream` on it.
+//! `internalBinding('zlib')`, the calls of Node's `CompressionStream` on it, and the
+//! Argon2, Keccak sponge, and scrypt `ROMix` of `internalBinding('crypto')`.
 
 // rustler decodes each argument of a NIF by value.
 #![allow(clippy::needless_pass_by_value)]
@@ -8,7 +9,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use rustler::{Binary, Env, Error, NifResult, OwnedBinary, ResourceArc};
 
-use crate::{Failure, brotli, intl, zlib, zstd};
+use crate::{Failure, argon2, brotli, intl, keccak, scrypt, zlib, zstd};
 
 /// The context of one handle of `internalBinding('zlib')`.
 #[derive(Debug)]
@@ -424,6 +425,66 @@ mod signals {
             );
         }
     }
+}
+
+/// The tag of `Argon2Traits::DeriveBits`, or `error` for parameters that Argon2 rejects.
+/// The caller checks that the memory fits, because an allocation that fails aborts.
+#[rustler::nif(schedule = "DirtyCpu")]
+#[allow(clippy::too_many_arguments)]
+fn argon2<'a>(
+    env: Env<'a>,
+    variant: u32,
+    message: Binary,
+    nonce: Binary,
+    secret: Binary,
+    associated_data: Binary,
+    lanes: u32,
+    tag_length: u32,
+    memory: u32,
+    passes: u32,
+) -> NifResult<Binary<'a>> {
+    let tag = argon2::derive(&argon2::Params {
+        variant,
+        message: message.as_slice(),
+        nonce: nonce.as_slice(),
+        secret: secret.as_slice(),
+        associated_data: associated_data.as_slice(),
+        lanes,
+        tag_length,
+        memory,
+        passes,
+    })
+    .ok_or(Error::Atom("error"))?;
+    Ok(OwnedBinary::from_slice(&tag).release(env))
+}
+
+/// The Keccak sponge of `rounds` rounds and `rate` bytes, for `TurboSHAKE`,
+/// `KangarooTwelve`, `cSHAKE`, and KMAC. A large input runs for long, so it runs dirty.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn keccak<'a>(
+    env: Env<'a>,
+    rounds: usize,
+    rate: usize,
+    delimiter: u8,
+    input: Binary,
+    length: usize,
+) -> NifResult<Binary<'a>> {
+    if !(1..=24).contains(&rounds) || rate == 0 || !rate.is_multiple_of(8) || rate >= 200 {
+        return Err(Error::BadArg);
+    }
+    let output = keccak::sponge(rounds, rate, delimiter, input.as_slice(), length);
+    Ok(OwnedBinary::from_slice(&output).release(env))
+}
+
+/// `ROMix` of scrypt on one block of `128 * r` bytes with the cost `cost`, a power of 2.
+/// The caller checks that `cost` copies of the block fit, because an allocation that
+/// fails aborts.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn scrypt_romix<'a>(env: Env<'a>, block: Binary, cost: usize) -> NifResult<Binary<'a>> {
+    if block.is_empty() || !block.len().is_multiple_of(128) || cost < 2 || !cost.is_power_of_two() {
+        return Err(Error::BadArg);
+    }
+    Ok(OwnedBinary::from_slice(&scrypt::romix(block.as_slice(), cost)).release(env))
 }
 
 #[allow(unsafe_code)]

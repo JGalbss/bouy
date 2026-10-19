@@ -78,8 +78,8 @@ verify_error(Class) ->
 
 check(#{group := true}) -> 0;
 check(#{p := P, g := G}) ->
-    Small = [16#80 || bit_length(P) < 512],
-    Large = [16#100 || bit_length(P) > 10000],
+    Small = [16#80 || buoy_crypto:bit_length(P) < 512],
+    Large = [16#100 || buoy_crypto:bit_length(P) > 10000],
     Gen = [16#08 || G =< 1 orelse G >= P - 1],
     Prime = case P band 1 =:= 1 andalso buoy_crypto_random:is_prime(P, 0) of
         false -> [16#01];
@@ -94,7 +94,7 @@ check(#{p := P, g := G}) ->
 dh_generate_keys(This, _) ->
     #{p := P, g := G} = S = dh(This),
     S1 = case S of
-        #{x := X} -> S#{y => pow(G, X, P)};
+        #{x := X} -> S#{y => buoy_crypto:mod_pow(G, X, P)};
         _ ->
             {Pub, Priv} = crypto:generate_key(dh, [P, G]),
             S#{y => binary:decode_unsigned(Pub), x => binary:decode_unsigned(Priv)}
@@ -123,10 +123,10 @@ dh_compute_secret(This, Args) ->
         #{x := V} -> V;
         _ -> buoy_crypto:fail_code(<<"ERR_CRYPTO_INVALID_KEYTYPE">>, <<"Unspecified validation error">>)
     end,
-    buoy_crypto:buffer(padded(pow(Y, X, P), P)).
+    buoy_crypto:buffer(padded(buoy_crypto:mod_pow(Y, X, P), P)).
 
 padded(Secret, P) ->
-    Size = (bit_length(P) + 7) div 8,
+    Size = (buoy_crypto:bit_length(P) + 7) div 8,
     <<Secret:(Size * 8)>>.
 
 %% A safe prime of Bits bits for the generator G, as
@@ -157,7 +157,7 @@ ecdh_bits_job([PublicHandle, PrivateHandle | _]) ->
 -spec derive(map(), map()) -> binary().
 derive(#{kind := dh, p := P, g := G, x := X}, #{kind := dh, p := P, g := G, y := Y}) ->
     (Y > 1 andalso Y < P - 1) orelse buoy_crypto:fail({openssl, invalid_public_key}),
-    padded(pow(Y, X, P), P);
+    padded(buoy_crypto:mod_pow(Y, X, P), P);
 derive(#{kind := ec, curve := Curve, priv := D}, #{kind := ec, curve := Curve, pub := Pub}) ->
     Size = (buoy_crypto_pkey:curve_bits(Curve) + 7) div 8,
     crypto:compute_key(ecdh, Pub, <<D:(Size * 8)>>, Curve);
@@ -293,11 +293,6 @@ curve_names() ->
      <<"wap-wsg-idm-ecid-wtls8">>, <<"wap-wsg-idm-ecid-wtls9">>].
 
 %%% Numbers
-
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
 
 %% The primes of the groups of RFC 2409 and RFC 3526 (generator 2), as
 %% getDiffieHellman(name) gives them.

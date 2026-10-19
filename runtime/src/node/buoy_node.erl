@@ -20,7 +20,7 @@
 -export([linked_binding/2]).
 -export([require/1, is_public/1, binding/1, ensure/0, ready/0, global_get/1, global_set/2, lazy_globals/0]).
 -export([fn/3, object/1, object/2, typed_array/2, string/1, symbol/1, throw_code/3, call/3, primordials/0, private_symbol/1]).
--export([constructor/3, missing_constructor/3, ids/0, mangle/1, from_json/1, not_implemented/2, stubs/2, arg/2, per_isolate_symbols/0, private_symbols/0, context/0, set_loaders/2, loaders/0, compile/1]).
+-export([constructor/3, missing_constructor/3, ids/0, mangle/1, from_json/1, not_implemented/2, stubs/2, arg/2, per_isolate_symbols/0, per_isolate_object/0, private_symbols/0, context/0, set_loaders/2, loaders/0, compile/1]).
 
 %% A stub of a binding is a function that only throws, on purpose.
 -dialyzer({no_return, [not_implemented/2, missing_constructor/3, missing_method/3]}).
@@ -437,6 +437,13 @@ symbols(Names) -> buoy_heap:object(null, [{N, symbol(D)} || {N, D} <- Names]).
 per_isolate_symbols() ->
     {_, PerIsolate} = erlang:get(?SYMBOLS),
     [{D, buoy_heap:get(PerIsolate, N)} || {N, D} <- per_isolate_symbol_names()].
+
+%% The per-isolate symbols, keyed by their names, as the per-context scripts
+%% get them.
+-spec per_isolate_object() -> term().
+per_isolate_object() ->
+    {_, PerIsolate} = erlang:get(?SYMBOLS),
+    PerIsolate.
 
 %% The private symbols, keyed by their names, as the util binding has them.
 -spec private_symbols() -> term().

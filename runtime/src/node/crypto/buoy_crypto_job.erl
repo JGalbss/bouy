@@ -21,10 +21,10 @@
 %% of buoy_crypto:error_value/1, or a failure of buoy_crypto:fail/1). Encode(Out) makes the result in the realm.
 -spec class(binary(), fun((list()) -> config()) | fun((list(), sync | async) -> config())) -> term().
 class(Name, Config) ->
-    buoy_crypto:class(Name, fun(This, Args) -> init(This, Args, Config) end,
+    buoy_crypto:class(Name, fun(This, Args) -> init(This, Args, Name, Config) end,
                       [{<<"run">>, 0, fun run/2}]).
 
-init(This, Args, Config) ->
+init(This, Args, Name, Config) ->
     Mode = case buoy_node:arg(1, Args) of
         ?ASYNC -> async;
         _ -> sync
@@ -33,7 +33,31 @@ init(This, Args, Config) ->
         [_ | Rest] -> Rest;
         [] -> []
     end,
-    buoy_crypto:put_state(This, {job, {Mode, configure(Config, Params, Mode)}}).
+    buoy_crypto:put_state(This, {job, {Mode, configure(Config, Params, Mode)}}),
+    %% CryptoJob is an AsyncWrap: init hooks see each job, and its ondone
+    %% runs in the async context, and the domain, of its creation.
+    buoy_binding_async_wrap:wrap(This, provider(Name)).
+
+%% The AsyncWrap provider of the Traits of each job of src/crypto.
+provider(<<"RandomBytesJob">>) -> <<"RANDOMBYTESREQUEST">>;
+provider(<<"RandomPrimeJob">>) -> <<"RANDOMPRIMEREQUEST">>;
+provider(<<"CheckPrimeJob">>) -> <<"CHECKPRIMEREQUEST">>;
+provider(<<"PBKDF2Job">>) -> <<"PBKDF2REQUEST">>;
+provider(<<"ScryptJob">>) -> <<"SCRYPTREQUEST">>;
+provider(<<"Argon2Job">>) -> <<"ARGON2REQUEST">>;
+provider(<<"HashJob">>) -> <<"HASHREQUEST">>;
+provider(<<"SignJob">>) -> <<"SIGNREQUEST">>;
+provider(<<"HmacJob">>) -> <<"SIGNREQUEST">>;
+provider(<<"KmacJob">>) -> <<"SIGNREQUEST">>;
+provider(<<"SecretKeyGenJob">>) -> <<"KEYGENREQUEST">>;
+provider(Name) ->
+    Suffix = fun(S) -> binary:longest_common_suffix([Name, S]) =:= byte_size(S) end,
+    case {Suffix(<<"CipherJob">>), Suffix(<<"KeyPairGenJob">>), Suffix(<<"KeyExportJob">>)} of
+        {true, _, _} -> <<"CIPHERREQUEST">>;
+        {_, true, _} -> <<"KEYPAIRGENREQUEST">>;
+        {_, _, true} -> <<"KEYEXPORTREQUEST">>;
+        _ -> <<"DERIVEBITSREQUEST">>
+    end.
 
 %% A job whose failure depends on the mode, as a DeriveBits of Node that
 %% throws only in kCryptoJobSync, takes the mode too.
@@ -88,4 +112,5 @@ done(Ref, Outcome) ->
     Args = try result(Outcome, Encode)
     catch error:{'$throw', Exception} -> [Exception]
     end,
-    buoy_heap:call(OnDone, Job, Args).
+    _ = buoy_binding_async_wrap:make_callback(Job, OnDone, Args),
+    buoy_binding_async_wrap:emit_destroy(Job).
