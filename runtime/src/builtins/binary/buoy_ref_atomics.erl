@@ -244,9 +244,16 @@ modify_bytes(TA, I, F) ->
     Size = buoy_ref_buffer:element_size(Kind),
     {Ref, _, _} = buoy_heap:slots(Buffer),
     Byte = Offset + I * Size,
-    Word = Byte div 8 + 1,
-    Start = Byte rem 8,
-    cas(Ref, Word, Start, Size, Kind, F).
+    case Ref of
+        {'$wasm', _} ->
+            %% The memory of a WebAssembly store, which only the process of the store
+            %% writes, so a read and then a write is atomic.
+            OldBytes = buoy_ref_buffer:read(Buffer, Byte, Size),
+            buoy_ref_buffer:write(Buffer, Byte, F(OldBytes)),
+            buoy_ref_buffer:decode(Kind, OldBytes);
+        _ ->
+            cas(Ref, Byte div 8 + 1, Byte rem 8, Size, Kind, F)
+    end.
 
 cas(Ref, Word, Start, Size, Kind, F) ->
     Old = atomics:get(Ref, Word),

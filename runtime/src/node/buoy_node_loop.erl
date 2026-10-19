@@ -31,6 +31,7 @@
 -export([set_immediate/1, closing/1]).
 -export([enter/0, poll/0, polled/2, metrics/0, idle_time/0, idle_time/1]).
 -export([add_handle_wrap/2, remove_handle_wrap/1, handle_wraps/0]).
+-export([add_cleanup_hook/1]).
 
 -define(TIMER, '$buoy_node_timer').
 %% {Ref, Deadline}: the time of now/0 at which the native timer Ref is due.
@@ -43,6 +44,7 @@
 -define(EXITING, '$buoy_node_exiting').
 -define(NATIVE_IMMEDIATES, '$buoy_node_native_immediates').
 -define(CLOSING, '$buoy_node_closing').
+-define(CLEANUP, '$buoy_node_cleanup_hooks').
 %% uv_metrics_info and uv_metrics_idle_time: {Iterations, Events,
 %% EventsWaiting, IdleNanoseconds}.
 -define(METRICS, '$buoy_node_metrics').
@@ -503,12 +505,15 @@ uncaught(Error, FromPromise) ->
     %% A program that replaced process._fatalException with no function exits
     %% with kInvalidFatalExceptionMonkeyPatching, as TriggerUncaughtException does.
     buoy_heap:is_callable(Fatal) orelse begin print_fatal(Error), really_exit(6) end,
+    FromPromise orelse should_abort() andalso abort(Error),
     Handled = try buoy_heap:call(Fatal, Process, [Error, FromPromise])
               catch
                   error:Reason:Stack -> {thrown, buoy_ref:caught(Reason, Stack)}
               end,
     case Handled of
         {thrown, Thrown} ->
+            %% V8 would abort at the throw in the handler, where no catch waits.
+            is_abort_option() andalso abort(Thrown),
             print_fatal(Thrown),
             really_exit(7);
         H ->
@@ -520,6 +525,24 @@ uncaught(Error, FromPromise) ->
                     really_exit(exit_code(1))
             end
     end.
+
+%% ShouldAbortOnUncaughtException of src/api/environment.cc: with
+%% --abort-on-uncaught-exception, an exception that no capture callback,
+%% such as a domain, takes aborts the process. V8 aborts at the throw; Buoy
+%% learns of it only when the exception reaches the loop.
+should_abort() ->
+    is_abort_option() andalso
+        buoy_heap:get(buoy_heap:get(buoy_node:binding(<<"util">>), <<"shouldAbortOnUncaughtToggle">>), 0) =/= 0.
+
+is_abort_option() ->
+    lists:any(fun(Arg) -> binary:replace(Arg, <<"_">>, <<"-">>, [global]) =:= <<"--abort-on-uncaught-exception">> end,
+              buoy_node_process:exec_argv()).
+
+%% The abort of V8: the error, then the status of SIGABRT, as a shell reports it.
+-spec abort(term()) -> no_return().
+abort(Error) ->
+    print_fatal(Error),
+    really_exit(134).
 
 print_fatal(Error) ->
     Text = case buoy_heap:is_object(Error) andalso buoy_heap:class_of(Error) =:= error of
@@ -575,10 +598,29 @@ finish() ->
             really_exit(exit_code(0))
     end.
 
+%% Environment::AddCleanupHook: Fun runs when the environment is freed after
+%% the loop ends, the newest hook first, as the destructor of a native object
+%% does, such as a Storage that closes its database.
+-spec add_cleanup_hook(fun(() -> term())) -> ok.
+add_cleanup_hook(Fun) ->
+    Hooks = case erlang:get(?CLEANUP) of
+        undefined -> [];
+        H -> H
+    end,
+    erlang:put(?CLEANUP, [Fun | Hooks]),
+    ok.
+
+run_cleanup() ->
+    Hooks = case erlang:erase(?CLEANUP) of
+        undefined -> [];
+        H -> H
+    end,
+    lists:foreach(fun(Hook) -> try Hook() catch _:_ -> ok end end, Hooks).
+
 %% FreeEnvironment after the loop ends: the cleanup hooks, the AtExit
 %% callbacks, and the end of the Environment, which process.exit() skips.
 free_environment() ->
-    buoy_trace:complete(?ENVIRONMENT, <<"RunCleanup">>, fun() -> ok end),
+    buoy_trace:complete(?ENVIRONMENT, <<"RunCleanup">>, fun run_cleanup/0),
     buoy_trace:scope(?ENVIRONMENT, <<"AtExit">>, fun() -> ok end),
     buoy_trace:close_scope(?ENVIRONMENT, <<"Environment">>).
 

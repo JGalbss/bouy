@@ -1,6 +1,6 @@
 [package]
 name = "buoy-native"
-description = "The NIF library of the runtime: JSON.parse, the RegExp matcher, the CLDR data of Intl, the fs calls that ERTS lacks, the zlib, brotli, and zstd codecs of Node's zlib module, and Argon2, Keccak, and scrypt for its crypto module."
+description = "The NIF library of the runtime: JSON.parse, the RegExp matcher, the CLDR data of Intl, the fs calls that ERTS lacks, the zlib, brotli, and zstd codecs of Node's zlib module, Argon2, Keccak, and scrypt for its crypto module, WebAssembly on Wasmtime, and the SQLite of node:sqlite."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -43,6 +43,24 @@ zstd-sys = { version = "2.1.1", default-features = false, features = ["experimen
 # Argon2 of RFC 9106 for crypto.argon2, the crate that Bun derives it with. OpenSSL's
 # Argon2 is not in OTP's crypto. Without crossbeam-utils, one thread fills the lanes.
 rust-argon2 = { version = "=3.0.0", default-features = false }
+
+# WebAssembly: Cranelift compiles a module, and an async store runs it in time slices.
+wasmtime = { version = "49.0.3", default-features = false, features = [
+  "anyhow",
+  "async",
+  "cranelift",
+  "debug",
+  "gc",
+  "gc-drc",
+  "parallel-compilation",
+  "runtime",
+  "std",
+  "threads",
+] }
+
+# SQLite 3.53, built from the amalgamation; .cargo/config.toml adds the options of Node's
+# deps/sqlite that libsqlite3-sys does not set, such as the session extension.
+libsqlite3-sys = { version = "=0.38.2", features = ["bundled"] }
 
 # pthread_sigmask and dlsym, which hand the VM the SIGTERM that the CLI held blocked.
 [target.'cfg(unix)'.dependencies]

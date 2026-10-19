@@ -1,7 +1,8 @@
 //! Linking: what each import of a module refers to, and the exports of each namespace,
 //! by the `ResolveExport` and `GetExportedNames` algorithms of the spec over the graph. A
 //! `CommonJS` module exports `default`, `module.exports`, and the names that Node's
-//! cjs-module-lexer finds, and a JSON module exports `default`.
+//! cjs-module-lexer finds, a JSON module exports `default`, and a WebAssembly module
+//! exports the exports of its binary.
 //!
 //! An import that does not resolve is an error of the module that the runtime throws
 //! when it links the graph, as Node does, and not a compile error: a module that only a
@@ -32,6 +33,8 @@ pub enum Binding {
         request: usize,
         name: Option<String>,
     },
+    /// The source object of a module of the graph (`import source`).
+    Source(usize),
 }
 
 /// An error that linking the module throws.
@@ -214,6 +217,7 @@ impl Linker<'_> {
             (Resolved::Unit(unit, _), Imported::DeferredNamespace) => {
                 Ok(Some(Binding::DeferredNamespace(unit)))
             }
+            (Resolved::Unit(unit, _), Imported::Source) => Ok(Some(Binding::Source(unit))),
             (Resolved::Unit(unit, _), Imported::Name(name)) => {
                 match self.resolve_export(unit, name, &mut Vec::new()) {
                     Resolution::Found(binding) => Ok(Some(binding)),
@@ -248,6 +252,13 @@ impl Linker<'_> {
                 request,
                 name: Some(name.clone()),
             })),
+            (Resolved::Builtin(builtin), Imported::Source) => Err(LinkError {
+                kind: "SyntaxError",
+                code: None,
+                message: format!(
+                    "Source phase import object is not defined for module '{builtin}'"
+                ),
+            }),
             (Resolved::Missing(failure), _) => Err(LinkError {
                 kind: "Error",
                 code: Some(failure.code),
@@ -308,6 +319,9 @@ impl Linker<'_> {
                 }
                 (Some(Resolved::Unit(unit, _)), Imported::DeferredNamespace) => {
                     Resolution::Found(Binding::DeferredNamespace(unit))
+                }
+                (Some(Resolved::Unit(unit, _)), Imported::Source) => {
+                    Resolution::Found(Binding::Source(unit))
                 }
                 (Some(Resolved::Unit(unit, _)), Imported::Name(imported)) => {
                     self.resolve_export(unit, &imported, visited)
@@ -387,10 +401,21 @@ impl Linker<'_> {
         names
     }
 
-    /// The export names of a `CommonJS` or JSON module.
+    /// The export names of a `CommonJS`, JSON, or WebAssembly module.
     fn cjs_exports(&mut self, index: usize) -> Vec<String> {
         if let Some(names) = self.cjs_names.get(&index) {
             return names.clone();
+        }
+        if self.unit(index).kind == Kind::Wasm {
+            let names = dedupe(
+                self.unit(index)
+                    .record
+                    .locals
+                    .iter()
+                    .map(|(export, _)| export.clone()),
+            );
+            self.cjs_names.insert(index, names.clone());
+            return names;
         }
         // A cycle of re-exports reads the names found so far.
         self.cjs_names.insert(index, Vec::new());

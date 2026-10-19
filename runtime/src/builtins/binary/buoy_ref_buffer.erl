@@ -9,9 +9,11 @@
 %% receives the buffer.
 %%
 %% The slots of an ArrayBuffer are {Data, ByteLength, MaxByteLength}: Data
-%% is the atomics array or detached, and MaxByteLength is none for a fixed
-%% length and immutable for an immutable buffer (the immutable-arraybuffer
-%% proposal), which has a fixed length too and refuses every write. A SharedArrayBuffer has the class shared_array_buffer and the
+%% is the atomics array, {'$wasm', Handle} for the buffer of a
+%% WebAssembly.Memory (buoy_ref_wasm), or detached, and MaxByteLength is none
+%% for a fixed length and immutable for an immutable buffer (the
+%% immutable-arraybuffer proposal), which has a fixed length too and refuses
+%% every write. A SharedArrayBuffer has the class shared_array_buffer and the
 %% same slots.
 -module(buoy_ref_buffer).
 
@@ -137,6 +139,7 @@ read(Buffer, Offset, Count) ->
     read_bytes(Ref, Offset, Count).
 
 read_bytes(_Ref, _Offset, 0) -> <<>>;
+read_bytes({'$wasm', Memory}, Offset, Count) -> buoy_ref_wasm:read(Memory, Offset, Count);
 read_bytes(Ref, Offset, Count) ->
     First = Offset div 8,
     Last = (Offset + Count - 1) div 8,
@@ -157,6 +160,7 @@ write(Buffer, Offset, Bytes) ->
     write_bytes(Ref, Offset, Bytes).
 
 write_bytes(_Ref, _Offset, <<>>) -> ok;
+write_bytes({'$wasm', Memory}, Offset, Bytes) -> buoy_ref_wasm:write(Memory, Offset, Bytes);
 write_bytes(Ref, Offset, Bytes) when Offset rem 8 =:= 0, byte_size(Bytes) >= 8 ->
     write_words(Ref, Offset div 8 + 1, Bytes);
 write_bytes(Ref, Offset, Bytes) ->
@@ -491,6 +495,8 @@ transfer(B, LengthArg, Mode) ->
     is_detached(B) andalso detached_error(),
     require_mutable(B),
     {Ref, Old, Max} = buoy_heap:slots(B),
+    is_tuple(Ref) andalso element(1, Ref) =:= '$wasm' andalso
+        buoy_ref:type_error(<<"Cannot perform ArrayBuffer.prototype.transfer on a WebAssembly.Memory buffer">>),
     Count = min(NewLength, Old),
     New = case Mode of
         immutable ->

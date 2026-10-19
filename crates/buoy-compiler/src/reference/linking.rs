@@ -6,6 +6,7 @@
 //! - `'$body'/0`: the top-level code of an ES module; a promise when it awaits.
 //! - `'$cjs'/0`: the wrapper function of a `CommonJS` module.
 //! - `'$json'/0`: the text of a JSON module.
+//! - `'$wasm'/0`: the binary of a WebAssembly module, whose `'$body'/0` instantiates it.
 //! - `'$export'/1`: the value of an exported binding, by its key (`link::Binding`).
 //! - `'$namespace'/0`: the export names in order, each with a fun that reads it.
 //! - `'$resolve'/2`: what a string specifier of the module names, for `import()`,
@@ -82,6 +83,11 @@ impl<'c> Linking<'c> {
                         .map_or_else(|| Expr::atom("namespace"), |name| Expr::js_string(name)),
                 ],
             ),
+            Binding::Source(unit) => Expr::call(
+                "buoy_module",
+                "source_phase",
+                vec![Expr::atom(self.module_of(*unit))],
+            ),
         }
     }
 
@@ -117,6 +123,7 @@ impl<'c> Linking<'c> {
             Kind::Json => "json",
             Kind::Text => "text",
             Kind::Bytes => "bytes",
+            Kind::Wasm => "wasm",
         };
         let requests = unit
             .record
@@ -139,6 +146,18 @@ impl<'c> Linking<'c> {
                         _ => None,
                     })
             })
+            .chain(unit.record.sources.iter().filter_map(|specifier| {
+                unit.requests
+                    .iter()
+                    .find_map(|request| match &request.resolved {
+                        Resolved::Unit(target, _)
+                            if &request.specifier == specifier && request.mode == Mode::Import =>
+                        {
+                            Some(Expr::tagged("source", Expr::atom(self.module_of(*target))))
+                        }
+                        _ => None,
+                    })
+            }))
             .collect();
         // A module that the host links lists its requests and its `export *` requests.
         let hosted: Vec<Expr> = unit
@@ -399,6 +418,32 @@ impl<'c> Linking<'c> {
         };
         let caret = " ".repeat(diagnostic.column.saturating_sub(1));
         format!("{place}:{}\n{line}\n{caret}^\n", diagnostic.line)
+    }
+
+    /// The functions of a WebAssembly module: the runtime compiles the binary, links its
+    /// imports to the namespaces of the modules they name, and keeps the exports of the
+    /// instance, as Node's wasm translator does.
+    pub fn wasm_functions(&self) -> Vec<Function> {
+        let module = Expr::atom(self.unit().name.clone());
+        let mut functions = self.interface();
+        functions.push(constant("$wasm", Expr::Bytes(self.unit().bytes.clone())));
+        functions.push(constant(
+            "$body",
+            Expr::call("buoy_module", "wasm_body", vec![module.clone()]),
+        ));
+        functions.push(Function {
+            name: "$export".to_owned(),
+            clauses: vec![Clause {
+                patterns: vec![Expr::var("Key")],
+                guards: vec![],
+                body: vec![Expr::call(
+                    "buoy_module",
+                    "wasm_export",
+                    vec![module, Expr::var("Key")],
+                )],
+            }],
+        });
+        functions
     }
 
     /// The functions of a JSON module.

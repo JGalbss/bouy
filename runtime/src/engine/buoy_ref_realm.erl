@@ -76,6 +76,7 @@ families() ->
      buoy_ref_intl_display_names,
      buoy_ref_intl_relative_time_format,
      buoy_ref_intl_segmenter,
+     buoy_ref_wasm,
      ?MODULE].
 
 %%% Installation

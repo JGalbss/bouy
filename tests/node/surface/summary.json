@@ -144,7 +144,7 @@
         "pass": 1
       },
       "Storage": {
-        "fail": 1
+        "pass": 1
       },
       "SubtleCrypto": {
         "pass": 19
@@ -226,7 +226,7 @@
         "pass": 1
       },
       "localStorage": {
-        "fail": 1
+        "pass": 1
       },
       "module": {
         "pass": 2,
@@ -296,10 +296,10 @@
         "fail": 78
       },
       "node:inspector": {
-        "fail": 40
+        "never": 40
       },
       "node:inspector/promises": {
-        "fail": 40
+        "never": 40
       },
       "node:module": {
         "pass": 20
@@ -344,7 +344,7 @@
         "pass": 6
       },
       "node:sqlite": {
-        "fail": 32
+        "pass": 32
       },
       "node:stream": {
         "pass": 250
@@ -423,7 +423,7 @@
         "pass": 6
       },
       "sessionStorage": {
-        "fail": 1
+        "pass": 1
       },
       "setImmediate": {
         "pass": 1

@@ -96,6 +96,8 @@ pub enum Format {
     Esm,
     CommonJs,
     Json,
+    /// A WebAssembly module, which Node's ESM loader instantiates as a module record.
+    Wasm,
     /// A `.js` or `.ts` file outside a package scope with a `type`: ESM when its syntax is
     /// ESM, else `CommonJS` (Node's `--experimental-detect-module`, on by default).
     Detect,
@@ -244,6 +246,7 @@ impl Resolver {
         match path.extension().and_then(|extension| extension.to_str()) {
             Some("mjs" | "mts") => Format::Esm,
             Some("json") => Format::Json,
+            Some("wasm") => Format::Wasm,
             Some(ADDON_EXTENSION) => Format::Addon,
             Some("js" | "ts" | "jsx" | "tsx") | None => match self.scope_type(path).as_deref() {
                 Some("module") => Format::Esm,
@@ -256,7 +259,7 @@ impl Resolver {
     }
 
     /// The `type` of the package scope of `path`.
-    fn scope_type(&self, path: &Path) -> Option<String> {
+    pub fn scope_type(&self, path: &Path) -> Option<String> {
         self.scope(path).and_then(|package| package.kind.clone())
     }
 

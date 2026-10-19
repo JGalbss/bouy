@@ -190,7 +190,9 @@ pub fn compile_loaded(
         Ok(resolve::Target::File(path)) => {
             let root = project_root(main);
             let root = root.canonicalize().unwrap_or(root);
-            compile_reference(&path, &root, false)
+            // An import loads the file with the ESM loader, which reads an extensionless
+            // WebAssembly binary as WebAssembly.
+            compile_reference_entry(&path, &root, !require)
                 .map(|project| Loaded::Program(path, project))
                 .map_err(|diagnostics| load_error(&diagnostics))
         }
@@ -214,6 +216,15 @@ fn compile_reference(entry: &Path, root: &Path, script: bool) -> Result<Project,
     compile_reference_text(entry, root, script, None)
 }
 
+fn compile_reference_entry(
+    entry: &Path,
+    root: &Path,
+    imported: bool,
+) -> Result<Project, Vec<Diagnostic>> {
+    let graph = reference::graph::load_imported(entry, root, imported)?;
+    compile_graph(&graph, root)
+}
+
 fn compile_reference_text(
     entry: &Path,
     root: &Path,
@@ -221,7 +232,11 @@ fn compile_reference_text(
     text: Option<String>,
 ) -> Result<Project, Vec<Diagnostic>> {
     let graph = reference::graph::load(entry, root, script, text)?;
-    let links = reference::link::link(&graph);
+    compile_graph(&graph, root)
+}
+
+fn compile_graph(graph: &reference::graph::Graph, root: &Path) -> Result<Project, Vec<Diagnostic>> {
+    let links = reference::link::link(graph);
     let mut modules = Vec::with_capacity(graph.units.len());
     let mut diagnostics = Vec::new();
     let mut deferred: Vec<Diagnostic> = graph
@@ -230,7 +245,7 @@ fn compile_reference_text(
         .flat_map(|unit| unit.broken.iter().cloned())
         .collect();
     for (index, unit) in graph.units.iter().enumerate() {
-        let erlang = match reference::lower_unit(&graph, index, &links[index], index == 0) {
+        let erlang = match reference::lower_unit(graph, index, &links[index], index == 0) {
             Ok(erlang) => erlang,
             Err(mut found) if index == 0 => {
                 diagnostics.append(&mut found);
@@ -240,7 +255,7 @@ fn compile_reference_text(
             Err(mut found) => {
                 let erlang = reference::broken_module(
                     reference::Linking {
-                        graph: &graph,
+                        graph,
                         unit: index,
                         link: &links[index],
                         entry: false,

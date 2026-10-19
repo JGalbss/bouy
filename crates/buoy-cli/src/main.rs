@@ -602,33 +602,34 @@ fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
     compile_reporting(entry, semantics, print_diagnostics)
 }
 
-/// Compiles the program, and on diagnostics records them and returns the status that
-/// `report` gives after printing them.
+/// Compiles the program; on diagnostics, `report` prints them and gives the exit status,
+/// which the result file records.
 fn compile_reporting(
     entry: &Path,
     semantics: Semantics,
-    report: impl FnOnce(&[Diagnostic]) -> ExitCode,
+    report: impl FnOnce(&[Diagnostic]) -> u8,
 ) -> Result<Project, ExitCode> {
     if !entry.is_file() {
         eprintln!("buoy: cannot find the file {}", entry.display());
         return Err(ExitCode::from(DIAGNOSTICS));
     }
     buoy_compiler::compile_with(entry, semantics).map_err(|diagnostics| {
-        write_result(&diagnostics);
-        report(&diagnostics)
+        let status = report(&diagnostics);
+        write_result(&diagnostics, status);
+        ExitCode::from(status)
     })
 }
 
-fn print_diagnostics(diagnostics: &[Diagnostic]) -> ExitCode {
+fn print_diagnostics(diagnostics: &[Diagnostic]) -> u8 {
     for diagnostic in diagnostics {
         eprintln!("{}", relative(diagnostic));
     }
-    ExitCode::from(DIAGNOSTICS)
+    DIAGNOSTICS
 }
 
 /// Writes the facts of a run that stopped at its diagnostics to `BUOY_RESULT_FILE`, as
 /// the VM writes the facts of a run (section 1 of the contract).
-fn write_result(diagnostics: &[Diagnostic]) {
+fn write_result(diagnostics: &[Diagnostic], status: u8) {
     let Some(path) = env::var_os("BUOY_RESULT_FILE").filter(|path| !path.is_empty()) else {
         return;
     };
@@ -637,7 +638,7 @@ fn write_result(diagnostics: &[Diagnostic]) {
         .map(|diagnostic| format!("\"{}\"", diagnostic.code.as_str()))
         .collect();
     let facts = format!(
-        "{{\"status\":{DIAGNOSTICS},\"diagnostics\":[{}]}}",
+        "{{\"status\":{status},\"diagnostics\":[{}]}}",
         codes.join(",")
     );
     if let Err(error) = fs::write(&path, facts) {

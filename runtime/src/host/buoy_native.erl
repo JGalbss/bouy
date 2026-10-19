@@ -14,6 +14,15 @@
 %%
 %% It also runs Argon2, the Keccak sponge, and the ROMix of scrypt for
 %% internalBinding('crypto'), which OTP's crypto lacks.
+%%
+%% It also holds WebAssembly on Wasmtime for buoy_ref_wasm: a compiled
+%% module, and a store for each process, which runs a command in slices of
+%% about a millisecond (crates/buoy-native/src/wasm.rs).
+%%
+%% And it holds the SQLite of node:sqlite (crates/buoy-native/src/sqlite.rs):
+%% each connection runs on a thread of its own, which replies to a command
+%% with {buoy_sqlite, Reference, Reply} and sends {buoy_sqlite_call,
+%% Reference, Call} for each call of JavaScript that waits for an answer.
 -module(buoy_native).
 
 -on_load(load/0).
@@ -31,7 +40,11 @@
 -export([argon2/9, keccak/5, scrypt_romix/2]).
 -export([sigint_handle/1, sigint_default/0, os_kill/2]).
 
--export_type([stream/0, failure/0]).
+-export([wasm_store/1, wasm_compile/1, wasm_validate/1, wasm_imports/1, wasm_exports/1, wasm_command/2, wasm_poll/1]).
+
+-export([sqlite_connection/0, sqlite_command/3, sqlite_answer/2]).
+
+-export_type([stream/0, failure/0, wasm_module/0, wasm_store/0, sqlite_connection/0]).
 
 -type stream() :: reference().
 -type failure() :: {binary(), integer(), binary()}.
@@ -39,6 +52,9 @@
 -type status() :: integer().
 %% A time in seconds, 'NaN' to keep the time, or an infinity for now.
 -type time() :: number() | 'NaN' | 'Infinity' | '-Infinity'.
+-type wasm_module() :: reference().
+-type wasm_store() :: reference().
+-type sqlite_connection() :: reference().
 
 %% A runtime without the library, such as the build of rebar3, still loads
 %% the module; its functions then fail with nif_not_loaded.
@@ -261,3 +277,45 @@ sigint_default() -> erlang:nif_error(nif_not_loaded).
 %% kill(2) of the OS process Pid: 0, or the negative errno.
 -spec os_kill(integer(), integer()) -> integer().
 os_kill(_Pid, _Signal) -> erlang:nif_error(nif_not_loaded).
+
+%% A new WebAssembly store for the calling process, with the limit in bytes
+%% on the linear memory of every store of the VM.
+-spec wasm_store(pos_integer()) -> wasm_store().
+wasm_store(_Limit) -> erlang:nif_error(nif_not_loaded).
+
+-spec wasm_compile(binary()) -> {ok, wasm_module()} | {error, binary()}.
+wasm_compile(_Bytes) -> erlang:nif_error(nif_not_loaded).
+
+-spec wasm_validate(binary()) -> boolean().
+wasm_validate(_Bytes) -> erlang:nif_error(nif_not_loaded).
+
+%% [{Module, Name, Type}], where Type is the extern type of wasm.rs with the
+%% handle none.
+-spec wasm_imports(wasm_module()) -> [{binary(), binary(), tuple()}].
+wasm_imports(_Module) -> erlang:nif_error(nif_not_loaded).
+
+-spec wasm_exports(wasm_module()) -> [{binary(), tuple()}].
+wasm_exports(_Module) -> erlang:nif_error(nif_not_loaded).
+
+%% Sends a command to the store and runs it for one slice: {done, Reply,
+%% Grown}, {call, Id, Args, ResultTypes, Grown} for a call of an import, or
+%% yield when the slice ended first.
+-spec wasm_command(wasm_store(), tuple()) -> term().
+wasm_command(_Store, _Command) -> erlang:nif_error(nif_not_loaded).
+
+%% Runs the command in flight for one more slice.
+-spec wasm_poll(wasm_store()) -> term().
+wasm_poll(_Store) -> erlang:nif_error(nif_not_loaded).
+
+%% A new connection thread with no database open.
+-spec sqlite_connection() -> sqlite_connection().
+sqlite_connection() -> erlang:nif_error(nif_not_loaded).
+
+%% Sends a command to the thread, which replies to the caller; false when the
+%% thread is gone.
+-spec sqlite_command(sqlite_connection(), reference(), atom() | tuple()) -> boolean().
+sqlite_command(_Connection, _Reference, _Command) -> erlang:nif_error(nif_not_loaded).
+
+%% The answer to the call that the thread waits on.
+-spec sqlite_answer(sqlite_connection(), term()) -> boolean().
+sqlite_answer(_Connection, _Answer) -> erlang:nif_error(nif_not_loaded).

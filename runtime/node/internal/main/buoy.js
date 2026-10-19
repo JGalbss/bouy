@@ -152,6 +152,34 @@ function loadEnvFiles() {
   }
 }
 
+function setupWebStorage() {
+  const { getEmbedderOptions } = require('internal/options');
+  if (getEmbedderOptions().noBrowserGlobals ||
+      !getOptionValue('--experimental-webstorage')) {
+    return;
+  }
+
+  const {
+    exposeLazyInterfaces,
+    defineReplaceableLazyAttribute,
+  } = require('internal/util');
+
+  // https://html.spec.whatwg.org/multipage/webstorage.html#webstorage
+  exposeLazyInterfaces(globalThis, 'internal/webstorage', ['Storage']);
+  defineReplaceableLazyAttribute(globalThis, 'internal/webstorage', [
+    'localStorage', 'sessionStorage',
+  ]);
+}
+
+function setupSQLite() {
+  if (getOptionValue('--no-experimental-sqlite')) {
+    return;
+  }
+
+  const { BuiltinModule } = require('internal/bootstrap/realm');
+  BuiltinModule.allowRequireByUsers('sqlite');
+}
+
 // A child that child_process.fork started talks to its parent on the
 // descriptor of NODE_CHANNEL_FD, as setupChildProcessIpcChannel does.
 function setupChildProcessIpcChannel() {
@@ -252,10 +280,11 @@ function runTestRunner() {
   });
 }
 
-// Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 setupTraceCategoryState();
 loadEnvFiles();
+setupSQLite();
+setupWebStorage();
 setupWebsocket();
 setupEventsource();
 initializeReport();

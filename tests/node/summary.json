@@ -204,7 +204,7 @@
         "crash": 2
       },
       "sea": {
-        "fail": 1
+        "pass": 1
       },
       "sqlite": {
         "pass": 18
@@ -268,6 +268,11 @@
         "skip": 1,
         "fail": 10,
         "crash": 1
+      },
+      "wasi": {
+        "pass": 21,
+        "fail": 2,
+        "timeout": 3
       },
       "worker_threads": {
         "pass": 119,

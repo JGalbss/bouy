@@ -66,13 +66,14 @@ require(Id) ->
     %% With --expose-internals, the internal ids load too (BuiltinModule.exposeInternals).
     Exposed = is_internal(Id) andalso lists:member(Id, ids())
         andalso lists:member(<<"--expose-internals">>, buoy_node_process:exec_argv()),
-    case is_public(Id) orelse Exposed of
+    BuiltinModule = buoy_heap:get(loader_exports(), <<"BuiltinModule">>),
+    %% An experimental module, such as sqlite, loads once pre-execution allowed it.
+    Allowed = is_public(Id) andalso call_method(BuiltinModule, <<"canBeRequiredByUsers">>, [Id]) =:= true,
+    case Allowed orelse Exposed of
         false ->
             error;
         true ->
-            Loader = loader_exports(),
-            Map = buoy_heap:get(buoy_heap:get(Loader, <<"BuiltinModule">>), <<"map">>),
-            Module = call_method(Map, <<"get">>, [Id]),
+            Module = call_method(buoy_heap:get(BuiltinModule, <<"map">>), <<"get">>, [Id]),
             {ok, call_method(Module, <<"compileForPublicLoader">>, [])}
     end.
 
@@ -154,6 +155,9 @@ boot() ->
     Replaced = replaced_globals(),
     [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- Bootstrap, is_compiled(Id)],
     [restore_global(Name, Property) || {Name, Property} <- Replaced],
+    %% A global that the bootstrap did not define, such as Storage under
+    %% --no-webstorage, is not defined, as in Node.
+    [buoy_heap:delete_property({'$o', 'globalThis'}, Name) || Name <- lazy_globals(), is_lazy(Name)],
     erlang:put(?STATE, ready),
     keep_engine_timers(),
     debug("bootstrap done~n", []),
@@ -267,6 +271,12 @@ global_get(Name) ->
             undefined;
         _ ->
             buoy_heap:get(G, Name)
+    end.
+
+is_lazy(Name) ->
+    case buoy_heap:get_own({'$o', 'globalThis'}, Name) of
+        {accessor, {'$f', {builtin, <<"node:", _/binary>>}, _}, _, _} -> true;
+        _ -> false
     end.
 
 %% The setter of a lazy global: the program's value replaces it.

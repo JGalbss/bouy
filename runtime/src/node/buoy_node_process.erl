@@ -235,8 +235,8 @@ platform() ->
         {unix, Other} -> atom_to_binary(Other)
     end.
 
-%% process.versions of Node 25.9.0, without sqlite, which Buoy does not have,
-%% and with the OpenSSL that OTP's crypto links.
+%% process.versions of Node 25.9.0, with the OpenSSL that OTP's crypto links
+%% and the SQLite of buoy_native.
 versions() -> buoy_node:object(version_pairs()).
 
 -spec version_pairs() -> [{binary(), binary()}].
@@ -246,7 +246,7 @@ version_pairs() ->
         {<<"ares">>, <<"1.34.6">>}, {<<"brotli">>, <<"1.2.0">>}, {<<"cldr">>, <<"48.0">>},
         {<<"icu">>, <<"78.3">>}, {<<"llhttp">>, <<"9.3.1">>}, {<<"modules">>, <<"141">>},
         {<<"napi">>, <<"10">>}, {<<"nghttp2">>, <<"1.68.1">>}, {<<"simdjson">>, <<"4.6.1">>},
-        {<<"simdutf">>, <<"7.3.3">>}, {<<"tz">>, <<"2026a">>}, {<<"undici">>, <<"7.24.4">>},
+        {<<"simdutf">>, <<"7.3.3">>}, {<<"sqlite">>, <<"3.53.2">>}, {<<"tz">>, <<"2026a">>}, {<<"undici">>, <<"7.24.4">>},
         {<<"unicode">>, <<"17.0">>}, {<<"uv">>, <<"1.52.1">>}, {<<"uvwasi">>, <<"0.0.23">>},
         {<<"v8">>, <<"14.1.146.11-node.25">>}, {<<"zlib">>, <<"1.2.12">>}, {<<"zstd">>, <<"1.5.7">>},
         {<<"buoy">>, <<"0.1.0">>}] ++ openssl().

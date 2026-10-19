@@ -11,10 +11,11 @@
 //! each stream is a resource that owns one zlib, brotli, or zstd context, and each module
 //! ports the matching context class of Node's `src/node_zlib.cc`. A write runs on a dirty
 //! CPU scheduler, as Node runs it on the libuv thread pool, so a slow compression never
-//! blocks a scheduler of the actors. Allocations, libzstd's too, go through `enif_alloc`,
-//! so `BUOY_MAX_MEMORY` counts them. It also runs, on a dirty CPU scheduler, the parts of
-//! `internalBinding('crypto')` that OTP's crypto lacks: Argon2, the Keccak sponge, and the
-//! `ROMix` of scrypt.
+//! blocks a scheduler of the actors. Allocations, libzstd's and SQLite's too, go through
+//! `enif_alloc`, so `BUOY_MAX_MEMORY` counts them. It also runs, on a dirty CPU scheduler,
+//! the parts of `internalBinding('crypto')` that OTP's crypto lacks: Argon2, the Keccak
+//! sponge, and the `ROMix` of scrypt. `wasm.rs` runs WebAssembly on Wasmtime, and
+//! `sqlite.rs` runs the connections of `node:sqlite`, each on a thread of its own.
 
 // The NIF glue, which the tests leave out, is the caller of most of the codecs.
 #![cfg_attr(test, allow(dead_code))]
@@ -39,6 +40,10 @@ mod scrypt;
 mod signal;
 #[cfg(not(test))]
 mod slice;
+#[cfg(not(test))]
+mod sqlite;
+#[cfg(not(test))]
+mod wasm;
 mod zlib;
 mod zstd;
 

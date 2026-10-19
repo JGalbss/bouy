@@ -53,6 +53,8 @@ pub struct Unit {
     pub name: String,
     /// The code to compile: the file, or for `CommonJS` the file inside the wrapper.
     pub source: String,
+    /// The binary of a WebAssembly module.
+    pub bytes: Vec<u8>,
     pub kind: Kind,
     pub record: Record,
     /// Each string specifier of the module, once per mode.
@@ -86,6 +88,9 @@ pub enum Kind {
     /// `with { type: "bytes" }`: the bytes of the file in a `Uint8Array` over an immutable
     /// `ArrayBuffer` (import-bytes). The source holds them in hexadecimal.
     Bytes,
+    /// A WebAssembly module: a module record whose imports are the namespaces of other
+    /// modules and whose exports are the exports of its instance.
+    Wasm,
 }
 
 /// The separator of a request key that carries a module type, such as `./a.txt\0text`.
@@ -143,7 +148,9 @@ impl Kind {
             SourceType::mjs()
         };
         match self {
-            Self::Esm | Self::Json | Self::Text | Self::Bytes => base.with_module(true),
+            Self::Esm | Self::Json | Self::Text | Self::Bytes | Self::Wasm => {
+                base.with_module(true)
+            }
             Self::CommonJs => base.with_script(true),
         }
     }
@@ -177,6 +184,8 @@ pub enum Imported {
     Namespace,
     /// `import defer * as ns`: the namespace of a module that evaluates on first use.
     DeferredNamespace,
+    /// `import source m`: the source object of a module, which does not evaluate it.
+    Source,
 }
 
 /// A request of a module: its specifier, its import attributes sorted by key, and whether
@@ -206,6 +215,8 @@ pub struct Record {
     pub indirect: Vec<(String, String, Imported)>,
     /// The specifiers of `export * from`.
     pub stars: Vec<String>,
+    /// The specifiers of `import source`, whose modules link and evaluate on their own.
+    pub sources: Vec<String>,
     /// The names that Node's cjs-module-lexer finds in a `CommonJS` module.
     pub cjs_names: Vec<String>,
     /// The specifiers whose exports a `CommonJS` module re-exports.
@@ -225,7 +236,23 @@ pub fn load(
     entry: &Path,
     root: &Path,
     script: bool,
+    text: Option<String>,
+) -> Result<Graph, Vec<Diagnostic>> {
+    load_from(entry, root, script, text, false)
+}
+
+/// Reads the graph of a module that a running program loads: by `import` when
+/// `imported` holds, else by `require`.
+pub fn load_imported(entry: &Path, root: &Path, imported: bool) -> Result<Graph, Vec<Diagnostic>> {
+    load_from(entry, root, false, None, imported)
+}
+
+fn load_from(
+    entry: &Path,
+    root: &Path,
+    script: bool,
     mut text: Option<String>,
+    imported: bool,
 ) -> Result<Graph, Vec<Diagnostic>> {
     let resolver = Resolver::default();
     let mut units: Vec<Unit> = Vec::new();
@@ -276,15 +303,14 @@ pub fn load(
                 scan(&resolver, &path, text.take().unwrap_or_default(), script)
             }
             None if is_data(&path) => scan_data(&path),
-            None => fs::read_to_string(&path)
-                .map_err(|error| {
-                    vec![Reporter::new(&path, "").at(
-                        0,
-                        Code::BadImport,
-                        format!("cannot read {}: {error}", path.display()),
-                    )]
-                })
-                .and_then(|text| scan(&resolver, &path, text, script && units.is_empty())),
+            None => read(&resolver, &path, units.is_empty() && !imported).and_then(|contents| {
+                match contents {
+                    Contents::Text(text) => {
+                        scan(&resolver, &path, text, script && units.is_empty())
+                    }
+                    Contents::Wasm(bytes) => Ok(scan_wasm(bytes)),
+                }
+            }),
         };
         let scanned = match scanned {
             Ok(scanned) => scanned,
@@ -295,6 +321,7 @@ pub fn load(
                     path,
                     name,
                     source: String::new(),
+                    bytes: Vec::new(),
                     record: Record::default(),
                     requests: Vec::new(),
                     broken: diagnostics,
@@ -308,6 +335,7 @@ pub fn load(
             path,
             name,
             source: scanned.source,
+            bytes: scanned.bytes,
             kind: scanned.kind,
             record: scanned.record,
             requests,
@@ -530,8 +558,98 @@ fn broken_kind(resolver: &Resolver, path: &Path) -> Kind {
     match resolver.format(path) {
         Format::CommonJs => Kind::CommonJs,
         Format::Json => Kind::Json,
+        Format::Wasm => Kind::Wasm,
         _ => Kind::Esm,
     }
+}
+
+/// The contents of a module file: text, or the binary of a WebAssembly module.
+enum Contents {
+    Text(String),
+    Wasm(Vec<u8>),
+}
+
+/// The magic number that starts every WebAssembly binary.
+const WASM_MAGIC: &[u8] = b"\0asm";
+
+/// Reads a module file. A `.wasm` file is WebAssembly, and so is an extensionless file
+/// that starts with the magic number, as Node's `getFormatOfExtensionlessFile` decides:
+/// in a `module` package scope, or imported from outside a package scope. Node runs an
+/// extensionless entry outside a `module` scope with the `CommonJS` loader, which reads it
+/// as text.
+fn read(resolver: &Resolver, path: &Path, entry: bool) -> Result<Contents, Vec<Diagnostic>> {
+    let cannot = |error: &dyn std::fmt::Display| {
+        vec![Reporter::new(path, "").at(
+            0,
+            Code::BadImport,
+            format!("cannot read {}: {error}", path.display()),
+        )]
+    };
+    let bytes = fs::read(path).map_err(|error| cannot(&error))?;
+    let scope = resolver.scope_type(path);
+    let extensionless_wasm = path.extension().is_none()
+        && bytes.starts_with(WASM_MAGIC)
+        && match scope.as_deref() {
+            Some("module") => true,
+            Some(_) => false,
+            None => !entry,
+        };
+    if resolver.format(path) == Format::Wasm || extensionless_wasm {
+        return Ok(Contents::Wasm(bytes));
+    }
+    String::from_utf8(bytes)
+        .map(Contents::Text)
+        .map_err(|_| cannot(&"stream did not contain valid UTF-8"))
+}
+
+/// The module names that V8 links to its JS String Builtins instead of a module, with
+/// the options of Node's wasm translator.
+const STRING_BUILTINS: [&str; 2] = ["wasm:js-string", "wasm:js/string-constants"];
+
+/// The record of a WebAssembly module: a request for each module that it imports from,
+/// and an export for each of its exports. A binary that does not decode keeps an empty
+/// record, and the runtime throws its `CompileError` when it loads it.
+fn scan_wasm(bytes: Vec<u8>) -> Scanned {
+    let (record, specifiers) = wasm_record(&bytes).unwrap_or_default();
+    Scanned {
+        source: String::new(),
+        bytes,
+        kind: Kind::Wasm,
+        record,
+        specifiers,
+        dynamic: Dynamic::default(),
+    }
+}
+
+type Specifiers = Vec<(String, Mode, bool)>;
+
+fn wasm_record(bytes: &[u8]) -> Result<(Record, Specifiers), wasmparser::BinaryReaderError> {
+    let mut record = Record::default();
+    let mut specifiers = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+        match payload? {
+            wasmparser::Payload::ImportSection(reader) => {
+                for import in reader.into_imports() {
+                    let module = import?.module;
+                    if STRING_BUILTINS.contains(&module)
+                        || record.order.iter().any(|(known, _)| known == module)
+                    {
+                        continue;
+                    }
+                    record.order.push((module.to_owned(), false));
+                    specifiers.push((module.to_owned(), Mode::Import, false));
+                }
+            }
+            wasmparser::Payload::ExportSection(reader) => {
+                for export in reader {
+                    let name = export?.name.to_owned();
+                    record.locals.push((name.clone(), name));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok((record, specifiers))
 }
 
 /// The files that an `import()` or `require()` of a computed specifier may name: each
@@ -598,13 +716,14 @@ fn is_module_file(path: &Path) -> bool {
         .is_some_and(|extension| {
             matches!(
                 extension,
-                "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" | "json"
+                "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" | "json" | "wasm"
             )
         })
 }
 
 struct Scanned {
     source: String,
+    bytes: Vec<u8>,
     kind: Kind,
     record: Record,
     /// `(specifier, mode, resolve only)` in source order.
@@ -638,11 +757,13 @@ fn scan(
         resolver.format(path)
     };
     let kind = match format {
-        Format::Esm => Kind::Esm,
+        // read() keeps the binary of a .wasm file; only a script names one as text.
+        Format::Esm | Format::Wasm => Kind::Esm,
         Format::CommonJs => Kind::CommonJs,
         Format::Json => {
             return Ok(Scanned {
                 source: text,
+                bytes: Vec::new(),
                 kind: Kind::Json,
                 record: Record::default(),
                 specifiers: Vec::new(),
@@ -744,6 +865,7 @@ fn scan_as(
     })?;
     Ok(Scanned {
         source,
+        bytes: Vec::new(),
         kind,
         record: facts.0,
         specifiers: facts.1,
@@ -895,6 +1017,23 @@ impl<'a> Facts<'_, 'a> {
         }
     }
 
+    /// `import source m from 'x'`: its module loads, and only its source object binds.
+    fn source_import(&mut self, import: &oxc::ast::ast::ImportDeclaration<'a>) {
+        let specifier = import.source.value.as_str();
+        for item in import.specifiers.iter().flatten() {
+            self.record.imports.push((
+                item.local().name.to_string(),
+                specifier.to_owned(),
+                Imported::Source,
+            ));
+        }
+        if !self.record.sources.iter().any(|known| known == specifier) {
+            self.record.sources.push(specifier.to_owned());
+        }
+        self.specifiers
+            .push((specifier.to_owned(), Mode::Import, false));
+    }
+
     /// The imports and exports of an ES module.
     fn module(&mut self, program: &Program<'a>) {
         for statement in &program.body {
@@ -909,6 +1048,11 @@ impl<'a> Facts<'_, 'a> {
                     let key = typed(import.source.value.as_str(), import.with_clause.as_deref());
                     let specifier = key.as_str();
                     let deferred = matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Defer));
+                    if matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Source)) {
+                        self.source_import(import);
+                        self.module_request(specifier, import.with_clause.as_deref(), true);
+                        continue;
+                    }
                     let mut kept = import.specifiers.is_none();
                     for item in import.specifiers.iter().flatten() {
                         // TypeScript erases an import that no value reads.
@@ -946,9 +1090,7 @@ impl<'a> Facts<'_, 'a> {
                         self.request(specifier);
                     }
                     if kept || !self.typescript {
-                        let source_phase =
-                            matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Source));
-                        self.module_request(specifier, import.with_clause.as_deref(), source_phase);
+                        self.module_request(specifier, import.with_clause.as_deref(), false);
                     }
                 }
                 _ => self.export(statement),

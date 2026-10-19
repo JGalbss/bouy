@@ -16,7 +16,7 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
 | corpora | equivalence/effect | Node 25.9.0 | 23 | 23 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/equivalence.rs` |
 | corpora | equivalence/ai | Node 25.9.0 | 7 | 7 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/ai.rs` |
-| corpora | programs |  | 35 | 35 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/programs.rs` |
+| corpora | programs |  | 36 | 36 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/programs.rs` |
 | corpora | npm |  | 0 | 19 | 0.0% | 0 | 0 |  | `crates/buoy-cli/tests/ecosystem.rs` |
 | corpora | equivalence/ai-zod |  | 0 | 4 | 0.0% | 1 | 0 |  | `crates/buoy-cli/tests/ecosystem.rs` |
 | corpora | equivalence/anthropic |  | 0 | 2 | 0.0% | 0 | 0 |  | `crates/buoy-cli/tests/ecosystem.rs` |
@@ -963,7 +963,7 @@ node at v25.9.0, updated at fb6850c. Evidence: `tests/node/expectations.txt`.
 
 ### By module
 
-<details><summary>46 groups</summary>
+<details><summary>47 groups</summary>
 
 | module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -1033,6 +1033,7 @@ node at v25.9.0, updated at fb6850c. Evidence: `tests/node/expectations.txt`.
 | es-module | 222 | 66 | 29.7% | 0 | 0 | 16 | 0 | 139 | 1 | 0 | 0 |
 | parallel | 4,079 | 2,191 | 53.7% | 0 | 0 | 545 | 0 | 1,283 | 48 | 0 | 12 |
 | sequential | 118 | 43 | 36.4% | 0 | 0 | 22 | 0 | 48 | 5 | 0 | 0 |
+| wasi | 26 | 21 | 80.8% | 0 | 0 | 0 | 0 | 2 | 3 | 0 | 0 |
 
 ### Blockers
 
@@ -1103,7 +1104,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | ReadableStreamDefaultReader | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Request | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Response | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Storage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Storage | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | SubtleCrypto | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
 | TextDecoder | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TextDecoderStream | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1130,7 +1131,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | exports | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | fetch | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | global | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| localStorage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| localStorage | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | module | 3 | 2 | 66.7% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
 | navigator | 2 | 2 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:assert | 24 | 24 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1168,7 +1169,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | node:readline/promises | 27 | 27 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:repl | 28 | 0 | 0.0% | 0 | 0 | 0 | 0 | 28 | 0 | 0 | 0 |
 | node:sea | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:sqlite | 32 | 0 | 0.0% | 0 | 0 | 0 | 0 | 32 | 0 | 0 | 0 |
+| node:sqlite | 32 | 32 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:stream | 250 | 250 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:stream/consumers | 7 | 7 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:stream/promises | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1194,7 +1195,7 @@ node-surface at v25.9.0, updated at 666c72b. Evidence: `tests/node/surface/expec
 | process | 87 | 87 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | queueMicrotask | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | require | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| sessionStorage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| sessionStorage | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | setImmediate | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | setInterval | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | setTimeout | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1213,7 +1214,184 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 The entries of `tests/node/never.txt` that Buoy will never have, each approved by a reviewer.
 
-No entry is on the list.
+- `node:inspector`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.DOMStorage`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.DOMStorage.domStorageItemAdded`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.DOMStorage.domStorageItemRemoved`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.DOMStorage.domStorageItemUpdated`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.DOMStorage.domStorageItemsCleared`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.DOMStorage.registerStorage`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.dataReceived`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.dataSent`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.loadingFailed`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.loadingFinished`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.requestWillBeSent`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.responseReceived`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.webSocketClosed`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.webSocketCreated`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Network.webSocketHandshakeResponseReceived`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.NetworkResources`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.NetworkResources.put`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.EventEmitter`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.EventEmitterAsyncResource`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.addAbortListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.captureRejectionSymbol`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.captureRejections`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.defaultMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.errorMonitor`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.getEventListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.getMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.init`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.kMaxEventTargetListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.kMaxEventTargetListenersWarned`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.listenerCount`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.on`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.once`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype._events`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype._eventsCount`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype._maxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.addListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.connect`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.connectToMainThread`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.disconnect`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.emit`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.eventNames`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.getMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.listenerCount`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.listeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.off`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.on`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.once`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.post`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.prependListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.prependOnceListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.rawListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.removeAllListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.removeListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.prototype.setMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.setMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.Session.usingDomains`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.close`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.assert`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.clear`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.context`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.count`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.countReset`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.createTask`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.debug`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.dir`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.dirxml`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.error`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.group`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.groupCollapsed`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.groupEnd`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.info`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.log`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.profile`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.profileEnd`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.table`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.time`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.timeEnd`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.timeLog`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.timeStamp`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.trace`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console.warn`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.console[Symbol.toStringTag]`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.open`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.url`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector.waitForDebugger`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.DOMStorage`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.DOMStorage.domStorageItemAdded`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.DOMStorage.domStorageItemRemoved`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.DOMStorage.domStorageItemUpdated`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.DOMStorage.domStorageItemsCleared`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.DOMStorage.registerStorage`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.dataReceived`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.dataSent`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.loadingFailed`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.loadingFinished`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.requestWillBeSent`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.responseReceived`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.webSocketClosed`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.webSocketCreated`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Network.webSocketHandshakeResponseReceived`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.NetworkResources`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.NetworkResources.put`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.EventEmitter`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.EventEmitterAsyncResource`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.addAbortListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.captureRejectionSymbol`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.captureRejections`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.defaultMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.errorMonitor`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.getEventListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.getMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.init`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.kMaxEventTargetListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.kMaxEventTargetListenersWarned`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.listenerCount`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.on`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.once`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype._events`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype._eventsCount`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype._maxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.addListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.connect`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.connectToMainThread`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.disconnect`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.emit`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.eventNames`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.getMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.listenerCount`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.listeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.off`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.on`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.once`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.post`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.prependListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.prependOnceListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.rawListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.removeAllListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.removeListener`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.prototype.setMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.setMaxListeners`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.Session.usingDomains`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.close`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.assert`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.clear`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.context`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.count`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.countReset`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.createTask`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.debug`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.dir`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.dirxml`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.error`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.group`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.groupCollapsed`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.groupEnd`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.info`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.log`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.profile`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.profileEnd`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.table`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.time`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.timeEnd`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.timeLog`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.timeStamp`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.trace`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console.warn`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.console[Symbol.toStringTag]`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.open`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.url`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
+- `node:inspector/promises.waitForDebugger`: Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE
 
 ## Web
 
@@ -2361,11 +2539,11 @@ Buoy implements 449 of the 895 members that src/ of Node sets on its 70 `interna
 | `profiler` | 5 | 0 | 0.0% | stub | HAVE_INSPECTOR |
 | `quic` | 135 | 0 | 0.0% | stub | HAVE_OPENSSL && OPENSSL_NO_QUIC != 1 |
 | `report` | 20 | 0 | 0.0% | `runtime/src/node/bindings/buoy_binding_report.erl` |  |
-| `sea` | 4 | 0 | 0.0% | stub |  |
+| `sea` | 4 | 4 | 100.0% | `runtime/src/node/bindings/buoy_binding_sea.erl` |  |
 | `serdes` | 2 | 2 | 100.0% | `runtime/src/node/bindings/buoy_binding_serdes.erl` |  |
 | `signal_wrap` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_signal_wrap.erl` |  |
 | `spawn_sync` | 1 | 1 | 100.0% | `runtime/src/node/bindings/buoy_binding_spawn_sync.erl` |  |
-| `sqlite` | 5 | 0 | 0.0% | stub | HAVE_SQLITE |
+| `sqlite` | 5 | 5 | 100.0% | `runtime/src/node/bindings/buoy_binding_sqlite.erl` | HAVE_SQLITE |
 | `stream_pipe` | 1 | 0 | 0.0% | stub |  |
 | `stream_wrap` | 7 | 7 | 100.0% | `runtime/src/node/bindings/buoy_binding_stream_wrap.erl` |  |
 | `string_decoder` | 10 | 10 | 100.0% | `runtime/src/node/bindings/buoy_binding_string_decoder.erl` |  |
@@ -2386,7 +2564,7 @@ Buoy implements 449 of the 895 members that src/ of Node sets on its 70 `interna
 | `wasi` | 1 | 0 | 0.0% | stub |  |
 | `wasm_web_api` | 1 | 0 | 0.0% | stub |  |
 | `watchdog` | 1 | 0 | 0.0% | stub |  |
-| `webstorage` | 2 | 0 | 0.0% | stub | HAVE_SQLITE |
+| `webstorage` | 2 | 2 | 100.0% | `runtime/src/node/bindings/buoy_binding_webstorage.erl` | HAVE_SQLITE |
 | `worker` | 13 | 12 | 92.3% | `runtime/src/node/bindings/buoy_binding_worker.erl` |  |
 | `zlib` | 7 | 6 | 85.7% | `runtime/src/node/bindings/buoy_binding_zlib.erl` |  |
 
@@ -2401,7 +2579,7 @@ The test of each corpus fails when a program breaks its rule, so these counts ho
 | conformance | 72 | pass 72 | each program prints what Node printed | `crates/buoy-cli/tests/conformance.rs` |
 | equivalence/effect | 23 | pass 23 | each program prints what Node printed | `crates/buoy-cli/tests/equivalence.rs` |
 | equivalence/ai | 7 | pass 7 | each program prints what Node printed | `crates/buoy-cli/tests/ai.rs` |
-| programs | 35 | pass 35 | each test checks the contract | `crates/buoy-cli/tests/programs.rs` |
+| programs | 36 | pass 36 | each test checks the contract | `crates/buoy-cli/tests/programs.rs` |
 | npm | 19 | rejected 19 | each program has the outcome of `tests/npm/expectations.txt` | `crates/buoy-cli/tests/ecosystem.rs` |
 | equivalence/ai-zod | 4 | rejected 3, fail 1 | each program has the outcome of `tests/equivalence/ai-zod/expectations.txt` | `crates/buoy-cli/tests/ecosystem.rs` |
 | equivalence/anthropic | 2 | rejected 2 | each program has the outcome of `tests/equivalence/anthropic/expectations.txt` | `crates/buoy-cli/tests/ecosystem.rs` |

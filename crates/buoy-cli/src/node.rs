@@ -435,14 +435,14 @@ fn run_source(
     let entry = directory.join(if module { "[eval].mjs" } else { "[eval].cjs" });
     match buoy_compiler::compile_source(&entry, code.clone()) {
         Ok(project) => super::start_program(&project, &entry, arguments, options),
-        Err(diagnostics) => report(&diagnostics, &code, place),
+        Err(diagnostics) => ExitCode::from(report(&diagnostics, &code, place)),
     }
 }
 
 /// The diagnostics of the entry. A syntax error prints as Node prints the `SyntaxError`
 /// that V8 throws when the loader compiles the entry: the place and line, the source line,
 /// a caret, the error, and the version, with status 1. Others print as buoy prints them.
-fn report(diagnostics: &[Diagnostic], source: &str, place: &str) -> ExitCode {
+fn report(diagnostics: &[Diagnostic], source: &str, place: &str) -> u8 {
     let Some(error) = diagnostics.iter().find(|d| d.code == Code::Syntax) else {
         return super::print_diagnostics(diagnostics);
     };
@@ -457,7 +457,7 @@ fn report(diagnostics: &[Diagnostic], source: &str, place: &str) -> ExitCode {
         error.message,
         NODE_VERSION.trim()
     );
-    ExitCode::from(1)
+    1
 }
 
 /// Node's report of a main script that does not exist, which `Module._resolveFilename`
@@ -476,7 +476,6 @@ fn module_not_found(script: &str) -> ExitCode {
     );
     ExitCode::from(1)
 }
-
 
 /// Whether the code of `-e` or stdin is an ES module: `--input-type=module`, or, without
 /// `--input-type`, module syntax that `containsModuleSyntax` finds without the `CommonJS`
