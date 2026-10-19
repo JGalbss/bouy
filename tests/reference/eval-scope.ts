@@ -59,5 +59,7 @@ console.log(
   Function(
     "var log = []; try { throw 8; } catch (x) { eval('var x = 42;'); log.push(x); } x = 'g'; log.push(x, typeof globalThis.x); return log;",
   )(),
-  Function("var log = []; eval('log.push(delete q); { function q() {} log.push(delete q); }'); return [log, typeof q];")(),
+  Function(
+    "var log = []; eval('log.push(delete q); { function q() {} log.push(delete q); }'); return [log, typeof q];",
+  )(),
 );

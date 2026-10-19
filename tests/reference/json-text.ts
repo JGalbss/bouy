@@ -58,7 +58,9 @@ const zero = new Number(0);
   return "0";
 };
 growing[0] = zero;
-console.log(JSON.stringify({ 0: "hi", 1: "n-nao", 2: "away", 3: "bye" }, growing as (string | number)[]));
+console.log(
+  JSON.stringify({ 0: "hi", 1: "n-nao", 2: "away", 3: "bye" }, growing as (string | number)[]),
+);
 // JSON.parse without a reviver: keys that are array indexes come first, a repeated key
 // keeps its first position and its last value, "__proto__" is an own property, and the
 // numbers take their exact double.

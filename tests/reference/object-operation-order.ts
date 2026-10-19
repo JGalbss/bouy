@@ -243,7 +243,10 @@ console.log(
 // A species must be a constructor: `true` is not one, and a proxy of a constructor is.
 const speciesOutcomes: string[] = [];
 for (const species of [true, false]) {
-  const source = [1, 2] as unknown as { constructor: unknown; map: (f: (x: number) => number) => unknown };
+  const source = [1, 2] as unknown as {
+    constructor: unknown;
+    map: (f: (x: number) => number) => unknown;
+  };
   source.constructor = { [Symbol.species]: species };
   try {
     source.map((x) => x);

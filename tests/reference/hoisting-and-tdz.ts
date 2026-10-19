@@ -85,7 +85,7 @@ function shortCircuitWrites(): unknown[] {
   let named: unknown = null;
   let unnamed: unknown = null;
   named ??= function (): void {};
-  (unnamed) ??= function (): void {};
+  unnamed ??= function (): void {};
   const outcomes: unknown[] = [];
   for (const attempt of [() => (off &&= true), () => (on ||= false), () => (on &&= false)]) {
     try {
@@ -101,8 +101,12 @@ console.log(shortCircuitWrites());
 // is hoisted too, a case's function exists from the start of the switch, and the block
 // of eval code binds its own function before the caller's variables.
 console.log(
-  Function("{ var first = f(); function f() { return 3; } function f() { return 4; } } return [first, f()];")(),
+  Function(
+    "{ var first = f(); function f() { return 3; } function f() { return 4; } } return [first, f()];",
+  )(),
   Function("{ var early = g(); l: function g() { return 'g'; } } return early;")(),
-  Function("switch (1) { case 1: var early = h(); case 2: function h() { return 'h'; } } return [early, h()];")(),
+  Function(
+    "switch (1) { case 1: var early = h(); case 2: function h() { return 'h'; } } return [early, h()];",
+  )(),
   Function("eval('{ var early = k(); function k() { return 7; } }'); return [early, k()];")(),
 );

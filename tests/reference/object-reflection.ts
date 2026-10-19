@@ -46,7 +46,8 @@ for (let i = 0; i < 80; i++) wide[`k${i}`] = i;
 delete wide.k5;
 console.log(Object.keys(wide).length, Object.keys(wide).slice(0, 6).join(), wide.k79);
 const counted: Record<string, number> = {};
-for (const word of "the cat and the hat and the bat".split(" ")) counted[word] = (counted[word] ?? 0) + 1;
+for (const word of "the cat and the hat and the bat".split(" "))
+  counted[word] = (counted[word] ?? 0) + 1;
 console.log(counted, Object.entries(counted).length);
 const reconfigured = { a: 1, b: 2, c: 3 };
 Object.defineProperty(reconfigured, "b", { enumerable: false });

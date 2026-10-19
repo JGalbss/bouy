@@ -19,7 +19,8 @@ const captured: { stack?: string } = {};
 Error.captureStackTrace(captured);
 console.log(firstLine(captured.stack));
 
-Error.prepareStackTrace = (error: Error, frames: unknown) => `${error.message} ${Array.isArray(frames)}`;
+Error.prepareStackTrace = (error: Error, frames: unknown) =>
+  `${error.message} ${Array.isArray(frames)}`;
 console.log(new Error("custom").stack);
 Error.prepareStackTrace = undefined;
 

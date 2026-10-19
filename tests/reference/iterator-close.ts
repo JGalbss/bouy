@@ -124,7 +124,10 @@ function brokenReturn(): Iterable<unknown> {
     [Symbol.iterator]() {
       let first = true;
       const iterator = {
-        next: () => (first ? ((first = false), { value: [{}, {}], done: false }) : { value: undefined, done: true }),
+        next: () =>
+          first
+            ? ((first = false), { value: [{}, {}], done: false })
+            : { value: undefined, done: true },
       };
       Object.defineProperty(iterator, "return", {
         get() {

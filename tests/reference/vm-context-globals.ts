@@ -2,7 +2,16 @@
 // Node's own, and a global that it defines stays in the context.
 import vm from "node:vm";
 
-const names = ["process", "Buffer", "global", "setImmediate", "clearImmediate", "URL", "console", "Array"];
+const names = [
+  "process",
+  "Buffer",
+  "global",
+  "setImmediate",
+  "clearImmediate",
+  "URL",
+  "console",
+  "Array",
+];
 console.log(vm.runInNewContext(`[${names.map((name) => `typeof ${name}`).join(", ")}]`).join(" "));
 
 const context = vm.createContext(vm.constants.DONT_CONTEXTIFY);

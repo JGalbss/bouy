@@ -123,7 +123,10 @@ console.log(
   Reflect.has([], "length"),
   Array.isArray(new Proxy([], {})),
 );
-const chainTrap = new Proxy({}, { get: (_target, key, receiver) => `${String(key)} of ${typeof receiver}` });
+const chainTrap = new Proxy(
+  {},
+  { get: (_target, key, receiver) => `${String(key)} of ${typeof receiver}` },
+);
 const savedProto = Object.getPrototypeOf(Number.prototype) as object;
 Object.setPrototypeOf(Number.prototype, chainTrap);
 const viaPrimitive = (5 as unknown as { found: string }).found;
