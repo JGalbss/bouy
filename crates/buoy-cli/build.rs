@@ -204,7 +204,7 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
         &source,
         "buoy_temporal",
         false,
-        false,
+        None,
         &[],
         &[],
         // The polyfill is part of the runtime: like a native Temporal, it must not observe
@@ -302,13 +302,14 @@ fn node_module(runtime: &Path, id: &str, out: &Path) -> PathBuf {
     let code = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("{} holds the built-in {id}: {error}", path.display()));
     // The code starts on the line of the wrapper, so its line numbers stay.
-    let source = format!("(function ({}) {{ {code}\n}})", node_parameters(id));
+    let parameters = format!("(function ({})", node_parameters(id));
+    let source = format!("{parameters} {{ {code}\n}})");
     let name = node_module_name(id);
     let erlang = buoy_compiler::compile_eval(
         &source,
         &name,
         false,
-        true,
+        Some(parameters.len()),
         &[],
         &[],
         &buoy_compiler::EvalContext::default(),

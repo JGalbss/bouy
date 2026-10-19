@@ -133,7 +133,10 @@ create_function(Kind, Args, NewTarget) ->
         async_generator -> <<"(async function* anonymous(">>
     end,
     Source = buoy_ref_string:concat([Prefix, P, <<"\n) {\n">>, B, <<"\n})">>]),
-    F = run(Source, ["--function"], ?GLOBAL, [], #{}),
+    %% The compiler checks that the parameter list ends after P, at the closing
+    %% parenthesis that follows it, as the parameters must parse on their own.
+    ParametersEnd = byte_size(buoy_ref_string:to_utf8(buoy_ref_string:concat(Prefix, P))) + 2,
+    F = run(Source, ["--function=" ++ integer_to_list(ParametersEnd)], ?GLOBAL, [], #{}),
     case NewTarget of
         undefined -> F;
         _ -> buoy_heap:set_prototype_of(F, buoy_ref_realm:proto_for(NewTarget, kind_prototype(Kind)))

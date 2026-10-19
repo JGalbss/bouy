@@ -75,9 +75,10 @@ struct EvalRequest {
     /// Compile the code as strict code.
     #[arg(long)]
     strict: bool,
-    /// The source is the function that the `Function` constructor builds.
+    /// The source is the function that the `Function` constructor builds, whose parameter
+    /// list ends at this byte offset, after its closing parenthesis.
     #[arg(long)]
-    function: bool,
+    function: Option<usize>,
     /// The source is a classic script of its own, as a host's `evalScript` runs it.
     #[arg(long)]
     script: bool,

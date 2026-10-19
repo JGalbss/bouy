@@ -226,7 +226,7 @@ pub fn lower_eval(
     source: String,
     name: &str,
     strict: bool,
-    function: bool,
+    function: Option<usize>,
     lexical: &[String],
     scope: &[String],
     context: &EvalContext,
@@ -247,22 +247,22 @@ pub fn lower_eval(
             )]);
         }
     }
-    if function {
+    if let Some(parameters_end) = function {
         let complete = with_js_program(&path, &source, |program, _| {
-            is_one_function(program)
+            is_one_function(program, parameters_end)
         })?;
         if !complete {
             let reporter = Reporter::new(&path, &source);
             return Err(vec![reporter.at(
                 0,
                 Code::Syntax,
-                "the body of a Function closes the function early".to_owned(),
+                "the parameters or the body of a Function close the function early".to_owned(),
             )]);
         }
     }
     let context = EvalContext {
         lexical: lexical.to_vec(),
-        dynamic_function: function,
+        dynamic_function: function.is_some(),
         ..context.clone()
     };
     lower_one_script(path, name, source, Some((strict, &context)), scope)
@@ -341,8 +341,8 @@ fn declared_var_names(
 }
 
 /// Whether the program is one parenthesized function expression that ends where the source
-/// does, before its closing parenthesis.
-fn is_one_function(program: &oxc::ast::ast::Program<'_>) -> bool {
+/// does, before its closing parenthesis, and whose parameter list ends at `parameters_end`.
+fn is_one_function(program: &oxc::ast::ast::Program<'_>, parameters_end: usize) -> bool {
     use oxc::ast::ast::{Expression, Statement};
     let [Statement::ExpressionStatement(statement)] = program.body.as_slice() else {
         return false;
@@ -351,7 +351,8 @@ fn is_one_function(program: &oxc::ast::ast::Program<'_>) -> bool {
         return false;
     };
     matches!(&inner.expression, Expression::FunctionExpression(function)
-        if function.span.end as usize + 1 == program.source_text.len())
+        if function.span.end as usize + 1 == program.source_text.len()
+            && function.params.span.end as usize == parameters_end)
 }
 
 fn lower(
