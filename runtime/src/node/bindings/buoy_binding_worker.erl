@@ -305,14 +305,15 @@ exited(Key, Reason) ->
         undefined ->
             ok;
         This ->
-            %% The handle stays ref'd while onexit runs, then closes in a later macrotask.
+            %% The handle stays ref'd while onexit runs, then closes in this turn's
+            %% check phase, as uv_close calls back before the next turn's timers.
             {Code, Error, Why} = exit_code(Reason),
             OnExit = buoy_heap:get(This, <<"onexit">>),
             try buoy_heap:is_callable(OnExit) andalso buoy_heap:call(OnExit, This, [Code, Error, Why])
             after
                 set_ref(This, false),
                 save(This, (state(This))#{status => exited}),
-                buoy_node_loop:defer(fun() -> save(This, (state(This))#{status => closed}) end)
+                buoy_node_loop:set_immediate(fun() -> save(This, (state(This))#{status => closed}) end)
             end,
             ok
     end.
