@@ -9,7 +9,7 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | Tier | Suite | Version | Pass | Total | Rate | Silent | Crash | Updated | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
-| node | node | v25.9.0 | 2,967 | 4,419 | 67.1% | 854 | 15 | ede66c4 | `tests/node/expectations.txt` |
+| node | node | v25.9.0 | 3,335 | 4,445 | 75.0% | 554 | 18 | dd000cd | `tests/node/expectations.txt` |
 | node api surface | node-surface | v25.9.0 | 4,375 | 4,460 | 98.1% | 5 | 0 | 853b704 | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
@@ -951,15 +951,15 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node
 
-node at v25.9.0, updated at ede66c4. Evidence: `tests/node/expectations.txt`.
+node at v25.9.0, updated at dd000cd. Evidence: `tests/node/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,361 | 2,967 | 68.0% | 0 | 0 | 525 | 0 | 802 | 52 | 0 | 15 |
+| every test | 4,445 | 3,335 | 75.0% | 0 | 0 | 538 | 0 | 499 | 55 | 0 | 18 |
 | kind: internals | 343 | 0 | 0.0% | 0 | 0 | 343 | 0 | 0 | 0 | 0 | 0 |
-| kind: public | 4,076 | 2,967 | 72.8% | 0 | 0 | 240 | 0 | 802 | 52 | 0 | 15 |
+| kind: public | 4,102 | 3,335 | 81.3% | 0 | 0 | 195 | 0 | 499 | 55 | 0 | 18 |
 
 ### By module
 
@@ -968,43 +968,43 @@ node at v25.9.0, updated at ede66c4. Evidence: `tests/node/expectations.txt`.
 | module | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | assert | 14 | 8 | 57.1% | 0 | 0 | 1 | 0 | 3 | 0 | 0 | 2 |
-| async_hooks | 56 | 29 | 51.8% | 0 | 0 | 11 | 0 | 16 | 0 | 0 | 0 |
+| async_hooks | 56 | 32 | 57.1% | 0 | 0 | 5 | 0 | 19 | 0 | 0 | 0 |
 | buffer | 69 | 58 | 84.1% | 0 | 0 | 6 | 0 | 5 | 0 | 0 | 0 |
 | child_process | 114 | 102 | 89.5% | 0 | 0 | 7 | 0 | 2 | 2 | 0 | 1 |
 | cluster | 88 | 81 | 92.0% | 0 | 0 | 2 | 0 | 2 | 2 | 0 | 1 |
-| console | 22 | 17 | 77.3% | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 3 |
+| console | 22 | 18 | 81.8% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 3 |
 | constants | 1 | 0 | 0.0% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | crypto | 161 | 149 | 92.5% | 0 | 0 | 9 | 0 | 2 | 1 | 0 | 0 |
 | dgram | 79 | 68 | 86.1% | 0 | 0 | 11 | 0 | 0 | 0 | 0 | 0 |
-| diagnostics_channel | 56 | 28 | 50.0% | 0 | 0 | 3 | 0 | 24 | 1 | 0 | 0 |
+| diagnostics_channel | 56 | 30 | 53.6% | 0 | 0 | 1 | 0 | 24 | 1 | 0 | 0 |
 | dns | 29 | 19 | 65.5% | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 |
-| domain | 50 | 31 | 62.0% | 0 | 0 | 1 | 0 | 18 | 0 | 0 | 0 |
+| domain | 50 | 44 | 88.0% | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 0 |
 | events | 40 | 34 | 85.0% | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
 | fs | 343 | 309 | 90.1% | 0 | 0 | 20 | 0 | 11 | 3 | 0 | 0 |
 | http | 394 | 375 | 95.2% | 0 | 0 | 15 | 0 | 3 | 1 | 0 | 0 |
-| http2 | 274 | 238 | 86.9% | 0 | 0 | 32 | 0 | 1 | 3 | 0 | 0 |
-| https | 65 | 58 | 89.2% | 0 | 0 | 2 | 0 | 5 | 0 | 0 | 0 |
+| http2 | 274 | 241 | 88.0% | 0 | 0 | 29 | 0 | 1 | 3 | 0 | 0 |
+| https | 65 | 59 | 90.8% | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 0 |
 | inspector | 114 | 0 | 0.0% | 0 | 0 | 114 | 0 | 0 | 0 | 0 | 0 |
-| module | 280 | 158 | 56.4% | 0 | 0 | 16 | 0 | 102 | 4 | 0 | 0 |
+| module | 280 | 179 | 63.9% | 0 | 0 | 16 | 0 | 81 | 4 | 0 | 0 |
 | net | 162 | 151 | 93.2% | 0 | 0 | 10 | 0 | 1 | 0 | 0 | 0 |
-| os | 8 | 2 | 25.0% | 0 | 0 | 2 | 0 | 4 | 0 | 0 | 0 |
-| other | 616 | 237 | 38.5% | 0 | 0 | 178 | 0 | 195 | 4 | 0 | 2 |
+| os | 8 | 6 | 75.0% | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| other | 616 | 243 | 39.4% | 0 | 0 | 163 | 0 | 199 | 9 | 0 | 2 |
 | path | 17 | 17 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| perf_hooks | 27 | 21 | 77.8% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 1 |
-| process | 131 | 92 | 70.2% | 0 | 0 | 8 | 0 | 26 | 5 | 0 | 0 |
+| perf_hooks | 27 | 21 | 77.8% | 0 | 0 | 2 | 0 | 3 | 0 | 0 | 1 |
+| process | 131 | 99 | 75.6% | 0 | 0 | 8 | 0 | 22 | 2 | 0 | 0 |
 | punycode | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | querystring | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | quic | 9 | 6 | 66.7% | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
-| readline | 22 | 13 | 59.1% | 0 | 0 | 7 | 0 | 2 | 0 | 0 | 0 |
-| repl | 106 | 4 | 3.8% | 0 | 0 | 14 | 0 | 77 | 9 | 0 | 2 |
+| readline | 22 | 15 | 68.2% | 0 | 0 | 7 | 0 | 0 | 0 | 0 | 0 |
+| repl | 106 | 75 | 70.8% | 0 | 0 | 14 | 0 | 12 | 2 | 0 | 3 |
 | sea | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| sqlite | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| stream | 263 | 204 | 77.6% | 0 | 0 | 8 | 0 | 51 | 0 | 0 | 0 |
+| sqlite | 18 | 14 | 77.8% | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
+| stream | 263 | 254 | 96.6% | 0 | 0 | 8 | 0 | 0 | 0 | 0 | 1 |
 | string_decoder | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | sys | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | test | 65 | 43 | 66.2% | 0 | 0 | 5 | 0 | 5 | 12 | 0 | 0 |
 | timers | 60 | 46 | 76.7% | 0 | 0 | 12 | 0 | 2 | 0 | 0 | 0 |
-| tls | 220 | 154 | 70.0% | 0 | 0 | 15 | 0 | 42 | 9 | 0 | 0 |
+| tls | 220 | 156 | 70.9% | 0 | 0 | 13 | 0 | 42 | 9 | 0 | 0 |
 | trace_events | 29 | 16 | 55.2% | 0 | 0 | 3 | 0 | 10 | 0 | 0 | 0 |
 | tty | 3 | 2 | 66.7% | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | url | 42 | 37 | 88.1% | 0 | 0 | 3 | 0 | 2 | 0 | 0 | 0 |
@@ -1031,9 +1031,10 @@ node at v25.9.0, updated at ede66c4. Evidence: `tests/node/expectations.txt`.
 
 | directory | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| es-module | 222 | 116 | 52.3% | 0 | 0 | 15 | 0 | 88 | 3 | 0 | 0 |
-| parallel | 4,079 | 2,834 | 69.5% | 0 | 0 | 545 | 0 | 640 | 45 | 0 | 15 |
-| sequential | 118 | 67 | 56.8% | 0 | 0 | 22 | 0 | 23 | 6 | 0 | 0 |
+| es-module | 222 | 137 | 61.7% | 0 | 0 | 15 | 0 | 67 | 3 | 0 | 0 |
+| parallel | 4,079 | 3,107 | 76.2% | 0 | 0 | 504 | 0 | 405 | 45 | 0 | 18 |
+| sequential | 118 | 70 | 59.3% | 0 | 0 | 19 | 0 | 25 | 4 | 0 | 0 |
+| wasi | 26 | 21 | 80.8% | 0 | 0 | 0 | 0 | 2 | 3 | 0 | 0 |
 
 ### Blockers
 
