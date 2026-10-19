@@ -851,8 +851,6 @@ import_traced(From, Specifier, Options, Phase) ->
             {builtin, Name} ->
                 validate_attributes({builtin, Name}, Options),
                 import_target({builtin, Name}, Phase, Resolve, Reject);
-            {error, Code, Message} ->
-                throw_load(Code, Message);
             _ ->
                 node_import(From, Specifier, Options, Phase, Resolve, Reject)
         end
