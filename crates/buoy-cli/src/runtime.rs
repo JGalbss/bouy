@@ -37,21 +37,39 @@ struct Release {
 }
 
 impl Runtime {
-    /// The command that starts the VM with the emulator flags `emulator`, such as `Bd`,
-    /// followed by the init flags that the caller adds. The `erl` script searches for its
-    /// root directory with a chain of shell commands on each start, so the command passes
-    /// the recorded root in `ERL_ROOTDIR`. When `erl` is the script of that release,
-    /// `<root>/bin/erl`, the command starts the emulator, `beam.smp`, with the arguments
-    /// and the environment that `erlexec` would give it, which saves one `exec` of each
-    /// start. That path ignores `ERL_FLAGS`, `ERL_AFLAGS`, and `ERL_ZFLAGS`, so a set one
-    /// takes the `erlexec` path. The VM inherits the shared lock of the runtime, so that no
-    /// other run evicts the runtime before the VM exits, also when it replaces this process.
-    pub fn vm(&self, emulator: &[&str]) -> Command {
+    /// The command that starts the VM with the emulator flags `flags`, such as `Bd`,
+    /// followed by the init flags that the caller adds. The VM inherits the
+    /// shared lock of the runtime, so that no other run evicts the runtime before the VM
+    /// exits, also when it replaces this process. Each variable of `REPLACED` goes to the
+    /// VM as `BUOY_HOST_<name>` too: `=` and the value of this process, or empty when this
+    /// process has none. `buoy_main` restores them, so a program and its child processes
+    /// see the environment of the CLI, as in Node, and a child `buoy` finds the same `erl`.
+    pub fn vm(&self, flags: &[&str]) -> Command {
         #[cfg(unix)]
         if let Some(lock) = &self.lock {
             use nix::fcntl::{FcntlArg, FdFlag, fcntl};
             let _ = fcntl(lock, FcntlArg::F_SETFD(FdFlag::empty()));
         }
+        let mut vm = self.emulator(flags);
+        for name in REPLACED {
+            let host = env::var_os(name).map_or_else(OsString::new, |value| {
+                let mut kept = OsString::from("=");
+                kept.push(value);
+                kept
+            });
+            vm.env(format!("BUOY_HOST_{name}"), host);
+        }
+        vm
+    }
+
+    /// The command that starts the emulator. The `erl` script searches for its
+    /// root directory with a chain of shell commands on each start, so the command passes
+    /// the recorded root in `ERL_ROOTDIR`. When `erl` is the script of that release,
+    /// `<root>/bin/erl`, the command starts the emulator, `beam.smp`, with the arguments
+    /// and the environment that `erlexec` would give it, which saves one `exec` of each
+    /// start. That path ignores `ERL_FLAGS`, `ERL_AFLAGS`, and `ERL_ZFLAGS`, so a set one
+    /// takes the `erlexec` path.
+    fn emulator(&self, emulator: &[&str]) -> Command {
         let plus = || emulator.iter().map(|flag| format!("+{flag}"));
         let Some(Release {
             root,
@@ -106,6 +124,17 @@ impl Runtime {
         vm
     }
 }
+
+/// The variables that starting the VM sets: `erlexec` puts its directories first on
+/// `PATH`, and the start sets the others.
+const REPLACED: [&str; 6] = [
+    "PATH",
+    "ROOTDIR",
+    "BINDIR",
+    "EMU",
+    "PROGNAME",
+    "ERL_ROOTDIR",
+];
 
 /// The compiled runtime, building it when needed.
 pub fn locate() -> Result<Runtime, String> {

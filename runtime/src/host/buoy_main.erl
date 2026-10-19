@@ -32,6 +32,7 @@ boot() ->
     %% variable and write its own facts over them, after this VM has exited.
     persistent_term:put({buoy, result_file}, os:getenv("BUOY_RESULT_FILE", "")),
     true = os:unsetenv("BUOY_RESULT_FILE"),
+    ok = restore_host_environment(),
     %% SIGTERM ends the VM as it ends Node, with status 128 + 15 and no shutdown
     %% report, and the OTP reports that remain go to stderr, never into the output.
     ok = os:set_signal(sigterm, default),
@@ -56,6 +57,25 @@ boot() ->
         _ ->
             stop(2, "buoy: usage: -extra <build dir> <entry module> <entry path> <modules> [args...]\n")
     end.
+
+%% The start of the VM sets ROOTDIR, BINDIR, EMU, and PROGNAME, and erlexec puts
+%% its directories first on PATH. The CLI passes the value of each variable in its
+%% own environment as BUOY_HOST_<name>: "=" and the value, or empty when it had
+%% none (Runtime::vm). Restoring them gives the program and its child processes
+%% the environment of the CLI, as Node has, so a child buoy finds the same erl.
+-spec restore_host_environment() -> ok.
+restore_host_environment() ->
+    lists:foreach(
+        fun(Name) ->
+            Host = "BUOY_HOST_" ++ Name,
+            _ = case os:getenv(Host) of
+                false -> true;
+                "=" ++ Value -> os:putenv(Name, Value);
+                _ -> os:unsetenv(Name)
+            end,
+            os:unsetenv(Host)
+        end,
+        ["PATH", "ROOTDIR", "BINDIR", "EMU", "PROGNAME", "ERL_ROOTDIR"]).
 
 %% Runs the top-level code of Module once, and records that it ran.
 -spec import(module()) -> ok.

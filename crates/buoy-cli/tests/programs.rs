@@ -558,6 +558,28 @@ fn a_closed_stdout_ends_the_program() {
     assert_eq!(status.code(), Some(0));
 }
 
+/// `ERL_AFLAGS` starts the VM through `erlexec`, which puts its directories first on `PATH`,
+/// so a child `buoy` found another `erl` and built a second runtime.
+#[test]
+fn the_program_sees_the_environment_of_the_cli() {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let mut command = buoy("host-environment.ts");
+    for name in ["ROOTDIR", "BINDIR", "EMU", "PROGNAME", "ERL_ROOTDIR"] {
+        command.env_remove(name);
+    }
+    check_on_vm(
+        command
+            .env("ERL_AFLAGS", "+S 2:2")
+            .env("PATH", &path)
+            .env("EXPECTED_PATH", &path),
+        &Outcome {
+            stdout: "0\ntrue\n",
+            stderr: "",
+            status: 0,
+        },
+    );
+}
+
 #[test]
 fn a_runtime_directory_without_the_runtime_fails_before_the_vm_starts() {
     let empty = std::env::temp_dir().join(format!("buoy-empty-runtime-{}", std::process::id()));
