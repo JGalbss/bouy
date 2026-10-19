@@ -133,7 +133,7 @@ ml_dsa_keygen(#{k := K, l := L, eta := Eta}, Xi) ->
     {T1, T0} = lists:unzip([power2round(P) || P <- T]),
     Pk = <<Rho/binary, (<< <<(pack(P, 10))/binary>> || P <- T1 >>)/binary>>,
     Tr = shake(shake256, Pk, 64),
-    EtaBits = bit_length(2 * Eta),
+    EtaBits = buoy_crypto:bit_length(2 * Eta),
     Sk = iolist_to_binary([Rho, Key, Tr,
                            [pack([Eta - C || C <- P], EtaBits) || P <- S1],
                            [pack([Eta - C || C <- P], EtaBits) || P <- S2],
@@ -143,7 +143,7 @@ ml_dsa_keygen(#{k := K, l := L, eta := Eta}, Xi) ->
 %% The public key of an expanded ML-DSA private key: t = A s1 + s2 again.
 ml_dsa_public(Kind, Sk) ->
     #{k := K, l := L, eta := Eta} = dsa_params(Kind),
-    EtaBits = bit_length(2 * Eta),
+    EtaBits = buoy_crypto:bit_length(2 * Eta),
     PolyBytes = 32 * EtaBits,
     <<Rho:32/binary, _Key:32/binary, _Tr:64/binary, Rest/binary>> = Sk,
     <<S1Bytes:(L * PolyBytes)/binary, S2Bytes:(K * PolyBytes)/binary, _/binary>> = Rest,
@@ -225,7 +225,7 @@ dsa_intt(P) ->
 -spec ml_dsa_sign(atom(), binary(), binary(), binary()) -> binary().
 ml_dsa_sign(Kind, Sk, Message, Ctx) ->
     #{k := K, l := L, eta := Eta} = P = dsa_params(Kind),
-    EtaBits = bit_length(2 * Eta),
+    EtaBits = buoy_crypto:bit_length(2 * Eta),
     PolyBytes = 32 * EtaBits,
     <<Rho:32/binary, Key:32/binary, Tr:64/binary, Rest/binary>> = Sk,
     <<S1B:(L * PolyBytes)/binary, S2B:(K * PolyBytes)/binary, T0B/binary>> = Rest,
@@ -256,7 +256,7 @@ sign_attempt(#{l := L, gamma1 := G1, gamma2 := G2, eta := Eta, tau := Tau, omega
     case Rejected of
         true -> sign_attempt(P, State, Kappa + L);
         false ->
-            Bits = bit_length(2 * G1 - 1),
+            Bits = buoy_crypto:bit_length(2 * G1 - 1),
             iolist_to_binary([CTilde, [pack([G1 - C || C <- Poly], Bits) || Poly <- Z], hint_pack(Hint, Omega)])
     end.
 
@@ -265,7 +265,7 @@ sign_attempt(#{l := L, gamma1 := G1, gamma2 := G2, eta := Eta, tau := Tau, omega
 ml_dsa_verify(Kind, Pk, Message, Sig, Ctx) ->
     #{k := K, l := L, gamma1 := G1, gamma2 := G2, eta := Eta, tau := Tau, lambda := Lambda, omega := Omega} = P =
         dsa_params(Kind),
-    Bits = bit_length(2 * G1 - 1),
+    Bits = buoy_crypto:bit_length(2 * G1 - 1),
     ZBytes = 32 * Bits,
     CSize = Lambda div 4,
     case {Sig, Pk} of
@@ -293,13 +293,13 @@ expand_a(Rho, K, L) ->
 
 %% ExpandMask: the l polynomials of y, with coefficients in (-gamma1, gamma1].
 expand_mask(#{l := L, gamma1 := G1}, Rho2, Kappa) ->
-    Bits = bit_length(2 * G1 - 1),
+    Bits = buoy_crypto:bit_length(2 * G1 - 1),
     [[G1 - C || C <- unpack(shake(shake256, <<Rho2/binary, (Kappa + R):16/little>>, 32 * Bits), Bits)]
      || R <- lists:seq(0, L - 1)].
 
 %% The hash of mu and w1Encode(w1).
 commitment(#{lambda := Lambda, gamma2 := G2}, Mu, W1) ->
-    Bits = bit_length((?DQ - 1) div (2 * G2) - 1),
+    Bits = buoy_crypto:bit_length((?DQ - 1) div (2 * G2) - 1),
     shake(shake256, iolist_to_binary([Mu | [pack(Poly, Bits) || Poly <- W1]]), Lambda div 4).
 
 %% SampleInBall: tau coefficients of +-1 at positions that SHAKE256 picks.
@@ -499,5 +499,3 @@ bitrev(K, Bits) ->
 
 pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
 
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.

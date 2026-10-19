@@ -9,7 +9,7 @@
 -export([bytes/1, data/2, is_buffer_source/1, array_buffer/1, buffer/1, encoding/2, encode/2, encode_output/3]).
 -export([class/3, fn/3, method/3, state/2, put_state/2, state_key/1, guard/1]).
 -export([fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, error_value/1, openssl_message/1]).
--export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2]).
+-export([to_uint32/1, to_int32/1, string/1, is_string/1, equal_bytes/2, bit_length/1]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
 -dialyzer({no_return, [fail/1, fail_code/1, fail_code/2, throw_error/1, throw_openssl/1, illegal/0]}).
@@ -62,6 +62,14 @@ encode_output(Bytes, Encoding, Default) -> encode(Bytes, encoding(Encoding, Defa
 
 %% Whether A and B are the same bytes, in a time that does not depend on
 %% where they differ (CRYPTO_memcmp).
+%% The bits of a non-negative integer, as BN_num_bits counts them. It reads
+%% the bytes once: a bit-by-bit shift loop is quadratic in the size.
+-spec bit_length(non_neg_integer()) -> non_neg_integer().
+bit_length(0) -> 0;
+bit_length(N) ->
+    <<Top, _/binary>> = Bytes = binary:encode_unsigned(N),
+    (byte_size(Bytes) - 1) * 8 + length(integer_to_list(Top, 2)).
+
 -spec equal_bytes(binary(), binary()) -> boolean().
 equal_bytes(<<>>, <<>>) -> true;
 equal_bytes(A, B) when byte_size(A) =:= byte_size(B) -> crypto:hash_equals(A, B);

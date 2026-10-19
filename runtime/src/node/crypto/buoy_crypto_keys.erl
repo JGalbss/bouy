@@ -304,7 +304,7 @@ jwk_curve(Name) -> buoy_crypto_pkey:curve(Name).
 
 field_bits(Curve) ->
     case element(1, buoy_crypto_pkey:curve_info(Curve)) of
-        {prime_field, P} -> bit_length(binary:decode_unsigned(P));
+        {prime_field, P} -> buoy_crypto:bit_length(binary:decode_unsigned(P));
         {characteristic_two_field, M, _} -> M
     end.
 
@@ -447,23 +447,20 @@ key_detail(This, Args) ->
     end.
 
 asymmetric_detail(#{kind := Kind, n := N, e := E} = K) when Kind =:= rsa; Kind =:= rsa_pss ->
-    Base = [{<<"modulusLength">>, bit_length(N)}, {<<"publicExponent">>, buoy_crypto:array_buffer(int(E))}],
+    Base = [{<<"modulusLength">>, buoy_crypto:bit_length(N)}, {<<"publicExponent">>, buoy_crypto:array_buffer(int(E))}],
     case buoy_crypto_pkey:pss_params(K) of
         #{md := Md, mgf1 := Mgf1, salt := Salt} ->
             Base ++ [{<<"hashAlgorithm">>, Md}, {<<"mgf1HashAlgorithm">>, Mgf1}, {<<"saltLength">>, Salt}];
         undefined -> Base
     end;
 asymmetric_detail(#{kind := dsa, p := P, q := Q}) ->
-    [{<<"modulusLength">>, bit_length(P)}, {<<"divisorLength">>, bit_length(Q)}];
+    [{<<"modulusLength">>, buoy_crypto:bit_length(P)}, {<<"divisorLength">>, buoy_crypto:bit_length(Q)}];
 asymmetric_detail(#{kind := ec, curve := Curve}) ->
     [{<<"namedCurve">>, buoy_crypto_pkey:curve_name(Curve)}];
 asymmetric_detail(#{kind := dh}) ->
     [];
 asymmetric_detail(_) ->
     buoy_crypto:fail_code(<<"ERR_CRYPTO_INVALID_KEYTYPE">>).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
 
 %% equals(other): EVP_PKEY_eq compares the public parts.
 equals(This, Args) ->

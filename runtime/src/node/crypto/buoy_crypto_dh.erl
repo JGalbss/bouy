@@ -78,8 +78,8 @@ verify_error(Class) ->
 
 check(#{group := true}) -> 0;
 check(#{p := P, g := G}) ->
-    Small = [16#80 || bit_length(P) < 512],
-    Large = [16#100 || bit_length(P) > 10000],
+    Small = [16#80 || buoy_crypto:bit_length(P) < 512],
+    Large = [16#100 || buoy_crypto:bit_length(P) > 10000],
     Gen = [16#08 || G =< 1 orelse G >= P - 1],
     Prime = case P band 1 =:= 1 andalso buoy_crypto_random:is_prime(P, 0) of
         false -> [16#01];
@@ -126,7 +126,7 @@ dh_compute_secret(This, Args) ->
     buoy_crypto:buffer(padded(pow(Y, X, P), P)).
 
 padded(Secret, P) ->
-    Size = (bit_length(P) + 7) div 8,
+    Size = (buoy_crypto:bit_length(P) + 7) div 8,
     <<Secret:(Size * 8)>>.
 
 %% A safe prime of Bits bits for the generator G, as
@@ -295,9 +295,6 @@ curve_names() ->
 %%% Numbers
 
 pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
 
 %% The primes of the groups of RFC 2409 and RFC 3526 (generator 2), as
 %% getDiffieHellman(name) gives them.

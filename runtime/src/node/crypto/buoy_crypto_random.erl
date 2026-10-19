@@ -31,7 +31,7 @@ random_prime_job([Bits, Safe | Rest]) ->
     case Add of
         undefined -> ok;
         _ when Add > 0 ->
-            bit_length(Add) > Bits andalso
+            buoy_crypto:bit_length(Add) > Bits andalso
                 buoy_node:throw_code('RangeError', <<"ERR_OUT_OF_RANGE">>, <<"invalid options.add">>),
             is_integer(Rem) andalso Add =< Rem andalso
                 buoy_node:throw_code('RangeError', <<"ERR_OUT_OF_RANGE">>, <<"invalid options.rem">>);
@@ -79,7 +79,7 @@ generate_prime(Bits, Safe, Add, Rem) ->
 search(Bits, Safe, Add, Rem, Start, Step, Residues, K) ->
     Offset = K * Step,
     Candidate = Start + Offset,
-    case bit_length(Candidate) > Bits of
+    case buoy_crypto:bit_length(Candidate) > Bits of
         true -> generate_prime(Bits, Safe, Add, Rem);
         false ->
             case sieved(Residues, Offset, Safe) andalso probable(Candidate, Safe) of
@@ -124,7 +124,7 @@ candidate(Bits, Safe, Add, Rem) when is_integer(Add), Add > 0 ->
         true -> 5;
         false -> 3
     end,
-    case bit_length(C) < Bits orelse C < Small of
+    case buoy_crypto:bit_length(C) < Bits orelse C < Small of
         true -> C + Add;
         false -> C
     end;
@@ -134,9 +134,6 @@ candidate(_, _, _, _) ->
 random_bits(Bits) ->
     Bytes = (Bits + 7) div 8,
     binary:decode_unsigned(crypto:strong_rand_bytes(Bytes)) band ((1 bsl Bits) - 1).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
 
 %% Miller-Rabin with Checks rounds, or the rounds that OpenSSL 3 takes for
 %% the size (64, or 128 above 2048 bits) when Checks is 0, after trial
@@ -204,7 +201,7 @@ odd_part(D, S) -> {D, S}.
 
 %% A random integer in [0, N).
 rand_below(N) when N =< 1 -> 0;
-rand_below(N) -> binary:decode_unsigned(crypto:strong_rand_bytes((bit_length(N) + 7) div 8 + 8)) rem N.
+rand_below(N) -> binary:decode_unsigned(crypto:strong_rand_bytes((buoy_crypto:bit_length(N) + 7) div 8 + 8)) rem N.
 
 %% Whether N is a probable prime to the base A.
 witness(N, D, S, A) ->

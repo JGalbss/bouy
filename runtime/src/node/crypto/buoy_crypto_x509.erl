@@ -619,7 +619,7 @@ key_fields(#{kind := Kind, n := N, e := E}) when Kind =:= rsa; Kind =:= rsa_pss 
      {<<"exponent">>, <<"0x", (string:lowercase(integer_to_binary(E, 16)))/binary>>},
      {<<"pubkey">>, buoy_crypto:buffer(buoy_crypto_der:encode({seq, [{seq, [{oid, {1,2,840,113549,1,1,1}}, null]},
                                                                       {bits, buoy_crypto_der:encode({seq, [{int, N}, {int, E}]})}]}))},
-     {<<"bits">>, bit_length(N)}];
+     {<<"bits">>, buoy_crypto:bit_length(N)}];
 key_fields(#{kind := ec, curve := Curve, pub := Pub}) ->
     [{<<"pubkey">>, buoy_crypto:buffer(Pub)}, {<<"bits">>, buoy_crypto_pkey:curve_bits(Curve)}];
 key_fields(_) -> [].
@@ -655,5 +655,3 @@ name_key(Oid) ->
         Name -> Name
     end.
 
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.

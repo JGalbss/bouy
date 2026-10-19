@@ -664,14 +664,11 @@ curve_info(Curve) -> crypto_ec_curves:curve(Curve).
 -spec curve_bits(atom()) -> pos_integer().
 curve_bits(Curve) ->
     Order = binary:decode_unsigned(element(4, curve_info(Curve))),
-    bit_length(Order).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
+    buoy_crypto:bit_length(Order).
 
 field_bytes(Curve) ->
     case element(1, curve_info(Curve)) of
-        {prime_field, P} -> (bit_length(binary:decode_unsigned(P)) + 7) div 8;
+        {prime_field, P} -> (buoy_crypto:bit_length(binary:decode_unsigned(P)) + 7) div 8;
         {characteristic_two_field, M, _} -> (M + 7) div 8
     end.
 

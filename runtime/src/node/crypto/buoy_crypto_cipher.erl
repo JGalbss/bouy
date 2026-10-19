@@ -772,15 +772,12 @@ private_rsa(_) -> buoy_crypto:fail({openssl, operation_not_supported_for_this_ke
 rsa_failure(_, ?RSA_PKCS1_OAEP_PADDING, _, _, _) -> buoy_crypto:fail({openssl, oaep_decoding_error});
 rsa_failure(Operation, _, Data, #{n := N}, _) when (Operation =:= encrypt orelse Operation =:= sign),
                                                    byte_size(Data) * 8 > 0 ->
-    case byte_size(Data) > (bit_length(N) + 7) div 8 - 11 of
+    case byte_size(Data) > (buoy_crypto:bit_length(N) + 7) div 8 - 11 of
         true -> buoy_crypto:fail({openssl, data_too_large_for_key_size});
         false -> buoy_crypto:fail({message, <<"RSA operation failed">>})
     end;
 rsa_failure(_, _, _, _, Text) ->
     buoy_crypto:fail({message, unicode:characters_to_binary(Text)}).
-
-bit_length(0) -> 0;
-bit_length(N) -> bit_length(N bsr 1) + 1.
 
 %%% WebCrypto jobs
 
