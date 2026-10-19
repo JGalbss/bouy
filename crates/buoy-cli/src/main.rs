@@ -458,10 +458,18 @@ fn start_program(
 }
 
 /// Replaces this process with the VM, so that a signal to the CLI reaches the VM and the
-/// shell reports the status of the VM, or 128 plus the signal that ended it.
+/// shell reports the status of the VM, or 128 plus the signal that ended it. SIGTERM stays
+/// blocked until `buoy_main` sets its action: ERTS drops a SIGTERM that comes before its
+/// signal server starts, and a blocked one waits instead.
 #[cfg(unix)]
 fn start(mut vm: Command) -> ExitCode {
+    use nix::sys::signal::{SigSet, SigmaskHow, Signal, sigprocmask};
     use std::os::unix::process::CommandExt;
+    let _ = sigprocmask(
+        SigmaskHow::SIG_BLOCK,
+        Some(&SigSet::from(Signal::SIGTERM)),
+        None,
+    );
     let error = vm.exec();
     fail(&format!(
         "cannot start erl: {error}; install Erlang/OTP or set BUOY_ERL"

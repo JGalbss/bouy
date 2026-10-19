@@ -526,6 +526,37 @@ fn sigterm_ends_the_program() {
     assert_eq!(rest, "");
 }
 
+/// A SIGTERM that comes while the VM boots ends the program by the signal, as it ends Node.
+/// The shell sends it to itself with SIGTERM blocked before it execs the CLI, so it waits
+/// through the whole boot, where ERTS dropped one that came before its signal server ran.
+#[cfg(unix)]
+#[test]
+fn sigterm_during_the_boot_ends_the_program() {
+    use nix::sys::signal::{SigSet, SigmaskHow, Signal, pthread_sigmask};
+    use std::os::unix::process::ExitStatusExt;
+    if !common::vm_available() {
+        return;
+    }
+    let mut command = Command::new("/bin/sh");
+    common::buoy_env(&mut command)
+        .current_dir(common::repository())
+        .args(["-c", "kill -TERM $$ && exec \"$@\"", "sh"])
+        .arg(common::buoy_binary())
+        .args(["run", "tests/programs/sleeper.ts"]);
+    let mut mask = SigSet::empty();
+    pthread_sigmask(
+        SigmaskHow::SIG_BLOCK,
+        Some(&SigSet::from(Signal::SIGTERM)),
+        Some(&mut mask),
+    )
+    .expect("SIGTERM blocks");
+    let common::Run { output, timed_out } = common::run(&mut command, common::deadline());
+    pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&mask), None).expect("the mask restores");
+    assert!(!timed_out, "the program ignored the SIGTERM of its boot");
+    assert_eq!(output.status.signal(), Some(15), "{:?}", output.status);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+}
+
 /// A reader that closes stdout early ends the program, as `node app.ts | head -1` does.
 #[test]
 fn a_closed_stdout_ends_the_program() {

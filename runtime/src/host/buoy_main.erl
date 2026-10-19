@@ -35,6 +35,9 @@ boot() ->
     %% SIGTERM ends the VM as it ends Node, with status 128 + 15 and no shutdown
     %% report, and the OTP reports that remain go to stderr, never into the output.
     ok = os:set_signal(sigterm, default),
+    %% The CLI execs the VM with SIGTERM blocked, because ERTS drops one that comes
+    %% before its signal server runs. One that came during the boot ends the VM here.
+    _ = try buoy_native:unblock_sigterm() catch error:_ -> false end,
     _ = logger:remove_handler(default),
     _ = logger:add_handler(default, logger_std_h, #{config => #{type => standard_error}}),
     %% Node writes UTF-8 under any locale. A device in latin1 mode would escape or

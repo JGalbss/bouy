@@ -9,6 +9,7 @@
 
 -export([zlib_open/6, brotli_open/2, zstd_open/3]).
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
+-export([unblock_sigterm/0]).
 
 -export_type([stream/0, failure/0]).
 
@@ -53,3 +54,8 @@ stream_reset(_Stream) -> erlang:nif_error(nif_not_loaded).
 
 -spec stream_close(stream()) -> true.
 stream_close(_Stream) -> erlang:nif_error(nif_not_loaded).
+
+%% Unblocks SIGTERM on the calling scheduler thread, so that the SIGTERM
+%% which the CLI held blocked through the boot of the VM arrives now.
+-spec unblock_sigterm() -> boolean().
+unblock_sigterm() -> erlang:nif_error(nif_not_loaded).

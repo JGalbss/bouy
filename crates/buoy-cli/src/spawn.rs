@@ -68,6 +68,13 @@ pub fn exec(arguments: &[OsString]) -> ExitCode {
             _ => {}
         }
     }
+    // uv_spawn's child empties its signal mask before the exec. A VM holds SIGTERM blocked
+    // from its start (main.rs `start`), and every port program inherits that mask.
+    let _ = nix::sys::signal::sigprocmask(
+        nix::sys::signal::SigmaskHow::SIG_SETMASK,
+        Some(&nix::sys::signal::SigSet::empty()),
+        None,
+    );
     let error = command.exec();
     failed(&format!("{}: {error}", file.to_string_lossy()))
 }
@@ -79,7 +86,8 @@ fn connect_local(spec: &str) -> Result<(), String> {
         return Err(format!("bad unix option {spec}"));
     };
     let fd: RawFd = fd.parse().map_err(|_| format!("bad descriptor {fd}"))?;
-    let socket = OwnedFd::from(UnixStream::connect(path).map_err(|error| format!("{path}: {error}"))?);
+    let socket =
+        OwnedFd::from(UnixStream::connect(path).map_err(|error| format!("{path}: {error}"))?);
     // Rust's runtime opens /dev/null on a closed standard descriptor, so those take dup2.
     let standard = match fd {
         0 => Some(nix::unistd::dup2_stdin(&socket)),
@@ -91,7 +99,8 @@ fn connect_local(spec: &str) -> Result<(), String> {
         return result.map_err(|error| format!("dup2: {error}"));
     }
     if socket.as_raw_fd() == fd {
-        fcntl(&socket, FcntlArg::F_SETFD(FdFlag::empty())).map_err(|error| format!("fcntl: {error}"))?;
+        fcntl(&socket, FcntlArg::F_SETFD(FdFlag::empty()))
+            .map_err(|error| format!("fcntl: {error}"))?;
         let _ = socket.into_raw_fd();
         return Ok(());
     }
@@ -99,7 +108,9 @@ fn connect_local(spec: &str) -> Result<(), String> {
     // left it closed. The copy does not close on exec.
     match fcntl(&socket, FcntlArg::F_DUPFD(fd)) {
         Ok(copy) if copy == fd => Ok(()),
-        Ok(copy) => Err(format!("descriptor {fd} is taken; the socket went to {copy}")),
+        Ok(copy) => Err(format!(
+            "descriptor {fd} is taken; the socket went to {copy}"
+        )),
         Err(error) => Err(format!("fcntl: {error}")),
     }
 }
