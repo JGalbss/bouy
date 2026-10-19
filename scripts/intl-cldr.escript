@@ -7,7 +7,8 @@
 %%
 %% <cldr-json-dir> is the cldr-json directory of the cldr-json release that Node's ICU uses
 %% (process.versions.cldr), such as https://github.com/unicode-org/cldr-json/tree/48.0.0,
-%% with cldr-numbers-full, cldr-units-full, cldr-misc-full, cldr-dates-full, and cldr-core.
+%% with cldr-numbers-full, cldr-units-full, cldr-misc-full, cldr-dates-full, cldr-localenames-full, and
+%% cldr-core.
 %%
 %% cldr-json holds resolved data, so each locale holds what it inherits. The file keeps
 %% for each locale only the entries that differ from its parent, and buoy_intl_cldr reads
@@ -69,8 +70,15 @@ entries(Dir, Read, L) ->
     end,
     Lists = maps:get(<<"listPatterns">>, maps:get(Locale, maps:get(<<"main">>, Read("cldr-misc-full/main/" ++ L ++ "/listPatterns.json")))),
     Fields = maps:get(<<"fields">>, maps:get(<<"dates">>, maps:get(Locale, maps:get(<<"main">>, Read("cldr-dates-full/main/" ++ L ++ "/dateFields.json"))))),
+    Names = fun(File) ->
+                    Path = "cldr-localenames-full/main/" ++ L ++ "/" ++ File ++ ".json",
+                    case filelib:is_file(filename:join(Dir, Path)) of
+                        true -> maps:get(<<"localeDisplayNames">>, maps:get(Locale, maps:get(<<"main">>, Read(Path))));
+                        false -> #{}
+                    end
+            end,
     maps:from_list(number_entries(Numbers) ++ currency_entries(Currencies) ++ unit_entries(Units) ++ list_entries(Lists)
-                   ++ field_entries(Fields)).
+                   ++ field_entries(Fields) ++ name_entries(Names)).
 
 %%% numbers.json
 
@@ -191,6 +199,33 @@ field(Value) ->
     #{name => maps:get(<<"displayName">>, Value, undefined),
       relative => maps:from_list([{Offset, T} || {<<"relative-type-", Offset/binary>>, T} <- maps:to_list(Value)]),
       future => Patterns(<<"relativeTime-type-future">>), past => Patterns(<<"relativeTime-type-past">>)}.
+
+%%% The display names of cldr-localenames-full
+
+%% {Kind, Code} => Name for the languages, regions, scripts, and variants,
+%% with Kind language, region, script, or variant, and Kind_short for the
+%% short names; {calendar_name, Type} => Name; and display_pattern =>
+%% {Pattern, Separator, KeyTypePattern}.
+name_entries(Names) ->
+    Coded = [{Kind, Code} || {File, Table, Kind} <- [{"languages", <<"languages">>, language}, {"territories", <<"territories">>, region},
+                                                     {"scripts", <<"scripts">>, script}, {"variants", <<"variants">>, variant}],
+                             Code <- maps:to_list(maps:get(Table, Names(File), #{}))],
+    Display = Names("localeDisplayNames"),
+    Pattern = maps:get(<<"localeDisplayPattern">>, Display, #{}),
+    [{name_key(Kind, Code), Name} || {Kind, {Code, Name}} <- Coded, name_key(Kind, Code) =/= skip]
+    ++ [{name_key(calendar_name, Type), Name} || {Type, Name} <- maps:to_list(maps:get(<<"calendar">>, maps:get(<<"types">>, Display, #{}), #{})),
+                                                 name_key(calendar_name, Type) =/= skip]
+    ++ [{display_pattern, {maps:get(<<"localePattern">>, Pattern), maps:get(<<"localeSeparator">>, Pattern),
+                           maps:get(<<"localeKeyTypePattern">>, Pattern)}} || map_size(Pattern) > 0].
+
+%% The key of a name: the short names of the alt-short entries, and no
+%% other alternative.
+name_key(Kind, Code) ->
+    case binary:split(Code, <<"-alt-">>) of
+        [Plain] -> {Kind, Plain};
+        [Short, <<"short">>] -> {list_to_atom(atom_to_list(Kind) ++ "_short"), Short};
+        _ -> skip
+    end.
 
 %%% Supplemental data
 
