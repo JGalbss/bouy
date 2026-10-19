@@ -1,0 +1,45 @@
+namespace: object Module
+  ConstHandle: class/2 {dispose}
+  Context: class/1 {addCleanupHook, addToCurrentScope, adjustAmountOfExternalAllocatedMemory, canCallIntoJs, closeScope, createDeferred, createEnv, createNotSupportBufferError, createNotSupportWeakRefError, createReference, createReferenceWithData, createReferenceWithFinalizer, createTrackedFinalizer, decreaseWaitingRequestCounter, destroy, ensureHandle, getCurrentScope, getRuntimeVersions, increaseWaitingRequestCounter, openScope, removeCleanupHook, runCleanup, setCanCallIntoJs, setStopping, suppressDestroy}
+  Deferred: class/2 {dispose, reject, resolve}
+  EmnapiError: class/1 {name}
+  Env: class/5 {callIntoModule, canCallIntoJs, checkGCAccess, clearLastError, deleteMe, dequeueFinalizer, dispose, enqueueFinalizer, ensureHandle, ensureHandleId, getInstanceData, getObjectBinding, getReturnStatus, initObjectBinding, invokeFinalizerFromGC, ref, setInstanceData, setLastError, terminatedOrTerminating, unref}
+  External: function/1
+  Finalizer: class/1 {callFinalizer, callback, data, dispose, hint, resetEnv, resetFinalizer}
+  Handle: class/2 {data, dispose, isArray, isArrayBuffer, isBigInt, isBoolean, isBuffer, isDataView, isDate, isExternal, isFunction, isNull, isNumber, isObject, isPromise, isString, isSymbol, isTypedArray, isUndefined}
+  HandleScope: class/4 {add, addExternal, dispose, escape, escapeCalled}
+  HandleStore: class/0 {dispose, erase, get, push, swap}
+    FALSE: object
+    GLOBAL: object
+    MIN_ID: number
+    NULL: object
+    TRUE: object
+    UNDEFINED: object
+  NAPI_VERSION_EXPERIMENTAL: number
+  NODE_API_DEFAULT_MODULE_API_VERSION: number
+  NODE_API_SUPPORTED_VERSION_MAX: number
+  NODE_API_SUPPORTED_VERSION_MIN: number
+  NodeEnv: class/7 {callFinalizer, callFinalizerInternal, callbackIntoModule, canCallIntoJs, deleteMe, drainFinalizerQueue, enqueueFinalizer, triggerFatalException}
+  NotSupportBufferError: class/2 {name}
+  NotSupportWeakRefError: class/2 {name}
+  Persistent: class/1 {clearWeak, deref, isEmpty, reset, setWeak}
+    _registry: object FinalizationRegistry
+  RefTracker: class/0 {dispose, finalize, link, unlink}
+  Reference: class/4 {_setWeak, callUserFinalizer, data, dispose, finalize, get, invokeFinalizerFromGC, ownership, ref, refcount, resetFinalizer, unref}
+  ReferenceOwnership: object
+    0: string
+    1: string
+    kRuntime: number
+    kUserland: number
+  ReferenceWithData: class/5 {data}
+  ReferenceWithFinalizer: class/7 {callUserFinalizer, data, dispose, invokeFinalizerFromGC, resetFinalizer}
+  ScopeStore: class/0 {closeScope, dispose, get, openScope}
+  Store: class/0 {add, dispose, get, has, remove}
+  TrackedFinalizer: class/4 {data, dispose, finalize}
+  TryCatch: class/0 {exception, extractException, hasCaught, isEmpty, reset, setError}
+  createContext: function/1
+  getDefaultContext: function/0
+  getExternalValue: function/1
+  isExternal: function/1 (false, false, false, false, false, false, false, false, false)
+  isReferenceType: function/1 (false, false, false, false, false, false, true, true, false)
+  version: string

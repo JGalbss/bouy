@@ -1,0 +1,25 @@
+namespace: object Module
+  alignments: object Array
+  clamp: function/3
+  createCoords: function/1
+  evaluate: function/2
+  expandPaddingObject: function/1
+  floor: function/1
+  getAlignment: function/1
+  getAlignmentAxis: function/1
+  getAlignmentSides: function/3
+  getAxisLength: function/1
+  getExpandedPlacements: function/1
+  getOppositeAlignmentPlacement: function/1
+  getOppositeAxis: function/1
+  getOppositeAxisPlacements: function/4
+  getOppositePlacement: function/1
+  getPaddingObject: function/1
+  getSide: function/1
+  getSideAxis: function/1
+  max: function/2
+  min: function/2
+  placements: object Array
+  rectToClientRect: function/1
+  round: function/1
+  sides: object Array

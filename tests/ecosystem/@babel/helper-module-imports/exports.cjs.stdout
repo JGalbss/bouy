@@ -1,0 +1,7 @@
+module.exports: object
+  ImportInjector: class/3 {_applyDefaults, _generateImport, _insertStatements, _insertStatementsAfter, _insertStatementsBefore, addDefault, addNamed, addNamespace, addSideEffect}
+  addDefault: function/3
+  addNamed: function/4
+  addNamespace: function/3
+  addSideEffect: function/3
+  isModule: function/1 (throws, throws, throws, throws, throws, throws, throws, throws, throws)

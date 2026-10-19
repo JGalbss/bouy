@@ -1,0 +1,4 @@
+module.exports: function/2
+  MaxBufferError: function/0
+  array: function/2
+  buffer: function/2

@@ -1,0 +1,21 @@
+module.exports: function/0
+  inject: function/1
+  override: function/1
+  prompt: function/0
+    inject: function/1
+    override: function/1
+    prompt: function/0
+    prompts: object
+  prompts: object
+    autocomplete: function/1
+    autocompleteMultiselect: function/1
+    confirm: function/1
+    date: function/1
+    invisible: function/1
+    list: function/1
+    multiselect: function/1
+    number: function/1
+    password: function/1
+    select: function/1
+    text: function/1
+    toggle: function/1

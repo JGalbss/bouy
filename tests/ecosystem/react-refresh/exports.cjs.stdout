@@ -1,0 +1,12 @@
+module.exports: object
+  _getMountedRootCount: function/0
+  collectCustomHooksForSignature: function/1
+  createSignatureFunctionForTransform: function/0
+  getFamilyByID: function/1
+  getFamilyByType: function/1
+  hasUnrecoverableErrors: function/0
+  injectIntoGlobalHook: function/1
+  isLikelyComponentType: function/1 (false, false, false, false, false, false, false, false, false)
+  performReactRefresh: function/0
+  register: function/2
+  setSignature: function/2

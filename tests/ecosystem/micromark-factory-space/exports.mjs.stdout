@@ -1,0 +1,3 @@
+namespace: object Module
+  factorySpace: function/4
+  factorySpaceMinMax: function/6

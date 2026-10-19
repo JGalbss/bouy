@@ -3,16 +3,16 @@
   "ui": "stream",
   "tasks": {
     "build": {
-      "inputs": ["src/**", "rebar.config", "rebar.lock"],
+      "inputs": ["src/**", "include/**", "rebar.config", "rebar.lock"],
       "outputs": ["_build/default/lib/*/ebin/**"]
     },
     "test": {
       "dependsOn": ["build"],
-      "inputs": ["src/**", "test/**", "rebar.config", "rebar.lock"]
+      "inputs": ["src/**", "include/**", "test/**", "rebar.config", "rebar.lock"]
     },
     "lint": {
       "dependsOn": ["build"],
-      "inputs": ["src/**", "rebar.config", "rebar.lock"]
+      "inputs": ["src/**", "include/**", "rebar.config", "rebar.lock"]
     }
   }
 }

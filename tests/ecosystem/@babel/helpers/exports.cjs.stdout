@@ -1,0 +1,8 @@
+module.exports: object
+  default: function/5
+  ensure: function/1
+  get: function/5
+  getDependencies: function/1
+  isInternal: function/1 (undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined)
+  list: object Array
+  minVersion: function/1

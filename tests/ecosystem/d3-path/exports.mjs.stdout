@@ -1,0 +1,4 @@
+namespace: object Module
+  Path: class/1 {arc, arcTo, bezierCurveTo, closePath, lineTo, moveTo, quadraticCurveTo, rect, toString}
+  path: class/0 {arc, arcTo, bezierCurveTo, closePath, lineTo, moveTo, quadraticCurveTo, rect, toString}
+  pathRound: function/0

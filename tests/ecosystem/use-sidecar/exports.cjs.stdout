@@ -1,0 +1,8 @@
+module.exports: object
+  createMedium: function/2
+  createSidecarMedium: function/1
+  exportSidecar: function/2
+  renderCar: function/2
+  setConfig: function/1
+  sidecar: function/2
+  useSidecar: function/2

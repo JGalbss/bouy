@@ -1,0 +1,2 @@
+namespace: object Module
+  fdir: class/1 {crawl, crawlWithOptions, exclude, filter, glob, globWithOptions, group, normalize, onlyCounts, onlyDirs, withAbortSignal, withBasePath, withDirs, withErrors, withFullPaths, withGlobFunction, withMaxDepth, withMaxFiles, withPathSeparator, withRelativePaths, withSymlinks}

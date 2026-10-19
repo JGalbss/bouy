@@ -1,0 +1,6 @@
+namespace: object Module
+  default: object
+    fromIni: function/0
+  fromIni: function/0
+  module.exports: object
+    fromIni: function/0

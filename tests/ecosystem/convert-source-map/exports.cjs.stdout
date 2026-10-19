@@ -1,0 +1,12 @@
+module.exports: object
+  fromBase64: function/1
+  fromComment: function/1
+  fromJSON: function/1
+  fromMapFileComment: function/2
+  fromMapFileSource: function/2
+  fromObject: function/1
+  fromSource: function/1
+  fromURI: function/1
+  generateMapFileComment: function/2
+  removeComments: function/1
+  removeMapFileComments: function/1

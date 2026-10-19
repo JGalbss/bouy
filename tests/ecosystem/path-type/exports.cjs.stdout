@@ -1,0 +1,7 @@
+module.exports: object
+  isDirectory: function/1 (promise, promise, promise, promise, promise, promise, promise, promise, promise)
+  isDirectorySync: function/1 (throws, throws, throws, throws, false, false, throws, throws, throws)
+  isFile: function/1 (promise, promise, promise, promise, promise, promise, promise, promise, promise)
+  isFileSync: function/1 (throws, throws, throws, throws, false, false, throws, throws, throws)
+  isSymlink: function/1 (promise, promise, promise, promise, promise, promise, promise, promise, promise)
+  isSymlinkSync: function/1 (throws, throws, throws, throws, false, false, throws, throws, throws)

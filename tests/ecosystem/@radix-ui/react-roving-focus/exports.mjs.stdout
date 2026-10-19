@@ -1,0 +1,15 @@
+namespace: object Module
+  Item: object
+    $$typeof: symbol
+    render: function/2
+  Root: object
+    $$typeof: symbol
+    render: function/2
+  RovingFocusGroup: object
+    $$typeof: symbol
+    render: function/2
+  RovingFocusGroupItem: object
+    $$typeof: symbol
+    render: function/2
+  createRovingFocusGroupScope: function/0
+    scopeName: string

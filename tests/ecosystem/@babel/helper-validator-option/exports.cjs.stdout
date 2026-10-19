@@ -1,0 +1,3 @@
+module.exports: object
+  OptionValidator: class/1 {formatMessage, invariant, validateBooleanOption, validateStringOption, validateTopLevelOptions}
+  findSuggestion: function/2

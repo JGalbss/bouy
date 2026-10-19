@@ -1,0 +1,10 @@
+namespace: object Module
+  createSelector: function/0
+    withTypes: function/0
+  createSelectorCreator: function/1
+  createStructuredSelector: function/1
+    withTypes: function/0
+  lruMemoize: function/2
+  referenceEqualityCheck: function/2
+  setGlobalDevModeChecks: function/1
+  weakMapMemoize: function/1

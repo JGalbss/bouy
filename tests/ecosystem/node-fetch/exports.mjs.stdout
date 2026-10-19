@@ -1,0 +1,25 @@
+namespace: object Module
+  AbortError: class/1 {name}
+  FetchError: class/3 {name}
+  Headers: class/0 {append, delete, entries, forEach, get, has, keys, raw, set, values}
+  Request: class/1 {arrayBuffer, blob, body, bodyUsed, buffer, clone, headers, json, method, redirect, signal, text, textConverted, url}
+  Response: class/0 {arrayBuffer, blob, body, bodyUsed, buffer, clone, headers, json, ok, redirected, status, statusText, text, textConverted, url}
+  __esModule: boolean
+  default: function/2
+    AbortError: class/1 {name}
+    FetchError: class/3 {name}
+    Headers: class/0 {append, delete, entries, forEach, get, has, keys, raw, set, values}
+    Promise: class/1 {catch, finally, then}
+    Request: class/1 {arrayBuffer, blob, body, bodyUsed, buffer, clone, headers, json, method, redirect, signal, text, textConverted, url}
+    Response: class/0 {arrayBuffer, blob, body, bodyUsed, buffer, clone, headers, json, ok, redirected, status, statusText, text, textConverted, url}
+    default: function/2
+    isRedirect: function/1
+  module.exports: function/2
+    AbortError: class/1 {name}
+    FetchError: class/3 {name}
+    Headers: class/0 {append, delete, entries, forEach, get, has, keys, raw, set, values}
+    Promise: class/1 {catch, finally, then}
+    Request: class/1 {arrayBuffer, blob, body, bodyUsed, buffer, clone, headers, json, method, redirect, signal, text, textConverted, url}
+    Response: class/0 {arrayBuffer, blob, body, bodyUsed, buffer, clone, headers, json, ok, redirected, status, statusText, text, textConverted, url}
+    default: function/2
+    isRedirect: function/1

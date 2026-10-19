@@ -1,0 +1,2 @@
+module.exports: function/1
+  Route: class/1 {_handlesMethod, _methods, acl, all, bind, checkout, connect, copy, delete, dispatch, get, head, link, lock, m-search, merge, mkactivity, mkcalendar, mkcol, move, notify, options, patch, post, propfind, proppatch, purge, put, query, rebind, report, search, source, subscribe, trace, unbind, unlink, unlock, unsubscribe}

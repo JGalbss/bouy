@@ -1,0 +1,20 @@
+module.exports: object
+  IconvLiteDecoderStream: class/2 {_flush, _transform, collect}
+  IconvLiteEncoderStream: class/2 {_flush, _transform, collect}
+  _canonicalizeEncoding: function/1
+  _codecDataCache: object
+  decode: function/3
+  decodeStream: function/2
+  defaultCharSingleByte: string
+  defaultCharUnicode: string
+  enableStreamingAPI: function/1
+  encode: function/3
+  encodeStream: function/2
+  encodingExists: function/1
+  encodings: null
+  fromEncoding: function/3
+  getCodec: function/1
+  getDecoder: function/2
+  getEncoder: function/2
+  supportsStreams: boolean
+  toEncoding: function/3

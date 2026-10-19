@@ -1,0 +1,80 @@
+namespace: object Module
+  CALL: symbol
+  CONSTRUCT: symbol
+  ESM: symbol
+  PatternMatcher: class/1 {execAll, test}
+  READ: symbol
+  ReferenceTracker: class/1 {_iterateImportReferences, _iterateLhsReferences, _iteratePropertyReferences, _iterateVariableReferences, iterateCjsReferences, iterateEsmReferences, iterateGlobalReferences, iteratePropertyReferences}
+    CALL: symbol
+    CONSTRUCT: symbol
+    ESM: symbol
+    READ: symbol
+  default: object
+    CALL: symbol
+    CONSTRUCT: symbol
+    ESM: symbol
+    PatternMatcher: class/1 {execAll, test}
+    READ: symbol
+    ReferenceTracker: class/1 {_iterateImportReferences, _iterateLhsReferences, _iteratePropertyReferences, _iterateVariableReferences, iterateCjsReferences, iterateEsmReferences, iterateGlobalReferences, iteratePropertyReferences}
+    findVariable: function/2
+    getFunctionHeadLocation: function/2
+    getFunctionNameWithKind: function/2
+    getInnermostScope: function/2
+    getPropertyName: function/2
+    getStaticValue: function/1
+    getStringIfConstant: function/1
+    hasSideEffect: function/2
+    isArrowToken: function/1
+    isClosingBraceToken: function/1
+    isClosingBracketToken: function/1
+    isClosingParenToken: function/1
+    isColonToken: function/1
+    isCommaToken: function/1
+    isCommentToken: function/1
+    isNotArrowToken: function/1
+    isNotClosingBraceToken: function/1
+    isNotClosingBracketToken: function/1
+    isNotClosingParenToken: function/1
+    isNotColonToken: function/1
+    isNotCommaToken: function/1
+    isNotCommentToken: function/1
+    isNotOpeningBraceToken: function/1
+    isNotOpeningBracketToken: function/1
+    isNotOpeningParenToken: function/1
+    isNotSemicolonToken: function/1
+    isOpeningBraceToken: function/1
+    isOpeningBracketToken: function/1
+    isOpeningParenToken: function/1
+    isParenthesized: function/3
+    isSemicolonToken: function/1
+  findVariable: function/2
+  getFunctionHeadLocation: function/2
+  getFunctionNameWithKind: function/2
+  getInnermostScope: function/2
+  getPropertyName: function/2
+  getStaticValue: function/1
+  getStringIfConstant: function/1
+  hasSideEffect: function/2
+  isArrowToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isClosingBraceToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isClosingBracketToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isClosingParenToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isColonToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isCommaToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isCommentToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isNotArrowToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotClosingBraceToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotClosingBracketToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotClosingParenToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotColonToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotCommaToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotCommentToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotOpeningBraceToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotOpeningBracketToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotOpeningParenToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isNotSemicolonToken: function/1 (throws, throws, true, true, true, true, true, true, true)
+  isOpeningBraceToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isOpeningBracketToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isOpeningParenToken: function/1 (throws, throws, false, false, false, false, false, false, false)
+  isParenthesized: function/3
+  isSemicolonToken: function/1 (throws, throws, false, false, false, false, false, false, false)

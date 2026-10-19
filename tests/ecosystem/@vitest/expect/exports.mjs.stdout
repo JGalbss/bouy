@@ -1,0 +1,55 @@
+namespace: object Module
+  ASYMMETRIC_MATCHERS_OBJECT: symbol
+  Any: class/1 {asymmetricMatch, fnNameFor, getExpectedType, toAsymmetricMatcher, toString}
+  Anything: class/0 {asymmetricMatch, toAsymmetricMatcher, toString}
+  ArrayContaining: class/1 {asymmetricMatch, getExpectedType, toString}
+  AsymmetricMatcher: class/1 {getMatcherContext}
+  ChaiStyleAssertions: function/2
+  GLOBAL_EXPECT: symbol
+  JEST_MATCHERS_OBJECT: symbol
+  JestAsymmetricMatchers: function/2
+  JestChaiExpect: function/2
+  JestExtend: function/2
+  MATCHERS_OBJECT: symbol
+  ObjectContaining: class/1 {asymmetricMatch, getExpectedType, getProperties, getPrototype, hasProperty, toString}
+  SchemaMatching: class/1 {asymmetricMatch, getExpectedType, toAsymmetricMatcher, toString}
+  StringContaining: class/1 {asymmetricMatch, getExpectedType, toString}
+  StringMatching: class/1 {asymmetricMatch, getExpectedType, toString}
+  addCustomEqualityTesters: function/1
+  arrayBufferEquality: function/2
+  chai: object Module
+    Assertion: class/4 {Arguments, NaN, Throw, __methods, _obj, a, above, all, also, an, and, any, approximately, arguments, assert, at, be, been, below, but, by, callable, change, changes, closeTo, contain, containSubset, contains, decrease, decreases, deep, does, empty, eq, eql, eqls, equal, equals, exist, exists, extensible, false, finite, frozen, greaterThan, greaterThanOrEqual, gt, gte, has, have, haveOwnProperty, haveOwnPropertyDescriptor, include, includes, increase, increases, instanceOf, instanceof, is, iterable, itself, key, keys, least, length, lengthOf, lessThan, lessThanOrEqual, lt, lte, match, matches, members, most, nested, not, null, numeric, of, ok, oneOf, ordered, own, ownProperty, ownPropertyDescriptor, property, respondTo, respondsTo, same, satisfies, satisfy, sealed, still, string, that, throw, throws, to, true, undefined, which, with, within}
+    AssertionError: class/0 {name, ok, toJSON}
+    Should: function/0
+    assert: function/2
+    config: object
+    expect: function/2
+    should: function/0
+    use: function/1
+    util: object
+  createAssertionMessage: function/3
+  customMatchers: object
+    toBeOneOf: function/2
+    toSatisfy: function/3
+  equals: function/4
+  fnNameFor: function/1
+  generateToBeMessage: function/1
+  getObjectKeys: function/1
+  getObjectSubset: function/3
+  getState: function/1
+  hasAsymmetric: function/1
+  hasProperty: function/2
+  isA: function/2 (false, false, false, false, false, false, false, false, false)
+  isAsymmetric: function/1 (false, false, false, false, false, false, false, false, false)
+  isError: function/1 (false, false, false, false, false, false, false, false, false)
+  isImmutableUnorderedKeyed: function/1 (false, false, false, false, false, false, false, false, false)
+  isImmutableUnorderedSet: function/1 (false, false, false, false, false, false, false, false, false)
+  isStandardSchema: function/1 (false, false, false, false, false, false, undefined, undefined, false)
+  iterableEquality: function/2
+  pluralize: function/2
+  recordAsyncExpect: function/5
+  setState: function/2
+  sparseArrayEquality: function/2
+  subsetEquality: function/2
+  typeEquality: function/2
+  wrapAssertion: function/3

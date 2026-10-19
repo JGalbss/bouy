@@ -1,0 +1,6 @@
+module.exports: object
+  classes: object
+    FileCoverage: class/1 {all, b, bT, branchMap, computeBranchTotals, computeSimpleTotals, f, fnMap, getBranchCoverageByLine, getLineCoverage, getUncoveredLines, merge, path, resetHits, s, statementMap, toJSON, toSummary}
+  createCoverageMap: function/1
+  createCoverageSummary: function/1
+  createFileCoverage: function/1

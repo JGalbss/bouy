@@ -1,0 +1,17 @@
+module.exports: class/3 {_countBits, _expand, _forceRed, _iaddn, _init, _initArray, _initNumber, _invmp, _ishlnsubmul, _normSign, _parseBase, _parseHex, _wordDiv, _zeroBits, abs, add, addn, and, andln, bincn, bitLength, byteLength, clone, cmp, cmpn, copy, div, divRound, divmod, divn, egcd, eq, eqn, forceRed, fromRed, fromTwos, gcd, gt, gte, gten, gtn, iabs, iadd, iaddn, iand, idivn, imaskn, imul, imuln, ineg, inotn, inspect, invm, ior, isEven, isNeg, isOdd, isZero, ishln, ishrn, isqr, isub, isubn, iuand, iuor, iushln, iushrn, iuxor, ixor, lt, lte, lten, ltn, maskn, mod, modn, mul, mulTo, mulf, muln, neg, notn, or, pow, redAdd, redIAdd, redIMul, redISqr, redISub, redInvm, redMul, redNeg, redPow, redShl, redSqr, redSqrt, redSub, setn, shln, shrn, sqr, strip, sub, subn, testn, toArray, toArrayLike, toBuffer, toJSON, toNumber, toRed, toString, toTwos, uand, ucmp, umod, uor, ushln, ushrn, uxor, xor, zeroBits}
+  BN: class/3 {_countBits, _expand, _forceRed, _iaddn, _init, _initArray, _initNumber, _invmp, _ishlnsubmul, _normSign, _parseBase, _parseHex, _wordDiv, _zeroBits, abs, add, addn, and, andln, bincn, bitLength, byteLength, clone, cmp, cmpn, copy, div, divRound, divmod, divn, egcd, eq, eqn, forceRed, fromRed, fromTwos, gcd, gt, gte, gten, gtn, iabs, iadd, iaddn, iand, idivn, imaskn, imul, imuln, ineg, inotn, inspect, invm, ior, isEven, isNeg, isOdd, isZero, ishln, ishrn, isqr, isub, isubn, iuand, iuor, iushln, iushrn, iuxor, ixor, lt, lte, lten, ltn, maskn, mod, modn, mul, mulTo, mulf, muln, neg, notn, or, pow, redAdd, redIAdd, redIMul, redISqr, redISub, redInvm, redMul, redNeg, redPow, redShl, redSqr, redSqrt, redSub, setn, shln, shrn, sqr, strip, sub, subn, testn, toArray, toArrayLike, toBuffer, toJSON, toNumber, toRed, toString, toTwos, uand, ucmp, umod, uor, ushln, ushrn, uxor, xor, zeroBits}
+    BN: class/3 {_countBits, _expand, _forceRed, _iaddn, _init, _initArray, _initNumber, _invmp, _ishlnsubmul, _normSign, _parseBase, _parseHex, _wordDiv, _zeroBits, abs, add, addn, and, andln, bincn, bitLength, byteLength, clone, cmp, cmpn, copy, div, divRound, divmod, divn, egcd, eq, eqn, forceRed, fromRed, fromTwos, gcd, gt, gte, gten, gtn, iabs, iadd, iaddn, iand, idivn, imaskn, imul, imuln, ineg, inotn, inspect, invm, ior, isEven, isNeg, isOdd, isZero, ishln, ishrn, isqr, isub, isubn, iuand, iuor, iushln, iushrn, iuxor, ixor, lt, lte, lten, ltn, maskn, mod, modn, mul, mulTo, mulf, muln, neg, notn, or, pow, redAdd, redIAdd, redIMul, redISqr, redISub, redInvm, redMul, redNeg, redPow, redShl, redSqr, redSqrt, redSub, setn, shln, shrn, sqr, strip, sub, subn, testn, toArray, toArrayLike, toBuffer, toJSON, toNumber, toRed, toString, toTwos, uand, ucmp, umod, uor, ushln, ushrn, uxor, xor, zeroBits}
+    _prime: function/1
+    isBN: function/1
+    max: function/2
+    min: function/2
+    mont: function/1
+    red: function/1
+    wordSize: number
+  _prime: function/1
+  isBN: function/1 (false, false, false, false, false, false, false, false, false)
+  max: function/2
+  min: function/2
+  mont: function/1
+  red: function/1
+  wordSize: number

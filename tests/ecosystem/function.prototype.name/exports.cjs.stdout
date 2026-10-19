@@ -1,0 +1,4 @@
+module.exports: function/1
+  getPolyfill: function/0
+  implementation: function/0
+  shim: function/0

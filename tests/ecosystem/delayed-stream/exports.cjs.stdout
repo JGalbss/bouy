@@ -1,0 +1,2 @@
+module.exports: class/0 {_checkIfMaxDataSizeExceeded, _handleEmit, pause, pipe, readable, release, resume, setEncoding}
+  create: function/2

@@ -1,6 +1,6 @@
 //! A development runner for test262 on the reference engine. It compiles each test with the
 //! harness files that its frontmatter names, runs up to 8000 compiled tests in one VM, each
-//! in a realm process of its own (`runtime/test/buoy_test262.erl`), and prints the failures and
+//! in a realm process of its own (`runtime/test/engine/buoy_test262.erl`), and prints the failures and
 //! a table of results per directory.
 //!
 //! `scripts/test262-dev.sh` fetches test262 at the pinned commit and runs this binary. It
@@ -46,7 +46,7 @@ var $262 = (function host(global, createRealm, agent) {\n\
 delete globalThis.$262CreateRealm;\n";
 
 /// The VM half of the runner, which the VM compiles when it starts.
-const VM_RUNNER: &str = include_str!("../../../../runtime/test/buoy_test262.erl");
+const VM_RUNNER: &str = include_str!("../../../../runtime/test/engine/buoy_test262.erl");
 
 /// The tests that one VM runs before the runner starts a new VM. The VM never frees an entry
 /// of its fun table, even when it purges the module of the fun, and the table holds 524288
@@ -615,7 +615,7 @@ fn vm_pass(
         "-mode",
         "minimal",
         "-boot",
-        "no_dot_erlang",
+        &runtime.boot,
         "-pa",
     ])
     .arg(&runtime.ebin)
