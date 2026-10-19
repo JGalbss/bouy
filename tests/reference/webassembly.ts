@@ -116,3 +116,13 @@ const jspi = new WebAssembly.Instance(new WebAssembly.Module(jspiBytes), {
 });
 const twice = WebAssembly.promising((jspi.exports as any).twice);
 console.log(await twice(4));
+
+const words = new Int32Array(new WebAssembly.Memory({ initial: 1 }).buffer);
+console.log(
+  Atomics.add(words, 0, 5),
+  Atomics.compareExchange(words, 0, 5, 7),
+  Atomics.exchange(words, 0, 1),
+  Atomics.or(words, 0, 2),
+  Atomics.load(words, 0),
+  Atomics.notify(words, 0, 1),
+);
