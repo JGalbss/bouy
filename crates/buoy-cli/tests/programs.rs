@@ -323,6 +323,28 @@ fn a_native_kernel_does_not_delay_replies() {
     );
 }
 
+/// The heaps of native runs count toward `BUOY_MAX_MEMORY`: 8 actors that hold about
+/// 60 MB each in runs of the native tier stop a VM with a limit of 256 MB (contract
+/// section 17.10).
+#[test]
+fn native_heaps_count_toward_the_memory_limit() {
+    let mut command = common::buoy();
+    command
+        .current_dir(common::repository())
+        .args(["run", "--semantics", "reference"])
+        .arg(Path::new("tests/programs").join("native-memory-limit.ts"))
+        .env("BUOY_MAX_MEMORY", "256M");
+    check_on_vm(
+        &mut command,
+        &Outcome {
+            stdout: "",
+            stderr: "buoy: the program used more than 256 MiB of memory and was stopped; \
+                     set BUOY_MAX_MEMORY to change the limit\n",
+            status: 1,
+        },
+    );
+}
+
 #[test]
 fn ten_thousand_actors_answer() {
     check_on_vm(

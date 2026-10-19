@@ -62,6 +62,9 @@ struct RawBinary {
 const ERL_NIF_RT_CREATE: c_int = 1;
 
 unsafe extern "C" {
+    fn enif_alloc(size: usize) -> *mut c_void;
+    fn enif_realloc(pointer: *mut c_void, size: usize) -> *mut c_void;
+    fn enif_free(pointer: *mut c_void);
     fn enif_make_atom(env: *mut RawEnv, name: *const c_char) -> Term;
     fn enif_make_long(env: *mut RawEnv, value: c_long) -> Term;
     fn enif_make_double(env: *mut RawEnv, value: f64) -> Term;
@@ -312,4 +315,77 @@ unsafe extern "C" fn drop_value<T>(_env: *mut RawEnv, object: *mut c_void) {
     // SAFETY: the VM calls the destructor once, when no term refers to the object, which
     // holds a `T` that `make` wrote.
     unsafe { ptr::drop_in_place(object.cast::<T>()) }
+}
+
+/// Every allocation of the library, such as the heap of a run, goes through `enif_alloc`,
+/// so `erlang:memory(total)` counts it and the watchdog of `BUOY_MAX_MEMORY` sees it, as in
+/// crates/buoy-native. The machine code lives in pages that cranelift-jit maps itself.
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator;
+
+struct Allocator;
+
+/// The alignment of `enif_alloc`. A larger one keeps the address of the block from
+/// `enif_alloc` in the word before the aligned address.
+const ENIF_ALIGN: usize = 8;
+
+// SAFETY: each method passes the VM's allocator a block that it returned.
+unsafe impl std::alloc::GlobalAlloc for Allocator {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if layout.align() <= ENIF_ALIGN {
+            // SAFETY: enif_alloc may be called from any thread.
+            return unsafe { enif_alloc(layout.size()) }.cast();
+        }
+        let size = size_of::<usize>() + layout.size() + layout.align() - 1;
+        // SAFETY: as above.
+        let block = unsafe { enif_alloc(size) }.cast::<u8>();
+        if block.is_null() {
+            return block;
+        }
+        let after = block.wrapping_add(size_of::<usize>());
+        let aligned = after.wrapping_add(after.align_offset(layout.align()));
+        // SAFETY: the word before `aligned` lies inside the block.
+        unsafe {
+            aligned
+                .sub(size_of::<usize>())
+                .cast::<*mut u8>()
+                .write_unaligned(block);
+        };
+        aligned
+    }
+
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: std::alloc::Layout) {
+        let block = if layout.align() <= ENIF_ALIGN {
+            pointer
+        } else {
+            // SAFETY: `alloc` wrote the block's address in the word before.
+            unsafe {
+                pointer
+                    .sub(size_of::<usize>())
+                    .cast::<*mut u8>()
+                    .read_unaligned()
+            }
+        };
+        // SAFETY: `block` came from enif_alloc.
+        unsafe { enif_free(block.cast()) };
+    }
+
+    unsafe fn realloc(&self, pointer: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        if layout.align() <= ENIF_ALIGN {
+            // SAFETY: the block came from enif_alloc with this alignment.
+            return unsafe { enif_realloc(pointer.cast(), size) }.cast();
+        }
+        // SAFETY: the caller's contract of GlobalAlloc::realloc.
+        unsafe {
+            let moved = self.alloc(std::alloc::Layout::from_size_align_unchecked(
+                size,
+                layout.align(),
+            ));
+            if !moved.is_null() {
+                ptr::copy_nonoverlapping(pointer, moved, layout.size().min(size));
+                self.dealloc(pointer, layout);
+            }
+            moved
+        }
+    }
 }
