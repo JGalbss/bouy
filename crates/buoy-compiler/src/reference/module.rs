@@ -374,7 +374,17 @@ impl<'a> Lowerer<'a, '_> {
         let body: Vec<&'a Statement<'a>> = program.body.iter().collect();
         let mut functions = vec![self.eval_function(&body, directive)];
         functions.push(self.class_dispatch());
-        functions.extend(source_functions(program, source));
+        let mut sources = source_functions(program, source);
+        if self.eval_context.source_outside
+            && let Some(text) = sources.iter_mut().find(|function| function.name == "$source")
+        {
+            text.clauses[0].body = vec![Expr::call(
+                "buoy_ref_eval",
+                "source",
+                vec![Expr::atom(self.module.clone())],
+            )];
+        }
+        functions.extend(sources);
         functions.push(self.export_function(program));
         functions.extend(self.linking.interface());
         functions.append(&mut self.extra);

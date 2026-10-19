@@ -273,14 +273,20 @@ pub fn compile_eval(
     scope: &[String],
     context: &EvalContext,
 ) -> Result<String, Vec<Diagnostic>> {
-    // The directive goes first, and a hashbang comment stays a comment after it.
-    let directed = match (strict, source.strip_prefix("#!")) {
+    let directed = eval_text(source, strict);
+    let function = function.map(|end| end + directed.len() - source.len());
+    reference::lower_eval(directed, name, strict, function, lexical, scope, context)
+}
+
+/// The text that `compile_eval` compiles: strict code gets the directive first, and a
+/// hashbang comment stays a comment after it. The spans of the module index this text.
+#[must_use]
+pub fn eval_text(source: &str, strict: bool) -> String {
+    match (strict, source.strip_prefix("#!")) {
         (true, Some(rest)) => format!("\"use strict\";\n//{rest}"),
         (true, None) => format!("\"use strict\";\n{source}"),
         (false, _) => source.to_owned(),
-    };
-    let function = function.map(|end| end + directed.len() - source.len());
-    reference::lower_eval(directed, name, strict, function, lexical, scope, context)
+    }
 }
 
 /// Compiles a classic script at run time (reference semantics) into the Erlang module

@@ -14,7 +14,7 @@
 
 -include("buoy_ref.hrl").
 
--export([shadow_evaluate/2]).
+-export([shadow_evaluate/2, source/1]).
 -export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4]).
 
 -import(buoy_ref, [type_error/1]).
@@ -300,7 +300,10 @@ compile(Source, Flags, Key) ->
     Name = "buoy_eval_" ++ integer_to_list(erlang:unique_integer([positive])),
     Request = [lists:join("\n", Flags ++ [Name]), "\n\n", buoy_ref_string:to_utf8(Source)],
     case call_compiler(iolist_to_binary(Request)) of
-        <<0, Erlang/binary>> -> loaded(load_apart(Key, list_to_atom(Name), Erlang));
+        <<0, Size:32, Erlang:Size/binary, Text/binary>> ->
+            Module = list_to_atom(Name),
+            true = ets:insert(buoy_eval_modules, {Module, Text}),
+            loaded(load_apart(Key, Module, Erlang));
         <<2, Diagnostic/binary>> -> report(Diagnostic);
         <<_, Output/binary>> -> loaded({failed, Output})
     end.
@@ -319,6 +322,13 @@ call_compiler(Request) ->
         {'DOWN', Ref, process, _, Reason} ->
             type_error(buoy_ref_string:from_utf8(unicode:characters_to_binary(io_lib:format("the Buoy compiler stopped: ~0tP", [Reason, 8]))))
     end.
+
+%% The source text of the eval module Module, which its '$source'/0 reads: the
+%% compiler sends it beside the module, so the VM never scans it as a literal.
+-spec source(module()) -> binary().
+source(Module) ->
+    [{_, Text}] = ets:lookup(buoy_eval_modules, Module),
+    Text.
 
 %% load/3 in a process linked to the caller, which a timeout or a kill of the
 %% caller stops too.
