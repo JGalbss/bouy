@@ -39,6 +39,18 @@ insertion_order_test() ->
                   ?assertEqual([1, 2, 10, <<"a">>, <<"c">>, <<"b">>], buoy_heap:own_keys(O))
           end).
 
+%% own_named_keys/1 lists the keys of own_keys/1 without the indices, and
+%% never walks the elements of an array.
+own_named_keys_test() ->
+    realm(fun() ->
+                  O = buoy_heap:new_object(?P),
+                  [buoy_heap:set(O, buoy_heap:to_key(K), 1) || K <- [<<"b">>, <<"2">>, <<"a">>]],
+                  ?assertEqual([<<"b">>, <<"a">>], buoy_heap:own_named_keys(O)),
+                  A = buoy_heap:new_array([x, y]),
+                  buoy_heap:set(A, <<"tag">>, 1),
+                  ?assertEqual([<<"length">>, <<"tag">>], buoy_heap:own_named_keys(A))
+          end).
+
 prototype_chain_test() ->
     realm(fun() ->
                   Base = buoy_heap:object(null, [{<<"greet">>, <<"hi">>}]),

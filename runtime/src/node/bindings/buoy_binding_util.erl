@@ -134,7 +134,7 @@ preview_entries(V, IsIterator) ->
 
 own_non_index(O, Filter) ->
     Bits = trunc(buoy_ref:to_number(Filter)),
-    Keys = [K || K <- buoy_heap:own_keys(O), not is_integer(K), not is_index(K)],
+    Keys = [K || K <- buoy_heap:own_named_keys(O), not is_index(K)],
     Kept = [K || K <- Keys,
                  Bits band ?ONLY_ENUMERABLE =:= 0 orelse buoy_heap:is_enumerable(buoy_heap:get_own(O, K)),
                  Bits band ?SKIP_SYMBOLS =:= 0 orelse not is_symbol(K),

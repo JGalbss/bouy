@@ -46,6 +46,7 @@
 -export([array_push/2, array_set_items/2]).
 -export([function/1, function/4, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
+-export([own_named_keys/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
 -export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
@@ -795,6 +796,19 @@ own_keys(O) ->
         {deferred_namespace, _, _, _, _, M} = R -> ok = buoy_module:ensure_deferred(M), record_keys(R);
         {typed_array, _, _, _, _, _} = R -> buoy_ref_typed_array:index_keys(O) ++ record_keys(R);
         R -> record_keys(R)
+    end.
+
+%% The own keys of O without its integer indices, in the order of own_keys,
+%% as V8's KeyAccumulator collects them with SKIP_INDICES: the elements of an
+%% array or a typed array are never listed.
+-spec own_named_keys(value()) -> [key()].
+own_named_keys(O) ->
+    case record_of(O) of
+        {Class, _, _, Keys, _, _} when Class =/= proxy, Class =/= deferred_namespace ->
+            Ordered = lists:reverse(Keys),
+            [<<"length">> || Class =:= array] ++ [K || K <- Ordered, ?IS_STRING(K)] ++ [K || {'$sym', _, _} = K <- Ordered];
+        _ ->
+            [K || K <- own_keys(O), not is_integer(K)]
     end.
 
 record_keys({Class, _, Props, Keys, _, Slots}) ->
