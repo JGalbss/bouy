@@ -6,7 +6,7 @@
 - `crates/buoy-cli`: the `buoy` command. It embeds the runtime sources, writes the generated Erlang, and starts one BEAM VM.
 - `runtime`: the `buoy` OTP application in Erlang. rebar3 builds and tests it. `runtime/src` holds one directory for each subsystem, as Bun's `src/` does. Put a new module in the directory of its subsystem: `crates/buoy-suites/tests/rules.rs` fails on an `.erl` file at the top of `runtime/src` or `runtime/test`.
   - `engine`: the reference engine: the operations of compiled code, the heap, the realm, the job queue, classes, and the module loader.
-  - `builtins`: the families of `buoy_ref_realm:families/0`. A family of several files has a directory: `regexp`, `binary`, `time`, and `iterator`.
+  - `builtins`: the families of `buoy_ref_realm:families/0`. A family of several files has a directory: `regexp`, `binary`, `time`, `iterator`, and `intl`.
   - `node`: the Node host. `node/bindings` holds the `internalBinding` modules, one `buoy_binding_<name>.erl` for each binding.
   - `actors`: the functions of `"buoy"`, actors, supervision, the registry, and the worker processes of `Promise.all`.
   - `library`: the `effect` and `ai` modules.

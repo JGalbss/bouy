@@ -4,7 +4,7 @@ This file is the plan for `Intl` (ECMA-402) on the reference engine. It records 
 
 ## State
 
-- Buoy has no `Intl` global. `buoy_ref_temporal` gives the Temporal polyfill a slice of `Intl.DateTimeFormat` in the en-US locale, and `localeCompare` and `toLocaleString` honor a few options (`buoy_ref_string`, `buoy_ref_number`).
+- Phase 1 has started: the `Intl` global with `getCanonicalLocales`, `supportedValuesOf`, and `Intl.Locale` (contract section 17.3, **Intl.**). The service constructors are not there yet. `buoy_ref_temporal` gives the Temporal polyfill a slice of `Intl.DateTimeFormat` in the en-US locale, and `localeCompare` and `toLocaleString` honor a few options (`buoy_ref_string`, `buoy_ref_number`).
 - `process.config.variables.hasIntl` is false (`buoy_binding_config`), so the tests of Node that need Intl skip.
 - test262 `test/intl402` on the dev runner: 463 of 3382 tests pass, 439 of them in `Temporal`, which tests the ISO calendar too.
 

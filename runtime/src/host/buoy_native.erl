@@ -1,14 +1,17 @@
 %% The NIF library of crates/buoy-native, which the CLI writes next to the
-%% runtime's .beam files as buoy_native.so. It holds the codecs of
-%% internalBinding('zlib'): each stream is a resource that owns one zlib,
-%% brotli, or zstd context (src/node_zlib.cc of Node). A failure is
-%% {Message, Errno, Code}, the arguments of a handle's onerror.
+%% runtime's .beam files as buoy_native.so. It holds the CLDR data of Intl
+%% (ICU4X, for buoy_ref_intl), and the codecs of internalBinding('zlib'):
+%% each stream is a resource that owns one zlib, brotli, or zstd context
+%% (src/node_zlib.cc of Node). A failure is {Message, Errno, Code}, the
+%% arguments of a handle's onerror.
 -module(buoy_native).
 
 -on_load(load/0).
 
 -export([zlib_open/6, brotli_open/2, zstd_open/3]).
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
+-export([intl_canonicalize/1, intl_maximize/1, intl_minimize/1, intl_is_right_to_left/1]).
+-export([intl_collator_new/3, intl_collator_compare/3, intl_collation_types/1]).
 
 -export_type([stream/0, failure/0]).
 
@@ -53,3 +56,37 @@ stream_reset(_Stream) -> erlang:nif_error(nif_not_loaded).
 
 -spec stream_close(stream()) -> true.
 stream_close(_Stream) -> erlang:nif_error(nif_not_loaded).
+
+%%% Intl
+
+%% The canonical form of a Unicode locale identifier, with the aliases of its
+%% language, script, region, and variants replaced, or nil for a tag that is
+%% not structurally valid.
+-spec intl_canonicalize(binary()) -> binary() | nil.
+intl_canonicalize(_Tag) -> erlang:nif_error(nif_not_loaded).
+
+%% The tag with its likely subtags added.
+-spec intl_maximize(binary()) -> binary() | nil.
+intl_maximize(_Tag) -> erlang:nif_error(nif_not_loaded).
+
+%% The tag without the subtags that intl_maximize/1 adds back.
+-spec intl_minimize(binary()) -> binary() | nil.
+intl_minimize(_Tag) -> erlang:nif_error(nif_not_loaded).
+
+%% Whether the locale writes right to left, or nil when its script has no
+%% direction.
+-spec intl_is_right_to_left(binary()) -> boolean() | nil.
+intl_is_right_to_left(_Tag) -> erlang:nif_error(nif_not_loaded).
+
+%% An Intl.Collator of ICU4X for a locale tag whose -u- keywords co, kf, and kn
+%% choose the collation, with a sensitivity of ECMA-402, or nil.
+-spec intl_collator_new(binary(), base | accent | 'case' | variant, boolean()) -> reference() | nil.
+intl_collator_new(_Tag, _Sensitivity, _IgnorePunctuation) -> erlang:nif_error(nif_not_loaded).
+
+%% CompareStrings of two big-endian UTF-16 binaries: -1, 0, or 1.
+-spec intl_collator_compare(reference(), binary(), binary()) -> -1 | 0 | 1.
+intl_collator_compare(_Collator, _Left, _Right) -> erlang:nif_error(nif_not_loaded).
+
+%% The collation types that ICU4X has for a locale or its fallbacks.
+-spec intl_collation_types(binary()) -> [binary()].
+intl_collation_types(_Tag) -> erlang:nif_error(nif_not_loaded).

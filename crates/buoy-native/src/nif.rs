@@ -8,7 +8,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use rustler::{Binary, Env, Error, NifResult, OwnedBinary, ResourceArc};
 
-use crate::{Failure, brotli, zlib, zstd};
+use crate::{Failure, brotli, intl, zlib, zstd};
 
 /// The context of one handle of `internalBinding('zlib')`.
 #[derive(Debug)]
@@ -206,6 +206,83 @@ fn stream_reset(stream: ResourceArc<Stream>) -> NifResult<Outcome> {
 fn stream_close(stream: ResourceArc<Stream>) -> NifResult<bool> {
     *stream.codec()? = Codec::Closed;
     Ok(true)
+}
+
+/// `Intl`: the canonical form of a locale tag, or `nil` for an invalid tag.
+#[rustler::nif]
+fn intl_canonicalize(tag: &str) -> Option<String> {
+    intl::canonicalize(tag)
+}
+
+/// `Intl.Locale.prototype.maximize` of a canonical tag.
+#[rustler::nif]
+fn intl_maximize(tag: &str) -> Option<String> {
+    intl::maximize(tag)
+}
+
+/// `Intl.Locale.prototype.minimize` of a canonical tag.
+#[rustler::nif]
+fn intl_minimize(tag: &str) -> Option<String> {
+    intl::minimize(tag)
+}
+
+/// Whether the locale writes right to left (`Intl.Locale.prototype.getTextInfo`), or `nil`
+/// when its script has no direction.
+#[rustler::nif]
+fn intl_is_right_to_left(tag: &str) -> Option<bool> {
+    intl::is_right_to_left(tag)
+}
+
+/// An `Intl.Collator`: ICU4X's collator with the resolved options of the object.
+struct IntlCollator(icu_collator::CollatorBorrowed<'static>);
+
+#[rustler::resource_impl]
+impl rustler::Resource for IntlCollator {}
+
+/// The collator of a locale tag with the keywords co, kf, and kn, and a sensitivity of
+/// ECMA-402, or `nil` when ICU4X cannot make one.
+#[rustler::nif]
+fn intl_collator_new(
+    tag: &str,
+    sensitivity: rustler::Atom,
+    ignore_punctuation: bool,
+) -> Option<ResourceArc<IntlCollator>> {
+    let sensitivity = match () {
+        () if sensitivity == atoms::base() => intl::collator::Sensitivity::Base,
+        () if sensitivity == atoms::accent() => intl::collator::Sensitivity::Accent,
+        () if sensitivity == atoms::case() => intl::collator::Sensitivity::Case,
+        () => intl::collator::Sensitivity::Variant,
+    };
+    intl::collator::new(tag, sensitivity, ignore_punctuation)
+        .map(|collator| ResourceArc::new(IntlCollator(collator)))
+}
+
+/// `CompareStrings` of two strings of big-endian UTF-16 code units: -1, 0, or 1.
+#[rustler::nif]
+fn intl_collator_compare(collator: ResourceArc<IntlCollator>, left: Binary, right: Binary) -> i32 {
+    let units = |bytes: &[u8]| -> Vec<u16> {
+        bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u16::from_be_bytes(*pair))
+            .collect()
+    };
+    match intl::collator::compare(&collator.0, &units(&left), &units(&right)) {
+        std::cmp::Ordering::Less => -1,
+        std::cmp::Ordering::Equal => 0,
+        std::cmp::Ordering::Greater => 1,
+    }
+}
+
+/// The collation types of a locale tag (`Intl.Locale.prototype.getCollations`).
+#[rustler::nif]
+fn intl_collation_types(tag: &str) -> Vec<&'static str> {
+    intl::collator::types(tag)
+}
+
+mod atoms {
+    rustler::atoms! { base, accent, case }
 }
 
 #[allow(unsafe_code)]
