@@ -25,7 +25,7 @@
 %%   listening, connecting, writing, or shutting down.
 -module(buoy_node_socket).
 
--export([methods/1, handle_methods/1, create/2, adopt/3, find/1, state/1, save/2, kick/1, write_kick/1, later/1, js/1, event/1]).
+-export([methods/1, handle_methods/1, create/2, create/3, wrap_info/1, adopt/3, find/1, state/1, save/2, kick/1, write_kick/1, later/1, js/1, event/1]).
 -export([ensure/2, bind/3, listen/2, connect/4, open_fd/2, sockname/2, peername/2, setopt/3, errno/1, reset/2]).
 -export([sockaddr/3, address_text/1, scope/1, open_inherited/2]).
 -export([set_listener/2, read_start/1, read_stop/1, write_raw/2, shutdown_raw/1, buffer_bytes/1]).
@@ -45,9 +45,16 @@
 %% Gives a new handle of Kind its state. The handle has no socket until it
 %% binds, connects, or opens a descriptor.
 -spec create(term(), kind()) -> ok.
-create(Handle, Kind) ->
+create(Handle, tcp) -> create(Handle, tcp, <<"TCPSocketWrap">>);
+create(Handle, pipe) -> create(Handle, pipe, <<"PipeWrap">>);
+create(Handle, udp) -> create(Handle, udp, <<"UDPWrap">>).
+
+%% Name is the MemoryInfoName of the handle in process.getActiveResourcesInfo.
+-spec create(term(), kind(), binary()) -> ok.
+create(Handle, Kind, Name) ->
+    Wrap = buoy_node_loop:add_handle_wrap(Handle, fun ?MODULE:wrap_info/1),
     buoy_heap:private_put(Handle, ?STATE, #{
-        kind => Kind, socket => none, refed => true, closed => false, reading => false,
+        kind => Kind, name => Name, wrap => Wrap, socket => none, refed => true, closed => false, reading => false,
         listening => false, rsel => none, wsel => none, queue => [], queued => 0,
         shutdown => none, connect => none, rbuf => <<>>, user_buffer => none, path => none, listener => none,
         read => 0, written => 0, async_id => new_async_id()}).
@@ -60,6 +67,11 @@ adopt(Constructor, Kind, Socket) ->
     find(Handle) =:= error andalso create(Handle, Kind),
     attach(Handle, Socket),
     Handle.
+
+-spec wrap_info(term()) -> {binary(), boolean()}.
+wrap_info(Handle) ->
+    #{name := Name, refed := Refed} = state(Handle),
+    {Name, Refed}.
 
 -spec find(term()) -> {ok, map()} | error.
 find(Handle) ->
@@ -479,7 +491,8 @@ close(Handle, Callback) ->
     case state(Handle) of
         #{closed := true} ->
             undefined;
-        #{socket := Socket, queue := Queue, shutdown := Shutdown, connect := Connect, path := Path} = S ->
+        #{socket := Socket, queue := Queue, shutdown := Shutdown, connect := Connect, path := Path, wrap := Wrap} = S ->
+            buoy_node_loop:remove_handle_wrap(Wrap),
             Socket =:= none orelse begin erlang:erase({?MODULE, Socket}), socket:close(Socket) end,
             Path =:= none orelse file:delete(Path),
             save(Handle, S#{closed := true, reading := false, listening := false, queue := [], queued := 0,
