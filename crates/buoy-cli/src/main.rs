@@ -468,6 +468,13 @@ fn start_program(
             .into_iter()
             .flatten(),
     )
+    .args(
+        options
+            .repl
+            .then_some(["-buoy_repl", "true"])
+            .into_iter()
+            .flatten(),
+    )
     .args(["-eval", "buoy_main:start()", "-extra"])
     .arg(&build)
     .arg(&project.entry)

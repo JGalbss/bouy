@@ -537,6 +537,7 @@ fn execute_selected<'a>(
         .filter(|(_, test)| is_selected(test, options, expected.get(&test.id)))
         .partition(|(_, test)| test.id.starts_with(SEQUENTIAL));
     let scratch = options.output.join("scratch");
+    end_package_scope(&scratch)?;
     let context = Context {
         options,
         rejected_common: rejected_common(options, &scratch)?,
@@ -564,6 +565,16 @@ fn execute_selected<'a>(
         .collect();
     let _ = fs::remove_dir_all(&context.scratch);
     ran
+}
+
+/// Writes a package.json that ends the package scope at `scratch`, as tests/node/package.json
+/// ends it above the vendored tests: the package.json of this repository says
+/// `"type": "module"`, and nodejs/node has none above the temporary directory of a test, so a
+/// `.js` file that a test writes there takes Node's default module type, `CommonJS`.
+fn end_package_scope(scratch: &Path) -> Result<(), String> {
+    fs::create_dir_all(scratch)
+        .and_then(|()| fs::write(scratch.join("package.json"), "{ \"private\": true }\n"))
+        .map_err(|error| format!("{}: {error}", scratch.display()))
 }
 
 /// A skip costs no run, so every selection takes the skipped files, and a change to the

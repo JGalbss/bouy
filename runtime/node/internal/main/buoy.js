@@ -33,6 +33,10 @@ function patchProcessObject() {
   const globalConsole = require('internal/console/global');
   const { initializeGlobalConsole } = require('internal/console/constructor');
   initializeGlobalConsole(globalConsole);
+  // The release builds of Node have the inspector, so createGlobalConsole of
+  // internal/bootstrap/web/exposed-wildcard wraps V8's console methods into
+  // the global console. Buoy reports no inspector, so it wraps them here.
+  require('internal/util/inspector').wrapConsole(globalConsole);
 
   addReadOnlyProcessAlias('_eval', '--eval');
   addReadOnlyProcessAlias('_print_eval', '--print');
@@ -167,6 +171,24 @@ function initializeClusterIPC() {
   }
 }
 
+// Node's module loaders, as initializeModuleLoaders sets them up: Buoy's
+// compiler links the program, but the REPL, the code of -e, and the programs
+// that require internal/modules/cjs/loader read Module.builtinModules and the
+// search paths of the CommonJS loader, and the ESM loader of the REPL reads
+// the default conditions.
+function initializeModuleLoaders() {
+  require('internal/modules/cjs/loader').initializeCJS();
+  require('internal/modules/esm/utils').initializeESM();
+}
+
+// The code of -e and -p reads each built-in module as a global, as
+// internal/main/eval_string gives it.
+function setupEvalGlobals() {
+  if (getOptionValue('[has_eval_string]')) {
+    require('internal/modules/helpers').addBuiltinLibsToObject(globalThis, '<eval>');
+  }
+}
+
 // The tracing of async_hooks when --trace-event-categories enables it.
 function setupTraceCategoryState() {
   const { isTraceCategoryEnabled } = internalBinding('trace_events');
@@ -188,9 +210,6 @@ setupDebugEnv();
 require('internal/dns/utils').initializeDns();
 setupChildProcessIpcChannel();
 initializeClusterIPC();
-// -e and -p see the built-in modules as globals, as eval_string.js gives them.
-if (getOptionValue('[has_eval_string]')) {
-  require('internal/modules/cjs/loader').initializeCJS();
-  require('internal/modules/helpers').addBuiltinLibsToObject(globalThis, '<eval>');
-}
+initializeModuleLoaders();
+setupEvalGlobals();
 require('internal/process/pre_execution').markBootstrapComplete();

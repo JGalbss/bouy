@@ -11,7 +11,7 @@
 %% writable side.
 -module(buoy_node_stream).
 
--export([methods/1, attach/2, set_fd/2, deliver/2, call/2, written/3, forward/2, pass/2]).
+-export([methods/1, attach/2, attach/3, set_fd/2, deliver/2, call/2, written/3, forward/2, pass/2]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
@@ -33,7 +33,7 @@ methods(Proto) ->
               {<<"writev">>, fun(This, Args) -> write(This, A(1, Args), writev_bytes(A(2, Args), buoy_ref:truthy(A(3, Args)))) end}],
     Methods = Writes ++ [
         {<<"readStart">>, fun(This, _) -> read_start(This) end},
-        {<<"readStop">>, fun(This, _) -> update(This, fun(S) -> S#{reading := false} end), 0 end},
+        {<<"readStop">>, fun(This, _) -> read_stop(This) end},
         {<<"shutdown">>, fun(This, _) -> send(This, shutdown), 1 end},
         {<<"close">>, fun(This, Args) -> close(This, A(1, Args)) end},
         {<<"ref">>, fun(This, _) -> set_ref(This, true) end},
@@ -52,7 +52,7 @@ methods(Proto) ->
     ok.
 
 %% Binds a handle to its channel. Until then the handle reads nothing.
--spec attach(term(), pid()) -> ok.
+-spec attach(term(), pid() | none) -> ok.
 attach(Handle, Channel) ->
     Id = erlang:unique_integer([positive]),
     update(Handle, fun(S) -> S#{channel => Channel, reading => false, pending => [], eof => false,
@@ -62,6 +62,14 @@ attach(Handle, Channel) ->
 -spec set_fd(term(), integer()) -> ok.
 set_fd(Handle, Fd) ->
     update(Handle, fun(S) -> S#{fd => Fd} end).
+
+%% Binds a handle whose writes Writer makes at once, such as the writes of a
+%% terminal, which libuv makes blocking for tty.WriteStream: each returns the
+%% status of the write, and no oncomplete follows.
+-spec attach(term(), pid() | none, fun((binary()) -> integer())) -> ok.
+attach(Handle, Channel, Writer) ->
+    attach(Handle, Channel),
+    update(Handle, fun(S) -> S#{writer => Writer} end).
 
 state(Handle) ->
     case buoy_heap:is_object(Handle) andalso buoy_heap:private_find(Handle, ?STATE) of
@@ -103,9 +111,19 @@ write(Handle, Req, Bytes) -> write(Handle, Req, Bytes, undefined).
 %% A write of an IPC channel may pass SendHandle, as StreamBase::WriteString
 %% passes it to uv_write2; the request keeps it alive until the write ends.
 write(Handle, Req, Bytes, SendHandle) ->
-    buoy_node_loop:ref_handle(),
     State = stream_state(),
     buoy_heap:set(State, ?K_BYTES_WRITTEN, byte_size(Bytes)),
+    case state(Handle) of
+        #{writer := Writer} ->
+            buoy_heap:set(State, ?K_ASYNC, 0),
+            update(Handle, fun(S) -> S#{written => maps:get(written, S, 0) + byte_size(Bytes)} end),
+            Writer(Bytes);
+        _ ->
+            write_async(Handle, Req, Bytes, SendHandle, State)
+    end.
+
+write_async(Handle, Req, Bytes, SendHandle, State) ->
+    buoy_node_loop:ref_handle(),
     buoy_heap:set(State, ?K_ASYNC, 1),
     Ref = make_ref(),
     erlang:put({?MODULE, request, Ref}, {Handle, Req}),
@@ -152,7 +170,13 @@ pairs([Chunk, Encoding | Rest]) ->
     [Bytes | pairs(Rest)];
 pairs(_) -> [].
 
+%% A closed handle cannot read: uv_read_start fails with UV_EINVAL.
 read_start(Handle) ->
+    read_start(Handle, maps:get(closed, state(Handle), false)).
+
+read_start(_Handle, true) ->
+    -22;
+read_start(Handle, false) ->
     update(Handle, fun(S) -> S#{reading := true} end),
     case state(Handle) of
         #{pending := [_ | _] = Pending} ->
@@ -162,6 +186,13 @@ read_start(Handle) ->
         _ ->
             ok
     end,
+    0.
+
+%% A handle that stops reading is inactive, as after uv_read_stop, so it no
+%% longer keeps the loop alive.
+read_stop(Handle) ->
+    update(Handle, fun(S) -> S#{reading := false} end),
+    set_ref(Handle, false),
     0.
 
 set_ref(Handle, Refed) ->

@@ -1,0 +1,14 @@
+function function 0
+ran
+group
+  inside
+  kept
+┌─────────┬───┐
+│ (index) │ a │
+├─────────┼───┤
+│ 0       │ 1 │
+└─────────┴───┘
+default: 1
+default: 2
+{ a: [Object] }
+function function 0

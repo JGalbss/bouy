@@ -24,6 +24,7 @@
 -export([binding/0, uv_error/3, uv_error/4, uv_error/5, uv_errno/1, errno_exception/4, strerror/1, request/2, path/1,
          encoded/2, read_info/2, read_stats/2, read_dir/1, result/1, reason/1, stat_array/3, stat_pair/3, int/1,
          inherited_file/1]).
+-export([put_bytes/2]).
 -export_type([stats/0]).
 
 %% Node's stat fields, as buoy_native:fs_stat/2 gives them.
@@ -478,7 +479,10 @@ close(Args) ->
             check(file:close(File), <<"close">>, undefined),
             undefined;
         _ when Fd >= 0, Fd =< 2 ->
-            undefined;
+            case buoy_node_stdio:close(Fd) of
+                ok -> undefined;
+                error -> uv_error(ebadf, <<"close">>, undefined)
+            end;
         _ ->
             uv_error(ebadf, <<"close">>, undefined)
     end.
@@ -708,6 +712,7 @@ write_file(Fd, Bytes, Position) ->
 
 %% The device is in unicode mode: valid UTF-8 goes through as text, and
 %% other bytes as latin1 characters in a latin1 window.
+-spec put_bytes(io:device(), binary()) -> non_neg_integer().
 put_bytes(Device, Bytes) ->
     case unicode:characters_to_list(Bytes, utf8) of
         L when is_list(L) ->

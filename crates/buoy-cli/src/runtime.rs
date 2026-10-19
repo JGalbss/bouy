@@ -1,11 +1,14 @@
 //! The embedded Erlang runtime: written to a cache directory keyed by a content hash and
 //! compiled there with `erlc` on first use (section 1 of the contract). Each compiled module
 //! also goes into `objects/`, keyed by the hash of its source, so a runtime that changes a
-//! few modules compiles only those.
+//! few modules compiles only those. Each run holds a shared lock on its runtime directory,
+//! and the build of a new runtime evicts the runtimes that no run holds or used lately.
 
 use std::ffi::OsString;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, SystemTime};
 use std::{env, fs, process};
 
 include!(concat!(env!("OUT_DIR"), "/runtime_sources.rs"));
@@ -19,6 +22,9 @@ pub struct Runtime {
     release: Option<Release>,
     /// The boot script that the VM starts with (`write_boot`), without its `.boot` suffix.
     pub boot: String,
+    /// The lock file of the runtime directory, held shared while the runtime is in use, so
+    /// that `evict` keeps the directory. `None` for `BUOY_RUNTIME`.
+    lock: Option<File>,
 }
 
 /// The OTP release that `erl` starts: its root directory and its erts version, and the
@@ -31,24 +37,38 @@ struct Release {
 }
 
 impl Runtime {
-    /// The command that starts the VM with the emulator flags `emulator`, such as `Bd`,
-    /// followed by the init flags that the caller adds. The `erl` script searches for its
+    /// The command that starts the VM with the emulator flags `flags`, such as `Bd`,
+    /// followed by the init flags that the caller adds. The VM inherits the
+    /// shared lock of the runtime, so that no other run evicts the runtime before the VM
+    /// exits, also when it replaces this process. Each variable of `REPLACED` goes to the
+    /// VM as `BUOY_HOST_<name>` too: `=` and the value of this process, or empty when this
+    /// process has none. `buoy_main` restores them, so a program and its child processes
+    /// see the environment of the CLI, as in Node, and a child `buoy` finds the same `erl`.
+    pub fn vm(&self, flags: &[&str]) -> Command {
+        #[cfg(unix)]
+        if let Some(lock) = &self.lock {
+            use nix::fcntl::{FcntlArg, FdFlag, fcntl};
+            let _ = fcntl(lock, FcntlArg::F_SETFD(FdFlag::empty()));
+        }
+        let mut vm = self.emulator(flags);
+        for name in REPLACED {
+            let host = env::var_os(name).map_or_else(OsString::new, |value| {
+                let mut kept = OsString::from("=");
+                kept.push(value);
+                kept
+            });
+            vm.env(format!("BUOY_HOST_{name}"), host);
+        }
+        vm
+    }
+
+    /// The command that starts the emulator. The `erl` script searches for its
     /// root directory with a chain of shell commands on each start, so the command passes
     /// the recorded root in `ERL_ROOTDIR`. When `erl` is the script of that release,
     /// `<root>/bin/erl`, the command starts the emulator, `beam.smp`, with the arguments
     /// and the environment that `erlexec` would give it, which saves one `exec` of each
     /// start. That path ignores `ERL_FLAGS`, `ERL_AFLAGS`, and `ERL_ZFLAGS`, so a set one
     /// takes the `erlexec` path.
-    pub fn vm(&self, emulator: &[&str]) -> Command {
-        let mut vm = self.emulator(emulator);
-        // erlexec puts the directories of the release first on PATH. buoy_main restores the
-        // caller's PATH, so a program and its child VMs find the same `erl` and runtime.
-        if let Some(path) = env::var_os("PATH") {
-            vm.env("BUOY_PATH", path);
-        }
-        vm
-    }
-
     fn emulator(&self, emulator: &[&str]) -> Command {
         let plus = || emulator.iter().map(|flag| format!("+{flag}"));
         let Some(Release {
@@ -105,6 +125,17 @@ impl Runtime {
     }
 }
 
+/// The variables that starting the VM sets: `erlexec` puts its directories first on
+/// `PATH`, and the start sets the others.
+const REPLACED: [&str; 6] = [
+    "PATH",
+    "ROOTDIR",
+    "BINDIR",
+    "EMU",
+    "PROGNAME",
+    "ERL_ROOTDIR",
+];
+
 /// The compiled runtime, building it when needed.
 pub fn locate() -> Result<Runtime, String> {
     if let Some(directory) = env::var_os("BUOY_RUNTIME").filter(|value| !value.is_empty()) {
@@ -119,14 +150,18 @@ pub fn locate() -> Result<Runtime, String> {
             ebin: directory,
             release: None,
             boot: "no_dot_erlang".to_owned(),
+            lock: None,
         });
     }
     let cache = cache_root().ok_or("cannot find a cache directory: set HOME or XDG_CACHE_HOME")?;
     let real = installed_otp();
     let directory = cache.join(format!("runtime-{:016x}", hash(&real)));
     let ebin = directory.join("ebin");
+    let mut lock = hold(&directory);
     if !ebin.is_dir() {
         build(&cache, &directory)?;
+        evict(&cache);
+        lock = hold(&directory);
     }
     let release = fs::read_to_string(directory.join(RELEASE))
         .ok()
@@ -147,7 +182,118 @@ pub fn locate() -> Result<Runtime, String> {
         ebin,
         release,
         boot,
+        lock,
     })
+}
+
+/// The file in a runtime directory that each run holds a shared lock on, and whose
+/// modification time is the start of the last run.
+const LOCK: &str = "lock";
+
+/// How long `evict` keeps a runtime that no run holds after its last run, so that two
+/// builds of the CLI that run in turn do not rebuild each other's runtime.
+const UNUSED: Duration = Duration::from_mins(10);
+
+/// How long `evict` keeps an object that no build used, a build that never finished, and a
+/// runtime that a CLI without locks built, which records no run.
+const ABANDONED: Duration = Duration::from_hours(24);
+
+/// Holds the lock file of `directory` shared and records the start of a run in its
+/// modification time. `None` when the directory is gone or read-only. An eviction can set
+/// the directory aside while this process waits for the lock, and another run can build the
+/// runtime again meanwhile, so a lock on a file that left its path takes a second attempt.
+fn hold(directory: &Path) -> Option<File> {
+    (0..2).find_map(|_| hold_once(directory))
+}
+
+fn hold_once(directory: &Path) -> Option<File> {
+    let path = directory.join(LOCK);
+    let lock = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .ok()?;
+    lock.lock_shared().ok()?;
+    if !is_same_file(&lock, &path) {
+        return None;
+    }
+    let _ = lock.set_modified(SystemTime::now());
+    Some(lock)
+}
+
+#[cfg(unix)]
+fn is_same_file(file: &File, path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (file.metadata(), fs::metadata(path)) {
+        (Ok(open), Ok(named)) => open.dev() == named.dev() && open.ino() == named.ino(),
+        _ => false,
+    }
+}
+
+#[cfg(not(unix))]
+fn is_same_file(_: &File, path: &Path) -> bool {
+    path.is_file()
+}
+
+/// Removes from `cache` each runtime that no run holds and that no run started in the last
+/// `UNUSED`, each build directory whose build ended, and each object, build directory, and
+/// runtime without a lock file that has gone unused for `ABANDONED`. A run that holds the lock of a runtime keeps it, so no VM
+/// loses a module that it has yet to load.
+fn evict(cache: &Path) {
+    let entries = fs::read_dir(cache).into_iter().flatten().flatten();
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("runtime-") {
+            continue;
+        }
+        if name.contains(".evict-") {
+            let _ = fs::remove_dir_all(&path);
+            continue;
+        }
+        if name.contains(".tmp-") {
+            if is_ended_build(&name) || is_older(&path, ABANDONED) {
+                let _ = fs::remove_dir_all(&path);
+            }
+            continue;
+        }
+        let Ok(lock) = File::open(path.join(LOCK)) else {
+            if is_older(&path.join("ebin"), ABANDONED) {
+                remove(&path, None);
+            }
+            continue;
+        };
+        if lock.try_lock().is_ok() && is_older(&path.join(LOCK), UNUSED) {
+            remove(&path, Some(lock));
+        }
+    }
+    let objects = fs::read_dir(cache.join("objects"))
+        .into_iter()
+        .flatten()
+        .flatten();
+    for object in objects {
+        if is_older(&object.path(), ABANDONED) {
+            let _ = fs::remove_file(object.path());
+        }
+    }
+}
+
+/// Renames `directory` aside, so that no run finds it half removed, releases its lock, so
+/// that a run waiting for it builds the runtime again, and removes the directory.
+fn remove(directory: &Path, lock: Option<File>) {
+    let aside = directory.with_extension(format!("evict-{}", process::id()));
+    let renamed = fs::rename(directory, &aside).is_ok();
+    drop(lock);
+    if renamed {
+        let _ = fs::remove_dir_all(&aside);
+    }
+}
+
+fn is_older(path: &Path, age: Duration) -> bool {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .is_ok_and(|modified| modified.elapsed().is_ok_and(|elapsed| elapsed > age))
 }
 
 /// The boot script in a runtime directory, without its `.boot` suffix.
@@ -171,7 +317,12 @@ fn erlc() -> OsString {
 }
 
 fn cache_root() -> Option<PathBuf> {
-    cache_root_in(env::var_os("XDG_CACHE_HOME"), env::var_os("HOME"))
+    // `home_dir` reads HOME, then the passwd entry of the user, as libuv's
+    // uv_os_homedir does, so a child that runs with no HOME still finds the cache.
+    cache_root_in(
+        env::var_os("XDG_CACHE_HOME"),
+        env::home_dir().map(PathBuf::into_os_string),
+    )
 }
 
 /// `$XDG_CACHE_HOME/buoy`, or `$HOME/.cache/buoy`. The XDG Base Directory specification
@@ -196,8 +347,6 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
             .unwrap_or("runtime"),
         process::id()
     ));
-    #[cfg(unix)]
-    remove_abandoned(cache);
     let built = compile(&staging, &cache.join("objects"));
     if built.is_err() {
         let _ = fs::remove_dir_all(&staging);
@@ -215,29 +364,22 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Removes the private directories of builds whose process is gone: a VM killed while it
-/// built the runtime, such as a test's child, leaves its whole copy of the runtime behind.
+/// Whether the build that owns the private directory `name`, `runtime-<hash>.tmp-<pid>`, has
+/// ended: a VM killed while it built the runtime, such as a test's child, leaves its whole
+/// copy of the runtime behind.
 #[cfg(unix)]
-fn remove_abandoned(cache: &Path) {
+fn is_ended_build(name: &str) -> bool {
     use nix::errno::Errno;
     use nix::sys::signal::kill;
     use nix::unistd::Pid;
-    let Ok(entries) = fs::read_dir(cache) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let owner = name
-            .to_str()
-            .and_then(|name| name.strip_prefix("runtime-"))
-            .and_then(|name| name.rsplit_once(".tmp-"))
-            .and_then(|(_, pid)| pid.parse().ok());
-        if let Some(pid) = owner
-            && kill(Pid::from_raw(pid), None) == Err(Errno::ESRCH)
-        {
-            let _ = fs::remove_dir_all(entry.path());
-        }
-    }
+    name.rsplit_once(".tmp-")
+        .and_then(|(_, pid)| pid.parse().ok())
+        .is_some_and(|pid| kill(Pid::from_raw(pid), None) == Err(Errno::ESRCH))
+}
+
+#[cfg(not(unix))]
+fn is_ended_build(_: &str) -> bool {
+    false
 }
 
 /// Writes the runtime sources to `staging/src` and compiles them into `staging/ebin`. A
@@ -281,9 +423,7 @@ fn compile(staging: &Path, objects: &Path) -> Result<(), String> {
         .collect();
     let missing: Vec<&Path> = modules
         .iter()
-        .filter(|(module, object)| {
-            fs::copy(object, ebin.join(module.with_extension("beam"))).is_err()
-        })
+        .filter(|(module, object)| !reuse(object, &ebin.join(module.with_extension("beam"))))
         .map(|(module, _)| *module)
         .collect();
     let workers = std::thread::available_parallelism().map_or(4, usize::from);
@@ -369,6 +509,16 @@ fn write_boot(path: &Path) {
         .env("BUOY_BOOT", path)
         .env("ERL_CRASH_DUMP_SECONDS", "0")
         .output();
+}
+
+/// Copies a compiled object to `target`, and records the use in its modification time, so
+/// that `evict` keeps it.
+fn reuse(object: &Path, target: &Path) -> bool {
+    let copied = fs::copy(object, target).is_ok();
+    if copied && let Ok(file) = File::options().write(true).open(object) {
+        let _ = file.set_modified(SystemTime::now());
+    }
+    copied
 }
 
 fn has_extension(name: &str, extension: &str) -> bool {
@@ -473,7 +623,7 @@ mod tests {
         let status = vm.wait().expect("the VM exits");
         let _ = fs::remove_dir_all(&directory);
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(5),
+            started.elapsed() < Duration::from_secs(5),
             "the VM ran {:?} after SIGTERM",
             started.elapsed()
         );
@@ -483,11 +633,11 @@ mod tests {
         );
     }
 
-    /// A build removes the private directory of a build whose process ended, and keeps the
+    /// Eviction removes the private directory of a build whose process ended, and keeps the
     /// one of a live process and the runtimes.
     #[cfg(unix)]
     #[test]
-    fn a_build_removes_the_directories_of_ended_builds() {
+    fn eviction_removes_the_directories_of_ended_builds() {
         let cache = env::temp_dir().join(format!("buoy-abandoned-{}", process::id()));
         let mut ended = Command::new("true").spawn().expect("true runs");
         ended.wait().expect("true ends");
@@ -499,10 +649,78 @@ mod tests {
         for name in &names {
             fs::create_dir_all(cache.join(name).join("ebin")).expect("the directory");
         }
-        remove_abandoned(&cache);
+        evict(&cache);
         let kept: Vec<bool> = names.iter().map(|name| cache.join(name).is_dir()).collect();
         let _ = fs::remove_dir_all(&cache);
         assert_eq!(kept, [false, true, true]);
+    }
+
+    /// Eviction keeps a runtime while a run, or a VM that inherited the lock of a run, holds
+    /// it, and while a run used it lately. It removes the other runtimes, and the objects and
+    /// unfinished builds that nobody used for a day.
+    #[test]
+    fn eviction_keeps_each_runtime_that_a_run_holds_or_used_lately() {
+        let cache = env::temp_dir().join(format!("buoy-evict-{}", process::id()));
+        let _ = fs::remove_dir_all(&cache);
+        let runtime = |name: &str| {
+            let directory = cache.join(name);
+            fs::create_dir_all(directory.join("ebin")).expect("the runtime");
+            directory
+        };
+        let long_ago = SystemTime::now() - ABANDONED * 2;
+        let age = |path: &Path| {
+            File::open(path)
+                .and_then(|file| file.set_modified(long_ago))
+                .expect("the old time");
+        };
+
+        let held = runtime("runtime-held");
+        let held_lock = hold(&held);
+        age(&held.join(LOCK));
+        let inherited = runtime("runtime-inherited");
+        let vm = Runtime {
+            ebin: inherited.join("ebin"),
+            release: None,
+            boot: String::new(),
+            lock: hold(&inherited),
+        };
+        let _ = vm.vm(&[]);
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep starts");
+        drop(vm);
+        age(&inherited.join(LOCK));
+        let recent = runtime("runtime-recent");
+        drop(hold(&recent));
+        let unused = runtime("runtime-unused");
+        drop(hold(&unused));
+        age(&unused.join(LOCK));
+        let lockless = runtime("runtime-lockless");
+        age(&lockless.join("ebin"));
+        let staging = runtime("runtime-unused.tmp-1");
+        age(&staging);
+        fs::create_dir_all(cache.join("objects")).expect("the objects");
+        let (old_object, new_object) = (cache.join("objects/a.beam"), cache.join("objects/b.beam"));
+        fs::write(&old_object, "").expect("an object");
+        fs::write(&new_object, "").expect("an object");
+        age(&old_object);
+
+        evict(&cache);
+        let _ = child.kill();
+        let _ = child.wait();
+        let kept: Vec<bool> = [&held, &inherited, &recent, &new_object]
+            .iter()
+            .map(|path| path.exists())
+            .collect();
+        let removed: Vec<bool> = [&unused, &lockless, &staging, &old_object]
+            .iter()
+            .map(|path| path.exists())
+            .collect();
+        drop(held_lock);
+        let _ = fs::remove_dir_all(&cache);
+        assert_eq!(kept, [true; 4], "held, inherited, recent, new object");
+        assert_eq!(removed, [false; 4], "unused, lockless, staging, old object");
     }
 
     #[test]

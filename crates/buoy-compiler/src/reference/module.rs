@@ -339,7 +339,12 @@ impl<'a> Lowerer<'a, '_> {
         });
         functions.reverse();
         self.nested_var_getters(program);
-        functions.push(self.body_function(&body));
+        // A directive is an expression statement too: a script of `'1'` completes with "1".
+        let directive = program
+            .directives
+            .last()
+            .map(|directive| Expr::js_string(directive.expression.value.as_str()));
+        functions.push(self.body_function(&body, directive));
         functions.push(self.class_dispatch());
         functions.extend(source_functions(program, source));
         functions.push(self.export_function(program));
@@ -449,7 +454,11 @@ impl<'a> Lowerer<'a, '_> {
 
     /// `'$body'/0`: the top-level code. A module whose top-level code awaits returns the
     /// promise of its completion.
-    pub fn body_function(&mut self, body: &[&'a Statement<'a>]) -> Function {
+    pub fn body_function(
+        &mut self,
+        body: &[&'a Statement<'a>],
+        directive: Option<Expr>,
+    ) -> Function {
         let mut suspends = analyze::Suspends::default();
         for statement in body {
             suspends.visit_statement(statement);
@@ -492,7 +501,11 @@ impl<'a> Lowerer<'a, '_> {
             let completion = self.fresh("Completion");
             code.push(Expr::matches(
                 Expr::var(completion.clone()),
-                Expr::call("buoy_heap", "cell", vec![Expr::undefined()]),
+                Expr::call(
+                    "buoy_heap",
+                    "cell",
+                    vec![directive.unwrap_or_else(Expr::undefined)],
+                ),
             ));
             self.frame.completion = Some(completion.clone());
         }

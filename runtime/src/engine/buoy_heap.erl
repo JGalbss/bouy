@@ -69,7 +69,7 @@
 -export([cell/1, cell_get/1, cell_set/2]).
 -export([symbol/1, symbol_for/1, well_known/1, private_symbol/1]).
 -export([to_key/1, key_to_value/1]).
--export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
+-export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/2, error_object/3]).
 -export([gc/1, gc_stats/0, heap_size/0, allocated/0, first_free/0, adopt/3, safepoint/2, collect_young/2]).
 -export([add_external/1, external/0]).
 -export([clone_out/1, clone_in/1, clone_out/2, clone_in/2]).
@@ -1882,17 +1882,27 @@ error_object(Proto, Message, Stack) ->
     Props = #{<<"message">> => Message, <<"stack">> => Stack},
     Attrs = #{<<"message">> => ?WRITABLE bor ?CONFIGURABLE, <<"stack">> => ?WRITABLE bor ?CONFIGURABLE},
     Id = next_id(),
-    %% The slots hold the stack, which the getter of Error.prototype.stack reads.
-    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, Stack}),
+    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, none}),
+    {'$o', Id}.
+
+%% An error object of the intrinsic class Name, or with the prototype Proto,
+%% whose stack formats on its first read (buoy_ref_error:lazy_stack/0).
+-spec error_object(atom() | value(), binary()) -> value().
+error_object(Name, Message) when is_atom(Name) ->
+    error_object(intrinsic(list_to_atom(atom_to_list(Name) ++ ".prototype")), Message);
+error_object(Proto, Message) ->
+    Props = #{<<"message">> => Message, <<"stack">> => buoy_ref_error:lazy_stack()},
+    Attrs = #{<<"message">> => ?WRITABLE bor ?CONFIGURABLE, <<"stack">> => ?CONFIGURABLE},
+    Id = next_id(),
+    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, none}),
     {'$o', Id}.
 
 -spec throw_error(atom(), binary()) -> no_return().
 throw_error(Name, Message) ->
-    Stack = text([atom_to_binary(Name), <<": ">>, Message, <<"\n    at <buoy>">>]),
     %% BUOY_NODE_DEBUG keeps the Erlang stack of the last error (buoy_node).
     persistent_term:get({buoy_node, debug}, false) andalso
         erlang:put('$buoy_last_throw', {Message, element(2, process_info(self(), current_stacktrace))}),
-    erlang:error({'$throw', error_object(Name, Message, Stack)}).
+    erlang:error({'$throw', error_object(Name, Message)}).
 
 %%% Garbage collection
 

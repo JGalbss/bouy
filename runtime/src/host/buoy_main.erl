@@ -32,20 +32,18 @@ boot() ->
     %% variable and write its own facts over them, after this VM has exited.
     persistent_term:put({buoy, result_file}, os:getenv("BUOY_RESULT_FILE", "")),
     true = os:unsetenv("BUOY_RESULT_FILE"),
+    ok = restore_host_environment(),
     %% SIGTERM ends the VM as it ends Node, with status 128 + 15 and no shutdown
     %% report, and the OTP reports that remain go to stderr, never into the output.
     ok = os:set_signal(sigterm, default),
     %% The CLI execs the VM with SIGTERM blocked, because ERTS drops one that comes
     %% before its signal server runs. One that came during the boot ends the VM here.
     _ = try buoy_native:unblock_sigterm() catch error:_ -> false end,
-    %% erlexec put the directories of the OTP release first on PATH. A program and
-    %% its child processes see the caller's PATH (Runtime::vm in the CLI).
-    _ = case os:getenv("BUOY_PATH") of
-        false -> ok;
-        Path -> os:putenv("PATH", Path), os:unsetenv("BUOY_PATH")
-    end,
     _ = logger:remove_handler(default),
     _ = logger:add_handler(default, logger_std_h, #{config => #{type => standard_error}}),
+    %% A closed stdout pipe ends the writer of user_drv, which reports it; the
+    %% program sees EPIPE on its writes instead (buoy_node_stdio), as in Node.
+    ok = logger:set_module_level(user_drv, none),
     %% Node writes UTF-8 under any locale. A device in latin1 mode would escape or
     %% mangle the characters outside latin1.
     ok = io:setopts(standard_io, [{encoding, unicode}]),
@@ -62,6 +60,25 @@ boot() ->
         _ ->
             stop(2, "buoy: usage: -extra <build dir> <entry module> <entry path> <modules> [args...]\n")
     end.
+
+%% The start of the VM sets ROOTDIR, BINDIR, EMU, and PROGNAME, and erlexec puts
+%% its directories first on PATH. The CLI passes the value of each variable in its
+%% own environment as BUOY_HOST_<name>: "=" and the value, or empty when it had
+%% none (Runtime::vm). Restoring them gives the program and its child processes
+%% the environment of the CLI, as Node has, so a child buoy finds the same erl.
+-spec restore_host_environment() -> ok.
+restore_host_environment() ->
+    lists:foreach(
+        fun(Name) ->
+            Host = "BUOY_HOST_" ++ Name,
+            _ = case os:getenv(Host) of
+                false -> true;
+                "=" ++ Value -> os:putenv(Name, Value);
+                _ -> os:unsetenv(Name)
+            end,
+            os:unsetenv(Host)
+        end,
+        ["PATH", "ROOTDIR", "BINDIR", "EMU", "PROGNAME", "ERL_ROOTDIR"]).
 
 %% Runs the top-level code of Module once, and records that it ran.
 -spec import(module()) -> ok.
@@ -141,6 +158,7 @@ format(Term) ->
 %% and the status there as one JSON object.
 -spec finish(non_neg_integer(), map()) -> no_return().
 finish(Status, Facts) ->
+    buoy_binding_tty_wrap:reset_mode(),
     %% An actor prints its crash line without waiting (buoy_actor), so the VM waits
     %% for the standard_error server to write the lines that reached it first.
     try io:put_chars(standard_error, <<>>)

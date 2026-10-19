@@ -4,7 +4,9 @@
 %% buoy_node_socket drives, as TCP's handle; process_wrap binds each stdio
 %% pipe to its channel instead, and those keep the methods of
 %% buoy_node_stream. open(fd) reads and writes a descriptor that the VM
-%% inherited, such as the IPC channel of a forked child (NODE_CHANNEL_FD).
+%% inherited: the IPC channel of a forked child (NODE_CHANNEL_FD) through
+%% buoy_node_ipc, the standard descriptors through buoy_node_stdio, and
+%% others through a port.
 -module(buoy_binding_pipe_wrap).
 
 -export([binding/0]).
@@ -20,6 +22,7 @@ binding() ->
     erlang:put({buoy_node_socket, constructor, pipe}, Pipe),
     Proto = buoy_heap:get(Pipe, <<"prototype">>),
     buoy_node_stream:methods(Proto),
+    buoy_node_stdio:methods(Proto),
     buoy_node_socket:methods(Proto),
     A = fun buoy_node:arg/2,
     Methods = [{<<"bind">>, fun(This, Args) -> bind(This, A(1, Args)) end},
@@ -128,6 +131,7 @@ on_link(Path, Fun) ->
 open(This, Fd) when is_integer(Fd), Fd >= 0 ->
     case is_ipc(This) andalso buoy_node_ipc:open(This, Fd) of
         ok -> 0;
+        _ when Fd =< 2 -> buoy_node_stdio:open(This, Fd), 0;
         _ -> open_port_channel(This, Fd)
     end;
 open(_This, _Fd) ->

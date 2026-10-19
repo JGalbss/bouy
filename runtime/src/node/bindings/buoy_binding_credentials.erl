@@ -16,12 +16,7 @@ binding() ->
                 Value -> buoy_node:string(Value)
             end
         end)},
-        {<<"getTempDir">>, F(<<"getTempDir">>, 0, fun(_, _) ->
-            case os:getenv("TMPDIR") of
-                false -> <<"/tmp">>;
-                Dir -> buoy_node:string(string:trim(Dir, trailing, "/"))
-            end
-        end)},
+        {<<"getTempDir">>, F(<<"getTempDir">>, 0, fun(_, _) -> temp_dir() end)},
         {<<"implementsPosixCredentials">>, true},
         {<<"getuid">>, F(<<"getuid">>, 0, Id("-u"))},
         {<<"geteuid">>, F(<<"geteuid">>, 0, Id("-u"))},
@@ -118,3 +113,19 @@ id(Flag) ->
         Value ->
             Value
     end.
+
+%% getTempDir(): the first of TMPDIR, TMP, and TEMP that is set and not
+%% empty, without one trailing slash, or undefined, as node_credentials.cc
+%% reads them.
+temp_dir() ->
+    case [Dir || Name <- ["TMPDIR", "TMP", "TEMP"], Dir <- [os:getenv(Name)], Dir =/= false, Dir =/= ""] of
+        [Dir | _] -> buoy_node:string(drop_slash(Dir));
+        [] -> undefined
+    end.
+
+drop_slash([_, _ | _] = Dir) ->
+    case lists:last(Dir) of
+        $/ -> lists:droplast(Dir);
+        _ -> Dir
+    end;
+drop_slash(Dir) -> Dir.
