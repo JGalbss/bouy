@@ -10,7 +10,7 @@ The pass rate of each test tier that exists today. `buoy-suites compat` writes t
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | language | test262 | d53ebc8 | 4,678 | 53,616 | 8.7% | 0 | 0 | e75ea79 | `tests/test262/expectations.txt` |
 | node | node | v25.9.0 | 1,965 | 4,419 | 44.5% | 1,858 | 13 | 845fd4f | `tests/node/expectations.txt` |
-| node api surface | node-surface | v25.9.0 | 3,461 | 4,460 | 77.6% | 999 | 0 | 04d1005 | `tests/node/surface/expectations.txt` |
+| node api surface | node-surface | v25.9.0 | 3,952 | 4,460 | 88.6% | 508 | 0 | 287fefb | `tests/node/surface/expectations.txt` |
 | packages | packages | Node 25.9.0 | 1 | 298 | 0.3% | 2 | 0 | 47731fd | `tests/packages/expectations.txt` |
 | top npm packages | ecosystem | Node 25.9.0 | 779 | 1,000 | 77.9% | 114 | 31 | cc5c3a5 | `tests/ecosystem/expectations.txt` |
 | corpora | conformance | Node 25.9.0 | 72 | 72 | 100.0% | 0 | 0 |  | `crates/buoy-cli/tests/conformance.rs` |
@@ -1043,20 +1043,20 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 
 ## Node API surface
 
-node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expectations.txt`.
+node-surface at v25.9.0, updated at 287fefb. Evidence: `tests/node/surface/expectations.txt`.
 
 ### Outcomes
 
 | Tests | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| every test | 4,460 | 3,461 | 77.6% | 0 | 0 | 0 | 0 | 999 | 0 | 0 | 0 |
+| every test | 4,460 | 3,952 | 88.6% | 0 | 0 | 0 | 0 | 508 | 0 | 0 | 0 |
 
 ### By docs
 
 | docs | Total | Pass | Rate | rejected | late | skip | never | fail | timeout | harness_error | crash |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| deprecated | 129 | 98 | 76.0% | 0 | 0 | 0 | 0 | 31 | 0 | 0 | 0 |
-| documented | 4,331 | 3,363 | 77.6% | 0 | 0 | 0 | 0 | 968 | 0 | 0 | 0 |
+| deprecated | 129 | 110 | 85.3% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| documented | 4,331 | 3,842 | 88.7% | 0 | 0 | 0 | 0 | 489 | 0 | 0 | 0 |
 
 ### By module
 
@@ -1073,8 +1073,8 @@ node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expec
 | CloseEvent | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CompressionStream | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CountQueuingStrategy | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| CryptoKey | 5 | 0 | 0.0% | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| Crypto | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| CryptoKey | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CustomEvent | 20 | 20 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | DOMException | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | DecompressionStream | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1086,7 +1086,7 @@ node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expec
 | Headers | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | MessageChannel | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | MessageEvent | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| MessagePort | 21 | 17 | 81.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| MessagePort | 21 | 21 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Navigator | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Performance | 3 | 3 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | PerformanceEntry | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1104,7 +1104,7 @@ node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expec
 | Request | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Response | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Storage | 1 | 0 | 0.0% | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| SubtleCrypto | 19 | 0 | 0.0% | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| SubtleCrypto | 19 | 19 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TextDecoder | 5 | 5 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TextDecoderStream | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TextEncoder | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1126,7 +1126,7 @@ node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expec
 | clearInterval | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | clearTimeout | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | console | 23 | 1 | 4.3% | 0 | 0 | 0 | 0 | 22 | 0 | 0 | 0 |
-| crypto | 4 | 0 | 0.0% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| crypto | 4 | 4 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | exports | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | fetch | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | global | 1 | 1 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -1140,11 +1140,11 @@ node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expec
 | node:child_process | 28 | 28 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:cluster | 48 | 48 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:console | 26 | 22 | 84.6% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| node:crypto | 401 | 0 | 0.0% | 0 | 0 | 0 | 0 | 401 | 0 | 0 | 0 |
+| node:crypto | 401 | 401 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:dgram | 43 | 43 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:diagnostics_channel | 13 | 13 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:dns | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
-| node:dns/promises | 25 | 0 | 0.0% | 0 | 0 | 0 | 0 | 25 | 0 | 0 | 0 |
+| node:dns | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| node:dns/promises | 25 | 25 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:domain | 27 | 27 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:events | 49 | 49 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:fs | 241 | 239 | 99.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
@@ -1188,7 +1188,7 @@ node-surface at v25.9.0, updated at 04d1005. Evidence: `tests/node/surface/expec
 | node:v8 | 72 | 70 | 97.2% | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | node:vm | 16 | 16 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:wasi | 6 | 6 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| node:worker_threads | 84 | 80 | 95.2% | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| node:worker_threads | 84 | 84 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | node:zlib | 553 | 553 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | performance | 18 | 18 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | process | 87 | 87 | 100.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
