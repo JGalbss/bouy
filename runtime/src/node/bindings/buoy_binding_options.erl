@@ -46,10 +46,43 @@ values_map() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
-    apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())).
+    Args = buoy_node_process:node_options() ++ buoy_node_process:exec_argv(),
+    %% The oracle recorded the values under its own -e.
+    Defaults = (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false},
+    apply_args(expand(Args, Expansions), Types, Defaults).
 
-expand(Args, Expansions) ->
-    lists:append([maps:get(normalize(A), Expansions, [A]) || A <- Args]).
+%% An alias of the name, or of `name <arg>` when an argument follows, so
+%% -p code reads as --print --eval code. The depth bounds a cycle of aliases.
+expand([], _Expansions) ->
+    [];
+expand([A | Rest], Expansions) ->
+    Next = case Rest of
+        [<<C, _/binary>> | _] when C =/= $- -> argument;
+        _ -> none
+    end,
+    alias(A, Next, Expansions, 3) ++ expand(Rest, Expansions).
+
+%% The expansion of one argument; only its last name takes the argument
+%% that follows.
+alias(A, _Next, _Expansions, 0) ->
+    [A];
+alias(A, Next, Expansions, Depth) ->
+    Name = normalize(A),
+    Found = case Next of
+        argument -> maps:find(<<Name/binary, " <arg>">>, Expansions);
+        none -> error
+    end,
+    case {Found, maps:find(Name, Expansions)} of
+        {{ok, Names}, _} -> aliases(Names, Next, Expansions, Depth - 1);
+        {error, {ok, Names}} -> aliases(Names, Next, Expansions, Depth - 1);
+        {error, error} -> [A]
+    end.
+
+aliases([], _Next, _Expansions, _Depth) ->
+    [];
+aliases(Names, Next, Expansions, Depth) ->
+    {Init, [Last]} = lists:split(length(Names) - 1, Names),
+    lists:append([alias(N, none, Expansions, Depth) || N <- Init]) ++ alias(Last, Next, Expansions, Depth).
 
 %% --expose_gc names --expose-gc: underscores of the name are dashes.
 normalize(<<"--", _/binary>> = Arg) ->
@@ -83,10 +116,14 @@ apply_args([Arg0 | Rest], Types, Values) ->
                 {none, []} -> {<<>>, []};
                 _ -> {Inline, Rest}
             end,
-            apply_args(Remaining, Types, Values#{Name => typed(Type, Value, maps:get(Name, Values, []))});
+            apply_args(Remaining, Types, implied(Name, Values#{Name => typed(Type, Value, maps:get(Name, Values, []))}));
         _ ->
             apply_args(Rest, Types, Values)
     end.
+
+%% Implies("--eval", "[has_eval_string]") of node_options.cc.
+implied(<<"--eval">>, Values) -> Values#{<<"[has_eval_string]">> => true};
+implied(_, Values) -> Values.
 
 %% A boolean option has a --no- twin that holds its negation.
 boolean(Name, Value, Values) ->

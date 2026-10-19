@@ -361,6 +361,71 @@ mod atoms {
     rustler::atoms! { base, accent, case, word, sentence }
 }
 
+/// Unblocks SIGTERM, which the CLI blocks before it execs the VM (`start` in
+/// crates/buoy-cli/src/main.rs), so that a SIGTERM that came while the VM booted arrives now,
+/// at the action that `buoy_main` set. Linux delivers such a signal to any thread that
+/// unblocks it. macOS posts it to the main thread when every thread blocks it, so the main
+/// thread of the VM unblocks it too, through the driver API that lends that thread.
+#[cfg(unix)]
+#[rustler::nif]
+fn unblock_sigterm() -> bool {
+    #[cfg(target_os = "macos")]
+    signals::unblock_on_main_thread();
+    signals::unblock(std::ptr::null_mut()).is_null()
+}
+
+#[cfg(unix)]
+#[allow(unsafe_code)]
+mod signals {
+    use std::ffi::{c_char, c_int, c_void};
+    use std::ptr;
+
+    /// Unblocks SIGTERM on the calling thread. The signature is a thread function's.
+    pub extern "C" fn unblock(_: *mut c_void) -> *mut c_void {
+        // SAFETY: the set lives on this stack frame, and the calls only read and write it.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_UNBLOCK, &raw const set, ptr::null_mut());
+        }
+        ptr::null_mut()
+    }
+
+    /// `erl_drv_steal_main_thread` of `erl_driver.h`, which ERTS defines on macOS only.
+    #[cfg(target_os = "macos")]
+    type StealMainThread = unsafe extern "C" fn(
+        *mut c_char,
+        *mut *mut c_void,
+        extern "C" fn(*mut c_void) -> *mut c_void,
+        *mut c_void,
+        *mut c_void,
+    ) -> c_int;
+
+    /// Runs `unblock` on the main thread of the VM, which waits for such calls.
+    #[cfg(target_os = "macos")]
+    pub fn unblock_on_main_thread() {
+        // SAFETY: beam.smp exports the symbol with the signature of StealMainThread. The
+        // main thread calls `unblock` with the null argument, and ignores the name, the
+        // options, and the thread id beyond writing it.
+        unsafe {
+            let symbol = libc::dlsym(libc::RTLD_DEFAULT, c"erl_drv_steal_main_thread".as_ptr());
+            if symbol.is_null() {
+                return;
+            }
+            let steal = std::mem::transmute::<*mut c_void, StealMainThread>(symbol);
+            let mut thread = ptr::null_mut();
+            steal(
+                c"buoy_sigterm".as_ptr().cast_mut(),
+                &raw mut thread,
+                unblock,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+        }
+    }
+}
+
 #[allow(unsafe_code)]
 mod entry {
     // The entry point that erlang:load_nif calls is a `#[no_mangle]` function.

@@ -24,6 +24,7 @@
 -export([intl_compact_exponent/3, intl_cldr/0, intl_segment/3]).
 -export([fs_stat/2, fs_fstat/1, fs_readdir/1, fs_utimes/4, fs_futimes/3, fs_chmod/3, fs_fchmod/2, fs_chown/4, fs_fchown/3,
          fs_access/2, fs_statfs/1, fs_watch/1, fs_unwatch/1]).
+-export([unblock_sigterm/0]).
 
 -export_type([stream/0, failure/0]).
 
@@ -218,3 +219,7 @@ fs_watch(_Path) -> erlang:nif_error(nif_not_loaded).
 %% Linux: ends the watch of the calling process.
 -spec fs_unwatch(integer()) -> boolean().
 fs_unwatch(_Wd) -> erlang:nif_error(nif_not_loaded).
+%% Unblocks SIGTERM on the calling scheduler thread, so that the SIGTERM
+%% which the CLI held blocked through the boot of the VM arrives now.
+-spec unblock_sigterm() -> boolean().
+unblock_sigterm() -> erlang:nif_error(nif_not_loaded).

@@ -39,23 +39,17 @@ impl Runtime {
     /// and the environment that `erlexec` would give it, which saves one `exec` of each
     /// start. That path ignores `ERL_FLAGS`, `ERL_AFLAGS`, and `ERL_ZFLAGS`, so a set one
     /// takes the `erlexec` path.
-    ///
-    /// `erlexec` puts the `bin` directories of the release first on the `PATH` of the VM,
-    /// where a child `buoy` would find `<root>/erts-<version>/bin/erl`, hash another real
-    /// path, and build a second runtime. `BUOY_ERL` names the `erl` of this one instead.
     pub fn vm(&self, emulator: &[&str]) -> Command {
-        let mut vm = self.command(emulator);
-        if let Some(release) = self
-            .release
-            .as_ref()
-            .filter(|release| !release.erl.is_empty())
-        {
-            vm.env("BUOY_ERL", &release.erl);
+        let mut vm = self.emulator(emulator);
+        // erlexec puts the directories of the release first on PATH. buoy_main restores the
+        // caller's PATH, so a program and its child VMs find the same `erl` and runtime.
+        if let Some(path) = env::var_os("PATH") {
+            vm.env("BUOY_PATH", path);
         }
         vm
     }
 
-    fn command(&self, emulator: &[&str]) -> Command {
+    fn emulator(&self, emulator: &[&str]) -> Command {
         let plus = || emulator.iter().map(|flag| format!("+{flag}"));
         let Some(Release {
             root,
@@ -202,6 +196,8 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
             .unwrap_or("runtime"),
         process::id()
     ));
+    #[cfg(unix)]
+    remove_abandoned(cache);
     let built = compile(&staging, &cache.join("objects"));
     if built.is_err() {
         let _ = fs::remove_dir_all(&staging);
@@ -217,6 +213,31 @@ fn build(cache: &Path, directory: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Removes the private directories of builds whose process is gone: a VM killed while it
+/// built the runtime, such as a test's child, leaves its whole copy of the runtime behind.
+#[cfg(unix)]
+fn remove_abandoned(cache: &Path) {
+    use nix::errno::Errno;
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+    let Ok(entries) = fs::read_dir(cache) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let owner = name
+            .to_str()
+            .and_then(|name| name.strip_prefix("runtime-"))
+            .and_then(|name| name.rsplit_once(".tmp-"))
+            .and_then(|(_, pid)| pid.parse().ok());
+        if let Some(pid) = owner
+            && kill(Pid::from_raw(pid), None) == Err(Errno::ESRCH)
+        {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 /// Writes the runtime sources to `staging/src` and compiles them into `staging/ebin`. A
@@ -460,6 +481,28 @@ mod tests {
             std::os::unix::process::ExitStatusExt::signal(&status),
             Some(15)
         );
+    }
+
+    /// A build removes the private directory of a build whose process ended, and keeps the
+    /// one of a live process and the runtimes.
+    #[cfg(unix)]
+    #[test]
+    fn a_build_removes_the_directories_of_ended_builds() {
+        let cache = env::temp_dir().join(format!("buoy-abandoned-{}", process::id()));
+        let mut ended = Command::new("true").spawn().expect("true runs");
+        ended.wait().expect("true ends");
+        let names = [
+            format!("runtime-1.tmp-{}", ended.id()),
+            format!("runtime-1.tmp-{}", process::id()),
+            "runtime-1".to_owned(),
+        ];
+        for name in &names {
+            fs::create_dir_all(cache.join(name).join("ebin")).expect("the directory");
+        }
+        remove_abandoned(&cache);
+        let kept: Vec<bool> = names.iter().map(|name| cache.join(name).is_dir()).collect();
+        let _ = fs::remove_dir_all(&cache);
+        assert_eq!(kept, [false, true, true]);
     }
 
     #[test]

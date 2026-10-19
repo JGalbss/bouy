@@ -44,14 +44,15 @@ source(Id) ->
     end.
 
 %% The JSON of process.config: the variables that Node's lib and tests read.
-%% Intl, OpenSSL, and the inspector are off, so the tests that need them skip.
+%% Intl and the inspector are off, so the tests that need them skip. OpenSSL is
+%% the shared library that OTP's crypto links.
 config() ->
     Variables = #{
         asan => 0, coverage => false, debug_node => false, host_arch => buoy_node_process:arch(),
         target_arch => buoy_node_process:arch(), node_byteorder => <<"little">>,
         node_module_version => 141, napi_build_version => <<"10">>, node_no_browser_globals => false,
-        node_shared => false, node_shared_openssl => false, node_use_amaro => false,
-        node_use_openssl => false, node_use_node_snapshot => false, node_use_node_code_cache => false,
+        node_shared => false, node_shared_openssl => true, node_use_amaro => false,
+        node_use_openssl => true, openssl_is_fips => false, node_use_node_snapshot => false, node_use_node_code_cache => false,
         node_use_v8_platform => true, node_use_quic => false, v8_enable_i18n_support => 0,
         v8_enable_inspector => 0, v8_enable_pointer_compression => 0, v8_enable_31bit_smis_on_64bit_arch => 0,
         single_executable_application => false, icu_small => false, is_debug => 0,

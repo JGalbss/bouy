@@ -10,7 +10,7 @@ use oxc::ast_visit::Visit;
 use super::analyze;
 use super::context::{Cont, Frame, Kind, Local, Lowerer, Top, capitalize, cell_get};
 use super::function::{Callee, FnBody, UsesNewTarget, kind_of, length_of};
-use super::literal::literal;
+use super::literal::{js_string_literal, literal};
 use crate::erlang::{Clause, Expr, Function};
 
 /// The variable of `'__eval__'/3` that tells one evaluation of eval code from another.
@@ -366,10 +366,8 @@ impl<'a> Lowerer<'a, '_> {
             .skip(injected)
             .last()
             .map(|directive| {
-                super::literal::js_string_literal(
-                    directive.expression.value.as_str(),
-                    directive.expression.lone_surrogates,
-                )
+                let string = &directive.expression;
+                js_string_literal(string.value.as_str(), string.lone_surrogates)
             });
         let body: Vec<&'a Statement<'a>> = program.body.iter().collect();
         let mut functions = vec![self.eval_function(&body, directive)];

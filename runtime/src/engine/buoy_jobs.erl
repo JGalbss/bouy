@@ -16,8 +16,8 @@
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
 -export([await/3, async_call/1, enqueue/1, drain/0]).
 -export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1, quiet_capability/0]).
--export([set_timer/4, clear_timer/1]).
--export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
+-export([set_timer/4, clear_timer/1, has_timers/0]).
+-export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0, set_main_result/1, unsettled_main/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
 -export([all/1]).
 
@@ -35,6 +35,7 @@
 -define(PROMISE_PROTO, {'$o', 'Promise.prototype'}).
 -define(MAX_DELAY, 2147483647).
 -define(GC_MIN, 20000).
+-define(EXTERNAL_GC, 67108864).
 %% The continuation-preserved embedder data of V8: the value that each job
 %% restores from the moment it was queued, as AsyncLocalStorage needs.
 -define(CONTEXT, '$buoy_node_cped').
@@ -465,6 +466,9 @@ set_timer(Callback, Delay, Args, Repeat) ->
     erlang:put(?TIMERS, Timers#{Id => {Due, Callback, Args, case Repeat of true -> Ms; false -> none end}}),
     Id.
 
+-spec has_timers() -> boolean().
+has_timers() -> map_size(timers()) > 0.
+
 -spec clear_timer(term()) -> undefined.
 clear_timer(Id) ->
     erlang:put(?TIMERS, maps:remove(Id, timers())),
@@ -501,6 +505,14 @@ run_timer(Id) ->
 
 %%% The realm loop
 
+%% Node runs the code of -e, -p, and stdin after its bootstrap, which gives
+%% -e and -p the built-in modules as globals (eval_string.js).
+boot_for_eval() ->
+    case init:get_argument(buoy_eval) of
+        {ok, _} -> buoy_node:ensure();
+        error -> ok
+    end.
+
 %% Runs the top-level code of the entry module as the first job, then serves
 %% timers and replies until no work is left, as Node does.
 -spec run_main(fun(() -> term())) -> ok.
@@ -508,7 +520,7 @@ run_main(Body) ->
     buoy_ref:init_realm(),
     update_now(),
     %% The result lives under a pdict key, a root, so a collection keeps it.
-    run_job(fun() -> erlang:put(?MAIN, Body()) end),
+    run_job(fun() -> ok = boot_for_eval(), erlang:put(?MAIN, Body()) end),
     loop_until_exit(),
     case erlang:get(?MAIN) of
         {'$o', _} = P ->
@@ -521,6 +533,22 @@ run_main(Body) ->
             end;
         _ ->
             ok
+    end.
+
+%% The evaluation of the entry module, when it runs after the first job, as
+%% the script of a worker does.
+-spec set_main_result(term()) -> ok.
+set_main_result(Result) ->
+    erlang:put(?MAIN, Result),
+    ok.
+
+%% Whether the evaluation of the entry module still waits: an unsettled
+%% top-level await.
+-spec unsettled_main() -> boolean().
+unsettled_main() ->
+    case erlang:get(?MAIN) of
+        {'$o', _} = P -> is_promise(P) andalso element(1, buoy_heap:slots(P)) =:= pending;
+        _ -> false
     end.
 
 %% One macrotask: the job, every microtask it queues, and then a collection
@@ -569,14 +597,14 @@ loop_until_exit() ->
 
 %% Collects when the realm allocated more ids since the last collection than
 %% twice the live count then, and at least ?GC_MIN, so the cost stays in
-%% proportion to the allocation.
+%% proportion to the allocation, or ?EXTERNAL_GC bytes of buffers.
 maybe_gc() ->
     {At, Live} = case erlang:get(?LAST_GC) of
         undefined -> {0, 0};
         L -> L
     end,
     Allocated = buoy_heap:allocated(),
-    case Allocated - At >= max(?GC_MIN, 2 * Live) of
+    case Allocated - At >= max(?GC_MIN, 2 * Live) orelse buoy_heap:external() >= ?EXTERNAL_GC of
         true ->
             #{live := Live1} = buoy_heap:gc([]),
             erlang:put(?LAST_GC, {Allocated, Live1});
@@ -631,6 +659,10 @@ event_step({'$buoy_node_deferred', _} = Message) ->
     _ = buoy_node_loop:event(Message),
     ok;
 event_step({'$buoy_node_call', _} = Message) ->
+    update_now(),
+    _ = buoy_node_loop:event(Message),
+    ok;
+event_step({'$socket', _, _, _} = Message) ->
     update_now(),
     _ = buoy_node_loop:event(Message),
     ok;

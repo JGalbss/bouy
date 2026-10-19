@@ -173,6 +173,14 @@ pub fn is_path(specifier: &str) -> bool {
 impl Resolver {
     /// Resolves `specifier` from the module at `importer`.
     pub fn resolve(&self, specifier: &str, importer: &Path, mode: Mode) -> Result<Target, Failure> {
+        // Node's loaders take every `node:` specifier as a built-in, and refuse one that
+        // users cannot load, such as `node:internal/freelist`.
+        if specifier.starts_with("node:") && builtin(specifier).is_none() {
+            return Err(Failure {
+                code: "ERR_UNKNOWN_BUILTIN_MODULE",
+                message: format!("No such built-in module: {specifier}"),
+            });
+        }
         let found = match mode {
             Mode::Import => self.esm_resolve(specifier, importer),
             Mode::Require => self.require_resolve(specifier, importer),
@@ -966,6 +974,14 @@ mod tests {
             resolver.resolve("node:fs", &importer, Mode::Import),
             Ok(Target::Builtin("fs".to_owned()))
         );
+        for mode in [Mode::Import, Mode::Require] {
+            assert_eq!(
+                resolver
+                    .resolve("node:internal/freelist", &importer, mode)
+                    .map_err(|failure| failure.code),
+                Err("ERR_UNKNOWN_BUILTIN_MODULE")
+            );
+        }
         assert_eq!(resolver.format(&importer), Format::Esm);
         assert_eq!(
             resolver.format(&modules.join("old/lib/main.js")),

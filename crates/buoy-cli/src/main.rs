@@ -2,6 +2,8 @@
 
 mod node;
 mod runtime;
+#[cfg(unix)]
+mod spawn;
 
 use std::env;
 use std::ffi::OsString;
@@ -186,6 +188,11 @@ const DIAGNOSTICS: u8 = 2;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().collect();
+    // The last step of a child process that the runtime starts (spawn.rs).
+    #[cfg(unix)]
+    if arguments.get(1).is_some_and(|first| first == "--buoy-exec") {
+        return spawn::exec(&arguments[2..]);
+    }
     // `buoy [node options] <script> [args...]`, `buoy -e <code>`, and `buoy -p <code>` run
     // as `node` does, on the reference engine, so a program that starts `process.execPath`
     // as node starts Buoy.
@@ -282,6 +289,8 @@ fn serve_eval() -> ExitCode {
         let arguments = std::iter::once("compile-eval").chain(header.split('\n'));
         let answer = if let Some(request) = header.strip_prefix("@load\n") {
             load_answer(request)
+        } else if let Some(path) = header.strip_prefix("@source\n") {
+            source_answer(path, text)
         } else {
             match Served::try_parse_from(arguments) {
                 Ok(Served { request }) => {
@@ -342,25 +351,43 @@ fn load_answer(request: &str) -> Vec<u8> {
         Ok(buoy_compiler::Loaded::Builtin(name)) => {
             [&[0], format!("builtin\n{name}").as_bytes()].concat()
         }
-        Ok(buoy_compiler::Loaded::Program(path, project)) => {
-            let mut answer = vec![0];
-            answer.extend_from_slice(format!("program\n{}\n", path.display()).as_bytes());
-            for module in &project.modules {
-                answer.extend_from_slice(
-                    format!(
-                        "{}\n{}\n{}\n",
-                        module.name,
-                        module.path.display(),
-                        module.erlang.len()
-                    )
-                    .as_bytes(),
-                );
-                answer.extend_from_slice(module.erlang.as_bytes());
-            }
-            answer
-        }
+        Ok(buoy_compiler::Loaded::Program(path, project)) => program_answer(&path, &project),
         Err((code, message)) => [&[DIAGNOSTICS], format!("{code}\t{message}").as_bytes()].concat(),
     }
+}
+
+/// The answer to `@source`, the code that a running program hands over as the entry
+/// module at `path`, such as the code of a worker that `eval: true` starts. The answer
+/// is the one of `@load` for a program.
+fn source_answer(path: &str, text: &str) -> Vec<u8> {
+    let path = Path::new(path);
+    match buoy_compiler::compile_source(path, text.to_owned()) {
+        Ok(project) => program_answer(path, &project),
+        Err(diagnostics) => {
+            let (code, message) = buoy_compiler::load_error(&diagnostics);
+            [&[DIAGNOSTICS], format!("{code}\t{message}").as_bytes()].concat()
+        }
+    }
+}
+
+/// Status 0, `program` and the path of the entry, then each module as its name, its path,
+/// and the byte length of its Erlang source, one on each line, then the source.
+fn program_answer(path: &Path, project: &Project) -> Vec<u8> {
+    let mut answer = vec![0];
+    answer.extend_from_slice(format!("program\n{}\n", path.display()).as_bytes());
+    for module in &project.modules {
+        answer.extend_from_slice(
+            format!(
+                "{}\n{}\n{}\n",
+                module.name,
+                module.path.display(),
+                module.erlang.len()
+            )
+            .as_bytes(),
+        );
+        answer.extend_from_slice(module.erlang.as_bytes());
+    }
+    answer
 }
 
 fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
@@ -431,6 +458,9 @@ fn start_program(
     ])
     .arg(&runtime.ebin)
     .args(["-buoy_exec_argv", &options.exec_argv_json()])
+    // `process.argv0`: the argv[0] of this invocation, which spawn's `argv0` option sets.
+    .arg("-buoy_argv0")
+    .arg(&*env::args_os().next().unwrap_or_default().to_string_lossy())
     .args(
         options
             .eval
@@ -456,10 +486,18 @@ fn start_program(
 }
 
 /// Replaces this process with the VM, so that a signal to the CLI reaches the VM and the
-/// shell reports the status of the VM, or 128 plus the signal that ended it.
+/// shell reports the status of the VM, or 128 plus the signal that ended it. SIGTERM stays
+/// blocked until `buoy_main` sets its action: ERTS drops a SIGTERM that comes before its
+/// signal server starts, and a blocked one waits instead.
 #[cfg(unix)]
 fn start(mut vm: Command) -> ExitCode {
+    use nix::sys::signal::{SigSet, SigmaskHow, Signal, sigprocmask};
     use std::os::unix::process::CommandExt;
+    let _ = sigprocmask(
+        SigmaskHow::SIG_BLOCK,
+        Some(&SigSet::from(Signal::SIGTERM)),
+        None,
+    );
     let error = vm.exec();
     fail(&format!(
         "cannot start erl: {error}; install Erlang/OTP or set BUOY_ERL"

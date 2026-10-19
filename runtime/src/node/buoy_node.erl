@@ -42,6 +42,16 @@
                     <<"internal/bootstrap/switches/does_own_process_state">>,
                     <<"internal/main/buoy">>]).
 
+%% The bootstrap of a worker thread (buoy_binding_worker), as node.cc runs it
+%% for a Worker: the switches of a thread that is not the main one, then
+%% internal/main/worker_thread.
+-define(WORKER_BOOTSTRAP, [<<"internal/bootstrap/node">>,
+                           <<"internal/bootstrap/web/exposed-wildcard">>,
+                           <<"internal/bootstrap/web/exposed-window-or-worker">>,
+                           <<"internal/bootstrap/switches/is_not_main_thread">>,
+                           <<"internal/bootstrap/switches/does_not_own_process_state">>,
+                           <<"internal/main/worker_thread">>]).
+
 -define(PER_CONTEXT, [<<"internal/per_context/primordials">>,
                       <<"internal/per_context/domexception">>,
                       <<"internal/per_context/messageport">>]).
@@ -123,7 +133,7 @@ boot() ->
     persistent_term:put({buoy_node, debug}, os:getenv("BUOY_NODE_DEBUG") =/= false),
     Primordials = buoy_heap:object(null, []),
     erlang:put(?PRIMORDIALS, Primordials),
-    Private = symbols(private_symbol_names()),
+    Private = buoy_heap:object(null, [{N, buoy_heap:private_symbol(D)} || {N, D} <- private_symbol_names()]),
     PerIsolate = symbols(per_isolate_symbol_names()),
     erlang:put(?SYMBOLS, {Private, PerIsolate}),
     Context = object([{<<"primordials">>, Primordials}]),
@@ -137,9 +147,31 @@ boot() ->
     GetInternal = fn(<<"getInternalBinding">>, 1, fun(_, Args) -> binding(buoy_ref_realm:arg(1, Args)) end),
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
     {InternalBinding, Require} = erlang:get(?LOADERS),
-    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- ?BOOTSTRAP, is_compiled(Id)],
+    Bootstrap = case buoy_binding_worker:is_worker() of
+        true -> ?WORKER_BOOTSTRAP;
+        false -> ?BOOTSTRAP
+    end,
+    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- Bootstrap, is_compiled(Id)],
     erlang:put(?STATE, ready),
+    keep_engine_timers(),
     debug("bootstrap done~n", []),
+    ok.
+
+%% A timer that the program set before the bootstrap is the engine's, whose
+%% id Node's clearTimeout and clearInterval do not know: while one is live,
+%% the globals clear an engine id before they call Node's.
+%% shortcut: a Node timer's number that equals a live engine id clears both;
+%% move the engine timers into lib/timers if a program hits it.
+keep_engine_timers() ->
+    G = {'$o', 'globalThis'},
+    buoy_jobs:has_timers() andalso
+        lists:foreach(fun(Name) ->
+            Clear = buoy_heap:get(G, Name),
+            buoy_heap:set(G, Name, fn(Name, 1, fun(This, Args) ->
+                buoy_jobs:clear_timer(buoy_ref_realm:arg(1, Args)),
+                buoy_heap:call(Clear, This, Args)
+            end))
+        end, [<<"clearTimeout">>, <<"clearInterval">>]),
     ok.
 
 is_compiled(Id) -> lists:member(Id, (index()):ids()).

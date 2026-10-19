@@ -2,9 +2,11 @@
 //! and `buoy -p <code>`. The program runs on the reference engine, and the node options
 //! reach the VM as `process.execArgv`.
 
+use std::collections::hash_map::DefaultHasher;
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Write as _;
+use std::hash::{Hash as _, Hasher as _};
 use std::io::{IsTerminal as _, Read as _};
 use std::path::Path;
 use std::process::ExitCode;
@@ -122,6 +124,9 @@ const CHOICE_OPTIONS: [(&str, &[&str], &str); 1] = [(
     "invalid value for --unhandled-rejections",
 )];
 
+/// The version of Node that `-v` prints, the release that the tests freeze their output at.
+const NODE_VERSION: &str = include_str!("../../../.node-version");
+
 /// `ExitCode::kInvalidCommandLineArgument` of Node.
 const INVALID_COMMAND_LINE_ARGUMENT: u8 = 9;
 
@@ -159,6 +164,7 @@ enum Entry {
 pub fn run(arguments: &[OsString]) -> ExitCode {
     let mut options = Options::default();
     let mut entry = None;
+    let mut print_version = false;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].to_string_lossy().into_owned();
@@ -189,6 +195,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
                 break;
             }
             _ if argument.starts_with('-') && argument.len() > 1 => {
+                print_version |= argument == "-v" || argument == "--version";
                 options.exec_argv.push(argument.clone());
                 if VALUE_OPTIONS.contains(&argument.as_str())
                     && let Some(value) = arguments.get(index)
@@ -211,6 +218,10 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         eprintln!("{program}: {error}");
         return ExitCode::from(INVALID_COMMAND_LINE_ARGUMENT);
     }
+    if print_version {
+        println!("v{}", NODE_VERSION.trim());
+        return ExitCode::SUCCESS;
+    }
     let program_arguments = &arguments[index.min(arguments.len())..];
     match entry {
         Some(Entry::Script(script)) if script == "-" => {
@@ -221,6 +232,8 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             run_stdin(&arguments, options)
         }
         Some(Entry::Script(script)) => {
+            let script = buoy_compiler::resolve_main(Path::new(&script))
+                .map_or(script, |path| path.to_string_lossy().into_owned());
             let project = match super::compile(Path::new(&script), Semantics::Reference) {
                 Ok(project) => project,
                 Err(code) => return code,
@@ -263,10 +276,14 @@ fn run_stdin(arguments: &[OsString], mut options: Options) -> ExitCode {
 }
 
 /// Compiles the code as the module `[eval]` of the working directory, so it resolves its
-/// imports from there, and starts it.
+/// imports from there, and starts it. The name carries a hash of the code: runs of other
+/// code in the same directory at the same time write other files of the build.
 fn run_source(code: String, module: bool, arguments: &[OsString], options: &Options) -> ExitCode {
     let directory = env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
-    let entry = directory.join(if module { "[eval].mjs" } else { "[eval].cjs" });
+    let mut hasher = DefaultHasher::new();
+    code.hash(&mut hasher);
+    let extension = if module { "mjs" } else { "cjs" };
+    let entry = directory.join(format!("[eval-{:016x}].{extension}", hasher.finish()));
     match buoy_compiler::compile_source(&entry, code) {
         Ok(project) => super::start_program(&project, &entry, arguments, options),
         Err(diagnostics) => {

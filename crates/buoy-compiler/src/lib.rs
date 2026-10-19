@@ -136,6 +136,25 @@ pub fn compile_source(entry: &Path, text: String) -> Result<Project, Vec<Diagnos
     compile_reference_text(entry, &root, false, Some(text))
 }
 
+/// The file that `node <script>` runs: the script itself, or the file that `require` of its
+/// absolute path finds, with an extension or as a directory, as Node's `Module.runMain`
+/// resolves the main entry.
+#[must_use]
+pub fn resolve_main(script: &Path) -> Option<PathBuf> {
+    if script.is_file() {
+        return Some(script.to_path_buf());
+    }
+    let absolute = std::env::current_dir().ok()?.join(script);
+    match resolve::Resolver::default().resolve(
+        &absolute.to_string_lossy(),
+        &absolute,
+        resolve::Mode::Require,
+    ) {
+        Ok(resolve::Target::File(path)) => Some(path),
+        _ => None,
+    }
+}
+
 /// What a running program loads at run time: a specifier that its static graph did not
 /// reach, such as `require(path.join(dir, name))`.
 #[derive(Debug)]
@@ -168,14 +187,21 @@ pub fn compile_loaded(
             let root = root.canonicalize().unwrap_or(root);
             compile_reference(&path, &root, false)
                 .map(|project| Loaded::Program(path, project))
-                .map_err(|diagnostics| {
-                    let message = diagnostics
-                        .first()
-                        .map_or_else(String::new, |d| d.message.clone());
-                    ("ERR_BUOY_COMPILE".to_owned(), message)
-                })
+                .map_err(|diagnostics| load_error(&diagnostics))
         }
         Err(failure) => Err((failure.code.to_owned(), failure.message)),
+    }
+}
+
+/// The error that a running program throws for a module that does not compile: the
+/// name `SyntaxError` for a syntax error, as Node's loaders throw one, else the code
+/// `ERR_BUOY_COMPILE`, with the message of the first diagnostic.
+#[must_use]
+pub fn load_error(diagnostics: &[Diagnostic]) -> (String, String) {
+    match diagnostics.first() {
+        Some(d) if d.code == Code::Syntax => ("SyntaxError".to_owned(), d.message.clone()),
+        Some(d) => ("ERR_BUOY_COMPILE".to_owned(), d.message.clone()),
+        None => ("ERR_BUOY_COMPILE".to_owned(), String::new()),
     }
 }
 

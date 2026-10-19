@@ -6,7 +6,7 @@
 %% the resource, with the async context frame of its creation.
 -module(buoy_binding_async_wrap).
 
--export([binding/0, wrap/2, make_callback/3, emit_destroy/1, destroy_queued/0]).
+-export([binding/0, wrap/2, emit_init/2, make_callback/3, emit_destroy/1, destroy_queued/0]).
 
 %% {HookFields, IdFields, Binding}: the fields of AsyncHooks, and the binding,
 %% whose async_ids_stack grows past its 16 entries.
@@ -311,3 +311,14 @@ providers() ->
      <<"KEYPAIRGENREQUEST">>, <<"KEYGENREQUEST">>, <<"KEYEXPORTREQUEST">>, <<"ARGON2REQUEST">>,
      <<"CIPHERREQUEST">>, <<"DERIVEBITSREQUEST">>, <<"HASHREQUEST">>, <<"RANDOMBYTESREQUEST">>,
      <<"RANDOMPRIMEREQUEST">>, <<"SCRYPTREQUEST">>, <<"SIGNREQUEST">>, <<"TLSWRAP">>, <<"VERIFYREQUEST">>].
+
+%% AsyncWrap::AsyncReset for a native resource whose JavaScript reads its
+%% async id, such as a MessagePort or a Worker: wrap/2, and the new id.
+-spec emit_init(term(), binary()) -> number().
+emit_init(Resource, Type) ->
+    _ = buoy_node:binding(<<"async_wrap">>),
+    wrap(Resource, Type),
+    case buoy_heap:private_find(Resource, ?WRAP) of
+        {ok, {AsyncId, _, _, _}} -> AsyncId;
+        error -> -1
+    end.

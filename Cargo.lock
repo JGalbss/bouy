@@ -178,6 +178,7 @@ dependencies = [
  "buoy-compiler",
  "buoy-suites",
  "clap",
+ "nix",
  "serde_json",
 ]
 

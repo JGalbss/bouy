@@ -13,7 +13,7 @@
 
 -include("buoy_ref.hrl").
 
--export([run/1, evaluate_dependencies/1]).
+-export([run/1, run_worker/2, graph/0, evaluate_dependencies/1, throw_load/2]).
 -export([namespace/1, foreign_export/2, builtin_export/2, builtin_namespace/1]).
 -export([uninitialized/2, hoisted/1]).
 -export([dynamic_import/4, meta/1, require/2]).
@@ -45,6 +45,7 @@ entry() -> erlang:get(?ENTRY).
 %% graph that does not await throws, as an uncaught exception.
 -spec run(module()) -> term().
 run(Entry) ->
+    ok = buoy_node_process:preload(),
     erlang:put(?ENTRY, Entry),
     Graph = case erlang:function_exported(Entry, '$graph', 0) of
         true -> Entry:'$graph'();
@@ -62,6 +63,29 @@ run(Entry) ->
         {pending, _, _, _} ->
             buoy_jobs:perform_then(P, fun(_) -> undefined end, fun report_uncaught/1, undefined),
             P
+    end.
+
+%% The program of a worker realm (buoy_binding_worker) from its entry module,
+%% with Known, the graph of the realm that started the worker, so a module of
+%% that program loads without the compiler. Returns the promise of the
+%% evaluation, which the worker's main script watches.
+-spec run_worker(module(), #{term() => module()}) -> term().
+run_worker(Entry, Known) ->
+    erlang:put(?ENTRY, Entry),
+    Graph = case erlang:function_exported(Entry, '$graph', 0) of
+        true -> Entry:'$graph'();
+        false -> []
+    end,
+    erlang:put(?GRAPH, maps:merge(Known, maps:from_list(Graph))),
+    link_graph(Entry),
+    evaluate(Entry).
+
+%% The modules of the program that this realm runs, by path.
+-spec graph() -> #{term() => module()}.
+graph() ->
+    case erlang:get(?GRAPH) of
+        undefined -> #{};
+        G -> G
     end.
 
 %% A rejection of the evaluation of the program ends it, as an uncaught error.
@@ -659,7 +683,7 @@ import_traced(From, Specifier, Options, Phase) ->
         Target = case target(From, Text, import) of
             {_Path, Module} when is_atom(Module), Module =/= none -> Module;
             {builtin, Name} -> {builtin, Name};
-            {error, Code, Message} -> throw_coded('Error', Code, Message);
+            {error, Code, Message} -> throw_load(Code, Message);
             _ -> throw_coded('Error', <<"ERR_MODULE_NOT_FOUND">>,
                              buoy_ref_string:concat([<<"Cannot find module '">>, Text, <<"' imported from ">>, info(From, path)]))
         end,
@@ -804,7 +828,7 @@ meta_resolve(M, Specifier) ->
     Text = buoy_ref:to_string(Specifier),
     case target(M, Text, import) of
         {builtin, Name} -> buoy_ref_string:concat([<<"node:">>, Name]);
-        {error, Code, Message} -> throw_coded('Error', Code, Message);
+        {error, Code, Message} -> throw_load(Code, Message);
         {Path, _} -> file_url(Path);
         none -> throw_coded('Error', <<"ERR_MODULE_NOT_FOUND">>,
                             buoy_ref_string:concat([<<"Cannot find module '">>, Text, <<"' imported from ">>, info(M, path)]))
@@ -985,7 +1009,7 @@ require_traced(M, Specifier) ->
         _ when Internal ->
             builtin_exports(Specifier);
         {error, Code, Message} ->
-            throw_coded('Error', Code, Message);
+            throw_load(Code, Message);
         {_Path, Target} when is_atom(Target), Target =/= none ->
             require_module(Target);
         _ ->
@@ -1050,7 +1074,7 @@ require_resolve(M, Specifier) ->
                                              <<"The \"request\" argument must be of type string">>),
     case target(M, Specifier, require) of
         {builtin, Name} -> Name;
-        {error, Code, Message} -> throw_coded('Error', Code, Message);
+        {error, Code, Message} -> throw_load(Code, Message);
         {Path, _} -> Path;
         none -> throw_coded('Error', <<"MODULE_NOT_FOUND">>,
                             buoy_ref_string:concat([<<"Cannot find module '">>, Specifier, <<"'\nRequire stack:\n- ">>, info(M, path)]))
@@ -1063,6 +1087,12 @@ resolve_paths(M, Specifier) ->
     end.
 
 -spec throw_coded(atom(), term(), term()) -> no_return().
+%% A module that the compiler of the VM cannot load: a SyntaxError for a
+%% syntax error, as Node's loaders throw it, else an Error with Node's code.
+-spec throw_load(binary(), term()) -> no_return().
+throw_load(<<"SyntaxError">>, Message) -> buoy_heap:throw_error('SyntaxError', Message);
+throw_load(Code, Message) -> throw_coded('Error', Code, Message).
+
 throw_coded(Name, Code, Message) ->
     E = buoy_heap:error_object(Name, Message, buoy_ref_string:concat([atom_to_binary(Name), <<": ">>, Message])),
     buoy_heap:define(E, <<"code">>, #{value => Code, writable => true, enumerable => true, configurable => true}),
