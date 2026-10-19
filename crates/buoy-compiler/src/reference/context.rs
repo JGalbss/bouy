@@ -205,6 +205,9 @@ pub struct Frame<'a> {
     pub arguments: Option<Local>,
     /// The cell of `this` in a derived constructor, which `super(...)` binds.
     pub this_cell: Option<String>,
+    /// The TypeScript parameter properties of a derived constructor, which `super(...)`
+    /// defines once `this` exists, as TypeScript emits them after the call.
+    pub parameter_properties: Vec<(String, oxc::semantic::SymbolId, oxc::span::Span)>,
     /// The Erlang variable of `new.target`, or none for `undefined`.
     pub new_target: Option<String>,
     /// The Yield fun of an async generator.

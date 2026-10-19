@@ -2,8 +2,10 @@
 %%
 %% Values are undefined, null, booleans, numbers (buoy_ref_number), strings
 %% (buoy_ref_string), the heap values of buoy_heap (objects, functions, and
-%% symbols), and {'$actor', Pid} for an actor ref. Property reads on a
-%% primitive go to the intrinsic prototype of its type, as in JavaScript.
+%% symbols), and the handles of buoy_actor: {'$actor', Id} for an actor ref,
+%% {'$cast', Id} for the value of cast(ref), and {'$schedule', Pid} for a
+%% schedule() timer. Property reads on a primitive go to the intrinsic
+%% prototype of its type, as in JavaScript.
 -module(buoy_ref).
 
 -export([init_realm/0, global/1, caught/2, report_uncaught/1, exit_program/1, stderr/0, type_error/1]).
@@ -23,7 +25,7 @@
 -export([bit_and/2, bit_or/2, bit_xor/2, bit_not/1, shift_left/2, shift_right/2, shift_right_unsigned/2]).
 -export([strict_eq/2, loose_eq/2, lt/2, le/2, gt/2, ge/2, typeof/1, instance_of/2, truthy/1]).
 -export([to_string/1, to_number/1, to_numeric/1, to_object/1, to_primitive/2, increment/1, decrement/1]).
--export([describe/1, typeof_global/1, spawn_args/1, stop_actor/1, heap_stats/0, vm_memory/0]).
+-export([describe/1, typeof_global/1, heap_stats/0, vm_memory/0]).
 
 -include("buoy_ref.hrl").
 
@@ -62,6 +64,8 @@ arity(A) -> A.
 %% An uncaught error ends the program with status 1, as in Node.
 -spec report_uncaught(term()) -> no_return().
 report_uncaught(Value) ->
+    %% An actor crashes instead (buoy_actor:uncaught/1).
+    none = buoy_actor:uncaught(Value),
     Text = try uncaught_text(Value)
            catch _:_ -> io_lib:format("~0tp", [Value])
            end,
@@ -108,8 +112,14 @@ get(N, K) when ?IS_NUMBER(N) -> lookup(buoy_heap:intrinsic('Number.prototype'), 
 get({'$bigint', _} = B, K) -> lookup(buoy_heap:intrinsic('BigInt.prototype'), K, B);
 get({'$sym', _, Description}, <<"description">>) -> Description;
 get({'$sym', _, _} = S, K) -> lookup(buoy_heap:intrinsic('Symbol.prototype'), K, S);
-get({'$actor', Pid}, K) when ?IS_STRING(K) -> {'$f', {actor, Pid, K}, fun(_This, Args) -> buoy_jobs:actor_call(Pid, K, Args) end};
-get({'$actor', _}, _K) -> undefined.
+%% A ref and a cast are no thenables: `await ref` gives the ref.
+get({Handle, _}, <<"then">>) when Handle =:= '$actor'; Handle =:= '$cast' -> undefined;
+get({'$actor', Id}, K) when ?IS_STRING(K) -> {'$f', {actor, Id, K}, fun(_This, Args) -> buoy_actor:call(Id, K, Args) end};
+get({'$cast', Id}, K) when ?IS_STRING(K) -> {'$f', {cast, Id, K}, fun(_This, Args) -> buoy_actor:cast(Id, K, Args) end};
+%% util.inspect of Node prints a handle as console.log of the engine does.
+get({Handle, _} = H, {'$sym', registered, <<"nodejs.util.inspect.custom">>}) when ?IS_HANDLE(Handle) ->
+    buoy_heap:function(fun(_This, _Args) -> buoy_ref_console:inspect(H) end);
+get({Handle, _}, _K) when ?IS_HANDLE(Handle) -> undefined.
 
 -spec read_error(binary(), buoy_heap:key()) -> no_return().
 read_error(What, K) ->
@@ -151,7 +161,7 @@ sloppy_set(P, K, V) ->
 %% PutValue on a primitive base: [[Set]] of ToObject(base) with the
 %% primitive as the receiver, so only a setter up the chain takes the
 %% write. The own indexes and length of a string are read-only.
-primitive_set({'$actor', _}, _K, _V) -> false;
+primitive_set({Handle, _}, _K, _V) when ?IS_HANDLE(Handle) -> false;
 primitive_set(S, <<"length">>, _V) when ?IS_STRING(S) -> false;
 primitive_set(S, I, V) when ?IS_STRING(S), is_integer(I) ->
     I >= buoy_ref_string:length_of(S) andalso buoy_heap:set(primitive_proto(S), I, V, S);
@@ -197,6 +207,7 @@ delete_computed(O, K) -> delete(O, to_property_key(K)).
 %% `k in o`.
 -spec in(term(), term()) -> boolean().
 in(K, O) when ?IS_OBJECT(O) -> buoy_heap:has(O, to_property_key(K));
+in(K, {Handle, _} = H) when ?IS_HANDLE(Handle) -> buoy_heap:has(to_object(H), to_property_key(K));
 in(K, O) -> type_error(text([<<"Cannot use 'in' operator to search for '">>, to_string(K), <<"' in ">>, describe(O)])).
 
 %% The key of o[k]: the base must not be undefined or null before the key
@@ -243,7 +254,8 @@ call_in_realm({'$f', _, Fun} = F, This, Args) ->
 %% r.k(args): the method of the receiver, called with the receiver as this.
 -spec call_method(term(), buoy_heap:key(), list()) -> term().
 call_method({'$o', _} = O, K, Args) -> invoke(buoy_heap:method(O, K), O, K, Args);
-call_method({'$actor', Pid}, K, Args) -> buoy_jobs:actor_call(Pid, K, Args);
+call_method({'$actor', Id}, K, Args) when ?IS_STRING(K), K =/= <<"then">> -> buoy_actor:call(Id, K, Args);
+call_method({'$cast', Id}, K, Args) when ?IS_STRING(K), K =/= <<"then">> -> buoy_actor:cast(Id, K, Args);
 call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 
 %% r.k(args) where the code read the method before the arguments ran.
@@ -841,7 +853,7 @@ invert(Order) -> Order.
 typeof({'$f', _, _}) -> <<"function">>;
 typeof({'$o', _}) -> <<"object">>;
 typeof({'$sym', _, _}) -> <<"symbol">>;
-typeof({'$actor', _}) -> <<"object">>;
+typeof({Handle, _}) when ?IS_HANDLE(Handle) -> <<"object">>;
 typeof(undefined) -> <<"undefined">>;
 typeof(null) -> <<"object">>;
 typeof(B) when is_boolean(B) -> <<"boolean">>;
@@ -896,7 +908,9 @@ to_string(null) -> <<"null">>;
 to_string(V) when ?IS_OBJECT(V) -> to_string(to_primitive(V, string));
 to_string({'$sym', _, _}) -> type_error(<<"Cannot convert a Symbol value to a string">>);
 to_string({'$bigint', I}) -> integer_to_binary(I);
-to_string({'$actor', _}) -> <<"[object ActorRef]">>.
+to_string({'$actor', _}) -> <<"[object ActorRef]">>;
+to_string({'$cast', _}) -> <<"[object ActorCast]">>;
+to_string({'$schedule', _}) -> <<"[object Schedule]">>.
 
 -spec to_number(term()) -> term().
 to_number(N) when ?IS_NUMBER(N) -> N;
@@ -926,6 +940,8 @@ to_object(S) when ?IS_STRING(S) -> buoy_ref_string:wrap(S, buoy_heap:intrinsic('
 to_object(B) when is_boolean(B) -> buoy_ref_boolean:wrap(B, buoy_heap:intrinsic('Boolean.prototype'));
 to_object({'$bigint', _} = B) -> buoy_ref_bigint:wrap(B, buoy_heap:intrinsic('BigInt.prototype'));
 to_object({'$sym', _, _} = S) -> buoy_heap:new_exotic(symbol, buoy_heap:intrinsic('Symbol.prototype'), S);
+%% A handle of buoy_actor acts as an empty object without a prototype.
+to_object({Handle, _} = H) when ?IS_HANDLE(Handle) -> buoy_heap:new_exotic(actor_handle, null, H);
 to_object(V) -> V.
 
 %% ToPrimitive: Symbol.toPrimitive, else valueOf and toString in the order
@@ -981,22 +997,11 @@ describe({'$f', _, _} = F) ->
 describe({'$o', _}) -> <<"#<Object>">>;
 describe({'$sym', _, _} = S) -> key_text(S);
 describe({'$actor', _}) -> <<"ActorRef">>;
+describe({'$cast', _}) -> <<"ActorCast">>;
+describe({'$schedule', _}) -> <<"Schedule">>;
 describe(V) -> to_string(V).
 
 %%% Actors
-
-%% The constructor arguments of spawn(Class, { args }).
--spec spawn_args(term()) -> list().
-spawn_args(undefined) -> [];
-spawn_args(Options) ->
-    case get(Options, <<"args">>) of
-        undefined -> [];
-        Args -> buoy_ref_iterator:to_list(Args)
-    end.
-
--spec stop_actor(list()) -> undefined.
-stop_actor([{'$actor', Pid} | _]) -> buoy_jobs:stop_actor(Pid);
-stop_actor(_) -> type_error(<<"stop() needs an actor ref">>).
 
 %% heapStats() from "buoy": the heap and the collector of this realm, for the benchmarks.
 -spec heap_stats() -> term().

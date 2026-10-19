@@ -1,4 +1,4 @@
-import { cast, sleep, spawn } from "buoy";
+import { cast, spawn } from "buoy";
 
 // Runaway loop: 100 agents answer pings. Agent 0 enters a loop that never ends, inside its
 // turn. The BEAM scheduler preempts it, so the other agents keep their turns. For 1 s the
@@ -40,11 +40,16 @@ async function timedPing(agent: any): Promise<Sample> {
   }
 }
 
+// Waits ms without blocking the realm, so the replies of other calls keep arriving.
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function pingRounds(others: any[], until: number): Promise<Sample[]> {
   const rounds: Sample[][] = [];
   while (performance.now() < until) {
     rounds.push(await Promise.all(others.map((agent) => timedPing(agent))));
-    sleep(PAUSE_MS);
+    await pause(PAUSE_MS);
   }
   return rounds.flat();
 }

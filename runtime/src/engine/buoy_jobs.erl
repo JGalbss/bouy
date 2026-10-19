@@ -1,4 +1,4 @@
-%% The job queue of one realm (spike: reference semantics).
+%% The job queue of one realm.
 %%
 %% A realm runs one job at a time: a macrotask (the module body, a timer
 %% callback, an actor turn, the arrival of a reply), then every microtask
@@ -18,18 +18,14 @@
 -export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1, quiet_capability/0]).
 -export([set_timer/4, clear_timer/1, has_timers/0]).
 -export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0, set_main_result/1, is_main_unsettled/0, warn_unsettled/0]).
--export([spawn_actor/2, actor_call/3, stop_actor/1]).
+-export([update_now/0]).
 -export([all/1]).
 
 -define(QUEUE, '$buoy_microtasks').
 -define(TIMERS, '$buoy_timers').
 -define(TIMER_SEQ, '$buoy_timer_seq').
 -define(NOW, '$buoy_now').
--define(PENDING, '$buoy_pending').
 -define(UNHANDLED, '$buoy_unhandled').
--define(THIS, '$buoy_this').
--define(BUSY, '$buoy_busy').
--define(CALLS, '$buoy_calls').
 -define(LAST_GC, '$buoy_last_gc').
 -define(MAIN, '$buoy_main_result').
 -define(MAX_DELAY, 2147483647).
@@ -726,8 +722,8 @@ maybe_gc() ->
             ok
     end.
 
-%% Waits for messages while the realm has work: timers, replies it waits
-%% for, or, in an actor, always. Without work, it still takes the messages
+%% Waits for messages while the realm has work: timers, or replies to the
+%% calls it made to actors. Without work, it still takes the messages
 %% that have arrived, such as the wake of an async wait that the realm
 %% notified itself, but not the timer of Node: its timers are unref'd then,
 %% and libuv runs no timer of a loop that is not alive.
@@ -744,7 +740,6 @@ loop() ->
         true ->
             Poll = buoy_node_loop:poll(),
             receive
-                stop -> ok;
                 Message -> buoy_node_loop:polled(Poll, 1), event_step(Message), buoy_node_loop:check(), loop()
             after buoy_node_loop:poll_timeout() ->
                 buoy_node_loop:polled(Poll, 0),
@@ -755,14 +750,7 @@ loop() ->
 
 -spec has_work() -> boolean().
 has_work() ->
-    erlang:get(?THIS) =/= undefined orelse map_size(timers()) > 0 orelse map_size(pending()) > 0
-        orelse buoy_node_loop:has_work().
-
-pending() ->
-    case erlang:get(?PENDING) of
-        undefined -> #{};
-        P -> P
-    end.
+    map_size(timers()) > 0 orelse buoy_actor:has_calls() orelse buoy_node_loop:has_work().
 
 %% One BEAM message becomes at most one job.
 -spec event_step(term()) -> ok.
@@ -788,131 +776,16 @@ event_step({'$buoy_atomics_wake', _} = Event) ->
 event_step({'$buoy_atomics_timeout', _} = Event) ->
     update_now(),
     buoy_ref_atomics:async_event(Event);
-event_step({'$buoy_reply', Tag, Outcome}) ->
+%% The reply to a call of this realm to an actor, or the end of its process.
+event_step({Alias, _} = Message) when is_reference(Alias) ->
     update_now(),
-    case maps:take(Tag, pending()) of
-        {{Resolve, Reject, Monitor}, Rest} ->
-            erlang:demonitor(Monitor, [flush]),
-            erlang:put(?PENDING, Rest),
-            run_job(fun() ->
-                            case Outcome of
-                                {ok, Term} -> Resolve(buoy_heap:clone_in(Term));
-                                {error, Term} -> Reject(buoy_heap:clone_in(Term))
-                            end
-                    end);
-        error ->
-            ok
-    end;
-event_step({'DOWN', Monitor, process, _Pid, Reason}) ->
-    update_now(),
-    Failed = [{Tag, Reject} || Tag := {_, Reject, M} <- pending(), M =:= Monitor],
-    erlang:put(?PENDING, maps:without([Tag || {Tag, _} <- Failed], pending())),
-    [run_job(fun() -> Reject(buoy_heap:error_object('Error', iolist_to_binary(io_lib:format("actor stopped: ~p", [Reason])), <<>>)) end) || {_, Reject} <- Failed],
+    _ = buoy_actor:reply(Message),
     ok;
-event_step({'$buoy_call', From, Tag, Method, Args}) ->
+event_step({'DOWN', _, process, _, _} = Message) ->
     update_now(),
-    case erlang:get(?BUSY) of
-        true -> erlang:put(?CALLS, pending_list(?CALLS) ++ [{From, Tag, Method, Args}]);
-        _ -> start_turn(From, Tag, Method, Args)
-    end;
-event_step('$buoy_next_turn') ->
-    update_now(),
-    case pending_list(?CALLS) of
-        [{From, Tag, Method, Args} | Rest] ->
-            erlang:put(?CALLS, Rest),
-            start_turn(From, Tag, Method, Args);
-        [] ->
-            ok
-    end;
+    _ = buoy_actor:reply(Message),
+    ok;
 event_step(_Other) ->
     ok.
 
-%%% Actors: one realm each. A turn is one call, from its start until the
-%%% promise of the method settles, and the next call waits for it, so turns
-%%% never interleave even when a method awaits.
 
-%% The class is {Module, Name}, a class of Module, or {export, Module, Key}, an
-%% export of Module that the actor's module imports.
--spec spawn_actor({module(), binary() | {export, binary()}} | {export, module(), binary()}, list()) -> {'$actor', pid()}.
-spawn_actor({export, Module, Key}, Args) ->
-    spawn_actor({Module, {export, Key}}, Args);
-spawn_actor({Module, Class}, Args) ->
-    Term = buoy_heap:clone_out(buoy_heap:new_array(Args)),
-    Parent = self(),
-    Tag = make_ref(),
-    Pid = spawn(fun() -> actor_init(Parent, Tag, Module, Class, Term) end),
-    Monitor = erlang:monitor(process, Pid),
-    receive
-        {Tag, ok} ->
-            erlang:demonitor(Monitor, [flush]),
-            {'$actor', Pid};
-        {Tag, {error, Error}} ->
-            erlang:demonitor(Monitor, [flush]),
-            erlang:error({'$throw', buoy_heap:clone_in(Error)});
-        {'DOWN', Monitor, process, Pid, Reason} ->
-            buoy_heap:throw_error('Error', iolist_to_binary(io_lib:format("actor failed to start: ~p", [Reason])))
-    end.
-
-actor_init(Parent, Tag, Module, Class, ArgsTerm) ->
-    buoy_ref:init_realm(),
-    update_now(),
-    try
-        buoy_module:evaluate_dependencies(Module),
-        C = case Class of
-            {export, Key} -> Module:'$export'(Key);
-            _ -> Module:'$class'(Class)
-        end,
-        This = buoy_heap:construct(C, buoy_heap:array_items(buoy_heap:clone_in(ArgsTerm)), C),
-        erlang:put(?THIS, This),
-        drain(),
-        Parent ! {Tag, ok}
-    catch
-        error:Reason:Stack -> Parent ! {Tag, {error, buoy_heap:clone_out(buoy_ref:caught(Reason, Stack))}}
-    end,
-    loop().
-
-start_turn(From, Tag, Method, ArgsTerm) ->
-    erlang:put(?BUSY, true),
-    Reply = fun(Outcome) ->
-                    From ! {'$buoy_reply', Tag, Outcome},
-                    erlang:put(?BUSY, false),
-                    self() ! '$buoy_next_turn',
-                    undefined
-            end,
-    run_job(fun() ->
-                    This = erlang:get(?THIS),
-                    try buoy_ref:call_method(This, Method, buoy_heap:array_items(buoy_heap:clone_in(ArgsTerm))) of
-                        Result ->
-                            case is_promise(Result) of
-                                true ->
-                                    perform_then(Result, fun(V) -> Reply(outcome(ok, V)) end,
-                                                 fun(E) -> Reply(outcome(error, E)) end, undefined);
-                                false ->
-                                    Reply(outcome(ok, Result))
-                            end
-                    catch
-                        error:Reason:Stack -> Reply(outcome(error, buoy_ref:caught(Reason, Stack)))
-                    end
-            end).
-
-outcome(Kind, Value) ->
-    try {Kind, buoy_heap:clone_out(Value)}
-    catch
-        error:{'$throw', CloneError} -> {error, buoy_heap:clone_out(CloneError)}
-    end.
-
-%% ref.method(...args) from any realm: a promise of the reply.
--spec actor_call(pid(), binary(), list()) -> term().
-actor_call(Pid, Method, Args) ->
-    Term = buoy_heap:clone_out(buoy_heap:new_array(Args)),
-    {P, Resolve, Reject} = capability(),
-    Tag = make_ref(),
-    Monitor = erlang:monitor(process, Pid),
-    erlang:put(?PENDING, (pending())#{Tag => {Resolve, Reject, Monitor}}),
-    Pid ! {'$buoy_call', self(), Tag, Method, Term},
-    P.
-
--spec stop_actor(pid()) -> undefined.
-stop_actor(Pid) ->
-    Pid ! stop,
-    undefined.

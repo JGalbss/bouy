@@ -4,7 +4,7 @@ import { cast, child, inspect, self, sleep, spawn, stop, supervise, type Ref } f
 // stopped actors do not pile up, inspect() shows a restart until its
 // constructor ends, a ref from a failed constructor keeps its label, a
 // Promise.race loser no longer acts for the turn that started it, and a cast
-// that waits for room in a stopped actor throws ActorStopped.
+// that waits for room in an actor that another actor stops throws ActorStopped.
 
 class Leaf {}
 
@@ -54,7 +54,7 @@ class Doomed {
 class Racer {
   #log: string[] = [];
 
-  go(): string {
+  go(): Promise<string> {
     const me = self(this);
     return Promise.race([1, 2].map((k) => (k === 1 ? "fast" : later(me))));
   }
@@ -68,10 +68,12 @@ class Racer {
   }
 }
 
-function later(me: Ref<Racer>): string {
-  sleep(100);
+// The loser calls the actor after the turn of go() has ended, so the call is no
+// cycle: the actor takes it as its next turn.
+async function later(me: Ref<Racer>): Promise<string> {
+  await new Promise((resolve) => setTimeout(resolve, 100));
   try {
-    me.record("late");
+    await me.record("late");
     return "recorded";
   } catch (error) {
     return error._tag;
@@ -100,10 +102,12 @@ function castWaiting(cell: Ref<Cell>): string {
   }
 }
 
-function stopLater(cell: Ref<Cell>): string {
-  sleep(200);
-  stop(cell);
-  return "stopped";
+class Stopper {
+  stopLater(cell: Ref<Cell>): string {
+    sleep(200);
+    stop(cell);
+    return "stopped";
+  }
 }
 
 async function main(): Promise<void> {
@@ -159,7 +163,9 @@ async function main(): Promise<void> {
   cast(full).work(2000);
   await sleep(50);
   cast(full).work(1);
-  console.log(await Promise.all([castWaiting(full), stopLater(full)]));
+  // The stopper stops the cell while the cast below waits for room.
+  const stopping = spawn(Stopper).stopLater(full);
+  console.log([castWaiting(full), await stopping]);
 
   for (let i = 0; i < 3000; i++) stop(spawn(Cell));
   const stopped = inspect().filter((actor) => actor.status === "stopped").length;

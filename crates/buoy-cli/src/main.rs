@@ -30,7 +30,7 @@ struct Cli {
 enum Commands {
     /// Compile a program and run it. Every argument after the entry goes to the program.
     Run {
-        #[arg(long, value_enum, default_value_t = SemanticsArg::Value)]
+        #[arg(long, value_enum, default_value_t = SemanticsArg::Reference)]
         semantics: SemanticsArg,
         /// The entry module.
         entry: PathBuf,
@@ -40,14 +40,14 @@ enum Commands {
     },
     /// Check a program and print its diagnostics.
     Check {
-        #[arg(long, value_enum, default_value_t = SemanticsArg::Value)]
+        #[arg(long, value_enum, default_value_t = SemanticsArg::Reference)]
         semantics: SemanticsArg,
         /// The entry module.
         entry: PathBuf,
     },
     /// Compile a program to Erlang and print the paths of the Erlang files.
     Build {
-        #[arg(long, value_enum, default_value_t = SemanticsArg::Value)]
+        #[arg(long, value_enum, default_value_t = SemanticsArg::Reference)]
         semantics: SemanticsArg,
         /// The entry module.
         entry: PathBuf,
@@ -240,7 +240,7 @@ fn main() -> ExitCode {
         && command == "run"
         && !entry.to_string_lossy().starts_with('-')
     {
-        return run(Path::new(entry), program_arguments, Semantics::Value);
+        return run(Path::new(entry), program_arguments, Semantics::Reference);
     }
     match Cli::parse().command {
         Commands::Run {

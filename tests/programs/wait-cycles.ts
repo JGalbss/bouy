@@ -1,4 +1,4 @@
-import { cast, sleep, spawn, stop, withTimeout, type Ref } from "buoy";
+import { cast, inspect, sleep, spawn, stop, withTimeout, type Ref } from "buoy";
 
 // Turns that wait on each other at once, through calls, backpressure casts,
 // or a restart, end without a deadlock: a call throws CallCycle, and a cast
@@ -11,11 +11,11 @@ class Peer {
     this.#peer = peer;
   }
 
-  ask(other: Ref<Peer>): string {
+  async ask(other: Ref<Peer>): Promise<string> {
     // Both turns are running before either calls the other.
     sleep(50);
     try {
-      return other.answer();
+      return await other.answer();
     } catch (error) {
       return error._tag;
     }
@@ -37,20 +37,21 @@ class Hub {
     return 42;
   }
 
-  restartAndPing(worker: Ref<Worker>): string {
+  async restartAndPing(worker: Ref<Worker>): Promise<string> {
     try {
-      worker.boom();
+      await worker.boom();
     } catch (error) {}
     try {
-      return worker.ping();
+      return await worker.ping();
     } catch (error) {
       return error._tag;
     }
   }
 }
 
+// The constructor calls the hub, so the actor waits on the hub until the reply.
 class Worker {
-  #limit: number;
+  #limit: Promise<number>;
 
   constructor(hub: Ref<Hub>) {
     this.#limit = hub.config();
@@ -60,17 +61,8 @@ class Worker {
     throw new Error("boom");
   }
 
-  ping(): string {
-    return `pong ${this.#limit}`;
-  }
-}
-
-class Gate {
-  #starts = 0;
-
-  start(): number {
-    this.#starts++;
-    return this.#starts;
+  async ping(): Promise<string> {
+    return `pong ${await this.#limit}`;
   }
 }
 
@@ -79,8 +71,9 @@ class Helper {}
 // The restart constructor runs long and then spawns, so a stop() during it
 // must neither wait for it nor block the spawn.
 class Parent {
-  constructor(gate: Ref<Gate>) {
-    if (gate.start() > 1) {
+  constructor() {
+    const me = inspect().find((actor) => actor.class === "Parent");
+    if (me !== undefined && me.restarts > 0) {
       sleep(3000);
       spawn(Helper);
     }
@@ -114,8 +107,7 @@ async function main(): Promise<void> {
   );
   console.log(`the restart then completes: ${await worker.ping()}`);
 
-  const gate = spawn(Gate);
-  const parent = spawn(Parent, { args: [gate] });
+  const parent = spawn(Parent);
   try {
     await parent.boom();
   } catch (error) {}

@@ -80,7 +80,12 @@ impl<'a> Lowerer<'a, '_> {
                 vec![Expr::js_string(&name)],
             )),
             Some(Top::Literal(value)) => value,
-            Some(Top::Buoy(_)) => self.unsupported(span, "a function of \"buoy\" used as a value"),
+            Some(Top::Buoy(name)) => {
+                if !super::call::BUOY_FUNCTIONS.contains(&name.as_str()) {
+                    return self.unsupported(span, &format!("`{name}` from \"buoy\""));
+                }
+                self.bind(Expr::call("buoy", "function", vec![Expr::js_string(&name)]))
+            }
             Some(Top::Import(binding)) => {
                 let read = self.linking.read(&binding);
                 self.bind(read)

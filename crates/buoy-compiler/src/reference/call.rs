@@ -105,7 +105,7 @@ impl<'a> Lowerer<'a, '_> {
                     let args = self.args(&call.arguments);
                     return self.bind(Expr::local_call(&name, vec![Expr::undefined(), args]));
                 }
-                Some(Top::Buoy(name)) => return self.buoy_call(&name, call),
+                Some(Top::Buoy(name)) if !call.optional => return self.buoy_call(&name, call),
                 Some(Top::Import(binding)) if !call.optional => {
                     if let Some((module, function)) = self.linking.direct_function(&binding) {
                         let args = self.args(&call.arguments);
@@ -534,55 +534,14 @@ impl<'a> Lowerer<'a, '_> {
         Expr::List(names.iter().map(|name| Expr::js_string(name)).collect())
     }
 
-    /// A function imported from "buoy".
+    /// A call of a function imported from "buoy": `buoy:<name>/1` with the argument
+    /// list (contract section 8). An optional call reads the function as a value.
     pub fn buoy_call(&mut self, name: &str, call: &'a CallExpression<'a>) -> Expr {
-        match name {
-            "spawn" => {
-                let class = match call.arguments.first().and_then(Argument::as_expression) {
-                    Some(Expression::Identifier(ident)) => self
-                        .symbol_of(ident.reference_id.get())
-                        .and_then(|symbol| self.tops.get(&symbol).cloned()),
-                    _ => None,
-                };
-                // An imported class: the actor's realm reads it through its module.
-                let target = match class {
-                    Some(Top::Class(class)) => {
-                        Expr::Tuple(vec![Expr::atom(self.module.clone()), Expr::binary(class)])
-                    }
-                    Some(Top::Import(super::link::Binding::Export { unit, key }))
-                        if self.linking.graph.units[unit].kind == super::graph::Kind::Esm =>
-                    {
-                        Expr::Tuple(vec![
-                            Expr::atom("export"),
-                            Expr::atom(self.linking.graph.units[unit].name.clone()),
-                            Expr::binary(key),
-                        ])
-                    }
-                    _ => {
-                        return self.unsupported(
-                            call.span,
-                            "`spawn` of a value that is not a module-level class",
-                        );
-                    }
-                };
-                let options = match call.arguments.get(1).and_then(Argument::as_expression) {
-                    Some(options) => self.expr(options),
-                    None => Expr::undefined(),
-                };
-                self.bind(Expr::call(
-                    "buoy_jobs",
-                    "spawn_actor",
-                    vec![target, Expr::call("buoy_ref", "spawn_args", vec![options])],
-                ))
-            }
-            "stop" => {
-                let args = self.args(&call.arguments);
-                self.bind(Expr::call("buoy_ref", "stop_actor", vec![args]))
-            }
-            "heapStats" => self.bind(Expr::call("buoy_ref", "heap_stats", vec![])),
-            "vmMemory" => self.bind(Expr::call("buoy_ref", "vm_memory", vec![])),
-            other => self.unsupported(call.span, &format!("`{other}` from \"buoy\"")),
+        if !BUOY_FUNCTIONS.contains(&name) {
+            return self.unsupported(call.span, &format!("`{name}` from \"buoy\""));
         }
+        let args = self.args(&call.arguments);
+        self.bind(Expr::call("buoy", name, vec![args]))
     }
 
     pub fn new_expression(&mut self, new: &'a NewExpression<'a>) -> Expr {
@@ -633,3 +592,20 @@ fn object_entry(object: &super::with::WithScope) -> Expr {
         Expr::var(object.object.clone()),
     ])
 }
+
+/// The functions that "buoy" exports, each `buoy:<name>/1` of the runtime.
+pub const BUOY_FUNCTIONS: [&str; 13] = [
+    "spawn",
+    "cast",
+    "stop",
+    "inspect",
+    "supervise",
+    "child",
+    "schedule",
+    "cancelSchedule",
+    "sleep",
+    "withTimeout",
+    "self",
+    "heapStats",
+    "vmMemory",
+];

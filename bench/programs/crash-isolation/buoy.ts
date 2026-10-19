@@ -1,8 +1,8 @@
-import { cast, sleep, spawn } from "buoy";
+import { cast, spawn } from "buoy";
 
-// Crash isolation: 100 agents answer pings. Agent 0 throws inside an async callback, a
-// callback of Promise.all that runs in its own process. The throw fails the turn of the
-// agent, so the agent crashes and its supervisor, the keeper, restarts it. For 500 ms
+// Crash isolation: 100 agents answer pings. Agent 0 throws inside an async callback of
+// Promise.all. The rejection fails the turn of the agent, so the agent crashes and its
+// supervisor, the keeper, restarts it. For 500 ms
 // after the fault, the program pings all 100 agents in rounds of parallel calls, one round
 // every 5 ms, and meanwhile pings agent 0 until it answers. It records the agents that
 // answer the first round, the pings that fail, and the time from the fault until agent 0
@@ -35,11 +35,16 @@ async function pingAll(agents: any[]): Promise<number> {
   return settled.filter((outcome) => outcome.status === "fulfilled").length;
 }
 
+// Waits ms without blocking the realm, so the replies of other calls keep arriving.
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function pingRounds(agents: any[], until: number): Promise<number[]> {
   const answers: number[] = [];
   while (performance.now() < until) {
     answers.push(await pingAll(agents));
-    sleep(PAUSE_MS);
+    await pause(PAUSE_MS);
   }
   return answers;
 }

@@ -7,8 +7,8 @@ class Client {
     this.#server = server;
   }
 
-  start(): string {
-    return this.#server.handshake();
+  async start(): Promise<string> {
+    return await this.#server.handshake();
   }
 
   hello(): string {
@@ -23,10 +23,10 @@ class Server {
     this.#client = client;
   }
 
-  handshake(): string {
+  async handshake(): Promise<string> {
     // The client waits for this call, so calling it back would deadlock.
     try {
-      return this.#client.hello();
+      return await this.#client.hello();
     } catch (error) {
       return `${error._tag}: ${error.message}`;
     }

@@ -178,7 +178,7 @@ fn turns_that_wait_on_each_other_at_once_do_not_deadlock() {
                      stop returns before the restart constructor ends: true\n\
                      a spawn after the stop works\n",
             stderr: "buoy: Worker #6 crashed: Error: boom\n\
-                     buoy: Parent #8 crashed: Error: parent boom\n",
+                     buoy: Parent #7 crashed: Error: parent boom\n",
             status: 0,
         },
     );

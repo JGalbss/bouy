@@ -25,11 +25,14 @@ class Watcher {
   }
 }
 
-function sendThree(target: Ref<Slow>): number {
-  cast(target).work();
-  cast(target).work();
-  cast(target).work();
-  return 3;
+// Each sender is an actor, so the senders cast at once.
+class Sender {
+  sendThree(target: Ref<Slow>): number {
+    cast(target).work();
+    cast(target).work();
+    cast(target).work();
+    return 3;
+  }
 }
 
 async function main(): Promise<void> {
@@ -37,7 +40,7 @@ async function main(): Promise<void> {
   cast(rejecting).block(1000);
   await sleep(50);
   const senders = Array.from({ length: 50 }, (_, i) => i);
-  const results = await Promise.allSettled(senders.map(() => cast(rejecting).work()));
+  const results = await Promise.allSettled(senders.map(async () => cast(rejecting).work()));
   const accepted = results.filter((result) => result.status === "fulfilled").length;
   const full = results.filter(
     (result) => result.status === "rejected" && result.reason._tag === "MailboxFull",
@@ -48,9 +51,10 @@ async function main(): Promise<void> {
   const watcher = spawn(Watcher);
   cast(waiting).block(300);
   await sleep(20);
+  const blocked = senders.map(() => spawn(Sender));
   const [max] = await Promise.all([
     watcher.watch(2, 150),
-    Promise.all(senders.map(() => sendThree(waiting))),
+    Promise.all(blocked.map((sender) => sender.sendThree(waiting))),
   ]);
   console.log(
     `backpressure: the mailbox stayed within capacity plus blocked senders: ${max <= 5 + 50}`,

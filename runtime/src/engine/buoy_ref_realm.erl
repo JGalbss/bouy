@@ -220,7 +220,7 @@ callee({'$f', Id, Fun} = F) ->
 call(F, This, Args) -> buoy_ref:call(callee_of(F), This, Args).
 
 -spec call_method(term(), buoy_heap:key(), list()) -> term().
-call_method({'$actor', _} = R, K, Args) -> buoy_ref:call_method(R, K, Args);
+call_method({Handle, _} = R, K, Args) when Handle =:= '$actor'; Handle =:= '$cast' -> buoy_ref:call_method(R, K, Args);
 call_method(R, K, Args) -> buoy_ref:call_method_value(callee_of(buoy_ref:get(R, K)), R, K, Args).
 
 -spec call_method_computed(term(), term(), list()) -> term().

@@ -130,6 +130,8 @@ value(A, _, _, _) when is_atom(A) -> atom_to_binary(A);
 value({'$sym', _, _} = S, _, _, _) -> buoy_ref:describe(S);
 value({'$bigint', I}, _, _, _) -> <<(integer_to_binary(I))/binary, "n">>;
 value({'$actor', _}, _, _, _) -> <<"[ActorRef]">>;
+value({'$cast', _}, _, _, _) -> <<"[ActorCast]">>;
+value({'$schedule', _}, _, _, _) -> <<"[Schedule]">>;
 value(V, Level, Indent, Stack) when ?IS_OBJECT(V) ->
     case lists:member(V, Stack) of
         true -> <<"[Circular *", (integer_to_binary(circular(V)))/binary, "]">>;

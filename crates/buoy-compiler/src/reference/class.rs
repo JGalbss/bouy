@@ -168,6 +168,20 @@ impl<'a> Lowerer<'a, '_> {
             ),
         ));
         if let Some(key) = register {
+            // The home of a module-level class, from which the realm of an actor makes it
+            // again (contract section 8).
+            if let Expr::Tuple(parts) = &key
+                && let [_, module, name] = parts.as_slice()
+            {
+                self.pre.push(Expr::call(
+                    "erlang",
+                    "put",
+                    vec![
+                        Expr::Tuple(vec![Expr::atom("$buoy_class_home"), Expr::var(c.clone())]),
+                        Expr::Tuple(vec![module.clone(), name.clone()]),
+                    ],
+                ));
+            }
             self.pre
                 .push(Expr::call("erlang", "put", vec![key, Expr::var(c.clone())]));
         }
@@ -730,6 +744,7 @@ impl<'a> Lowerer<'a, '_> {
             return vec![];
         };
         let mut code = self.entry(&function.params, FnBody::Block(body), args, true, None);
+        let derived = self.frame.this_cell.is_some();
         for param in &function.params.items {
             if param.accessibility.is_none() && !param.readonly {
                 continue;
@@ -737,14 +752,15 @@ impl<'a> Lowerer<'a, '_> {
             if let BindingPattern::BindingIdentifier(id) = &param.pattern
                 && let Some(symbol) = id.symbol_id.get()
             {
-                let value = self.read_symbol(symbol, param.span);
-                let this = self.this_expr();
-                let this = self.bind(this);
-                self.pre.push(Expr::call(
-                    "buoy_ref_class",
-                    "define_field",
-                    vec![this, Expr::js_string(id.name.as_str()), value],
-                ));
+                if derived {
+                    self.frame
+                        .parameter_properties
+                        .push((id.name.to_string(), symbol, param.span));
+                } else {
+                    let this = self.this_expr();
+                    let this = self.bind(this);
+                    self.define_parameter_property(this, id.name.as_str(), symbol, param.span);
+                }
             }
         }
         code.append(&mut self.pre);
@@ -794,7 +810,26 @@ impl<'a> Lowerer<'a, '_> {
             self.pre
                 .push(Expr::Apply(Box::new(Expr::var(init)), vec![this.clone()]));
         }
+        for (name, symbol, span) in self.frame.parameter_properties.clone() {
+            self.define_parameter_property(this.clone(), &name, symbol, span);
+        }
         this
+    }
+
+    /// `this.name = name` of a TypeScript parameter property.
+    fn define_parameter_property(
+        &mut self,
+        this: Expr,
+        name: &str,
+        symbol: oxc::semantic::SymbolId,
+        span: oxc::span::Span,
+    ) {
+        let value = self.read_symbol(symbol, span);
+        self.pre.push(Expr::call(
+            "buoy_ref_class",
+            "define_field",
+            vec![this, Expr::js_string(name), value],
+        ));
     }
 
     fn home(&self) -> Option<String> {

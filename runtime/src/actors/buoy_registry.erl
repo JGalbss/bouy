@@ -22,12 +22,14 @@
 %% only the processes that wait for a live process.
 %%
 %% The ETS table `buoy_waits` holds the wait-for graph: `{From, To, Waiter,
-%% Scopes}` while process Waiter, acting for actor From, waits on actor To.
+%% Scopes, Tag}` while process Waiter, acting for actor From, waits on actor
+%% To, and each scope of Scopes is live. Tag tells apart two waits of one
+%% turn on the same actor.
 
 -export([create/0, allocate/0, enter/3, enter_ready/4, ready/4, vacate/2, mark_stopped/1]).
 -export([mode/1, pid/1, id_of/1, find/1, all/0]).
 -export([watch/3, unwatch/3, notify/1]).
--export([wait/3, unwait/3, waits_on/1, drop_waits/1]).
+-export([wait/4, unwait/4, waits_on/1, drop_waits/1]).
 
 -export_type([actor/0, info/0, mode/0, mailbox/0, restart/0]).
 
@@ -51,7 +53,7 @@
     group := alone | tree,
     module := module(),
     class := binary(),
-    args := list(),
+    args := term(),
     name := binary() | undefined,
     mailbox := mailbox(),
     restart := restart(),
@@ -69,7 +71,7 @@
     group := alone | tree,
     module := module(),
     class := binary(),
-    args := list(),
+    args := term(),
     name := binary() | undefined,
     mailbox := mailbox(),
     restart := restart(),
@@ -257,21 +259,21 @@ wake({_, Pid, Ref, _Need}) ->
 
 %%% The wait-for graph
 
--spec wait(pos_integer(), pos_integer(), list()) -> ok.
-wait(From, To, Scopes) ->
-    true = ets:insert(?WAITS, {From, To, self(), Scopes}),
+-spec wait(pos_integer(), pos_integer(), list(), reference()) -> ok.
+wait(From, To, Scopes, Tag) ->
+    true = ets:insert(?WAITS, {From, To, self(), Scopes, Tag}),
     ok.
 
--spec unwait(pos_integer(), pos_integer(), list()) -> ok.
-unwait(From, To, Scopes) ->
-    true = ets:delete_object(?WAITS, {From, To, self(), Scopes}),
+-spec unwait(pos_integer(), pos_integer(), list(), reference()) -> ok.
+unwait(From, To, Scopes, Tag) ->
+    true = ets:delete_object(?WAITS, {From, To, self(), Scopes, Tag}),
     ok.
 
 %% The actors that actor Id waits on now. A record whose waiter has died, or
 %% whose scope has ended, no longer waits, and it is removed.
 -spec waits_on(pos_integer()) -> [pos_integer()].
 waits_on(Id) ->
-    [To || {_, To, Waiter, Scopes} = Wait <- ets:lookup(?WAITS, Id), current(Wait, Waiter, Scopes)].
+    [To || {_, To, Waiter, Scopes, _} = Wait <- ets:lookup(?WAITS, Id), current(Wait, Waiter, Scopes)].
 
 current(Wait, Waiter, Scopes) ->
     case is_process_alive(Waiter) andalso buoy_actor:live(Scopes) of

@@ -119,15 +119,15 @@ class Tally {
 }
 
 const counter = spawn(Counter, {});
-console.log(counter.count(3));
-console.log(counter.count(3));
-console.log(spawn(Handler, {}).run("add"));
-console.log(spawn(Builder, { args: [{ tag: "dark" }] }).build());
+console.log(await counter.count(3));
+console.log(await counter.count(3));
+console.log(await spawn(Handler, {}).run("add"));
+console.log(await spawn(Builder, { args: [{ tag: "dark" }] }).build());
 const topics = spawn(Topics, {});
-console.log(topics.subscribe("news", 7), topics.subscribe("news", 8));
-console.log(topics.snapshot());
-console.log(spawn(Label, { args: [5] }).get());
+console.log(await topics.subscribe("news", 7), await topics.subscribe("news", 8));
+console.log(await topics.snapshot());
+console.log(await spawn(Label, { args: [5] }).get());
 const failure = new HttpError(404, "missing");
 console.log(failure.message, failure.status);
 const { tally } = supervise({ children: { tally: child(Tally) } });
-console.log([1, 2].map((n) => tally.add(n)).join(","));
+console.log((await Promise.all([1, 2].map((n) => tally.add(n)))).join(","));

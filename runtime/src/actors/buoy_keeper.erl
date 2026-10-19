@@ -198,4 +198,4 @@ restart(Id, #keeper{restarts = Restarts} = State) ->
     end.
 
 spec(Actor) ->
-    maps:with([id, supervisor, group, module, class, args, name, mailbox, restart, max_memory, turn_timeout], Actor).
+    maps:with([id, supervisor, group, module, home, class, args, name, mailbox, restart, max_memory, turn_timeout], Actor).

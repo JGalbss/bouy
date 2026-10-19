@@ -21,3 +21,6 @@
 -define(IS_NUMBER(V), (is_number(V) orelse V =:= 'NaN' orelse V =:= 'Infinity' orelse V =:= '-Infinity')).
 %% A string: a one-byte binary or a two-byte {'$u16', Binary} (buoy_ref_string).
 -define(IS_STRING(V), (is_binary(V) orelse (is_tuple(V) andalso tuple_size(V) =:= 2 andalso element(1, V) =:= '$u16'))).
+%% The handles of buoy_actor that the engine treats as primitive objects: an
+%% actor ref, the value of cast(ref), and a schedule() timer.
+-define(IS_HANDLE(H), (H =:= '$actor' orelse H =:= '$cast' orelse H =:= '$schedule')).
