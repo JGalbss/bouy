@@ -688,6 +688,10 @@ from_record({deferred_namespace, _, Props, _, _, M}, K, Receiver) ->
     deferred_get(M, Props, K, Receiver);
 from_record({proxy, _, Props, _, _, _}, {'#', _, _} = K, _Receiver) ->
     maps:get(K, Props, undefined);
+%% A private symbol of the host is the proxy's own, which no trap sees, as V8
+%% keeps it on the JSProxy.
+from_record({proxy, _, Props, _, _, _}, {'$sym', {private, _}, _} = K, _Receiver) ->
+    maps:get(K, Props, undefined);
 from_record({proxy, _, _, _, _, Handler}, K, Receiver) ->
     buoy_ref_proxy:get(Handler, K, Receiver);
 from_record({arguments, _, _, _, _, Map}, K, _Receiver) when is_map_key(K, Map) ->
@@ -1057,6 +1061,8 @@ resize(_, NewLength) ->
 
 %% [[HasProperty]]: the `in` operator.
 -spec has(value(), key()) -> boolean().
+has(O, {'$sym', {private, _}, _} = K) ->
+    get_own(O, K) =/= none;
 has(O, K) ->
     case raw(O) of
         {proxy, _, _, _, _, Handler} ->
@@ -1493,6 +1499,7 @@ unmap(O, K) ->
 get_own(O, K) ->
     case raw(O) of
         R when ?is_shaped(R) -> shaped_value(R, K);
+        {proxy, _, _, _, _, _} = R when element(1, K) =:= '$sym', is_tuple(element(2, K)) -> own_of(R, K);
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:get_own_property(Handler, K);
         {deferred_namespace, _, _, _, _, M} = R ->
             case deferred_key(M, K) of
