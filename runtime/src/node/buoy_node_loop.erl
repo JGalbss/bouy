@@ -28,7 +28,7 @@
 -export([has_work/0, poll_timeout/0, event/1, check/0, after_callback/0, uncaught/2, finish/0, really_exit/1]).
 -export([schedule_timer/1, toggle_timer_ref/1, toggle_immediate_ref/1, now/0, set_callback/2, callback/1]).
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
--export([set_immediate/1]).
+-export([set_immediate/1, closing/1]).
 -export([enter/0, poll/0, polled/2, metrics/0, idle_time/0]).
 -export([add_handle_wrap/2, remove_handle_wrap/1, handle_wraps/0]).
 
@@ -42,6 +42,7 @@
 -define(PROCESS, '$buoy_node_process').
 -define(EXITING, '$buoy_node_exiting').
 -define(NATIVE_IMMEDIATES, '$buoy_node_native_immediates').
+-define(CLOSING, '$buoy_node_closing').
 %% uv_metrics_info and uv_metrics_idle_time: {Iterations, Events,
 %% EventsWaiting, IdleNanoseconds}.
 -define(METRICS, '$buoy_node_metrics').
@@ -154,6 +155,33 @@ native_immediates() ->
         L -> L
     end.
 
+%% uv_close: Fun, the close callback of a handle, runs in the closing phase
+%% of this turn of the loop, after its check phase and before the timers of
+%% the next turn, and keeps the loop alive until then.
+-spec closing(fun(() -> term())) -> ok.
+closing(Fun) ->
+    Frame = buoy_jobs:context(),
+    Closing = fun() ->
+        Prior = buoy_jobs:context(),
+        buoy_jobs:set_context(Frame),
+        try Fun() after buoy_jobs:set_context(Prior) end
+    end,
+    erlang:put(?CLOSING, [Closing | closings()]),
+    ok.
+
+closings() ->
+    case erlang:get(?CLOSING) of
+        undefined -> [];
+        L -> L
+    end.
+
+%% uv__run_closing_handles: the callbacks that this phase finds.
+run_closing() ->
+    case erlang:erase(?CLOSING) of
+        undefined -> ok;
+        Funs -> [buoy_jobs:run_job(F) || F <- lists:reverse(Funs)], ok
+    end.
+
 %% RunAndClearNativeImmediates: until the queue is empty, so an immediate
 %% that one of them queues runs in the same phase.
 run_native_immediates() ->
@@ -252,6 +280,7 @@ has_work() ->
     case buoy_node:ready() of
         false -> false;
         true -> timer_alive() orelse immediates_alive() orelse handles() > 0 orelse native_immediates() =/= []
+                    orelse closings() =/= []
     end.
 
 timer_alive() ->
@@ -266,7 +295,7 @@ immediates_alive() ->
 %% The time the poll of the mailbox may wait: none while immediates wait.
 -spec poll_timeout() -> infinity | 0.
 poll_timeout() ->
-    case buoy_node:ready() andalso (immediate_field(?K_COUNT) > 0 orelse native_immediates() =/= []) of
+    case buoy_node:ready() andalso (immediate_field(?K_COUNT) > 0 orelse native_immediates() =/= [] orelse closings() =/= []) of
         true -> 0;
         false -> infinity
     end.
@@ -353,8 +382,11 @@ process_timers(Process, Now) ->
 -spec check() -> ok.
 check() ->
     case buoy_node:ready() of
-        true -> buoy_trace:scope(?ENVIRONMENT, <<"CheckImmediate">>, fun check_immediate/0);
-        false -> ok
+        true ->
+            _ = buoy_trace:scope(?ENVIRONMENT, <<"CheckImmediate">>, fun check_immediate/0),
+            run_closing();
+        false ->
+            ok
     end.
 
 %% The native immediates first: the destroy hooks of async_hooks, then

@@ -510,7 +510,7 @@ close(Handle, Callback) ->
             save(Handle, S#{closed := true, reading := false, listening := false, queue := [], queued := 0,
                             shutdown := none, connect := none}),
             Cancelled = [R || {R, _} <- Queue] ++ [R || R <- [Shutdown, Connect], R =/= none],
-            buoy_node_loop:defer(fun() ->
+            buoy_node_loop:closing(fun() ->
                 [cancel(R, Handle, Connect) || R <- Cancelled],
                 buoy_heap:is_callable(Callback) andalso buoy_heap:call(Callback, Handle, [])
             end),
