@@ -1281,7 +1281,7 @@ parallel/test-fs-filehandle.js skip
 parallel/test-fs-fmap.js pass
 parallel/test-fs-fsync.js pass
 parallel/test-fs-glob-throw.mjs pass
-parallel/test-fs-glob.mjs timeout
+parallel/test-fs-glob.mjs linux=pass,macos=timeout
 parallel/test-fs-internal-assertencoding.js pass
 parallel/test-fs-lchmod.js pass
 parallel/test-fs-lchown-negative-one.js pass
@@ -1379,7 +1379,7 @@ parallel/test-fs-readdir-recursive.js fail
 parallel/test-fs-readdir-stack-overflow.js timeout
 parallel/test-fs-readdir-types-symlinks.js pass
 parallel/test-fs-readdir-types.js skip
-parallel/test-fs-readdir-ucs2.js linux=fail,macos=pass
+parallel/test-fs-readdir-ucs2.js pass
 parallel/test-fs-readdir.js pass
 parallel/test-fs-readfile-empty.js pass
 parallel/test-fs-readfile-eof.js pass
@@ -1466,7 +1466,7 @@ parallel/test-fs-watch-recursive-linux-parallel-remove.js pass
 parallel/test-fs-watch-recursive-promise.js pass
 parallel/test-fs-watch-recursive-symlink.js pass
 parallel/test-fs-watch-recursive-sync-write.js pass
-parallel/test-fs-watch-recursive-update-file.js linux=timeout,macos=pass
+parallel/test-fs-watch-recursive-update-file.js pass
 parallel/test-fs-watch-recursive-validate.js pass
 parallel/test-fs-watch-recursive-watch-file.js pass
 parallel/test-fs-watch-ref-unref.js pass
