@@ -43,6 +43,8 @@
 %% uv_metrics_info and uv_metrics_idle_time: {Iterations, Events,
 %% EventsWaiting, IdleNanoseconds}.
 -define(METRICS, '$buoy_node_metrics').
+%% The start of the poll that runs now, as provider_entry_time of libuv.
+-define(POLLING, '$buoy_node_polling').
 %% The fields of immediateInfo: kCount, kRefCount, kHasOutstanding.
 -define(K_COUNT, 0).
 -define(K_REF_COUNT, 1).
@@ -192,7 +194,9 @@ poll() ->
     {Iterations, Events, _, Idle} = metrics_state(),
     {message_queue_len, Waiting} = erlang:process_info(self(), message_queue_len),
     erlang:put(?METRICS, {Iterations + 1, Events, Waiting, Idle}),
-    erlang:monotonic_time(nanosecond).
+    Started = erlang:monotonic_time(nanosecond),
+    erlang:put(?POLLING, Started),
+    Started.
 
 %% After the poll that started at Started, with Count events: the loop was
 %% idle while it waited.
@@ -200,6 +204,7 @@ poll() ->
 polled(Started, Count) ->
     {Iterations, Events, Waiting, Idle} = metrics_state(),
     erlang:put(?METRICS, {Iterations, Events + Count, Waiting, Idle + erlang:monotonic_time(nanosecond) - Started}),
+    erlang:erase(?POLLING),
     ok.
 
 %% uv_metrics_info: {loop_count, events, events_waiting}.
@@ -213,12 +218,18 @@ metrics() ->
 idle_time() -> element(4, metrics_state()).
 
 %% The idle time of the loop of another realm, such as a worker's, which
-%% Worker::LoopIdleTime reads from the parent.
+%% Worker::LoopIdleTime reads from the parent. A poll that waits now counts
+%% up to now, as uv_metrics_idle_time adds the time since provider_entry_time.
 -spec idle_time(pid()) -> non_neg_integer().
 idle_time(Pid) ->
-    case erlang:process_info(Pid, {dictionary, ?METRICS}) of
-        {{dictionary, ?METRICS}, {_, _, _, Idle}} -> Idle;
+    %% The metrics first: a poll that ends between the reads counts later, never twice.
+    Idle = case erlang:process_info(Pid, {dictionary, ?METRICS}) of
+        {{dictionary, ?METRICS}, {_, _, _, I}} -> I;
         _ -> 0
+    end,
+    case erlang:process_info(Pid, {dictionary, ?POLLING}) of
+        {{dictionary, ?POLLING}, Started} when is_integer(Started) -> Idle + erlang:monotonic_time(nanosecond) - Started;
+        _ -> Idle
     end.
 
 metrics_state() ->

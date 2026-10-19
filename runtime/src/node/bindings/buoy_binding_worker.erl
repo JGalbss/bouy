@@ -41,7 +41,7 @@ binding() ->
                {<<"hasRef">>, fun(This, _) -> has_ref(This) end},
                {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This), -1) end},
                {<<"getResourceLimits">>, fun(This, _) -> limits_array(maps:get(limits, state(This))) end},
-               {<<"loopStartTime">>, fun(This, _) -> maps:get(loop_start, state(This), -1) end},
+               {<<"loopStartTime">>, fun(This, _) -> loop_start_time(This) end},
                {<<"loopIdleTime">>, fun(This, _) -> loop_idle_time(This) end},
                {<<"getHeapStatistics">>, fun(This, _) -> heap_statistics(This) end},
                {<<"cpuUsage">>, fun(This, _) -> cpu_usage(This) end}],
@@ -250,7 +250,7 @@ start_thread(This) ->
     Worker = spawn(?MODULE, thread_main, [Init]),
     _ = spawn(fun() -> watch(Worker, Parent, Key) end),
     erlang:put(?HANDLE(Key), This),
-    save(This, S#{status => running, pid => Worker, key => Key, loop_start => buoy_node_loop:now()}),
+    save(This, S#{status => running, pid => Worker, key => Key}),
     set_ref(This, true),
     undefined.
 
@@ -400,6 +400,19 @@ env_port() ->
                 Port ->
                     Port
             end
+    end.
+
+%% Worker::LoopStartTime: the loopStart milestone of the worker's realm in ms,
+%% on the clock of the parent's hrtime, or -1 before the loop starts.
+loop_start_time(This) ->
+    case state(This) of
+        #{status := running, pid := Pid} ->
+            case buoy_binding_performance:loop_start(Pid) of
+                -1 -> -1;
+                Ns -> buoy_ref_number:canonical(Ns / 1.0e6)
+            end;
+        _ ->
+            -1
     end.
 
 %% Worker::LoopIdleTime: the idle time of the worker's loop, in ms.

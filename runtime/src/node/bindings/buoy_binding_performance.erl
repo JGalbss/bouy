@@ -3,7 +3,7 @@
 %% the histograms of createHistogram and monitorEventLoopDelay.
 -module(buoy_binding_performance).
 
--export([binding/0, mark/1, now_ns/0, has_observer/1, notify/5]).
+-export([binding/0, mark/1, loop_start/1, now_ns/0, has_observer/1, notify/5]).
 
 -define(MILESTONES, '$buoy_node_milestones').
 -define(HISTOGRAM, {'#', ?MODULE, <<"histogram">>}).
@@ -101,11 +101,21 @@ mark(loop_start) -> mark_once(?LOOP_START);
 mark(loop_exit) -> mark_once(?LOOP_EXIT);
 mark(Index) ->
     Now = now_ns(),
+    erlang:put({?MODULE, Index}, Now),
     case erlang:get(?MILESTONES) of
-        undefined -> erlang:put({?MODULE, Index}, Now);
+        undefined -> ok;
         Milestones -> buoy_heap:set(Milestones, Index, Now), trace_milestone(Index, Now)
     end,
     ok.
+
+%% The loopStart milestone of the realm Pid, such as a worker's, on the
+%% clock of hrtime in ns, or -1 before its loop starts.
+-spec loop_start(pid()) -> number().
+loop_start(Pid) ->
+    case erlang:process_info(Pid, {dictionary, {?MODULE, ?LOOP_START}}) of
+        {{dictionary, _}, Ns} when is_number(Ns) -> Ns;
+        _ -> -1
+    end.
 
 %% The trace event of a mark, an instant at the time of the milestone.
 trace_milestone(Index, Ns) ->
