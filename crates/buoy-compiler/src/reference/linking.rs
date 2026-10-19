@@ -382,7 +382,10 @@ impl<'c> Linking<'c> {
     /// it: the place and the line, the source line, and a caret under the column.
     fn arrow(&self, diagnostic: &Diagnostic) -> String {
         let text = std::fs::read_to_string(&diagnostic.path).unwrap_or_default();
-        let line = text.lines().nth(diagnostic.line.saturating_sub(1)).unwrap_or_default();
+        let line = text
+            .lines()
+            .nth(diagnostic.line.saturating_sub(1))
+            .unwrap_or_default();
         let place = if self.unit().kind == Kind::Esm {
             format!("file://{}", diagnostic.path.display())
         } else {
@@ -603,7 +606,7 @@ impl<'a> Lowerer<'a, '_> {
             "buoy_module",
             "dynamic_import",
             vec![
-                Expr::atom(self.module.clone()),
+                Expr::atom(self.import_referrer()),
                 specifier,
                 options,
                 Expr::atom(phase),

@@ -96,6 +96,10 @@ pub struct EvalContext {
     pub place: EvalPlace,
     /// The private names that the call sees (`privates`, their keys in this order).
     pub privates: Vec<String>,
+    /// The Erlang module of the script or module that called eval, whose place an
+    /// `import()` of the code resolves from (`referrer`), as V8 hands eval code the
+    /// host-defined options of its caller.
+    pub referrer: Option<String>,
 }
 
 /// Where a direct eval is called, which decides what its code may use.

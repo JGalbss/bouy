@@ -70,7 +70,7 @@ direct_eval(Args, Mode, This, Scope, Lexical, Context) ->
     case buoy_ref_realm:arg(1, Args) of
         Source when ?IS_STRING(Source) ->
             Privates = maps:get(privates, Context, []),
-            Flags = mode_flag(Mode) ++ context_flags(Context)
+            Flags = mode_flag(Mode) ++ context_flags(Context) ++ referrer_flag(Context)
                 ++ names("--private=", [Name || {Name, _} <- Privates])
                 ++ names("--scope=", [Name || {Name, _} <- Scope]) ++ names("--lexical=", Lexical),
             Keys = list_to_tuple([Key || {_, Key} <- Privates]),
@@ -78,6 +78,10 @@ direct_eval(Args, Mode, This, Scope, Lexical, Context) ->
         Value ->
             Value
     end.
+
+%% The module of the caller, whose place an import() of the code resolves from.
+referrer_flag(#{referrer := Module}) -> ["--referrer=" ++ atom_to_list(Module)];
+referrer_flag(_) -> [].
 
 mode_flag(strict) -> ["--strict"];
 mode_flag(sloppy) -> [].

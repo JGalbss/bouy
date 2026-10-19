@@ -263,6 +263,15 @@ pub struct Lowerer<'a, 'c> {
 }
 
 impl Lowerer<'_, '_> {
+    /// The module from whose place `import()` of the code resolves: the caller of eval
+    /// code, else the module itself.
+    pub fn import_referrer(&self) -> String {
+        self.eval_context
+            .referrer
+            .clone()
+            .unwrap_or_else(|| self.module.clone())
+    }
+
     /// The module of the call operations of the code.
     pub fn call_module(&self) -> &'static str {
         if self.realm_calls {

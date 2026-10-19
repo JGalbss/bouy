@@ -259,6 +259,7 @@ impl<'a> Lowerer<'a, '_> {
         if !privates.is_empty() {
             entries.push(("privates", Expr::List(privates)));
         }
+        entries.push(("referrer", Expr::atom(self.import_referrer())));
         Expr::Map(
             entries
                 .into_iter()

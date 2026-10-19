@@ -109,6 +109,10 @@ struct EvalRequest {
     /// The private names that the call sees, separated by commas.
     #[arg(long, value_delimiter = ',')]
     private: Vec<String>,
+    /// The Erlang module of the caller of a direct eval, from whose place `import()`
+    /// of the code resolves.
+    #[arg(long)]
+    referrer: Option<String>,
     /// The Erlang module name.
     module: Option<String>,
     /// The file that holds the source text.
@@ -135,6 +139,7 @@ impl EvalRequest {
         let context = EvalContext {
             place: self.place,
             privates: self.private,
+            referrer: self.referrer,
         };
         let compiled = if let Some(identifier) = &self.hosted_module {
             buoy_compiler::compile_hosted_module(text, &module, identifier)
