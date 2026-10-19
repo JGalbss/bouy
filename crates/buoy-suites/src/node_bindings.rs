@@ -1,10 +1,10 @@
 //! The native bindings of Node at the tag of `.node-version` (docs/design/node-builtins.md
 //! section 3): each name that `internalBinding` takes, and each member that Node's `src/`
 //! sets on the binding object. `buoy-suites node-bindings` reads `src/` from a cached checkout
-//! of nodejs/node and writes `tests/node/bindings.json` and `runtime/src/buoy_node_manifest.erl`,
+//! of nodejs/node and writes `tests/node/bindings.json` and `runtime/src/node/buoy_node_manifest.erl`,
 //! from which `buoy_node:binding/1` gives a binding a stub for each function and class that it
 //! lacks. The dashboard counts, for each binding, the members that
-//! `runtime/src/buoy_binding_<name>.erl` implements.
+//! `runtime/src/node/bindings/buoy_binding_<name>.erl` implements.
 //!
 //! The reader is a small preprocessor and a match over tokens, not a C++ parser. It expands
 //! the function-like macros of a file and the list macros of the headers, and it follows each
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// The manifest, relative to the repository root.
 pub const MANIFEST: &str = "tests/node/bindings.json";
 /// The Erlang module of the manifest, relative to the repository root.
-pub const ERLANG: &str = "runtime/src/buoy_node_manifest.erl";
+pub const ERLANG: &str = "runtime/src/node/buoy_node_manifest.erl";
 /// The command that writes the two files.
 pub const COMMAND: &str = "cargo run --release -p buoy-suites -- node-bindings";
 
@@ -232,7 +232,7 @@ pub fn coverage(root: &Path) -> Result<Vec<Coverage>, String> {
     let manifest = load(root)?;
     let mut rows = Vec::new();
     for (name, binding) in &manifest.bindings {
-        let module = format!("runtime/src/buoy_binding_{name}.erl");
+        let module = format!("runtime/src/node/bindings/buoy_binding_{name}.erl");
         let (implemented, module) = match fs::read_to_string(root.join(&module)) {
             Ok(text) => {
                 let stubbed = erlang_stubs(&text);

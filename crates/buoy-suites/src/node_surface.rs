@@ -20,7 +20,7 @@ use serde::Deserialize;
 
 use crate::buoy_env;
 use crate::comparison::{self, Comparison, Origin};
-use crate::expectations::{self, Entry, Expectations};
+use crate::expectations::{self, Entry, Expectations, PLATFORM};
 use crate::outcome::{Facts, Outcome, RunResult, classify};
 use crate::summary::{self, Counts, Destination, Results, Summary, TestResult};
 
@@ -182,7 +182,10 @@ pub fn run(options: &Options) -> Result<Report, String> {
     .collect::<Result<Vec<_>, _>>()?;
     durations_ms.insert("execute".to_owned(), started.elapsed().as_millis());
 
-    let expected = expectations::read(&options.directory.join("surface/expectations.txt"))?;
+    // A line whose outcome differs by platform names each one, as a line of Node's tests
+    // does, and a run compares with the outcome of its own.
+    let recorded = expectations::read(&options.directory.join("surface/expectations.txt"))?;
+    let expected = expectations::on_platform(&recorded, PLATFORM);
     let probed = judge(&manifest, &never, &selected, &executions, &expected);
     let ids: BTreeSet<String> = manifest
         .entries
@@ -191,7 +194,10 @@ pub fn run(options: &Options) -> Result<Report, String> {
         .map(|(name, _)| name.clone())
         .collect();
     let base = match &options.base {
-        Some(path) if path.is_file() => Some(expectations::read(path)?),
+        Some(path) if path.is_file() => Some(expectations::on_platform(
+            &expectations::read(path)?,
+            PLATFORM,
+        )),
         _ => None,
     };
     let comparison = comparison::compare(
@@ -207,11 +213,19 @@ pub fn run(options: &Options) -> Result<Report, String> {
         .filter(|((group, _), _)| !options.update && probed.changed.contains(group))
         .map(|(_, execution)| execution.report.clone())
         .collect();
-    let mut entries: Expectations = expected
+    let mut entries: Expectations = recorded
         .into_iter()
         .filter(|(id, _)| ids.contains(id))
         .collect();
-    entries.extend(probed.run.clone());
+    for (id, run) in &probed.run {
+        let entry = match (entries.get(id), run) {
+            (Some(line), Entry::Same(outcome)) => {
+                line.with_platform(PLATFORM, *outcome, options.update)
+            }
+            _ => run.clone(),
+        };
+        entries.insert(id.clone(), entry);
+    }
     let summary = Summary {
         suite: SUITE.to_owned(),
         version: manifest.node.clone(),

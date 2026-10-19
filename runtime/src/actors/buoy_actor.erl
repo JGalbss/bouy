@@ -23,12 +23,12 @@
 %% change of the mode, which buoy_registry announces, or for the end of the
 %% supervisor of the actor. It never polls.
 
--export([start/1, start_link/1, spawn_options/1, init_alone/2, init_tree/2, init_ready/4, class_functions/2, call/3, cast/3, offer/3, stop/1, snapshot/1]).
+-export([start/1, start_link/1, spawn_options/1, init_alone/2, init_tree/2, init_ready/4, class_functions/2, call/3, cast/3, offer/4, stop/1, snapshot/1]).
 -export([report_out_of_memory/1, timed_out/1, send_call/4, call_outcome/4]).
--export([context/0, adopt/1, within/2, live/1, chain/0, current/0, current_id/0, owner/0, constructing/0]).
+-export([context/0, adopt/1, within/2, live/1, chain/0, current/0, current_id/0, owner/0, timer_owner/0, constructing/0]).
 -export([loop/2]).
 
--export_type([spec/0, context/0]).
+-export_type([spec/0, context/0, timer_owner/0]).
 
 -define(CONTEXT, '$buoy_context').
 %% The message queue of an actor stays off its heap, so a mailbox that fills
@@ -58,6 +58,9 @@
 }.
 %% What a caller needs from the mode of an actor before it sends a request.
 -type need() :: alive | {ready, [pos_integer()]}.
+%% The owner of a schedule() timer: the process of an actor with the id of the
+%% actor, or the top-level code, which has no id.
+-type timer_owner() :: {pos_integer() | undefined, pid()}.
 
 %% What the code in a process acts for: the actor and the call chain of the
 %% turn, the scopes that must still be live for the chain to hold, the owner
@@ -421,14 +424,16 @@ cast(Id, Method, Args, Dead) ->
     end.
 
 %% A cast that never waits, for the timer of schedule(): a full mailbox, or
-%% an actor that restarts, skips it, so the timer stays free to stop.
--spec offer({'$cast', pos_integer()}, binary(), list()) -> sent | skipped | stopped.
-offer({'$cast', Id}, Method, Args) ->
+%% an actor that restarts, skips it, so the timer stays free to stop. The
+%% cast names the owner of the timer, so the actor drops it once that owner
+%% has ended.
+-spec offer({'$cast', pos_integer()}, binary(), list(), timer_owner()) -> sent | skipped | stopped.
+offer({'$cast', Id}, Method, Args, Owner) ->
     case buoy_registry:mode(Id) of
         {_Phase, Pid, Counter, {Capacity, _}} ->
             case atomics:add_get(Counter, 1, 1) =< Capacity of
                 true ->
-                    send(Pid, Method, Args),
+                    Pid ! {'$cast', Method, Args, Owner},
                     sent;
                 false ->
                     release(Counter),
@@ -767,6 +772,12 @@ current_id() ->
 owner() ->
     (context())#context.owner.
 
+%% The owner of the timers that the code here starts.
+-spec timer_owner() -> timer_owner().
+timer_owner() ->
+    #context{actor = Id, owner = Pid} = context(),
+    {Id, Pid}.
+
 %% Whether a constructor runs here, which then owns the actors it starts.
 -spec constructing() -> boolean().
 constructing() ->
@@ -857,12 +868,30 @@ loop(#state{counter = Counter} = State, This) ->
         {'$cast', Method, Args} ->
             release(Counter),
             cast_turn(Method, Args, State, This);
+        {'$cast', Method, Args, Owner} ->
+            release(Counter),
+            case has_ended(Owner) of
+                true -> loop(State, This);
+                false -> cast_turn(Method, Args, State, This)
+            end;
         {'$room', Alias, Method, Args} ->
             release(Counter),
             Alias ! {Alias, true},
             cast_turn(Method, Args, State, This);
         _Dropped ->
             loop(State, This)
+    end.
+
+%% Whether the owner of a timer has ended. A crash and stop() take the
+%% process of the owner out of the registry before any caller hears of the
+%% end, and a killed process is gone, so no cast of the timer lands after a
+%% caller sees the end. The top-level code ends with the program.
+has_ended({undefined, _TopLevel}) ->
+    false;
+has_ended({Id, Pid}) ->
+    case buoy_registry:mode(Id) of
+        {_Phase, Pid, _Counter, _Mailbox} -> not is_process_alive(Pid);
+        _Vacated -> true
     end.
 
 call_turn(Alias, Method, Args, Chain, #state{id = Id} = State, This) ->

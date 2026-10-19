@@ -10,7 +10,7 @@
 # a corpus.
 #
 # The programs of tests/equivalence and tests/migration call model APIs. For those
-# directories, the script starts the fake server of runtime/test/buoy_fake_openai.erl and
+# directories, the script starts the fake server of runtime/test/library/buoy_fake_openai.erl and
 # points the programs at it with OPENAI_BASE_URL, OPENAI_API_KEY, ANTHROPIC_BASE_URL, and
 # ANTHROPIC_API_KEY, as the Rust tests do for Buoy. A `<name>-fixture.ts` file is a file
 # that a program starts, so it gets no output. For tests/migration, it runs
@@ -52,7 +52,7 @@ server_env=
 
 case "${1%/}" in
 *equivalence/* | *migration)
-    erlc -o "$work" "$root/runtime/test/buoy_fake_openai.erl"
+    erlc -o "$work" "$root/runtime/test/library/buoy_fake_openai.erl"
     # The server halts when this shell ends, so an interrupted run leaves no server behind.
     erl -noshell -pa "$work" -eval 'buoy_fake_openai:main()' -extra "$$" >"$work/port" &
     server=$!

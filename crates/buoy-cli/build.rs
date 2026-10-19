@@ -1,5 +1,7 @@
-//! Embeds the runtime sources, `runtime/src/*.erl`, `*.hrl`, and `*.app.src`, in the binary.
-//! The build fails when they are missing, because a binary without them cannot run a program.
+//! Embeds the runtime sources, the `*.erl` and `*.app.src` files of `runtime/src` and its
+//! subsystem directories and the `*.hrl` files of `runtime/include`, in the binary, under
+//! their file names. The build fails when they are missing, because a binary without them
+//! cannot run a program.
 //!
 //! It also compiles the vendored Temporal polyfill into one more runtime source,
 //! `buoy_temporal.erl`, with the reference compiler (see `temporal_module`), each Node
@@ -17,18 +19,13 @@ fn main() {
     let manifest =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
     let runtime = manifest.join("../../runtime/src");
-    println!("cargo:rerun-if-changed={}", runtime.display());
-    let mut sources: Vec<PathBuf> = fs::read_dir(&runtime)
-        .unwrap_or_else(|error| panic!("{} holds the runtime sources: {error}", runtime.display()))
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| is_runtime_source(path))
-        .collect();
+    let mut sources = runtime_sources(&runtime);
     assert!(
         !sources.is_empty(),
         "{} holds no runtime sources",
         runtime.display()
     );
+    sources.extend(runtime_sources(&manifest.join("../../runtime/include")));
     let out = PathBuf::from(env::var("OUT_DIR").expect("cargo sets OUT_DIR"));
     sources.push(temporal_module(
         &manifest.join("../../runtime/vendor/temporal-polyfill/global.js"),
@@ -114,6 +111,22 @@ fn nif_library(manifest: &Path, out: &Path) {
         library.display().to_string()
     );
     fs::write(out.join("nif_library.rs"), module).expect("OUT_DIR is writable");
+}
+
+/// The runtime sources under `directory` and its subdirectories.
+fn runtime_sources(directory: &Path) -> Vec<PathBuf> {
+    println!("cargo:rerun-if-changed={}", directory.display());
+    let entries = fs::read_dir(directory)
+        .unwrap_or_else(|error| panic!("{} holds runtime sources: {error}", directory.display()));
+    let mut sources = Vec::new();
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        if path.is_dir() {
+            sources.extend(runtime_sources(&path));
+        } else if is_runtime_source(&path) {
+            sources.push(path);
+        }
+    }
+    sources
 }
 
 /// Builds `crates/buoy-native` for the target in release mode, with a cargo of its own in
