@@ -12,6 +12,7 @@
 -export([stream_set_parameter/3, stream_write/4, stream_params/3, stream_reset/1, stream_close/1]).
 -export([intl_canonicalize/1, intl_maximize/1, intl_minimize/1, intl_is_right_to_left/1]).
 -export([intl_collator_new/3, intl_collator_compare/3, intl_collation_types/1, intl_change_case/3]).
+-export([intl_calendar_date/2]).
 
 -export_type([stream/0, failure/0]).
 
@@ -95,3 +96,10 @@ intl_collation_types(_Tag) -> erlang:nif_error(nif_not_loaded).
 %% UTF-16 binary in the case tailoring of a language.
 -spec intl_change_case(binary(), binary(), boolean()) -> binary().
 intl_change_case(_Language, _Text, _Upper) -> erlang:nif_error(nif_not_loaded).
+
+%% The date in a calendar of CLDR of a day after 1970-01-01: {Year,
+%% OrdinalMonth, MonthNumber, Leap, Day}, with the related ISO year of a
+%% cyclic calendar, or nil for an unknown calendar.
+-spec intl_calendar_date(binary(), integer()) ->
+          {integer(), pos_integer(), pos_integer(), boolean(), pos_integer()} | nil.
+intl_calendar_date(_Calendar, _EpochDays) -> erlang:nif_error(nif_not_loaded).

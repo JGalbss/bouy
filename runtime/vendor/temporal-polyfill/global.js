@@ -181,6 +181,9 @@
   function monthCodeNumberToMonth(monthCodeNumber, isLeapMonth, leapMonth) {
     return monthCodeNumber + (isLeapMonth || leapMonth && monthCodeNumber >= leapMonth ? 1 : 0);
   }
+  function monthToMonthCodeNumber(month, leapMonth) {
+    return month - (leapMonth && month >= leapMonth ? 1 : 0);
+  }
   function divideBigNanoToExactNumber(bigNano, divisorNano) {
     const days = Number(bigNano / bigNanoInUtcDay);
     const timeNano = Number(bigNano % bigNanoInUtcDay);
@@ -215,19 +218,20 @@
   function nanoToTimeFields(timeNano) {
     const [timeMilli, nanoAfterMilli] = divModFloor(timeNano, nanoInMilli);
     const [microsecond, nanosecond] = divModFloor(nanoAfterMilli, 1e3);
-    return ((timeMilli, microsecond = 0, nanosecond = 0) => {
-      const [hour, milliAfterHour] = divModFloor(timeMilli, 36e5);
-      const [minute, milliAfterMinute] = divModFloor(milliAfterHour, 6e4);
-      const [second, millisecond] = divModFloor(milliAfterMinute, 1e3);
-      return {
-        hour: hour,
-        minute: minute,
-        second: second,
-        millisecond: millisecond,
-        microsecond: microsecond,
-        nanosecond: nanosecond
-      };
-    })(timeMilli, microsecond, nanosecond);
+    return milliToTimeFields(timeMilli, microsecond, nanosecond);
+  }
+  function milliToTimeFields(timeMilli, microsecond = 0, nanosecond = 0) {
+    const [hour, milliAfterHour] = divModFloor(timeMilli, 36e5);
+    const [minute, milliAfterMinute] = divModFloor(milliAfterHour, 6e4);
+    const [second, millisecond] = divModFloor(milliAfterMinute, 1e3);
+    return {
+      hour: hour,
+      minute: minute,
+      second: second,
+      millisecond: millisecond,
+      microsecond: microsecond,
+      nanosecond: nanosecond
+    };
   }
   function epochNanoToSecMod(epochNano) {
     const [epochSec, nano] = divModFloorBigInt(epochNano, bigNanoInSec);
@@ -271,6 +275,12 @@
       day: legacyDate.getUTCDate()
     };
   }
+  function diffEpochMilliDays(epochMilli0, epochMilli1) {
+    return Math.trunc((epochMilli1 - epochMilli0) / 864e5);
+  }
+  function computeIsoMonthCodeParts(month) {
+    return [ month, 0 ];
+  }
   function computeIsoYearMonthFieldsForMonthDay(monthCodeNumber, isLeapMonth) {
     if (!isLeapMonth) {
       return {
@@ -278,6 +288,13 @@
         month: monthCodeNumber
       };
     }
+  }
+  function computeIsoFieldsFromParts(year, month, day) {
+    return {
+      year: year,
+      month: month,
+      day: day
+    };
   }
   function computeIsoDaysInMonth(year, month) {
     switch (month) {
@@ -292,8 +309,21 @@
     }
     return 31;
   }
+  function computeIsoDaysInYear(year) {
+    return computeIsoInLeapYear(year) ? 366 : 365;
+  }
   function computeIsoInLeapYear(year) {
     return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+  }
+  function addIsoMonths(year, month, monthDelta) {
+    return year += divTrunc(monthDelta, 12), (month += modTrunc(monthDelta, 12)) < 1 ? (year--, 
+    month += 12) : month > 12 && (year++, month -= 12), {
+      year: year,
+      month: month
+    };
+  }
+  function diffIsoMonthSlots(year0, month0, year1, month1) {
+    return 12 * (year1 - year0) + month1 - month0;
   }
   function computeIsoDayOfWeek(isoDate) {
     return modFloor(isoPartsToEpochDays(isoDate.year, isoDate.month, isoDate.day) + 4, 7) || 7;
@@ -320,6 +350,15 @@
     });
     return 4 === y0DayOfWeek || 3 === y0DayOfWeek && computeIsoInLeapYear(year) ? 53 : 52;
   }
+  function computeGregoryEraFields({year: year}) {
+    return year < 1 ? {
+      era: "bce",
+      eraYear: 1 - year
+    } : {
+      era: "ce",
+      eraYear: year
+    };
+  }
   function validateIsoDateTimeFields(isoDateTime) {
     return validateIsoDateFields(isoDateTime), validateTimeFields(isoDateTime);
   }
@@ -342,23 +381,13 @@
     return calendar ? calendar.de(isoDate) : isoDate;
   }
   function computeCalendarMonthCodeParts(calendar, year, month) {
-    return calendar ? calendar.N(year, month) : (month => [ month, 0 ])(month);
+    return calendar ? calendar.N(year, month) : computeIsoMonthCodeParts(month);
   }
   function computeCalendarEraFields(calendar, isoDate) {
-    return 0 === calendar ? (({year: year}) => year < 1 ? {
-      era: "bce",
-      eraYear: 1 - year
-    } : {
-      era: "ce",
-      eraYear: year
-    })(isoDate) : calendar && calendar.h?.(isoDate) || {};
+    return 0 === calendar ? computeGregoryEraFields(isoDate) : calendar && calendar.h?.(isoDate) || {};
   }
   function computeCalendarIsoFieldsFromParts(calendar, year, month, day) {
-    return calendar ? calendar.fe(year, month, day) : ((year, month, day) => ({
-      year: year,
-      month: month,
-      day: day
-    }))(year, month, day);
+    return calendar ? calendar.fe(year, month, day) : computeIsoFieldsFromParts(year, month, day);
   }
   function computeCalendarMonthsInYearForYear(calendar, year) {
     return calendar ? calendar.j(year) : 12;
@@ -385,7 +414,7 @@
   }
   function computeCalendarDaysInYear(calendar, isoDate) {
     const {year: year} = computeCalendarDateFields(calendar, isoDate);
-    return calendar ? calendar.i(year) : (year => computeIsoInLeapYear(year) ? 366 : 365)(year);
+    return calendar ? calendar.i(year) : computeIsoDaysInYear(year);
   }
   function requirePropDefined(optionName, optionVal) {
     return null == optionVal && throwRangeError(missingField(optionName)), optionVal;
@@ -837,12 +866,7 @@
     computeCalendarIsoFieldsFromParts(calendar, year, month, day);
   }
   function addCalendarMonths(calendar, year, month, monthDelta) {
-    return calendar ? calendar.ae(year, month, monthDelta) : ((year, month, monthDelta) => (year += divTrunc(monthDelta, 12), 
-    (month += modTrunc(monthDelta, 12)) < 1 ? (year--, month += 12) : month > 12 && (year++, 
-    month -= 12), {
-      year: year,
-      month: month
-    }))(year, month, monthDelta);
+    return calendar ? calendar.ae(year, month, monthDelta) : addIsoMonths(year, month, monthDelta);
   }
   function resolveMonthInMovedYear(calendar, monthCodeNumber, isLeapMonth, targetLeapMonth, overflow) {
     if (isLeapMonth) {
@@ -954,7 +978,7 @@
       let months = 0;
       let days = 0;
       if (sign) {
-        months = calendar ? calendar.ee(year0, month0, year1, month1) : ((year0, month0, year1, month1) => 12 * (year1 - year0) + month1 - month0)(year0, month0, year1, month1);
+        months = calendar ? calendar.ee(year0, month0, year1, month1) : diffIsoMonthSlots(year0, month0, year1, month1);
         let anchorIsoDate = moveDateByCalendarUnits(calendar, startIsoDate, 0, months, 0);
         sign * compareNumbers(day0, day1) > 0 && (months -= sign, anchorIsoDate = moveDateByCalendarUnits(calendar, startIsoDate, 0, months, 0)), 
         days = countIsoDays(anchorIsoDate, endIsoDate);
@@ -1154,7 +1178,7 @@
       const normalizedEra = normalizeEraName(era);
       const eraOrigin = eraOrigins[normalizedEra];
       void 0 === eraOrigin && throwRangeError((era => `Invalid era: ${era}`)(era));
-      const yearByEra = exoticCalendar?._ ? exoticCalendar._(eraYear, normalizedEra, eraOrigin) : ((eraYear, eraOrigin) => (eraOrigin + eraYear) * (Math.sign(eraOrigin) || 1) || 0)(eraYear, eraOrigin);
+      const yearByEra = exoticCalendar?._ ? exoticCalendar._(eraYear, normalizedEra, eraOrigin) : eraYearToYear(eraYear, eraOrigin);
       void 0 !== year && year !== yearByEra && throwRangeError("Mismatching year/eraYear"), 
       year = yearByEra;
     } else {
@@ -1186,6 +1210,9 @@
   }
   function resolveCalendarDay(fields, calendar, year, month, overflow) {
     return clampProp(fields, "day", 1, computeCalendarDaysInMonthForYearMonth(calendar, year, month), overflow);
+  }
+  function eraYearToYear(eraYear, eraOrigin) {
+    return (eraOrigin + eraYear) * (Math.sign(eraOrigin) || 1) || 0;
   }
   function resolveTimeFields(fields, overflow) {
     return constrainTimeFields(pluckProps(timeFieldNamesAsc, {
@@ -1304,6 +1331,15 @@
     if (void 0 !== fields.monthCode) {
       return parseMonthCode(fields.monthCode);
     }
+  }
+  function formatEpochMilliToPartsRecord(intlFormat, epochMilli) {
+    epochMilli < -864e13 && throwRangeError(outOfBoundsDate);
+    const parts = intlFormat.formatToParts(epochMilli);
+    const hash = {};
+    for (const part of parts) {
+      hash[part.type] = part.value;
+    }
+    return hash;
   }
   function refineTimeDisplayTuple(options, maxSmallestUnit = 4) {
     const subsecDigits = coerceFractionalSecondDigits(options);
@@ -2001,14 +2037,555 @@
       throwTypeError(invalidFormatType(branding));
     }
   }
-  function resolveBasicCalendarId(rawCalendarId) {
-    const lowerRawCalendarId = requireString(rawCalendarId).toLowerCase();
-    return "iso8601" === lowerRawCalendarId ? isoCalendarImpl : "gregory" === lowerRawCalendarId ? 0 : void throwRangeError((calendarId = rawCalendarId, 
-    `Unknown calendar ${calendarId}; might need temporal-polyfill/full`));
-    var calendarId;
+  function createGregoryAlignedCalendar(config) {
+    function calendarYearToIsoYear(year) {
+      return year - isoYearOffset;
+    }
+    function isoYearToCalendarYear(year) {
+      return year + isoYearOffset;
+    }
+    const isoYearOffset = config.se || 0;
+    return {
+      k: config.k,
+      re: 1972 + isoYearOffset,
+      je: config.je,
+      de(isoDate) {
+        return {
+          ...isoDate,
+          year: isoYearToCalendarYear(isoDate.year)
+        };
+      },
+      fe(year, month, day) {
+        return computeIsoFieldsFromParts(calendarYearToIsoYear(year), month, day);
+      },
+      pe(year, month, day) {
+        return isoPartsToEpochDays(calendarYearToIsoYear(year), month, day) * milliInUtcDay;
+      },
+      N(_year, month) {
+        return computeIsoMonthCodeParts(month);
+      },
+      u(monthCodeNumber, isLeapMonth) {
+        const yearMonth = computeIsoYearMonthFieldsForMonthDay(monthCodeNumber, isLeapMonth);
+        return yearMonth && {
+          year: isoYearToCalendarYear(yearMonth.year),
+          month: yearMonth.month
+        };
+      },
+      q(year) {
+        return computeIsoInLeapYear(calendarYearToIsoYear(year));
+      },
+      j() {
+        return 12;
+      },
+      o(year, month) {
+        return computeIsoDaysInMonth(calendarYearToIsoYear(year), month);
+      },
+      i(year) {
+        return computeIsoDaysInYear(calendarYearToIsoYear(year));
+      },
+      p() {},
+      h(isoDate) {
+        return config.h?.(isoDate, isoYearToCalendarYear(isoDate.year)) || {};
+      },
+      ae(year, month, monthDelta) {
+        const yearMonth = addIsoMonths(calendarYearToIsoYear(year), month, monthDelta);
+        return {
+          year: isoYearToCalendarYear(yearMonth.year),
+          month: yearMonth.month
+        };
+      },
+      ee(year0, month0, year1, month1) {
+        return diffIsoMonthSlots(calendarYearToIsoYear(year0), month0, calendarYearToIsoYear(year1), month1);
+      }
+    };
   }
-  function resolveBasicCalendarArg(rawCalendarId = "iso8601") {
-    return resolveBasicCalendarId(rawCalendarId);
+  function createIntlScrapedCalendarData(normCalendarId) {
+    function rawEpochMilliToIntlFields(epochMilli) {
+      return intlParts = formatEpochMilliToPartsRecord(intlFormat, epochMilli), {
+        year: parseInt(intlParts.relatedYear || intlParts.year),
+        month: 0,
+        Be: intlParts.month,
+        day: parseInt(intlParts.day)
+      };
+      var intlParts;
+    }
+    const intlFormat = new RawDateTimeFormat("en-u-hc-h23", {
+      calendar: normCalendarId,
+      timeZone: "UTC",
+      era: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
+    const queryYearData = (epochMilliToIntlFields => {
+      const yearCorrection = epochMilliToIntlFields(0).year - 1970;
+      return memoize(year => {
+        let epochMilli = isoPartsToEpochDays(year - yearCorrection) * milliInUtcDay;
+        let intlFields;
+        let iterations = 0;
+        const millisReversed = [];
+        const monthStringsReversed = [];
+        do {
+          epochMilli += 3456e7;
+        } while ((intlFields = epochMilliToIntlFields(epochMilli)).year <= year);
+        do {
+          epochMilli += (1 - intlFields.day) * milliInUtcDay, intlFields.year === year && (millisReversed.push(epochMilli), 
+          monthStringsReversed.push(intlFields.Be)), epochMilli -= milliInUtcDay, (++iterations > 500 || epochMilli < -864e13) && throwRangeError();
+        } while ((intlFields = epochMilliToIntlFields(epochMilli)).year >= year);
+        return {
+          X: millisReversed.reverse(),
+          ue: monthStringsReversed.reverse()
+        };
+      });
+    })(rawEpochMilliToIntlFields);
+    const queryFields = ((epochMilliToIntlFields, queryYearData) => memoize(isoDate => {
+      const epochMilli = isoDateToEpochMilli(isoDate);
+      const intlFields = epochMilliToIntlFields(epochMilli);
+      return {
+        ...intlFields,
+        month: computeIntlMonthIndex(queryYearData, intlFields.year, epochMilli)
+      };
+    }, WeakMap))(rawEpochMilliToIntlFields, queryYearData);
+    return {
+      le: queryFields,
+      K: queryYearData
+    };
+  }
+  function computeIsoFieldsFromIntlParts(intlData, year, month, day) {
+    return ((epochMilli, microsecond = 0, nanosecond = 0) => {
+      const [epochDays, milliAfterDay] = divModFloor(epochMilli, 864e5);
+      return {
+        ...epochDaysToIsoDate(epochDays),
+        ...milliToTimeFields(milliAfterDay, microsecond, nanosecond)
+      };
+    })(computeIntlEpochMilli(intlData, year, month, day));
+  }
+  function computeIntlEpochMilli(intlData, year, month = 1, day = 1) {
+    return intlData.K(year).X[month - 1] + (day - 1) * milliInUtcDay;
+  }
+  function computeIntlMonthCodeParts(intlData, leapMonthMeta, year, month) {
+    const leapMonth = computeIntlLeapMonth(intlData, leapMonthMeta, year);
+    return [ monthToMonthCodeNumber(month, leapMonth), leapMonth === month ];
+  }
+  function computeIntlLeapMonth(intlData, leapMonthMeta, year) {
+    if (void 0 === leapMonthMeta) {
+      return;
+    }
+    const currentMonthStrings = intlData.K(year).ue;
+    if (currentMonthStrings.length <= 12) {
+      return;
+    }
+    if (leapMonthMeta < 0) {
+      return -leapMonthMeta;
+    }
+    for (let i = 1; i < currentMonthStrings.length; i++) {
+      if (currentMonthStrings[i] === currentMonthStrings[i - 1]) {
+        return i + 1;
+      }
+    }
+    for (let i = 0; i < currentMonthStrings.length; i++) {
+      if (/bis$/i.test(currentMonthStrings[i])) {
+        return i + 1;
+      }
+    }
+    const prevMonthStrings = intlData.K(year - 1).ue;
+    for (let i = 0; i < currentMonthStrings.length; i++) {
+      if (currentMonthStrings[i] !== prevMonthStrings[i]) {
+        return i + 1;
+      }
+    }
+  }
+  function computeIntlInLeapYear(intlData, leapMonthMeta, year) {
+    if (void 0 !== leapMonthMeta) {
+      return computeIntlMonthsInYear(intlData, year) > 12;
+    }
+    const daysInYear = computeIntlDaysInYear(intlData, year);
+    return daysInYear > computeIntlDaysInYear(intlData, year - 1) || daysInYear > computeIntlDaysInYear(intlData, year + 1);
+  }
+  function computeIntlDaysInYear(intlData, year) {
+    return diffEpochMilliDays(computeIntlEpochMilli(intlData, year), computeIntlEpochMilli(intlData, year + 1));
+  }
+  function computeIntlDaysInMonth(intlData, year, month) {
+    const {X: monthEpochMillis} = intlData.K(year);
+    let nextMonth = month + 1;
+    let nextMonthEpochMilli = monthEpochMillis;
+    return nextMonth > monthEpochMillis.length && (nextMonth = 1, nextMonthEpochMilli = intlData.K(year + 1).X), 
+    diffEpochMilliDays(monthEpochMillis[month - 1], nextMonthEpochMilli[nextMonth - 1]);
+  }
+  function computeIntlMonthsInYear(intlData, year) {
+    return intlData.K(year).X.length;
+  }
+  function computeIntlYearMonthFieldsForMonthDay(intlData, leapMonthMeta, getMonthDaySearchStartYear, monthCodeNumber, isLeapMonth, day) {
+    const startIsoYear = getMonthDaySearchStartYear?.(monthCodeNumber, isLeapMonth, day) || 1972;
+    const startCalendarDateFields = intlData.le({
+      year: startIsoYear,
+      month: 12,
+      day: 31
+    });
+    let {year: startYear, month: startMonth, day: startDay} = startCalendarDateFields;
+    const startYearLeapMonth = computeIntlLeapMonth(intlData, leapMonthMeta, startYear);
+    const startMonthIsLeap = startMonth === startYearLeapMonth;
+    1 === (compareNumbers(monthCodeNumber, monthToMonthCodeNumber(startMonth, startYearLeapMonth)) || compareNumbers(Number(isLeapMonth), Number(startMonthIsLeap)) || compareNumbers(day, startDay)) && startYear--;
+    for (let yearMove = 0; yearMove < 100; yearMove++) {
+      const tryYear = startYear - yearMove;
+      const tryLeapMonth = computeIntlLeapMonth(intlData, leapMonthMeta, tryYear);
+      const tryMonth = monthCodeNumberToMonth(monthCodeNumber, isLeapMonth, tryLeapMonth);
+      if (isLeapMonth === (tryMonth === tryLeapMonth) && day <= computeIntlDaysInMonth(intlData, tryYear, tryMonth)) {
+        return {
+          year: tryYear,
+          month: tryMonth
+        };
+      }
+    }
+  }
+  function addIntlMonths(intlData, year, month, monthDelta) {
+    if (monthDelta) {
+      if (Number.isSafeInteger(month += monthDelta) || throwRangeError(outOfBoundsDate), 
+      monthDelta < 0) {
+        for (;month < 1; ) {
+          month += computeIntlMonthsInYear(intlData, --year);
+        }
+      } else {
+        let monthsInYear;
+        for (;month > (monthsInYear = computeIntlMonthsInYear(intlData, year)); ) {
+          month -= monthsInYear, year++;
+        }
+      }
+    }
+    return {
+      year: year,
+      month: month
+    };
+  }
+  function diffIntlMonthSlots(intlData, year0, month0, year1, month1) {
+    const cmp = compareNumbers(year0, year1) || compareNumbers(month0, month1);
+    if (!cmp) {
+      return 0;
+    }
+    if (year0 === year1) {
+      return month1 - month0;
+    }
+    if (cmp < 0) {
+      let months = computeIntlMonthsInYear(intlData, year0) - month0 + month1;
+      for (let year = year0 + 1; year < year1; year++) {
+        months += computeIntlMonthsInYear(intlData, year);
+      }
+      return months;
+    }
+    return -diffIntlMonthSlots(intlData, year1, month1, year0, month0);
+  }
+  function computeIntlMonthIndex(queryYearData, year, epochMilli) {
+    const {X: monthEpochMillis} = queryYearData(year);
+    for (let i = monthEpochMillis.length - 1; i >= 0; i--) {
+      if (epochMilli >= monthEpochMillis[i]) {
+        return i + 1;
+      }
+    }
+    throwRangeError();
+  }
+  function createArithmeticCalendar(ops) {
+    function computeDefaultMonthCodeParts(year, month) {
+      const leapMonth = ops.p?.(year);
+      return [ monthToMonthCodeNumber(month, leapMonth), month === leapMonth ];
+    }
+    const monthDayReferenceDate = ops.J(2441683);
+    const fromIsoDate = memoize(isoDate => ops.J(isoDateToEpochDays(isoDate) + 2440588), WeakMap);
+    return {
+      k: ops.k,
+      l: ops.l,
+      V: ops.V,
+      U: ops.U,
+      re: ops.re,
+      _: ops._,
+      ge: ops.ge,
+      de: fromIsoDate,
+      fe(year, month, day) {
+        return epochDaysToIsoDate(ops.L(year, month, day) - 2440588);
+      },
+      pe(year, month = 1, day = 1) {
+        return (ops.L(year, month, day) - 2440588) * milliInUtcDay;
+      },
+      N(year, month) {
+        return (ops.N || computeDefaultMonthCodeParts)(year, month);
+      },
+      u(monthCodeNumber, isLeapMonth, day) {
+        return ops.u?.(monthCodeNumber, isLeapMonth, day) || ((monthCodeNumber, isLeapMonth, day) => {
+          isLeapMonth = Boolean(isLeapMonth);
+          let referenceYear = ops.re || monthDayReferenceDate.year;
+          const [referenceMonthCodeNumber, referenceIsLeapMonth] = computeDefaultMonthCodeParts(monthDayReferenceDate.year, monthDayReferenceDate.month);
+          1 === (compareNumbers(monthCodeNumber, referenceMonthCodeNumber) || compareNumbers(Number(isLeapMonth), Number(referenceIsLeapMonth)) || compareNumbers(day, monthDayReferenceDate.day)) && referenceYear--;
+          for (let yearDelta = 0; yearDelta < 100; yearDelta++) {
+            for (const year of [ referenceYear - yearDelta, referenceYear + yearDelta ]) {
+              const leapMonth = ops.p?.(year);
+              const month = monthCodeNumberToMonth(monthCodeNumber, isLeapMonth, leapMonth);
+              if (month <= ops.j(year) && isLeapMonth === (month === leapMonth) && day <= ops.o(year, month)) {
+                return {
+                  year: year,
+                  month: month
+                };
+              }
+            }
+          }
+        })(monthCodeNumber, isLeapMonth, day);
+      },
+      q: ops.q,
+      j: ops.j,
+      o: ops.o,
+      i: ops.i,
+      p: ops.p || noop,
+      h(isoDate) {
+        const parts = fromIsoDate(isoDate);
+        return ops.h ? ops.h(parts) : {
+          era: parts.era,
+          eraYear: parts.eraYear
+        };
+      },
+      ae(year, month, monthDelta) {
+        return ((computeMonthsInYear, year, month, monthDelta) => {
+          if (monthDelta) {
+            if (Number.isSafeInteger(month += monthDelta) || throwRangeError(outOfBoundsDate), 
+            monthDelta < 0) {
+              for (;month < 1; ) {
+                month += computeMonthsInYear(--year);
+              }
+            } else {
+              let monthsInYear;
+              for (;month > (monthsInYear = computeMonthsInYear(year)); ) {
+                month -= monthsInYear, year++;
+              }
+            }
+          }
+          return {
+            year: year,
+            month: month
+          };
+        })(ops.j, year, month, monthDelta);
+      },
+      ee(year0, month0, year1, month1) {
+        return diffArithmeticMonthSlots(ops.j, year0, month0, year1, month1);
+      }
+    };
+  }
+  function diffArithmeticMonthSlots(computeMonthsInYear, year0, month0, year1, month1) {
+    const cmp = compareNumbers(year0, year1) || compareNumbers(month0, month1);
+    if (!cmp) {
+      return 0;
+    }
+    if (year0 === year1) {
+      return month1 - month0;
+    }
+    if (cmp < 0) {
+      let months = computeMonthsInYear(year0) - month0 + month1;
+      for (let year = year0 + 1; year < year1; year++) {
+        months += computeMonthsInYear(year);
+      }
+      return months;
+    }
+    return -diffArithmeticMonthSlots(computeMonthsInYear, year1, month1, year0, month0);
+  }
+  function createChineseDangiCalendar(canonicalId) {
+    return ((normCalendarId, config) => {
+      const intlData = createIntlScrapedCalendarData(normCalendarId);
+      return {
+        l: config.l,
+        V: config.V,
+        U: config.U,
+        de: intlData.le,
+        fe: bindArgs(computeIsoFieldsFromIntlParts, intlData),
+        pe: bindArgs(computeIntlEpochMilli, intlData),
+        N: bindArgs(computeIntlMonthCodeParts, intlData, config.l),
+        u: bindArgs(computeIntlYearMonthFieldsForMonthDay, intlData, config.l, config.ye),
+        q: bindArgs(computeIntlInLeapYear, intlData, config.l),
+        j: bindArgs(computeIntlMonthsInYear, intlData),
+        o: bindArgs(computeIntlDaysInMonth, intlData),
+        i: bindArgs(computeIntlDaysInYear, intlData),
+        p: bindArgs(computeIntlLeapMonth, intlData, config.l),
+        ae: bindArgs(addIntlMonths, intlData),
+        ee: bindArgs(diffIntlMonthSlots, intlData)
+      };
+    })(canonicalId, commonScrapedCalendarConfig);
+  }
+  function createCopticFamilyCalendar(epoch, eraOrigins, ameteAlemYearDelta = 0, hasAmeteMihretEra = 0) {
+    return createArithmeticCalendar({
+      k: eraOrigins,
+      _(eraYear, normalizedEra, eraOrigin) {
+        return "aa" === normalizedEra && hasAmeteMihretEra ? eraYear - 5500 : eraYearToYear(eraYear, eraOrigin);
+      },
+      ge(monthCodeNumber, isLeapMonth, day) {
+        return constrainToRange(day, 1, isLeapMonth || 13 !== monthCodeNumber ? 30 : 6);
+      },
+      J(julianDay) {
+        const [year, month, day] = ((epoch, julianDay) => {
+          const year = Math.floor((4 * (julianDay - epoch) + 3) / 1461);
+          const month = 1 + Math.floor((julianDay - copticFamilyToJulianDay(epoch, year, 1, 1)) / 30);
+          return [ year, month, julianDay + 1 - copticFamilyToJulianDay(epoch, year, month, 1) ];
+        })(epoch, julianDay);
+        return {
+          year: year + ameteAlemYearDelta,
+          month: month,
+          day: day
+        };
+      },
+      L(year, month, day) {
+        return copticFamilyToJulianDay(epoch, year - ameteAlemYearDelta, month, day);
+      },
+      o(year, month) {
+        return ((year, month) => month % 13 != 0 ? 30 : copticFamilyLeapDay(year) + 5)(year - ameteAlemYearDelta, month);
+      },
+      i(year) {
+        return 365 + copticFamilyLeapDay(year - ameteAlemYearDelta);
+      },
+      j() {
+        return 13;
+      },
+      q(year) {
+        return this.i(year) > 365;
+      },
+      h({year: year}) {
+        return ameteAlemYearDelta ? {
+          era: "aa",
+          eraYear: year
+        } : hasAmeteMihretEra && year <= 0 ? {
+          era: "aa",
+          eraYear: year + 5500
+        } : {
+          era: "am",
+          eraYear: year
+        };
+      }
+    });
+  }
+  function copticFamilyToJulianDay(epoch, year, month, day) {
+    return epoch + 365 * year + Math.floor(year / 4) + 30 * (month - 1) + day - 1;
+  }
+  function copticFamilyLeapDay(year) {
+    return Math.floor(modFloor(year, 4) / 3);
+  }
+  function hebrewIsLeapYear(year) {
+    return modFloor(7 * year + 1, 19) < 7;
+  }
+  function hebrewDelay1(year) {
+    const months = Math.floor((235 * year - 234) / 19);
+    let day = 29 * months + Math.floor((12084 + 13753 * months) / 25920);
+    return modFloor(3 * (day + 1), 7) < 3 && (day += 1), day;
+  }
+  function hebrewStartOfYear(year) {
+    return hebrewDelay1(year) + (year => {
+      const last = hebrewDelay1(year - 1);
+      const present = hebrewDelay1(year);
+      return hebrewDelay1(year + 1) - present === 356 ? 2 : present - last === 382 ? 1 : 0;
+    })(year);
+  }
+  function hebrewDaysInYear(year) {
+    return hebrewStartOfYear(year + 1) - hebrewStartOfYear(year);
+  }
+  function hebrewDaysInMonth(year, month) {
+    const normalizedMonth = month >= 6 && !hebrewIsLeapYear(year) ? month + 1 : month;
+    if (4 === normalizedMonth || 7 === normalizedMonth || 9 === normalizedMonth || 11 === normalizedMonth || 13 === normalizedMonth) {
+      return 29;
+    }
+    const yearType = (year => {
+      let yearLength = hebrewDaysInYear(year);
+      return yearLength > 380 && (yearLength -= 30), 353 === yearLength ? 0 : 354 === yearLength ? 1 : 2;
+    })(year);
+    return 2 === normalizedMonth ? 2 === yearType ? 30 : 29 : 3 === normalizedMonth ? 0 === yearType ? 29 : 30 : 6 === normalizedMonth ? hebrewIsLeapYear(year) ? 30 : 0 : 30;
+  }
+  function createIslamicCalendar(fromJulianDay, toJulianDay, intlUmalquraData) {
+    return createArithmeticCalendar({
+      k: {
+        bh: -1,
+        ah: 0
+      },
+      J: fromJulianDay,
+      L: toJulianDay,
+      o(year, month) {
+        return intlUmalquraData && isUmalquraYear(year) ? computeIntlDaysInMonth(intlUmalquraData, year, month) : ((year, month) => 29 + month % 2 + (12 === month && islamicIsLeapYear(year) ? 1 : 0))(year, month);
+      },
+      i(year) {
+        return intlUmalquraData && isUmalquraYear(year) ? computeIntlDaysInYear(intlUmalquraData, year) : islamicIsLeapYear(year) ? 355 : 354;
+      },
+      j() {
+        return 12;
+      },
+      q(year) {
+        return this.i(year) > 354;
+      },
+      u(monthCodeNumber, isLeapMonth, day) {
+        const umalquraReferenceYear = intlUmalquraData && !isLeapMonth && 30 === day && umalquraPlainMonthDay30ReferenceYears[monthCodeNumber - 1];
+        return intlUmalquraData && umalquraReferenceYear ? {
+          year: umalquraReferenceYear,
+          month: monthCodeNumber
+        } : void 0;
+      },
+      h({year: year}) {
+        return year < 1 ? {
+          era: "bh",
+          eraYear: 1 - year
+        } : {
+          era: "ah",
+          eraYear: year
+        };
+      }
+    });
+  }
+  function islamicToJulianDay(epoch, year, month, day) {
+    return day + Math.ceil(29.5 * (month - 1)) + 354 * (year - 1) + Math.floor((3 + 11 * year) / 30) + epoch - 1;
+  }
+  function julianDayToIslamic(epoch, julianDay) {
+    const year = Math.floor((30 * (julianDay - epoch) + 10646) / 10631);
+    const month = Math.min(12, Math.ceil((julianDay - (29 + islamicToJulianDay(epoch, year, 1, 1))) / 29.5) + 1);
+    return {
+      year: year,
+      month: month,
+      day: julianDay - islamicToJulianDay(epoch, year, month, 1) + 1
+    };
+  }
+  function islamicIsLeapYear(year) {
+    return modFloor(14 + 11 * year, 30) < 11;
+  }
+  function isUmalquraYear(year) {
+    return year >= 1300 && year <= 1600;
+  }
+  function julianDayToUmalqura(intlUmalquraData, julianDay) {
+    const days = julianDay - 1948440;
+    if (days < 460322 || days >= 566987) {
+      return julianDayToIslamic(1948440, julianDay);
+    }
+    const {year: year, month: month, day: day} = intlUmalquraData.le(epochDaysToIsoDate(julianDay - 2440588));
+    return {
+      year: year,
+      month: month,
+      day: day
+    };
+  }
+  function umalquraToJulianDay(intlUmalquraData, year, month, day) {
+    return isUmalquraYear(year) ? computeIntlEpochMilli(intlUmalquraData, year, month, day) / milliInUtcDay + 2440588 : islamicToJulianDay(1948440, year, month, day);
+  }
+  function computeJapaneseEraFields(isoDate) {
+    const epochDays = isoDateToEpochDays(isoDate);
+    const era = epochDays >= 18017 ? "reiwa" : epochDays >= 6947 ? "heisei" : epochDays >= -15713 ? "showa" : epochDays >= -20974 ? "taisho" : epochDays >= -35428 ? "meiji" : void 0;
+    return era ? {
+      era: era,
+      eraYear: isoDate.year - japaneseEraOrigins[era]
+    } : computeGregoryEraFields(isoDate);
+  }
+  function persianIsLeapYear(year) {
+    return modFloor(25 * year + 11, 33) < 8;
+  }
+  function resolveAnyCalendarId(rawCalendarId) {
+    const lowerRawCalendarId = requireString(rawCalendarId).toLowerCase();
+    return "iso8601" === lowerRawCalendarId ? isoCalendarImpl : "gregory" === lowerRawCalendarId ? 0 : function(lowerRawCalendarId) {
+      const meta = (lowerRawCalendarId => {
+        forbiddenExoticCalendarIdMap[lowerRawCalendarId] && throwRangeError(invalidCalendar(lowerRawCalendarId));
+        const normCalendarId = deprecatedExoticCalendarIdMap[lowerRawCalendarId] || lowerRawCalendarId;
+        const createCalendar = exoticCreatorMap.get(normCalendarId);
+        return createCalendar && [ normCalendarId, createCalendar ];
+      })(lowerRawCalendarId);
+      return meta || throwRangeError(invalidCalendar(lowerRawCalendarId)), getOrCreateExoticCalendar(...meta);
+    }(lowerRawCalendarId);
+  }
+  function resolveAnyCalendarArg(rawCalendarId = "iso8601") {
+    return resolveAnyCalendarId(rawCalendarId);
   }
   function createZonedDateTime(slots) {
     return initZonedDateTime(Object.create(ZonedDateTime.prototype), slots);
@@ -2043,7 +2620,7 @@
     return ((s, resolveCalendar, options) => {
       const organized = parseDateTimeLike(requireString(s));
       return organized && organized.timeZoneId || throwFailedParse(s), finalizeZonedDateTime(organized, resolveCalendar, options);
-    })(arg, resolveBasicCalendarId, options);
+    })(arg, resolveAnyCalendarId, options);
   }
   function initZonedDateTime(instance, slots) {
     return zonedDateTimeSlotsMap.set(instance, slots), attachDebugString(instance), 
@@ -2127,7 +2704,7 @@
         return yearMonthFields || throwRangeError("Cannot guess year"), yearMonthFields;
       })(calendar, monthCodeNumber, isLeapMonth, day);
       return createDateSlots(checkIsoDateInBounds(computeCalendarIsoFieldsFromParts(calendar, year, month, day)), calendar);
-    })(arg, resolveBasicCalendarId);
+    })(arg, resolveAnyCalendarId);
     return refineOverflowOptions(options), res;
   }
   function initPlainMonthDay(instance, slots) {
@@ -2160,7 +2737,7 @@
       const dateSlots = finalizeDateLike(parsePlainDateLike(s), projectIsoYearMonthDate, resolveCalendar);
       const {calendar: calendar} = dateSlots;
       return createDateSlots(moveToStartOfMonth(calendar, dateSlots), calendar);
-    })(arg, resolveBasicCalendarId);
+    })(arg, resolveAnyCalendarId);
     return refineOverflowOptions(options), res;
   }
   function initPlainYearMonth(instance, slots) {
@@ -2258,7 +2835,7 @@
     const res = ((s, resolveCalendar) => {
       const organized = parseDateTimeLike(requireString(s));
       return organized && !organized.F || throwFailedParse(s), finalizeDateTime(organized, resolveCalendar);
-    })(arg, resolveBasicCalendarId);
+    })(arg, resolveAnyCalendarId);
     return refineOverflowOptions(options), res;
   }
   function initPlainDateTime(instance, slots) {
@@ -2294,7 +2871,7 @@
     const res = ((s, resolveCalendar) => {
       const slots = finalizeDateLike(parsePlainDateLike(requireString(s)), void 0, resolveCalendar);
       return createDateSlots(slots, slots.calendar);
-    })(arg, resolveBasicCalendarId);
+    })(arg, resolveAnyCalendarId);
     return refineOverflowOptions(options), res;
   }
   function initPlainDate(instance, slots) {
@@ -2313,9 +2890,9 @@
   function refineCalendarArg(arg) {
     if (isObjectLike(arg)) {
       const slots = getPlainDateSlotsIfPresent(arg) || getPlainDateTimeSlotsIfPresent(arg) || getZonedDateTimeSlotsIfPresent(arg) || getPlainMonthDaySlotsIfPresent(arg) || getPlainYearMonthSlotsIfPresent(arg);
-      return slots || throwTypeError(invalidEntity$1("Calendar", arg)), slots.calendar;
+      return slots || throwTypeError(invalidCalendar(arg)), slots.calendar;
     }
-    return (arg => resolveBasicCalendarId((s => {
+    return (arg => resolveAnyCalendarId((s => {
       const res = parseDateTimeLike(s) || parseYearMonthOnly(s) || parseMonthDayOnly(s);
       if (res) {
         return res.calendarId;
@@ -2405,7 +2982,7 @@
         const organized = parseDateTimeLike(requireString(s));
         return organized || throwFailedParse(s), organized.timeZoneId ? finalizeZonedDateTime(organized, resolveCalendar, void 0) : (organized.F && throwFailedParse(s), 
         finalizeDate(organized, resolveCalendar));
-      })(relativeTo, resolveBasicCalendarId);
+      })(relativeTo, resolveAnyCalendarId);
     }
   }
   function initDuration(instance, slots) {
@@ -2419,6 +2996,7 @@
   const invalidChoice = (fieldName, val, choiceMap) => invalidEntity$1(fieldName, val) + "; must be " + Object.keys(choiceMap).join();
   const missingYear = allowEra => "Missing year" + (allowEra ? "/era/eraYear" : "");
   const invalidLeapMonth = "Invalid leap month";
+  const invalidCalendar = calendarId => invalidEntity$1("Calendar", calendarId);
   const invalidTimeZone = calendarId => invalidEntity$1("TimeZone", calendarId);
   const outOfBoundsDate = "Out-of-bounds date";
   const failedParse = s => `Cannot parse: ${s}`;
@@ -2457,6 +3035,7 @@
     year: 9
   };
   const unitNamesAsc = Object.keys(unitNameMap);
+  const milliInUtcDay = 864e5;
   const nanoInMilli = 1e6;
   const nanoInSec = 1e9;
   const nanoInMinute = 6e10;
@@ -2731,15 +3310,7 @@
           }
         };
       })((format => epochSec => {
-        const intlParts = ((intlFormat, epochMilli) => {
-          epochMilli < -864e13 && throwRangeError(outOfBoundsDate);
-          const parts = intlFormat.formatToParts(epochMilli);
-          const hash = {};
-          for (const part of parts) {
-            hash[part.type] = part.value;
-          }
-          return hash;
-        })(format, 1e3 * epochSec);
+        const intlParts = formatEpochMilliToPartsRecord(format, 1e3 * epochSec);
         return 86400 * isoPartsToEpochDays((intlParts => {
           const relatedYear = intlParts.relatedYear;
           if (void 0 !== relatedYear) {
@@ -2939,10 +3510,281 @@
       return computeCalendarInLeapYear(slots.calendar, slots);
     }
   };
+  const buddhistEraOrigins = {
+    be: 0
+  };
+  const commonScrapedCalendarConfig = {
+    l: 13,
+    V: {
+      1: 0,
+      2: 29,
+      8: 29,
+      9: 29,
+      10: 29,
+      11: 29,
+      12: 0
+    },
+    U: 30,
+    ye(monthCodeNumber, isLeapMonth, day) {
+      if (isLeapMonth) {
+        switch (monthCodeNumber) {
+         case 1:
+          return 1651;
+
+         case 2:
+          return day < 30 ? 1947 : 1765;
+
+         case 3:
+          return day < 30 ? 1966 : 1955;
+
+         case 4:
+          return day < 30 ? 1963 : 1944;
+
+         case 5:
+          return day < 30 ? 1971 : 1952;
+
+         case 6:
+          return day < 30 ? 1960 : 1941;
+
+         case 7:
+          return day < 30 ? 1968 : 1938;
+
+         case 8:
+          return day < 30 ? 1957 : 1718;
+
+         case 9:
+          return 2014;
+
+         case 10:
+          return 1984;
+
+         case 11:
+          return day < 29 ? 2033 : 2034;
+
+         case 12:
+          return 1890;
+        }
+      }
+      return 1972;
+    }
+  };
+  const copticEraOrigins = {
+    am: 0
+  };
+  const ethiopicEraOrigins = {
+    am: 0,
+    aa: 0
+  };
+  const ethioaaEraOrigins = {
+    aa: 0
+  };
+  const hebrewEraOrigins = {
+    am: 0
+  };
+  const indianEraOrigins = {
+    shaka: 0
+  };
+  const umalquraPlainMonthDay30ReferenceYears = [ 1392, 1390, 1391, 1392, 1391, 1392, 1389, 1392, 1392, 1390, 1391, 1390 ];
+  const japaneseEraOrigins = Object.assign({}, gregoryEraOrigins, {
+    meiji: 1867,
+    taisho: 1911,
+    showa: 1925,
+    heisei: 1988,
+    reiwa: 2018
+  });
+  const persianEraOrigins = {
+    ap: 0
+  };
+  const persianMonthStarts = [ 0, 31, 62, 93, 124, 155, 186, 216, 246, 276, 306, 336 ];
+  const rocEraOrigins = {
+    broc: -1,
+    roc: 0
+  };
+  const exoticCreatorMap = new Map([ [ "buddhist", () => createGregoryAlignedCalendar({
+    se: 543,
+    k: buddhistEraOrigins,
+    h(_isoDate, calendarYear) {
+      return {
+        era: "be",
+        eraYear: calendarYear
+      };
+    }
+  }) ], [ "chinese", createChineseDangiCalendar ], [ "coptic", () => createCopticFamilyCalendar(1824665, copticEraOrigins) ], [ "dangi", createChineseDangiCalendar ], [ "ethiopic", () => createCopticFamilyCalendar(1723856, ethiopicEraOrigins, 0, 1) ], [ "ethioaa", () => createCopticFamilyCalendar(1723856, ethioaaEraOrigins, 5500) ], [ "hebrew", () => createArithmeticCalendar({
+    k: hebrewEraOrigins,
+    l: -6,
+    J(julianDay) {
+      const day = julianDay - 347997;
+      let year = Math.floor((25920 * day / 765433 * 19 + 234) / 235) + 1;
+      let yearStart = hebrewStartOfYear(year);
+      let dayOfYear = Math.floor(day - yearStart);
+      for (;dayOfYear < 1; ) {
+        year--, yearStart = hebrewStartOfYear(year), dayOfYear = Math.floor(day - yearStart);
+      }
+      let month = 1;
+      let monthStart = 0;
+      for (;monthStart < dayOfYear; ) {
+        monthStart += hebrewDaysInMonth(year, month), month++;
+      }
+      return month--, monthStart -= hebrewDaysInMonth(year, month), {
+        year: year,
+        month: month,
+        day: dayOfYear - monthStart
+      };
+    },
+    L(year, month, day) {
+      let julianDay = hebrewStartOfYear(year);
+      for (let i = 1; i < month; i++) {
+        julianDay += hebrewDaysInMonth(year, i);
+      }
+      return julianDay + day + 347997;
+    },
+    o: hebrewDaysInMonth,
+    i: hebrewDaysInYear,
+    j(year) {
+      return hebrewIsLeapYear(year) ? 13 : 12;
+    },
+    q: hebrewIsLeapYear,
+    p(year) {
+      return hebrewIsLeapYear(year) ? 6 : void 0;
+    },
+    N(year, month) {
+      return hebrewIsLeapYear(year) && 6 === month ? [ 5, 1 ] : [ month - (hebrewIsLeapYear(year) && month > 6 ? 1 : 0), 0 ];
+    },
+    u(monthCodeNumber, isLeapMonth, day) {
+      return isLeapMonth && 5 === monthCodeNumber && day <= 30 ? {
+        year: 5730,
+        month: 6
+      } : void 0;
+    },
+    h({year: year}) {
+      return {
+        era: "am",
+        eraYear: year
+      };
+    }
+  }) ], [ "indian", function() {
+    return createArithmeticCalendar({
+      k: indianEraOrigins,
+      J(julianDay) {
+        const gregory = epochDaysToIsoDate(julianDay - 2440588);
+        let year = gregory.year - 78;
+        let dayOfGregorianYear = julianDay - (isoPartsToEpochDays(gregory.year, 1, 1) + 2440588);
+        let firstMonthDays;
+        if (dayOfGregorianYear < 80 ? (year--, firstMonthDays = computeIsoInLeapYear(gregory.year - 1) ? 31 : 30, 
+        dayOfGregorianYear += firstMonthDays + 155 + 90 + 10) : (firstMonthDays = computeIsoInLeapYear(gregory.year) ? 31 : 30, 
+        dayOfGregorianYear -= 80), dayOfGregorianYear < firstMonthDays) {
+          return {
+            year: year,
+            month: 1,
+            day: dayOfGregorianYear + 1
+          };
+        }
+        let monthDay = dayOfGregorianYear - firstMonthDays;
+        return monthDay < 155 ? {
+          year: year,
+          month: Math.floor(monthDay / 31) + 2,
+          day: monthDay % 31 + 1
+        } : (monthDay -= 155, {
+          year: year,
+          month: Math.floor(monthDay / 30) + 7,
+          day: monthDay % 30 + 1
+        });
+      },
+      L(year, month, day) {
+        const gregoryYear = year + 78;
+        let firstMonthDays;
+        let julianDay;
+        return computeIsoInLeapYear(gregoryYear) ? (firstMonthDays = 31, julianDay = isoPartsToEpochDays(gregoryYear, 3, 21) + 2440588) : (firstMonthDays = 30, 
+        julianDay = isoPartsToEpochDays(gregoryYear, 3, 22) + 2440588), 1 === month || (julianDay += firstMonthDays + 31 * Math.min(month - 2, 5), 
+        month >= 8 && (julianDay += 30 * (month - 7))), julianDay + day - 1;
+      },
+      o(year, month) {
+        return 1 === month && computeIsoInLeapYear(year + 78) || month >= 2 && month <= 6 ? 31 : 30;
+      },
+      i(year) {
+        return computeIsoInLeapYear(year + 78) ? 366 : 365;
+      },
+      j() {
+        return 12;
+      },
+      q(year) {
+        return this.i(year) > 365;
+      },
+      h({year: year}) {
+        return {
+          era: "shaka",
+          eraYear: year
+        };
+      }
+    });
+  } ], [ "japanese", () => createGregoryAlignedCalendar({
+    k: japaneseEraOrigins,
+    je: 1,
+    h: computeJapaneseEraFields
+  }) ], [ "islamic-civil", () => createIslamicCalendar(bindArgs(julianDayToIslamic, 1948440), bindArgs(islamicToJulianDay, 1948440)) ], [ "islamic-tbla", () => createIslamicCalendar(bindArgs(julianDayToIslamic, 1948439), bindArgs(islamicToJulianDay, 1948439)) ], [ "islamic-umalqura", canonicalId => {
+    const intlUmalquraData = createIntlScrapedCalendarData(canonicalId);
+    return createIslamicCalendar(bindArgs(julianDayToUmalqura, intlUmalquraData), bindArgs(umalquraToJulianDay, intlUmalquraData), intlUmalquraData);
+  } ], [ "persian", () => createArithmeticCalendar({
+    k: persianEraOrigins,
+    J(julianDay) {
+      const daysSinceEpoch = julianDay - 1948320;
+      const year = 1 + Math.floor((33 * daysSinceEpoch + 3) / 12053);
+      const dayOfYear = daysSinceEpoch - (365 * (year - 1) + Math.floor((8 * year + 21) / 33));
+      const month = Math.floor(dayOfYear < 216 ? dayOfYear / 31 : (dayOfYear - 6) / 30);
+      return {
+        year: year,
+        month: month + 1,
+        day: dayOfYear - persianMonthStarts[month] + 1
+      };
+    },
+    L(year, month, day) {
+      return 1948319 + 365 * (year - 1) + Math.floor((8 * year + 21) / 33) + persianMonthStarts[month - 1] + day;
+    },
+    o(year, month) {
+      return month <= 6 ? 31 : month <= 11 || persianIsLeapYear(year) ? 30 : 29;
+    },
+    i(year) {
+      return persianIsLeapYear(year) ? 366 : 365;
+    },
+    j() {
+      return 12;
+    },
+    q: persianIsLeapYear,
+    h({year: year}) {
+      return {
+        era: "ap",
+        eraYear: year
+      };
+    }
+  }) ], [ "roc", () => createGregoryAlignedCalendar({
+    se: -1911,
+    k: rocEraOrigins,
+    h(_isoDate, calendarYear) {
+      return calendarYear < 1 ? {
+        era: "broc",
+        eraYear: 1 - calendarYear
+      } : {
+        era: "roc",
+        eraYear: calendarYear
+      };
+    }
+  }) ] ]);
+  const forbiddenExoticCalendarIdMap = {
+    islamic: 1,
+    "islamic-rgsa": 1
+  };
+  const deprecatedExoticCalendarIdMap = {
+    "ethiopic-amete-alem": "ethioaa",
+    islamicc: "islamic-civil"
+  };
+  const getOrCreateExoticCalendar = memoize((canonicalId, createExoticCalendar) => {
+    const calendar = createExoticCalendar(canonicalId);
+    return calendar.id = canonicalId, calendar;
+  });
   const zonedDateTimeSlotsMap = new WeakMap;
   const ZonedDateTime = defineTemporalClass("ZonedDateTime", class {
     constructor(epochNanoseconds, timeZoneId, calendar = void 0) {
-      initZonedDateTime(this, createZonedEpochNanoSlots(checkEpochNanoInBounds(toBigInt(epochNanoseconds)), queryTimeZone(resolveTimeZoneId(requireString(timeZoneId))), resolveBasicCalendarArg(calendar)));
+      initZonedDateTime(this, createZonedEpochNanoSlots(checkEpochNanoInBounds(toBigInt(epochNanoseconds)), queryTimeZone(resolveTimeZoneId(requireString(timeZoneId))), resolveAnyCalendarArg(calendar)));
     }
     static from(arg, options = void 0) {
       return createZonedDateTime(toZonedDateTimeSlots(arg, options));
@@ -3182,7 +4024,7 @@
     constructor(isoMonth, isoDay, calendar = void 0, referenceIsoYear) {
       const isoMonthInt = toIntegerWithTrunc(isoMonth);
       const isoDayInt = toIntegerWithTrunc(isoDay);
-      const calendarImpl = resolveBasicCalendarArg(calendar);
+      const calendarImpl = resolveAnyCalendarArg(calendar);
       initPlainMonthDay(this, createDateSlots(checkIsoDateInBounds(validateIsoDateFields({
         year: toIntegerWithTrunc(referenceIsoYear ?? 1972),
         month: isoMonthInt,
@@ -3240,7 +4082,7 @@
     constructor(isoYear, isoMonth, calendar = void 0, referenceIsoDay) {
       const isoYearInt = toIntegerWithTrunc(isoYear);
       const isoMonthInt = toIntegerWithTrunc(isoMonth);
-      const calendarImpl = resolveBasicCalendarArg(calendar);
+      const calendarImpl = resolveAnyCalendarArg(calendar);
       initPlainYearMonth(this, createDateSlots(checkIsoYearMonthInBounds(validateIsoDateFields({
         year: isoYearInt,
         month: isoMonthInt,
@@ -3310,14 +4152,14 @@
   const plainTimeSlotsMap = new WeakMap;
   const PlainTime = defineTemporalClass("PlainTime", class {
     constructor(hour = 0, minute = 0, second = 0, millisecond = 0, microsecond = 0, nanosecond = 0) {
-      initPlainTime(this, createTimeSlots(validateTimeFields(mapProps(toIntegerWithTrunc, {
+      initPlainTime(this, validateTimeFields(mapProps(toIntegerWithTrunc, {
         hour: hour,
         minute: minute,
         second: second,
         millisecond: millisecond,
         microsecond: microsecond,
         nanosecond: nanosecond
-      }))));
+      })));
     }
     static from(arg, options = void 0) {
       return createPlainTime(toPlainTimeSlots(arg, options));
@@ -3380,7 +4222,7 @@
         millisecond: millisecond,
         microsecond: microsecond,
         nanosecond: nanosecond
-      }))), resolveBasicCalendarArg(calendar)));
+      }))), resolveAnyCalendarArg(calendar)));
     }
     static from(arg, options = void 0) {
       return createPlainDateTime(toPlainDateTimeSlots(arg, options));
@@ -3484,7 +4326,7 @@
         year: isoYear,
         month: isoMonth,
         day: isoDay
-      }))), resolveBasicCalendarArg(calendar)));
+      }))), resolveAnyCalendarArg(calendar)));
     }
     static from(arg, options = void 0) {
       return createPlainDate(toPlainDateSlots(arg, options));

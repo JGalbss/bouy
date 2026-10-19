@@ -14,7 +14,7 @@
 -module(buoy_ref_tz).
 
 -export([offset/1, local_to_utc/1, name/1, zone/0, parse_posix/1, parse_tzif/1]).
--export([named/1, offset_in/2, system_id/0, civil_from_days/1]).
+-export([named/1, offset_in/2, system_id/0, civil_from_days/1, days_from_civil/3]).
 
 -define(DAY_MS, 86400000).
 
@@ -411,6 +411,7 @@ days_in_month(_, M) when M =:= 4; M =:= 6; M =:= 9; M =:= 11 -> 30;
 days_in_month(_, _) -> 31.
 
 %% Days since 1970-01-01 of a proleptic Gregorian date (Howard Hinnant).
+-spec days_from_civil(integer(), 1..12, 1..31) -> integer().
 days_from_civil(Y0, M, D) ->
     Y = case M =< 2 of
         true -> Y0 - 1;

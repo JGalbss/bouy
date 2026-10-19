@@ -171,8 +171,9 @@ method(<<"Intl.DateTimeFormat.prototype">>, <<"resolvedOptions">>, This, _Args) 
     {Zone, Calendar, _} = slots(This),
     buoy_heap:object(?OBJECT_PROTO, [{<<"locale">>, <<"en-US">>}, {<<"calendar">>, Calendar}, {<<"numberingSystem">>, <<"latn">>}, {<<"timeZone">>, Zone}]);
 method(<<"Intl.DateTimeFormat.prototype">>, <<"formatToParts">>, This, Args) ->
-    {Zone, _, _} = slots(This),
-    buoy_heap:new_array([buoy_heap:object(?OBJECT_PROTO, [{<<"type">>, Type}, {<<"value">>, text(V)}]) || {Type, V} <- parts(Zone, arg(1, Args))]);
+    {Zone, Calendar, _} = slots(This),
+    buoy_heap:new_array([buoy_heap:object(?OBJECT_PROTO, [{<<"type">>, Type}, {<<"value">>, text(V)}])
+                         || {Type, V} <- calendar_parts(Calendar, parts(Zone, arg(1, Args)))]);
 method(<<"Intl.DateTimeFormat.prototype">>, <<"format">>, This, Args) ->
     {Zone, _, Shape} = slots(This),
     [{_, M}, {_, D}, {_, Y}, {_, Era}, {_, H}, {_, Min}, {_, S}] = parts(Zone, arg(1, Args)),
@@ -210,6 +211,29 @@ parts(Zone, Value) ->
     end,
     [{<<"month">>, Month}, {<<"day">>, Day}, {<<"year">>, EraYear}, {<<"era">>, Era},
      {<<"hour">>, Seconds div 3600}, {<<"minute">>, Seconds div 60 rem 60}, {<<"second">>, Seconds rem 60}].
+
+%% The date fields in a calendar other than the Gregorian one, from ICU4X
+%% (buoy_native:intl_calendar_date/2), as ICU's en formats them: the related
+%% ISO year of a Chinese or Korean year as relatedYear, and the month as its
+%% number in the month code, with "bis" after a leap month.
+calendar_parts(Calendar, Parts) when Calendar =:= <<"gregory">>; Calendar =:= <<"iso8601">> ->
+    Parts;
+calendar_parts(Calendar, [{<<"month">>, M}, {<<"day">>, D}, {<<"year">>, EraYear}, {<<"era">>, Era} | Time]) ->
+    Year = case Era of
+        <<"AD">> -> EraYear;
+        <<"BC">> -> 1 - EraYear
+    end,
+    case buoy_native:intl_calendar_date(Calendar, buoy_ref_tz:days_from_civil(Year, M, D)) of
+        nil ->
+            buoy_heap:throw_error('RangeError', buoy_ref_string:concat(<<"Invalid calendar : ">>, Calendar));
+        {CalendarYear, _Ordinal, Number, Leap, Day} ->
+            Month = iolist_to_binary(io_lib:format("M~2..0b~s", [Number, case Leap of true -> "bis"; false -> "" end])),
+            Year1 = case lists:member(Calendar, [<<"chinese">>, <<"dangi">>]) of
+                true -> [{<<"relatedYear">>, CalendarYear}];
+                false -> [{<<"year">>, CalendarYear}]
+            end,
+            [{<<"month">>, Month}, {<<"day">>, Day} | Year1] ++ Time
+    end.
 
 text(V) when is_integer(V) -> integer_to_binary(V);
 text(V) -> V.
