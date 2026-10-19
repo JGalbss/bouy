@@ -129,24 +129,7 @@ state(This) ->
         _ -> buoy_ref:type_error(<<"Illegal invocation">>)
     end.
 
-%% Saves the state. The wrap holds the loop from the end of the parent's
-%% stream until ssl reports it, while JavaScript reads: libuv stops the
-%% parent's read at EOF, as Node's TLSWrap decodes it in the same callback,
-%% but ssl decodes it in the agent, after the loop could have ended.
-save(This, S) ->
-    Held = case buoy_heap:private_find(This, ?STATE) of
-        {ok, Old} -> holds_eof(Old);
-        error -> false
-    end,
-    case {Held, holds_eof(S)} of
-        {false, true} -> buoy_node_loop:ref_handle();
-        {true, false} -> buoy_node_loop:unref_handle();
-        _ -> ok
-    end,
-    buoy_heap:private_put(This, ?STATE, S).
-
-holds_eof(#{phase := open, peer_eof := true, reading := true}) -> true;
-holds_eof(_) -> false.
+save(This, S) -> buoy_heap:private_put(This, ?STATE, S).
 
 put(This, Key, Value) ->
     save(This, (state(This))#{Key => Value}),
