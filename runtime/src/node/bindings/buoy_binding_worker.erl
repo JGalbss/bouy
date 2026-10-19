@@ -108,7 +108,7 @@ new_worker(This, Args) ->
             buoy_node_process:exec_argv();
         List ->
             Own = [buoy_ref_string:to_utf8(buoy_ref:to_string(V)) || V <- buoy_heap:array_items(List)],
-            case invalid_options(Own) of
+            case invalid_options(Own, exec_argv) of
                 [] -> ok;
                 Invalid -> buoy_heap:set(This, <<"invalidExecArgv">>, buoy_heap:new_array([buoy_ref_string:from_utf8(I) || I <- Invalid]))
             end,
@@ -119,7 +119,7 @@ new_worker(This, Args) ->
         {entries, Pairs} ->
             case lists:keyfind("NODE_OPTIONS", 1, Pairs) of
                 {_, Options} ->
-                    case invalid_options([list_to_binary(O) || O <- string:lexemes(Options, " ")]) of
+                    case invalid_options([list_to_binary(O) || O <- string:lexemes(Options, " ")], node_options) of
                         [] -> ok;
                         Bad -> buoy_heap:set(This, <<"invalidNodeOptions">>, buoy_heap:new_array([buoy_ref_string:from_utf8(I) || I <- Bad]))
                     end;
@@ -166,13 +166,16 @@ split(Entry) ->
 
 %% The node options that a worker cannot take: unknown ones, ones that need a
 %% value and have none, and the options of the whole process.
-invalid_options(Args) ->
+%% The options of Args that a worker rejects. Worker::New parses NODE_OPTIONS
+%% with the options of an isolate and reports only its errors, so a V8 or a
+%% per-process option there is left out, as `--title` is; execArgv rejects them.
+invalid_options(Args, Scope) ->
     Known = known_options(),
-    invalid(Args, Known, []).
+    invalid(Args, Known#{scope => Scope}, []).
 
 invalid([], _Known, Acc) ->
     lists:reverse(Acc);
-invalid([<<"--", _/binary>> = Arg | Rest], Known, Acc) ->
+invalid([<<"--", _/binary>> = Arg | Rest], #{scope := Scope} = Known, Acc) ->
     {Name, Value} = case binary:split(Arg, <<"=">>) of
         [N, V] -> {N, V};
         [N] -> {N, none}
@@ -185,7 +188,7 @@ invalid([<<"--", _/binary>> = Arg | Rest], Known, Acc) ->
         {Found, Other} ->
             {ok, Type} = case Found of error -> Other; _ -> Found end,
             %% V8's flags are the process's: a worker cannot take them (Worker::New).
-            case Type =:= 1 orelse lists:member(Dashed, per_process_options()) of
+            case Scope =:= exec_argv andalso (Type =:= 1 orelse lists:member(Dashed, per_process_options())) of
                 true -> invalid(Rest, Known, [Arg | Acc]);
                 false when Value =:= none, Type >= 3, Type =/= 2 ->
                     case Rest of
