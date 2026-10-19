@@ -127,10 +127,11 @@ impl<'a> Lowerer<'a, '_> {
             self.chain_guard(object.clone());
         }
         if let MemberKey::Private(_) = key {
-            if call.optional {
-                self.chain_guard(object.clone());
-            }
+            // `o.#m?.()`: the chain ends when the method is null or undefined.
             let method = self.get(object.clone(), key);
+            if call.optional {
+                self.chain_guard(method.clone());
+            }
             let args = self.args(&call.arguments);
             return self.bind(Expr::call("buoy_ref", "call", vec![method, object, args]));
         }

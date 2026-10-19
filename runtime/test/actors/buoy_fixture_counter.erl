@@ -20,6 +20,7 @@
 %%     succeed(value) { return Effect.succeed(value); }
 %%     missing() { this.#count += 100; return Effect.fail(new NotFound()); }
 %%     die() { return Effect.die(new Error("defect")); }
+%%     tick(target, every) { return schedule(target, { every }, "inc"); }
 %%   }
 %%
 %% `ref.m(args)` compiles to buoy_rt:call_method/3, which calls buoy_actor:call/3
@@ -40,7 +41,8 @@
     'Counter#parallelSelf'/2,
     'Counter#succeed'/2,
     'Counter#missing'/2,
-    'Counter#die'/2
+    'Counter#die'/2,
+    'Counter#tick'/2
 ]).
 
 -spec 'Counter#new'(list()) -> map().
@@ -69,6 +71,7 @@
 'Counter#dispatch'(<<"succeed">>, This, Args) -> 'Counter#succeed'(This, Args);
 'Counter#dispatch'(<<"missing">>, This, Args) -> 'Counter#missing'(This, Args);
 'Counter#dispatch'(<<"die">>, This, Args) -> 'Counter#die'(This, Args);
+'Counter#dispatch'(<<"tick">>, This, Args) -> 'Counter#tick'(This, Args);
 'Counter#dispatch'(Method, _This, _Args) ->
     buoy_error:throw(<<"TypeError">>, <<"Counter.", Method/binary, " is not a function">>).
 
@@ -129,6 +132,11 @@
 'Counter#die'(This, _Args) ->
     Defect = buoy_error:new(<<"Error">>, <<"defect">>),
     {{'$effect', fun() -> erlang:error({'$throw', Defect}) end}, This}.
+
+-spec 'Counter#tick'(map(), list()) -> {term(), map()}.
+'Counter#tick'(This, Args) ->
+    Every = #{<<"every">> => buoy_rt:arg(2, Args)},
+    {buoy:schedule([buoy_rt:arg(1, Args), Every, <<"inc">>]), This}.
 
 %% `try { return f(); } catch (e) { return e._tag; }`
 tag_of(Fun) ->

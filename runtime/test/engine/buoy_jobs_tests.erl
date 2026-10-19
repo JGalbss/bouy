@@ -104,8 +104,14 @@ thenable_adoption_test() ->
 %% setTimeout(() => { log("b"); Promise.resolve().then(() => log("b-micro")); }, 0);
 %% setTimeout(() => log("c"), 0); clearTimeout(setTimeout(() => log("never"), 5));
 %% let n = 0; const iv = setInterval(() => { log("tick" + ++n); if (n === 3) clearInterval(iv); }, 1);
+%% const end = Date.now() + 15; while (Date.now() < end);
+%% The script holds the loop past the 10 ms timer, so every timer is due at
+%% the first timers phase, whatever the load. Node starts the next period of
+%% an interval when its callback runs (lib/internal/timers.js: start =
+%% getLibuvNow()), so "a" runs before the second tick. Without the hold, the
+%% order would depend on how soon the loop reaches its first timers phase.
 timers_test() ->
-    ?assertEqual([b, b_micro, c, {tick, 1}, {tick, 2}, {tick, 3}, a],
+    ?assertEqual([b, b_micro, c, {tick, 1}, a, {tick, 2}, {tick, 3}],
                  run(fun() ->
                              timeout(fun() -> log(a) end, 10),
                              timeout(fun() -> log(b), then(resolved(), fun(_) -> log(b_micro) end) end, 0),
@@ -119,7 +125,8 @@ timers_test() ->
                                                                        log({tick, N}),
                                                                        N =:= 3 andalso buoy_jobs:clear_timer(buoy_heap:cell_get(Self))
                                                                end), 1, [], true),
-                             buoy_heap:cell_set(Self, Interval)
+                             buoy_heap:cell_set(Self, Interval),
+                             timer:sleep(15)
                      end)).
 
 %% async function a() { log("a1"); await null; log("a2"); await b(); log("a3"); return "ra"; }
