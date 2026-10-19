@@ -110,8 +110,8 @@ dsa(L, N0) ->
     Q = buoy_crypto_random:generate_prime(N, false, undefined, undefined),
     P = dsa_prime(L, Q),
     G = dsa_generator(P, Q, 2),
-    X = 1 + rand_below(Q - 1),
-    #{kind => dsa, p => P, q => Q, g => G, x => X, y => pow(G, X, P)}.
+    X = 1 + buoy_crypto:rand_below(Q - 1),
+    #{kind => dsa, p => P, q => Q, g => G, x => X, y => buoy_crypto:mod_pow(G, X, P)}.
 
 dsa_prime(L, Q) ->
     X = rand_bits(L) bor (1 bsl (L - 1)),
@@ -122,7 +122,7 @@ dsa_prime(L, Q) ->
     end.
 
 dsa_generator(P, Q, H) ->
-    case pow(H, (P - 1) div Q, P) of
+    case buoy_crypto:mod_pow(H, (P - 1) div Q, P) of
         1 -> dsa_generator(P, Q, H + 1);
         G -> G
     end.
@@ -234,10 +234,6 @@ uncompressed(#{curve := Curve}, Pub) ->
 
 %%% Numbers
 
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
-
 rand_bits(Bits) ->
     binary:decode_unsigned(crypto:strong_rand_bytes((Bits + 7) div 8)) band ((1 bsl Bits) - 1).
 
-rand_below(N) ->
-    binary:decode_unsigned(crypto:strong_rand_bytes((buoy_crypto:bit_length(N) + 7) div 8 + 8)) rem N.

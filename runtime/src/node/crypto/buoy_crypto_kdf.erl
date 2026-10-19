@@ -7,7 +7,7 @@
 -export([members/0, pbkdf2/5, pkcs12/6, hkdf/5]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
--dialyzer({no_return, [invalid_digest/1, invalid_scrypt_params/1]}).
+-dialyzer({no_return, [invalid_scrypt_params/1]}).
 
 -spec members() -> [{binary(), term()}].
 members() ->
@@ -18,13 +18,8 @@ members() ->
 digest_of(Name) ->
     case buoy_crypto_hash:digest(Name) of
         {ok, Md} -> Md;
-        error -> invalid_digest(Name)
+        error -> buoy_crypto_hash:invalid_digest(Name)
     end.
-
--spec invalid_digest(term()) -> no_return().
-invalid_digest(Name) ->
-    buoy_node:throw_code('TypeError', <<"ERR_CRYPTO_INVALID_DIGEST">>,
-                         <<"Invalid digest: ", (buoy_crypto:string(Name))/binary>>).
 
 %%% PBKDF2
 

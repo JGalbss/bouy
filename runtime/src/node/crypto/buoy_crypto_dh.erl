@@ -94,7 +94,7 @@ check(#{p := P, g := G}) ->
 dh_generate_keys(This, _) ->
     #{p := P, g := G} = S = dh(This),
     S1 = case S of
-        #{x := X} -> S#{y => pow(G, X, P)};
+        #{x := X} -> S#{y => buoy_crypto:mod_pow(G, X, P)};
         _ ->
             {Pub, Priv} = crypto:generate_key(dh, [P, G]),
             S#{y => binary:decode_unsigned(Pub), x => binary:decode_unsigned(Priv)}
@@ -123,7 +123,7 @@ dh_compute_secret(This, Args) ->
         #{x := V} -> V;
         _ -> buoy_crypto:fail_code(<<"ERR_CRYPTO_INVALID_KEYTYPE">>, <<"Unspecified validation error">>)
     end,
-    buoy_crypto:buffer(padded(pow(Y, X, P), P)).
+    buoy_crypto:buffer(padded(buoy_crypto:mod_pow(Y, X, P), P)).
 
 padded(Secret, P) ->
     Size = (buoy_crypto:bit_length(P) + 7) div 8,
@@ -157,7 +157,7 @@ ecdh_bits_job([PublicHandle, PrivateHandle | _]) ->
 -spec derive(map(), map()) -> binary().
 derive(#{kind := dh, p := P, g := G, x := X}, #{kind := dh, p := P, g := G, y := Y}) ->
     (Y > 1 andalso Y < P - 1) orelse buoy_crypto:fail({openssl, invalid_public_key}),
-    padded(pow(Y, X, P), P);
+    padded(buoy_crypto:mod_pow(Y, X, P), P);
 derive(#{kind := ec, curve := Curve, priv := D}, #{kind := ec, curve := Curve, pub := Pub}) ->
     Size = (buoy_crypto_pkey:curve_bits(Curve) + 7) div 8,
     crypto:compute_key(ecdh, Pub, <<D:(Size * 8)>>, Curve);
@@ -293,8 +293,6 @@ curve_names() ->
      <<"wap-wsg-idm-ecid-wtls8">>, <<"wap-wsg-idm-ecid-wtls9">>].
 
 %%% Numbers
-
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
 
 %% The primes of the groups of RFC 2409 and RFC 3526 (generator 2), as
 %% getDiffieHellman(name) gives them.

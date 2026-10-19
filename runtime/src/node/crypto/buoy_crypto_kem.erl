@@ -47,8 +47,8 @@ encapsulate(#{kind := Kind, pub := Pub}) when Kind =:= ml_kem_512; Kind =:= ml_k
     crypto:encapsulate_key(buoy_crypto_pqc:otp_type(Kind), Pub);
 encapsulate(#{kind := rsa, n := N, e := E}) ->
     Size = byte_size(binary:encode_unsigned(N)),
-    Z = 2 + rand_below(N - 3),
-    {<<Z:(Size * 8)>>, <<(pow(Z, E, N)):(Size * 8)>>};
+    Z = 2 + buoy_crypto:rand_below(N - 3),
+    {<<Z:(Size * 8)>>, <<(buoy_crypto:mod_pow(Z, E, N)):(Size * 8)>>};
 encapsulate(K) ->
     {Suite, _, _} = suite(K, <<"encapsulation">>),
     #{pub := PubR} = K,
@@ -66,7 +66,7 @@ decapsulate(#{kind := rsa, n := N, d := D}, Ciphertext) ->
     byte_size(Ciphertext) =:= Size orelse failed(<<"decapsulation">>),
     C = binary:decode_unsigned(Ciphertext),
     (C > 1 andalso C < N - 1) orelse failed(<<"decapsulation">>),
-    <<(pow(C, D, N)):(Size * 8)>>;
+    <<(buoy_crypto:mod_pow(C, D, N)):(Size * 8)>>;
 decapsulate(K, Enc) ->
     {Suite, _, _} = suite(K, <<"decapsulation">>),
     Dh = try buoy_crypto_dh:derive(K, peer(K, Enc))
@@ -117,7 +117,3 @@ expand(Md, Prk, Info, Length, I, Prev, Acc) ->
     T = crypto:mac(hmac, Md, Prk, <<Prev/binary, Info/binary, I>>),
     expand(Md, Prk, Info, Length, I + 1, T, <<Acc/binary, T/binary>>).
 
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
-
-rand_below(N) ->
-    binary:decode_unsigned(crypto:strong_rand_bytes(byte_size(binary:encode_unsigned(N)) + 8)) rem N.

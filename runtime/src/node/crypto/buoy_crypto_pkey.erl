@@ -241,11 +241,11 @@ private_from(?RSA, _, Inner) -> rsa_private_decode(Inner);
 private_from(?RSA_PSS, Params, Inner) -> (rsa_private_decode(Inner))#{kind := rsa_pss, pss => pss_decode(Params)};
 private_from(?DSA, {seq, [{int, P}, {int, Q}, {int, G}]}, Inner) ->
     {int, X} = decode(Inner),
-    #{kind => dsa, p => P, q => Q, g => G, x => X, y => crypto_pow(G, X, P)};
+    #{kind => dsa, p => P, q => Q, g => G, x => X, y => buoy_crypto:mod_pow(G, X, P)};
 private_from(Oid, Params, Inner) when Oid =:= ?DH; Oid =:= ?DH_X942 ->
     {int, X} = decode(Inner),
     #{p := P, g := G} = K = dh_params(Oid, Params),
-    K#{x => X, y => crypto_pow(G, X, P)};
+    K#{x => X, y => buoy_crypto:mod_pow(G, X, P)};
 private_from(?EC, Params, Inner) -> sec1_decode(Inner, Params);
 private_from(Oid, none, Inner) ->
     {_, Kind} = lists:keyfind(Oid, 1, oid_kinds()),
@@ -256,8 +256,6 @@ raw_private(Kind, Inner) when Kind =:= ed25519; Kind =:= ed448; Kind =:= x25519;
     #{kind => Kind, priv => Priv, pub => derive_okp_public(Kind, Priv)};
 raw_private(Kind, Inner) ->
     buoy_crypto_pqc:private_decode(Kind, Inner).
-
-crypto_pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
 
 %% RSASSA-PSS-params, or none for a key of any parameters.
 pss_decode(none) -> undefined;
@@ -693,7 +691,7 @@ decompress(Curve, X, Odd) ->
             P = binary:decode_unsigned(PB),
             A = binary:decode_unsigned(AB),
             B = binary:decode_unsigned(BB),
-            Rhs = (pow(X, 3, P) + A * X + B) rem P,
+            Rhs = (buoy_crypto:mod_pow(X, 3, P) + A * X + B) rem P,
             case sqrt_mod(Rhs, P) of
                 {ok, Y0} when Y0 band 1 =:= Odd -> {ok, {X, Y0}};
                 {ok, Y0} -> {ok, {X, (P - Y0) rem P}};
@@ -702,21 +700,19 @@ decompress(Curve, X, Odd) ->
         _ -> error
     end.
 
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
-
 %% A square root of A modulo the prime P (Tonelli-Shanks), or error.
 sqrt_mod(0, _) -> {ok, 0};
 sqrt_mod(A, P) ->
-    case pow(A, (P - 1) div 2, P) of
-        1 when P rem 4 =:= 3 -> {ok, pow(A, (P + 1) div 4, P)};
+    case buoy_crypto:mod_pow(A, (P - 1) div 2, P) of
+        1 when P rem 4 =:= 3 -> {ok, buoy_crypto:mod_pow(A, (P + 1) div 4, P)};
         1 -> {ok, tonelli(A, P)};
         _ -> error
     end.
 
 tonelli(A, P) ->
     {Q, S} = odd(P - 1, 0),
-    Z = hd([Z || Z <- lists:seq(2, 1000), pow(Z, (P - 1) div 2, P) =:= P - 1]),
-    tonelli_loop(S, pow(Z, Q, P), pow(A, Q, P), pow(A, (Q + 1) div 2, P), P).
+    Z = hd([Z || Z <- lists:seq(2, 1000), buoy_crypto:mod_pow(Z, (P - 1) div 2, P) =:= P - 1]),
+    tonelli_loop(S, buoy_crypto:mod_pow(Z, Q, P), buoy_crypto:mod_pow(A, Q, P), buoy_crypto:mod_pow(A, (Q + 1) div 2, P), P).
 
 odd(Q, S) when Q band 1 =:= 0 -> odd(Q bsr 1, S + 1);
 odd(Q, S) -> {Q, S}.
@@ -724,11 +720,11 @@ odd(Q, S) -> {Q, S}.
 tonelli_loop(_, _, 1, R, _) -> R;
 tonelli_loop(M, C, T, R, P) ->
     I = least_i(T, 1, P),
-    B = pow(C, 1 bsl (M - I - 1), P),
+    B = buoy_crypto:mod_pow(C, 1 bsl (M - I - 1), P),
     tonelli_loop(I, B * B rem P, T * B * B rem P, R * B rem P, P).
 
 least_i(T, I, P) ->
-    case pow(T, 1 bsl I, P) of
+    case buoy_crypto:mod_pow(T, 1 bsl I, P) of
         1 -> I;
         _ -> least_i(T, I + 1, P)
     end.

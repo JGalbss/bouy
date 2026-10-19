@@ -102,7 +102,7 @@ sieved([{P, R} | Rest], Offset, Safe) ->
 %% exponentiation, and the full Miller-Rabin rounds confirm the rest.
 probable(N, Safe) ->
     Q = N bsr 1,
-    pow(2, N - 1, N) =:= 1 andalso (not Safe orelse pow(2, Q - 1, Q) =:= 1) andalso
+    buoy_crypto:mod_pow(2, N - 1, N) =:= 1 andalso (not Safe orelse buoy_crypto:mod_pow(2, Q - 1, Q) =:= 1) andalso
         is_prime(N, 0) andalso (not Safe orelse is_prime(Q, 0)).
 
 candidate(Bits, Safe, undefined, _) when Bits >= 2 ->
@@ -151,7 +151,7 @@ is_prime(N, Checks) ->
                 _ -> Checks
             end,
             {D, S} = odd_part(N - 1, 0),
-            lists:all(fun(_) -> witness(N, D, S, 2 + rand_below(N - 3)) end, lists:seq(1, Rounds))
+            lists:all(fun(_) -> witness(N, D, S, 2 + buoy_crypto:rand_below(N - 3)) end, lists:seq(1, Rounds))
     end.
 
 small_factor(N) ->
@@ -199,21 +199,16 @@ sieve([P | Rest]) -> [P | sieve([X || X <- Rest, X rem P =/= 0])].
 odd_part(D, S) when D band 1 =:= 0 -> odd_part(D bsr 1, S + 1);
 odd_part(D, S) -> {D, S}.
 
-%% A random integer in [0, N).
-rand_below(N) when N =< 1 -> 0;
-rand_below(N) -> binary:decode_unsigned(crypto:strong_rand_bytes((buoy_crypto:bit_length(N) + 7) div 8 + 8)) rem N.
-
 %% Whether N is a probable prime to the base A.
 witness(N, D, S, A) ->
-    X = pow(A, D, N),
+    X = buoy_crypto:mod_pow(A, D, N),
     X =:= 1 orelse X =:= N - 1 orelse squares(X, S - 1, N).
 
 squares(_, 0, _) -> false;
 squares(X, R, N) ->
-    case pow(X, 2, N) of
+    case buoy_crypto:mod_pow(X, 2, N) of
         Y when Y =:= N - 1 -> true;
         1 -> false;
         Y -> squares(Y, R - 1, N)
     end.
 
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).

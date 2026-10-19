@@ -208,7 +208,7 @@ centered(R, _) -> R.
 dsa_zetas() ->
     case persistent_term:get({?MODULE, dsa_zetas}, undefined) of
         undefined ->
-            Z = list_to_tuple([pow(1753, bitrev(K, 8), ?DQ) || K <- lists:seq(0, 255)]),
+            Z = list_to_tuple([buoy_crypto:mod_pow(1753, bitrev(K, 8), ?DQ) || K <- lists:seq(0, 255)]),
             persistent_term:put({?MODULE, dsa_zetas}, Z),
             Z;
         Z -> Z
@@ -430,7 +430,7 @@ cbd_coeffs(Bits, Eta, Acc) ->
 kem_zetas() ->
     case persistent_term:get({?MODULE, kem_zetas}, undefined) of
         undefined ->
-            Z = list_to_tuple([pow(17, bitrev(K, 7), ?KQ) || K <- lists:seq(0, 127)]),
+            Z = list_to_tuple([buoy_crypto:mod_pow(17, bitrev(K, 7), ?KQ) || K <- lists:seq(0, 127)]),
             persistent_term:put({?MODULE, kem_zetas}, Z),
             Z;
         Z -> Z
@@ -444,7 +444,7 @@ multiply_ntts(F, G) ->
 
 multiply_ntts([], [], _, Acc) -> lists:reverse(Acc);
 multiply_ntts([A0, A1 | F], [B0, B1 | G], I, Acc) ->
-    Gamma = pow(17, 2 * bitrev(I, 7) + 1, ?KQ),
+    Gamma = buoy_crypto:mod_pow(17, 2 * bitrev(I, 7) + 1, ?KQ),
     C0 = (A0 * B0 + A1 * B1 * Gamma) rem ?KQ,
     C1 = (A0 * B1 + A1 * B0) rem ?KQ,
     multiply_ntts(F, G, I + 1, [C1, C0 | Acc]).
@@ -496,6 +496,4 @@ unpack(Bytes, Bits) ->
 
 bitrev(K, Bits) ->
     lists:foldl(fun(I, Acc) -> (Acc bsl 1) bor ((K bsr I) band 1) end, 0, lists:seq(0, Bits - 1)).
-
-pow(B, E, M) -> binary:decode_unsigned(crypto:mod_pow(B, E, M)).
 

@@ -4,7 +4,7 @@
 %% jobs of subtle.digest and of HMAC keys.
 -module(buoy_crypto_hash).
 
--export([members/0, digest/1, digest_names/0, hash/2, hmac/3, init/1, update/2, final/3]).
+-export([members/0, digest/1, digest_names/0, hash/2, hmac/3, init/1, update/2, final/3, invalid_digest/1]).
 
 %% A function that only throws is a named fun, for dialyzer (node-builtins.md).
 -dialyzer({no_return, [invalid_digest/1]}).
