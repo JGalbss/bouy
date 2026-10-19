@@ -700,6 +700,7 @@ on(This, {stream_close, Id, Code}) ->
                 #{destroyed := true} -> ok;
                 _ ->
                     update_stream(Stream, fun(St) -> St#{closed => true, code => Code} end),
+                    debug({stream, Stream}, "closed with code ~b", [Code]),
                     Answer = call_stream_callback(Stream, stream_close, [Code]),
                     case Answer of
                         false -> destroy_stream(Stream);
@@ -809,6 +810,7 @@ translate_error(L) when L =:= -505; L =:= -531; L =:= -532 -> 1;
 translate_error(_) -> 2.
 
 frame_received(This, 0, #{stream_id := Id, flags := Flags, length := Len}) ->
+    debug({session, This}, "handling data frame for stream ~b", [Id]),
     case find_stream(This, Id) of
         Stream when Stream =/= undefined, Flags band 1 =/= 0 ->
             case stream(Stream) of
@@ -1162,7 +1164,9 @@ destroy_stream(This) ->
             buoy_node_loop:set_immediate(fun() ->
                 Queue = maps:get(queue, stream(This)),
                 update_stream(This, fun(S) -> S#{queue => [], available => 0} end),
-                [buoy_stream_base:done(Req, ?UV_ECANCELED, This) || {_, Req} <- Queue, Req =/= undefined]
+                [buoy_stream_base:done(Req, ?UV_ECANCELED, This) || {_, Req} <- Queue, Req =/= undefined],
+                %% ~Http2Stream, when Detach drops the last reference.
+                debug({stream, This}, "tearing down stream", [])
             end),
             emit_stream_statistics(Session, Id, stream(This));
         _ ->
@@ -1200,6 +1204,7 @@ stream_read_start(This) ->
     case stream(This) of
         #{destroyed := false, session := Session, id := Id, paused_consumed := N} ->
             update_stream(This, fun(S) -> S#{reading => true, paused_consumed => 0} end),
+            debug({stream, This}, "reading starting", []),
             scoped(Session, fun() -> put_h2(Session, buoy_h2:consume_stream(h2(Session), Id, N)) end),
             0;
         _ ->
@@ -1207,6 +1212,29 @@ stream_read_start(This) ->
     end.
 
 %%% Helpers
+
+%% Debug of src/debug_utils-inl.h: a line on stderr after the wrap's
+%% diagnostic_name while NODE_DEBUG_NATIVE names a part of its provider,
+%% as "http2" names HTTP2SESSION and HTTP2STREAM.
+debug(Wrap, Format, Args) ->
+    Wanted = case erlang:get({?MODULE, debug_native}) of
+        undefined ->
+            W = [C || C <- [string:lowercase(string:trim(C0)) || C0 <- string:split(os:getenv("NODE_DEBUG_NATIVE", ""), ",", all)], C =/= ""],
+            erlang:put({?MODULE, debug_native}, W),
+            W;
+        W ->
+            W
+    end,
+    Category = case Wrap of {session, _} -> "http2session"; {stream, _} -> "http2stream" end,
+    lists:any(fun(C) -> string:find(Category, C) =/= nomatch end, Wanted) andalso
+        io:put_chars(standard_error, [diagnostic_name(Wrap), " ", io_lib:format(Format, Args), "\n"]).
+
+diagnostic_name({session, This}) ->
+    #{type := Type, async_id := AsyncId} = session(This),
+    io_lib:format("Http2Session ~s (~b)", [Type, trunc(AsyncId)]);
+diagnostic_name({stream, This}) ->
+    #{id := Id, async_id := AsyncId, session := Session} = stream(This),
+    io_lib:format("HttpStream ~b (~b) [~s]", [Id, trunc(AsyncId), diagnostic_name({session, Session})]).
 
 %% Methods of a FunctionTemplate with a signature.
 methods(Proto, Slot, Methods) ->
