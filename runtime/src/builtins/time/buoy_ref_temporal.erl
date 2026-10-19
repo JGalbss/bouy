@@ -272,7 +272,7 @@ calendar_parts(Calendar, [{<<"month">>, M}, {<<"day">>, D}, {<<"year">>, EraYear
     case buoy_native:intl_calendar_date(Calendar, buoy_ref_tz:days_from_civil(Year, M, D)) of
         nil ->
             buoy_heap:throw_error('RangeError', buoy_ref_string:concat(<<"Invalid calendar : ">>, Calendar));
-        {CalendarYear, _Ordinal, Number, Leap, Day} ->
+        {CalendarYear, _Cyclic, _Ordinal, Number, Leap, Day} ->
             Month = iolist_to_binary(io_lib:format("M~2..0b~s", [Number, case Leap of true -> "bis"; false -> "" end])),
             Year1 = case lists:member(Calendar, [<<"chinese">>, <<"dangi">>]) of
                 true -> [{<<"relatedYear">>, CalendarYear}];

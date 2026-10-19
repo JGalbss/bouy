@@ -305,13 +305,14 @@ fn intl_change_case<'a>(env: Env<'a>, tag: &str, text: Binary, upper: bool) -> B
     binary.release(env)
 }
 
-/// The date in a calendar of a day after 1970-01-01: `{Year, OrdinalMonth, MonthNumber,
-/// Leap, Day}`, or `nil`.
+/// The date in a calendar of a day after 1970-01-01: `{Year, Cyclic, OrdinalMonth,
+/// MonthNumber, Leap, Day}`, or `nil`.
 #[rustler::nif]
-fn intl_calendar_date(calendar: &str, epoch_days: i64) -> Option<(i32, u8, u8, bool, u8)> {
+fn intl_calendar_date(calendar: &str, epoch_days: i64) -> Option<(i32, u8, u8, u8, bool, u8)> {
     intl::calendar::date(calendar, epoch_days).map(|date| {
         (
             date.year,
+            date.cyclic,
             date.ordinal_month,
             date.month_number,
             date.leap,

@@ -170,6 +170,7 @@ create(NewTarget, Locales, Options0, Required, Defaults) ->
                                             [<<"ca">>, <<"hc">>, <<"nu">>], fun locale_data/2),
     DataLocale = buoy_ref_intl:base_name(maps:get(data_locale, Resolved)),
     Cal = maps:get(<<"ca">>, Resolved),
+    NuResolved = maps:get(<<"nu">>, Resolved),
     HcData = hour_cycles(DataLocale),
     HourCycleResolved = case {Hour12, maps:get(<<"hc">>, Resolved)} of
         {true, _} -> maps:get(h12, HcData);
@@ -183,14 +184,14 @@ create(NewTarget, Locales, Options0, Required, Defaults) ->
     DateStyle = get_option(Options, <<"dateStyle">>, string, [<<"full">>, <<"long">>, <<"medium">>, <<"short">>], undefined),
     TimeStyle = get_option(Options, <<"timeStyle">>, string, [<<"full">>, <<"long">>, <<"medium">>, <<"short">>], undefined),
     DefaultHour = default_hour(maps:get(locale, Resolved), DataLocale),
-    {Pattern, DtfHourCycle} =
+    {{Pattern, Override}, DtfHourCycle} =
         case DateStyle =/= undefined orelse TimeStyle =/= undefined of
             true ->
                 Components =:= [] orelse buoy_ref:type_error(<<"Invalid option : option">>),
                 Required =:= date andalso TimeStyle =/= undefined andalso buoy_ref:type_error(<<"Invalid option : timeStyle">>),
                 Required =:= time andalso DateStyle =/= undefined andalso buoy_ref:type_error(<<"Invalid option : dateStyle">>),
                 StyleHc = case TimeStyle of undefined -> undefined; _ -> HourCycleResolved end,
-                {style_pattern(DataLocale, Cal, DateStyle, TimeStyle, StyleHc, DefaultHour), StyleHc};
+                {style_pattern(DataLocale, Cal, NuResolved, DateStyle, TimeStyle, StyleHc, DefaultHour), StyleHc};
             false ->
                 Present = [P || {P, _} <- Components],
                 Keys = case Required of
@@ -207,13 +208,29 @@ create(NewTarget, Locales, Options0, Required, Defaults) ->
                            false -> ""
                        end,
                 Hc1 = case lists:member(<<"hour">>, Present) of true -> HourCycleResolved; false -> undefined end,
-                Best = buoy_ref_intl_date_skeleton:best_pattern(DataLocale, Cal, Skeleton, DefaultHour),
-                {replace_hour_cycle(Best, Hc1), Hc1}
+                Best = buoy_ref_intl_date_skeleton:best_pattern(DataLocale, Cal, NuResolved, Skeleton, DefaultHour),
+                {{replace_hour_cycle(Best, Hc1), undefined}, Hc1}
         end,
     buoy_heap:new_exotic(intl_date_time_format, Proto,
                          #{locale => maps:get(locale, Resolved), data_locale => DataLocale, calendar => Cal,
-                           nu => maps:get(<<"nu">>, Resolved), time_zone => TimeZone, zone => Zone, hour_cycle => DtfHourCycle,
-                           date_style => DateStyle, time_style => TimeStyle, pattern => Pattern, bound => undefined}).
+                           nu => NuResolved, time_zone => TimeZone, zone => Zone, hour_cycle => DtfHourCycle,
+                           date_style => DateStyle, time_style => TimeStyle, pattern => Pattern,
+                           overrides => overrides(Override, DataLocale, Cal, Pattern), bound => undefined}).
+
+%% The numbering systems that write the numbers of fields, by pattern letter
+%% or all: the override of a style pattern, as "hebr" or "d=hanidays", else
+%% y=jpanyear for a Japanese pattern with 年 in Japanese, as ICU's
+%% SimpleDateFormat sets them.
+overrides(undefined, Locale, Cal, Pattern) ->
+    case Cal =:= <<"japanese">> andalso buoy_ref_intl:language(Locale) =:= <<"ja">> andalso lists:member(16#5E74, Pattern) of
+        true -> #{$y => <<"jpanyear">>};
+        false -> #{}
+    end;
+overrides(Override, _Locale, _Cal, _Pattern) ->
+    maps:from_list([case binary:split(Item, <<"=">>) of
+                        [<<Letter>>, Nu] -> {Letter, Nu};
+                        [Nu] -> {all, Nu}
+                    end || Item <- binary:split(Override, <<";">>, [global])]).
 
 %% A calendar or numbering system option, which must match the type
 %% nonterminal of UTS #35.
@@ -356,28 +373,31 @@ component(Options, Property, Values, Hc) ->
 %% DateTimeStylePattern as V8 builds it: the style patterns of the locale,
 %% the date and time joined by the glue of the date style, and a pattern of
 %% the generator when the time style's hour cycle is not the one asked for.
-style_pattern(Locale, Cal, DateStyle, TimeStyle, Hc, DefaultHour) ->
-    Patterns = buoy_intl_cldr:get(Locale, [<<"calendar">>, buoy_ref_intl_date_skeleton:icu_calendar(Cal), <<"DateTimePatterns">>], []),
+style_pattern(Locale, Cal, Nu, DateStyle, TimeStyle, Hc, DefaultHour) ->
+    Patterns = buoy_ref_intl_date_skeleton:calendar_resource(Locale, Cal, [<<"DateTimePatterns">>], []),
+    %% An entry is a pattern, or [Pattern, Override] with the numbering override.
     Get = fun(Offset, Style) ->
                   Index = Offset + case Style of <<"full">> -> 1; <<"long">> -> 2; <<"medium">> -> 3; <<"short">> -> 4 end,
                   case lists:nth(Index, Patterns) of
-                      [P | _] -> unicode:characters_to_list(P);
-                      P -> unicode:characters_to_list(P)
+                      [P, Override | _] -> {unicode:characters_to_list(P), Override};
+                      P -> {unicode:characters_to_list(P), undefined}
                   end
           end,
-    Pattern = case {DateStyle, TimeStyle} of
+    {Pattern, Override} = case {DateStyle, TimeStyle} of
         {_, undefined} -> Get(4, DateStyle);
         {undefined, _} -> Get(0, TimeStyle);
         _ ->
             Glue = buoy_ref_intl_date_skeleton:date_time_glue(Locale, Cal, binary_to_atom(DateStyle)),
-            lists:flatten(string:replace(string:replace(Glue, "{1}", Get(4, DateStyle)), "{0}", Get(0, TimeStyle)))
+            {Date, DateOverride} = Get(4, DateStyle),
+            {Time, _} = Get(0, TimeStyle),
+            {lists:flatten(string:replace(string:replace(Glue, "{1}", Date), "{0}", Time)), DateOverride}
     end,
     case TimeStyle =:= undefined orelse Hc =:= pattern_hour_cycle(Pattern) of
-        true -> Pattern;
+        true -> {Pattern, Override};
         false ->
             Skeleton = [case C of _ when C =:= $h; C =:= $H; C =:= $K; C =:= $k -> hour_char(Hc); _ -> C end
                         || C <- buoy_ref_intl_date_skeleton:skeleton_of(Pattern), C =/= $a, C =/= $b, C =/= $B],
-            replace_hour_cycle(buoy_ref_intl_date_skeleton:best_pattern(Locale, Cal, Skeleton, DefaultHour), Hc)
+            {replace_hour_cycle(buoy_ref_intl_date_skeleton:best_pattern(Locale, Cal, Nu, Skeleton, DefaultHour), Hc), undefined}
     end.
 
 %% HourCycleFromPattern.
@@ -469,7 +489,7 @@ time_clip(_) -> range_error(<<"Invalid time value">>).
 
 context(S) ->
     #{locale => maps:get(data_locale, S), cal => maps:get(calendar, S), zone => maps:get(zone, S),
-      digits => buoy_intl_cldr:numbering_digits(maps:get(nu, S))}.
+      digits => buoy_intl_cldr:numbering_digits(maps:get(nu, S)), overrides => maps:get(overrides, S)}.
 
 %% The fields of the instant T in the time zone and calendar of the format.
 date_fields(S, T) ->
@@ -481,13 +501,69 @@ date_fields(S, T) ->
     Days = floor_div(Local, ?DAY),
     Ms = Local - Days * ?DAY,
     {Y, M, D} = buoy_ref_tz:civil_from_days(Days),
-    {Era, EraYear} = case Y =< 0 of
-        true -> {0, 1 - Y};
-        false -> {1, Y}
-    end,
-    #{year => Y, era => Era, era_year => EraYear, month => M, day => D, weekday => ((Days + 4) rem 7 + 7) rem 7 + 1,
-      hour => Ms div 3600000, minute => Ms div 60000 rem 60, second => Ms div 1000 rem 60, millisecond => Ms rem 1000,
-      offset => Offset, dst => Dst, instant => T}.
+    maps:merge(calendar_date(maps:get(calendar, S), Days, {Y, M, D}),
+               #{year => Y, weekday => ((Days + 4) rem 7 + 7) rem 7 + 1,
+                 hour => Ms div 3600000, minute => Ms div 60000 rem 60, second => Ms div 1000 rem 60, millisecond => Ms rem 1000,
+                 offset => Offset, dst => Dst, instant => T}).
+
+%% The fields of ICU's Calendar for the day: the era index and the year in
+%% the era, the month as a number and as the index of its name, whether it
+%% is a leap month, the day, and the related ISO year and the year in the
+%% cycle of the Chinese and Korean calendars. The eras follow test262 where
+%% ICU 78 differs: one era for the Coptic calendar, and BH before the
+%% Islamic epoch.
+calendar_date(Cal, Days, Date) when Cal =:= <<"buddhist">>; Cal =:= <<"roc">>; Cal =:= <<"japanese">> ->
+    %% V8 makes the Gregorian calendar proleptic, but these keep ICU's switch
+    %% from the Julian calendar on 1582-10-15.
+    solar_date(Cal, case Days < -141427 of true -> julian(Days); false -> Date end);
+calendar_date(Cal, _Days, Date) when Cal =:= <<"gregory">>; Cal =:= <<"iso8601">> ->
+    solar_date(Cal, Date);
+calendar_date(Cal, Days, _Date) ->
+    {Year, Cyclic, Ordinal, Number, Leap, Day} = buoy_native:intl_calendar_date(Cal, Days),
+    Fields = #{month => Number, month_name => Number - 1, leap => Leap, day => Day},
+    case Cal of
+        _ when Cyclic > 0 -> Fields#{era => 0, era_year => Cyclic, related_year => Year, cyclic => Cyclic};
+        <<"hebrew">> -> Fields#{era => 0, era_year => Year, month => Ordinal, month_name => hebrew_month(Ordinal, Number, Leap)};
+        _ ->
+            {Era, EraYear} = lunar_era(Cal, Year),
+            Fields#{era => Era, era_year => EraYear}
+    end.
+
+solar_date(Cal, {_, M, D} = Date) ->
+    {Era, EraYear} = solar_era(Cal, Date),
+    #{era => Era, era_year => EraYear, month => M, month_name => M - 1, leap => false, day => D}.
+
+%% The Julian calendar date of a day after 1970-01-01.
+julian(Days) ->
+    C = Days + 2440588 + 32082,
+    D = floor_div(4 * C + 3, 1461),
+    E = C - floor_div(1461 * D, 4),
+    M = (5 * E + 2) div 153,
+    {D - 4800 + M div 10, M + 3 - 12 * (M div 10), E - (153 * M + 2) div 5 + 1}.
+
+solar_era(<<"buddhist">>, {Y, _, _}) -> {0, Y + 543};
+solar_era(<<"roc">>, {Y, _, _}) when Y > 1911 -> {1, Y - 1911};
+solar_era(<<"roc">>, {Y, _, _}) -> {0, 1912 - Y};
+solar_era(<<"japanese">>, Date) ->
+    Starts = buoy_intl_cldr:supplemental(japanese_eras),
+    Era = max(0, length(lists:takewhile(fun(Start) -> Start =< Date end, Starts)) - 1),
+    {Era, element(1, Date) - element(1, lists:nth(Era + 1, Starts)) + 1};
+solar_era(_, {Y, _, _}) when Y > 0 -> {1, Y};
+solar_era(_, {Y, _, _}) -> {0, 1 - Y}.
+
+%% The era and era year of the extended year of a calendar of ICU4X.
+lunar_era(<<"coptic">>, Year) -> {1, Year};
+lunar_era(<<"ethiopic">>, Year) when Year > 0 -> {1, Year};
+lunar_era(<<"ethiopic">>, Year) -> {0, Year + 5500};
+lunar_era(<<"islamic", _/binary>>, Year) when Year < 1 -> {1, 1 - Year};
+lunar_era(_, Year) -> {0, Year}.
+
+%% ICU's index of a Hebrew month name: Adar I is 5 and is skipped in a
+%% common year, and Adar of a leap year is Adar II, 13.
+hebrew_month(_Ordinal, _Number, true) -> 5;
+hebrew_month(_Ordinal, Number, false) when Number =< 5 -> Number - 1;
+hebrew_month(7, 6, false) -> 13;
+hebrew_month(_Ordinal, Number, false) -> Number.
 
 floor_div(A, B) when A >= 0 -> A div B;
 floor_div(A, B) -> -((-A + B - 1) div B).

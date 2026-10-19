@@ -98,11 +98,12 @@ intl_collation_types(_Tag) -> erlang:nif_error(nif_not_loaded).
 -spec intl_change_case(binary(), binary(), boolean()) -> binary().
 intl_change_case(_Language, _Text, _Upper) -> erlang:nif_error(nif_not_loaded).
 
-%% The date in a calendar of CLDR of a day after 1970-01-01: {Year,
-%% OrdinalMonth, MonthNumber, Leap, Day}, with the related ISO year of a
-%% cyclic calendar, or nil for an unknown calendar.
+%% The date in a calendar of CLDR of a day after 1970-01-01: {Year, Cyclic,
+%% OrdinalMonth, MonthNumber, Leap, Day}, with the related ISO year and the
+%% year of the 60-year cycle of a cyclic calendar, else the extended year and
+%% 0, or nil for an unknown calendar.
 -spec intl_calendar_date(binary(), integer()) ->
-          {integer(), pos_integer(), pos_integer(), boolean(), pos_integer()} | nil.
+          {integer(), 0..60, pos_integer(), pos_integer(), boolean(), pos_integer()} | nil.
 intl_calendar_date(_Calendar, _EpochDays) -> erlang:nif_error(nif_not_loaded).
 
 %% ComputeExponentForMagnitude in compact notation: the power of ten by

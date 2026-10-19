@@ -6,7 +6,7 @@
 %% ties of the distance. Patterns and skeletons are lists of code points.
 -module(buoy_ref_intl_date_skeleton).
 
--export([best_pattern/4, skeleton_of/1, items/1, date_time_glue/3, icu_calendar/1]).
+-export([best_pattern/5, skeleton_of/1, items/1, date_time_glue/3, calendar_resource/4]).
 
 -define(FIELDS, 16).
 -define(ERA, 0).
@@ -172,7 +172,7 @@ distance({Mine, _, _, _}, {Theirs, _, _, _}, Include) ->
 %%% The pattern map of a locale and calendar
 
 %% The generator of a locale and calendar, made once per VM: {Entries,
-%% Glue, AppendFormats, AppendNames, Decimal}, where Entries is the pattern
+%% Glue, AppendFormats, AppendNames}, where Entries is the pattern
 %% map in ICU's iteration order, [{Base, Skeleton, Pattern, Specified}].
 generator(Locale, Cal) ->
     Key = {?MODULE, Locale, Cal},
@@ -186,13 +186,13 @@ generator(Locale, Cal) ->
 
 make_generator(Locale, Cal) ->
     Calendar = [<<"calendar">>, icu_calendar(Cal)],
-    Patterns = [pattern_text(P) || P <- buoy_intl_cldr:get(Locale, Calendar ++ [<<"DateTimePatterns">>], [])],
+    Patterns = [pattern_text(P) || P <- calendar_resource(Locale, Cal, [<<"DateTimePatterns">>], [])],
     Canonical = lists:foldl(fun(C, Map) -> add(Map, [C], none, false) end, boot(), "GyQMwWEDFdaHmsSv"),
     WithStyles = lists:foldl(fun(P, Map) -> add(Map, P, none, false) end, Canonical, lists:sublist(Patterns, 8)),
     Available = [{S, P} || {S, P} <- buoy_intl_cldr:ordered(Locale, Calendar ++ [<<"availableFormats">>]), is_binary(P)],
     Map = lists:foldl(fun({Skel, P}, M) -> add(M, unicode:characters_to_list(P), unicode:characters_to_list(Skel), true) end,
                       WithStyles, Available),
-    Glue = case buoy_intl_cldr:get(Locale, Calendar ++ [<<"DateTimePatterns%atTime">>]) of
+    Glue = case calendar_resource(Locale, Cal, [<<"DateTimePatterns%atTime">>], undefined) of
         [_, _, _, _ | _] = AtTime -> lists:zip([full, long, medium, short], [pattern_text(P) || P <- lists:sublist(AtTime, 4)]);
         _ when length(Patterns) >= 13 -> lists:zip([full, long, medium, short], lists:sublist(Patterns, 10, 4));
         _ -> [{Style, "{1} {0}"} || Style <- [full, long, medium, short]]
@@ -203,13 +203,16 @@ make_generator(Locale, Cal) ->
                                           undefined -> "F" ++ integer_to_list(F);
                                           Name -> unicode:characters_to_list(Name)
                                       end} || {F, N} <- field_names()]),
-    Nu = buoy_intl_cldr:get(Locale, [<<"NumberElements">>, <<"default">>], <<"latn">>),
-    Decimal = case buoy_intl_cldr:get(Locale, [<<"NumberElements">>, Nu, <<"symbols">>, <<"decimal">>]) of
-        undefined -> buoy_intl_cldr:get(Locale, [<<"NumberElements">>, <<"latn">>, <<"symbols">>, <<"decimal">>], <<".">>);
-        D -> D
-    end,
-    {lists:append([lists:reverse(Bucket) || Bucket <- tuple_to_list(Map)]), Glue, AppendFormats, AppendNames,
-     unicode:characters_to_list(Decimal)}.
+    {lists:append([lists:reverse(Bucket) || Bucket <- tuple_to_list(Map)]), Glue, AppendFormats, AppendNames}.
+
+%% The decimal separator of the numbering system, else of latn, as
+%% DecimalFormatSymbols gives it to the generator.
+decimal(Locale, Nu) ->
+    Symbol = fun(System) -> buoy_intl_cldr:get(Locale, [<<"NumberElements">>, System, <<"symbols">>, <<"decimal">>]) end,
+    unicode:characters_to_list(case Symbol(Nu) of
+                                   undefined -> buoy_intl_cldr:get(Locale, [<<"NumberElements">>, <<"latn">>, <<"symbols">>, <<"decimal">>], <<".">>);
+                                   D -> D
+                               end).
 
 %% A pattern of DateTimePatterns, which may come with its numbering override.
 pattern_text([P | _]) -> unicode:characters_to_list(P);
@@ -225,6 +228,15 @@ field_names() ->
      {5, <<"weekOfMonth">>}, {?WEEKDAY, <<"weekday">>}, {7, <<"dayOfYear">>}, {8, <<"weekdayOfMonth">>},
      {?DAY, <<"day">>}, {?DAYPERIOD, <<"dayperiod">>}, {?HOUR, <<"hour">>}, {?MINUTE, <<"minute">>},
      {?SECOND, <<"second">>}, {?ZONE, <<"zone">>}].
+
+%% A resource of the calendar's data, else of the Gregorian calendar's, as
+%% ICU's CalendarData reads it, else Default.
+-spec calendar_resource(binary(), binary(), [binary()], term()) -> term().
+calendar_resource(Locale, Cal, Path, Default) ->
+    case buoy_intl_cldr:get(Locale, [<<"calendar">>, icu_calendar(Cal) | Path]) of
+        undefined -> buoy_intl_cldr:get(Locale, [<<"calendar">>, <<"gregorian">> | Path], Default);
+        Value -> Value
+    end.
 
 %% The name of a calendar in ICU's data for its BCP 47 type.
 -spec icu_calendar(binary()) -> binary().
@@ -273,14 +285,15 @@ insert(Bucket, Base, Skeleton, Pattern, Specified) ->
 
 %%% getBestPattern
 
-%% The best pattern for a skeleton in a locale and calendar, with the hour
-%% character DefaultHour, as V8 asks for it (UDATPG_MATCH_HOUR_FIELD_LENGTH).
--spec best_pattern(binary(), binary(), [char()], char()) -> [char()].
-best_pattern(Locale, Cal, Requested, DefaultHour) ->
-    {Entries, Glue, _, _, _} = G = generator(Locale, Cal),
+%% The best pattern for a skeleton in a locale, calendar, and numbering
+%% system, with the hour character DefaultHour, as V8 asks for it
+%% (UDATPG_MATCH_HOUR_FIELD_LENGTH).
+-spec best_pattern(binary(), binary(), binary(), [char()], char()) -> [char()].
+best_pattern(Locale, Cal, Nu, Requested, DefaultHour) ->
+    {Entries, Glue, _, _} = G = generator(Locale, Cal),
     {Mapped, UsesCapJ} = map_metacharacters(Requested, DefaultHour),
     Skeleton = skeleton(Mapped),
-    Ctx = #{generator => G, request => Skeleton, hour => DefaultHour, cap_j => UsesCapJ},
+    Ctx = #{generator => G, request => Skeleton, hour => DefaultHour, cap_j => UsesCapJ, decimal => decimal(Locale, Nu)},
     {Best, BestSpecified, {_, Missing, Extra}} = best_raw(Entries, Skeleton, -1),
     case Missing =:= 0 andalso Extra =:= 0 of
         true -> adjust(Ctx, Best, BestSpecified, false);
@@ -312,7 +325,7 @@ best_pattern(Locale, Cal, Requested, DefaultHour) ->
 %% the date.
 -spec date_time_glue(binary(), binary(), atom()) -> [char()].
 date_time_glue(Locale, Cal, Style) ->
-    {_, Glue, _, _, _} = generator(Locale, Cal),
+    {_, Glue, _, _} = generator(Locale, Cal),
     proplists:get_value(Style, Glue).
 
 %% SimpleFormatter with {0} and {1}.
@@ -397,7 +410,7 @@ adjust(Ctx, [Item | Rest], All, Specified, Fix, Acc) ->
     end.
 
 adjust_field(Ctx, Item, {_, Field, RowType, _}, Specified, Fix) ->
-    #{request := Request, hour := DefaultHour, cap_j := CapJ, generator := {_, _, _, _, Decimal}} = Ctx,
+    #{request := Request, hour := DefaultHour, cap_j := CapJ, decimal := Decimal} = Ctx,
     {_, Original, _, _} = Request,
     case Fix andalso Field =:= ?SECOND of
         true -> Item ++ Decimal ++ lists:duplicate(length_of(Original, ?FRACTION), char_of(Original, ?FRACTION));
@@ -458,7 +471,7 @@ is_separator(Field, All) ->
 %% each missing field appended by the appendItems of the locale.
 best_appending(_Ctx, 0) -> [];
 best_appending(Ctx, Fields) ->
-    #{request := Request, generator := {Entries, _, _, _, _}} = Ctx,
+    #{request := Request, generator := {Entries, _, _, _}} = Ctx,
     {Temp, Specified, {_, Missing, _}} = best_raw(Entries, Request, Fields),
     Result = adjust(Ctx, Temp, Specified, false),
     appending(Ctx, Fields, Result, Specified, Missing, 0).
@@ -471,7 +484,7 @@ appending(Ctx, Fields, Result, Specified, Missing, Last) ->
         true ->
             appending(Ctx, Fields, adjust(Ctx, Result, Specified, true), Specified, Missing band bnot (1 bsl ?FRACTION), Last);
         false ->
-            #{request := Request, generator := {Entries, _, Formats, Names, _}} = Ctx,
+            #{request := Request, generator := {Entries, _, Formats, Names}} = Ctx,
             {Temp, Specified1, {_, Missing1, _}} = best_raw(Entries, Request, Missing),
             Adjusted = adjust(Ctx, Temp, Specified1, false),
             Top = top_bit(Missing band bnot Missing1),

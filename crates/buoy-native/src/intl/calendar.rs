@@ -1,8 +1,6 @@
-//! The dates of the calendars of CLDR on ICU4X's `icu_calendar`, for the
-//! `Intl.DateTimeFormat` slice that the Temporal polyfill reads (contract section 17.3):
-//! the polyfill computes most calendars itself and reads the Chinese, Korean, and Umm
-//! al-Qura dates from `Intl.DateTimeFormat`, as V8 and `JavaScriptCore` give them from
-//! ICU4C.
+//! The dates of the calendars of CLDR on ICU4X's `icu_calendar`, for the fields that
+//! `Intl.DateTimeFormat` writes and for the slice of it that the Temporal polyfill reads
+//! (contract section 17.3).
 
 use icu_calendar::types::{MonthInfo, RataDie};
 use icu_calendar::{AnyCalendar, AnyCalendarKind, Date, Ref};
@@ -11,11 +9,13 @@ use icu_calendar::{AnyCalendar, AnyCalendarKind, Date, Ref};
 const EPOCH_RATA_DIE: i64 = 719_163;
 
 /// A date of a calendar: the year (the related ISO year of a cyclic calendar, else the
-/// year of the era), the ordinal month, whether the month is a leap month, its number in
-/// the month code, and the day.
+/// extended year, which counts on through the epoch of the calendar), the year in the
+/// 60-year cycle of a cyclic calendar, else 0, the ordinal month, whether the month is a
+/// leap month, its number in the month code, and the day.
 #[derive(Debug, PartialEq, Eq)]
 pub struct CalendarDate {
     pub year: i32,
+    pub cyclic: u8,
     pub ordinal_month: u8,
     pub month_number: u8,
     pub leap: bool,
@@ -51,7 +51,8 @@ pub fn date(id: &str, epoch_days: i64) -> Option<CalendarDate> {
     let info: MonthInfo = local.month();
     let code = info.to_input();
     Some(CalendarDate {
-        year: local.year().era_year_or_related_iso(),
+        year: local.year().extended_year(),
+        cyclic: local.year().cyclic().map_or(0, |year| year.year),
         ordinal_month: info.ordinal,
         month_number: code.number(),
         leap: code.is_leap(),
@@ -69,13 +70,20 @@ mod tests {
         // to 2023.
         let chinese = date("chinese", 19_408).expect("a date");
         assert_eq!(
-            (chinese.year, chinese.month_number, chinese.day),
-            (2023, 2, 1)
+            (
+                chinese.year,
+                chinese.cyclic,
+                chinese.month_number,
+                chinese.day
+            ),
+            (2023, 40, 2, 1)
         );
         // 2023-03-23, day 19439, is 1 Ramadan 1444.
         let hijri = date("islamic-umalqura", 19_439).expect("a date");
         assert_eq!((hijri.year, hijri.ordinal_month, hijri.day), (1444, 9, 1));
         assert_eq!(date("klingon", 0), None);
+        // A day of 2 BCE comes before the Hijri epoch of 622, so its extended year is negative.
+        assert!(date("islamic-civil", -719_893).expect("a date").year < 0);
         // 275760-09-13, the last day of Temporal, is day 100,000,000.
         assert!(date("chinese", 100_000_000).is_some());
     }

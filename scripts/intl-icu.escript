@@ -35,7 +35,8 @@ main([Dir, Output]) ->
                                meta_zones => Misc("metaZones"),
                                timezone_types => Misc("timezoneTypes"),
                                zone_regions => zone_regions(Misc("zoneinfo64")),
-                               day_periods => Misc("dayPeriods")}},
+                               day_periods => Misc("dayPeriods"),
+                               japanese_eras => japanese_eras(Misc("supplementalData"))}},
     ok = filelib:ensure_dir(Output),
     ok = file:write_file(Output, term_to_binary(Data, [{compressed, 9}, deterministic]));
 main(_) ->
@@ -56,6 +57,12 @@ merge(_A, B) -> B.
 
 %% An ICU locale name as a language tag: underscores to hyphens.
 tag(Name) -> binary:replace(Name, <<"_">>, <<"-">>, [global]).
+
+%% The first day of each era of the Japanese calendar, {Year, Month, Day} in the order of
+%% ICU's era index.
+japanese_eras(Supplemental) ->
+    #{<<"calendarData">> := #{<<"japanese">> := #{<<"eras">> := Eras}}} = Supplemental,
+    [list_to_tuple(maps:get(<<"start">>, maps:get(integer_to_binary(I), Eras))) || I <- lists:seq(0, maps:size(Eras) - 1)].
 
 %% The region of each zone of zoneinfo64: its Names with their Regions.
 zone_regions(Info) ->

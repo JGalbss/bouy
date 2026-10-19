@@ -8,7 +8,8 @@
 -export([format/3, tokens/1, part_type/1]).
 
 %% The parts of Pattern for the record Fields in the context Ctx:
-%% #{locale, cal, digits, zone}. Fields holds year, month, day, weekday (1 is
+%% #{locale, cal, digits, zone, overrides}, where overrides maps a pattern
+%% letter, or all, to the numbering system that writes its numbers. Fields holds year, month, day, weekday (1 is
 %% Sunday), hour, minute, second, millisecond, era, offset, dst, and instant.
 -spec format([char()], map(), map()) -> [{atom(), [char()]}].
 format(Pattern, Fields, Ctx) ->
@@ -18,7 +19,9 @@ format(Pattern, Fields, Ctx) ->
     Ctx1 = Ctx#{has_minute => HasMinute, has_second => HasSecond},
     [case Token of
          {literal, Text} -> {literal, Text};
-         {field, C, Count} -> {part_type(C), field(C, Count, Fields, Ctx1)}
+         {field, C, Count} ->
+             Overrides = maps:get(overrides, Ctx1),
+             {part_type(C), field(C, Count, Fields, Ctx1#{numbering => maps:get(C, Overrides, maps:get(all, Overrides, none))})}
      end || Token <- Tokens].
 
 %% The tokens of a pattern: {field, Char, Count} for a run of a letter and
@@ -69,24 +72,30 @@ field($G, Count, F, Ctx) ->
         _ -> binary_to_list(Era)
     end;
 field(C, Count, F, Ctx) when C =:= $y; C =:= $Y; C =:= $u ->
-    Year = maps:get(era_year, F),
+    Year = case {maps:get(numbering, Ctx), maps:get(era_year, F)} of
+        %% ICU drops the millennium of a Hebrew year in Hebrew numerals.
+        {<<"hebr">>, Y} when Y > 5000, Y < 6000 -> Y - 5000;
+        {_, Y} -> Y
+    end,
     case Count of
         2 -> number(Ctx, abs(Year) rem 100, 2);
         _ -> number(Ctx, Year, Count)
     end;
 field($r, Count, F, Ctx) -> number(Ctx, maps:get(related_year, F, maps:get(year, F)), Count);
-field($U, _Count, F, Ctx) -> number(Ctx, maps:get(era_year, F), 1);
+field($U, _Count, F, Ctx) ->
+    Cyclic = maps:get(cyclic, F, maps:get(era_year, F)),
+    indexed(Ctx, [<<"cyclicNameSets">>, <<"years">>, <<"format">>, <<"abbreviated">>], Cyclic - 1, number(Ctx, Cyclic, 1));
 field(C, Count, F, Ctx) when C =:= $M; C =:= $L ->
     Month = maps:get(month, F),
-    case Count of
-        1 -> number(Ctx, Month, 1);
-        2 -> number(Ctx, Month, 2);
+    Context = case C of $M -> <<"format">>; $L -> <<"stand-alone">> end,
+    {Name, PatternPath} = case Count of
+        _ when Count =< 2 -> {number(Ctx, Month, Count), [<<"numeric">>, <<"all">>]};
         _ ->
-            Context = case C of $M -> <<"format">>; $L -> <<"stand-alone">> end,
-            Width = case Count of 3 -> <<"abbreviated">>; 4 -> <<"wide">>; 5 -> <<"narrow">>; _ -> <<"wide">> end,
-            names(Ctx, [<<"monthNames">>, Context, Width], [<<"monthNames">>, <<"format">>, Width], Month - 1,
-                  integer_to_list(Month))
-    end;
+            Width = case Count of 3 -> <<"abbreviated">>; 5 -> <<"narrow">>; _ -> <<"wide">> end,
+            {names(Ctx, [<<"monthNames">>, Context, Width], [<<"monthNames">>, <<"format">>, Width],
+                   maps:get(month_name, F), integer_to_list(Month)), [Context, Width]}
+    end,
+    leap_month(Ctx, maps:get(leap, F), PatternPath, Name);
 field($d, Count, F, Ctx) -> number(Ctx, maps:get(day, F), Count);
 field($E, Count, F, Ctx) -> weekday(Ctx, format, max(Count, 3), F);
 field($e, Count, F, Ctx) when Count =< 2 -> number(Ctx, local_weekday(F, Ctx), Count);
@@ -129,11 +138,59 @@ field(C, Count, F, Ctx) when C =:= $z; C =:= $O; C =:= $v ->
     end;
 field(C, Count, _F, _Ctx) -> lists:duplicate(Count, C).
 
-%% A number in the digits of the numbering system, padded to Min digits.
+%% The month name in the leap month pattern of the calendar, as "{0}bis",
+%% when the month is a leap month and the calendar has such patterns.
+leap_month(Ctx, true, Path, Name) ->
+    case calendar(Ctx, [<<"monthPatterns">> | Path] ++ [<<"leap">>]) of
+        Pattern when is_binary(Pattern) -> lists:flatten(string:replace(unicode:characters_to_list(Pattern), "{0}", Name));
+        _ -> Name
+    end;
+leap_month(_Ctx, false, _Path, Name) -> Name.
+
+%% A number in the numbering system of the field's override, else in the
+%% digits of the format's numbering system, padded to Min digits.
+number(#{numbering := <<"hebr">>}, N, _Min) when N > 0 -> hebrew(N);
+number(#{numbering := <<"hanidays">>}, N, _Min) when N > 0, N =< 30 -> hanidays(N);
+number(#{numbering := <<"jpanyear">>}, 1, _Min) -> [16#5143];
+number(#{numbering := <<"hanidec">>} = Ctx, N, Min) ->
+    number(Ctx#{numbering := none, digits := buoy_intl_cldr:numbering_digits(<<"hanidec">>)}, N, Min);
 number(Ctx, N, Min) ->
     Text = integer_to_list(abs(N)),
     Padded = lists:duplicate(max(0, Min - length(Text)), $0) ++ Text,
     localize(Ctx, case N < 0 of true -> [$- | Padded]; false -> Padded end).
+
+%% A number in Hebrew letters, as ICU's hebr rules write it: each thousand
+%% apart, 15 and 16 as 9+6 and 9+7, a geresh after a single letter, and
+%% gershayim before the last of several.
+hebrew(N) when N >= 1000, N rem 1000 > 0 -> hebrew(N div 1000) ++ hebrew(N rem 1000);
+hebrew(N) when N >= 1000 -> hebrew(N div 1000);
+hebrew(N) ->
+    case hebrew_letters(N) of
+        [Letter] -> [Letter, 16#05F3];
+        Letters ->
+            {Init, [Last]} = lists:split(length(Letters) - 1, Letters),
+            Init ++ [16#05F4, Last]
+    end.
+
+hebrew_letters(0) -> [];
+hebrew_letters(N) when N >= 400 -> [16#05EA | hebrew_letters(N - 400)];
+hebrew_letters(N) when N >= 100 -> [16#05E6 + N div 100 | hebrew_letters(N rem 100)];
+hebrew_letters(N) when N =:= 15; N =:= 16 -> [16#05D8, 16#05D0 + N - 10];
+hebrew_letters(N) when N >= 10 ->
+    [element(N div 10, {16#05D9, 16#05DB, 16#05DC, 16#05DE, 16#05E0, 16#05E1, 16#05E2, 16#05E4, 16#05E6}) | hebrew_letters(N rem 10)];
+hebrew_letters(N) -> [16#05D0 + N - 1].
+
+%% A day of a Chinese month as ICU's hanidays rules write it: 初一 to 初十,
+%% then 十一 to 二十, 廿一 to 廿九, and 三十.
+hanidays(N) ->
+    Digit = fun(D) -> element(D, {16#4E00, 16#4E8C, 16#4E09, 16#56DB, 16#4E94, 16#516D, 16#4E03, 16#516B, 16#4E5D, 16#5341}) end,
+    case N of
+        _ when N =< 10 -> [16#521D, Digit(N)];
+        _ when N < 20 -> [16#5341, Digit(N - 10)];
+        20 -> [Digit(2), 16#5341];
+        30 -> [Digit(3), 16#5341];
+        _ -> [16#5EFF, Digit(N - 20)]
+    end.
 
 localize(Ctx, Text) ->
     case maps:get(digits, Ctx) of
@@ -141,9 +198,10 @@ localize(Ctx, Text) ->
         Digits -> [case C >= $0 andalso C =< $9 of true -> lists:nth(C - $0 + 1, Digits); false -> C end || C <- Text]
     end.
 
-%% The calendar resource at Path under calendar/<cal> of ICU's data.
+%% The calendar resource at Path under calendar/<cal> of ICU's data, else
+%% under calendar/gregorian.
 calendar(#{locale := Locale, cal := Cal}, Path) ->
-    buoy_intl_cldr:get(Locale, [<<"calendar">>, buoy_ref_intl_date_skeleton:icu_calendar(Cal) | Path]).
+    buoy_ref_intl_date_skeleton:calendar_resource(Locale, Cal, Path, undefined).
 
 %% The name at Index (from 0) of an array of the calendar, else Fallback.
 indexed(Ctx, Path, Index, Fallback) ->

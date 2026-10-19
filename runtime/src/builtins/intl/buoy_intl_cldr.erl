@@ -177,7 +177,7 @@ data() ->
     end.
 
 %% A supplemental table: currency_meta, numbering_systems, meta_zones,
-%% timezone_types, zone_regions, or day_periods.
+%% timezone_types, zone_regions, day_periods, or japanese_eras.
 -spec supplemental(atom()) -> term().
 supplemental(Name) -> maps:get(Name, maps:get(supplemental, data())).
 
