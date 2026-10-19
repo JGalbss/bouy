@@ -9,7 +9,7 @@
 %% (process.versions.cldr), such as https://github.com/unicode-org/cldr-json/tree/48.0.0,
 %% with cldr-bcp47/bcp47/timezone.json and
 %% cldr-core/supplemental/{calendarPreferenceData,timeData,weekData,numberingSystems,
-%% currencyData,likelySubtags}.json, and cldr-core/{availableLocales,defaultContent}.json.
+%% likelySubtags}.json, and cldr-core/{availableLocales,defaultContent}.json.
 -mode(compile).
 
 main([Dir, Output]) ->
@@ -29,8 +29,6 @@ main([Dir, Output]) ->
             list_function("available_locales", "The locales of CLDR and their default content locales, such as en-US (the [[AvailableLocales]] of each service).",
                           lists:usort(Available ++ DefaultContent ++ script_aliases(Available ++ DefaultContent, Likely))),
             list_function("calendars", "The calendars of Temporal and DateTimeFormat (AvailableCalendars).", calendars()),
-            list_function("currencies", "The ISO 4217 codes of the currencies in use (AvailableCanonicalCurrencies).",
-                          currencies(Supplemental("currencyData"))),
             list_function("numbering_systems", "The numbering systems with simple digits (AvailableCanonicalNumberingSystems).",
                           numbering_systems(Supplemental("numberingSystems"))),
             list_function("time_zones", "The primary identifiers of the IANA time zones (AvailableNamedTimeZoneIdentifiers).",
@@ -54,7 +52,7 @@ main(_) ->
 header() ->
     ["%% The CLDR data of Intl that ICU4X does not give (buoy_ref_intl, buoy_ref_intl_locale).\n",
      "-module(buoy_ref_intl_data).\n\n",
-     "-export([available_locales/0, calendars/0, currencies/0, numbering_systems/0, time_zones/0, units/0]).\n",
+     "-export([available_locales/0, calendars/0, numbering_systems/0, time_zones/0, units/0]).\n",
      "-export([region_calendars/1, hour_cycle/1, hour_cycle_12/1, week/1, region_time_zones/1]).\n"].
 
 list_function(Name, Doc, Items) ->
@@ -81,11 +79,6 @@ calendars() ->
 calendar_type(<<"gregorian">>) -> <<"gregory">>;
 calendar_type(<<"ethiopic-amete-alem">>) -> <<"ethioaa">>;
 calendar_type(Name) -> Name.
-
-currencies(Data) ->
-    lists:usort([C || {_Region, Entries} <- maps:to_list(maps:get(<<"region">>, Data)), Entry <- Entries,
-                      {C, V} <- maps:to_list(Entry), not maps:is_key(<<"_to">>, V),
-                      maps:get(<<"_tender">>, V, <<"true">>) =/= <<"false">>]).
 
 numbering_systems(Data) ->
     lists:sort([K || {K, V} <- maps:to_list(Data), maps:get(<<"_type">>, V) =:= <<"numeric">>]).

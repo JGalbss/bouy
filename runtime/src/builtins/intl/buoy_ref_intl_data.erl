@@ -2,7 +2,7 @@
 %% The CLDR data of Intl that ICU4X does not give (buoy_ref_intl, buoy_ref_intl_locale).
 -module(buoy_ref_intl_data).
 
--export([available_locales/0, calendars/0, currencies/0, numbering_systems/0, time_zones/0, units/0]).
+-export([available_locales/0, calendars/0, numbering_systems/0, time_zones/0, units/0]).
 -export([region_calendars/1, hour_cycle/1, hour_cycle_12/1, week/1, region_time_zones/1]).
 
 %% The locales of CLDR and their default content locales, such as en-US (the [[AvailableLocales]] of each service).
@@ -14,11 +14,6 @@ available_locales() ->
 -spec calendars() -> [binary()].
 calendars() ->
     [<<"buddhist">>, <<"chinese">>, <<"coptic">>, <<"dangi">>, <<"ethioaa">>, <<"ethiopic">>, <<"gregory">>, <<"hebrew">>, <<"indian">>, <<"islamic-civil">>, <<"islamic-tbla">>, <<"islamic-umalqura">>, <<"iso8601">>, <<"japanese">>, <<"persian">>, <<"roc">>].
-
-%% The ISO 4217 codes of the currencies in use (AvailableCanonicalCurrencies).
--spec currencies() -> [binary()].
-currencies() ->
-    [<<"AED">>, <<"AFN">>, <<"ALL">>, <<"AMD">>, <<"AOA">>, <<"ARS">>, <<"AUD">>, <<"AWG">>, <<"AZN">>, <<"BAM">>, <<"BBD">>, <<"BDT">>, <<"BHD">>, <<"BIF">>, <<"BMD">>, <<"BND">>, <<"BOB">>, <<"BRL">>, <<"BSD">>, <<"BTN">>, <<"BWP">>, <<"BYN">>, <<"BZD">>, <<"CAD">>, <<"CDF">>, <<"CHF">>, <<"CLP">>, <<"CNY">>, <<"COP">>, <<"CRC">>, <<"CUP">>, <<"CVE">>, <<"CZK">>, <<"DJF">>, <<"DKK">>, <<"DOP">>, <<"DZD">>, <<"EGP">>, <<"ERN">>, <<"ETB">>, <<"EUR">>, <<"FJD">>, <<"FKP">>, <<"GBP">>, <<"GEL">>, <<"GHS">>, <<"GIP">>, <<"GMD">>, <<"GNF">>, <<"GTQ">>, <<"GYD">>, <<"HKD">>, <<"HNL">>, <<"HTG">>, <<"HUF">>, <<"IDR">>, <<"ILS">>, <<"INR">>, <<"IQD">>, <<"IRR">>, <<"ISK">>, <<"JMD">>, <<"JOD">>, <<"JPY">>, <<"KES">>, <<"KGS">>, <<"KHR">>, <<"KMF">>, <<"KPW">>, <<"KRW">>, <<"KWD">>, <<"KYD">>, <<"KZT">>, <<"LAK">>, <<"LBP">>, <<"LKR">>, <<"LRD">>, <<"LSL">>, <<"LYD">>, <<"MAD">>, <<"MDL">>, <<"MGA">>, <<"MKD">>, <<"MMK">>, <<"MNT">>, <<"MOP">>, <<"MRU">>, <<"MUR">>, <<"MVR">>, <<"MWK">>, <<"MXN">>, <<"MYR">>, <<"MZN">>, <<"NAD">>, <<"NGN">>, <<"NIO">>, <<"NOK">>, <<"NPR">>, <<"NZD">>, <<"OMR">>, <<"PAB">>, <<"PEN">>, <<"PGK">>, <<"PHP">>, <<"PKR">>, <<"PLN">>, <<"PYG">>, <<"QAR">>, <<"RON">>, <<"RSD">>, <<"RUB">>, <<"RWF">>, <<"SAR">>, <<"SBD">>, <<"SCR">>, <<"SDG">>, <<"SEK">>, <<"SGD">>, <<"SHP">>, <<"SLE">>, <<"SOS">>, <<"SRD">>, <<"SSP">>, <<"STN">>, <<"SYP">>, <<"SZL">>, <<"THB">>, <<"TJS">>, <<"TMT">>, <<"TND">>, <<"TOP">>, <<"TRY">>, <<"TTD">>, <<"TWD">>, <<"TZS">>, <<"UAH">>, <<"UGX">>, <<"USD">>, <<"UYU">>, <<"UZS">>, <<"VES">>, <<"VND">>, <<"VUV">>, <<"WST">>, <<"XAF">>, <<"XCD">>, <<"XCG">>, <<"XOF">>, <<"XPF">>, <<"YER">>, <<"ZAR">>, <<"ZMW">>, <<"ZWG">>].
 
 %% The numbering systems with simple digits (AvailableCanonicalNumberingSystems).
 -spec numbering_systems() -> [binary()].

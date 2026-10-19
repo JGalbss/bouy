@@ -51,11 +51,27 @@ method(<<"Intl">>, <<"supportedValuesOf">>, _This, Args) ->
 %% AvailableCanonical* of ECMA-402 section 6: each sorted by code units.
 supported_values(<<"calendar">>) -> buoy_ref_intl_data:calendars();
 supported_values(<<"collation">>) -> collations();
-supported_values(<<"currency">>) -> buoy_ref_intl_data:currencies();
+supported_values(<<"currency">>) -> currencies();
 supported_values(<<"numberingSystem">>) -> buoy_ref_intl_data:numbering_systems();
 supported_values(<<"timeZone">>) -> buoy_ref_intl_data:time_zones();
 supported_values(<<"unit">>) -> buoy_ref_intl_data:units();
 supported_values(Key) -> range_error(buoy_ref_string:concat([<<"Invalid key : ">>, Key])).
+
+%% AvailableCurrencies: the codes that Intl.DisplayNames names in en, made
+%% once per VM. V8 lists the 162 currencies in use, and its DisplayNames
+%% names 145 more, such as ADP, which test262's
+%% currencies-accepted-by-DisplayNames.js rejects.
+currencies() ->
+    case persistent_term:get({?MODULE, currencies}, undefined) of
+        undefined ->
+            Codes = lists:sort([Code || {<<_, _, _>> = Code, [_, _ | _]} <- maps:to_list(buoy_intl_cldr:table(<<"en">>, [<<"Currencies">>])),
+                                        is_upper_code(Code)]),
+            persistent_term:put({?MODULE, currencies}, Codes),
+            Codes;
+        Codes -> Codes
+    end.
+
+is_upper_code(Code) -> lists:all(fun(C) -> C >= $A andalso C =< $Z end, binary_to_list(Code)).
 
 %% The collation types that ICU4X has data for in some available locale, so
 %% that Intl.Collator supports each one: made once per VM.
