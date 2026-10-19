@@ -1,6 +1,6 @@
 // Agents on actors: tools whose execute calls an actor, an actor that calls generateText,
 // three agents at once, and an actor crash inside a tool. crates/buoy-cli/tests/ai.rs runs
-// it against the fake OpenAI server of runtime/test.
+// it against the fake OpenAI server of runtime/test/library.
 import { spawn, type Ref } from "buoy";
 import { generateText, jsonSchema, stepCountIs, streamText, tool } from "ai";
 import { createOpenAI, openai } from "@ai-sdk/openai";

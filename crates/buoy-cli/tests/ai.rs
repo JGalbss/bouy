@@ -1,5 +1,5 @@
 //! The `ai` and `@ai-sdk/openai` subset (contract section 14) against the fake server of
-//! `runtime/test/buoy_fake_openai.erl`. Each program in `tests/equivalence/ai/` runs with
+//! `runtime/test/library/buoy_fake_openai.erl`. Each program in `tests/equivalence/ai/` runs with
 //! `buoy run`, and its stdout and exit status must equal the Node output that
 //! `scripts/freeze-expectations.sh tests/equivalence/ai` recorded against the same server.
 //! The tests never run node. `tests/programs/ai-agents.ts` covers what only Buoy has: tools

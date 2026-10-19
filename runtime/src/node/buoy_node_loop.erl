@@ -3,8 +3,9 @@
 %%
 %% - Timers: lib/internal/timers keeps every timer in JavaScript and asks for
 %%   one native timer with scheduleTimer. Here that timer is one erlang
-%%   send_after; when it fires, the realm calls processTimers, whose result
-%%   schedules the next one, ref'd or not (Environment::RunTimers).
+%%   send_after; when it fires, or when a turn of the loop starts after its
+%%   deadline, the realm calls processTimers, whose result schedules the
+%%   next one, ref'd or not (Environment::RunTimers).
 %% - Immediates: after each poll of the BEAM mailbox, the realm runs
 %%   processImmediate while immediateInfo counts any (CheckImmediate).
 %% - Ticks: after each macrotask, the realm runs the microtasks and then the
@@ -31,6 +32,8 @@
 -export([enter/0, poll/0, polled/2, metrics/0, idle_time/0]).
 
 -define(TIMER, '$buoy_node_timer').
+%% {Ref, Deadline}: the time of now/0 at which the native timer Ref is due.
+-define(DEADLINE, '$buoy_node_timer_deadline').
 -define(IMMEDIATE_REF, '$buoy_node_immediate_ref').
 -define(HANDLES, '$buoy_node_handles').
 -define(BASE, '$buoy_node_timer_base').
@@ -150,6 +153,7 @@ schedule_timer(Ms) ->
     Ref = make_ref(),
     _ = erlang:send_after(Delay, self(), {'$buoy_node_timer', Ref}),
     erlang:put(?TIMER, {Ref, active, Refed}),
+    erlang:put(?DEADLINE, {Ref, now() + Delay}),
     undefined.
 
 cancel_timer() ->
@@ -179,10 +183,12 @@ toggle_immediate_ref(Ref) ->
 -spec enter() -> ok.
 enter() -> buoy_binding_performance:mark(loop_start).
 
-%% Before a poll of the mailbox that may wait: one more iteration, and the
-%% messages that wait. Returns the time the poll starts.
+%% At the start of a turn, before a poll of the mailbox that may wait: the
+%% due timer, then one more iteration and the messages that wait. Returns
+%% the time the poll starts.
 -spec poll() -> integer().
 poll() ->
+    run_due_timer(),
     {Iterations, Events, _, Idle} = metrics_state(),
     {message_queue_len, Waiting} = erlang:process_info(self(), message_queue_len),
     erlang:put(?METRICS, {Iterations + 1, Events, Waiting, Idle}),
@@ -247,13 +253,7 @@ immediate_field(I) ->
 %% One BEAM message of the loop of Node, or false for another message.
 -spec event(term()) -> boolean().
 event({'$buoy_node_timer', Ref}) ->
-    case erlang:get(?TIMER) of
-        {Ref, active, Refed} ->
-            erlang:put(?TIMER, {none, idle, Refed}),
-            buoy_trace:scope(?ENVIRONMENT, <<"RunTimers">>, fun() -> buoy_jobs:run_job(fun run_timers/0) end);
-        _ ->
-            ok
-    end,
+    fire_timer(Ref),
     true;
 event({'$buoy_node_deferred', Ref}) ->
     case erlang:erase({?MODULE, deferred, Ref}) of
@@ -275,6 +275,25 @@ event({'$socket', _, _, _} = Message) ->
     true;
 event(_) ->
     false.
+
+%% uv__run_timers: the native timer runs once the clock of the loop reaches
+%% its deadline, also when its message has not arrived, as a busy scheduler
+%% delays it. The message then finds the timer idle.
+run_due_timer() ->
+    case erlang:get(?DEADLINE) of
+        {Ref, Deadline} -> Deadline =< now() andalso fire_timer(Ref), ok;
+        undefined -> ok
+    end.
+
+%% Runs the native timer Ref while it is the active one.
+fire_timer(Ref) ->
+    case erlang:get(?TIMER) of
+        {Ref, active, Refed} ->
+            erlang:put(?TIMER, {none, idle, Refed}),
+            buoy_trace:scope(?ENVIRONMENT, <<"RunTimers">>, fun() -> buoy_jobs:run_job(fun run_timers/0) end);
+        _ ->
+            ok
+    end.
 
 %% Environment::RunTimers: processTimers(now) returns 0 when no timer is
 %% left, the next expiry when a ref'd one is, and its negation when only
