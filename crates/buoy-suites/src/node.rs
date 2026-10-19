@@ -537,6 +537,7 @@ fn execute_selected<'a>(
         .filter(|(_, test)| is_selected(test, options, expected.get(&test.id)))
         .partition(|(_, test)| test.id.starts_with(SEQUENTIAL));
     let scratch = options.output.join("scratch");
+    end_package_scope(&scratch)?;
     let context = Context {
         options,
         rejected_common: rejected_common(options, &scratch)?,
@@ -564,6 +565,16 @@ fn execute_selected<'a>(
         .collect();
     let _ = fs::remove_dir_all(&context.scratch);
     ran
+}
+
+/// The files that a test writes to its temporary directory take Node's default module
+/// type, as under the tmpdir of Node's own runs, not the `type` of the package.json of
+/// this repository, which lies above the output directory.
+fn end_package_scope(scratch: &Path) -> Result<(), String> {
+    let manifest = scratch.join("package.json");
+    fs::create_dir_all(scratch)
+        .and_then(|()| fs::write(&manifest, "{ \"private\": true }\n"))
+        .map_err(|error| format!("{}: {error}", manifest.display()))
 }
 
 /// A skip costs no run, so every selection takes the skipped files, and a change to the
