@@ -227,6 +227,7 @@ reason(pub_exponent_out_of_range) -> {rsa, 178, <<"pub exponent out of range">>}
 reason(provider_keymgmt_failure) -> {evp, 233, <<"provider keymgmt failure">>};
 reason(unsupported) -> {evp, 16#8010C, <<"unsupported">>};
 reason(pem_no_start_line) -> {pem, 108, <<"no start line">>};
+reason(pem_asn1_lib) -> {pem, 16#8000D, <<"ASN1 lib">>};
 reason(pem_unsupported_cipher) -> {pem, 113, <<"unsupported cipher">>};
 reason(decoder_unsupported) -> {decoder, 16#8010C, <<"unsupported">>};
 reason(interrupted_or_cancelled) -> {crypto, 16#80109, <<"interrupted or cancelled">>};

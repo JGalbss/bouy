@@ -14,7 +14,7 @@
 
 -spec binding() -> term().
 binding() ->
-    TCP = buoy_node:constructor(<<"TCP">>, 1, fun(This, _) -> buoy_node_socket:create(This, tcp), undefined end),
+    TCP = buoy_node:constructor(<<"TCP">>, 1, fun(This, Args) -> buoy_node_socket:create(This, tcp, wrap_name(buoy_node:arg(1, Args))), undefined end),
     erlang:put({buoy_node_socket, constructor, tcp}, TCP),
     Proto = buoy_heap:get(TCP, <<"prototype">>),
     buoy_node_socket:methods(Proto),
@@ -41,6 +41,9 @@ binding() ->
         {<<"TCPConnectWrap">>, buoy_node:constructor(<<"TCPConnectWrap">>, 0, fun(_, _) -> undefined end)},
         {<<"constants">>, buoy_node:object([{<<"SOCKET">>, ?SOCKET}, {<<"SERVER">>, ?SERVER},
                                             {<<"UV_TCP_IPV6ONLY">>, ?UV_TCP_IPV6ONLY}, {<<"UV_TCP_REUSEPORT">>, ?UV_TCP_REUSEPORT}])}]).
+
+wrap_name(?SERVER) -> <<"TCPServerWrap">>;
+wrap_name(_) -> <<"TCPSocketWrap">>.
 
 int(V) ->
     case buoy_ref:to_number(V) of
