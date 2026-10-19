@@ -524,14 +524,23 @@ push_promise_block(#{stream_id := Id, promised_stream_id := P} = F, Block, H) ->
                                decode_only(Block, H#h2{last_recv_stream_id = P}));
         #stream{} when H#h2.goaway_sent ->
             decode_only(Block, H#h2{last_recv_stream_id = P});
+        %% nghttp2_session_on_push_promise_received: a promise past
+        %% max_reserved_remote_streams is canceled, and its block only keeps
+        %% HPACK's state.
         #stream{} ->
-            H1 = H#h2{last_recv_stream_id = P},
-            S = (new_stream(P, reserved, true, H1))#stream{shut_wr = true},
-            H2 = put_stream(S, H1),
-            case decode(Block, H2) of
-                {error, H3} -> H3;
-                {ok, Fields, H3} -> deliver_headers(F#{cat => ?HCAT_REQUEST}, P, Fields, H3)
+            Reserved = length([S || S <- maps:values(H#h2.streams), S#stream.state =:= reserved, S#stream.incoming]),
+            case Reserved >= maps:get(max_reserved_remote_streams, H#h2.opts, 200) of
+                true -> decode_only(Block, add_rst_stream(P, ?CANCEL, H#h2{last_recv_stream_id = P}));
+                false -> push_promise_reserve(F, P, Block, H)
             end
+    end.
+
+push_promise_reserve(F, P, Block, H) ->
+    H1 = H#h2{last_recv_stream_id = P},
+    S = (new_stream(P, reserved, true, H1))#stream{shut_wr = true},
+    case decode(Block, put_stream(S, H1)) of
+        {error, H2} -> H2;
+        {ok, Fields, H2} -> deliver_headers(F#{cat => ?HCAT_REQUEST}, P, Fields, H2)
     end.
 
 %% on_begin_headers, then on_header for each field that passes the rules,
