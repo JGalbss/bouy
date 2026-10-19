@@ -215,7 +215,9 @@ create(NewTarget, Locales, Options0, Required, Defaults) ->
                          #{locale => maps:get(locale, Resolved), data_locale => DataLocale, calendar => Cal,
                            nu => NuResolved, time_zone => TimeZone, zone => Zone, hour_cycle => DtfHourCycle,
                            date_style => DateStyle, time_style => TimeStyle, pattern => Pattern,
-                           overrides => overrides(Override, DataLocale, Cal, Pattern), bound => undefined}).
+                           overrides => overrides(Override, DataLocale, Cal, Pattern), bound => undefined,
+                           %% DateIntervalFormat reads the hour cycle from the locale's hc keyword.
+                           interval_hour => case DtfHourCycle of undefined -> DefaultHour; _ -> hour_char(DtfHourCycle) end}).
 
 %% The numbering systems that write the numbers of fields, by pattern letter
 %% or all: the override of a style pattern, as "hebr" or "d=hanidays", else
@@ -571,18 +573,17 @@ floor_div(A, B) -> -((-A + B - 1) div B).
 %% V8 writes a space for the narrow no-break space and the thin space of
 %% CLDR's patterns, in strings and parts alike (ReplaceUnicodeSpaces).
 spaces(Parts) ->
-    [{T, [case C of 16#202F -> $\s; 16#2009 -> $\s; _ -> C end || C <- V]} || {T, V} <- Parts].
+    [setelement(2, Part, [case C of 16#202F -> $\s; 16#2009 -> $\s; _ -> C end || C <- element(2, Part)]) || Part <- Parts].
 
 %%% formatRange
 
 range_parts(S, X, Y) ->
     T1 = time_clip(X),
     T2 = time_clip(Y),
-    One = format_parts(S, T1),
-    case T1 =:= T2 orelse One =:= format_parts(S, T2) of
-        true -> [{T, V, shared} || {T, V} <- One];
-        false ->
-            Two = format_parts(S, T2),
-            [{T, V, startRange} || {T, V} <- One] ++ [{literal, [$\s, 16#2013, $\s], shared}]
-                ++ [{T, V, endRange} || {T, V} <- Two]
+    Ctx = context(S),
+    Generator = {maps:get(data_locale, S), maps:get(calendar, S), maps:get(nu, S), maps:get(interval_hour, S)},
+    case buoy_ref_intl_date_interval:format(Generator, maps:get(pattern, S), date_fields(S, T1), date_fields(S, T2),
+                                            fun(Pattern, F) -> buoy_ref_intl_date_fields:format(Pattern, F, Ctx) end) of
+        single -> [{T, V, shared} || {T, V} <- format_parts(S, T1)];
+        Parts -> spaces(Parts)
     end.

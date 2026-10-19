@@ -6,7 +6,7 @@
 %% ties of the distance. Patterns and skeletons are lists of code points.
 -module(buoy_ref_intl_date_skeleton).
 
--export([best_pattern/5, skeleton_of/1, items/1, date_time_glue/3, calendar_resource/4]).
+-export([best_pattern/5, best_pattern/6, skeleton_of/1, items/1, date_time_glue/3, calendar_resource/4]).
 
 -define(FIELDS, 16).
 -define(ERA, 0).
@@ -150,8 +150,11 @@ quote_literal([Item | Rest], Acc) -> quote_literal(Rest, Acc ++ Item).
 %% DateTimePatternGenerator::staticGetSkeleton: the skeleton of a pattern.
 -spec skeleton_of([char()]) -> [char()].
 skeleton_of(Pattern) ->
-    {_, Original, _, _} = skeleton(Pattern),
-    fields_text(Original).
+    %% PtnSkeleton::getSkeleton drops the day period that set/3 added.
+    case skeleton(Pattern) of
+        {_, Original, _, true} -> lists:delete($a, fields_text(Original));
+        {_, Original, _, false} -> fields_text(Original)
+    end.
 
 field_mask({Types, _, _, _}) ->
     lists:foldl(fun(I, Mask) -> case element(I + 1, Types) of 0 -> Mask; _ -> Mask bor (1 bsl I) end end, 0, lists:seq(0, ?FIELDS - 1)).
@@ -290,10 +293,18 @@ insert(Bucket, Base, Skeleton, Pattern, Specified) ->
 %% (UDATPG_MATCH_HOUR_FIELD_LENGTH).
 -spec best_pattern(binary(), binary(), binary(), [char()], char()) -> [char()].
 best_pattern(Locale, Cal, Nu, Requested, DefaultHour) ->
+    best_pattern(Locale, Cal, Nu, Requested, DefaultHour, #{match_hour => true}).
+
+%% The best pattern with the options of getBestPattern: match_hour, whether
+%% the hour takes the width of the skeleton, as DateFormat::getBestPattern
+%% does not.
+-spec best_pattern(binary(), binary(), binary(), [char()], char(), #{match_hour := boolean()}) -> [char()].
+best_pattern(Locale, Cal, Nu, Requested, DefaultHour, #{match_hour := MatchHour}) ->
     {Entries, Glue, _, _} = G = generator(Locale, Cal),
     {Mapped, UsesCapJ} = map_metacharacters(Requested, DefaultHour),
     Skeleton = skeleton(Mapped),
-    Ctx = #{generator => G, request => Skeleton, hour => DefaultHour, cap_j => UsesCapJ, decimal => decimal(Locale, Nu)},
+    Ctx = #{generator => G, request => Skeleton, hour => DefaultHour, cap_j => UsesCapJ, decimal => decimal(Locale, Nu),
+            match_hour => MatchHour},
     {Best, BestSpecified, {_, Missing, Extra}} = best_raw(Entries, Skeleton, -1),
     case Missing =:= 0 andalso Extra =:= 0 of
         true -> adjust(Ctx, Best, BestSpecified, false);
@@ -410,7 +421,7 @@ adjust(Ctx, [Item | Rest], All, Specified, Fix, Acc) ->
     end.
 
 adjust_field(Ctx, Item, {_, Field, RowType, _}, Specified, Fix) ->
-    #{request := Request, hour := DefaultHour, cap_j := CapJ, decimal := Decimal} = Ctx,
+    #{request := Request, hour := DefaultHour, cap_j := CapJ, decimal := Decimal, match_hour := MatchHour} = Ctx,
     {_, Original, _, _} = Request,
     case Fix andalso Field =:= ?SECOND of
         true -> Item ++ Decimal ++ lists:duplicate(length_of(Original, ?FRACTION), char_of(Original, ?FRACTION));
@@ -425,6 +436,7 @@ adjust_field(Ctx, Item, {_, Field, RowType, _}, Specified, Fix) ->
                     end,
                     AdjLen = if
                         Field =:= ?MINUTE; Field =:= ?SECOND -> length(Item);
+                        Field =:= ?HOUR, not MatchHour -> length(Item);
                         Specified =/= none, ReqChar =/= $c, ReqChar =/= $e ->
                             {_, SkelOriginal, _, _} = Specified,
                             SkelLen = length_of(SkelOriginal, Field),
