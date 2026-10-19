@@ -1,15 +1,15 @@
 {
   "suite": "node-surface",
   "version": "v25.9.0",
-  "updated": "04d10056cf0babbeb5284f85b5994292d6078fed",
+  "updated": "8f5dbd866e0c07a118923da1f22017fa9a03c4fa",
   "total": 4460,
   "outcomes": {
-    "pass": 3461,
+    "pass": 3952,
     "rejected": 0,
     "late": 0,
     "skip": 0,
     "never": 0,
-    "fail": 999,
+    "fail": 508,
     "timeout": 0,
     "harness_error": 0,
     "crash": 0
@@ -17,12 +17,12 @@
   "groups": {
     "docs": {
       "deprecated": {
-        "pass": 98,
-        "fail": 31
+        "pass": 110,
+        "fail": 19
       },
       "documented": {
-        "pass": 3363,
-        "fail": 968
+        "pass": 3842,
+        "fail": 489
       }
     },
     "module": {
@@ -54,10 +54,10 @@
         "pass": 3
       },
       "Crypto": {
-        "fail": 4
+        "pass": 4
       },
       "CryptoKey": {
-        "fail": 5
+        "pass": 5
       },
       "CustomEvent": {
         "pass": 20
@@ -93,8 +93,7 @@
         "pass": 19
       },
       "MessagePort": {
-        "pass": 17,
-        "fail": 4
+        "pass": 21
       },
       "Navigator": {
         "pass": 1
@@ -148,7 +147,7 @@
         "fail": 1
       },
       "SubtleCrypto": {
-        "fail": 19
+        "pass": 19
       },
       "TextDecoder": {
         "pass": 5
@@ -215,7 +214,7 @@
         "fail": 22
       },
       "crypto": {
-        "fail": 4
+        "pass": 4
       },
       "exports": {
         "pass": 1
@@ -260,7 +259,7 @@
         "fail": 4
       },
       "node:crypto": {
-        "fail": 401
+        "pass": 401
       },
       "node:dgram": {
         "pass": 43
@@ -269,10 +268,10 @@
         "pass": 13
       },
       "node:dns": {
-        "fail": 25
+        "pass": 25
       },
       "node:dns/promises": {
-        "fail": 25
+        "pass": 25
       },
       "node:domain": {
         "pass": 27
@@ -407,8 +406,7 @@
         "pass": 6
       },
       "node:worker_threads": {
-        "pass": 80,
-        "fail": 4
+        "pass": 84
       },
       "node:zlib": {
         "pass": 553
