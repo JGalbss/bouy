@@ -364,5 +364,10 @@ mod atoms {
 #[allow(unsafe_code)]
 mod entry {
     // The entry point that erlang:load_nif calls is a `#[no_mangle]` function.
-    rustler::init!("buoy_native");
+    rustler::init!("buoy_native", load = load);
+
+    fn load(_env: rustler::Env, _info: rustler::Term) -> bool {
+        crate::fs::ignore_file_size_signal();
+        true
+    }
 }

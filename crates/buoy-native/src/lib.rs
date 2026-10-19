@@ -4,7 +4,9 @@
 //! `JSON.parse` (`json`) and the `RegExp` matcher (`regexp`), which run on the scheduler of
 //! their process in time slices (`slice`), so BEAM preemption holds while they run.
 //!
-//! It also holds the CLDR data and algorithms of `Intl` (`intl`, docs/design/intl.md), and
+//! It also holds the CLDR data and algorithms of `Intl` (`intl`, docs/design/intl.md).
+//! `fs` holds the file system calls of `internalBinding('fs')` that ERTS lacks, and `inotify`
+//! the watches of `internalBinding('fs_event_wrap')` on Linux. The rest holds
 //! the codecs behind `internalBinding('zlib')` (docs/design/node-builtins.md):
 //! each stream is a resource that owns one zlib, brotli, or zstd context, and each module
 //! ports the matching context class of Node's `src/node_zlib.cc`. A write runs on a dirty
@@ -18,6 +20,10 @@
 mod brotli;
 pub mod intl;
 // The NIF glue links against the VM's `enif_*` symbols, which a test binary lacks.
+#[cfg(not(test))]
+mod fs;
+#[cfg(all(target_os = "linux", not(test)))]
+mod inotify;
 #[cfg(not(test))]
 mod json;
 #[cfg(not(test))]

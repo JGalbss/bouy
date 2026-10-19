@@ -2972,17 +2972,17 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "4543f24",
+      "updated": "fb6850c",
       "test": "tests/node/expectations.txt",
       "total": 4419,
       "outcomes": {
-        "pass": 2296,
+        "pass": 2300,
         "rejected": 0,
         "late": 0,
         "skip": 583,
         "never": 0,
-        "fail": 1473,
-        "timeout": 55,
+        "fail": 1470,
+        "timeout": 54,
         "harness_error": 0,
         "crash": 12
       },
@@ -2995,10 +2995,10 @@
             "timeout": 1
           },
           "parallel": {
-            "pass": 2187,
+            "pass": 2191,
             "skip": 545,
-            "fail": 1286,
-            "timeout": 49,
+            "fail": 1283,
+            "timeout": 48,
             "crash": 12
           },
           "sequential": {
@@ -3013,10 +3013,10 @@
             "skip": 343
           },
           "public": {
-            "pass": 2296,
+            "pass": 2300,
             "skip": 240,
-            "fail": 1473,
-            "timeout": 55,
+            "fail": 1470,
+            "timeout": 54,
             "crash": 12
           }
         },
@@ -3087,10 +3087,10 @@
             "skip": 6
           },
           "fs": {
-            "pass": 306,
+            "pass": 309,
             "skip": 20,
-            "fail": 13,
-            "timeout": 4
+            "fail": 11,
+            "timeout": 3
           },
           "http": {
             "pass": 37,
@@ -3126,9 +3126,9 @@
             "fail": 4
           },
           "other": {
-            "pass": 231,
+            "pass": 232,
             "skip": 178,
-            "fail": 202,
+            "fail": 201,
             "timeout": 3,
             "crash": 2
           },

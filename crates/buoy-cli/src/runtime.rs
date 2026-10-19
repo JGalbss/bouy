@@ -39,7 +39,23 @@ impl Runtime {
     /// and the environment that `erlexec` would give it, which saves one `exec` of each
     /// start. That path ignores `ERL_FLAGS`, `ERL_AFLAGS`, and `ERL_ZFLAGS`, so a set one
     /// takes the `erlexec` path.
+    ///
+    /// `erlexec` puts the `bin` directories of the release first on the `PATH` of the VM,
+    /// where a child `buoy` would find `<root>/erts-<version>/bin/erl`, hash another real
+    /// path, and build a second runtime. `BUOY_ERL` names the `erl` of this one instead.
     pub fn vm(&self, emulator: &[&str]) -> Command {
+        let mut vm = self.command(emulator);
+        if let Some(release) = self
+            .release
+            .as_ref()
+            .filter(|release| !release.erl.is_empty())
+        {
+            vm.env("BUOY_ERL", &release.erl);
+        }
+        vm
+    }
+
+    fn command(&self, emulator: &[&str]) -> Command {
         let plus = || emulator.iter().map(|flag| format!("+{flag}"));
         let Some(Release {
             root,

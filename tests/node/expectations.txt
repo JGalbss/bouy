@@ -774,7 +774,7 @@ parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js pass
 parallel/test-crypto-worker-thread.js pass
 parallel/test-crypto-x509.js skip
 parallel/test-crypto.js pass
-parallel/test-cwd-enoent-improved-message.js fail
+parallel/test-cwd-enoent-improved-message.js pass
 parallel/test-cwd-enoent-preload.js fail
 parallel/test-cwd-enoent-repl.js fail
 parallel/test-cwd-enoent.js fail
@@ -1281,7 +1281,7 @@ parallel/test-fs-filehandle.js skip
 parallel/test-fs-fmap.js pass
 parallel/test-fs-fsync.js pass
 parallel/test-fs-glob-throw.mjs pass
-parallel/test-fs-glob.mjs timeout
+parallel/test-fs-glob.mjs linux=pass,macos=timeout
 parallel/test-fs-internal-assertencoding.js pass
 parallel/test-fs-lchmod.js pass
 parallel/test-fs-lchown-negative-one.js pass
@@ -1379,7 +1379,7 @@ parallel/test-fs-readdir-recursive.js fail
 parallel/test-fs-readdir-stack-overflow.js timeout
 parallel/test-fs-readdir-types-symlinks.js pass
 parallel/test-fs-readdir-types.js skip
-parallel/test-fs-readdir-ucs2.js linux=fail,macos=pass
+parallel/test-fs-readdir-ucs2.js pass
 parallel/test-fs-readdir.js pass
 parallel/test-fs-readfile-empty.js pass
 parallel/test-fs-readfile-eof.js pass
@@ -1413,7 +1413,7 @@ parallel/test-fs-rmdir-throws-on-file.js pass
 parallel/test-fs-rmdir-type-check.js pass
 parallel/test-fs-sir-writes-alot.js pass
 parallel/test-fs-stat-bigint.js pass
-parallel/test-fs-stat-date.mjs fail
+parallel/test-fs-stat-date.mjs pass
 parallel/test-fs-stat.js pass
 parallel/test-fs-statfs.js pass
 parallel/test-fs-stream-construct-compat-error-read.js pass
@@ -1466,7 +1466,7 @@ parallel/test-fs-watch-recursive-linux-parallel-remove.js pass
 parallel/test-fs-watch-recursive-promise.js pass
 parallel/test-fs-watch-recursive-symlink.js pass
 parallel/test-fs-watch-recursive-sync-write.js pass
-parallel/test-fs-watch-recursive-update-file.js linux=timeout,macos=pass
+parallel/test-fs-watch-recursive-update-file.js pass
 parallel/test-fs-watch-recursive-validate.js pass
 parallel/test-fs-watch-recursive-watch-file.js pass
 parallel/test-fs-watch-ref-unref.js pass
@@ -1489,7 +1489,7 @@ parallel/test-fs-write-negativeoffset.js pass
 parallel/test-fs-write-no-fd.js pass
 parallel/test-fs-write-optional-params.js pass
 parallel/test-fs-write-reuse-callback.js skip
-parallel/test-fs-write-sigxfsz.js fail
+parallel/test-fs-write-sigxfsz.js linux=fail,macos=pass
 parallel/test-fs-write-stream-autoclose-option.js pass
 parallel/test-fs-write-stream-change-open.js pass
 parallel/test-fs-write-stream-close-without-callback.js pass
