@@ -15,6 +15,7 @@
     "docs/COMPAT.md",
     "tests/ecosystem/",
     "tests/fuzz/",
+    "tests/package-suites/",
     "tests/node/test/",
     "tests/node/bindings.json",
     "tests/node/surface.json",

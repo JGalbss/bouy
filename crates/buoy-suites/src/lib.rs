@@ -13,6 +13,7 @@ pub mod node;
 pub mod node_bindings;
 pub mod node_surface;
 pub mod outcome;
+pub mod package_suites;
 pub mod packages;
 pub mod summary;
 pub mod test262;
@@ -523,12 +524,7 @@ pub fn cached_checkout(
     reference: &str,
     sparse: &[&str],
 ) -> Result<(PathBuf, String), String> {
-    let cache = env::var_os("XDG_CACHE_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
-        .ok_or("set HOME or XDG_CACHE_HOME for the cache of the upstream sources")?
-        .join("buoy");
+    let cache = cache()?;
     let checkout = cache.join(name);
     let git = |directory: &Path, args: &[&str]| -> Result<String, String> {
         let output = Command::new("git")
@@ -592,6 +588,22 @@ pub fn cached_checkout(
         let _ = fs::remove_dir_all(&partial);
     }
     fetched.map(|head| (checkout, head))
+}
+
+/// The cache of the upstream sources: `$XDG_CACHE_HOME/buoy`, or `~/.cache/buoy`.
+///
+/// # Errors
+///
+/// When neither `HOME` nor `XDG_CACHE_HOME` is set.
+pub fn cache() -> Result<PathBuf, String> {
+    env::var_os("XDG_CACHE_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .map(|cache| cache.join("buoy"))
+        .ok_or_else(|| {
+            "set HOME or XDG_CACHE_HOME for the cache of the upstream sources".to_owned()
+        })
 }
 
 pub(crate) fn write(path: &Path, contents: &str) -> Result<(), String> {

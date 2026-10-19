@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use buoy_suites::comparison::Selection;
 use buoy_suites::test262;
-use buoy_suites::{compat, node, node_bindings, node_surface, packages, summary};
+use buoy_suites::{compat, node, node_bindings, node_surface, package_suites, packages, summary};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// The lines of each list of the report. `results.json` holds every id.
@@ -47,6 +47,9 @@ enum Suite {
     /// The ecosystem tier: tests/npm, tests/packages, and the areas of tests/equivalence
     /// that have an expectation file.
     Packages(Packages),
+    /// The own test suites of the top npm packages, tests/package-suites, which
+    /// scripts/package-suites.sh clones and installs, one test file at a time.
+    PackageSuites(Suites),
     /// Write docs/COMPAT.md and docs/compat.json from the committed summaries.
     Compat {
         /// Write nothing, and fail when a file differs from what the summaries give.
@@ -107,6 +110,16 @@ struct Packages {
 }
 
 #[derive(Debug, Args)]
+struct Suites {
+    /// Write tests/package-suites/lookup.json from sources.json and the checkouts, and run
+    /// nothing.
+    #[arg(long)]
+    plan: bool,
+    #[command(flatten)]
+    packages: Packages,
+}
+
+#[derive(Debug, Args)]
 struct Surface {
     /// Rewrite tests/node/surface/expectations.txt and summary.json from a run of every group.
     #[arg(long)]
@@ -152,6 +165,7 @@ fn main() -> ExitCode {
         Suite::Compat { check } => write_compat(check),
         Suite::Packages(arguments) => run_packages(arguments, false),
         Suite::Ecosystem(arguments) => run_packages(arguments, true),
+        Suite::PackageSuites(arguments) => run_package_suites(arguments),
         Suite::Node(upstream) => run_node(upstream),
         Suite::NodeSurface(arguments) => run_node_surface(arguments),
         Suite::NodeBindings => write_node_bindings(),
@@ -386,6 +400,74 @@ fn run_packages(arguments: Packages, ecosystem: bool) -> ExitCode {
     println!("wrote {}", options.output.display());
     if update {
         println!("updated the expectation files and tests/{tier}/summary.json");
+        return ExitCode::SUCCESS;
+    }
+    if report.fails() {
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+/// The test runner of each package suite has workers of its own, so the tier starts half
+/// the VMs of a run of single programs.
+fn run_package_suites(arguments: Suites) -> ExitCode {
+    let checkouts = match buoy_suites::cache() {
+        Ok(cache) => cache.join("package-suites"),
+        Err(error) => {
+            eprintln!("buoy-suites: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let root = buoy_suites::repository();
+    if arguments.plan {
+        return match package_suites::write_plan(&root, &checkouts) {
+            Ok((packages, files)) => {
+                println!(
+                    "wrote {}/lookup.json: {packages} packages, {files} test files",
+                    package_suites::DIRECTORY
+                );
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("buoy-suites: {error}");
+                ExitCode::from(2)
+            }
+        };
+    }
+    let Packages {
+        update,
+        filter,
+        buoy,
+        jobs,
+        deadline,
+    } = arguments.packages;
+    let Some(buoy) = buoy_under_test(buoy) else {
+        return ExitCode::from(2);
+    };
+    let options = package_suites::Options {
+        root,
+        checkouts,
+        output: target().join("suites/package-suites"),
+        buoy,
+        filter,
+        update,
+        jobs: jobs.unwrap_or_else(|| buoy_suites::default_jobs().div_ceil(2)),
+        deadline: Duration::from_secs(deadline.unwrap_or(120)),
+    };
+    let report = match package_suites::run(&options) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("buoy-suites: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    print!("{}", report.text());
+    println!("wrote {}", options.output.display());
+    if update {
+        println!(
+            "updated {}/expectations.txt and summary.json",
+            package_suites::DIRECTORY
+        );
         return ExitCode::SUCCESS;
     }
     if report.fails() {

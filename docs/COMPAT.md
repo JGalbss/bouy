@@ -2490,6 +2490,10 @@ A blocker is a diagnostic code, a built-in that throws a late rejection, or a ha
 | Blocker | Tests blocked | Only blocker |
 | --- | --- | --- |
 
+## Package suites
+
+Not measured yet. Phase 11 of section 11 of [testing.md](design/testing.md) builds this suite.
+
 ## Node native bindings
 
 Buoy implements 663 of the 895 members that src/ of Node sets on its 70 `internalBinding` objects (74.1%). `cargo run --release -p buoy-suites -- node-bindings` reads them from Node's source into `tests/node/bindings.json`. A member counts when the module of its binding names it and passes it to no stub helper, so a module that builds its names, such as the accessors of `report`, counts low. Each function and class that a binding lacks throws `ERR_BUOY_NOT_IMPLEMENTED` with its name.

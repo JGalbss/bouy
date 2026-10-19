@@ -25,13 +25,14 @@ pub const FILES: [&str; 2] = ["docs/COMPAT.md", "docs/compat.json"];
 /// The sections of the page for the upstream suites: the title, the suite, the directory of
 /// its `summary.json` and `expectations.txt` under `tests`, and the phase of testing.md
 /// section 11 that builds it.
-const SECTIONS: [(&str, &str, &str, u8); 6] = [
+const SECTIONS: [(&str, &str, &str, u8); 7] = [
     ("Language", "test262", "test262", 1),
     ("Node", "node", "node", 4),
     ("Node API surface", node_surface::SUITE, "node/surface", 4),
     ("Web", "wpt", "wpt", 10),
     ("Packages", "packages", "packages", 3),
     ("Top npm packages", "ecosystem", "ecosystem", 3),
+    ("Package suites", "package-suites", "package-suites", 11),
 ];
 
 /// The group kinds that the outcome table of a suite shows as rows. Each other kind gets a
@@ -346,6 +347,18 @@ fn suite_section(page: &mut String, tier: &TierRow) {
             "Top npm packages: {} of {} match Node. `scripts/ecosystem.sh` generates a program \
              for each package that imports it and prints the shape of its exports, and \
              `tests/ecosystem/packages.json` gives the reason of each skip.\n",
+            thousands(tier.outcomes.get(Outcome::Pass)),
+            thousands(tier.total)
+        );
+    }
+    if tier.suite == "package-suites" {
+        let _ = writeln!(
+            page,
+            "Package suites: {} of {} test files that pass on Node pass on Buoy. \
+             `scripts/package-suites.sh` clones the source of each top npm package at its \
+             published version, and each test file runs alone with the package's own test \
+             runner. `tests/package-suites/lookup.json` gives the command of each file and \
+             the reason that a package has none.\n",
             thousands(tier.outcomes.get(Outcome::Pass)),
             thousands(tier.total)
         );
