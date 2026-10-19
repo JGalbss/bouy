@@ -44,8 +44,12 @@ local(Handle) ->
 bind(This, Name) ->
     local(This),
     case local_path(Name) of
-        {ok, Path} -> buoy_node_socket:bind(This, #{family => local, path => Path}, []);
-        error -> ?UV_EINVAL
+        {ok, Path} ->
+            Status = on_path(Path, fun(P) -> buoy_node_socket:bind(This, #{family => local, path => P}, []) end),
+            Status =:= 0 andalso buoy_node_socket:save(This, (buoy_node_socket:state(This))#{path := Path}),
+            Status;
+        error ->
+            ?UV_EINVAL
     end.
 
 listen(This, Backlog) ->
@@ -59,7 +63,7 @@ listen(This, Backlog) ->
 connect(This, Req, Name) ->
     local(This),
     case local_path(Name) of
-        {ok, Path} -> buoy_node_socket:connect(This, Req, #{family => local, path => Path}, all);
+        {ok, Path} -> on_path(Path, fun(P) -> buoy_node_socket:connect(This, Req, #{family => local, path => P}, all) end);
         error -> ?UV_EINVAL
     end.
 
@@ -86,16 +90,34 @@ fchmod(This, Flags) ->
     end.
 
 %% A socket path longer than sun_path is EINVAL, as pipe_wrap passes
-%% UV_PIPE_NO_TRUNCATE. libuv takes one that fills sun_path with no NUL,
-%% which the socket module refuses, so such a path loses its last byte, in
-%% bind and in connect alike.
+%% UV_PIPE_NO_TRUNCATE.
 local_path(V) ->
     Path = path(V),
-    Room = case os:type() of {unix, darwin} -> 104; _ -> 108 end,
-    case byte_size(Path) of
-        Size when Size > Room -> error;
-        Room -> {ok, binary:part(Path, 0, Room - 1)};
-        _ -> {ok, Path}
+    case byte_size(Path) > sun_path() of
+        true -> error;
+        false -> {ok, Path}
+    end.
+
+sun_path() ->
+    case os:type() of {unix, darwin} -> 104; _ -> 108 end.
+
+%% Fun(Path) for bind or connect. libuv takes a path that fills sun_path
+%% with no NUL, where the socket module needs room for one, so such a path
+%% goes through a short symlink to its directory, which the kernel resolves
+%% during the call.
+on_path(Path, Fun) ->
+    case byte_size(Path) < sun_path() of
+        true -> Fun(Path);
+        false -> on_link(Path, Fun)
+    end.
+
+on_link(Path, Fun) ->
+    Link = iolist_to_binary(["/tmp/buoy-", os:getpid(), $-, integer_to_list(erlang:unique_integer([positive]))]),
+    case file:make_symlink(filename:absname(filename:dirname(Path)), Link) of
+        ok ->
+            try Fun(filename:join(Link, filename:basename(Path))) after file:delete(Link) end;
+        {error, Reason} ->
+            buoy_node_socket:errno(Reason)
     end.
 
 %% open(fd): a channel process owns a port on the descriptor; the handle stays
