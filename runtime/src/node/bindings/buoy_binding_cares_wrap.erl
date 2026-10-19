@@ -173,10 +173,11 @@ ipv6_buffer(V) ->
 %%% ChannelWrap
 
 %% ChannelWrap(timeout, tries, maxTimeout): c-ares's defaults are a
-%% 2000 ms timeout that doubles at each of 4 tries, up to maxTimeout.
+%% 2000 ms timeout that doubles at each of 4 tries, up to maxTimeout. A
+%% timeout of 0 is set (ARES_OPT_TIMEOUTMS), so a try waits the 250 ms floor.
 channel(This, Timeout, Tries, MaxTimeout) ->
     Ms = case buoy_ref:to_number(Timeout) of
-        T when is_number(T), T > 0 -> trunc(T);
+        T when is_number(T), T >= 0 -> trunc(T);
         _ -> 2000
     end,
     Retry = case buoy_ref:to_number(Tries) of
