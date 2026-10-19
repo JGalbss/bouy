@@ -26,6 +26,7 @@ icu_calendar = { version = "2.3", default-features = false, features = ["compile
 icu_casemap = { version = "2.3", default-features = false, features = ["compiled_data"] }
 icu_collator = { version = "2.3", default-features = false, features = ["compiled_data"] }
 icu_decimal = { version = "2.3", default-features = false, features = ["compiled_data", "unstable"] }
+icu_segmenter = { version = "2.3", default-features = false, features = ["compiled_data"] }
 # Data that every scheduler thread of the VM shares: Arc instead of Rc.
 icu_provider = { version = "2.3", default-features = false, features = ["sync"] }
 # zlib in safe Rust, with zlib's C API, messages, and flush modes.

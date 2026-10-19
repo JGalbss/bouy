@@ -8,6 +8,7 @@ pub mod calendar;
 pub mod casemap;
 pub mod collator;
 pub mod number;
+pub mod segmenter;
 
 /// The CLDR locale data that `scripts/intl-cldr.escript` writes from cldr-json.
 pub static CLDR: &[u8] = include_bytes!("../../data/cldr.etf");

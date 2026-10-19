@@ -184,6 +184,7 @@ dependencies = [
  "icu_decimal",
  "icu_locale",
  "icu_provider",
+ "icu_segmenter",
  "libz-rs-sys",
  "rustler",
  "zstd-sys",

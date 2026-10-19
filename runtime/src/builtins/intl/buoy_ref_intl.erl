@@ -15,7 +15,7 @@
 -export([base_name/1, language/1, script/1, region/1, variants/1]).
 -export([unicode_extension/1, extension_components/1, insert_extension/3, remove_extension/1]).
 -export([lookup_matcher/2, resolve_locale/5, resolve_options/5, filter_locales/3, options_object/1]).
--export([coerce_options/1, get_option/5, range_error/1, is_type/1, is_language/1, is_script/1, is_region/1, is_variant/1]).
+-export([coerce_options/1, get_options_object/1, get_option/5, range_error/1, is_type/1, is_language/1, is_script/1, is_region/1, is_variant/1]).
 
 -import(buoy_ref_realm, [arg/2, record/4]).
 
@@ -27,8 +27,10 @@ intrinsics() ->
     [{'Intl', record(object, ?OBJECT_PROTO,
                      ?METHODS(<<"Intl">>, [{<<"getCanonicalLocales">>, 1}, {<<"supportedValuesOf">>, 1}])
                      ++ [{<<"Collator">>, buoy_ref_intl_collator:constructor()}, {<<"Locale">>, buoy_ref_intl_locale:constructor()},
+                         {<<"ListFormat">>, buoy_ref_intl_list_format:constructor()},
                          {<<"NumberFormat">>, buoy_ref_intl_number_format:constructor()},
                          {<<"PluralRules">>, buoy_ref_intl_plural_rules:constructor()},
+                         {<<"Segmenter">>, buoy_ref_intl_segmenter:constructor()},
                          {?SYM(toStringTag), <<"Intl">>, 4}],
                      none)}].
 
@@ -428,6 +430,12 @@ filter_locales(Available, Requested, Options) ->
 -spec coerce_options(term()) -> term().
 coerce_options(undefined) -> buoy_heap:new_object(null);
 coerce_options(Options) -> buoy_ref:to_object(Options).
+
+%% GetOptionsObject: undefined as an empty object, another object as it is.
+-spec get_options_object(term()) -> term().
+get_options_object(undefined) -> buoy_heap:new_object(null);
+get_options_object(Options) when ?IS_OBJECT(Options) -> Options;
+get_options_object(_Options) -> buoy_ref:type_error(<<"Options must be an object">>).
 
 %% GetOption: Type is string or boolean, Values the allowed values or empty,
 %% and Default the value for undefined, or required.

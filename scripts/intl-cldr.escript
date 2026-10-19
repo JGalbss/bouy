@@ -7,7 +7,7 @@
 %%
 %% <cldr-json-dir> is the cldr-json directory of the cldr-json release that Node's ICU uses
 %% (process.versions.cldr), such as https://github.com/unicode-org/cldr-json/tree/48.0.0,
-%% with cldr-numbers-full, cldr-units-full, and cldr-core.
+%% with cldr-numbers-full, cldr-units-full, cldr-misc-full, and cldr-core.
 %%
 %% cldr-json holds resolved data, so each locale holds what it inherits. The file keeps
 %% for each locale only the entries that differ from its parent, and buoy_intl_cldr reads
@@ -67,7 +67,8 @@ entries(Dir, Read, L) ->
         true -> maps:get(<<"units">>, maps:get(Locale, maps:get(<<"main">>, Read(UnitsPath))));
         false -> #{}
     end,
-    maps:from_list(number_entries(Numbers) ++ currency_entries(Currencies) ++ unit_entries(Units)).
+    Lists = maps:get(<<"listPatterns">>, maps:get(Locale, maps:get(<<"main">>, Read("cldr-misc-full/main/" ++ L ++ "/listPatterns.json")))),
+    maps:from_list(number_entries(Numbers) ++ currency_entries(Currencies) ++ unit_entries(Units) ++ list_entries(Lists)).
 
 %%% numbers.json
 
@@ -158,6 +159,17 @@ sanctioned() ->
      <<"milliliter">>, <<"millimeter">>, <<"millisecond">>, <<"minute">>, <<"month">>, <<"nanosecond">>,
      <<"ounce">>, <<"percent">>, <<"petabyte">>, <<"pound">>, <<"second">>, <<"stone">>, <<"terabit">>,
      <<"terabyte">>, <<"week">>, <<"yard">>, <<"year">>].
+
+%%% listPatterns.json
+
+%% The list patterns {list, Type, Style} => #{start, middle, 'end', two},
+%% with Type standard, or, or unit and Style long, short, or narrow.
+list_entries(Lists) ->
+    [{{list, binary_to_atom(Type), binary_to_atom(Style)},
+      #{start => maps:get(<<"start">>, P), middle => maps:get(<<"middle">>, P), 'end' => maps:get(<<"end">>, P),
+        two => maps:get(<<"2">>, P)}}
+     || {<<"listPattern-type-", Name/binary>>, P} <- maps:to_list(Lists),
+        {Type, Style} <- [case binary:split(Name, <<"-">>) of [T] -> {T, <<"long">>}; [T, S] -> {T, S} end]].
 
 %%% Supplemental data
 

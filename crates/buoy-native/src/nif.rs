@@ -330,6 +330,25 @@ fn intl_cldr(env: Env<'_>) -> Binary<'_> {
     binary.release(env)
 }
 
+/// The boundaries of a big-endian UTF-16 binary for `Intl.Segmenter`: `grapheme`, `word`,
+/// or `sentence` in the locale `tag`, as `{Index, IsWordLike}` from 0 to its length.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn intl_segment(granularity: rustler::Atom, tag: &str, text: Binary) -> Vec<(usize, bool)> {
+    use intl::segmenter::Granularity;
+    let granularity = match () {
+        () if granularity == atoms::word() => Granularity::Word,
+        () if granularity == atoms::sentence() => Granularity::Sentence,
+        () => Granularity::Grapheme,
+    };
+    let units: Vec<u16> = text
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_be_bytes(*pair))
+        .collect();
+    intl::segmenter::boundaries(granularity, tag, &units)
+}
+
 /// The exponent by which compact notation scales a number of the magnitude in the locale
 /// `tag`, short or long (`ComputeExponentForMagnitude` of ECMA-402).
 #[rustler::nif]
@@ -338,7 +357,7 @@ fn intl_compact_exponent(tag: &str, long: bool, magnitude: i16) -> u8 {
 }
 
 mod atoms {
-    rustler::atoms! { base, accent, case }
+    rustler::atoms! { base, accent, case, word, sentence }
 }
 
 #[allow(unsafe_code)]

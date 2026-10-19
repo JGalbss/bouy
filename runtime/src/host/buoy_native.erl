@@ -13,7 +13,7 @@
 -export([intl_canonicalize/1, intl_maximize/1, intl_minimize/1, intl_is_right_to_left/1]).
 -export([intl_collator_new/3, intl_collator_compare/3, intl_collation_types/1, intl_change_case/3]).
 -export([intl_calendar_date/2]).
--export([intl_compact_exponent/3, intl_cldr/0]).
+-export([intl_compact_exponent/3, intl_cldr/0, intl_segment/3]).
 
 -export_type([stream/0, failure/0]).
 
@@ -114,3 +114,8 @@ intl_compact_exponent(_Tag, _Long, _Magnitude) -> erlang:nif_error(nif_not_loade
 %% format (buoy_intl_cldr).
 -spec intl_cldr() -> binary().
 intl_cldr() -> erlang:nif_error(nif_not_loaded).
+
+%% The boundaries of a big-endian UTF-16 binary in a locale, by grapheme,
+%% word, or sentence, as {Index, IsWordLike} from 0 to its length.
+-spec intl_segment(grapheme | word | sentence, binary(), binary()) -> [{non_neg_integer(), boolean()}].
+intl_segment(_Granularity, _Tag, _Text) -> erlang:nif_error(nif_not_loaded).

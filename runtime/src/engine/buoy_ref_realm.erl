@@ -67,6 +67,8 @@ families() ->
      buoy_ref_intl_locale,
      buoy_ref_intl_plural_rules,
      buoy_ref_intl_number_format,
+     buoy_ref_intl_list_format,
+     buoy_ref_intl_segmenter,
      ?MODULE].
 
 %%% Installation
