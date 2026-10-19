@@ -39,7 +39,7 @@ enum Suite {
     /// The API surface of tests/node/surface.json, probed on Buoy.
     NodeSurface(Surface),
     /// Read Node's src/ at the tag of .node-version and write tests/node/bindings.json and
-    /// `runtime/src/buoy_node_manifest.erl`.
+    /// `runtime/src/node/buoy_node_manifest.erl`.
     NodeBindings,
     /// The top npm packages of tests/ecosystem, which scripts/ecosystem.sh generates and
     /// installs, run in the node form of the CLI.
