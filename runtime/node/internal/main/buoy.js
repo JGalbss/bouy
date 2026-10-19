@@ -280,6 +280,15 @@ function runTestRunner() {
   });
 }
 
+function setupStreamIter() {
+  if (!getOptionValue('--experimental-stream-iter')) {
+    return;
+  }
+  const { BuiltinModule } = require('internal/bootstrap/realm');
+  BuiltinModule.allowRequireByUsers('stream/iter');
+  BuiltinModule.allowRequireByUsers('zlib/iter');
+}
+
 patchProcessObject();
 setupTraceCategoryState();
 loadEnvFiles();
@@ -290,6 +299,7 @@ setupEventsource();
 initializeReport();
 initializeDeprecations();
 setupNavigator();
+setupStreamIter();
 setupWarningHandler();
 setupDebugEnv();
 require('internal/dns/utils').initializeDns();

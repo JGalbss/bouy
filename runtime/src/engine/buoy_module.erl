@@ -787,10 +787,16 @@ builtin_names() ->
      <<"node:test">>, <<"node:test/reporters">>].
 
 is_builtin(<<"node:", Rest/binary>> = Name) ->
-    lists:member(Rest, builtin_names()) orelse lists:member(Name, builtin_names());
+    lists:member(Rest, builtin_names()) orelse lists:member(Name, builtin_names()) orelse is_enabled(Rest);
 is_builtin(Name) when is_binary(Name) ->
-    lists:member(Name, builtin_names());
+    lists:member(Name, builtin_names()) orelse is_enabled(Name);
 is_builtin(_) -> false.
+
+%% Whether Name is an experimental module that its flag enables, as
+%% setupStreamIter of lib/internal/process/pre_execution.js allows it.
+is_enabled(Name) ->
+    (Name =:= <<"stream/iter">> orelse Name =:= <<"zlib/iter">>)
+        andalso buoy_binding_options:value(<<"--experimental-stream-iter">>) =:= true.
 
 %%% Bindings before initialization
 
