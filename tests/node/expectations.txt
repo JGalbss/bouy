@@ -3859,7 +3859,7 @@ parallel/test-vm-context-async-script.js pass
 parallel/test-vm-context-dont-contextify.js pass
 parallel/test-vm-context-property-forwarding.js pass
 parallel/test-vm-context.js fail
-parallel/test-vm-create-and-run-in-context.js skip
+parallel/test-vm-create-and-run-in-context.js pass
 parallel/test-vm-create-context-accessors.js pass
 parallel/test-vm-create-context-arg.js pass
 parallel/test-vm-create-context-circular-reference.js pass
@@ -3886,7 +3886,7 @@ parallel/test-vm-indexed-properties.js pass
 parallel/test-vm-inherited_properties.js pass
 parallel/test-vm-is-context.js pass
 parallel/test-vm-low-stack-space.js crash
-parallel/test-vm-measure-memory-lazy.js skip
+parallel/test-vm-measure-memory-lazy.js pass
 parallel/test-vm-measure-memory-multi-context.js pass
 parallel/test-vm-measure-memory.js pass
 parallel/test-vm-module-after-evaluate.js pass
@@ -3905,11 +3905,11 @@ parallel/test-vm-module-hastoplevelawait.js pass
 parallel/test-vm-module-import-meta.js pass
 parallel/test-vm-module-instantiate.js pass
 parallel/test-vm-module-link-shared-deps.js pass
-parallel/test-vm-module-link.js skip
-parallel/test-vm-module-linkmodulerequests-circular.js skip
-parallel/test-vm-module-linkmodulerequests-deep.js skip
-parallel/test-vm-module-linkmodulerequests.js skip
-parallel/test-vm-module-modulerequests.js skip
+parallel/test-vm-module-link.js fail
+parallel/test-vm-module-linkmodulerequests-circular.js pass
+parallel/test-vm-module-linkmodulerequests-deep.js pass
+parallel/test-vm-module-linkmodulerequests.js pass
+parallel/test-vm-module-modulerequests.js fail
 parallel/test-vm-module-reevaluate.js pass
 parallel/test-vm-module-referrer-realm.mjs pass
 parallel/test-vm-module-synthetic.js pass
@@ -3926,7 +3926,7 @@ parallel/test-vm-preserves-property.js pass
 parallel/test-vm-property-not-on-sandbox.js pass
 parallel/test-vm-proxies.js pass
 parallel/test-vm-proxy-failure-CP.js pass
-parallel/test-vm-run-in-new-context.js skip
+parallel/test-vm-run-in-new-context.js fail
 parallel/test-vm-script-after-evaluate.js pass
 parallel/test-vm-script-throw-in-tostring.js pass
 parallel/test-vm-set-property-proxy.js pass
