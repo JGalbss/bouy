@@ -20,8 +20,8 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
-use std::sync::{LazyLock, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::thread;
 
 use buoy_compiler::{Code, Diagnostic, Semantics};
@@ -498,12 +498,22 @@ fn timeout_ms(options: &Options, meta: &Frontmatter) -> u64 {
 }
 
 fn skip_reason(id: &str, meta: &Frontmatter, mode: Mode) -> Option<&'static str> {
-    let run = if mode.is_strict() { "strict" } else { "nonstrict" };
+    let run = if mode.is_strict() {
+        "strict"
+    } else {
+        "nonstrict"
+    };
     SKIPS
         .iter()
         .find(|skip| {
-            let selected = skip.path.as_ref().is_some_and(|path| id.starts_with(path.as_str()))
-                || skip.feature.as_ref().is_some_and(|feature| meta.features.contains(feature))
+            let selected = skip
+                .path
+                .as_ref()
+                .is_some_and(|path| id.starts_with(path.as_str()))
+                || skip
+                    .feature
+                    .as_ref()
+                    .is_some_and(|feature| meta.features.contains(feature))
                 || skip.flag.as_ref().is_some_and(|flag| meta.has_flag(flag));
             selected && skip.mode.as_ref().is_none_or(|skipped| skipped == run)
         })

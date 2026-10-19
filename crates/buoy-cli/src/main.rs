@@ -65,6 +65,10 @@ enum Commands {
         /// Answer requests on stdin until it closes.
         #[arg(long)]
         serve: bool,
+        /// A condition of `--conditions` of the program, for the resolution of each module
+        /// that the server compiles.
+        #[arg(long = "condition")]
+        conditions: Vec<String>,
         #[command(flatten)]
         request: EvalRequest,
     },
@@ -88,6 +92,14 @@ struct EvalRequest {
     /// `arguments` of a sloppy function.
     #[arg(long)]
     frames: bool,
+    /// The script checks the deadline of its run at each turn of a loop, for the
+    /// `timeout` of `vm.Script`.
+    #[arg(long)]
+    interruptible: bool,
+    /// The source is an ES module whose requests the host links at run time, as
+    /// `vm.SourceTextModule` compiles it, with this identifier.
+    #[arg(long)]
+    hosted_module: Option<String>,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -123,8 +135,9 @@ struct Served {
 }
 
 impl EvalRequest {
-    /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`.
-    /// With `source_outside`, the module reads its source text from the runtime.
+    /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`,
+    /// and for a `SyntaxError` also `\t<line>\t<column>` of the error in the text. With
+    /// `source_outside`, the module reads its source text from the runtime.
     fn compile(self, text: &str, source_outside: bool) -> Result<String, String> {
         let module = self.module.unwrap_or_default();
         let context = EvalContext {
@@ -136,8 +149,10 @@ impl EvalRequest {
             frames: self.frames,
             source_outside,
         };
-        let compiled = if self.script {
-            buoy_compiler::compile_eval_script(text, &module)
+        let compiled = if let Some(identifier) = &self.hosted_module {
+            buoy_compiler::compile_hosted_module(text, &module, identifier)
+        } else if self.script {
+            buoy_compiler::compile_eval_script(text, &module, self.interruptible)
         } else {
             buoy_compiler::compile_eval(
                 text,
@@ -158,11 +173,18 @@ impl EvalRequest {
             } else {
                 "TypeError"
             };
-            let message = diagnostics
+            let Some(first) = diagnostics
                 .iter()
                 .find(|d| name == "TypeError" || d.code == buoy_compiler::Code::Syntax)
-                .map_or_else(String::new, |d| d.message.replace('\n', " "));
-            format!("{name}\t{message}")
+            else {
+                return format!("{name}\t");
+            };
+            let message = first.message.replace(['\n', '\t'], " ");
+            if name == "SyntaxError" {
+                format!("{name}\t{message}\t{}\t{}", first.line, first.column)
+            } else {
+                format!("{name}\t{message}")
+            }
         })
     }
 }
@@ -238,7 +260,14 @@ fn main() -> ExitCode {
             }
             Err(error) => fail(&error),
         },
-        Commands::CompileEval { serve: true, .. } => serve_eval(),
+        Commands::CompileEval {
+            serve: true,
+            conditions,
+            ..
+        } => {
+            buoy_compiler::set_user_conditions(conditions);
+            serve_eval()
+        }
         Commands::CompileEval { request, .. } => compile_eval(request),
     }
 }
@@ -291,11 +320,15 @@ fn serve_eval() -> ExitCode {
             load_answer(request)
         } else if let Some(path) = header.strip_prefix("@source\n") {
             source_answer(path, text)
+        } else if header == "@cjs-lexer" {
+            cjs_lexer_answer(text)
+        } else if let Some(variables) = header.strip_prefix("@module-syntax") {
+            module_syntax_answer(text, variables != "\nno-cjs-variables")
         } else {
             match Served::try_parse_from(arguments) {
                 Ok(Served { request }) => {
                     // A script holds its source; other eval code gets it after the module.
-                    let source = if request.script {
+                    let source = if request.script || request.hosted_module.is_some() {
                         String::new()
                     } else {
                         buoy_compiler::eval_text(text, request.strict)
@@ -327,6 +360,28 @@ fn serve_eval() -> ExitCode {
             return ExitCode::SUCCESS;
         }
     }
+}
+
+/// The answer to `@module-syntax`, with the line `no-cjs-variables` for text without the
+/// variables of the `CommonJS` wrapper: status 0 and the byte 1 when the text is an ES
+/// module by its syntax (`containsModuleSyntax`), else 0.
+fn module_syntax_answer(text: &str, cjs_variables: bool) -> Vec<u8> {
+    vec![
+        0,
+        u8::from(buoy_compiler::contains_module_syntax(text, cjs_variables)),
+    ]
+}
+
+/// The answer to `@cjs-lexer`, the export names of `CommonJS` source text: status 0, the
+/// names one on each line, an empty line, and the re-exported specifiers one on each line.
+/// Text that does not parse has none.
+fn cjs_lexer_answer(text: &str) -> Vec<u8> {
+    let (names, reexports) = buoy_compiler::cjs_lexer(text).unwrap_or_default();
+    [
+        &[0],
+        format!("{}\n\n{}", names.join("\n"), reexports.join("\n")).as_bytes(),
+    ]
+    .concat()
 }
 
 /// The answer to `@load`, a module that a running program loads at run time. The request
@@ -544,17 +599,31 @@ fn build(entry: &Path, semantics: Semantics) -> ExitCode {
 
 /// Compiles the program, printing diagnostics to stderr.
 fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
+    compile_reporting(entry, semantics, print_diagnostics)
+}
+
+/// Compiles the program, and on diagnostics records them and returns the status that
+/// `report` gives after printing them.
+fn compile_reporting(
+    entry: &Path,
+    semantics: Semantics,
+    report: impl FnOnce(&[Diagnostic]) -> ExitCode,
+) -> Result<Project, ExitCode> {
     if !entry.is_file() {
         eprintln!("buoy: cannot find the file {}", entry.display());
         return Err(ExitCode::from(DIAGNOSTICS));
     }
     buoy_compiler::compile_with(entry, semantics).map_err(|diagnostics| {
-        for diagnostic in &diagnostics {
-            eprintln!("{}", relative(diagnostic));
-        }
         write_result(&diagnostics);
-        ExitCode::from(DIAGNOSTICS)
+        report(&diagnostics)
     })
+}
+
+fn print_diagnostics(diagnostics: &[Diagnostic]) -> ExitCode {
+    for diagnostic in diagnostics {
+        eprintln!("{}", relative(diagnostic));
+    }
+    ExitCode::from(DIAGNOSTICS)
 }
 
 /// Writes the facts of a run that stopped at its diagnostics to `BUOY_RESULT_FILE`, as

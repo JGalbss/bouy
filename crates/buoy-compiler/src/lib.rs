@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 pub use diagnostic::{Code, Diagnostic};
 use graph::{module_name, project_root};
 pub use reference::{EvalContext, EvalPlace};
+pub use resolve::set_user_conditions;
 
 /// The Erlang modules of a program.
 #[derive(Debug, Clone)]
@@ -182,6 +183,10 @@ pub fn compile_loaded(
     };
     match resolve::Resolver::default().resolve(specifier, importer, mode) {
         Ok(resolve::Target::Builtin(name)) => Ok(Loaded::Builtin(name)),
+        Ok(resolve::Target::Data(url)) => Err((
+            "ERR_UNSUPPORTED_ESM_URL_SCHEME".to_owned(),
+            format!("{url} loads through the ESM loader of the program"),
+        )),
         Ok(resolve::Target::File(path)) => {
             let root = project_root(main);
             let root = root.canonicalize().unwrap_or(root);
@@ -319,8 +324,38 @@ pub fn eval_text(source: &str, strict: bool) -> String {
 /// Compiles a classic script at run time (reference semantics) into the Erlang module
 /// `name`, as a host's `evalScript` runs it: its `'$body'/0` declares the script's
 /// top-level names in the global environment of the current realm and runs its code.
-pub fn compile_eval_script(source: &str, name: &str) -> Result<String, Vec<Diagnostic>> {
-    reference::lower_script(source.to_owned(), name)
+pub fn compile_eval_script(
+    source: &str,
+    name: &str,
+    interruptible: bool,
+) -> Result<String, Vec<Diagnostic>> {
+    reference::lower_script(source.to_owned(), name, interruptible)
+}
+
+/// Compiles an ES module from source text at run time (reference semantics) into the
+/// Erlang module `name`, as `vm.SourceTextModule` and Node's ESM loader compile a
+/// `ModuleWrap`: the host links each request of `import` and `export ... from` at run time
+/// (`buoy_module:hosted_import/3`). `identifier` is the module's URL or name.
+pub fn compile_hosted_module(
+    source: &str,
+    name: &str,
+    identifier: &str,
+) -> Result<String, Vec<Diagnostic>> {
+    reference::lower_hosted_module(source.to_owned(), name, PathBuf::from(identifier))
+}
+
+/// The export names and the re-exported specifiers of `CommonJS` source text, as Node's
+/// cjs-module-lexer finds them: `None` for text that does not parse.
+#[must_use]
+pub fn cjs_lexer(source: &str) -> Option<(Vec<String>, Vec<String>)> {
+    reference::graph::cjs_lexer(source.to_owned()).ok()
+}
+
+/// Node's `containsModuleSyntax`: whether source text that does not compile as a `CommonJS`
+/// function body, with or without the wrapper's variables, is an ES module by its syntax.
+#[must_use]
+pub fn contains_module_syntax(source: &str, cjs_variables: bool) -> bool {
+    reference::graph::contains_module_syntax(source, cjs_variables)
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

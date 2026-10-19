@@ -175,7 +175,11 @@ impl<'a> Lowerer<'a, '_> {
         matches!(self.frame.env.get(&symbol), Some(Local::Var(_)))
             && !self.early.contains(&symbol)
             && !self.class_bindings.contains(&symbol)
-            && !self.semantic.scoping().symbol_flags(symbol).is_const_variable()
+            && !self
+                .semantic
+                .scoping()
+                .symbol_flags(symbol)
+                .is_const_variable()
             && self.block_cell(symbol, span).is_none()
     }
 

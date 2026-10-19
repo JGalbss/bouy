@@ -302,8 +302,7 @@
         "fail": 40
       },
       "node:module": {
-        "pass": 3,
-        "fail": 17
+        "pass": 20
       },
       "node:net": {
         "pass": 119

@@ -1,13 +1,38 @@
 %% internalBinding('contextify') (src/node_contextify.cc): the native side of
-%% node:vm. A context is a realm of the engine (buoy_ref_realm:create/0):
+%% node:vm. A context is a realm of the engine (buoy_ref_realm:create/0).
 %% makeContext gives the sandbox object the private symbol that isContext
 %% reads, ContextifyScript compiles a classic script with the eval compiler,
 %% and runInContext runs it in the realm of a context or in this one.
+%%
+%% The code of a context sees a global proxy (buoy_ref_realm:set_global_proxy/2)
+%% in front of the realm's global object, as V8 does: a host proxy whose
+%% interceptors below follow the named property callbacks of
+%% node_contextify.cc. A read finds the sandbox's property first, then the
+%% global's; a write and a definition go to the sandbox and to the global.
 -module(buoy_binding_contextify).
 
--export([binding/0]).
+-export([binding/0, cached_data/1, source_map_url/1]).
+-export([get/4, set/5, has/3, has_binding/3, delete_property/3, own_keys/2, get_own_property/3, define_own_property/4]).
 
 -define(SCRIPT, {'#', ?MODULE, <<"script">>}).
+-define(WATCHDOGS, '$buoy_sigint_watchdogs').
+-define(SOURCE, {'#', ?MODULE, <<"source">>}).
+
+%% The globals of V8's realm that a new context has; the realm of the engine
+%% also has the host's, such as setTimeout and process, which node:vm does
+%% not give a context.
+-define(V8_GLOBALS, [<<"Object">>, <<"Function">>, <<"Array">>, <<"Number">>, <<"parseFloat">>, <<"parseInt">>,
+                     <<"Infinity">>, <<"NaN">>, <<"undefined">>, <<"Boolean">>, <<"String">>, <<"Symbol">>, <<"Date">>,
+                     <<"Promise">>, <<"RegExp">>, <<"Error">>, <<"AggregateError">>, <<"EvalError">>, <<"RangeError">>,
+                     <<"ReferenceError">>, <<"SyntaxError">>, <<"TypeError">>, <<"URIError">>, <<"globalThis">>, <<"JSON">>,
+                     <<"Math">>, <<"Intl">>, <<"ArrayBuffer">>, <<"Atomics">>, <<"Uint8Array">>, <<"Int8Array">>,
+                     <<"Uint16Array">>, <<"Int16Array">>, <<"Uint32Array">>, <<"Int32Array">>, <<"BigUint64Array">>,
+                     <<"BigInt64Array">>, <<"Uint8ClampedArray">>, <<"Float32Array">>, <<"Float64Array">>, <<"DataView">>,
+                     <<"Map">>, <<"BigInt">>, <<"Set">>, <<"Iterator">>, <<"WeakMap">>, <<"WeakSet">>, <<"Proxy">>,
+                     <<"Reflect">>, <<"FinalizationRegistry">>, <<"WeakRef">>, <<"decodeURI">>, <<"decodeURIComponent">>,
+                     <<"encodeURI">>, <<"encodeURIComponent">>, <<"escape">>, <<"unescape">>, <<"eval">>, <<"isFinite">>,
+                     <<"isNaN">>, <<"console">>, <<"SuppressedError">>, <<"DisposableStack">>, <<"AsyncDisposableStack">>,
+                     <<"Float16Array">>, <<"SharedArrayBuffer">>, <<"WebAssembly">>]).
 
 -spec binding() -> term().
 binding() ->
@@ -19,104 +44,214 @@ binding() ->
     Script = buoy_node:constructor(<<"ContextifyScript">>, 8, fun(This, Args) -> new_script(This, Args) end),
     Proto = buoy_heap:get(Script, <<"prototype">>),
     buoy_heap:define(Proto, <<"runInContext">>, #{value => F(<<"runInContext">>, 0, fun(This, Args) ->
-        run_in_context(This, A(1, Args))
+        run_in_context(This, A(1, Args), A(2, Args), A(4, Args) =:= true)
     end), writable => true, enumerable => true, configurable => true}),
-    buoy_heap:define(Proto, <<"createCachedData">>, #{value => F(<<"createCachedData">>, 0, fun(_, _) ->
-        buoy_node_encoding:new_buffer(<<>>)
+    buoy_heap:define(Proto, <<"createCachedData">>, #{value => F(<<"createCachedData">>, 0, fun(This, _) ->
+        {ok, Source} = buoy_heap:private_find(This, ?SOURCE),
+        buoy_node_encoding:new_buffer(cached_data(Source))
     end), writable => true, enumerable => true, configurable => true}),
     buoy_node:object([
         {<<"ContextifyScript">>, Script},
-        {<<"makeContext">>, F(<<"makeContext">>, 0, fun(_, Args) -> make_context(A(1, Args)) end)},
+        {<<"makeContext">>, F(<<"makeContext">>, 0, fun(_, Args) -> make_context(A(1, Args), A(6, Args), A(7, Args)) end)},
         {<<"compileFunction">>, F(<<"compileFunction">>, 0, fun(_, Args) -> compile_function(Args) end)},
         {<<"constants">>, Constants},
-        %% shortcut: the watchdog reports that it started, as SigintWatchdogHelper::Start
-        %% does, but OTP cannot catch SIGINT, so a SIGINT still ends the VM.
-        {<<"startSigintWatchdog">>, F(<<"startSigintWatchdog">>, 0, fun(_, _) -> true end)},
-        {<<"stopSigintWatchdog">>, F(<<"stopSigintWatchdog">>, 0, fun(_, _) -> false end)},
-        {<<"watchdogHasPendingSigint">>, F(<<"watchdogHasPendingSigint">>, 0, fun(_, _) -> false end)},
-        {<<"containsModuleSyntax">>, F(<<"containsModuleSyntax">>, 2, fun(_, _) -> false end)}]
-        ++ buoy_node:stubs(<<"contextify">>, [<<"measureMemory">>, <<"compileFunctionForCJSLoader">>])).
+        {<<"startSigintWatchdog">>, F(<<"startSigintWatchdog">>, 0, fun(_, _) -> start_sigint_watchdog() end)},
+        {<<"stopSigintWatchdog">>, F(<<"stopSigintWatchdog">>, 0, fun(_, _) -> stop_sigint_watchdog() end)},
+        {<<"watchdogHasPendingSigint">>, F(<<"watchdogHasPendingSigint">>, 0, fun(_, _) ->
+            lists:any(fun buoy_binding_signal_wrap:has_pending_sigint/1, watchdogs())
+        end)},
+        %% containsModuleSyntax(code, filename, resourceName, cjsVar): a string
+        %% cjsVar compiles the code without the variables of the wrapper.
+        {<<"containsModuleSyntax">>, F(<<"containsModuleSyntax">>, 2, fun(_, Args) ->
+            buoy_ref_eval:contains_module_syntax(buoy_ref:to_string(A(1, Args)), buoy_ref:typeof(A(4, Args)) =/= <<"string">>)
+        end)},
+        {<<"measureMemory">>, F(<<"measureMemory">>, 2, fun(_, Args) -> measure_memory(A(1, Args)) end)},
+        {<<"compileFunctionForCJSLoader">>, F(<<"compileFunctionForCJSLoader">>, 4, fun(_, Args) ->
+            compile_function_for_cjs_loader(A(1, Args), A(2, Args), A(4, Args))
+        end)}]).
+
+%% measureMemory(mode, execution): a promise of V8's estimate of the memory
+%% of each context. All contexts share the heap of the process, so a context
+%% of node:vm counts the records of its own realm, and the main context the
+%% rest of the process.
+measure_memory(Mode) ->
+    {memory, Total} = erlang:process_info(self(), memory),
+    Contexts = case erlang:get('$buoy_realms') of
+        undefined -> [];
+        Last -> [realm_bytes(N) || N <- lists:seq(1, Last)]
+    end,
+    Current = max(0, Total - lists:sum(Contexts)),
+    Summary = [{<<"total">>, estimate(Total)}],
+    Result = case Mode of
+        1 -> Summary ++ [{<<"current">>, estimate(Current)}, {<<"other">>, buoy_heap:new_array([estimate(B) || B <- Contexts])}];
+        _ -> Summary
+    end,
+    buoy_jobs:fulfilled(buoy_node:object(Result)).
+
+estimate(Bytes) ->
+    buoy_node:object([{<<"jsMemoryEstimate">>, Bytes}, {<<"jsMemoryRange">>, buoy_heap:new_array([Bytes, Bytes])}]).
+
+realm_bytes(N) ->
+    Words = lists:sum([erts_debug:flat_size(V) || {{R, _}, V} <- erlang:get(), R =:= N]),
+    Words * erlang:system_info(wordsize).
 
 private() -> buoy_node:private_symbol(<<"contextify_context_private_symbol">>).
 
-%% makeContext(contextObject, ...): a new realm for the sandbox, or the
-%% global object of a new realm for vm.constants.DONT_CONTEXTIFY.
-make_context(Sandbox) ->
+%% makeContext(contextObject, ...): a new realm whose global proxy intercepts
+%% the sandbox, or the global object of a new realm for
+%% vm.constants.DONT_CONTEXTIFY.
+make_context(Sandbox, OwnQueue, Option) ->
     Global = buoy_ref_realm:create(),
     Realm = erlang:get('$buoy_realms'),
-    erlang:put({?MODULE, builtins, Realm}, own_keys(Global)),
+    OwnQueue =:= true andalso buoy_jobs:own_queue(Realm),
+    [buoy_heap:delete_property(Global, K) || K <- buoy_heap:own_keys(Global), is_binary(K), not lists:member(K, ?V8_GLOBALS)],
     Context = case buoy_heap:is_object(Sandbox) of
-        true -> Sandbox;
-        false -> Global
+        true ->
+            Proxy = buoy_heap:proxy(Global, {host, ?MODULE, Sandbox}),
+            buoy_heap:define(Global, <<"globalThis">>, #{value => Proxy}),
+            buoy_ref_realm:set_global_proxy(Realm, Proxy),
+            Sandbox;
+        false ->
+            Global
     end,
     buoy_heap:define(Context, private(), #{value => Realm, writable => false, enumerable => false, configurable => false}),
-    erlang:put({?MODULE, global, Realm}, Global),
+    %% import() of code of the context without a script, such as indirect eval
+    %% in a job, takes the context's host-defined option.
+    case Option of
+        {'$sym', _, _} ->
+            buoy_heap:define(Context, buoy_node:private_symbol(<<"host_defined_option_symbol">>),
+                             #{value => Option, writable => true, enumerable => false, configurable => true}),
+            buoy_module:set_realm_host(Realm, Option);
+        _ ->
+            ok
+    end,
     Context.
-
-%% The own keys that a run copies: no private name, and not the private symbol
-%% that marks a context.
-own_keys(O) ->
-    Marker = private(),
-    [K || K <- buoy_heap:own_keys(O), K =/= Marker, not is_tuple(K) orelse element(1, K) =/= '#'].
 
 %% new ContextifyScript(code, filename, lineOffset, columnOffset, cachedData,
 %% produceCachedData, parsingContext): the script compiles now, so a
 %% SyntaxError throws from the constructor.
 new_script(This, Args) ->
     Code = buoy_node:arg(1, Args),
-    Module = buoy_ref_eval:compile_script(Code),
+    Module = decorated(fun() -> buoy_ref_eval:compile_script(Code) end, Args, 0),
     buoy_heap:private_put(This, ?SCRIPT, Module),
-    case buoy_node:arg(5, Args) of
-        undefined -> ok;
-        _ -> buoy_heap:set(This, <<"cachedDataRejected">>, false)
-    end,
-    case buoy_ref:truthy(buoy_node:arg(6, Args)) of
-        true ->
-            buoy_heap:set(This, <<"cachedDataProduced">>, true),
-            buoy_heap:set(This, <<"cachedData">>, buoy_node_encoding:new_buffer(<<>>));
-        false ->
-            ok
-    end,
-    buoy_heap:set(This, <<"sourceMapURL">>, undefined),
-    host_defined(This, buoy_node:arg(8, Args)).
-
-%% The id symbol of the host-defined options of a script or a function,
-%% which registerModule of internal/modules/esm/utils keys the callbacks of
-%% importModuleDynamically by.
-host_defined(O, Id) ->
-    buoy_heap:define(O, buoy_node:private_symbol(<<"host_defined_option_symbol">>),
-                     #{value => Id, writable => true, enumerable => false, configurable => true}),
+    buoy_heap:private_put(This, ?SOURCE, Code),
+    set_host(This, Module, buoy_node:arg(2, Args), buoy_node:arg(8, Args)),
+    [buoy_heap:set(This, K, V) || {K, V} <- cache_fields(Code, Args) ++ [{<<"sourceMapURL">>, source_map_url(Code)}]],
     undefined.
 
-%% runInContext(contextifiedObject or null, timeout, ...): the completion value
-%% of the script in the realm of the context, or in this realm for null.
-%% shortcut: the sandbox's properties are copied to the realm's global object
-%% before the run and the new globals back after it, where V8 intercepts each
-%% access; a function that the script leaves behind reads the realm's global
-%% object later. Intercept global accesses when the engine has a hook for it.
-run_in_context(This, Context) ->
+%% The fields of a code cache of Code that the arguments ask for: whether a
+%% given cache was rejected, and a new one.
+cache_fields(Code, Args) ->
+    Rejected = case buoy_node:arg(5, Args) of
+        undefined -> [];
+        Data -> [{<<"cachedDataRejected">>, buoy_node_encoding:view_bytes(Data) =/= cached_data(Code)}]
+    end,
+    Produced = case buoy_ref:truthy(buoy_node:arg(6, Args)) of
+        true -> [{<<"cachedDataProduced">>, true}, {<<"cachedData">>, buoy_node_encoding:new_buffer(cached_data(Code))}];
+        false -> []
+    end,
+    Rejected ++ Produced.
+
+%% The code cache of a source text. The compiled module lives in the VM, so
+%% the cache only identifies it, as V8's checks its source hash and flags: a
+%% cache of another source or of another runtime is rejected.
+-spec cached_data(term()) -> binary().
+cached_data(Code) ->
+    Tag = buoy_binding_v8:version_tag(),
+    <<"BUOY", Tag:32, (erlang:md5(buoy_ref_string:to_utf8(buoy_ref:to_string(Code))))/binary>>.
+
+%% The URL of the last `//# sourceMappingURL=` comment of the code, as V8's
+%% scanner reads the magic comment, or undefined.
+-spec source_map_url(term()) -> term().
+source_map_url(Code) ->
+    Text = buoy_ref_string:to_utf8(buoy_ref:to_string(Code)),
+    case re:run(Text, <<"//[#@][ \\t]sourceMappingURL=([^\\s'\"]+)[ \\t]*(?:\\r|\\n|$)">>, [global, {capture, all_but_first, binary}, unicode]) of
+        {match, Matches} -> buoy_node:string(lists:last(lists:last(Matches)));
+        nomatch -> undefined
+    end.
+
+%% runInContext(contextifiedObject or null, timeout, displayErrors,
+%% breakOnSigint, ...): the completion value of the script in the realm of
+%% the context, or in this realm for null. A timeout or a break on SIGINT
+%% runs the script compiled to check them at each turn of a loop, as V8's
+%% watchdogs stop a run.
+run_in_context(This, Context, Timeout, BreakOnSigint) ->
     Module = case buoy_heap:is_object(This) andalso buoy_heap:private_find(This, ?SCRIPT) of
         {ok, M} -> M;
         _ -> buoy_ref:type_error(<<"Illegal invocation">>)
     end,
-    case Context of
-        null ->
-            Module:'$body'();
-        _ ->
-            Realm = buoy_heap:get(Context, private()),
-            Global = erlang:get({?MODULE, global, Realm}),
-            Sandboxed = Global =/= Context,
-            Sandboxed andalso copy(Context, Global, own_keys(Context)),
-            Run = buoy_ref_realm:realm_fun(Realm, fun(_, _) -> Module:'$body'() end),
-            try Run(undefined, undefined)
-            after
-                Sandboxed andalso copy(Global, Context, own_keys(Global) -- erlang:get({?MODULE, builtins, Realm}))
+    HasTimeout = is_integer(Timeout) andalso Timeout >= 0,
+    case HasTimeout orelse BreakOnSigint of
+        false ->
+            run(Module, Context);
+        true ->
+            {ok, Source} = buoy_heap:private_find(This, ?SOURCE),
+            Interruptible = buoy_ref_eval:compile_script(Source, ["--interruptible"]),
+            Run = fun() -> run(Interruptible, Context) end,
+            Timed = case HasTimeout of
+                true -> fun() -> timed(Timeout, Run) end;
+                false -> Run
+            end,
+            case BreakOnSigint of
+                true -> break_on_sigint(Timed);
+                false -> Timed()
             end
     end.
 
-copy(From, To, Keys) ->
-    [buoy_heap:set(To, K, buoy_heap:get(From, K)) || K <- Keys],
-    true.
+timed(Timeout, Run) ->
+    case buoy_ref_eval:run_until(Timeout, Run) of
+        {ok, Value} -> Value;
+        timeout -> buoy_node:throw_code('Error', <<"ERR_SCRIPT_EXECUTION_TIMEOUT">>,
+                                        iolist_to_binary(["Script execution timed out after ", integer_to_binary(Timeout), "ms"]))
+    end.
+
+%% A SIGINT during the run ends it with ERR_SCRIPT_EXECUTION_INTERRUPTED, and
+%% no listener of the realm gets it, as Node's SigintWatchdog takes it.
+break_on_sigint(Run) ->
+    Watch = buoy_binding_signal_wrap:watch_sigint(),
+    Result = try buoy_ref_eval:run_watched(fun() -> buoy_binding_signal_wrap:has_pending_sigint(Watch) end, Run)
+             after buoy_binding_signal_wrap:unwatch_sigint(Watch)
+             end,
+    case Result of
+        {ok, Value} -> Value;
+        interrupted -> buoy_node:throw_code('Error', <<"ERR_SCRIPT_EXECUTION_INTERRUPTED">>,
+                                            <<"Script execution was interrupted by `SIGINT`">>)
+    end.
+
+%% startSigintWatchdog and stopSigintWatchdog, which the REPL calls around
+%% the code that it evaluates: stop returns whether a SIGINT came.
+start_sigint_watchdog() ->
+    erlang:put(?WATCHDOGS, [buoy_binding_signal_wrap:watch_sigint() | watchdogs()]),
+    undefined.
+
+stop_sigint_watchdog() ->
+    case watchdogs() of
+        [Watch | Rest] ->
+            erlang:put(?WATCHDOGS, Rest),
+            buoy_binding_signal_wrap:unwatch_sigint(Watch);
+        [] ->
+            false
+    end.
+
+watchdogs() ->
+    case erlang:get(?WATCHDOGS) of
+        undefined -> [];
+        List -> List
+    end.
+
+%% A context with a microtask queue of its own runs its microtasks after the
+%% script, as microtaskMode 'afterEvaluate' asks.
+run(Module, null) -> Module:'$body'();
+run(Module, Context) ->
+    Realm = realm_of(Context),
+    Run = fun(_, _) ->
+        Value = Module:'$body'(),
+        buoy_jobs:checkpoint(Realm),
+        Value
+    end,
+    (buoy_ref_realm:realm_fun(Realm, Run))(undefined, undefined).
+
+realm_of(Context) -> buoy_heap:get(Context, private()).
 
 %% compileFunction(code, filename, lineOffset, columnOffset, cachedData,
 %% produceCachedData, parsingContext, contextExtensions, params, ...):
@@ -127,10 +262,222 @@ compile_function(Args) ->
         undefined -> [];
         List -> buoy_heap:array_items(List)
     end,
-    Make = fun(_, _) -> buoy_ref_eval:create_function(Params ++ [Code]) end,
+    %% The body starts on the third line of the source of create_function.
+    Make = fun(_, _) -> decorated(fun() -> buoy_ref_eval:create_function(Params ++ [Code]) end, Args, 2) end,
     Function = case buoy_node:arg(7, Args) of
         Context when Context =:= undefined; Context =:= null -> Make(undefined, undefined);
-        Context -> (buoy_ref_realm:realm_fun(buoy_heap:get(Context, private()), Make))(undefined, undefined)
+        Context -> (buoy_ref_realm:realm_fun(realm_of(Context), Make))(undefined, undefined)
     end,
-    host_defined(Function, buoy_node:arg(10, Args)),
-    buoy_node:object([{<<"function">>, Function}, {<<"sourceMapURL">>, undefined}]).
+    {'$f', _, Fun} = Function,
+    {module, Module} = erlang:fun_info(Fun, module),
+    set_host(Function, Module, buoy_node:arg(2, Args), buoy_node:arg(10, Args)),
+    buoy_node:object([{<<"function">>, Function}, {<<"sourceMapURL">>, source_map_url(Code)}] ++ cache_fields(Code, Args)).
+
+%% The host-defined option of a script or a function, which import() of its
+%% code passes to the dynamic import callback of module_wrap, as V8 keeps it
+%% in the script's host-defined options.
+%% shortcut: scripts of one source text share their compiled module, so the
+%% last of them names the option; a module of each script would separate
+%% them.
+set_host(Referrer, Module, Filename, {'$sym', _, _} = Option) ->
+    buoy_heap:define(Referrer, buoy_node:private_symbol(<<"host_defined_option_symbol">>),
+                     #{value => Option, writable => true, enumerable => false, configurable => true}),
+    buoy_module:set_host(Module, 0, {Filename, Option});
+set_host(_, _, _, _) ->
+    ok.
+
+%% compileFunctionForCJSLoader(content, filename, isSeaMain, shouldDetectModule):
+%% the function of a CommonJS module of the parameters of Node's wrapper, as
+%% Node's CommonJS loader runs it. A file of the program has its compiled
+%% function, as V8 takes a function from its code cache, and other text
+%% compiles here. A hashbang line becomes a comment, as V8 reads it in the
+%% source of a script.
+compile_function_for_cjs_loader(Code, Filename, Detect) ->
+    Text = buoy_ref:to_string(Code),
+    {Function, Esm} = case buoy_module:compiled_wrapper(Filename, Text) of
+        {ok, Wrapper} -> {Wrapper, false};
+        none -> compile_cjs(Text, Filename, Detect =:= true)
+    end,
+    buoy_node:object([{<<"cachedDataRejected">>, false}, {<<"sourceMapURL">>, source_map_url(Text)},
+                      {<<"sourceURL">>, undefined}, {<<"function">>, Function}, {<<"canParseAsESM">>, Esm}]).
+
+%% Text that does not compile as CommonJS can parse as an ES module, which
+%% the loader then loads as one, as Node retries a syntax error of ES module
+%% syntax when shouldDetectModule holds.
+compile_cjs(Text, Filename, Detect) ->
+    try
+        %% The body starts on the third line of the source of create_function.
+        {decorated(fun() -> compile_cjs(Text) end, [Text, Filename], 2), false}
+    catch
+        error:{'$throw', _} = Reason:Stack ->
+            case Detect andalso buoy_ref_eval:contains_module_syntax(Text, true) of
+                true -> {undefined, true};
+                false -> erlang:raise(error, Reason, Stack)
+            end
+    end.
+
+%% DecorateErrorStack of node_errors.cc: a SyntaxError that the compilation of
+%% the code of a script or a function throws gets the arrow message, the
+%% place, the source line, and a caret, in front of its stack. Args are the
+%% code, the filename, and the line offset of the script, and Skipped is the
+%% count of the lines that the compiled source has before the code.
+decorated(Compile, Args, Skipped) ->
+    try
+        Compile()
+    catch
+        error:{'$throw', E} = Reason:Stack ->
+            case buoy_ref_eval:syntax_position(E) of
+                {Line, Column} ->
+                    Offset = case buoy_node:arg(3, Args) of N when is_integer(N) -> N; _ -> 0 end,
+                    decorate(E, buoy_node:arg(1, Args), buoy_node:arg(2, Args), Line - Skipped, Offset, Column);
+                none ->
+                    ok
+            end,
+            erlang:raise(error, Reason, Stack)
+    end.
+
+decorate(E, Code, Filename, Line, Offset, Column) ->
+    Source = case lines(buoy_ref_string:to_utf8(buoy_ref:to_string(Code))) of
+        Lines when Line >= 1, Line =< length(Lines) -> lists:nth(Line, Lines);
+        _ -> <<>>
+    end,
+    Arrow = buoy_ref_string:from_utf8(iolist_to_binary(
+        [buoy_ref_string:to_utf8(buoy_ref:to_string(Filename)), $:, integer_to_binary(Line + Offset), $\n,
+         Source, $\n, lists:duplicate(max(Column - 1, 0), $\s), "^\n"])),
+    Stack = buoy_heap:get(E, <<"stack">>),
+    case buoy_ref:typeof(Stack) of
+        <<"string">> ->
+            buoy_heap:set(E, <<"stack">>, buoy_ref_string:concat([Arrow, <<"\n">>, Stack])),
+            buoy_heap:private_put(E, buoy_node:private_symbol(<<"arrow_message_private_symbol">>), Arrow),
+            buoy_heap:private_put(E, buoy_node:private_symbol(<<"decorated_private_symbol">>), true);
+        _ ->
+            ok
+    end.
+
+lines(Text) -> binary:split(Text, [<<"\r\n">>, <<"\n">>], [global]).
+
+compile_cjs(Text) ->
+    Length = buoy_ref_string:length_of(Text),
+    Body = case buoy_ref_string:slice(Text, 0, min(2, Length)) of
+        <<"#!">> -> buoy_ref_string:concat(<<"//">>, buoy_ref_string:slice(Text, 2, Length));
+        _ -> Text
+    end,
+    buoy_ref_eval:create_function([<<"exports">>, <<"require">>, <<"module">>, <<"__filename">>, <<"__dirname">>, Body]).
+
+%%% The interceptors of the global proxy. Sandbox is the contextified object
+%%% and Global the realm's own global object.
+
+%% PropertyGetterCallback: the sandbox's property, up its chain, else the
+%% global's. The sandbox itself reads as the global proxy.
+-spec get(term(), term(), buoy_heap:key(), term()) -> term().
+get(Sandbox, Global, K, Receiver) ->
+    case is_intercepted(K) andalso buoy_heap:has(Sandbox, K) of
+        true -> proxy_for(Sandbox, buoy_heap:get(Sandbox, K, Sandbox));
+        false -> buoy_heap:get(Global, K, Receiver)
+    end.
+
+proxy_for(Sandbox, Sandbox) -> buoy_ref_realm:global_object(realm_of(Sandbox));
+proxy_for(_Sandbox, Value) -> Value.
+
+%% PropertySetterCallback: a read-only property on the global or the sandbox
+%% keeps the global's own behavior. Otherwise the value goes to the sandbox,
+%% and to the global unless the sandbox's own property is an accessor.
+-spec set(term(), term(), buoy_heap:key(), term(), term()) -> boolean().
+set(Sandbox, Global, K, V, _Receiver) ->
+    case is_intercepted(K) andalso {find(Global, K), find(Sandbox, K)} of
+        false ->
+            buoy_heap:set(Global, K, V, Global);
+        {OnGlobal, OnSandbox} ->
+            case is_read_only(OnGlobal) orelse is_read_only(OnSandbox) of
+                true -> false;
+                false when OnGlobal =:= none, OnSandbox =:= none, is_tuple(K) -> buoy_heap:set(Global, K, V, Global);
+                false -> set_sandbox(Sandbox, Global, K, V)
+            end
+    end.
+
+set_sandbox(Sandbox, Global, K, V) ->
+    buoy_heap:set(Sandbox, K, V, Sandbox) andalso
+        case buoy_heap:get_own(Sandbox, K) of
+            {accessor, _, _, _} -> true;
+            _ -> buoy_heap:set(Global, K, V, Global)
+        end.
+
+%% PropertyQueryCallback: the sandbox's own property, else the global's, up
+%% the chain of the context.
+-spec has(term(), term(), buoy_heap:key()) -> boolean().
+has(Sandbox, Global, K) ->
+    (is_intercepted(K) andalso buoy_heap:get_own(Sandbox, K) =/= none) orelse buoy_heap:has(Global, K).
+
+%% A name resolves through the getter callback, up the sandbox's chain.
+-spec has_binding(term(), term(), buoy_heap:key()) -> boolean().
+has_binding(Sandbox, Global, K) ->
+    (is_intercepted(K) andalso buoy_heap:has(Sandbox, K)) orelse buoy_heap:has(Global, K).
+
+%% PropertyDeleterCallback: a property that the sandbox keeps stays on the
+%% global too.
+-spec delete_property(term(), term(), buoy_heap:key()) -> boolean().
+delete_property(Sandbox, Global, K) ->
+    case is_intercepted(K) of
+        true -> buoy_heap:delete_property(Sandbox, K) andalso buoy_heap:delete_property(Global, K);
+        false -> buoy_heap:delete_property(Global, K)
+    end.
+
+%% The global's own keys, then those of the sandbox that the global lacks,
+%% as V8 adds the keys of PropertyEnumeratorCallback to the object's own.
+-spec own_keys(term(), term()) -> [buoy_heap:key()].
+own_keys(Sandbox, Global) ->
+    Own = buoy_heap:own_keys(Global),
+    Own ++ ([K || K <- buoy_heap:own_keys(Sandbox), K =/= private()] -- Own).
+
+%% PropertyDescriptorCallback: the sandbox's own property, else the global's.
+-spec get_own_property(term(), term(), buoy_heap:key()) -> buoy_heap:property().
+get_own_property(Sandbox, Global, K) ->
+    case is_intercepted(K) andalso buoy_heap:get_own(Sandbox, K) of
+        Found when Found =:= false; Found =:= none -> buoy_heap:get_own(Global, K);
+        Own -> Own
+    end.
+
+%% PropertyDefinerCallback: the definition goes to the sandbox, as the
+%% descriptor it gives. Then the global defines it, checked against the
+%% property that the descriptor callback reports, as V8 checks a definition
+%% that the interceptor did not take. A read-only and non-configurable
+%% property of the global stays the global's own.
+-spec define_own_property(term(), term(), buoy_heap:key(), map()) -> boolean().
+define_own_property(Sandbox, Global, K, Desc) ->
+    case is_intercepted(K) andalso not is_fixed(buoy_heap:get_own(Global, K)) of
+        false ->
+            buoy_heap:define_own_property(Global, K, Desc);
+        true ->
+            _ = buoy_heap:define_own_property(Sandbox, K, sandbox_descriptor(Desc)),
+            Current = get_own_property(Sandbox, Global, K),
+            buoy_heap:validate_and_apply(undefined, K, buoy_heap:is_extensible(Global), Desc, Current)
+                andalso buoy_heap:define_own_property(Global, K, Desc)
+    end.
+
+%% The descriptor that node_contextify.cc gives the sandbox: a missing value
+%% or accessor function becomes undefined.
+sandbox_descriptor(Desc) ->
+    Base = case buoy_heap:is_accessor_descriptor(Desc) of
+        true -> #{get => maps:get(get, Desc, undefined), set => maps:get(set, Desc, undefined)};
+        false -> maps:put(value, maps:get(value, Desc, undefined), maps:with([writable], Desc))
+    end,
+    maps:merge(Base, maps:with([enumerable, configurable], Desc)).
+
+%% The private symbol of a context is the sandbox's own, which no interceptor
+%% reports, as V8 keeps private symbols out of interceptors.
+is_intercepted(K) -> K =/= private().
+
+%% The property K of O or up its chain, as GetRealNamedPropertyAttributes
+%% finds it.
+find(null, _K) -> none;
+find(O, K) ->
+    case buoy_heap:get_own(O, K) of
+        none -> find(buoy_heap:prototype_of(O), K);
+        Found -> Found
+    end.
+
+is_read_only({data, _, Bits}) -> Bits band 1 =:= 0;
+is_read_only(_) -> false.
+
+is_fixed({data, _, Bits}) -> Bits band 5 =:= 0;
+is_fixed(_) -> false.

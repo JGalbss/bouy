@@ -26,6 +26,12 @@ pub enum Binding {
     Builtin { name: String, export: String },
     /// The namespace of a built-in module.
     BuiltinNamespace(String),
+    /// An export of a request that the host links at run time, or its namespace for
+    /// `None`: the runtime resolves it once the request is linked.
+    Hosted {
+        request: usize,
+        name: Option<String>,
+    },
 }
 
 /// An error that linking the module throws.
@@ -46,6 +52,9 @@ pub struct Linked {
     pub exported_locals: Vec<String>,
     /// The namespace: each export name, in code unit order, and what it reads.
     pub namespace: Vec<(String, Binding)>,
+    /// The hosted requests of `export * from`, whose names the runtime adds to the
+    /// namespace once they are linked.
+    pub hosted_stars: Vec<usize>,
     pub error: Option<LinkError>,
     /// Whether `error` comes from loading, a request that did not resolve, which the
     /// whole graph reports before any error of linking.
@@ -159,6 +168,11 @@ impl Linker<'_> {
                 }
             }
         }
+        for specifier in &self.unit(index).record.stars {
+            if let Some(Resolved::Hosted(request)) = self.target(index, specifier) {
+                linked.hosted_stars.push(*request);
+            }
+        }
         let mut names = self.exported_names(index, &mut Vec::new());
         names.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
         for name in names {
@@ -223,6 +237,16 @@ impl Linker<'_> {
             (Resolved::Builtin(builtin), Imported::Name(name)) => Ok(Some(Binding::Builtin {
                 name: builtin,
                 export: name.clone(),
+            })),
+            (Resolved::Hosted(request), Imported::Namespace | Imported::DeferredNamespace) => {
+                Ok(Some(Binding::Hosted {
+                    request,
+                    name: None,
+                }))
+            }
+            (Resolved::Hosted(request), Imported::Name(name)) => Ok(Some(Binding::Hosted {
+                request,
+                name: Some(name.clone()),
             })),
             (Resolved::Missing(failure), _) => Err(LinkError {
                 kind: "Error",
@@ -298,6 +322,16 @@ impl Linker<'_> {
                         export: imported,
                     })
                 }
+                (Some(Resolved::Hosted(request)), Imported::Name(imported)) => {
+                    Resolution::Found(Binding::Hosted {
+                        request,
+                        name: Some(imported),
+                    })
+                }
+                (Some(Resolved::Hosted(request)), _) => Resolution::Found(Binding::Hosted {
+                    request,
+                    name: None,
+                }),
                 _ => Resolution::NotFound,
             };
         }

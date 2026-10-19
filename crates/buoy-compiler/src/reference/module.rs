@@ -149,7 +149,9 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// A script's top-level `var` names and functions are properties of the global object.
-    /// A function that the code never assigns keeps its Erlang function for calls.
+    /// A function that the code never assigns keeps its Erlang function for calls, unless
+    /// the script is one that a host evaluates, such as `vm.Script`: it may run in another
+    /// realm, whose function the global object holds (`buoy_ref_realm:script_function/1`).
     fn declare_script_globals(&mut self, program: &'a Program<'a>) {
         let mut function_symbols = Vec::new();
         for statement in &program.body {
@@ -176,7 +178,7 @@ impl<'a> Lowerer<'a, '_> {
                 .scoping()
                 .get_resolved_references(symbol)
                 .any(oxc::semantic::Reference::is_write);
-            if assigned {
+            if assigned || !self.linking.entry {
                 let name = self.semantic.scoping().symbol_name(symbol).to_owned();
                 self.tops.insert(symbol, Top::Global(name));
             }
@@ -379,7 +381,9 @@ impl<'a> Lowerer<'a, '_> {
         functions.push(self.class_dispatch());
         let mut sources = source_functions(program, source);
         if self.eval_context.source_outside
-            && let Some(text) = sources.iter_mut().find(|function| function.name == "$source")
+            && let Some(text) = sources
+                .iter_mut()
+                .find(|function| function.name == "$source")
         {
             text.clauses[0].body = vec![Expr::call(
                 "buoy_ref_eval",
@@ -434,9 +438,14 @@ impl<'a> Lowerer<'a, '_> {
             .script_functions
             .iter()
             .map(|(name, length, form)| {
+                let function = self.static_function(name, *length, form);
                 Expr::Tuple(vec![
                     Expr::js_string(name),
-                    self.static_function(name, *length, form),
+                    if self.linking.entry {
+                        function
+                    } else {
+                        Expr::call("buoy_ref_realm", "script_function", vec![function])
+                    },
                 ])
             })
             .collect();

@@ -6,6 +6,7 @@
 // module loaders do not run.
 
 const {
+  ArrayPrototypeSlice,
   NumberParseInt,
   ObjectDefineProperty,
 } = primordials;
@@ -26,7 +27,9 @@ function patchProcessObject() {
   process._exiting = false;
   process.argv[0] = process.execPath;
 
-  if (process.argv[1] && process.argv[1][0] !== '-') {
+  // As expandArgv1 of run_main_module: the code of -e and -p has no script.
+  const expandArgv1 = !getOptionValue('[has_eval_string]') && !getOptionValue('--print');
+  if (expandArgv1 && process.argv[1] && process.argv[1][0] !== '-') {
     process.argv[1] = require('path').resolve(process.argv[1]);
   }
 
@@ -171,11 +174,24 @@ function initializeClusterIPC() {
   }
 }
 
+// As setupVmModules of pre_execution.
+function setupVmModules() {
+  if (getOptionValue('--experimental-vm-modules')) {
+    const {
+      Module, SourceTextModule, SyntheticModule,
+    } = require('internal/vm/module');
+    const vm = require('vm');
+    vm.Module = Module;
+    vm.SourceTextModule = SourceTextModule;
+    vm.SyntheticModule = SyntheticModule;
+  }
+}
+
 // Node's module loaders, as initializeModuleLoaders sets them up: Buoy's
 // compiler links the program, but the REPL, the code of -e, and the programs
 // that require internal/modules/cjs/loader read Module.builtinModules and the
-// search paths of the CommonJS loader, and the ESM loader of the REPL reads
-// the default conditions.
+// search paths of the CommonJS loader, and the ESM loader runs the modules
+// that node:vm, createRequire, and import() of a vm script hand it.
 function initializeModuleLoaders() {
   require('internal/modules/cjs/loader').initializeCJS();
   require('internal/modules/esm/utils').initializeESM();
@@ -196,6 +212,46 @@ function setupTraceCategoryState() {
   toggleTraceCategoryState(isTraceCategoryEnabled('node.async_hooks'));
 }
 
+// As initializeHeapSnapshotSignalHandlers: the signal of --heapsnapshot-signal
+// writes a heap snapshot, which the binding names in --diagnostic-dir.
+function initializeHeapSnapshotSignalHandlers() {
+  const signal = getOptionValue('--heapsnapshot-signal');
+  if (!signal) return;
+  require('internal/validators').validateSignalName(signal);
+  const { writeHeapSnapshot } = require('v8');
+  process.on(signal, () => writeHeapSnapshot());
+}
+
+// --require: the modules that load before the main script, as
+// loadPreloadModules of pre_execution loads them. node --test with
+// --test-isolation=none loads them in the runner instead, in the scope of its
+// root test, as prepareTestRunnerMainExecution leaves them to it.
+function loadPreloadModules() {
+  if (getOptionValue('--test') &&
+      require('internal/test_runner/utils').parseCommandLine().isolation === 'none') {
+    return;
+  }
+  const preloadModules = getOptionValue('--require');
+  if (preloadModules.length > 0) {
+    require('internal/modules/cjs/loader').Module._preloadModules(preloadModules);
+  }
+}
+
+// node --test: the steps of internal/main/test_runner after the preparation
+// above. The arguments of the command line are the patterns of the files.
+function runTestRunner() {
+  const { run } = require('internal/test_runner/runner');
+  const { parseCommandLine } = require('internal/test_runner/utils');
+  const { exitCodes: { kGenericUserError } } = internalBinding('errors');
+  const options = parseCommandLine();
+  options.globPatterns = ArrayPrototypeSlice(process.argv, 1);
+  run(options).on('test:summary', (data) => {
+    if (!data.success) {
+      process.exitCode = kGenericUserError;
+    }
+  });
+}
+
 // Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
 patchProcessObject();
 setupTraceCategoryState();
@@ -210,6 +266,12 @@ setupDebugEnv();
 require('internal/dns/utils').initializeDns();
 setupChildProcessIpcChannel();
 initializeClusterIPC();
+initializeHeapSnapshotSignalHandlers();
+setupVmModules();
 initializeModuleLoaders();
 setupEvalGlobals();
+loadPreloadModules();
 require('internal/process/pre_execution').markBootstrapComplete();
+if (getOptionValue('--test')) {
+  runTestRunner();
+}

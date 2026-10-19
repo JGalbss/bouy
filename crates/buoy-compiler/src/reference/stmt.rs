@@ -749,7 +749,9 @@ pub fn is_simple(statement: &Statement<'_>) -> bool {
 
 /// The function that a statement declares: a function declaration, also behind labels,
 /// which sloppy code allows (Annex B.3.1).
-fn declared_function<'a, 's>(statement: &'s Statement<'a>) -> Option<&'s oxc::ast::ast::Function<'a>> {
+fn declared_function<'a, 's>(
+    statement: &'s Statement<'a>,
+) -> Option<&'s oxc::ast::ast::Function<'a>> {
     match statement {
         Statement::FunctionDeclaration(function) => Some(function),
         Statement::LabeledStatement(labeled) => declared_function(&labeled.body),

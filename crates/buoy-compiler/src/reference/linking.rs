@@ -72,6 +72,16 @@ impl<'c> Linking<'c> {
                 "builtin_namespace",
                 vec![Expr::js_string(name)],
             ),
+            Binding::Hosted { request, name } => Expr::call(
+                "buoy_module",
+                "hosted_import",
+                vec![
+                    Expr::atom(self.unit().name.clone()),
+                    Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
+                    name.as_ref()
+                        .map_or_else(|| Expr::atom("namespace"), |name| Expr::js_string(name)),
+                ],
+            ),
         }
     }
 
@@ -130,26 +140,100 @@ impl<'c> Linking<'c> {
                     })
             })
             .collect();
+        // A module that the host links lists its requests and its `export *` requests.
+        let hosted: Vec<Expr> = unit
+            .requests
+            .iter()
+            .filter(|request| matches!(request.resolved, Resolved::Hosted(_)))
+            .map(|request| Expr::js_string(&request.specifier))
+            .collect();
+        let mut extra = Vec::new();
+        if !hosted.is_empty() {
+            let stars = self
+                .link
+                .hosted_stars
+                .iter()
+                .map(|request| Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)))
+                .collect();
+            // The names that the module imports from each request, which the runtime
+            // checks when it instantiates the module, as V8 resolves each import.
+            let mut imports: Vec<(usize, String)> = Vec::new();
+            for binding in self
+                .link
+                .imports
+                .values()
+                .chain(self.link.namespace.iter().map(|(_, binding)| binding))
+            {
+                if let Binding::Hosted {
+                    request,
+                    name: Some(name),
+                } = binding
+                    && !imports.contains(&(*request, name.clone()))
+                {
+                    imports.push((*request, name.clone()));
+                }
+            }
+            imports.sort();
+            let imports = imports
+                .iter()
+                .map(|(request, name)| {
+                    Expr::Tuple(vec![
+                        Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
+                        Expr::js_string(name),
+                    ])
+                })
+                .collect();
+            // The ModuleRequests of getModuleRequests: the specifier, the attributes, and
+            // the phase, 1 for source and 2 for evaluation, as module_wrap.cc numbers them.
+            let module_requests = unit
+                .record
+                .module_requests
+                .iter()
+                .map(|request| {
+                    let attributes = request
+                        .attributes
+                        .iter()
+                        .map(|(key, value)| {
+                            Expr::Tuple(vec![Expr::js_string(key), Expr::js_string(value)])
+                        })
+                        .collect();
+                    Expr::Tuple(vec![
+                        Expr::js_string(&request.specifier),
+                        Expr::List(attributes),
+                        Expr::Integer(if request.source_phase { 1 } else { 2 }),
+                    ])
+                })
+                .collect();
+            extra.push((Expr::atom("hosted"), Expr::List(hosted)));
+            extra.push((Expr::atom("module_requests"), Expr::List(module_requests)));
+            extra.push((Expr::atom("stars"), Expr::List(stars)));
+            extra.push((Expr::atom("imports"), Expr::List(imports)));
+        }
         constant(
             "$module",
-            Expr::Map(vec![
-                (Expr::atom("kind"), Expr::atom(kind)),
-                (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
-                (Expr::atom("requests"), Expr::List(requests)),
-                (
-                    Expr::atom("async"),
-                    Expr::atom(if unit.record.has_await {
-                        "true"
-                    } else {
-                        "false"
-                    }),
-                ),
-                (Expr::atom("error"), error),
-                (
-                    Expr::atom("loaded"),
-                    Expr::atom(if load_failed { "false" } else { "true" }),
-                ),
-            ]),
+            Expr::Map(
+                vec![
+                    (Expr::atom("kind"), Expr::atom(kind)),
+                    (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
+                    (Expr::atom("requests"), Expr::List(requests)),
+                    (
+                        Expr::atom("async"),
+                        Expr::atom(if unit.record.has_await {
+                            "true"
+                        } else {
+                            "false"
+                        }),
+                    ),
+                    (Expr::atom("error"), error),
+                    (
+                        Expr::atom("loaded"),
+                        Expr::atom(if load_failed { "false" } else { "true" }),
+                    ),
+                ]
+                .into_iter()
+                .chain(extra)
+                .collect(),
+            ),
         )
     }
 
@@ -201,6 +285,7 @@ impl<'c> Linking<'c> {
                         Expr::js_string(failure.code),
                         Expr::js_string(&failure.message),
                     ]),
+                    Resolved::Hosted(_) => Expr::atom("none"),
                 };
                 Clause {
                     patterns: vec![Expr::js_string(&request.specifier), mode],
@@ -259,14 +344,19 @@ impl<'c> Linking<'c> {
         let error = diagnostics.first().map_or_else(
             || Expr::atom("none"),
             |diagnostic| {
-                let syntax = diagnostic.code == Code::Syntax;
+                if diagnostic.code == Code::Syntax {
+                    // V8's SyntaxError: its message, and the place, the source line, and a
+                    // caret, which the runtime puts in front of its stack.
+                    return Expr::Tuple(vec![
+                        Expr::js_string("SyntaxError"),
+                        Expr::undefined(),
+                        Expr::js_string(&diagnostic.message),
+                        Expr::js_string(&self.arrow(diagnostic)),
+                    ]);
+                }
                 Expr::Tuple(vec![
-                    Expr::js_string(if syntax { "SyntaxError" } else { "Error" }),
-                    if syntax {
-                        Expr::undefined()
-                    } else {
-                        Expr::js_string(diagnostic.code.as_str())
-                    },
+                    Expr::js_string("Error"),
+                    Expr::js_string(diagnostic.code.as_str()),
                     Expr::js_string(&diagnostic.to_string()),
                 ])
             },
@@ -292,6 +382,23 @@ impl<'c> Linking<'c> {
                 }],
             },
         ]
+    }
+
+    /// The arrow message of a syntax error of the unit, as `GetErrorSource` of Node prints
+    /// it: the place and the line, the source line, and a caret under the column.
+    fn arrow(&self, diagnostic: &Diagnostic) -> String {
+        let text = std::fs::read_to_string(&diagnostic.path).unwrap_or_default();
+        let line = text
+            .lines()
+            .nth(diagnostic.line.saturating_sub(1))
+            .unwrap_or_default();
+        let place = if self.unit().kind == Kind::Esm {
+            format!("file://{}", diagnostic.path.display())
+        } else {
+            diagnostic.path.display().to_string()
+        };
+        let caret = " ".repeat(diagnostic.column.saturating_sub(1));
+        format!("{place}:{}\n{line}\n{caret}^\n", diagnostic.line)
     }
 
     /// The functions of a JSON module.

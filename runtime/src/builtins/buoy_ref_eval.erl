@@ -15,11 +15,17 @@
 -include("buoy_ref.hrl").
 
 -export([shadow_evaluate/2, source/1]).
--export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, warm_up/0, load_module/4, load_source/2]).
+-export([intrinsics/0, globals/0, method/4, direct/7, var_object/0, declare_vars/3, create_function/1, create_function/3, script/1, compile_script/1, compile_script/2, compile_hosted_module/2, warm_up/0, load_module/4, load_source/2, cjs_lexer/1, contains_module_syntax/2, syntax_position/1]).
+-export([interrupt/0, run_until/2, run_watched/2]).
 
 -import(buoy_ref, [type_error/1]).
 
 -define(GLOBAL, buoy_ref_realm:global_object()).
+-define(DEADLINE, '$buoy_deadline').
+%% The check of run_watched/2 that interruptible code calls at each turn of a loop.
+-define(WATCH, '$buoy_interrupt_watch').
+%% The private slot of a SyntaxError of a compilation: [Line, Column].
+-define(SYNTAX_POSITION, {'$sym', {private, buoy_syntax_position}, <<"syntax position">>}).
 
 -spec intrinsics() -> [{term(), tuple()}].
 intrinsics() -> [].
@@ -157,13 +163,72 @@ script(Source) ->
 %% The module of a classic script, which '$body'/0 evaluates; a SyntaxError
 %% of the source throws here, as vm.Script compiles before it runs.
 -spec compile_script(term()) -> module().
-compile_script(Source) ->
+compile_script(Source) -> compile_script(Source, []).
+
+%% compile_script/1 with more options of `buoy compile-eval`, such as
+%% --interruptible.
+-spec compile_script(term(), [string()]) -> module().
+compile_script(Source, Options) ->
     Text = buoy_ref:to_string(Source),
-    Flags = ["--script"],
+    Flags = ["--script" | Options],
     Key = erlang:md5(term_to_binary({Text, Flags})),
     case cached(Key) of
         {ok, M} -> M;
         none -> compile(Text, Flags, Key)
+    end.
+
+%% The module of an ES module from source text whose requests the host links
+%% (buoy_binding_module_wrap). Each call compiles a module of its own, since a
+%% module instance keeps its bindings under the name of its Erlang module.
+%% shortcut: the modules stay loaded; a purge when the ModuleWrap is
+%% collected would free them for programs that make many.
+-spec compile_hosted_module(term(), term()) -> module().
+compile_hosted_module(Source, Identifier) ->
+    Name = binary:replace(buoy_ref_string:to_utf8(buoy_ref:to_string(Identifier)), [<<"\n">>, <<"\r">>], <<" ">>, [global]),
+    compile(buoy_ref:to_string(Source), ["--hosted-module=" ++ unicode:characters_to_list(Name)], make_ref()).
+
+%% Runs Fun until the deadline Ms milliseconds from now: interruptible code
+%% (compile_script/2) checks it at each turn of a loop and ends the run with
+%% timeout, which no JavaScript catch takes. A run inside another keeps the
+%% earlier deadline.
+-spec run_until(non_neg_integer(), fun(() -> term())) -> {ok, term()} | timeout.
+run_until(Ms, Fun) ->
+    Outer = erlang:get(?DEADLINE),
+    Deadline = erlang:monotonic_time(millisecond) + Ms,
+    erlang:put(?DEADLINE, case Outer of undefined -> Deadline; _ -> min(Outer, Deadline) end),
+    try {ok, Fun()}
+    catch throw:{?DEADLINE, D} when Outer =:= undefined; D < Outer -> timeout
+    after
+        case Outer of
+            undefined -> erlang:erase(?DEADLINE);
+            _ -> erlang:put(?DEADLINE, Outer)
+        end
+    end.
+
+%% Runs Fun until Interrupted() holds at a turn of a loop of interruptible
+%% code: {ok, Value}, or interrupted, as a break on SIGINT of node:vm needs.
+-spec run_watched(fun(() -> boolean()), fun(() -> term())) -> {ok, term()} | interrupted.
+run_watched(Interrupted, Fun) ->
+    Outer = erlang:put(?WATCH, Interrupted),
+    try {ok, Fun()}
+    catch throw:{?WATCH, Interrupted} -> interrupted
+    after
+        case Outer of
+            undefined -> erlang:erase(?WATCH);
+            _ -> erlang:put(?WATCH, Outer)
+        end
+    end.
+
+%% The check of interruptible code at each turn of a loop.
+-spec interrupt() -> ok.
+interrupt() ->
+    case erlang:get(?DEADLINE) of
+        undefined -> ok;
+        Deadline -> erlang:monotonic_time(millisecond) < Deadline orelse erlang:throw({?DEADLINE, Deadline})
+    end,
+    case erlang:get(?WATCH) of
+        undefined -> ok;
+        Watch -> Watch() andalso erlang:throw({?WATCH, Watch}), ok
     end.
 
 %% Flags are the options of `buoy compile-eval`. A source text that is only
@@ -365,7 +430,7 @@ start_compiler() ->
         case try register(buoy_eval_compiler, self()) catch error:badarg -> false end of
             true ->
                 buoy_eval_modules = ets:new(buoy_eval_modules, [named_table, public, {read_concurrency, true}]),
-                Port = open_port({spawn_executable, Compiler}, [{args, ["compile-eval", "--serve"]}, {packet, 4}, binary, exit_status, use_stdio, hide]),
+                Port = open_port({spawn_executable, Compiler}, [{args, ["compile-eval", "--serve" | condition_args()]}, {packet, 4}, binary, exit_status, use_stdio, hide]),
                 Parent ! {self(), started},
                 serve(Port);
             false ->
@@ -377,6 +442,21 @@ start_compiler() ->
         {Pid, taken} -> erlang:demonitor(Ref, [flush]), compiler();
         {'DOWN', Ref, process, Pid, Reason} -> type_error(buoy_ref_string:from_utf8(unicode:characters_to_binary(io_lib:format("the Buoy compiler did not start: ~0tP", [Reason, 8]))))
     end.
+
+%% The conditions of --conditions of the program, which the compiler adds to
+%% Node's own for each module that it resolves.
+condition_args() ->
+    lists:append([["--condition", binary_to_list(C)] || C <- user_conditions(buoy_node_process:exec_argv())]).
+
+user_conditions([Option | Rest]) when Option =:= <<"--conditions">>; Option =:= <<"-C">> ->
+    case Rest of
+        [Value | More] -> [Value | user_conditions(More)];
+        [] -> []
+    end;
+user_conditions([<<"--conditions=", Value/binary>> | Rest]) -> [Value | user_conditions(Rest)];
+user_conditions([<<"-C=", Value/binary>> | Rest]) -> [Value | user_conditions(Rest)];
+user_conditions([_ | Rest]) -> user_conditions(Rest);
+user_conditions([]) -> [].
 
 serve(Port) ->
     receive
@@ -443,6 +523,48 @@ loaded_program(Answer) ->
             {error, <<"ERR_BUOY_COMPILE">>, Output}
     end.
 
+%% The export names and the re-exported specifiers of CommonJS source text,
+%% as the compiler's analysis of Node's cjs-module-lexer finds them.
+-spec cjs_lexer(term()) -> {[binary()], [binary()]}.
+cjs_lexer(Source) ->
+    Server = compiler(),
+    Ref = erlang:monitor(process, Server),
+    Server ! {raw, self(), Ref, iolist_to_binary(["@cjs-lexer\n\n", buoy_ref_string:to_utf8(Source)])},
+    receive
+        {Ref, {answer, <<0, Answer/binary>>}} ->
+            erlang:demonitor(Ref, [flush]),
+            [Names, Reexports] = binary:split(Answer, <<"\n\n">>),
+            {lines(Names), lines(Reexports)};
+        {Ref, {answer, _}} ->
+            erlang:demonitor(Ref, [flush]),
+            {[], []};
+        {'DOWN', Ref, process, _, Reason} ->
+            exit({compiler_down, Reason})
+    end.
+
+%% Node's containsModuleSyntax: whether source text that does not compile as
+%% a CommonJS function body, with the variables of the wrapper or without
+%% them, is an ES module by its syntax.
+-spec contains_module_syntax(term(), boolean()) -> boolean().
+contains_module_syntax(Source, CjsVariables) ->
+    Server = compiler(),
+    Ref = erlang:monitor(process, Server),
+    Header = case CjsVariables of
+        true -> "@module-syntax\n\n";
+        false -> "@module-syntax\nno-cjs-variables\n\n"
+    end,
+    Server ! {raw, self(), Ref, iolist_to_binary([Header, buoy_ref_string:to_utf8(Source)])},
+    receive
+        {Ref, {answer, Answer}} ->
+            erlang:demonitor(Ref, [flush]),
+            Answer =:= <<0, 1>>;
+        {'DOWN', Ref, process, _, Reason} ->
+            exit({compiler_down, Reason})
+    end.
+
+lines(<<>>) -> [];
+lines(Text) -> binary:split(Text, <<"\n">>, [global]).
+
 load_modules(<<>>, Acc) ->
     lists:reverse(Acc);
 load_modules(Text, Acc) ->
@@ -486,15 +608,40 @@ load_once(Module, Binary) ->
         {'DOWN', Ref, process, _, Reason} -> exit({compiler_down, Reason})
     end.
 
-%% The compiler reports a diagnostic as <ErrorName>\t<message>.
+%% The compiler reports a diagnostic as <ErrorName>\t<message>, and a
+%% SyntaxError with \t<line>\t<column> of the error in the source text,
+%% which syntax_position/1 reads from the error.
 -spec report(binary()) -> no_return().
 report(Output) ->
-    {Name, Message} = case binary:split(Output, <<"\t">>) of
-        [<<"SyntaxError">>, M] -> {'SyntaxError', M};
-        [_, M] -> {'TypeError', M};
-        [M] -> {'TypeError', M}
-    end,
-    buoy_heap:throw_error(Name, buoy_ref_string:from_utf8(Message)).
+    case binary:split(Output, <<"\t">>, [global]) of
+        [<<"SyntaxError">>, M, Line, Column] ->
+            try
+                buoy_heap:throw_error('SyntaxError', buoy_ref_string:from_utf8(M))
+            catch
+                error:{'$throw', E} = Reason:Stack ->
+                    Position = buoy_heap:new_array([binary_to_integer(Line), binary_to_integer(Column)]),
+                    buoy_heap:private_put(E, ?SYNTAX_POSITION, Position),
+                    erlang:raise(error, Reason, Stack)
+            end;
+        [<<"SyntaxError">>, M | _] ->
+            buoy_heap:throw_error('SyntaxError', buoy_ref_string:from_utf8(M));
+        [_, M | _] ->
+            buoy_heap:throw_error('TypeError', buoy_ref_string:from_utf8(M));
+        [M] ->
+            buoy_heap:throw_error('TypeError', buoy_ref_string:from_utf8(M))
+    end.
+
+%% The line and the column, from 1, of a SyntaxError of a compilation in the
+%% source text that it compiled, as V8's message of the error holds them.
+-spec syntax_position(term()) -> {pos_integer(), pos_integer()} | none.
+syntax_position(E) ->
+    case buoy_heap:is_object(E) andalso buoy_heap:private_find(E, ?SYNTAX_POSITION) of
+        {ok, Position} ->
+            [Line, Column] = buoy_heap:array_items(Position),
+            {Line, Column};
+        _ ->
+            none
+    end.
 
 %% Eval code mostly runs once, so the module compiles without the optimizing
 %% passes, in this process. It also skips erl_lint (no_lint), which the Buoy

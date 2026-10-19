@@ -6,13 +6,18 @@
 
 -export([binding/0, value/1]).
 
+%% The boolean options that node_options.cc stores in one field.
+-define(SHARED_FIELDS, [{<<"experimental-require-module">>, <<"require-module">>}]).
+
 -spec binding() -> term().
 binding() ->
     F = fun buoy_node:fn/3,
     buoy_node:object([
         {<<"getCLIOptionsValues">>, F(<<"getCLIOptionsValues">>, 0, fun(_, _) -> cli_values() end)},
         {<<"getCLIOptionsInfo">>, F(<<"getCLIOptionsInfo">>, 0, fun(_, _) -> info() end)},
-        {<<"getOptionsAsFlags">>, F(<<"getOptionsAsFlags">>, 0, fun(_, _) -> buoy_heap:new_array([]) end)},
+        {<<"getOptionsAsFlags">>, F(<<"getOptionsAsFlags">>, 0, fun(_, _) ->
+            buoy_heap:new_array([buoy_node:string(Flag) || Flag <- options_as_flags()])
+        end)},
         {<<"getEmbedderOptions">>, F(<<"getEmbedderOptions">>, 0, fun(_, _) ->
             buoy_node:object([{<<"shouldNotRegisterESMLoader">>, false}, {<<"noGlobalSearchPaths">>, false},
                               {<<"noBrowserGlobals">>, false}, {<<"hasEmbedderPreload">>, false}])
@@ -48,13 +53,37 @@ values_map() ->
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
     Args = buoy_node_process:node_options() ++ buoy_node_process:exec_argv(),
-    %% The oracle recorded the values under its own -e.
-    Defaults = (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false},
-    apply_args(env_args() ++ expand(Args, Expansions), Types, Defaults).
+    apply_args(env_args() ++ expand(Args, Expansions), Types, defaults()).
 
 %% The variables that Node reads as options, before the command line.
 env_args() ->
     [<<"--use-system-ca">> || os:getenv("NODE_USE_SYSTEM_CA") =:= "1"].
+
+%% The oracle recorded the defaults under -e, so its code is no default.
+defaults() ->
+    (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false}.
+
+%% GetOptionsAsFlags: the node options that the command line set, as flags.
+%% A boolean that differs from its default is --name or --no-name, a number
+%% or string --name=value, and a list one --name=value for each value. The
+%% internal [entries], V8 options, and no-ops are left out.
+options_as_flags() ->
+    #{<<"options">> := Options} = json:decode(info_json()),
+    Defaults = defaults(),
+    Values = values_map(),
+    lists:append([flags(Name, maps:get(<<"type">>, Info), maps:get(Name, Values, none), maps:get(Name, Defaults, none))
+                  || [<<"--", _/binary>> = Name, Info] <- Options]).
+
+flags(_, _, Same, Same) -> [];
+flags(<<"--", Positive/binary>>, 2, Value, _) when is_boolean(Value) ->
+    case Value of
+        true -> [<<"--", Positive/binary>>];
+        false -> [<<"--no-", Positive/binary>>]
+    end;
+flags(Name, 7, Values, _) when is_list(Values) -> [<<Name/binary, "=", V/binary>> || V <- Values];
+flags(Name, Type, Value, _) when Type =:= 3; Type =:= 4 -> [<<Name/binary, "=", (integer_to_binary(Value))/binary>>];
+flags(Name, Type, Value, _) when (Type =:= 5 orelse Type =:= 6), is_binary(Value) -> [<<Name/binary, "=", Value/binary>>];
+flags(_, _, _, _) -> [].
 
 %% An alias of the name, or of `name <arg>` when an argument follows, so
 %% -p code reads as --print --eval code. The depth bounds a cycle of aliases.
@@ -80,8 +109,18 @@ alias(A, Next, Expansions, Depth) ->
     case {Found, maps:find(Name, Expansions)} of
         {{ok, Names}, _} -> aliases(Names, Next, Expansions, Depth - 1);
         {error, {ok, Names}} -> aliases(Names, Next, Expansions, Depth - 1);
-        {error, error} -> [A]
+        {error, error} -> negated_alias(A, Name, Next, Expansions, Depth)
     end.
+
+%% The negation of an alias negates its option: --no-experimental-strip-types
+%% is --no-strip-types.
+negated_alias(A, <<"--no-", Positive/binary>>, Next, Expansions, Depth) ->
+    case maps:find(<<"--", Positive/binary>>, Expansions) of
+        {ok, [<<"--", Target/binary>>]} -> alias(<<"--no-", Target/binary>>, Next, Expansions, Depth - 1);
+        _ -> [A]
+    end;
+negated_alias(A, _Name, _Next, _Expansions, _Depth) ->
+    [A].
 
 aliases([], _Next, _Expansions, _Depth) ->
     [];
@@ -126,13 +165,18 @@ apply_args([Arg0 | Rest], Types, Values) ->
             apply_args(Rest, Types, Values)
     end.
 
-%% Implies("--eval", "[has_eval_string]") of node_options.cc.
+%% The implications of node_options.cc that a value of an option sets.
 implied(<<"--eval">>, Values) -> Values#{<<"[has_eval_string]">> => true};
 implied(_, Values) -> Values.
 
-%% A boolean option has a --no- twin that holds its negation.
+%% A boolean option has a --no- twin that holds its negation. Two options of
+%% node_options.cc that store one field set each other.
 boolean(Name, Value, Values) ->
-    Values#{<<"--", Name/binary>> => Value, <<"--no-", Name/binary>> => not Value}.
+    Set = fun(N, Vs) -> Vs#{<<"--", N/binary>> => Value, <<"--no-", N/binary>> => not Value} end,
+    case lists:keyfind(Name, 1, ?SHARED_FIELDS ++ [{B, A} || {A, B} <- ?SHARED_FIELDS]) of
+        {_, Other} -> Set(Other, Set(Name, Values));
+        false -> Set(Name, Values)
+    end.
 
 typed(Type, Value, _Old) when Type =:= 3; Type =:= 4 ->
     try binary_to_integer(Value) catch _:_ -> 0 end;

@@ -67,7 +67,11 @@ impl<'a> Lowerer<'a, '_> {
                 self.chain_guard(function.clone());
             }
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, this, args],
+            ));
         }
         // A call of the name `eval` is a direct eval also through a `with` object, a
         // parameter, or a variable, when the value is the intrinsic %eval%.
@@ -84,7 +88,11 @@ impl<'a> Lowerer<'a, '_> {
             let objects = self.with_objects(ident);
             let (function, this) = self.with_callee(ident, &objects);
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, this, args],
+            ));
         }
         // A static call, unless the name is the cell of a block function in its block.
         if let Expression::Identifier(ident) = callee
@@ -117,7 +125,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         let args = self.args(&call.arguments);
         self.bind(Expr::call(
-            "buoy_ref",
+            self.call_module(),
             "call",
             vec![function, Expr::undefined(), args],
         ))
@@ -145,14 +153,22 @@ impl<'a> Lowerer<'a, '_> {
                 vec![Expr::js_string(global)],
             ));
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, this, args],
+            ));
         }
         if let Expression::Super(_) = member.object() {
             let (object, key) = self.member_parts(member);
             let method = self.get(object.clone(), key);
             let args = self.args(&call.arguments);
             let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, this, args],
+            ));
         }
         let (object, key) = self.member_parts(member);
         // `o?.m()`: the chain ends when `o` is null or undefined.
@@ -166,14 +182,22 @@ impl<'a> Lowerer<'a, '_> {
                 self.chain_guard(method.clone());
             }
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, object, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, object, args],
+            ));
         }
         if call.optional {
             let key = self.fix_key(key);
             let method = self.get(object.clone(), key);
             self.chain_guard(method.clone());
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, object, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, object, args],
+            ));
         }
         if !call.arguments.iter().all(is_pure) {
             // The method is read before the arguments run (ECMA-262 §13.3.6.1).
@@ -184,25 +208,28 @@ impl<'a> Lowerer<'a, '_> {
                 return Expr::undefined();
             };
             return self.bind(Expr::call(
-                "buoy_ref",
+                self.call_module(),
                 "call_method_value",
                 vec![method, object, key, args],
             ));
         }
         let args = self.args(&call.arguments);
         let value = match key {
+            // A realm call must enter the callee's realm, which the inline read skips.
             MemberKey::Static(key) | MemberKey::Slot(key, _)
-                if self.is_class_instance(member.object()) =>
+                if !self.realm_calls && self.is_class_instance(member.object()) =>
             {
                 let args = self.bind(args);
                 self.cached_method_call(object, key, args)
             }
             MemberKey::Static(key) | MemberKey::Slot(key, _) => {
-                Expr::call("buoy_ref", "call_method", vec![object, key, args])
+                Expr::call(self.call_module(), "call_method", vec![object, key, args])
             }
-            MemberKey::Dynamic(key) => {
-                Expr::call("buoy_ref", "call_method_computed", vec![object, key, args])
-            }
+            MemberKey::Dynamic(key) => Expr::call(
+                self.call_module(),
+                "call_method_computed",
+                vec![object, key, args],
+            ),
             MemberKey::Private(_) => Expr::undefined(),
         };
         self.bind(value)

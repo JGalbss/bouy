@@ -29,6 +29,7 @@
          fs_access/2, fs_statfs/1, fs_watch/1, fs_unwatch/1]).
 -export([unblock_sigterm/0]).
 -export([argon2/9, keccak/5, scrypt_romix/2]).
+-export([sigint_handle/1, sigint_default/0, os_kill/2]).
 
 -export_type([stream/0, failure/0]).
 
@@ -247,3 +248,16 @@ keccak(_Rounds, _Rate, _Delimiter, _Input, _Length) -> erlang:nif_error(nif_not_
 %% the VM, so the caller checks that they fit first.
 -spec scrypt_romix(binary(), pos_integer()) -> binary().
 scrypt_romix(_Block, _Cost) -> erlang:nif_error(nif_not_loaded).
+
+%% Sends each SIGINT that the VM gets to Target as {notify, sigint}, which
+%% OTP's os:set_signal/2 cannot catch. False when the pipe cannot open.
+-spec sigint_handle(pid()) -> boolean().
+sigint_handle(_Target) -> erlang:nif_error(nif_not_loaded).
+
+%% Gives SIGINT back its disposition from before sigint_handle/1.
+-spec sigint_default() -> boolean().
+sigint_default() -> erlang:nif_error(nif_not_loaded).
+
+%% kill(2) of the OS process Pid: 0, or the negative errno.
+-spec os_kill(integer(), integer()) -> integer().
+os_kill(_Pid, _Signal) -> erlang:nif_error(nif_not_loaded).

@@ -7,7 +7,7 @@
     "pass": 2967,
     "rejected": 0,
     "late": 0,
-    "skip": 583,
+    "skip": 525,
     "never": 0,
     "fail": 802,
     "timeout": 52,
@@ -17,10 +17,10 @@
   "groups": {
     "directory": {
       "es-module": {
-        "pass": 66,
-        "skip": 16,
-        "fail": 139,
-        "timeout": 1
+        "pass": 116,
+        "skip": 15,
+        "fail": 88,
+        "timeout": 3
       },
       "parallel": {
         "pass": 2834,
@@ -109,8 +109,8 @@
         "skip": 10
       },
       "domain": {
-        "pass": 30,
-        "skip": 2,
+        "pass": 31,
+        "skip": 1,
         "fail": 18
       },
       "events": {
@@ -144,10 +144,10 @@
         "skip": 114
       },
       "module": {
-        "pass": 86,
-        "skip": 17,
-        "fail": 175,
-        "timeout": 2
+        "pass": 158,
+        "skip": 16,
+        "fail": 102,
+        "timeout": 4
       },
       "net": {
         "pass": 151,
@@ -207,8 +207,7 @@
         "fail": 1
       },
       "sqlite": {
-        "pass": 16,
-        "skip": 2
+        "pass": 18
       },
       "stream": {
         "pass": 204,
@@ -222,10 +221,10 @@
         "pass": 1
       },
       "test": {
-        "pass": 27,
+        "pass": 43,
         "skip": 5,
-        "fail": 26,
-        "timeout": 7
+        "fail": 5,
+        "timeout": 12
       },
       "timers": {
         "pass": 46,
@@ -259,15 +258,15 @@
         "crash": 1
       },
       "v8": {
-        "pass": 9,
-        "skip": 5,
-        "fail": 8
+        "pass": 18,
+        "skip": 1,
+        "fail": 2,
+        "crash": 1
       },
       "vm": {
-        "pass": 23,
-        "skip": 9,
-        "fail": 64,
-        "timeout": 2,
+        "pass": 87,
+        "skip": 1,
+        "fail": 10,
         "crash": 1
       },
       "worker_threads": {
@@ -279,7 +278,8 @@
       },
       "zlib": {
         "pass": 60,
-        "skip": 3
+        "skip": 2,
+        "fail": 1
       }
     },
     "skip reason": {
@@ -287,7 +287,7 @@
         "skip": 2
       },
       "node-inspector": {
-        "skip": 109
+        "skip": 110
       },
       "node-internals": {
         "skip": 342
@@ -296,7 +296,7 @@
         "skip": 46
       },
       "v8-flag": {
-        "skip": 84
+        "skip": 25
       }
     }
   },

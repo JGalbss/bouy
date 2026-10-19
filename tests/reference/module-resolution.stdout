@@ -7,3 +7,5 @@ legacy main main without an extension | a subpath of a package without exports
 require probes true
 import does not probe ERR_MODULE_NOT_FOUND
 type module a .js file of a package of type module
+data urls a data module [ 'main', 'resolve', 'url' ] 42 [ 1, 2 ]
+same instance true

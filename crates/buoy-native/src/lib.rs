@@ -34,9 +34,11 @@ mod json;
 mod nif;
 #[cfg(not(test))]
 mod regexp;
+mod scrypt;
+#[cfg(not(test))]
+mod signal;
 #[cfg(not(test))]
 mod slice;
-mod scrypt;
 mod zlib;
 mod zstd;
 

@@ -98,8 +98,8 @@ promise_details(P) ->
     end.
 
 proxy_details(P, ShowProxy) ->
-    case class(P) of
-        proxy ->
+    case class(P) =:= proxy andalso not buoy_ref_proxy:is_host(P) of
+        true ->
             {Target, Handler} = case buoy_heap:slots(P) of
                 {revoked, _} -> {null, null};
                 TH -> TH
@@ -108,7 +108,7 @@ proxy_details(P, ShowProxy) ->
                 false -> Target;
                 _ -> buoy_heap:new_array([Target, Handler])
             end;
-        _ ->
+        false ->
             undefined
     end.
 

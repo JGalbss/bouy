@@ -34,6 +34,8 @@ pub enum Target {
     /// A built-in module of Node, by the name that `require('module').builtinModules`
     /// lists, such as `fs` or `node:test`.
     Builtin(String),
+    /// A `data:` URL of JavaScript or JSON, whose body is the source of the module.
+    Data(String),
 }
 
 /// A failed resolution: Node's error code and message.
@@ -41,6 +43,51 @@ pub enum Target {
 pub struct Failure {
     pub code: &'static str,
     pub message: String,
+}
+
+/// The request of `PACKAGE_TARGET_RESOLVE`: the key of `exports` or `imports` that
+/// matched, the module that imports it, which map it reads, and the mode.
+#[derive(Clone, Copy)]
+struct Lookup<'a> {
+    key: &'a str,
+    importer: &'a Path,
+    is_imports: bool,
+    mode: Mode,
+}
+
+impl Lookup<'_> {
+    /// `ERR_INVALID_PACKAGE_TARGET`, with the message of Node's `invalidPackageTarget`.
+    fn invalid_target(&self, package_dir: &Path, target: &str) -> Failure {
+        let config = package_dir.join("package.json");
+        let relative = !self.is_imports && !target.is_empty() && !target.starts_with("./");
+        let field = if self.is_imports {
+            "imports"
+        } else {
+            "exports"
+        };
+        let quoted = serde_json::to_string(target).unwrap_or_default();
+        let defined = if self.key == "." {
+            format!("Invalid \"{field}\" main target {quoted} defined")
+        } else {
+            format!(
+                "Invalid \"{field}\" target {quoted} defined for '{}'",
+                self.key
+            )
+        };
+        Failure {
+            code: "ERR_INVALID_PACKAGE_TARGET",
+            message: format!(
+                "{defined} in the package config {} imported from {}{}",
+                config.display(),
+                self.importer.display(),
+                if relative {
+                    "; targets must start with \"./\""
+                } else {
+                    ""
+                }
+            ),
+        }
+    }
 }
 
 /// The format of a module file.
@@ -187,7 +234,7 @@ impl Resolver {
         }?;
         Ok(match found {
             Target::File(path) => Target::File(path.canonicalize().unwrap_or(path)),
-            builtin @ Target::Builtin(_) => builtin,
+            other => other,
         })
     }
 
@@ -222,9 +269,22 @@ impl Resolver {
         if let Some(path) = specifier.strip_prefix("file://") {
             return finish_esm(PathBuf::from(decode(path)), importer);
         }
+        if specifier.starts_with("data:") {
+            return data_target(specifier);
+        }
+        if is_path(specifier) && importer.to_string_lossy().starts_with("data:") {
+            return Err(Failure {
+                code: "ERR_UNSUPPORTED_RESOLVE_REQUEST",
+                message: format!(
+                    "Failed to resolve module specifier \"{specifier}\" from \"{}\": Invalid relative URL or base scheme is not hierarchical.",
+                    importer.display()
+                ),
+            });
+        }
         if is_path(specifier) {
+            // A relative specifier is a URL: `./a%2ejs` names `./a.js`.
             let base = importer.parent().unwrap_or(Path::new("/"));
-            return finish_esm(normalize(&base.join(specifier)), importer);
+            return finish_esm(normalize(&base.join(decode(specifier))), importer);
         }
         if specifier.starts_with('#') {
             let target = self.imports_resolve(specifier, importer, Mode::Import)?;
@@ -388,11 +448,19 @@ impl Resolver {
                 other => Some(other),
             };
             match main {
-                Some(main) => self.target_resolve(package_dir, main, None, false, mode)?,
+                Some(main) => {
+                    let lookup = Lookup {
+                        key: ".",
+                        importer,
+                        is_imports: false,
+                        mode,
+                    };
+                    self.target_resolve(package_dir, main, None, &lookup)?
+                }
                 None => Resolution::Null,
             }
         } else if let (Value::Object(map), true) = (exports, dotted) {
-            self.match_resolve(subpath, map, package_dir, false, mode)?
+            self.match_resolve(subpath, map, package_dir, false, mode, importer)?
         } else {
             Resolution::Null
         };
@@ -402,8 +470,9 @@ impl Resolver {
                 code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
                 message: if subpath == "." {
                     format!(
-                        "No \"exports\" main defined in {}",
-                        package_dir.join("package.json").display()
+                        "No \"exports\" main defined in {} imported from {}",
+                        package_dir.join("package.json").display(),
+                        importer.display()
                     )
                 } else {
                     format!(
@@ -423,10 +492,14 @@ impl Resolver {
         importer: &Path,
         mode: Mode,
     ) -> Result<Target, Failure> {
-        let not_defined = || Failure {
+        let not_defined = |package: Option<&Path>| Failure {
             code: "ERR_PACKAGE_IMPORT_NOT_DEFINED",
             message: format!(
-                "Package import specifier \"{specifier}\" is not defined imported from {}",
+                "Package import specifier \"{specifier}\" is not defined{} imported from {}",
+                package.map_or_else(String::new, |dir| format!(
+                    " in package {}",
+                    dir.join("package.json").display()
+                )),
                 importer.display()
             ),
         };
@@ -439,13 +512,13 @@ impl Resolver {
                 ),
             });
         }
-        let package = self.scope(importer).ok_or_else(not_defined)?;
+        let package = self.scope(importer).ok_or_else(|| not_defined(None))?;
         let Some(Value::Object(imports)) = &package.imports else {
-            return Err(not_defined());
+            return Err(not_defined(Some(&package.dir)));
         };
-        match self.match_resolve(specifier, imports, &package.dir, true, mode)? {
+        match self.match_resolve(specifier, imports, &package.dir, true, mode, importer)? {
             Resolution::Found(target) => Ok(target),
-            _ => Err(not_defined()),
+            _ => Err(not_defined(Some(&package.dir))),
         }
     }
 
@@ -457,11 +530,18 @@ impl Resolver {
         package_dir: &Path,
         is_imports: bool,
         mode: Mode,
+        importer: &Path,
     ) -> Result<Resolution, Failure> {
         if !key.contains('*')
             && let Some(target) = map.get(key)
         {
-            return self.target_resolve(package_dir, target, None, is_imports, mode);
+            let lookup = Lookup {
+                key,
+                importer,
+                is_imports,
+                mode,
+            };
+            return self.target_resolve(package_dir, target, None, &lookup);
         }
         let mut patterns: Vec<&String> = map
             .keys()
@@ -477,12 +557,17 @@ impl Resolver {
                 && (trailer.is_empty() || (key.ends_with(trailer) && key.len() >= pattern.len()))
             {
                 let matched = &key[base.len()..key.len() - trailer.len()];
+                let lookup = Lookup {
+                    key: pattern,
+                    importer,
+                    is_imports,
+                    mode,
+                };
                 return self.target_resolve(
                     package_dir,
                     &map[pattern.as_str()],
                     Some(matched),
-                    is_imports,
-                    mode,
+                    &lookup,
                 );
             }
         }
@@ -495,17 +580,12 @@ impl Resolver {
         package_dir: &Path,
         target: &Value,
         pattern: Option<&str>,
-        is_imports: bool,
-        mode: Mode,
+        lookup: &Lookup<'_>,
     ) -> Result<Resolution, Failure> {
-        let invalid = |target: &str| Failure {
-            code: "ERR_INVALID_PACKAGE_TARGET",
-            message: format!(
-                "Invalid \"{}\" target \"{target}\" defined in the package config {}",
-                if is_imports { "imports" } else { "exports" },
-                package_dir.join("package.json").display()
-            ),
-        };
+        let Lookup {
+            is_imports, mode, ..
+        } = *lookup;
+        let invalid = |target: &str| lookup.invalid_target(package_dir, target);
         match target {
             Value::String(text) => {
                 if !text.starts_with("./") {
@@ -550,7 +630,7 @@ impl Resolver {
             Value::Object(map) => {
                 for (condition, value) in map {
                     if matches(mode, condition) {
-                        match self.target_resolve(package_dir, value, pattern, is_imports, mode)? {
+                        match self.target_resolve(package_dir, value, pattern, lookup)? {
                             Resolution::Undefined => {}
                             found => return Ok(found),
                         }
@@ -561,7 +641,7 @@ impl Resolver {
             Value::Array(items) => {
                 let mut last = Ok(Resolution::Null);
                 for item in items {
-                    match self.target_resolve(package_dir, item, pattern, is_imports, mode) {
+                    match self.target_resolve(package_dir, item, pattern, lookup) {
                         Ok(Resolution::Found(target)) => return Ok(Resolution::Found(target)),
                         Ok(Resolution::Undefined) => {}
                         other => last = other,
@@ -709,7 +789,21 @@ enum Resolution {
 /// Whether a condition of an `exports` or `imports` object applies: `default`, or a
 /// condition of Node for the mode.
 fn matches(mode: Mode, condition: &str) -> bool {
-    condition == "default" || conditions(mode).contains(&condition)
+    condition == "default"
+        || conditions(mode).contains(&condition)
+        || USER_CONDITIONS
+            .get()
+            .is_some_and(|user| user.iter().any(|name| name == condition))
+}
+
+/// The conditions of `--conditions` (`-C`), which hold for the whole process, as Node
+/// adds them to its default conditions for every resolution.
+static USER_CONDITIONS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Sets the conditions of `--conditions` for every resolution of the process. The first
+/// call wins.
+pub fn set_user_conditions(conditions: Vec<String>) {
+    let _ = USER_CONDITIONS.set(conditions);
 }
 
 /// The conditions of Node 25 for each mode, without `node-addons`.
@@ -855,6 +949,107 @@ pub fn normalize(path: &Path) -> PathBuf {
     out
 }
 
+/// A `data:` URL as a module, or Node's error for a format that no module has
+/// (`getDataProtocolModuleFormat`): `type/subtype` before the parameters names it.
+fn data_target(url: &str) -> Result<Target, Failure> {
+    let Some((head, _)) = url["data:".len()..].split_once(',') else {
+        return Err(Failure {
+            code: "ERR_INVALID_URL",
+            message: "Invalid URL".to_owned(),
+        });
+    };
+    let mime = head.split(';').next().unwrap_or_default();
+    let known = mime
+        .split_once('/')
+        .is_some_and(|(kind, sub)| !kind.is_empty() && !sub.is_empty());
+    match known.then(|| data_format(mime)).flatten() {
+        Some(_) => Ok(Target::Data(url.to_owned())),
+        None => Err(Failure {
+            code: "ERR_UNKNOWN_MODULE_FORMAT",
+            message: format!(
+                "Unknown module format: {} for URL {url}",
+                if known { mime } else { "null" }
+            ),
+        }),
+    }
+}
+
+/// `mimeToFormat` of Node's ESM loader.
+fn data_format(mime: &str) -> Option<Format> {
+    let essence = mime.trim().to_ascii_lowercase();
+    match essence.as_str() {
+        "text/javascript" | "application/javascript" => Some(Format::Esm),
+        "application/json" if mime == "application/json" => Some(Format::Json),
+        _ => None,
+    }
+}
+
+/// The format and the source text of the module of a `data:` URL, as the data URL
+/// processor of the Fetch standard reads its body: percent-decoded, then base64-decoded
+/// when the media type ends with `;base64`.
+pub fn data_source(url: &str) -> Option<(Format, String)> {
+    let (head, body) = url.strip_prefix("data:")?.split_once(',')?;
+    let format = data_format(head.split(';').next().unwrap_or_default())?;
+    let bytes = decode(body).into_bytes();
+    let base64 = head
+        .trim_end_matches(' ')
+        .rsplit_once(';')
+        .is_some_and(|(_, last)| last.trim_start_matches(' ').eq_ignore_ascii_case("base64"));
+    let bytes = if base64 {
+        forgiving_base64(&bytes)?
+    } else {
+        bytes
+    };
+    Some((format, String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+/// The forgiving-base64 decode of the Infra standard: ASCII whitespace is skipped, and
+/// up to two `=` may end the text.
+fn forgiving_base64(text: &[u8]) -> Option<Vec<u8>> {
+    let mut digits: Vec<u8> = text
+        .iter()
+        .copied()
+        .filter(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\x0c' | b'\r'))
+        .collect();
+    if digits.len().is_multiple_of(4) {
+        let padding = digits
+            .iter()
+            .rev()
+            .take_while(|byte| **byte == b'=')
+            .count();
+        if padding > 2 {
+            return None;
+        }
+        digits.truncate(digits.len() - padding);
+    }
+    if digits.len() % 4 == 1 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(digits.len() * 3 / 4);
+    let mut buffer: u32 = 0;
+    for (index, byte) in digits.iter().enumerate() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        if index % 4 == 3 {
+            out.extend_from_slice(&buffer.to_be_bytes()[1..]);
+            buffer = 0;
+        }
+    }
+    match digits.len() % 4 {
+        2 => out.extend_from_slice(&(buffer >> 4).to_be_bytes()[3..]),
+        3 => out.extend_from_slice(&(buffer >> 2).to_be_bytes()[2..]),
+        _ => {}
+    }
+    Some(out)
+}
+
 /// The path of a `file://` URL, with its percent escapes decoded.
 fn decode(path: &str) -> String {
     let bytes = path.as_bytes();
@@ -988,5 +1183,39 @@ mod tests {
             Format::Detect
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reads_data_urls_as_node_loads_them() {
+        let importer = Path::new("/project/main.mjs");
+        let resolver = Resolver::default();
+        let code = |specifier: &str| {
+            resolver
+                .resolve(specifier, importer, Mode::Import)
+                .map_err(|failure| failure.code)
+        };
+        let url = "data:text/javascript;charset=utf-8,export%20default%201";
+        assert_eq!(code(url), Ok(Target::Data(url.to_owned())));
+        assert_eq!(code("data:text/plain,x"), Err("ERR_UNKNOWN_MODULE_FORMAT"));
+        assert_eq!(code("data:x"), Err("ERR_INVALID_URL"));
+        assert_eq!(
+            resolver
+                .resolve("./x.mjs", Path::new("data:text/javascript,"), Mode::Import)
+                .map_err(|failure| failure.code),
+            Err("ERR_UNSUPPORTED_RESOLVE_REQUEST")
+        );
+        assert_eq!(
+            data_source(url),
+            Some((Format::Esm, "export default 1".to_owned()))
+        );
+        assert_eq!(
+            data_source("data:text/javascript;base64,ZXhwb3J0IGRlZmF1bHQgNDI="),
+            Some((Format::Esm, "export default 42".to_owned()))
+        );
+        assert_eq!(
+            data_source("data:application/json;base64,WzEsMl0"),
+            Some((Format::Json, "[1,2]".to_owned()))
+        );
+        assert_eq!(data_source("data:text/javascript;base64,a"), None);
     }
 }

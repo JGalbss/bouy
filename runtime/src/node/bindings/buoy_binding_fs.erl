@@ -711,7 +711,8 @@ write_file(Fd, Bytes, Position) ->
     byte_size(Bytes).
 
 %% The device is in unicode mode: valid UTF-8 goes through as text, and
-%% other bytes as latin1 characters in a latin1 window.
+%% other bytes as latin1 characters in a latin1 window. io:put_chars reads a
+%% binary as UTF-8, so the window writes with file:write, which sends latin1.
 -spec put_bytes(io:device(), binary()) -> non_neg_integer().
 put_bytes(Device, Bytes) ->
     case unicode:characters_to_list(Bytes, utf8) of
@@ -719,7 +720,7 @@ put_bytes(Device, Bytes) ->
             io:put_chars(Device, Bytes);
         _ ->
             ok = io:setopts(Device, [{encoding, latin1}]),
-            io:put_chars(Device, Bytes),
+            ok = file:write(Device, Bytes),
             ok = io:setopts(Device, [{encoding, unicode}])
     end,
     byte_size(Bytes).

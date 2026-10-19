@@ -4,7 +4,10 @@
 %%
 %% A proxy is a heap record of the class proxy whose slots are
 %% {Target, Handler}, or {revoked, IsConstructor} after Proxy.revocable's
-%% revoke ran. A proxy of a callable target is a function value, so typeof
+%% revoke ran. A host proxy has the handler {host, Module, State}: Module
+%% intercepts get, set, has, deleteProperty, ownKeys, getOwnPropertyDescriptor,
+%% and defineProperty as V8's named interceptors do, without the invariant
+%% checks of a trap, and the other internal methods go to the target. A proxy of a callable target is a function value, so typeof
 %% and calls see a function; the other proxies are object values. buoy_heap
 %% sends each internal method of a proxy record here.
 -module(buoy_ref_proxy).
@@ -14,7 +17,7 @@
 -export([intrinsics/0, globals/0, method/4, call_constructor/3]).
 -export([get/3, set/4, has/2, delete_property/2, own_keys/1, get_own_property/2, define_own_property/3]).
 -export([get_prototype_of/1, set_prototype_of/2, is_extensible/1, prevent_extensions/1, call/3, construct/3]).
--export([target/1]).
+-export([target/1, is_host/1, has_binding/2]).
 
 -import(buoy_ref_realm, [arg/2, builtin/2, record/4, ctor_record/5]).
 -import(buoy_ref, [type_error/1]).
@@ -65,6 +68,28 @@ target(P) ->
             P
     end.
 
+%% Whether P is a host proxy, which util.types.isProxy does not report.
+-spec is_host(term()) -> boolean().
+is_host(P) ->
+    case buoy_heap:class_of(P) =:= proxy andalso buoy_heap:slots(P) of
+        {_, {host, _, _}} -> true;
+        _ -> false
+    end.
+
+%% HasBinding of an object environment whose object is P: a host proxy that
+%% exports has_binding/3 answers it, and any other object's HasProperty does.
+-spec has_binding(term(), buoy_heap:key()) -> boolean().
+has_binding(P, K) ->
+    case buoy_heap:class_of(P) =:= proxy andalso buoy_heap:slots(P) of
+        {Target, {host, M, S}} ->
+            case erlang:function_exported(M, has_binding, 3) of
+                true -> M:has_binding(S, Target, K);
+                false -> M:has(S, Target, K)
+            end;
+        _ ->
+            buoy_heap:has(P, K)
+    end.
+
 %%% Traps
 
 live({revoked, _}, Name) ->
@@ -75,6 +100,8 @@ live(Slots, _Name) ->
 %% The trap Name of the handler: {Target, Handler, undefined or a function}.
 trap({revoked, _} = Slots, Name) ->
     live(Slots, Name);
+trap({Target, {host, _, _} = Host}, _Name) ->
+    {Target, Host, undefined};
 trap({Target, Handler}, Name) ->
     Trap = case buoy_ref:get(Handler, Name) of
         T when T =:= undefined; T =:= null -> undefined;
@@ -147,6 +174,7 @@ prevent_extensions(Slots) ->
     end.
 
 -spec get_own_property(term(), buoy_heap:key()) -> buoy_heap:property().
+get_own_property({Target, {host, M, S}}, K) -> M:get_own_property(S, Target, K);
 get_own_property(Slots, K) ->
     case trap(Slots, <<"getOwnPropertyDescriptor">>) of
         {Target, _, undefined} ->
@@ -210,6 +238,7 @@ compatible(Extensible, _Desc, none) -> Extensible;
 compatible(Extensible, Desc, Current) -> buoy_heap:validate_and_apply(undefined, <<>>, Extensible, Desc, Current).
 
 -spec define_own_property(term(), buoy_heap:key(), map()) -> boolean().
+define_own_property({Target, {host, M, S}}, K, Desc) -> M:define_own_property(S, Target, K, Desc);
 define_own_property(Slots, K, Desc) ->
     case trap(Slots, <<"defineProperty">>) of
         {Target, _, undefined} ->
@@ -245,6 +274,7 @@ check_define(TargetDesc, Extensible, ConfigFalse, Desc, K) ->
     end.
 
 -spec has(term(), buoy_heap:key()) -> boolean().
+has({Target, {host, M, S}}, K) -> M:has(S, Target, K);
 has(Slots, K) ->
     case trap(Slots, <<"has">>) of
         {Target, _, undefined} ->
@@ -268,6 +298,7 @@ has(Slots, K) ->
     end.
 
 -spec get(term(), buoy_heap:key(), term()) -> term().
+get({Target, {host, M, S}}, K, Receiver) -> M:get(S, Target, K, Receiver);
 get(Slots, K, Receiver) ->
     case trap(Slots, <<"get">>) of
         {Target, _, undefined} ->
@@ -288,6 +319,7 @@ get(Slots, K, Receiver) ->
     end.
 
 -spec set(term(), buoy_heap:key(), term(), term()) -> boolean().
+set({Target, {host, M, S}}, K, V, Receiver) -> M:set(S, Target, K, V, Receiver);
 set(Slots, K, V, Receiver) ->
     case trap(Slots, <<"set">>) of
         {Target, _, undefined} ->
@@ -311,6 +343,7 @@ set(Slots, K, V, Receiver) ->
     end.
 
 -spec delete_property(term(), buoy_heap:key()) -> boolean().
+delete_property({Target, {host, M, S}}, K) -> M:delete_property(S, Target, K);
 delete_property(Slots, K) ->
     case trap(Slots, <<"deleteProperty">>) of
         {Target, _, undefined} ->
@@ -334,6 +367,7 @@ delete_property(Slots, K) ->
     end.
 
 -spec own_keys(term()) -> [buoy_heap:key()].
+own_keys({Target, {host, M, S}}) -> M:own_keys(S, Target);
 own_keys(Slots) ->
     case trap(Slots, <<"ownKeys">>) of
         {Target, _, undefined} ->

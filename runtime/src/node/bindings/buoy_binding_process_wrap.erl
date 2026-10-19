@@ -335,7 +335,7 @@ manage(#{port := Port, realm := Realm, handles := Handles, writer := Writer, std
             manage(M);
         {kill, Signal} ->
             case erlang:port_info(Port, os_pid) of
-                {os_pid, OsPid} -> _ = os:cmd("kill -" ++ integer_to_list(Signal) ++ " " ++ integer_to_list(OsPid));
+                {os_pid, OsPid} -> _ = buoy_native:os_kill(OsPid, Signal);
                 _ -> ok
             end,
             manage(M);

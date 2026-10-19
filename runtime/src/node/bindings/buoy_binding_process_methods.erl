@@ -123,7 +123,8 @@ resource_usage(Array) ->
     buoy_heap:set(Array, 2, erlang:memory(total) div 1024),
     undefined.
 
-%% _kill(pid, signal): 0, EINVAL for a signal that the OS lacks, else ESRCH.
+%% _kill(pid, signal): 0, EINVAL for a signal that the OS lacks, else the
+%% negative errno of kill(2), such as ESRCH or EPERM.
 kill(Pid, Signal) ->
     case trunc(buoy_ref:to_number(Signal)) of
         Number when Number < 0; Number > 31 -> -22;
@@ -131,15 +132,8 @@ kill(Pid, Signal) ->
             Target = trunc(buoy_ref:to_number(Pid)),
             case Target =:= list_to_integer(os:getpid()) andalso buoy_binding_signal_wrap:emulate(Number) of
                 true -> 0;
-                false -> kill_os(Target, Number)
+                false -> buoy_native:os_kill(Target, Number)
             end
-    end.
-
-kill_os(Target, Number) ->
-    Command = io_lib:format("kill -~w ~w 2>/dev/null; echo $?", [Number, Target]),
-    case string:trim(os:cmd(lists:flatten(Command))) of
-        "0" -> 0;
-        _ -> -3
     end.
 
 load_env_file(Path) ->
@@ -173,11 +167,14 @@ abort(_This, _Args) -> erlang:halt(134).
 -spec segfault(term(), list()) -> no_return().
 segfault(_This, _Args) -> erlang:halt(139).
 
-%% process.dlopen: Buoy loads no native addon (goal.md, requirement 2).
+%% process.dlopen(module, filename, flags): Buoy loads no native addon
+%% (goal.md, requirement 2). The message names the file, as dlopen's does.
 -spec dlopen(term(), list()) -> no_return().
-dlopen(_This, _Args) ->
+dlopen(_This, Args) ->
+    File = buoy_ref_string:to_utf8(buoy_ref:to_string(buoy_node:arg(2, Args))),
     buoy_node:throw_code('Error', <<"ERR_DLOPEN_FAILED">>,
-                         <<"Buoy cannot load native addons (.node files); use the WebAssembly or pure-JavaScript build of the package">>).
+                         <<"Cannot load ", File/binary, ": Buoy cannot load native addons (.node files); "
+                           "use the WebAssembly or pure-JavaScript build of the package">>).
 
 %% GetActiveHandles: the owner of each ref'd handle wrap (GetOwner), or the
 %% handle itself.

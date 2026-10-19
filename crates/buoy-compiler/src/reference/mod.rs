@@ -43,8 +43,8 @@ mod exception;
 mod expr;
 mod function;
 pub mod graph;
-mod layout;
 mod jit;
+mod layout;
 pub mod link;
 mod linking;
 mod literal;
@@ -94,7 +94,7 @@ pub fn lower_unit(
             functions: linking.json_functions(),
         }));
     }
-    lower(linking, None, &[])
+    lower(linking, None, &[], false)
 }
 
 /// What the code of a direct eval may use from the place of its call (ECMA-262 §19.2.1.1,
@@ -278,17 +278,47 @@ pub fn lower_eval(
         dynamic_function: function.is_some(),
         ..context.clone()
     };
-    lower_one_script(path, name, source, Some((strict, &context)), scope)
+    lower_one_script(path, name, source, Some((strict, &context)), scope, false)
+}
+
+/// Lowers an ES module from source text whose requests the host links at run time
+/// (`compile_hosted_module` of the crate), named `name`, with `path` as its identifier.
+pub fn lower_hosted_module(
+    source: String,
+    name: &str,
+    path: std::path::PathBuf,
+) -> Result<String, Vec<Diagnostic>> {
+    let graph = graph::hosted(source, name, path)?;
+    let links = link::link(&graph);
+    // A module of node:vm checks the deadline of `evaluate({ timeout })` in its loops.
+    lower(
+        Linking {
+            graph: &graph,
+            unit: 0,
+            link: &links[0],
+            entry: false,
+        },
+        None,
+        &[],
+        true,
+    )
 }
 
 /// Lowers a classic script of its own (`compile_script` of the crate), named `name`.
-pub fn lower_script(source: String, name: &str) -> Result<String, Vec<Diagnostic>> {
+/// `interruptible` code checks the deadline of a run at each turn of a loop
+/// (`buoy_ref_eval:interrupt/0`), as `vm.Script` with a `timeout` needs.
+pub fn lower_script(
+    source: String,
+    name: &str,
+    interruptible: bool,
+) -> Result<String, Vec<Diagnostic>> {
     lower_one_script(
         std::path::PathBuf::from("script.js"),
         name,
         source,
         None,
         &[],
+        interruptible,
     )
 }
 
@@ -299,6 +329,7 @@ fn lower_one_script(
     source: String,
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
+    interruptible: bool,
 ) -> Result<String, Vec<Diagnostic>> {
     // Eval code records its calls when the program that runs it does (`frames` of the
     // context), and the runtime's own code never does.
@@ -322,7 +353,7 @@ fn lower_one_script(
         link: &link,
         entry: false,
     };
-    lower(linking, eval, scope)
+    lower(linking, eval, scope, interruptible)
 }
 
 /// The names that sloppy eval code declares in its variable environment: its top-level
@@ -375,6 +406,7 @@ fn lower(
     linking: Linking<'_>,
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
+    interruptible: bool,
 ) -> Result<String, Vec<Diagnostic>> {
     let module = linking.unit();
     let context = eval.map(|(_, context)| context.clone()).unwrap_or_default();
@@ -427,7 +459,11 @@ fn lower(
                 hoisted: std::collections::HashSet::new(),
                 block_functions: Vec::new(),
                 frames,
+                // A classic script of its own, as `vm.Script` compiles it, may run in the
+                // realm of a context and call the functions of another realm.
+                realm_calls: linking.unit().script && !linking.entry && eval.is_none(),
                 linking,
+                interruptible,
                 layouts: HashMap::new(),
                 jit: if eval.is_none() {
                     crate::jit::plan(semantic)

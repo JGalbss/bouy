@@ -2979,20 +2979,20 @@
         "pass": 2300,
         "rejected": 0,
         "late": 0,
-        "skip": 583,
+        "skip": 525,
         "never": 0,
         "fail": 1470,
         "timeout": 54,
         "harness_error": 0,
-        "crash": 12
+        "crash": 13
       },
       "groups": {
         "directory": {
           "es-module": {
-            "pass": 66,
-            "skip": 16,
-            "fail": 139,
-            "timeout": 1
+            "pass": 116,
+            "skip": 15,
+            "fail": 88,
+            "timeout": 3
           },
           "parallel": {
             "pass": 2191,
@@ -3002,10 +3002,10 @@
             "crash": 12
           },
           "sequential": {
-            "pass": 43,
-            "skip": 22,
-            "fail": 48,
-            "timeout": 5
+            "pass": 44,
+            "skip": 19,
+            "fail": 51,
+            "timeout": 4
           }
         },
         "kind": {
@@ -3028,9 +3028,9 @@
             "crash": 2
           },
           "async_hooks": {
-            "pass": 30,
-            "skip": 11,
-            "fail": 15
+            "pass": 33,
+            "skip": 5,
+            "fail": 18
           },
           "buffer": {
             "pass": 58,
@@ -3068,8 +3068,8 @@
             "fail": 63
           },
           "diagnostics_channel": {
-            "pass": 46,
-            "skip": 3,
+            "pass": 48,
+            "skip": 1,
             "fail": 6,
             "timeout": 1
           },
@@ -3078,8 +3078,8 @@
             "fail": 19
           },
           "domain": {
-            "pass": 30,
-            "skip": 2,
+            "pass": 31,
+            "skip": 1,
             "fail": 18
           },
           "events": {
@@ -3094,30 +3094,30 @@
           },
           "http": {
             "pass": 37,
-            "skip": 15,
-            "fail": 342
+            "skip": 11,
+            "fail": 346
           },
           "http2": {
-            "pass": 242,
-            "skip": 32
+            "pass": 245,
+            "skip": 29
           },
           "https": {
-            "pass": 63,
-            "skip": 2
+            "pass": 64,
+            "skip": 1
           },
           "inspector": {
             "skip": 114
           },
           "module": {
-            "pass": 86,
-            "skip": 17,
-            "fail": 175,
-            "timeout": 2
+            "pass": 158,
+            "skip": 16,
+            "fail": 102,
+            "timeout": 4
           },
           "net": {
             "pass": 19,
-            "skip": 10,
-            "fail": 131,
+            "skip": 7,
+            "fail": 134,
             "timeout": 2
           },
           "os": {
@@ -3137,8 +3137,8 @@
           },
           "perf_hooks": {
             "pass": 20,
-            "skip": 3,
-            "fail": 3,
+            "skip": 2,
+            "fail": 4,
             "crash": 1
           },
           "process": {
@@ -3173,8 +3173,7 @@
             "fail": 1
           },
           "sqlite": {
-            "pass": 16,
-            "skip": 2
+            "pass": 18
           },
           "stream": {
             "pass": 204,
@@ -3188,10 +3187,10 @@
             "pass": 1
           },
           "test": {
-            "pass": 27,
+            "pass": 43,
             "skip": 5,
-            "fail": 26,
-            "timeout": 7
+            "fail": 5,
+            "timeout": 12
           },
           "timers": {
             "pass": 46,
@@ -3199,8 +3198,8 @@
             "fail": 2
           },
           "tls": {
-            "pass": 204,
-            "skip": 15,
+            "pass": 206,
+            "skip": 13,
             "timeout": 1
           },
           "trace_events": {
@@ -3224,26 +3223,27 @@
             "crash": 1
           },
           "v8": {
-            "pass": 9,
-            "skip": 5,
-            "fail": 8
+            "pass": 18,
+            "skip": 1,
+            "fail": 2,
+            "crash": 1
           },
           "vm": {
-            "pass": 23,
-            "skip": 9,
-            "fail": 64,
-            "timeout": 2,
+            "pass": 87,
+            "skip": 1,
+            "fail": 10,
             "crash": 1
           },
           "worker_threads": {
             "pass": 11,
-            "skip": 12,
-            "fail": 124,
+            "skip": 10,
+            "fail": 126,
             "timeout": 1
           },
           "zlib": {
             "pass": 60,
-            "skip": 3
+            "skip": 2,
+            "fail": 1
           }
         },
         "skip reason": {
@@ -3251,7 +3251,7 @@
             "skip": 2
           },
           "node-inspector": {
-            "skip": 109
+            "skip": 110
           },
           "node-internals": {
             "skip": 342
@@ -3260,7 +3260,7 @@
             "skip": 46
           },
           "v8-flag": {
-            "skip": 84
+            "skip": 25
           }
         }
       },
@@ -3270,16 +3270,16 @@
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "04d1005",
+      "updated": "666c72b",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 3461,
+        "pass": 3478,
         "rejected": 0,
         "late": 0,
         "skip": 0,
         "never": 0,
-        "fail": 999,
+        "fail": 982,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3291,8 +3291,8 @@
             "fail": 31
           },
           "documented": {
-            "pass": 3363,
-            "fail": 968
+            "pass": 3380,
+            "fail": 951
           }
         },
         "module": {
@@ -3573,8 +3573,7 @@
             "fail": 40
           },
           "node:module": {
-            "pass": 3,
-            "fail": 17
+            "pass": 20
           },
           "node:net": {
             "pass": 119
@@ -8481,7 +8480,8 @@
     {
       "binding": "cjs_lexer",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/node/bindings/buoy_binding_cjs_lexer.erl"
     },
     {
       "binding": "config",
@@ -8498,7 +8498,7 @@
     {
       "binding": "contextify",
       "members": 10,
-      "implemented": 8,
+      "implemented": 10,
       "module": "runtime/src/node/bindings/buoy_binding_contextify.erl"
     },
     {
@@ -8552,7 +8552,8 @@
     {
       "binding": "heap_utils",
       "members": 3,
-      "implemented": 0
+      "implemented": 2,
+      "module": "runtime/src/node/bindings/buoy_binding_heap_utils.erl"
     },
     {
       "binding": "http2",
@@ -8612,13 +8613,14 @@
     {
       "binding": "module_wrap",
       "members": 14,
-      "implemented": 12,
+      "implemented": 14,
       "module": "runtime/src/node/bindings/buoy_binding_module_wrap.erl"
     },
     {
       "binding": "modules",
       "members": 13,
-      "implemented": 0
+      "implemented": 13,
+      "module": "runtime/src/node/bindings/buoy_binding_modules.erl"
     },
     {
       "binding": "options",
@@ -8804,7 +8806,8 @@
     {
       "binding": "v8",
       "members": 40,
-      "implemented": 0
+      "implemented": 40,
+      "module": "runtime/src/node/bindings/buoy_binding_v8.erl"
     },
     {
       "binding": "wasi",

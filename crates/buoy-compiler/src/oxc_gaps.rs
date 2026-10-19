@@ -86,7 +86,9 @@ pub fn is_free(source: &str) -> bool {
 /// is an early error for a call in any code.
 fn is_logical_target(rest: &str) -> bool {
     let operator = rest.trim_start_matches(|c: char| c == ')' || c.is_whitespace());
-    ["&&=", "||=", "??="].iter().any(|logical| operator.starts_with(logical))
+    ["&&=", "||=", "??="]
+        .iter()
+        .any(|logical| operator.starts_with(logical))
 }
 
 /// Whether `text` is one call, perhaps in parentheses: no tagged template, no optional
@@ -173,8 +175,10 @@ mod tests {
     #[test]
     fn escapes_a_let_label() {
         assert_eq!(rewritten("let: 42").as_deref(), Some("l\\u0065t: 42"));
-        assert_eq!(rewritten("while (0) let \n : 1").as_deref(), Some("while (0) l\\u0065t \n : 1"));
+        assert_eq!(
+            rewritten("while (0) let \n : 1").as_deref(),
+            Some("while (0) l\\u0065t \n : 1")
+        );
         assert_eq!(rewritten("x = 1 2;"), None);
     }
 }
-

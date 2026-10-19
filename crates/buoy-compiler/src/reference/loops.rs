@@ -15,8 +15,18 @@ use super::context::{
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
-    /// `(fun Loop(Params) -> Body end)(Initial)`.
-    pub fn loop_call(name: String, params: Vec<Expr>, body: Vec<Expr>, initial: Vec<Expr>) -> Expr {
+    /// `(fun Loop(Params) -> Body end)(Initial)`. Interruptible code checks the deadline of
+    /// the run before each turn.
+    pub fn loop_call(
+        &self,
+        name: String,
+        params: Vec<Expr>,
+        mut body: Vec<Expr>,
+        initial: Vec<Expr>,
+    ) -> Expr {
+        if self.interruptible {
+            body.insert(0, Expr::call("buoy_ref_eval", "interrupt", vec![]));
+        }
         Expr::Apply(
             Box::new(Expr::Fun {
                 name: Some(name),
@@ -41,7 +51,7 @@ impl<'a> Lowerer<'a, '_> {
         initial: Vec<Expr>,
     ) -> Vec<Expr> {
         if !matches!(self.frame.kind, Kind::Sync) {
-            return vec![Self::loop_call(name, params, body, initial)];
+            return vec![self.loop_call(name, params, body, initial)];
         }
         let entry = Expr::var(self.fresh("Entry"));
         let roots = Expr::List(params.clone());
@@ -51,7 +61,7 @@ impl<'a> Lowerer<'a, '_> {
         );
         vec![
             Expr::matches(entry, Expr::call("buoy_heap", "allocated", vec![])),
-            Self::loop_call(name, params, body, initial),
+            self.loop_call(name, params, body, initial),
         ]
     }
 
