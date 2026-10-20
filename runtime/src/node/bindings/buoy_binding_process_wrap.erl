@@ -1,14 +1,15 @@
 %% internalBinding('process_wrap') (src/process_wrap.cc): Process, the handle
 %% of a child process that child_process.spawn starts. A manager process
 %% owns the child: bash connects a loopback socket for each piped stdin,
-%% stdout, and stderr (/dev/tcp), wires the stdio, and execs the file. The
-%% port only reports the exit: OTP holds the exit status until the port's
-%% pipe ends, and a grandchild that keeps a stdio pipe, as /bin/sh -c leaves
-%% one behind on Linux, would hold the exit of the child. A socket never
+%% stdout, and stderr (/dev/tcp), wires the stdio, and execs the file through
+%% `buoy --buoy-exec` (buoy_binding_spawn_sync:exec/4). The port only
+%% reports the exit: OTP holds the exit status until the port's pipe ends,
+%% and a grandchild that keeps a stdio pipe, as /bin/sh -c leaves one behind
+%% on Linux, would hold the exit of the child. A socket never
 %% blocks the child when the VM is gone, and it half-closes, so the end of
 %% stdin reaches the child while its output still flows. Each stdio pipe is
-%% a Pipe of pipe_wrap that buoy_node_stream drives; IPC channels are not
-%% supported yet.
+%% a Pipe of pipe_wrap that buoy_node_stream drives; the IPC channel of fork
+%% is buoy_node_ipc's local socket.
 -module(buoy_binding_process_wrap).
 
 -export([binding/0]).
@@ -51,26 +52,43 @@ items(A) -> buoy_heap:array_items(A).
 %% spawn(options): 0, or the negative errno of a spawn that fails.
 spawn_child(This, Options) ->
     File = text(get(Options, <<"file">>)),
-    Args = case [text(A) || A <- items(get(Options, <<"args">>))] of
-        [_Argv0 | Rest] -> Rest;
-        [] -> []
-    end,
     Env = [buoy_binding_spawn_sync:split_pair(text(P)) || P <- items(get(Options, <<"envPairs">>))],
     Cwd = case get(Options, <<"cwd">>) of
-        V when V =:= undefined; V =:= null -> element(2, file:get_cwd());
+        V when V =:= undefined; V =:= null; V =:= <<>> -> element(2, file:get_cwd());
         V -> text(V)
     end,
     Stdio = [stdio(S) || S <- items(get(Options, <<"stdio">>))] ++ lists:duplicate(3, ignore),
-    case {filelib:is_dir(Cwd), buoy_binding_spawn_sync:executable(File, Cwd, Env)} of
-        {true, {ok, Path}} -> start(This, Path, Args, Cwd, Env, Stdio);
-        {false, _} -> -2;
-        _ -> -2
+    case filelib:is_dir(Cwd) andalso buoy_binding_spawn_sync:exec(File, Cwd, Env, Options) of
+        {ok, Exec} -> start(This, Exec, Cwd, Stdio);
+        {error, -2} -> unstarted(Stdio);
+        {error, Errno} -> Errno;
+        false -> unstarted(Stdio)
+    end.
+
+%% uv_spawn opens the parent's end of each stdio pipe even when the child
+%% fails to start, so each pipe reads its end at once and a write fails with
+%% EPIPE: the streams close, and nothing keeps the loop alive.
+unstarted(Stdio) ->
+    Realm = self(),
+    [begin
+         buoy_node_stream:attach(Handle, spawn(fun() -> closed_pipe(monitor(process, Realm)) end)),
+         buoy_node_loop:defer(fun() -> buoy_node_stream:deliver(Handle, eof) end)
+     end || {Kind, Handle} <- Stdio, Kind =:= pipe orelse Kind =:= ipc],
+    -2.
+
+closed_pipe(Monitor) ->
+    receive
+        {write, _, From, Ref} -> report(From, Ref, {error, epipe}), closed_pipe(Monitor);
+        close -> ok;
+        {'DOWN', Monitor, _, _, _} -> ok;
+        _ -> closed_pipe(Monitor)
     end.
 
 stdio(S) ->
     case buoy_ref_string:to_utf8(buoy_ref:to_string(get(S, <<"type">>))) of
-        <<"pipe">> -> {pipe, get(S, <<"handle">>)};
+        <<"pipe">> -> pipe(S);
         <<"overlapped">> -> {pipe, get(S, <<"handle">>)};
+        <<"wrap">> -> {wrap, get(S, <<"handle">>)};
         <<"inherit">> -> inherit;
         <<"fd">> ->
             case get(S, <<"fd">>) of
@@ -80,30 +98,44 @@ stdio(S) ->
         _ -> ignore
     end.
 
-start(This, Path, Args, Cwd, Env, [In, Out, Err | More]) ->
+%% The IPC channel of fork, a pipe that getValidStdio marks ipc, reads and
+%% writes, at whatever index it has.
+pipe(S) ->
+    case get(S, <<"ipc">>) of
+        true -> {ipc, get(S, <<"handle">>)};
+        _ -> {pipe, get(S, <<"handle">>)}
+    end.
+
+start(This, {Program, ProgramArgs}, Cwd, [In, Out, Err | More]) ->
     ok = start_inet_db(),
     {ok, Listen} = gen_tcp:listen(0, [binary, {ip, loopback}, {active, false}, {reuseaddr, true}, {backlog, 8}]),
     {ok, ListenPort} = inet:port(Listen),
-    %% A pipe past stderr, such as the IPC channel of fork, is a socket at its
-    %% index in the child (NODE_CHANNEL_FD); it connects at fd 10 + index first.
+    %% A pipe past stderr is a socket at its index in the child that reads
+    %% and writes; it connects at fd 10 + index first. The IPC channel of
+    %% fork, at any index (NODE_CHANNEL_FD), is a local socket that the exec
+    %% step connects (buoy_node_ipc), so handles can pass over it.
     Realm0 = self(),
+    Stdio = lists:enumerate(0, [In, Out, Err | More]),
     Extras = [{Index, Handle, spawn(fun() -> ipc_channel(Realm0, Handle) end)}
-              || {Index, {pipe, Handle}} <- lists:enumerate(3, More)],
-    Piped = [Name || {Name, {pipe, _}} <- [{stdin, In}, {stdout, Out}, {stderr, Err}]] ++ [{extra, I} || {I, _, _} <- Extras],
+              || {Index, {pipe, Handle}} <- Stdio, Index >= 3],
+    Ipcs = [{Index, ipc_listen(Handle)} || {Index, {ipc, Handle}} <- Stdio],
+    Piped = [Name || {Name, {Kind, _}} <- [{stdin, In}, {stdout, Out}, {stderr, Err}], Kind =:= pipe orelse Kind =:= wrap]
+            ++ [{extra, I} || {I, _, _} <- Extras],
     Tcp = "<>/dev/tcp/127.0.0.1/" ++ integer_to_list(ListenPort) ++ " || exit 127; ",
     %% Each piped stream connects in this order, so the accepts know which is which.
     Connect = lists:append(["exec " ++ integer_to_list(fd_of(Name)) ++ Tcp || Name <- Piped]),
     Redirects = redirect(0, In) ++ redirect(1, Out) ++ redirect(2, Err),
     Moves = lists:append([" " ++ integer_to_list(I) ++ ">&" ++ integer_to_list(10 + I) ++ " " ++ integer_to_list(10 + I) ++ ">&-"
-                          || {I, _, _} <- Extras]),
+                          || {I, _, _} <- Extras])
+            ++ lists:append([" " ++ integer_to_list(I) ++ "<&-" || {I, _} <- Ipcs]),
+    ExecArgs = exec_options(ProgramArgs, ["unix=" ++ integer_to_list(I) ++ ":" ++ Path || {I, {_, Path}} <- Ipcs]),
+    IpcChannels = [Channel || {_, {Channel, _}} <- Ipcs],
     Script = Connect ++ "exec \"$0\" \"$@\"" ++ Redirects ++ " 3<&- 4>&- 5<&- 6<&- 7<&-" ++ Moves,
-    Unset = [{K, false} || K <- [element(1, buoy_binding_spawn_sync:split_pair(P)) || P <- os:getenv()],
-                           not lists:keymember(K, 1, Env)],
     Realm = self(),
-    Handles = #{stdin => pipe_handle(In), stdout => pipe_handle(Out), stderr => pipe_handle(Err)},
+    Handles = #{stdin => pipe_handle(In), stdout => output_handle(Out), stderr => output_handle(Err)},
     {Manager, Monitor} = spawn_monitor(fun() ->
         Port = open_port({spawn_executable, "/bin/bash"},
-                         [nouse_stdio, binary, exit_status, {cd, Cwd}, {env, Unset ++ Env}, {args, ["-c", Script, Path | Args]}]),
+                         [nouse_stdio, binary, exit_status, {cd, Cwd}, {args, ["-c", Script, Program | ExecArgs]}]),
         OsPid = case erlang:port_info(Port, os_pid) of {os_pid, P} -> P; _ -> 0 end,
         Realm ! {self(), started, OsPid},
         Sockets = accept(Listen, Piped, Port),
@@ -121,15 +153,17 @@ start(This, Path, Args, Cwd, Env, [In, Out, Err | More]) ->
         Waiting = [exit | [Name || Name <- [stdout, stderr], maps:is_key(Name, Sockets)]],
         manage(#{port => Port, realm => Realm, this => This, handles => Handles, writer => Writer,
                  stdout => maps:get(stdout, Sockets, none), stderr => maps:get(stderr, Sockets, none),
-                 waiting => Waiting})
+                 waiting => Waiting, ipc => IpcChannels})
     end),
     ok = gen_tcp:controlling_process(Listen, Manager),
     receive
         {Manager, started, OsPid} ->
             erlang:demonitor(Monitor, [flush]),
-            started(This, Manager, OsPid, Handles, Extras);
+            started(This, Manager, OsPid, Handles, Extras, In);
         {'DOWN', Monitor, process, Manager, _} ->
-            -2
+            [exit(Channel, kill) || {_, _, Channel} <- Extras],
+            [buoy_node_ipc:abandon(Channel) || Channel <- IpcChannels],
+            unstarted([In, Out, Err | More])
     end.
 
 %% The CLI boots the kernel with `-mode minimal`, which leaves out inet_db,
@@ -146,6 +180,16 @@ start_inet_db() ->
         _ ->
             ok
     end.
+
+%% The parent's end of an IPC channel, and the path that the child connects.
+ipc_listen(Handle) ->
+    {ok, Channel, Path} = buoy_node_ipc:listen(Handle),
+    {Channel, Path}.
+
+%% The options of `buoy --buoy-exec` with the local sockets to connect.
+exec_options(Args, []) -> Args;
+exec_options(["--buoy-exec", "-" | Rest], Unix) -> ["--buoy-exec", lists:flatten(lists:join(",", Unix)) | Rest];
+exec_options(["--buoy-exec", Flags | Rest], Unix) -> ["--buoy-exec", lists:flatten(lists:join(",", [Flags | Unix])) | Rest].
 
 fd_of(stdin) -> 5;
 fd_of(stderr) -> 6;
@@ -202,7 +246,7 @@ accept(Listen, [Name | Rest], Port) ->
         _ -> #{}
     end.
 
-started(This, Manager, OsPid, Handles, Extras) ->
+started(This, Manager, OsPid, Handles, Extras, In) ->
     [begin
          erlang:put({?MODULE, root, Channel}, Handle),
          buoy_node_stream:attach(Handle, Channel)
@@ -210,31 +254,42 @@ started(This, Manager, OsPid, Handles, Extras) ->
     %% The handles stay roots of the heap until the manager has sent its last
     %% callback, which may still name them.
     erlang:put({?MODULE, root, Manager}, {This, Handles}),
-    [buoy_node_stream:attach(H, Manager) || H <- maps:values(Handles), H =/= none],
+    [buoy_node_stream:attach(H, Manager) || H <- maps:values(Handles), H =/= none, element(1, H) =/= wrap],
+    Source = case In of
+        {wrap, Stream} -> buoy_node_stream:forward(Stream, Manager), Stream;
+        _ -> none
+    end,
     buoy_heap:set(This, <<"pid">>, OsPid),
-    save(This, #{manager => Manager, pid => OsPid, refed => false, exited => false}),
+    save(This, #{manager => Manager, pid => OsPid, refed => false, exited => false, source => Source}),
     set_ref(This, true),
     0.
 
 pipe_handle({pipe, Handle}) -> Handle;
 pipe_handle(_) -> none.
 
+%% The output of the child goes to its pipe, or out through the handle of a
+%% wrap entry, which the child shares.
+output_handle({wrap, Handle}) -> {wrap, Handle};
+output_handle(Stdio) -> pipe_handle(Stdio).
+
+redirect(_, {ipc, _}) -> "";
+redirect(I, {wrap, Handle}) -> redirect(I, {pipe, Handle});
 redirect(0, {pipe, _}) -> " <&5";
+redirect(0, {file, Path}) -> " <" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(0, inherit) -> "";
 redirect(0, {fd, 0}) -> "";
-redirect(0, {file, Path}) -> " <" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(0, _) -> " </dev/null";
 redirect(1, {pipe, _}) -> " >&7";
+redirect(1, {file, Path}) -> " >>" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(1, inherit) -> "";
 redirect(1, {fd, 1}) -> "";
 redirect(1, {fd, 2}) -> " >&2";
-redirect(1, {file, Path}) -> " >>" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(1, _) -> " >/dev/null";
 redirect(2, {pipe, _}) -> " 2>&6";
+redirect(2, {file, Path}) -> " 2>>" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(2, inherit) -> "";
 redirect(2, {fd, 2}) -> "";
 redirect(2, {fd, 1}) -> " 2>&1";
-redirect(2, {file, Path}) -> " 2>>" ++ buoy_binding_spawn_sync:quote(Path);
 redirect(2, _) -> " 2>/dev/null".
 
 %% The manager: the exit from the port, stdout and stderr from their sockets,
@@ -260,6 +315,7 @@ manage(#{port := Port, realm := Realm, handles := Handles, writer := Writer, std
                 S -> {S, 0}
             end,
             This = maps:get(this, M),
+            [buoy_node_ipc:child_exited(Channel) || Channel <- maps:get(ipc, M)],
             buoy_node_stream:call(Realm, fun() -> exited(This, Code, Signal) end),
             manage(M#{waiting := lists:delete(exit, maps:get(waiting, M))});
         {tcp, Stderr, Data} ->
@@ -279,7 +335,7 @@ manage(#{port := Port, realm := Realm, handles := Handles, writer := Writer, std
             manage(M);
         {kill, Signal} ->
             case erlang:port_info(Port, os_pid) of
-                {os_pid, OsPid} -> _ = os:cmd("kill -" ++ integer_to_list(Signal) ++ " " ++ integer_to_list(OsPid));
+                {os_pid, OsPid} -> _ = buoy_native:os_kill(OsPid, Signal);
                 _ -> ok
             end,
             manage(M);
@@ -291,6 +347,8 @@ drain(Writer) when is_pid(Writer) -> Writer ! shutdown, ok;
 drain(_) -> ok.
 
 deliver(_Realm, none, _Item) -> ok;
+deliver(_Realm, {wrap, _}, eof) -> ok;
+deliver(Realm, {wrap, Handle}, Bytes) -> buoy_node_stream:call(Realm, fun() -> buoy_node_stream:pass(Handle, Bytes) end);
 deliver(Realm, Handle, Item) -> buoy_node_stream:call(Realm, fun() -> buoy_node_stream:deliver(Handle, Item) end).
 
 %% The writer of stdin: a send that fills the socket's buffer waits here, not
@@ -329,6 +387,8 @@ report(Realm, Ref, _Error) ->
 exited(This, Code, Signal) ->
     S = state(This),
     save(This, S#{exited => true}),
+    %% The child's stdin no longer reads the stream that it shared.
+    maps:get(source, S, none) =/= none andalso buoy_node_stream:forward(maps:get(source, S), none),
     set_ref(This, false),
     Name = case Signal of
         0 -> <<>>;

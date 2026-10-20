@@ -4,7 +4,7 @@
 %% of fd 0 would.
 -module(buoy_node_stdin).
 
--export([read/1, read_async/2]).
+-export([read/1, read_async/2, poll/1]).
 
 %% Up to Count bytes of stdin, or <<>> at its end.
 -spec read(non_neg_integer()) -> binary().
@@ -24,6 +24,29 @@ read_async(Count, Done) ->
     buoy_node_loop:ref_handle(),
     reader() ! {read_async, self(), Count, Done},
     ok.
+
+%% Waits up to Timeout ms for stdin to have bytes or to end, as poll(2) of
+%% fd 0 would: the bytes that wait and whether stdin ended, or timeout.
+-spec poll(timeout()) -> {non_neg_integer(), boolean()} | timeout.
+poll(Timeout) ->
+    Reader = reader(),
+    Alias = alias([reply]),
+    Reader ! {peek, Alias},
+    case receive {Alias, Now} -> Now end of
+        {0, false} when Timeout =/= 0 -> wait(Reader, Timeout);
+        {0, false} -> timeout;
+        Ready -> Ready
+    end.
+
+wait(Reader, Timeout) ->
+    Alias = alias([reply]),
+    Reader ! {poll, Alias},
+    receive
+        {Alias, Ready} -> Ready
+    after Timeout ->
+        unalias(Alias),
+        receive {Alias, Ready} -> Ready after 0 -> timeout end
+    end.
 
 reader() ->
     case whereis(?MODULE) of
@@ -58,6 +81,12 @@ loop(Port, Buffer, State) ->
             loop(Port, Rest, State);
         {read, From, Ref, _Count} when State =:= eof ->
             From ! {Ref, <<>>},
+            loop(Port, Buffer, State);
+        {peek, Alias} ->
+            Alias ! {Alias, {byte_size(Buffer), State =:= eof}},
+            loop(Port, Buffer, State);
+        {poll, Alias} when Buffer =/= <<>>; State =:= eof ->
+            Alias ! {Alias, {byte_size(Buffer), State =:= eof}},
             loop(Port, Buffer, State);
         {read_async, Realm, Count, Done} when Buffer =/= <<>>; State =:= eof ->
             Take = min(Count, byte_size(Buffer)),

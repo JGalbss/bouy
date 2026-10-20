@@ -6,23 +6,24 @@
 //! `require`, `module`, `__filename`, and `__dirname` as parameters.
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use oxc::ast::ast::{
     Argument, CallExpression, Declaration, ExportDefaultDeclarationKind, Expression,
-    ImportDeclarationSpecifier, ImportExpression, ModuleExportName, ObjectPropertyKind, Program,
-    PropertyKey, SimpleAssignmentTarget, Statement,
+    ImportAttributeKey, ImportDeclarationSpecifier, ImportExpression, ModuleExportName,
+    ObjectPropertyKind, Program, PropertyKey, SimpleAssignmentTarget, Statement, WithClause,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::Semantic;
-use oxc::span::SourceType;
+use oxc::span::{GetSpan, SourceType};
 
 use super::analyze::Suspends;
 use crate::diagnostic::{Code, Diagnostic, Reporter};
 use crate::graph::{has_value_use, unit_name};
 use crate::parse::with_program_as;
-use crate::resolve::{Failure, Format, Mode, Resolver, Target, normalize};
+use crate::resolve::{self, Failure, Format, Mode, Resolver, Target, normalize};
 
 /// The wrapper of a `CommonJS` module, as Node writes it. The source starts on its first
 /// line, so line numbers stay.
@@ -32,6 +33,16 @@ pub const CJS_WRAPPER: &str = "(function (exports, require, module, __filename, 
 pub struct Graph {
     /// The modules in discovery order. The entry module comes first.
     pub units: Vec<Unit>,
+    /// Whether the code of the program may read the legacy `caller` or `arguments` of a
+    /// function, so that each function records its call (`reflects_calls`).
+    pub reflects_calls: bool,
+}
+
+/// Whether `source` may read the legacy `caller` or `arguments` of a function. The text
+/// test also finds the names in the strings that eval code or `Function` compiles.
+#[must_use]
+pub fn reflects_calls(source: &str) -> bool {
+    source.contains("caller") || source.contains(".arguments")
 }
 
 /// One module file.
@@ -42,6 +53,8 @@ pub struct Unit {
     pub name: String,
     /// The code to compile: the file, or for `CommonJS` the file inside the wrapper.
     pub source: String,
+    /// The binary of a WebAssembly module.
+    pub bytes: Vec<u8>,
     pub kind: Kind,
     pub record: Record,
     /// Each string specifier of the module, once per mode.
@@ -70,21 +83,74 @@ pub enum Kind {
     Esm,
     CommonJs,
     Json,
+    /// `with { type: "text" }`: the text of the file as the default export (import-text).
+    Text,
+    /// `with { type: "bytes" }`: the bytes of the file in a `Uint8Array` over an immutable
+    /// `ArrayBuffer` (import-bytes). The source holds them in hexadecimal.
+    Bytes,
+    /// A WebAssembly module: a module record whose imports are the namespaces of other
+    /// modules and whose exports are the exports of its instance.
+    Wasm,
+}
+
+/// The separator of a request key that carries a module type, such as `./a.txt\0text`.
+/// A module of another type is a module record of its own, so the requests, the imports,
+/// and the units of the graph key by the pair. The runtime forms the same key for an
+/// `import()` with the attribute (`buoy_module:dynamic_import/4`).
+pub const TYPE_SEPARATOR: char = '\0';
+
+/// The request key of `specifier` under the import attributes `with`: the specifier with
+/// the type of a text or bytes module after the separator, else the specifier.
+fn typed(specifier: &str, with: Option<&WithClause<'_>>) -> String {
+    let module_type = with.and_then(|with| {
+        with.with_entries.iter().find_map(|entry| {
+            let key = match &entry.key {
+                ImportAttributeKey::Identifier(name) => name.name.as_str(),
+                ImportAttributeKey::StringLiteral(literal) => literal.value.as_str(),
+            };
+            (key == "type").then(|| entry.value.value.as_str())
+        })
+    });
+    match module_type {
+        Some(module_type @ ("text" | "bytes")) => {
+            format!("{specifier}{TYPE_SEPARATOR}{module_type}")
+        }
+        _ => specifier.to_owned(),
+    }
+}
+
+/// The specifier of a request key and the kind of module that its type names.
+fn untyped(key: &str) -> (&str, Option<Kind>) {
+    match key.split_once(TYPE_SEPARATOR) {
+        Some((specifier, "text")) => (specifier, Some(Kind::Text)),
+        Some((specifier, "bytes")) => (specifier, Some(Kind::Bytes)),
+        _ => (key, None),
+    }
+}
+
+/// The key of a typed module in the index of the graph: the path with the type after the
+/// separator, so that the file can be a module of each type.
+fn typed_path(path: &Path, kind: Kind) -> PathBuf {
+    let module_type = if kind == Kind::Text { "text" } else { "bytes" };
+    PathBuf::from(format!("{}{TYPE_SEPARATOR}{module_type}", path.display()))
 }
 
 impl Kind {
     pub fn source_type(self, path: &Path) -> SourceType {
-        let typescript = path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| matches!(extension, "ts" | "mts" | "cts" | "tsx"));
+        let typescript = !is_data(path)
+            && path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| matches!(extension, "ts" | "mts" | "cts" | "tsx"));
         let base = if typescript {
             SourceType::ts()
         } else {
             SourceType::mjs()
         };
         match self {
-            Self::Esm | Self::Json => base.with_module(true),
+            Self::Esm | Self::Json | Self::Text | Self::Bytes | Self::Wasm => {
+                base.with_module(true)
+            }
             Self::CommonJs => base.with_script(true),
         }
     }
@@ -106,6 +172,9 @@ pub enum Resolved {
     Path(PathBuf),
     Builtin(String),
     Missing(Failure),
+    /// A request of a module that the host links at run time (`vm.SourceTextModule` and
+    /// Node's ESM loader), by its index among the module's requests.
+    Hosted(usize),
 }
 
 /// What an import or a re-export takes from its module.
@@ -115,6 +184,17 @@ pub enum Imported {
     Namespace,
     /// `import defer * as ns`: the namespace of a module that evaluates on first use.
     DeferredNamespace,
+    /// `import source m`: the source object of a module, which does not evaluate it.
+    Source,
+}
+
+/// A request of a module: its specifier, its import attributes sorted by key, and whether
+/// it imports the source phase (`import source x from`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleRequest {
+    pub specifier: String,
+    pub attributes: Vec<(String, String)>,
+    pub source_phase: bool,
 }
 
 /// The syntax facts of a module that linking needs.
@@ -123,6 +203,9 @@ pub struct Record {
     /// The specifiers of `import` and `export ... from` in source order, once for each
     /// phase: `true` for `import defer`.
     pub order: Vec<(String, bool)>,
+    /// The `ModuleRequest`s of ECMA-262 in source order, once for each specifier,
+    /// attributes, and phase, as `getModuleRequests` of a `ModuleWrap` lists them.
+    pub module_requests: Vec<ModuleRequest>,
     /// `(local, specifier, imported)`
     pub imports: Vec<(String, String, Imported)>,
     /// `(export name, local name)`. The local name of `export default <expression>` and
@@ -132,6 +215,8 @@ pub struct Record {
     pub indirect: Vec<(String, String, Imported)>,
     /// The specifiers of `export * from`.
     pub stars: Vec<String>,
+    /// The specifiers of `import source`, whose modules link and evaluate on their own.
+    pub sources: Vec<String>,
     /// The names that Node's cjs-module-lexer finds in a `CommonJS` module.
     pub cjs_names: Vec<String>,
     /// The specifiers whose exports a `CommonJS` module re-exports.
@@ -151,16 +236,59 @@ pub fn load(
     entry: &Path,
     root: &Path,
     script: bool,
+    text: Option<String>,
+) -> Result<Graph, Vec<Diagnostic>> {
+    load_from(entry, root, script, text, false)
+}
+
+/// Reads the graph of a module that a running program loads: by `import` when
+/// `imported` holds, else by `require`.
+pub fn load_imported(entry: &Path, root: &Path, imported: bool) -> Result<Graph, Vec<Diagnostic>> {
+    load_from(entry, root, false, None, imported)
+}
+
+fn load_from(
+    entry: &Path,
+    root: &Path,
+    script: bool,
     mut text: Option<String>,
+    imported: bool,
 ) -> Result<Graph, Vec<Diagnostic>> {
     let resolver = Resolver::default();
     let mut units: Vec<Unit> = Vec::new();
     let mut index: HashMap<PathBuf, usize> = HashMap::new();
     let mut names: HashMap<String, PathBuf> = HashMap::new();
     let mut queue = VecDeque::from([entry.to_path_buf()]);
-    index.insert(entry.to_path_buf(), 0);
+    // A classic script is not a module: an import of its own file loads that file again as
+    // a module of its own, so the script holds no path that a request can find.
+    let entry_key = if script {
+        PathBuf::new()
+    } else {
+        entry.to_path_buf()
+    };
+    index.insert(entry_key, 0);
     while let Some(path) = queue.pop_front() {
-        let name = unit_name(root, &path);
+        if let (file, Some(kind)) = untyped(&path.to_string_lossy()) {
+            units.push(typed_unit(root, Path::new(file), kind));
+            continue;
+        }
+        // Source text without a file, such as `-e` code, names its module after the text
+        // too: two VMs that start from one directory must not load each other's entry.
+        let mut name = match &text {
+            Some(source) if units.is_empty() => {
+                format!(
+                    "{}_{:016x}",
+                    unit_name(root, &path),
+                    crate::erlang::fnv1a(source)
+                )
+            }
+            _ => unit_name(root, &path),
+        };
+        // The module of the file keeps the name that any program gives it, because a VM
+        // loads a module once for all its programs; the script takes a name of its own.
+        if script && units.is_empty() {
+            name.push_str("@script");
+        }
         let scanned = match names.insert(name.clone(), path.clone()) {
             Some(other) => Err(vec![Reporter::new(&path, "").at(
                 0,
@@ -174,15 +302,15 @@ pub fn load(
             None if units.is_empty() && text.is_some() => {
                 scan(&resolver, &path, text.take().unwrap_or_default(), script)
             }
-            None => fs::read_to_string(&path)
-                .map_err(|error| {
-                    vec![Reporter::new(&path, "").at(
-                        0,
-                        Code::BadImport,
-                        format!("cannot read {}: {error}", path.display()),
-                    )]
-                })
-                .and_then(|text| scan(&resolver, &path, text, script && units.is_empty())),
+            None if is_data(&path) => scan_data(&path),
+            None => read(&resolver, &path, units.is_empty() && !imported).and_then(|contents| {
+                match contents {
+                    Contents::Text(text) => {
+                        scan(&resolver, &path, text, script && units.is_empty())
+                    }
+                    Contents::Wasm(bytes) => Ok(scan_wasm(bytes)),
+                }
+            }),
         };
         let scanned = match scanned {
             Ok(scanned) => scanned,
@@ -193,6 +321,7 @@ pub fn load(
                     path,
                     name,
                     source: String::new(),
+                    bytes: Vec::new(),
                     record: Record::default(),
                     requests: Vec::new(),
                     broken: diagnostics,
@@ -206,6 +335,7 @@ pub fn load(
             path,
             name,
             source: scanned.source,
+            bytes: scanned.bytes,
             kind: scanned.kind,
             record: scanned.record,
             requests,
@@ -213,7 +343,98 @@ pub fn load(
             script: script && units.is_empty(),
         });
     }
-    Ok(Graph { units })
+    let reflects_calls = units.iter().any(|unit| reflects_calls(&unit.source));
+    Ok(Graph {
+        units,
+        reflects_calls,
+    })
+}
+
+/// A text or bytes module of the file at `path`. A file that cannot be read makes a broken
+/// unit, which throws when the program loads it.
+fn typed_unit(root: &Path, path: &Path, kind: Kind) -> Unit {
+    let suffix = if kind == Kind::Text {
+        "@text"
+    } else {
+        "@bytes"
+    };
+    let (source, broken) = match fs::read(path) {
+        Ok(bytes) if kind == Kind::Bytes => (
+            bytes.iter().fold(String::new(), |mut hex, byte| {
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            }),
+            Vec::new(),
+        ),
+        // UTF-8 decode, which replaces a bad sequence and drops a byte order mark.
+        Ok(bytes) => {
+            let text = String::from_utf8_lossy(&bytes);
+            (
+                text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned(),
+                Vec::new(),
+            )
+        }
+        Err(error) => (
+            String::new(),
+            vec![Reporter::new(path, "").at(
+                0,
+                Code::BadImport,
+                format!("cannot read {}: {error}", path.display()),
+            )],
+        ),
+    };
+    Unit {
+        path: path.to_path_buf(),
+        name: format!("{}{suffix}", unit_name(root, path)),
+        source,
+        kind,
+        record: Record::default(),
+        requests: Vec::new(),
+        broken,
+        script: false,
+        bytes: Vec::new(),
+    }
+}
+
+/// The graph of one ES module from source text whose requests the host links at run
+/// time, as V8 compiles the source of a `ModuleWrap`: each specifier of `import` and
+/// `export ... from` is a `Resolved::Hosted` request, in source order.
+pub fn hosted(text: String, name: &str, path: PathBuf) -> Result<Graph, Vec<Diagnostic>> {
+    let scanned = scan_as(&path, text, Kind::Esm, false)?;
+    let mut requests: Vec<Request> = Vec::new();
+    for (specifier, _) in &scanned.record.order {
+        if requests
+            .iter()
+            .all(|request| &request.specifier != specifier)
+        {
+            requests.push(Request {
+                specifier: specifier.clone(),
+                mode: Mode::Import,
+                resolved: Resolved::Hosted(requests.len()),
+            });
+        }
+    }
+    Ok(Graph {
+        units: vec![Unit {
+            path,
+            name: name.to_owned(),
+            source: scanned.source,
+            kind: Kind::Esm,
+            record: scanned.record,
+            requests,
+            broken: Vec::new(),
+            script: false,
+            bytes: Vec::new(),
+        }],
+        reflects_calls: false,
+    })
+}
+
+/// The export names and the re-exported specifiers of `CommonJS` source text, as Node's
+/// cjs-module-lexer finds them for `internalBinding('cjs_lexer').parse`.
+pub fn cjs_lexer(text: String) -> Result<(Vec<String>, Vec<String>), Vec<Diagnostic>> {
+    let scanned = scan_as(Path::new("[cjs].cjs"), text, Kind::CommonJs, false)?;
+    Ok((scanned.record.cjs_names, scanned.record.cjs_reexports))
 }
 
 /// The requests of a module: its string specifiers, then the bare strings that a
@@ -236,11 +457,15 @@ fn requests_of(
         {
             continue;
         }
-        let target = match resolver.resolve(&specifier, path, mode) {
-            Ok(Target::File(found)) if resolve_only && !index.contains_key(&found) => {
+        let (plain, kind) = untyped(&specifier);
+        let target = match (resolver.resolve(plain, path, mode), kind) {
+            (Ok(Target::File(found)), None) if resolve_only && !index.contains_key(&found) => {
                 Resolved::Path(found)
             }
-            result => resolved_of(result, index, queue),
+            (Ok(Target::File(found)), Some(kind)) => {
+                resolved_of(Ok(Target::File(typed_path(&found, kind))), index, queue)
+            }
+            (result, _) => resolved_of(result, index, queue),
         };
         requests.push(Request {
             specifier,
@@ -269,6 +494,10 @@ fn resolved_of(
     match result {
         Ok(Target::File(found)) => Resolved::Unit(enqueue(index, queue, found.clone()), found),
         Ok(Target::Builtin(builtin)) => Resolved::Builtin(builtin),
+        Ok(Target::Data(url)) => {
+            let found = PathBuf::from(url);
+            Resolved::Unit(enqueue(index, queue, found.clone()), found)
+        }
         Err(failure) => Resolved::Missing(failure),
     }
 }
@@ -331,8 +560,98 @@ fn broken_kind(resolver: &Resolver, path: &Path) -> Kind {
     match resolver.format(path) {
         Format::CommonJs => Kind::CommonJs,
         Format::Json => Kind::Json,
+        Format::Wasm => Kind::Wasm,
         _ => Kind::Esm,
     }
+}
+
+/// The contents of a module file: text, or the binary of a WebAssembly module.
+enum Contents {
+    Text(String),
+    Wasm(Vec<u8>),
+}
+
+/// The magic number that starts every WebAssembly binary.
+const WASM_MAGIC: &[u8] = b"\0asm";
+
+/// Reads a module file. A `.wasm` file is WebAssembly, and so is an extensionless file
+/// that starts with the magic number, as Node's `getFormatOfExtensionlessFile` decides:
+/// in a `module` package scope, or imported from outside a package scope. Node runs an
+/// extensionless entry outside a `module` scope with the `CommonJS` loader, which reads it
+/// as text.
+fn read(resolver: &Resolver, path: &Path, entry: bool) -> Result<Contents, Vec<Diagnostic>> {
+    let cannot = |error: &dyn std::fmt::Display| {
+        vec![Reporter::new(path, "").at(
+            0,
+            Code::BadImport,
+            format!("cannot read {}: {error}", path.display()),
+        )]
+    };
+    let bytes = fs::read(path).map_err(|error| cannot(&error))?;
+    let scope = resolver.scope_type(path);
+    let extensionless_wasm = path.extension().is_none()
+        && bytes.starts_with(WASM_MAGIC)
+        && match scope.as_deref() {
+            Some("module") => true,
+            Some(_) => false,
+            None => !entry,
+        };
+    if resolver.format(path) == Format::Wasm || extensionless_wasm {
+        return Ok(Contents::Wasm(bytes));
+    }
+    String::from_utf8(bytes)
+        .map(Contents::Text)
+        .map_err(|_| cannot(&"stream did not contain valid UTF-8"))
+}
+
+/// The module names that V8 links to its JS String Builtins instead of a module, with
+/// the options of Node's wasm translator.
+const STRING_BUILTINS: [&str; 2] = ["wasm:js-string", "wasm:js/string-constants"];
+
+/// The record of a WebAssembly module: a request for each module that it imports from,
+/// and an export for each of its exports. A binary that does not decode keeps an empty
+/// record, and the runtime throws its `CompileError` when it loads it.
+fn scan_wasm(bytes: Vec<u8>) -> Scanned {
+    let (record, specifiers) = wasm_record(&bytes).unwrap_or_default();
+    Scanned {
+        source: String::new(),
+        bytes,
+        kind: Kind::Wasm,
+        record,
+        specifiers,
+        dynamic: Dynamic::default(),
+    }
+}
+
+type Specifiers = Vec<(String, Mode, bool)>;
+
+fn wasm_record(bytes: &[u8]) -> Result<(Record, Specifiers), wasmparser::BinaryReaderError> {
+    let mut record = Record::default();
+    let mut specifiers = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+        match payload? {
+            wasmparser::Payload::ImportSection(reader) => {
+                for import in reader.into_imports() {
+                    let module = import?.module;
+                    if STRING_BUILTINS.contains(&module)
+                        || record.order.iter().any(|(known, _)| known == module)
+                    {
+                        continue;
+                    }
+                    record.order.push((module.to_owned(), false));
+                    specifiers.push((module.to_owned(), Mode::Import, false));
+                }
+            }
+            wasmparser::Payload::ExportSection(reader) => {
+                for export in reader {
+                    let name = export?.name.to_owned();
+                    record.locals.push((name.clone(), name));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok((record, specifiers))
 }
 
 /// The files that an `import()` or `require()` of a computed specifier may name: each
@@ -399,13 +718,14 @@ fn is_module_file(path: &Path) -> bool {
         .is_some_and(|extension| {
             matches!(
                 extension,
-                "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" | "json"
+                "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" | "json" | "wasm"
             )
         })
 }
 
 struct Scanned {
     source: String,
+    bytes: Vec<u8>,
     kind: Kind,
     record: Record,
     /// `(specifier, mode, resolve only)` in source order.
@@ -439,11 +759,13 @@ fn scan(
         resolver.format(path)
     };
     let kind = match format {
-        Format::Esm => Kind::Esm,
+        // read() keeps the binary of a .wasm file; only a script names one as text.
+        Format::Esm | Format::Wasm => Kind::Esm,
         Format::CommonJs => Kind::CommonJs,
         Format::Json => {
             return Ok(Scanned {
                 source: text,
+                bytes: Vec::new(),
                 kind: Kind::Json,
                 record: Record::default(),
                 specifiers: Vec::new(),
@@ -462,6 +784,42 @@ fn scan(
         }
         Format::Detect => detect(path, &text),
     };
+    scan_as(path, text, kind, script)
+}
+
+/// Whether `path` stands for a `data:` URL, which names a module without a file.
+pub fn is_data(path: &Path) -> bool {
+    path.to_string_lossy().starts_with("data:")
+}
+
+/// Reads the module of a `data:` URL, which the resolver accepted.
+fn scan_data(path: &Path) -> Result<Scanned, Vec<Diagnostic>> {
+    let url = path.to_string_lossy();
+    match resolve::data_source(&url) {
+        Some((Format::Json, text)) => Ok(Scanned {
+            source: text,
+            kind: Kind::Json,
+            record: Record::default(),
+            specifiers: Vec::new(),
+            dynamic: Dynamic::default(),
+            bytes: Vec::new(),
+        }),
+        Some((_, text)) => scan_as(path, text, Kind::Esm, false),
+        None => Err(vec![Reporter::new(path, "").at(
+            0,
+            Code::BadImport,
+            format!("cannot decode {url}"),
+        )]),
+    }
+}
+
+/// Reads the syntax facts of a module of a known format.
+fn scan_as(
+    path: &Path,
+    text: String,
+    kind: Kind,
+    script: bool,
+) -> Result<Scanned, Vec<Diagnostic>> {
     let source = match kind {
         Kind::CommonJs => wrap(&text),
         _ => text,
@@ -484,6 +842,7 @@ fn scan(
             facts.module(program);
         }
         let mut requests = Requests {
+            source: program.source_text,
             found: Vec::new(),
             names: Vec::new(),
             reexports: Vec::new(),
@@ -497,9 +856,19 @@ fn scan(
             facts.record.cjs_reexports = requests.reexports;
         }
         (facts.record, facts.specifiers, requests.dynamic)
+    })
+    .map_err(|mut diagnostics| {
+        // The wrapper shares the first line of a CommonJS module.
+        if kind == Kind::CommonJs {
+            for diagnostic in diagnostics.iter_mut().filter(|d| d.line == 1) {
+                diagnostic.column = diagnostic.column.saturating_sub(CJS_WRAPPER.len()).max(1);
+            }
+        }
+        diagnostics
     })?;
     Ok(Scanned {
         source,
+        bytes: Vec::new(),
         kind,
         record: facts.0,
         specifiers: facts.1,
@@ -507,26 +876,70 @@ fn scan(
     })
 }
 
-/// Node's syntax detection for a file without a package `type`: ESM when it parses as a
-/// module and has `import`, `export`, `import.meta`, or a top-level `await`.
+/// Node's syntax detection for a file without a package `type`.
 fn detect(path: &Path, text: &str) -> Kind {
-    let source_type = Kind::Esm.source_type(path);
-    let esm = crate::parse::parses(path, text, source_type, |program, module_syntax| {
-        if module_syntax {
-            return true;
-        }
-        let mut suspends = Suspends::default();
-        let mut meta = HasImportMeta(false);
-        for statement in &program.body {
-            suspends.visit_statement(statement);
-            meta.visit_statement(statement);
-        }
-        suspends.0 || meta.0
-    });
-    if esm.unwrap_or(false) {
+    if is_module(path, text, true) {
         Kind::Esm
     } else {
         Kind::CommonJs
+    }
+}
+
+/// Node's `containsModuleSyntax` for source text without a file, such as `--eval` code,
+/// which compiles without the variables of the `CommonJS` wrapper.
+pub fn contains_module_syntax(text: &str, cjs_variables: bool) -> bool {
+    is_module(Path::new("[detect].js"), text, cjs_variables)
+}
+
+/// `ShouldRetryAsESM` of Node: text is a module when it parses as one with `import`,
+/// `export`, `import.meta`, or a top-level `await`, or a top-level `let`, `const`, or
+/// `class` of a variable of the wrapper, and fails as a `CommonJS` function body. oxc's
+/// parser does not check redeclarations, so such a declaration stands for V8's error.
+fn is_module(path: &Path, text: &str, cjs_variables: bool) -> bool {
+    let candidate = crate::parse::parses(
+        path,
+        text,
+        Kind::Esm.source_type(path),
+        |program, module_syntax| {
+            let redeclares = cjs_variables && program.body.iter().any(declares_cjs_variable);
+            let mut suspends = Suspends::default();
+            let mut meta = HasImportMeta(false);
+            for statement in &program.body {
+                suspends.visit_statement(statement);
+                meta.visit_statement(statement);
+            }
+            (module_syntax || suspends.0 || meta.0, redeclares)
+        },
+    );
+    match candidate {
+        Some((_, true)) => true,
+        Some((true, false)) => {
+            let body = if cjs_variables {
+                wrap(text)
+            } else {
+                format!("(function () {{{text}\n}})")
+            };
+            crate::parse::parses(path, &body, Kind::CommonJs.source_type(path), |_, _| ()).is_none()
+        }
+        _ => false,
+    }
+}
+
+/// Whether a top-level statement declares a parameter of the `CommonJS` wrapper lexically.
+fn declares_cjs_variable(statement: &Statement) -> bool {
+    let is_wrapper_name =
+        |name: &str| ["exports", "require", "module", "__filename", "__dirname"].contains(&name);
+    match statement {
+        Statement::VariableDeclaration(declaration) if declaration.kind.is_lexical() => declaration
+            .declarations
+            .iter()
+            .flat_map(|declarator| declarator.id.get_binding_identifiers())
+            .any(|id| is_wrapper_name(&id.name)),
+        Statement::ClassDeclaration(class) => class
+            .id
+            .as_ref()
+            .is_some_and(|id| is_wrapper_name(&id.name)),
+        _ => false,
     }
 }
 
@@ -575,6 +988,55 @@ impl<'a> Facts<'_, 'a> {
             .push((specifier.to_owned(), Mode::Import, false));
     }
 
+    fn module_request(
+        &mut self,
+        specifier: &str,
+        clause: Option<&WithClause<'a>>,
+        source_phase: bool,
+    ) {
+        let mut attributes: Vec<(String, String)> = clause
+            .map(|clause| {
+                clause
+                    .with_entries
+                    .iter()
+                    .map(|entry| {
+                        let key = match &entry.key {
+                            ImportAttributeKey::Identifier(name) => name.name.to_string(),
+                            ImportAttributeKey::StringLiteral(text) => text.value.to_string(),
+                        };
+                        (key, entry.value.value.to_string())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        attributes.sort();
+        let request = ModuleRequest {
+            specifier: specifier.to_owned(),
+            attributes,
+            source_phase,
+        };
+        if !self.record.module_requests.contains(&request) {
+            self.record.module_requests.push(request);
+        }
+    }
+
+    /// `import source m from 'x'`: its module loads, and only its source object binds.
+    fn source_import(&mut self, import: &oxc::ast::ast::ImportDeclaration<'a>) {
+        let specifier = import.source.value.as_str();
+        for item in import.specifiers.iter().flatten() {
+            self.record.imports.push((
+                item.local().name.to_string(),
+                specifier.to_owned(),
+                Imported::Source,
+            ));
+        }
+        if !self.record.sources.iter().any(|known| known == specifier) {
+            self.record.sources.push(specifier.to_owned());
+        }
+        self.specifiers
+            .push((specifier.to_owned(), Mode::Import, false));
+    }
+
     /// The imports and exports of an ES module.
     fn module(&mut self, program: &Program<'a>) {
         for statement in &program.body {
@@ -583,11 +1045,17 @@ impl<'a> Facts<'_, 'a> {
                     if !import.import_kind.is_value() {
                         continue;
                     }
-                    let specifier = import.source.value.as_str();
-                    if specifier == "buoy" {
+                    if import.source.value == "buoy" {
                         continue;
                     }
+                    let key = typed(import.source.value.as_str(), import.with_clause.as_deref());
+                    let specifier = key.as_str();
                     let deferred = matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Defer));
+                    if matches!(import.phase, Some(oxc::ast::ast::ImportPhase::Source)) {
+                        self.source_import(import);
+                        self.module_request(specifier, import.with_clause.as_deref(), true);
+                        continue;
+                    }
                     let mut kept = import.specifiers.is_none();
                     for item in import.specifiers.iter().flatten() {
                         // TypeScript erases an import that no value reads.
@@ -623,6 +1091,9 @@ impl<'a> Facts<'_, 'a> {
                         self.deferred_request(specifier);
                     } else if kept || !self.typescript {
                         self.request(specifier);
+                    }
+                    if kept || !self.typescript {
+                        self.module_request(specifier, import.with_clause.as_deref(), false);
                     }
                 }
                 _ => self.export(statement),
@@ -688,7 +1159,8 @@ impl<'a> Facts<'_, 'a> {
                 if !export.export_kind.is_value() {
                     return;
                 }
-                let specifier = export.source.value.as_str();
+                let key = typed(export.source.value.as_str(), export.with_clause.as_deref());
+                let specifier = key.as_str();
                 let mut any = false;
                 for item in &export.specifiers {
                     if !item.export_kind.is_value() {
@@ -703,6 +1175,7 @@ impl<'a> Facts<'_, 'a> {
                 }
                 if any || export.specifiers.is_empty() || !self.typescript {
                     self.request(specifier);
+                    self.module_request(specifier, export.with_clause.as_deref(), false);
                 }
             }
             Statement::ExportNamedDeclaration(export) => {
@@ -737,7 +1210,8 @@ impl<'a> Facts<'_, 'a> {
                 if !export.export_kind.is_value() {
                     return;
                 }
-                let specifier = export.source.value.as_str();
+                let key = typed(export.source.value.as_str(), export.with_clause.as_deref());
+                let specifier = key.as_str();
                 match &export.exported {
                     Some(exported) => self.record.indirect.push((
                         export_name(exported),
@@ -747,6 +1221,7 @@ impl<'a> Facts<'_, 'a> {
                     None => self.record.stars.push(specifier.to_owned()),
                 }
                 self.request(specifier);
+                self.module_request(specifier, export.with_clause.as_deref(), false);
             }
             _ => {}
         }
@@ -808,7 +1283,9 @@ fn declared_names(declaration: &Declaration<'_>) -> Vec<String> {
 
 /// The string specifiers of `import()`, `require()`, and `require.resolve()`, and the
 /// export names of a `CommonJS` module, as Node's cjs-module-lexer finds them.
-struct Requests {
+struct Requests<'s> {
+    /// The source text, whose characters the export analysis reads as Node's lexer does.
+    source: &'s str,
     found: Vec<(String, Mode, bool)>,
     names: Vec<String>,
     reexports: Vec<String>,
@@ -817,7 +1294,7 @@ struct Requests {
     required: Vec<(String, String)>,
 }
 
-impl Requests {
+impl Requests<'_> {
     /// A specifier that is not a string: a template becomes a pattern.
     fn computed(&mut self, specifier: Option<&Expression<'_>>) {
         self.dynamic.computed = true;
@@ -840,18 +1317,45 @@ impl Requests {
     }
 }
 
-/// The text of a string literal or of a template without expressions.
+/// The text of a string literal or of a template without expressions. A text with a
+/// surrogate that pairs with none is no string of Rust, so it has none.
 fn string_of(expression: &Expression<'_>) -> Option<String> {
     match expression {
-        Expression::StringLiteral(literal) => Some(literal.value.to_string()),
-        Expression::TemplateLiteral(template) if template.expressions.is_empty() => template
-            .quasis
-            .first()
-            .and_then(|quasi| quasi.value.cooked.as_ref())
-            .map(ToString::to_string),
+        Expression::StringLiteral(literal) => {
+            decoded(literal.value.as_str(), literal.lone_surrogates)
+        }
+        Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
+            template.quasis.first().and_then(|quasi| {
+                quasi
+                    .value
+                    .cooked
+                    .as_ref()
+                    .and_then(|cooked| decoded(cooked.as_str(), quasi.lone_surrogates))
+            })
+        }
         Expression::ParenthesizedExpression(inner) => string_of(&inner.expression),
         _ => None,
     }
+}
+
+/// The text of a literal value whose surrogates oxc writes as U+FFFD and four hex
+/// digits, as `literal::js_string_literal` reads them: a pair joins into its character.
+fn decoded(value: &str, lone_surrogates: bool) -> Option<String> {
+    if !lone_surrogates {
+        return Some(value.to_owned());
+    }
+    let mut units = Vec::new();
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{FFFD}' {
+            let hex: String = chars.by_ref().take(4).collect();
+            units.push(u16::from_str_radix(&hex, 16).ok()?);
+            continue;
+        }
+        let mut buffer = [0; 2];
+        units.extend_from_slice(c.encode_utf16(&mut buffer));
+    }
+    String::from_utf16(&units).ok()
 }
 
 /// The specifier of `require('x')`.
@@ -881,10 +1385,16 @@ fn is_exports(expression: &Expression<'_>) -> bool {
     }
 }
 
-impl<'a> Visit<'a> for Requests {
+impl<'a> Visit<'a> for Requests<'_> {
     fn visit_import_expression(&mut self, it: &ImportExpression<'a>) {
         match string_of(&it.source) {
-            Some(specifier) => self.found.push((specifier, Mode::Import, false)),
+            Some(specifier) => {
+                let key = match it.options.as_ref().and_then(options_type) {
+                    Some(module_type) => format!("{specifier}{TYPE_SEPARATOR}{module_type}"),
+                    None => specifier,
+                };
+                self.found.push((key, Mode::Import, false));
+            }
             None => self.computed(Some(&it.source)),
         }
         walk::walk_import_expression(self, it);
@@ -1014,7 +1524,7 @@ impl<'a> Visit<'a> for Requests {
     }
 }
 
-impl Requests {
+impl Requests<'_> {
     /// `module.exports = { a, b: c, ...require('x') }` and `module.exports = require('x')`.
     fn module_exports(&mut self, value: &Expression<'_>) {
         if let Some(specifier) = required(value) {
@@ -1024,25 +1534,108 @@ impl Requests {
         let Expression::ObjectExpression(object) = value.without_parentheses() else {
             return;
         };
+        // cjs-module-lexer reads a key only when an identifier starts its value, and
+        // stops at the first property that it cannot read: `{ a, b: c }` exports a and b,
+        // `{ a: f(), b }` exports a, and `{ a: 'x', b }` exports nothing.
         for property in &object.properties {
             match property {
                 ObjectPropertyKind::ObjectProperty(property) if !property.computed => {
                     let name = match &property.key {
-                        PropertyKey::StaticIdentifier(ident) => Some(ident.name.to_string()),
-                        PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
-                        _ => None,
+                        PropertyKey::StaticIdentifier(ident) => ident.name.to_string(),
+                        PropertyKey::StringLiteral(literal) => {
+                            match decoded(literal.value.as_str(), literal.lone_surrogates) {
+                                Some(name) => name,
+                                None => return,
+                            }
+                        }
+                        _ => return,
                     };
-                    if let Some(name) = name {
+                    if property.shorthand || matches!(property.value, Expression::Identifier(_)) {
+                        self.name(&name);
+                        continue;
+                    }
+                    let start = property.value.span().start as usize;
+                    if self
+                        .source
+                        .get(start..)
+                        .and_then(|rest| rest.chars().next())
+                        .is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$')
+                    {
                         self.name(&name);
                     }
+                    return;
                 }
                 ObjectPropertyKind::SpreadProperty(spread) => {
                     if let Some(specifier) = required(&spread.argument) {
                         self.reexports.push(specifier);
+                    } else if !matches!(spread.argument, Expression::Identifier(_)) {
+                        return;
                     }
                 }
-                ObjectPropertyKind::ObjectProperty(_) => {}
+                ObjectPropertyKind::ObjectProperty(_) => return,
             }
         }
+    }
+}
+
+/// The text or bytes type of the options of an `import()` that names it literally, such as
+/// `{ with: { type: "text" } }`.
+fn options_type<'b>(options: &'b Expression<'_>) -> Option<&'b str> {
+    let Expression::ObjectExpression(options) = options.without_parentheses() else {
+        return None;
+    };
+    let with = options
+        .properties
+        .iter()
+        .find_map(|property| match property {
+            ObjectPropertyKind::ObjectProperty(property)
+                if !property.computed && property.key.static_name().as_deref() == Some("with") =>
+            {
+                Some(&property.value)
+            }
+            _ => None,
+        })?;
+    let Expression::ObjectExpression(with) = with.without_parentheses() else {
+        return None;
+    };
+    with.properties.iter().find_map(|property| match property {
+        ObjectPropertyKind::ObjectProperty(property)
+            if !property.computed && property.key.static_name().as_deref() == Some("type") =>
+        {
+            match &property.value {
+                Expression::StringLiteral(literal)
+                    if matches!(literal.value.as_str(), "text" | "bytes") =>
+                {
+                    Some(literal.value.as_str())
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cjs_lexer;
+
+    fn names(source: &str) -> Vec<String> {
+        cjs_lexer(source.to_owned())
+            .map(|(names, _)| names)
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn reads_object_exports_as_cjs_module_lexer_does() {
+        assert_eq!(names("module.exports = { a, b: c, ...d };"), ["a", "b"]);
+        assert_eq!(names("module.exports = { a: f(), b };"), ["a"]);
+        assert_eq!(
+            names("module.exports = { a: 'x', b };"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            names("exports['\\u{D83C}\\u{DF10}'] = 1; exports['\\u{D83C}'] = 2;"),
+            ["🌐"]
+        );
     }
 }

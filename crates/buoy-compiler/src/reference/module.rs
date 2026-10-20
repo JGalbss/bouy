@@ -10,8 +10,13 @@ use oxc::ast_visit::Visit;
 use super::analyze;
 use super::context::{Cont, Frame, Kind, Local, Lowerer, Top, capitalize, cell_get};
 use super::function::{Callee, FnBody, UsesNewTarget, kind_of, length_of};
-use super::literal::literal;
+use super::literal::{js_string_literal, literal};
 use crate::erlang::{Clause, Expr, Function};
+
+/// The variable of `'__eval__'/3` that tells one evaluation of eval code from another.
+pub const EVAL_SITE: &str = "EvalSite";
+/// The variable of `'__eval__'/3` that holds the module that called the eval.
+pub const EVAL_REFERRER: &str = "EvalReferrer";
 
 /// The declarations of a statement at module level, export or not.
 pub fn declaration<'r, 'a>(statement: &'r Statement<'a>) -> Option<&'r Declaration<'a>> {
@@ -144,7 +149,9 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     /// A script's top-level `var` names and functions are properties of the global object.
-    /// A function that the code never assigns keeps its Erlang function for calls.
+    /// A function that the code never assigns keeps its Erlang function for calls, unless
+    /// the script is one that a host evaluates, such as `vm.Script`: it may run in another
+    /// realm, whose function the global object holds (`buoy_ref_realm:script_function/1`).
     fn declare_script_globals(&mut self, program: &'a Program<'a>) {
         let mut function_symbols = Vec::new();
         for statement in &program.body {
@@ -171,7 +178,7 @@ impl<'a> Lowerer<'a, '_> {
                 .scoping()
                 .get_resolved_references(symbol)
                 .any(oxc::semantic::Reference::is_write);
-            if assigned {
+            if assigned || !self.linking.entry {
                 let name = self.semantic.scoping().symbol_name(symbol).to_owned();
                 self.tops.insert(symbol, Top::Global(name));
             }
@@ -190,9 +197,12 @@ impl<'a> Lowerer<'a, '_> {
                 if let Some(body) = &function.body {
                     uses.visit_function_body(body);
                 }
-                if uses.0 {
+                let sloppy = self.is_sloppy(function.scope_id.get());
+                if uses.0 && sloppy {
+                    "sloppy_nt"
+                } else if uses.0 {
                     "fn_nt"
-                } else if self.is_sloppy(function.scope_id.get()) {
+                } else if sloppy {
                     "sloppy"
                 } else {
                     "fn"
@@ -331,7 +341,12 @@ impl<'a> Lowerer<'a, '_> {
         });
         functions.reverse();
         self.nested_var_getters(program);
-        functions.push(self.body_function(&body));
+        // A directive is an expression statement too: a script of `'1'` completes with "1".
+        let directive = program
+            .directives
+            .last()
+            .map(|directive| Expr::js_string(directive.expression.value.as_str()));
+        functions.push(self.body_function(&body, directive));
         functions.push(self.class_dispatch());
         functions.extend(source_functions(program, source));
         functions.push(self.export_function(program));
@@ -348,19 +363,35 @@ impl<'a> Lowerer<'a, '_> {
         program: &'a Program<'a>,
         source: &str,
     ) -> Vec<Function> {
-        // A directive is an expression statement too: `eval("'1'")` is "1".
-        // compile_eval writes the directive of strict eval code before the code.
+        // A directive is an expression statement too: `eval("'1'")` is "1", the value of
+        // its string literal, not its raw text. compile_eval writes the directive of
+        // strict eval code before the code.
         let injected = usize::from(self.eval == Some(true));
         let directive = program
             .directives
             .iter()
             .skip(injected)
             .last()
-            .map(|directive| Expr::js_string(directive.directive.as_str()));
+            .map(|directive| {
+                let string = &directive.expression;
+                js_string_literal(string.value.as_str(), string.lone_surrogates)
+            });
         let body: Vec<&'a Statement<'a>> = program.body.iter().collect();
         let mut functions = vec![self.eval_function(&body, directive)];
         functions.push(self.class_dispatch());
-        functions.extend(source_functions(program, source));
+        let mut sources = source_functions(program, source);
+        if self.eval_context.source == super::EvalSource::Runtime
+            && let Some(text) = sources
+                .iter_mut()
+                .find(|function| function.name == "$source")
+        {
+            text.clauses[0].body = vec![Expr::call(
+                "buoy_ref_eval",
+                "source",
+                vec![Expr::atom(self.module.clone())],
+            )];
+        }
+        functions.extend(sources);
         functions.push(self.export_function(program));
         functions.extend(self.linking.interface());
         functions.append(&mut self.extra);
@@ -407,9 +438,14 @@ impl<'a> Lowerer<'a, '_> {
             .script_functions
             .iter()
             .map(|(name, length, form)| {
+                let function = self.static_function(name, *length, form);
                 Expr::Tuple(vec![
                     Expr::js_string(name),
-                    self.static_function(name, *length, form),
+                    if self.linking.entry {
+                        function
+                    } else {
+                        Expr::call("buoy_ref_realm", "script_function", vec![function])
+                    },
                 ])
             })
             .collect();
@@ -427,7 +463,11 @@ impl<'a> Lowerer<'a, '_> {
 
     /// `'$body'/0`: the top-level code. A module whose top-level code awaits returns the
     /// promise of its completion.
-    pub fn body_function(&mut self, body: &[&'a Statement<'a>]) -> Function {
+    pub fn body_function(
+        &mut self,
+        body: &[&'a Statement<'a>],
+        directive: Option<Expr>,
+    ) -> Function {
         let mut suspends = analyze::Suspends::default();
         for statement in body {
             suspends.visit_statement(statement);
@@ -444,7 +484,25 @@ impl<'a> Lowerer<'a, '_> {
                 Expr::call("buoy_ref_realm", "global_object", vec![]),
             ));
             self.frame.this = Some(this);
+            self.find_block_functions(body.iter().copied(), &[]);
+            let block_functions = self.script_block_functions();
             code.push(self.declare_script_call(body));
+            if !block_functions.is_empty() {
+                code.push(Expr::call(
+                    "buoy_ref_realm",
+                    "declare_block_functions",
+                    vec![
+                        Expr::atom(self.module.clone()),
+                        Expr::List(
+                            block_functions
+                                .iter()
+                                .map(|name| Expr::js_string(name))
+                                .collect(),
+                        ),
+                        Expr::atom("false"),
+                    ],
+                ));
+            }
         }
         // A script that is not the entry of a program is one that a host's evalScript
         // runs (`buoy_ref_eval:script/1`): it returns its completion value, as eval does.
@@ -452,7 +510,11 @@ impl<'a> Lowerer<'a, '_> {
             let completion = self.fresh("Completion");
             code.push(Expr::matches(
                 Expr::var(completion.clone()),
-                Expr::call("buoy_heap", "cell", vec![Expr::undefined()]),
+                Expr::call(
+                    "buoy_heap",
+                    "cell",
+                    vec![directive.unwrap_or_else(Expr::undefined)],
+                ),
             ));
             self.frame.completion = Some(completion.clone());
         }
@@ -467,6 +529,9 @@ impl<'a> Lowerer<'a, '_> {
             self.stmts(statements, &Cont::Value(value))
         });
         let mut body = self.dead_zone();
+        if self.frames {
+            body.insert(0, Expr::call("buoy_ref", "frames_start", vec![]));
+        }
         body.extend(code);
         Function {
             name: "$body".to_owned(),
@@ -537,31 +602,10 @@ impl<'a> Lowerer<'a, '_> {
     /// `export default <expression>`: the variable `*default*`.
     /// An anonymous function takes the name `default`, as `NamedEvaluation` gives it.
     pub fn export_default(&mut self, expression: &'a oxc::ast::ast::Expression<'a>) {
-        use oxc::ast::ast::Expression as E;
-        let value = self.expr(expression);
+        // NamedEvaluation names an anonymous function or class "default" before its static
+        // elements run, so a static `name` method replaces the name.
+        let value = self.named_expr(expression, Some(Expr::js_string("default")));
         let value = self.bind(value);
-        let anonymous = match expression.without_parentheses() {
-            E::FunctionExpression(function) => function.id.is_none(),
-            E::ArrowFunctionExpression(_) => true,
-            E::ClassExpression(class) => class.id.is_none(),
-            _ => false,
-        };
-        if anonymous {
-            self.pre.push(Expr::call(
-                "buoy_heap",
-                "define",
-                vec![
-                    value.clone(),
-                    Expr::binary("name"),
-                    Expr::Map(vec![
-                        (Expr::atom("value"), Expr::binary("default")),
-                        (Expr::atom("writable"), Expr::atom("false")),
-                        (Expr::atom("enumerable"), Expr::atom("false")),
-                        (Expr::atom("configurable"), Expr::atom("true")),
-                    ]),
-                ],
-            ));
-        }
         let key = self.var_key("*default*");
         self.pre.push(Expr::call(
             "erlang",
@@ -579,7 +623,7 @@ impl<'a> Lowerer<'a, '_> {
         let value = if suspends.0 {
             Expr::undefined()
         } else {
-            self.expr(expression)
+            self.named_expr(expression, Some(Expr::js_string("default")))
         };
         let init = std::mem::take(&mut self.pre);
         self.var_getter("*default*", init, value, Absent::Uninitialized);
@@ -638,7 +682,27 @@ impl<'a> Lowerer<'a, '_> {
             .map(|(_, cell)| Expr::Tuple(vec![Expr::var("_"), Expr::var(cell.clone())]))
             .collect();
         code.push(Expr::matches(Expr::List(cells), Expr::var("Scope")));
+        // Each eval is a new parse, so its tagged templates are new sites, although the
+        // VM compiles the same source text once (GetTemplateObject).
+        code.push(Expr::matches(
+            Expr::var(EVAL_SITE),
+            Expr::call("erlang", "unique_integer", vec![]),
+        ));
+        code.push(Expr::matches(
+            Expr::var(EVAL_REFERRER),
+            Expr::call(
+                "maps",
+                "get",
+                vec![
+                    Expr::atom("referrer"),
+                    Expr::var("Context"),
+                    Expr::atom(self.module.clone()),
+                ],
+            ),
+        ));
         code.extend(self.eval_context_frame());
+        self.find_block_functions(body.iter().copied(), &[]);
+        self.shadow_block_functions();
         code.extend(self.eval_declarations(body));
         let completion = self.fresh("Completion");
         code.push(Expr::matches(
@@ -692,7 +756,12 @@ impl<'a> Lowerer<'a, '_> {
             } else {
                 (None, None)
             };
-            self.frame.class = Some(super::context::ClassFrame { home, class, init });
+            self.frame.class = Some(super::context::ClassFrame {
+                home,
+                class,
+                init,
+                instance: None,
+            });
         }
         if !context.privates.is_empty() {
             let keys = take(self, "privates");
@@ -717,6 +786,31 @@ impl<'a> Lowerer<'a, '_> {
     /// that the caller's function binds is that binding, and every other name is a
     /// binding of the caller's variables: the object of the first `@vars` entry of the
     /// scope, or the global object.
+    /// The block functions of global eval code that Annex B.3.3.3 hoists: configurable
+    /// properties of the global object, where the eval can declare them.
+    fn declare_global_block_functions(
+        &mut self,
+        block_functions: Vec<(oxc::semantic::SymbolId, String)>,
+    ) {
+        if block_functions.is_empty() {
+            return;
+        }
+        let mut names = Vec::new();
+        for (symbol, name) in block_functions {
+            self.check_block_function_target(symbol);
+            names.push(Expr::js_string(&name));
+        }
+        self.pre.push(Expr::call(
+            "buoy_ref_realm",
+            "declare_block_functions",
+            vec![
+                Expr::atom(self.module.clone()),
+                Expr::List(names),
+                Expr::atom("true"),
+            ],
+        ));
+    }
+
     fn eval_declarations(&mut self, body: &[&'a Statement<'a>]) -> Vec<Expr> {
         let mut vars = analyze::VarDeclarations::default();
         for statement in body {
@@ -740,11 +834,14 @@ impl<'a> Lowerer<'a, '_> {
             }
             return std::mem::replace(&mut self.pre, saved);
         }
-        // The caller's own bindings come before the object of its variables.
+        // The caller's own bindings come before the object of its variables. A catch
+        // parameter is no such binding: a `var` of its name is a variable of the function,
+        // and the initializer writes the parameter (Annex B.3.4).
         let own: Vec<(String, String)> = self
             .eval_bindings
             .iter()
             .take_while(|(name, _)| name != "@vars")
+            .filter(|(name, _)| !name.starts_with('?'))
             .cloned()
             .collect();
         let target = self
@@ -765,14 +862,13 @@ impl<'a> Lowerer<'a, '_> {
         // get their cells first.
         let early = self.early_bindings(body);
         self.pre.extend(early);
-        let mut values = Vec::new();
+        let mut declared = Vec::new();
         for function in functions {
             let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get()) else {
                 continue;
             };
             if let Some(name) = declare(self, symbol) {
-                let value = self.function_value(function, None);
-                values.push(Expr::Tuple(vec![Expr::js_string(&name), value]));
+                declared.push((function, name));
             }
         }
         let mut names = Vec::new();
@@ -784,6 +880,31 @@ impl<'a> Lowerer<'a, '_> {
                 names.push(Expr::js_string(&name));
             }
         }
+        // The block functions that Annex B.3.3.3 hoists: variables of the function of a
+        // direct eval, or properties of the global object that the eval can declare.
+        let mut block_functions = Vec::new();
+        for symbol in self.block_function_targets() {
+            if !self.tops.contains_key(&symbol)
+                && !self.frame.env.contains_key(&symbol)
+                && let Some(name) = declare(self, symbol)
+            {
+                if target.is_some() {
+                    names.push(Expr::js_string(&name));
+                } else {
+                    block_functions.push((symbol, name));
+                }
+            }
+        }
+        self.declare_global_block_functions(block_functions);
+        // The functions compile once every name of the code is declared, since their
+        // bodies read the `var` names of the code.
+        let values = declared
+            .into_iter()
+            .map(|(function, name)| {
+                let value = self.function_value(function, None);
+                Expr::Tuple(vec![Expr::js_string(&name), value])
+            })
+            .collect();
         let call = match target {
             Some(object) => Expr::call(
                 "buoy_ref_eval",
@@ -1055,12 +1176,16 @@ impl<'a> Lowerer<'a, '_> {
     /// A normal function of sloppy code carries `sloppy` as a fifth element of its id.
     pub fn static_function(&self, name: &str, length: usize, form: &str) -> Expr {
         let mut id = vec![
-            Expr::atom(if form == "sloppy" { "fn" } else { form }),
+            Expr::atom(match form {
+                "sloppy" => "fn",
+                "sloppy_nt" => "fn_nt",
+                other => other,
+            }),
             Expr::atom(self.module.clone()),
             Expr::js_string(if name == "*default*" { "default" } else { name }),
             Expr::Integer(i64::try_from(length).unwrap_or(0)),
         ];
-        if form == "sloppy" {
+        if form.starts_with("sloppy") {
             id.push(Expr::atom("sloppy"));
         }
         Expr::Tuple(vec![

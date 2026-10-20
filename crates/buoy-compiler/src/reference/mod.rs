@@ -27,11 +27,14 @@
 //! - `linking`: the interface of a module to the loader of the runtime.
 //! - `module`: module-level names, `'$body'/0`, `'$class'/1`, and module variables.
 //! - `function`, `class`, `suspend`: functions, classes, and `await`/`yield`.
+//! - `layout`, `types`: the keys that the instances of a class are expected to have, in
+//!   order, and the class that an expression holds an instance of.
 //! - `stmt`, `loops`, `exception`: statements, loops, and `try`.
 //! - `expr`, `variable`, `member`, `call`, `literal`, `pattern`: expressions.
 //! - `analyze`: the facts the lowering needs before it emits code.
 
 mod analyze;
+mod block_function;
 mod call;
 mod class;
 mod context;
@@ -40,15 +43,19 @@ mod exception;
 mod expr;
 mod function;
 pub mod graph;
+mod jit;
+mod layout;
 pub mod link;
 mod linking;
 mod literal;
+pub(crate) use literal::string_units;
 mod loops;
 mod member;
 mod module;
 mod pattern;
 mod stmt;
 mod suspend;
+mod types;
 mod variable;
 mod with;
 
@@ -80,13 +87,20 @@ pub fn lower_unit(
     if !module.broken.is_empty() {
         return Ok(broken_module(linking, &module.broken));
     }
-    if module.kind == Kind::Json {
+    // A JSON, text, or bytes module holds its source as a constant for the runtime.
+    if matches!(module.kind, Kind::Json | Kind::Text | Kind::Bytes) {
         return Ok(erlang::print_module(&erlang::Module {
             name: module.name.clone(),
             functions: linking.json_functions(),
         }));
     }
-    lower(linking, None, &[])
+    if module.kind == Kind::Wasm {
+        return Ok(erlang::print_module(&erlang::Module {
+            name: module.name.clone(),
+            functions: linking.wasm_functions(),
+        }));
+    }
+    lower(linking, None, &[], false)
 }
 
 /// What the code of a direct eval may use from the place of its call (ECMA-262 §19.2.1.1,
@@ -96,6 +110,34 @@ pub struct EvalContext {
     pub place: EvalPlace,
     /// The private names that the call sees (`privates`, their keys in this order).
     pub privates: Vec<String>,
+    /// The code is part of the runtime, such as the Temporal polyfill: a static member of
+    /// a standard global, such as `Math.sign`, reads the value that the runtime installed,
+    /// and an array iterates without its user-visible iterator. Node's lib gets the same
+    /// from its primordials, and Bun's builtin modules from their intrinsics.
+    pub internal: bool,
+    /// The names that `let`, `const`, and classes bind between a direct eval and the
+    /// variables of its function: a block function of the eval code does not reach a
+    /// name that one of them shadows (Annex B.3.3.3).
+    pub lexical: Vec<String>,
+    /// The code is the source text of `CreateDynamicFunction`, one function expression:
+    /// its name, `anonymous`, binds nothing inside it.
+    pub dynamic_function: bool,
+    /// The program that runs the code records each call of a function, for the legacy
+    /// `caller` and `arguments` of a sloppy function (`--frames`).
+    pub frames: bool,
+    /// Where the module finds its source text.
+    pub source: EvalSource,
+}
+
+/// Where the module of eval code finds its source text.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum EvalSource {
+    /// A literal in the module.
+    #[default]
+    Literal,
+    /// The runtime, which keeps the text that came with the module
+    /// (`buoy_ref_eval:source/1`), so that the VM does not scan and parse it again.
+    Runtime,
 }
 
 /// Where a direct eval is called, which decides what its code may use.
@@ -212,7 +254,7 @@ pub fn lower_eval(
     source: String,
     name: &str,
     strict: bool,
-    function: bool,
+    function: Option<usize>,
     lexical: &[String],
     scope: &[String],
     context: &EvalContext,
@@ -233,30 +275,65 @@ pub fn lower_eval(
             )]);
         }
     }
-    if function {
+    if let Some(parameters_end) = function {
         let complete = with_js_program(&path, &source, |program, _| {
-            is_one_function(program, source.len())
+            is_one_function(program, parameters_end)
         })?;
         if !complete {
             let reporter = Reporter::new(&path, &source);
             return Err(vec![reporter.at(
                 0,
                 Code::Syntax,
-                "the body of a Function closes the function early".to_owned(),
+                "the parameters or the body of a Function close the function early".to_owned(),
             )]);
         }
     }
-    lower_one_script(path, name, source, Some((strict, context)), scope)
+    let context = EvalContext {
+        lexical: lexical.to_vec(),
+        dynamic_function: function.is_some(),
+        ..context.clone()
+    };
+    lower_one_script(path, name, source, Some((strict, &context)), scope, false)
+}
+
+/// Lowers an ES module from source text whose requests the host links at run time
+/// (`compile_hosted_module` of the crate), named `name`, with `path` as its identifier.
+pub fn lower_hosted_module(
+    source: String,
+    name: &str,
+    path: std::path::PathBuf,
+) -> Result<String, Vec<Diagnostic>> {
+    let graph = graph::hosted(source, name, path)?;
+    let links = link::link(&graph);
+    // A module of node:vm checks the deadline of `evaluate({ timeout })` in its loops.
+    lower(
+        Linking {
+            graph: &graph,
+            unit: 0,
+            link: &links[0],
+            entry: false,
+        },
+        None,
+        &[],
+        true,
+    )
 }
 
 /// Lowers a classic script of its own (`compile_script` of the crate), named `name`.
-pub fn lower_script(source: String, name: &str) -> Result<String, Vec<Diagnostic>> {
+/// `interruptible` code checks the deadline of a run at each turn of a loop
+/// (`buoy_ref_eval:interrupt/0`), as `vm.Script` with a `timeout` needs.
+pub fn lower_script(
+    source: String,
+    name: &str,
+    interruptible: bool,
+) -> Result<String, Vec<Diagnostic>> {
     lower_one_script(
         std::path::PathBuf::from("script.js"),
         name,
         source,
         None,
         &[],
+        interruptible,
     )
 }
 
@@ -267,12 +344,17 @@ fn lower_one_script(
     source: String,
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
+    interruptible: bool,
 ) -> Result<String, Vec<Diagnostic>> {
+    // Eval code records its calls when the program that runs it does (`frames` of the
+    // context), and the runtime's own code never does.
     let graph = Graph {
+        reflects_calls: false,
         units: vec![graph::Unit {
             path,
             name: name.to_owned(),
             source,
+            bytes: Vec::new(),
             kind: Kind::Esm,
             record: graph::Record::default(),
             requests: Vec::new(),
@@ -287,7 +369,7 @@ fn lower_one_script(
         link: &link,
         entry: false,
     };
-    lower(linking, eval, scope)
+    lower(linking, eval, scope, interruptible)
 }
 
 /// The names that sloppy eval code declares in its variable environment: its top-level
@@ -322,8 +404,8 @@ fn declared_var_names(
 }
 
 /// Whether the program is one parenthesized function expression that ends where the source
-/// does, before its closing parenthesis.
-fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool {
+/// does, before its closing parenthesis, and whose parameter list ends at `parameters_end`.
+fn is_one_function(program: &oxc::ast::ast::Program<'_>, parameters_end: usize) -> bool {
     use oxc::ast::ast::{Expression, Statement};
     let [Statement::ExpressionStatement(statement)] = program.body.as_slice() else {
         return false;
@@ -332,13 +414,15 @@ fn is_one_function(program: &oxc::ast::ast::Program<'_>, length: usize) -> bool 
         return false;
     };
     matches!(&inner.expression, Expression::FunctionExpression(function)
-        if function.span.end as usize + 1 == length)
+        if function.span.end as usize + 1 == program.source_text.len()
+            && function.params.span.end as usize == parameters_end)
 }
 
 fn lower(
     linking: Linking<'_>,
     eval: Option<(bool, &EvalContext)>,
     scope: &[String],
+    interruptible: bool,
 ) -> Result<String, Vec<Diagnostic>> {
     let module = linking.unit();
     let context = eval.map(|(_, context)| context.clone()).unwrap_or_default();
@@ -363,6 +447,7 @@ fn lower(
                 return Err(reporter.diagnostics);
             }
             let analysis = analyze::analyze(program, semantic);
+            let frames = context.frames || linking.graph.reflects_calls;
             let mut lowerer = Lowerer {
                 semantic,
                 analysis: &analysis,
@@ -388,9 +473,21 @@ fn lower(
                 early: std::collections::HashSet::new(),
                 using_stacks: Vec::new(),
                 hoisted: std::collections::HashSet::new(),
+                block_functions: Vec::new(),
+                frames,
+                // A classic script of its own, as `vm.Script` compiles it, may run in the
+                // realm of a context and call the functions of another realm.
+                realm_calls: linking.unit().script && !linking.entry && eval.is_none(),
                 linking,
+                interruptible,
+                layouts: HashMap::new(),
+                jit: if eval.is_none() {
+                    crate::jit::plan(semantic)
+                } else {
+                    crate::jit::Plan::default()
+                },
             };
-            let functions = if module.kind == Kind::CommonJs {
+            let mut functions = if module.kind == Kind::CommonJs {
                 lowerer.commonjs_functions(program, &module.source)
             } else if lowerer.eval.is_some() {
                 lowerer.eval_module_functions(program, &module.source)
@@ -398,6 +495,7 @@ fn lower(
                 lowerer.declare(program);
                 lowerer.module_functions(program, &module.source)
             };
+            functions.extend(lowerer.jit_programs());
             if lowerer.reporter.diagnostics.is_empty() {
                 Ok(erlang::print_module(&erlang::Module {
                     name: module.name.clone(),

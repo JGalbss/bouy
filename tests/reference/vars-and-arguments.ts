@@ -1,5 +1,6 @@
 // `var` names exist from the start of their function, `arguments` holds the arguments of
 // a call, and a function declaration has a prototype object that `new` uses.
+import legacyVarStatements from "./modules/legacy-var-statements.cjs";
 
 function total() {
   let sum = 0;
@@ -52,3 +53,4 @@ function readOuter() {
   return [outer, last];
 }
 console.log(readOuter());
+console.log("legacy var statements", legacyVarStatements);

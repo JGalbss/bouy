@@ -46,10 +46,34 @@ impl<'a> Lowerer<'a, '_> {
     /// The objects of the `with` statements that `ident` resolves through, innermost first:
     /// those around the reference that do not hold the declaration of its binding.
     pub fn with_objects(&self, ident: &IdentifierReference<'a>) -> Vec<String> {
-        self.with_objects_for(
-            self.symbol_of(ident.reference_id.get()),
-            ident.name.as_str(),
-        )
+        let symbol = self.symbol_of(ident.reference_id.get());
+        // In the block of a block function, the name is the block's binding: only the
+        // objects of the `with` statements inside the block come before it.
+        if let Some(block) = symbol
+            .and_then(|symbol| self.block_binding(symbol, ident.span))
+            .map(|function| function.block)
+        {
+            return self
+                .frame
+                .withs
+                .iter()
+                .rev()
+                .filter(|scope| contains(block, scope.span) && contains(scope.span, ident.span))
+                .map(|scope| scope.object.clone())
+                .collect();
+        }
+        // A continuation that the body of a `with` runs, such as the update of a loop around
+        // it, lowers inside the statement but is not inside its object.
+        self.with_objects_for(symbol, ident.name.as_str())
+            .into_iter()
+            .filter(|object| {
+                self.frame
+                    .withs
+                    .iter()
+                    .find(|scope| scope.object == *object)
+                    .is_none_or(|scope| contains(scope.span, ident.span))
+            })
+            .collect()
     }
 
     /// The objects of the `with` statements that a name bound to `symbol` resolves through:

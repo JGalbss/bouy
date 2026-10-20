@@ -6,6 +6,7 @@
 //! - `'$body'/0`: the top-level code of an ES module; a promise when it awaits.
 //! - `'$cjs'/0`: the wrapper function of a `CommonJS` module.
 //! - `'$json'/0`: the text of a JSON module.
+//! - `'$wasm'/0`: the binary of a WebAssembly module, whose `'$body'/0` instantiates it.
 //! - `'$export'/1`: the value of an exported binding, by its key (`link::Binding`).
 //! - `'$namespace'/0`: the export names in order, each with a fun that reads it.
 //! - `'$resolve'/2`: what a string specifier of the module names, for `import()`,
@@ -72,6 +73,21 @@ impl<'c> Linking<'c> {
                 "builtin_namespace",
                 vec![Expr::js_string(name)],
             ),
+            Binding::Hosted { request, name } => Expr::call(
+                "buoy_module",
+                "hosted_import",
+                vec![
+                    Expr::atom(self.unit().name.clone()),
+                    Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
+                    name.as_ref()
+                        .map_or_else(|| Expr::atom("namespace"), |name| Expr::js_string(name)),
+                ],
+            ),
+            Binding::Source(unit) => Expr::call(
+                "buoy_module",
+                "source_phase",
+                vec![Expr::atom(self.module_of(*unit))],
+            ),
         }
     }
 
@@ -96,15 +112,18 @@ impl<'c> Linking<'c> {
             ]),
             None => Expr::atom("none"),
         };
-        self.module_info_with(error)
+        self.module_info_with(error, self.link.load_failed)
     }
 
-    fn module_info_with(&self, error: Expr) -> Function {
+    fn module_info_with(&self, error: Expr, load_failed: bool) -> Function {
         let unit = self.unit();
         let kind = match unit.kind {
             Kind::Esm => "esm",
             Kind::CommonJs => "cjs",
             Kind::Json => "json",
+            Kind::Text => "text",
+            Kind::Bytes => "bytes",
+            Kind::Wasm => "wasm",
         };
         let requests = unit
             .record
@@ -127,23 +146,45 @@ impl<'c> Linking<'c> {
                         _ => None,
                     })
             })
+            .chain(unit.record.sources.iter().filter_map(|specifier| {
+                unit.requests
+                    .iter()
+                    .find_map(|request| match &request.resolved {
+                        Resolved::Unit(target, _)
+                            if &request.specifier == specifier && request.mode == Mode::Import =>
+                        {
+                            Some(Expr::tagged("source", Expr::atom(self.module_of(*target))))
+                        }
+                        _ => None,
+                    })
+            }))
             .collect();
+        let extra = self.hosted_info();
         constant(
             "$module",
-            Expr::Map(vec![
-                (Expr::atom("kind"), Expr::atom(kind)),
-                (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
-                (Expr::atom("requests"), Expr::List(requests)),
-                (
-                    Expr::atom("async"),
-                    Expr::atom(if unit.record.has_await {
-                        "true"
-                    } else {
-                        "false"
-                    }),
-                ),
-                (Expr::atom("error"), error),
-            ]),
+            Expr::Map(
+                vec![
+                    (Expr::atom("kind"), Expr::atom(kind)),
+                    (Expr::atom("path"), Expr::js_string(&path_text(&unit.path))),
+                    (Expr::atom("requests"), Expr::List(requests)),
+                    (
+                        Expr::atom("async"),
+                        Expr::atom(if unit.record.has_await {
+                            "true"
+                        } else {
+                            "false"
+                        }),
+                    ),
+                    (Expr::atom("error"), error),
+                    (
+                        Expr::atom("loaded"),
+                        Expr::atom(if load_failed { "false" } else { "true" }),
+                    ),
+                ]
+                .into_iter()
+                .chain(extra)
+                .collect(),
+            ),
         )
     }
 
@@ -195,6 +236,7 @@ impl<'c> Linking<'c> {
                         Expr::js_string(failure.code),
                         Expr::js_string(&failure.message),
                     ]),
+                    Resolved::Hosted(_) => Expr::atom("none"),
                 };
                 Clause {
                     patterns: vec![Expr::js_string(&request.specifier), mode],
@@ -253,14 +295,19 @@ impl<'c> Linking<'c> {
         let error = diagnostics.first().map_or_else(
             || Expr::atom("none"),
             |diagnostic| {
-                let syntax = diagnostic.code == Code::Syntax;
+                if diagnostic.code == Code::Syntax {
+                    // V8's SyntaxError: its message, and the place, the source line, and a
+                    // caret, which the runtime puts in front of its stack.
+                    return Expr::Tuple(vec![
+                        Expr::js_string("SyntaxError"),
+                        Expr::undefined(),
+                        Expr::js_string(&diagnostic.message),
+                        Expr::js_string(&self.arrow(diagnostic)),
+                    ]);
+                }
                 Expr::Tuple(vec![
-                    Expr::js_string(if syntax { "SyntaxError" } else { "Error" }),
-                    if syntax {
-                        Expr::undefined()
-                    } else {
-                        Expr::js_string(diagnostic.code.as_str())
-                    },
+                    Expr::js_string("Error"),
+                    Expr::js_string(diagnostic.code.as_str()),
                     Expr::js_string(&diagnostic.to_string()),
                 ])
             },
@@ -271,7 +318,7 @@ impl<'c> Linking<'c> {
             vec![Expr::atom(self.unit().name.clone())],
         );
         vec![
-            self.module_info_with(error),
+            self.module_info_with(error, true),
             constant("$namespace", Expr::List(vec![])),
             self.resolver(),
             constant("$body", broken.clone()),
@@ -286,6 +333,126 @@ impl<'c> Linking<'c> {
                 }],
             },
         ]
+    }
+
+    /// The entries of `'$module'/0` that a module that the host links has: its requests,
+    /// its module requests, its `export *` requests, and the names it imports.
+    fn hosted_info(&self) -> Vec<(Expr, Expr)> {
+        let unit = self.unit();
+        // A module that the host links lists its requests and its `export *` requests.
+        let hosted: Vec<Expr> = unit
+            .requests
+            .iter()
+            .filter(|request| matches!(request.resolved, Resolved::Hosted(_)))
+            .map(|request| Expr::js_string(&request.specifier))
+            .collect();
+        if hosted.is_empty() {
+            return Vec::new();
+        }
+        let stars = self
+            .link
+            .hosted_stars
+            .iter()
+            .map(|request| Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)))
+            .collect();
+        // The names that the module imports from each request, which the runtime
+        // checks when it instantiates the module, as V8 resolves each import.
+        let mut imports: Vec<(usize, String)> = Vec::new();
+        for binding in self
+            .link
+            .imports
+            .values()
+            .chain(self.link.namespace.iter().map(|(_, binding)| binding))
+        {
+            if let Binding::Hosted {
+                request,
+                name: Some(name),
+            } = binding
+                && !imports.contains(&(*request, name.clone()))
+            {
+                imports.push((*request, name.clone()));
+            }
+        }
+        imports.sort();
+        let imports = imports
+            .iter()
+            .map(|(request, name)| {
+                Expr::Tuple(vec![
+                    Expr::Integer(i64::try_from(*request).unwrap_or(i64::MAX)),
+                    Expr::js_string(name),
+                ])
+            })
+            .collect();
+        // The ModuleRequests of getModuleRequests: the specifier, the attributes, and
+        // the phase, 1 for source and 2 for evaluation, as module_wrap.cc numbers them.
+        let module_requests = unit
+            .record
+            .module_requests
+            .iter()
+            .map(|request| {
+                let attributes = request
+                    .attributes
+                    .iter()
+                    .map(|(key, value)| {
+                        Expr::Tuple(vec![Expr::js_string(key), Expr::js_string(value)])
+                    })
+                    .collect();
+                Expr::Tuple(vec![
+                    Expr::js_string(&request.specifier),
+                    Expr::List(attributes),
+                    Expr::Integer(if request.source_phase { 1 } else { 2 }),
+                ])
+            })
+            .collect();
+        vec![
+            (Expr::atom("hosted"), Expr::List(hosted)),
+            (Expr::atom("module_requests"), Expr::List(module_requests)),
+            (Expr::atom("stars"), Expr::List(stars)),
+            (Expr::atom("imports"), Expr::List(imports)),
+        ]
+    }
+
+    /// The arrow message of a syntax error of the unit, as `GetErrorSource` of Node prints
+    /// it: the place and the line, the source line, and a caret under the column.
+    fn arrow(&self, diagnostic: &Diagnostic) -> String {
+        let text = std::fs::read_to_string(&diagnostic.path).unwrap_or_default();
+        let line = text
+            .lines()
+            .nth(diagnostic.line.saturating_sub(1))
+            .unwrap_or_default();
+        let place = if self.unit().kind == Kind::Esm {
+            format!("file://{}", diagnostic.path.display())
+        } else {
+            diagnostic.path.display().to_string()
+        };
+        let caret = " ".repeat(diagnostic.column.saturating_sub(1));
+        format!("{place}:{}\n{line}\n{caret}^\n", diagnostic.line)
+    }
+
+    /// The functions of a WebAssembly module: the runtime compiles the binary, links its
+    /// imports to the namespaces of the modules they name, and keeps the exports of the
+    /// instance, as Node's wasm translator does.
+    pub fn wasm_functions(&self) -> Vec<Function> {
+        let module = Expr::atom(self.unit().name.clone());
+        let mut functions = self.interface();
+        functions.push(constant("$wasm", Expr::Bytes(self.unit().bytes.clone())));
+        functions.push(constant(
+            "$body",
+            Expr::call("buoy_module", "wasm_body", vec![module.clone()]),
+        ));
+        functions.push(Function {
+            name: "$export".to_owned(),
+            clauses: vec![Clause {
+                patterns: vec![Expr::var("Key")],
+                guards: vec![],
+                body: vec![Expr::call(
+                    "buoy_module",
+                    "wasm_export",
+                    vec![module, Expr::var("Key")],
+                )],
+            }],
+        });
+        functions
     }
 
     /// The functions of a JSON module.
@@ -363,6 +530,9 @@ impl<'a> Lowerer<'a, '_> {
             _ => None,
         });
         let mut body = Vec::new();
+        if self.frames {
+            body.push(Expr::call("buoy_ref", "frames_start", vec![]));
+        }
         if let Some(wrapper) = wrapper {
             let value = self.expr(wrapper);
             body.append(&mut self.pre);
@@ -495,16 +665,21 @@ impl<'a> Lowerer<'a, '_> {
             Some(oxc::ast::ast::ImportPhase::Defer) => "defer",
             None => "evaluation",
         };
+        let referrer = self.referrer();
         self.bind(Expr::call(
             "buoy_module",
             "dynamic_import",
-            vec![
-                Expr::atom(self.module.clone()),
-                specifier,
-                options,
-                Expr::atom(phase),
-            ],
+            vec![referrer, specifier, options, Expr::atom(phase)],
         ))
+    }
+
+    /// The module that an `import()` resolves from (GetActiveScriptOrModule): this one, or
+    /// for eval code the script or module of the code that called eval.
+    pub fn referrer(&self) -> Expr {
+        if self.eval.is_some() {
+            return Expr::var(super::module::EVAL_REFERRER);
+        }
+        Expr::atom(self.module.clone())
     }
 
     /// `import.meta`

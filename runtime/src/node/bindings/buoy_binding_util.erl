@@ -42,7 +42,7 @@ binding() ->
             C = buoy_ref_realm:global(<<"SharedArrayBuffer">>),
             buoy_heap:construct(C, [buoy_node:arg(1, A)], C)
         end)},
-        {<<"shouldAbortOnUncaughtToggle">>, buoy_node:typed_array(<<"Uint32Array">>, 1)},
+        {<<"shouldAbortOnUncaughtToggle">>, abort_toggle()},
         {<<"guessHandleType">>, F(<<"guessHandleType">>, 1, fun(_, A) -> handle_type(buoy_node:arg(1, A)) end)},
         {<<"isConstructor">>, F(<<"isConstructor">>, 1, fun(_, A) -> buoy_heap:is_constructor(buoy_node:arg(1, A)) end)}
     ] ++ buoy_binding_types:checks([<<"isArrayBuffer">>, <<"isAsyncFunction">>, <<"isDataView">>, <<"isDate">>,
@@ -98,8 +98,8 @@ promise_details(P) ->
     end.
 
 proxy_details(P, ShowProxy) ->
-    case class(P) of
-        proxy ->
+    case class(P) =:= proxy andalso not buoy_ref_proxy:is_host(P) of
+        true ->
             {Target, Handler} = case buoy_heap:slots(P) of
                 {revoked, _} -> {null, null};
                 TH -> TH
@@ -108,7 +108,7 @@ proxy_details(P, ShowProxy) ->
                 false -> Target;
                 _ -> buoy_heap:new_array([Target, Handler])
             end;
-        _ ->
+        false ->
             undefined
     end.
 
@@ -134,7 +134,7 @@ preview_entries(V, IsIterator) ->
 
 own_non_index(O, Filter) ->
     Bits = trunc(buoy_ref:to_number(Filter)),
-    Keys = [K || K <- buoy_heap:own_keys(O), not is_integer(K), not is_index(K)],
+    Keys = [K || K <- buoy_heap:own_named_keys(O), not is_index(K)],
     Kept = [K || K <- Keys,
                  Bits band ?ONLY_ENUMERABLE =:= 0 orelse buoy_heap:is_enumerable(buoy_heap:get_own(O, K)),
                  Bits band ?SKIP_SYMBOLS =:= 0 orelse not is_symbol(K),
@@ -184,26 +184,38 @@ constructor_name(O, Depth) ->
     end.
 
 %% guessHandleType(fd): the index of the type in the handleTypes of
-%% internal/util (TCP, TTY, UDP, FILE, PIPE, UNKNOWN). Stdio reads as a file,
-%% so that process.stdout is a SyncWriteStream, unless the VM's device is a
-%% terminal.
+%% internal/util (TCP, TTY, UDP, FILE, PIPE, UNKNOWN), as uv_guess_handle
+%% reports the standard descriptors. Another descriptor reads as a file.
 handle_type(Fd) ->
     case buoy_ref:to_number(Fd) of
         N when N =:= 0; N =:= 1; N =:= 2 ->
-            Device = case N of 2 -> standard_error; _ -> standard_io end,
-            case try io:getopts(Device) catch _:_ -> error end of
-                Options when is_list(Options) ->
-                    case proplists:get_value(terminal, Options, false) of
-                        true -> 1;
-                        _ -> 3
-                    end;
-                _ ->
-                    3
+            case buoy_node_stdio:kind(N) of
+                tty -> 1;
+                file -> 3;
+                pipe -> 4;
+                closed -> 5
             end;
         N when is_integer(N), N > 2 ->
-            3;
+            socket_type(N);
         _ ->
             5
+    end.
+
+%% TCP, UDP, or PIPE for a socket descriptor, which a duplicate probes, and
+%% FILE for another one.
+socket_type(Fd) ->
+    case buoy_node_socket:open_inherited(Fd, #{dup => true}) of
+        {ok, Socket} ->
+            Info = socket:info(Socket),
+            socket:close(Socket),
+            case Info of
+                #{domain := local} -> 4;
+                #{type := dgram} -> 2;
+                #{type := stream} -> 0;
+                _ -> 5
+            end;
+        {error, _} ->
+            3
     end.
 
 %% parseEnv(content): the variables of a dotenv text, as Node's Dotenv
@@ -244,3 +256,10 @@ env_value(Value) ->
         [Before, _] -> string:trim(Before);
         [_] -> Value
     end.
+
+%% Environment starts should_abort_on_uncaught_toggle_ at 1; a capture
+%% callback, such as the one of a domain, sets it to 0.
+abort_toggle() ->
+    Toggle = buoy_node:typed_array(<<"Uint32Array">>, 1),
+    buoy_heap:set(Toggle, 0, 1),
+    Toggle.

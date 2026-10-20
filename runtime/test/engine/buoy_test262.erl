@@ -95,7 +95,7 @@ hold(File, Entry, Loader) ->
     Loader ! {loaded, File, self()},
     Compiled = receive
         {loaded, File, {ok, {Module, _, _}}} -> {ok, Module, none};
-        {loaded, File, error} -> compile:file(File, [binary, return_errors, nowarn_unused_vars])
+        {loaded, File, error} -> buoy_main:compile_generated(File, [binary, return_errors, nowarn_unused_vars])
     end,
     case Compiled of
         {ok, Name, Binary} ->
@@ -174,18 +174,20 @@ realm(Module, Stdout, Stderr) ->
 %% The host functions of $262 that only the engine can give, as hidden
 %% globals that the host code of the runner (HOST in test262-dev.rs) wraps:
 %% $262CreateRealm, which the prelude takes off the global object, and
-%% __buoyEvalScript, which each realm has.
+%% __buoyEvalScript and __buoyAbstractModuleSource, which each realm has.
 host_functions() ->
     ok = buoy_ref:init_realm(),
     G = buoy_ref_realm:global_object(),
     define_hidden(G, <<"$262CreateRealm">>, buoy_ref_realm:builtin(<<"$262.createRealm">>, fun(_This, _Args) -> create_realm() end)),
-    define_hidden(G, <<"__buoyEvalScript">>, eval_script()).
+    define_hidden(G, <<"__buoyEvalScript">>, eval_script()),
+    define_hidden(G, <<"__buoyAbstractModuleSource">>, buoy_ref_module_source:constructor()).
 
 %% A realm of $262.createRealm: its global object, with an evalScript that
 %% runs in that realm.
 create_realm() ->
     {'$o', {N, _}} = G = buoy_ref_realm:create(),
     define_hidden(G, <<"__buoyEvalScript">>, buoy_ref_realm:localize(N, eval_script())),
+    define_hidden(G, <<"__buoyAbstractModuleSource">>, buoy_ref_realm:localize(N, buoy_ref_module_source:constructor())),
     G.
 
 eval_script() ->

@@ -11,7 +11,7 @@
 %% writable side.
 -module(buoy_node_stream).
 
--export([methods/1, attach/2, deliver/2, call/2, written/3]).
+-export([methods/1, attach/2, attach/3, set_fd/2, deliver/2, call/2, written/3, forward/2, pass/2]).
 
 -define(STATE, {'#', ?MODULE, <<"state">>}).
 -define(K_READ_BYTES, 0).
@@ -25,20 +25,20 @@
 methods(Proto) ->
     F = fun buoy_node:fn/3,
     A = fun buoy_node:arg/2,
-    Writes = [{<<"writeBuffer">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:view_bytes(A(2, Args))) end},
-              {<<"writeUtf8String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(utf8, A(2, Args))) end},
+    Writes = [{<<"writeBuffer">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:write_buffer_bytes(A(2, Args)), A(3, Args)) end},
+              {<<"writeUtf8String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(utf8, A(2, Args)), A(3, Args)) end},
               {<<"writeAsciiString">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(latin1, A(2, Args))) end},
               {<<"writeLatin1String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(latin1, A(2, Args))) end},
               {<<"writeUcs2String">>, fun(This, Args) -> write(This, A(1, Args), buoy_node_encoding:encode(ucs2, A(2, Args))) end},
               {<<"writev">>, fun(This, Args) -> write(This, A(1, Args), writev_bytes(A(2, Args), buoy_ref:truthy(A(3, Args)))) end}],
     Methods = Writes ++ [
         {<<"readStart">>, fun(This, _) -> read_start(This) end},
-        {<<"readStop">>, fun(This, _) -> update(This, fun(S) -> S#{reading := false} end), 0 end},
+        {<<"readStop">>, fun(This, _) -> read_stop(This) end},
         {<<"shutdown">>, fun(This, _) -> send(This, shutdown), 1 end},
         {<<"close">>, fun(This, Args) -> close(This, A(1, Args)) end},
-        {<<"ref">>, fun(This, _) -> update(This, fun(S) -> S#{unrefed => false} end), set_ref(This, true) end},
-        {<<"unref">>, fun(This, _) -> update(This, fun(S) -> S#{unrefed => true} end), set_ref(This, false) end},
-        {<<"hasRef">>, fun(This, _) -> maps:get(refed, state(This), false) end},
+        {<<"ref">>, fun(This, _) -> set_ref(This, true) end},
+        {<<"unref">>, fun(This, _) -> set_ref(This, false) end},
+        {<<"hasRef">>, fun(This, _) -> #{refed := R, closed := C} = state(This), R andalso not C end},
         {<<"getAsyncId">>, fun(This, _) -> maps:get(async_id, state(This), -1) end},
         {<<"useUserBuffer">>, fun(_, _) -> undefined end},
         {<<"setBlocking">>, fun(_, _) -> 0 end}],
@@ -47,25 +47,47 @@ methods(Proto) ->
     [buoy_heap:define(Proto, Name, #{get => F(<<"get ", Name/binary>>, 0, Get), enumerable => true, configurable => true})
      || {Name, Get} <- [{<<"bytesRead">>, fun(This, _) -> maps:get(read, state(This), 0) end},
                         {<<"bytesWritten">>, fun(This, _) -> maps:get(written, state(This), 0) end},
-                        {<<"fd">>, fun(_, _) -> -1 end},
+                        {<<"fd">>, fun(This, _) -> maps:get(fd, state(This), -1) end},
                         {<<"writeQueueSize">>, fun(_, _) -> 0 end}]],
     ok.
 
 %% Binds a handle to its channel. Until then the handle reads nothing.
--spec attach(term(), pid()) -> ok.
+-spec attach(term(), pid() | none) -> ok.
 attach(Handle, Channel) ->
     Id = erlang:unique_integer([positive]),
-    buoy_heap:private_put(Handle, ?STATE, #{channel => Channel, reading => false, pending => [], eof => false,
-                                            refed => false, read => 0, written => 0, async_id => Id, closed => false}).
+    update(Handle, fun(S) -> S#{channel => Channel, reading => false, pending => [], eof => false,
+                                read => 0, written => 0, async_id => Id, closed => false} end).
+
+%% The descriptor that the handle's fd reports, as uv_fileno.
+-spec set_fd(term(), integer()) -> ok.
+set_fd(Handle, Fd) ->
+    update(Handle, fun(S) -> S#{fd => Fd} end).
+
+%% Binds a handle whose writes Writer makes at once, such as the writes of a
+%% terminal, which libuv makes blocking for tty.WriteStream: each returns the
+%% status of the write, and no oncomplete follows.
+-spec attach(term(), pid() | none, fun((binary()) -> integer())) -> ok.
+attach(Handle, Channel, Writer) ->
+    attach(Handle, Channel),
+    update(Handle, fun(S) -> S#{writer => Writer} end).
 
 state(Handle) ->
     case buoy_heap:is_object(Handle) andalso buoy_heap:private_find(Handle, ?STATE) of
         {ok, S} -> S;
-        _ -> #{channel => none, reading => false, pending => [], eof => false, refed => false, closed => false}
+        _ -> #{channel => none, reading => false, pending => [], eof => false, refed => true, counted => false, closed => false}
     end.
 
+%% uv_loop_alive: a handle keeps the loop alive while it is ref'd and
+%% active, and a stream is active while it reads, before its end.
 update(Handle, Fun) ->
-    buoy_heap:private_put(Handle, ?STATE, Fun(state(Handle))).
+    #{refed := Refed, reading := Reading, eof := Eof, closed := Closed, counted := Counted} = S = Fun(state(Handle)),
+    Alive = Refed andalso Reading andalso not Eof andalso not Closed,
+    case {Counted, Alive} of
+        {false, true} -> buoy_node_loop:ref_handle();
+        {true, false} -> buoy_node_loop:unref_handle();
+        _ -> ok
+    end,
+    buoy_heap:private_put(Handle, ?STATE, S#{counted := Alive}).
 
 send(Handle, Message) ->
     case state(Handle) of
@@ -82,14 +104,35 @@ call(Realm, Fun) ->
 stream_state() ->
     buoy_heap:get(buoy_node:binding(<<"stream_wrap">>), <<"streamBaseState">>).
 
-%% The request stays a root of the heap until the channel reports the write.
-write(Handle, Req, Bytes) ->
+%% The request stays a root of the heap, and keeps the loop alive as libuv's
+%% active request does, until the channel reports the write.
+write(Handle, Req, Bytes) -> write(Handle, Req, Bytes, undefined).
+
+%% A write of an IPC channel may pass SendHandle, as StreamBase::WriteString
+%% passes it to uv_write2; the request keeps it alive until the write ends.
+write(Handle, Req, Bytes, SendHandle) ->
     State = stream_state(),
     buoy_heap:set(State, ?K_BYTES_WRITTEN, byte_size(Bytes)),
+    case state(Handle) of
+        #{writer := Writer} ->
+            buoy_heap:set(State, ?K_ASYNC, 0),
+            update(Handle, fun(S) -> S#{written => maps:get(written, S, 0) + byte_size(Bytes)} end),
+            Writer(Bytes);
+        _ ->
+            write_async(Handle, Req, Bytes, SendHandle, State)
+    end.
+
+write_async(Handle, Req, Bytes, SendHandle, State) ->
+    buoy_node_loop:ref_handle(),
     buoy_heap:set(State, ?K_ASYNC, 1),
     Ref = make_ref(),
     erlang:put({?MODULE, request, Ref}, {Handle, Req}),
+    Fds = case buoy_heap:is_object(SendHandle) of
+        true -> buoy_heap:set(Req, <<"handle">>, SendHandle), buoy_node_ipc:send_fds(SendHandle);
+        false -> []
+    end,
     case state(Handle) of
+        #{channel := Channel} when is_pid(Channel), Fds =/= [] -> Channel ! {write, Bytes, self(), Ref, Fds};
         #{channel := Channel} when is_pid(Channel) -> Channel ! {write, Bytes, self(), Ref};
         _ -> call(self(), fun() -> written(Ref, -32, ok) end)
     end,
@@ -102,6 +145,7 @@ write(Handle, Req, Bytes) ->
 written(Ref, Status, _) ->
     case erlang:erase({?MODULE, request, Ref}) of
         {Handle, Req} ->
+            buoy_node_loop:unref_handle(),
             Oncomplete = buoy_heap:get(Req, <<"oncomplete">>),
             buoy_heap:is_callable(Oncomplete) andalso buoy_heap:call(Oncomplete, Req, [Status, Handle]);
         undefined ->
@@ -126,15 +170,14 @@ pairs([Chunk, Encoding | Rest]) ->
     [Bytes | pairs(Rest)];
 pairs(_) -> [].
 
+%% A closed handle cannot read: uv_read_start fails with UV_EINVAL.
 read_start(Handle) ->
+    read_start(Handle, maps:get(closed, state(Handle), false)).
+
+read_start(_Handle, true) ->
+    -22;
+read_start(Handle, false) ->
     update(Handle, fun(S) -> S#{reading := true} end),
-    %% uv_read_start makes the handle active, which keeps the loop alive only
-    %% while the handle is ref'd, so the unref'd IPC pipe of a forked child
-    %% lets the child exit.
-    case maps:get(unrefed, state(Handle), false) of
-        true -> ok;
-        false -> set_ref(Handle, true)
-    end,
     case state(Handle) of
         #{pending := [_ | _] = Pending} ->
             update(Handle, fun(S) -> S#{pending := []} end),
@@ -145,23 +188,71 @@ read_start(Handle) ->
     end,
     0.
 
+%% A handle that stops reading is inactive, as after uv_read_stop, so it no
+%% longer keeps the loop alive; it keeps its ref for the next readStart.
+read_stop(Handle) ->
+    update(Handle, fun(S) -> S#{reading := false} end),
+    0.
+
 set_ref(Handle, Refed) ->
-    #{refed := Old} = S = state(Handle),
-    case {Old, Refed, maps:get(closed, S, false)} of
-        {false, true, false} -> buoy_node_loop:ref_handle();
-        {true, false, _} -> buoy_node_loop:unref_handle();
-        _ -> ok
-    end,
-    update(Handle, fun(St) -> St#{refed := Refed andalso not maps:get(closed, St, false)} end),
+    update(Handle, fun(S) -> S#{refed := Refed} end),
     undefined.
 
+%% A child whose stdio entry is this handle (a 'wrap' of getValidStdio)
+%% shares its descriptor: while Target, the manager of that child, is set,
+%% what the handle reads goes to the child's stdin, as the reads of the
+%% child take it from the shared pipe.
+%% A socket of buoy_node_socket, such as a net.Socket, reads for the child
+%% through a listener instead.
+-spec forward(term(), pid() | none) -> ok.
+forward(Handle, Target) ->
+    case buoy_node_socket:find(Handle) of
+        {ok, _} -> forward_socket(Handle, Target);
+        error -> forward_channel(Handle, Target)
+    end.
+
+forward_socket(Handle, none) ->
+    buoy_node_socket:set_listener(Handle, none),
+    _ = buoy_node_socket:read_stop(Handle),
+    ok;
+forward_socket(Handle, Target) ->
+    buoy_node_socket:set_listener(Handle, fun({data, Bytes}) -> pass_to(Target, Bytes);
+                                             (eof) -> pass_to(Target, eof);
+                                             (_) -> ok
+                                          end),
+    _ = buoy_node_socket:read_start(Handle),
+    ok.
+
+forward_channel(Handle, Target) ->
+    #{pending := Pending} = state(Handle),
+    update(Handle, fun(S) -> S#{forward => Target, pending := case Target of none -> Pending; _ -> [] end} end),
+    is_pid(Target) andalso lists:foreach(fun(Item) -> pass_to(Target, Item) end, lists:reverse(Pending)),
+    ok.
+
+pass_to(Target, eof) -> Target ! shutdown;
+pass_to(Target, {Bytes, _Pending}) -> pass_to(Target, Bytes);
+pass_to(Target, Bytes) -> Target ! {write, Bytes, self(), make_ref()}.
+
+%% A child's output whose stdio entry is this handle: the bytes go out
+%% through the handle's channel, as the child writes to the shared pipe.
+-spec pass(term(), binary()) -> ok.
+pass(Handle, Bytes) ->
+    case buoy_node_socket:find(Handle) of
+        {ok, _} -> _ = buoy_node_socket:write_raw(Handle, Bytes), ok;
+        error -> send(Handle, {write, Bytes, self(), make_ref()})
+    end.
+
 %% Data that the channel read, or eof: the handle's onread gets it while it
-%% reads, and keeps it for readStart otherwise.
--spec deliver(term(), binary() | eof) -> term().
+%% reads, and keeps it for readStart otherwise. Data that an IPC channel
+%% read with a handle, {Bytes, Pending}, sets the handle's pendingHandle
+%% first, as LibuvStreamWrap::OnUvRead does.
+-spec deliver(term(), binary() | {binary(), term()} | eof) -> term().
 deliver(Handle, Item) ->
     case state(Handle) of
         #{closed := true} ->
             ok;
+        #{forward := Target} when is_pid(Target) ->
+            pass_to(Target, Item);
         #{reading := false} = S ->
             update(Handle, fun(_) -> S#{pending := [Item | maps:get(pending, S)]} end);
         S ->
@@ -170,9 +261,11 @@ deliver(Handle, Item) ->
             case Item of
                 eof ->
                     update(Handle, fun(_) -> S#{eof := true} end),
-                    set_ref(Handle, false),
                     buoy_heap:set(State, ?K_READ_BYTES, ?UV_EOF),
                     buoy_heap:is_callable(Onread) andalso buoy_heap:call(Onread, Handle, [undefined]);
+                {Bytes, Pending} ->
+                    buoy_heap:set(Handle, <<"pendingHandle">>, Pending),
+                    deliver(Handle, Bytes);
                 Bytes ->
                     update(Handle, fun(_) -> S#{read => maps:get(read, S, 0) + byte_size(Bytes)} end),
                     Buffer = buoy_ref_buffer:allocate(byte_size(Bytes)),
@@ -184,7 +277,6 @@ deliver(Handle, Item) ->
     end.
 
 close(Handle, Callback) ->
-    set_ref(Handle, false),
     update(Handle, fun(S) -> S#{closed => true, reading := false} end),
     send(Handle, close),
     buoy_heap:is_callable(Callback) andalso

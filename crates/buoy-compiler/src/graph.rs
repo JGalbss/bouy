@@ -104,7 +104,11 @@ pub fn module_name(root: &Path, path: &Path) -> String {
 /// a package often ships `index.js` and `index.mjs` side by side.
 #[must_use]
 pub fn unit_name(root: &Path, path: &Path) -> String {
-    file_name(root, path)
+    // The module of a `data:` URL is named after a hash of the URL, which has no path.
+    match path.to_str().filter(|url| url.starts_with("data:")) {
+        Some(url) => format!("buoy@data_{:016x}", crate::erlang::fnv1a(url)),
+        None => file_name(root, path),
+    }
 }
 
 fn file_name(root: &Path, path: &Path) -> String {

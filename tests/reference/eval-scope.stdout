@@ -10,10 +10,14 @@ strictKeeps undefined
 arrowOwn undefined
 capturesCaller 42
 classCaptures 21
+functionReadsVar 4
 earlyLexical 5
 deadZone [ 'ReferenceError', 1 ]
 lexicalStays [ 'undefined', 2 ]
 withObject from with
+withInLoop [ 'shadow', 'shadow' ]
 thisValue true
 callThis true
 undefined outer
+6
+[ 42, 'g', 'undefined' ] [ [ true, false ], 'function' ]

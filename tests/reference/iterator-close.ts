@@ -119,3 +119,49 @@ function* patternYield() {
 const paused = patternYield();
 paused.next();
 console.log(paused.return(5), "closes:", closes);
+function brokenReturn(): Iterable<unknown> {
+  return {
+    [Symbol.iterator]() {
+      let first = true;
+      const iterator = {
+        next: () =>
+          first
+            ? ((first = false), { value: [{}, {}], done: false })
+            : { value: undefined, done: true },
+      };
+      Object.defineProperty(iterator, "return", {
+        get() {
+          throw "return getter throws";
+        },
+      });
+      return iterator as Iterator<unknown>;
+    },
+  };
+}
+class FailingWeakMap extends WeakMap<object, unknown> {
+  override set(): this {
+    throw "set throws";
+  }
+}
+class FailingWeakSet extends WeakSet<object> {
+  override add(): this {
+    throw "add throws";
+  }
+}
+for (const Collection of [FailingWeakMap, FailingWeakSet]) {
+  try {
+    new Collection(brokenReturn() as Iterable<never>);
+  } catch (error) {
+    console.log(Collection.name, error);
+  }
+}
+let iteratedThis = "";
+Object.defineProperty(Number.prototype, Symbol.iterator, {
+  configurable: true,
+  value(this: number) {
+    iteratedThis = typeof this;
+    return [][Symbol.iterator]();
+  },
+});
+console.log(new Map(0 as unknown as Iterable<[unknown, unknown]>).size, iteratedThis);
+delete (Number.prototype as unknown as Record<symbol, unknown>)[Symbol.iterator];

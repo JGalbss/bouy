@@ -15,9 +15,10 @@
 -export([mapped_arguments/3, function_name/2, literal_proto/2, tdz_error/1]).
 -export([with_object/1, with_has/2, with_get/3, with_set/4, const_error/0]).
 -export([call/3, call_method/3, call_method_computed/3, call_method_value/4, construct/2, new_this/1, super_construct/3, super_get/3, super_call/4]).
+-export([frames_start/0, frame_enter/1, frame_leave/1, legacy_caller/1, legacy_arguments/1]).
 -export([arguments_object/1, throw_type_error/2, named_fn/3, named_fn/4, class_create/3, set_construct/2, define_method/3, define_getter/3, define_setter/3, define_field/3]).
 -export([literal_getter/3, literal_setter/3, class_call/2]).
--export([array/1, array_holes/1, array_spread/1, chunk/1, object_spread/2, object_rest/2, template/1, template_object/3]).
+-export([array/1, array_holes/1, array_tree/1, array_spread/1, array_spread_internal/1, chunk/1, object_spread/2, object_rest/2, template/1, template_object/3]).
 -export([add/2, sub/2, mul/2, divide/2, remainder/2, power/2, negate/1, plus/1]).
 -export([bit_and/2, bit_or/2, bit_xor/2, bit_not/1, shift_left/2, shift_right/2, shift_right_unsigned/2]).
 -export([strict_eq/2, loose_eq/2, lt/2, le/2, gt/2, ge/2, typeof/1, instance_of/2, truthy/1]).
@@ -169,7 +170,8 @@ sloppy_set_computed(O, K, V) -> sloppy_set(O, to_property_key(K), V).
 %% `delete o[k]` in sloppy code: false for a property that cannot go.
 -spec sloppy_delete(term(), buoy_heap:key()) -> boolean().
 sloppy_delete(O, K) when ?IS_OBJECT(O) -> buoy_heap:delete_property(O, K);
-sloppy_delete(O, K) -> delete(O, K).
+sloppy_delete(O, K) when O =:= undefined; O =:= null -> delete(O, K);
+sloppy_delete(P, K) -> buoy_heap:delete_property(to_object(P), K).
 
 -spec sloppy_delete_computed(term(), term()) -> boolean().
 sloppy_delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
@@ -184,7 +186,9 @@ sloppy_this(This) -> to_object(This).
 delete(O, K) when ?IS_OBJECT(O) -> buoy_heap:delete(O, K);
 delete(undefined, K) -> type_error(text([<<"Cannot convert undefined or null to object (deleting '">>, key_text(K), <<"')">>]));
 delete(null, K) -> delete(undefined, K);
-delete(_P, _K) -> true.
+%% The wrapper of a string has its length and its indices as properties that
+%% cannot go.
+delete(P, K) -> buoy_heap:delete(to_object(P), K).
 
 -spec delete_computed(term(), term()) -> boolean().
 delete_computed(O, K) when O =:= undefined; O =:= null -> delete(O, key_preview(K));
@@ -220,12 +224,25 @@ key_text(K) -> to_string(K).
 %%% Calls
 
 -spec call(term(), term(), list()) -> term().
-call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
+call({'$f', _, Fun} = F, This, Args) ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> Fun(This, Args);
+        _ -> call_in_realm(F, This, Args)
+    end;
 call(V, _This, _Args) -> type_error(text([describe(V), <<" is not a function">>])).
+
+%% A call while another realm than the first is current, such as a callback
+%% that a builtin of that realm calls: a function of the first realm runs in
+%% it, as a function of another realm sets its own realm when it runs.
+call_in_realm({'$f', _, Fun} = F, This, Args) ->
+    case buoy_heap:class_of(F) =/= proxy andalso buoy_ref_realm:function_realm(F) of
+        0 -> buoy_ref_realm:realm_fun(0, Fun)(This, Args);
+        _ -> Fun(This, Args)
+    end.
 
 %% r.k(args): the method of the receiver, called with the receiver as this.
 -spec call_method(term(), buoy_heap:key(), list()) -> term().
-call_method({'$o', _} = O, K, Args) -> invoke(buoy_heap:get(O, K), O, K, Args);
+call_method({'$o', _} = O, K, Args) -> invoke(buoy_heap:method(O, K), O, K, Args);
 call_method({'$actor', Pid}, K, Args) -> buoy_jobs:actor_call(Pid, K, Args);
 call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 
@@ -233,7 +250,11 @@ call_method(R, K, Args) -> invoke(get(R, K), R, K, Args).
 -spec call_method_value(term(), term(), buoy_heap:key(), list()) -> term().
 call_method_value(F, This, K, Args) -> invoke(F, This, K, Args).
 
-invoke({'$f', _, Fun}, This, _K, Args) -> Fun(This, Args);
+invoke({'$f', _, Fun} = F, This, _K, Args) ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> Fun(This, Args);
+        _ -> call_in_realm(F, This, Args)
+    end;
 invoke(_V, This, K, _Args) -> type_error(text([receiver_text(This), <<".">>, key_text(K), <<" is not a function">>])).
 
 receiver_text(V) when ?IS_OBJECT(V) -> <<"object">>;
@@ -262,15 +283,12 @@ super_get(Home, K, This) -> lookup(buoy_heap:prototype_of(Home), K, This).
 -spec get_from(term(), buoy_heap:key(), term()) -> term().
 get_from(O, K, Receiver) -> lookup(O, K, Receiver).
 
+%% [[Get]] of a primitive's prototype with the primitive as the receiver: a
+%% proxy on the chain gets its get trap.
 lookup(null, _K, _Receiver) ->
     undefined;
 lookup(O, K, Receiver) ->
-    case buoy_heap:get_own(O, K) of
-        {data, V, _} -> V;
-        {accessor, undefined, _, _} -> undefined;
-        {accessor, G, _, _} -> call(G, Receiver, []);
-        none -> lookup(buoy_heap:prototype_of(O), K, Receiver)
-    end.
+    buoy_heap:get(O, K, Receiver).
 
 -spec super_call(term(), buoy_heap:key(), term(), list()) -> term().
 super_call(Home, K, This, Args) -> invoke(super_get(Home, K, This), This, K, Args).
@@ -396,7 +414,14 @@ tdz_error(Name) ->
 -type fn_kind() :: normal | sloppy | generator | async | async_generator.
 -spec named_fn(fun((term(), list()) -> term()), buoy_ref_string:js_string(), non_neg_integer(), fn_kind() | {fn_kind(), tuple()}) -> term().
 named_fn(Fun, Name, Length, Kind) ->
-    finish_fn(buoy_heap:function(Fun, Name, Length, slots(Kind)), kind(Kind)).
+    case kind(Kind) of
+        normal ->
+            buoy_heap:function(Fun, Name, Length, (slots(Kind))#{prototype => lazy}, []);
+        sloppy ->
+            buoy_heap:reflect_calls(buoy_heap:function(Fun, Name, Length, (slots(Kind))#{prototype => lazy}, fixed(sloppy)));
+        Other ->
+            finish_fn(buoy_heap:function(Fun, Name, Length, slots(Kind)), Other)
+    end.
 
 %% The kind of named_fn may carry the place of the source text: {Kind, Source}.
 slots({Kind, Source}) -> #{kind => slot_kind(Kind), source => Source};
@@ -405,20 +430,67 @@ slots(Kind) -> #{kind => slot_kind(Kind)}.
 kind({Kind, _Source}) -> Kind;
 kind(Kind) -> Kind.
 
-%% A sloppy function is a normal one with the caller and arguments
-%% properties that V8 gives it, both null.
+%% A sloppy function is a normal one with own caller and arguments
+%% properties. In a program that records its calls (frames_start/0), they are
+%% live: the legacy function reflection of V8, legacy_caller/1 and
+%% legacy_arguments/1. Elsewhere arguments is null, as in V8 outside a call,
+%% and caller is undefined, the value of an engine without the extension
+%% (ECMA-262 §17.1).
 slot_kind(sloppy) -> normal;
 slot_kind(Kind) -> Kind.
 
-finish_fn(F, sloppy) ->
-    buoy_heap:define(F, <<"arguments">>, #{value => null, writable => false, enumerable => false, configurable => false}),
-    buoy_heap:define(F, <<"caller">>, #{value => null, writable => false, enumerable => false, configurable => false}),
-    finish_fn(F, normal);
-finish_fn(F, normal) ->
-    Proto = buoy_heap:new_object(?OBJECT_PROTO),
-    buoy_heap:define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
-    buoy_heap:define(F, <<"prototype">>, #{value => Proto, writable => true, enumerable => false, configurable => false}),
-    F;
+fixed(sloppy) -> [{<<"arguments">>, null}, {<<"caller">>, undefined}].
+
+%%% Legacy function reflection
+
+%% A program whose code may read the caller or the arguments of a function
+%% records each call while it runs: '$buoy_frames' holds the calls,
+%% innermost first, as {Function, Args} for a sloppy ordinary function and
+%% hidden for any other one. Eval code and the runtime's own functions record
+%% nothing, so a call through them is not seen.
+-spec frames_start() -> ok.
+frames_start() ->
+    erlang:get('$buoy_frames') =:= undefined andalso erlang:put('$buoy_frames', []),
+    ok.
+
+%% The start of a call: returns the calls before it, which frame_leave/1
+%% restores when the call ends, also by an exception.
+-spec frame_enter({term(), list()} | hidden) -> list() | undefined.
+frame_enter(Entry) ->
+    Saved = erlang:get('$buoy_frames'),
+    erlang:put('$buoy_frames', [Entry | case Saved of undefined -> []; _ -> Saved end]),
+    Saved.
+
+-spec frame_leave(list() | undefined) -> ok.
+frame_leave(Saved) ->
+    erlang:put('$buoy_frames', Saved),
+    ok.
+
+%% F.caller of a sloppy function: the function of the call below the
+%% innermost call of F, when that one is a sloppy ordinary function, and null
+%% when F does not run or its caller is any other code.
+-spec legacy_caller(term()) -> term().
+legacy_caller(Id) ->
+    case calls_of(Id) of
+        [_, {Caller, _} | _] -> Caller;
+        _ -> null
+    end.
+
+%% F.arguments of a sloppy function: a new arguments object of the innermost
+%% call of F, or null when F does not run.
+-spec legacy_arguments(term()) -> term().
+legacy_arguments(Id) ->
+    case calls_of(Id) of
+        [{_, Args} | _] -> arguments_object(Args);
+        _ -> null
+    end.
+
+%% The recorded calls from the innermost call of the function Id.
+calls_of(Id) ->
+    lists:dropwhile(fun({{'$f', Own, _}, _}) -> Own =/= Id;
+                       (_) -> true
+                    end, case erlang:get('$buoy_frames') of undefined -> []; Frames -> Frames end).
+
 finish_fn(F, async) ->
     buoy_heap:set_prototype_of(F, buoy_heap:intrinsic(buoy_ref_function:kind_prototype_id(async)));
 finish_fn(F, Kind) ->
@@ -492,7 +564,8 @@ keep(New, _Old) -> New.
 %% A class field: CreateDataPropertyOrThrow, which ignores setters.
 -spec define_field(term(), buoy_heap:key(), term()) -> term().
 define_field(O, K, V) ->
-    buoy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true}),
+    _ = buoy_heap:add_field(O, K, V)
+        orelse buoy_heap:define(O, K, #{value => V, writable => true, enumerable => true, configurable => true}),
     V.
 
 %%% Literals
@@ -513,6 +586,12 @@ array_holes(Items) ->
     [buoy_heap:delete(A, I) || {I, '$hole'} <- lists:enumerate(0, Items)],
     A.
 
+%% An array literal of literals that nests arrays, as one term:
+%% {'$array', Items} is an array, and '$hole' an elision.
+-spec array_tree({'$array', list()}) -> term().
+array_tree({'$array', Items}) ->
+    array_holes([case I of {'$array', _} -> array_tree(I); _ -> I end || I <- Items]).
+
 %% [a, ...b]: Parts are {item, V}, {spread, Iterable}, and hole.
 -spec array_spread(list()) -> term().
 array_spread(Parts) ->
@@ -521,6 +600,15 @@ array_spread(Parts) ->
 spread_part({item, V}) -> [V];
 spread_part(hole) -> ['$hole'];
 spread_part({spread, V}) -> buoy_ref_iterator:to_list(V).
+
+%% array_spread/1 for internal code, which spreads an array without its
+%% user-visible iterator (buoy_ref_iterator:iterate_internal/1).
+-spec array_spread_internal(list()) -> term().
+array_spread_internal(Parts) ->
+    array_holes(lists:append([case P of
+                                  {spread, V} -> buoy_ref_iterator:to_list_internal(V);
+                                  _ -> spread_part(P)
+                              end || P <- Parts])).
 
 %% {...source} into Target: CopyDataProperties.
 -spec object_spread(term(), term()) -> term().
@@ -879,10 +967,15 @@ primitive_or_fail(R) -> R.
 describe(undefined) -> <<"undefined">>;
 describe(null) -> <<"null">>;
 describe(V) when ?IS_STRING(V) -> text([<<"\"">>, V, <<"\"">>]);
+%% The own data property `name` of a function, read without running a getter or a
+%% Proxy trap, as V8 names a function in its messages.
 describe({'$f', _, _} = F) ->
-    case get(F, <<"name">>) of
-        <<>> -> <<"function">>;
-        Name when ?IS_STRING(Name) -> Name;
+    Own = case buoy_heap:class_of(F) of
+        proxy -> none;
+        _ -> buoy_heap:get_own(F, <<"name">>)
+    end,
+    case Own of
+        {data, Name, _} when ?IS_STRING(Name), Name =/= <<>> -> Name;
         _ -> <<"function">>
     end;
 describe({'$o', _}) -> <<"#<Object>">>;

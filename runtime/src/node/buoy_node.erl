@@ -20,7 +20,7 @@
 -export([linked_binding/2]).
 -export([require/1, is_public/1, binding/1, ensure/0, ready/0, global_get/1, global_set/2, lazy_globals/0]).
 -export([fn/3, object/1, object/2, typed_array/2, string/1, symbol/1, throw_code/3, call/3, primordials/0, private_symbol/1]).
--export([constructor/3, missing_constructor/3, ids/0, mangle/1, from_json/1, not_implemented/2, stubs/2, arg/2, per_isolate_symbols/0, private_symbols/0, context/0, set_loaders/2, loaders/0, compile/1]).
+-export([constructor/3, missing_constructor/3, ids/0, mangle/1, from_json/1, not_implemented/2, stubs/2, arg/2, per_isolate_symbols/0, per_isolate_object/0, private_symbols/0, context/0, set_loaders/2, loaders/0, compile/1]).
 
 %% A stub of a binding is a function that only throws, on purpose.
 -dialyzer({no_return, [not_implemented/2, missing_constructor/3, missing_method/3]}).
@@ -42,6 +42,16 @@
                     <<"internal/bootstrap/switches/does_own_process_state">>,
                     <<"internal/main/buoy">>]).
 
+%% The bootstrap of a worker thread (buoy_binding_worker), as node.cc runs it
+%% for a Worker: the switches of a thread that is not the main one, then
+%% internal/main/worker_thread.
+-define(WORKER_BOOTSTRAP, [<<"internal/bootstrap/node">>,
+                           <<"internal/bootstrap/web/exposed-wildcard">>,
+                           <<"internal/bootstrap/web/exposed-window-or-worker">>,
+                           <<"internal/bootstrap/switches/is_not_main_thread">>,
+                           <<"internal/bootstrap/switches/does_not_own_process_state">>,
+                           <<"internal/main/worker_thread">>]).
+
 -define(PER_CONTEXT, [<<"internal/per_context/primordials">>,
                       <<"internal/per_context/domexception">>,
                       <<"internal/per_context/messageport">>]).
@@ -56,13 +66,14 @@ require(Id) ->
     %% With --expose-internals, the internal ids load too (BuiltinModule.exposeInternals).
     Exposed = is_internal(Id) andalso lists:member(Id, ids())
         andalso lists:member(<<"--expose-internals">>, buoy_node_process:exec_argv()),
-    case is_public(Id) orelse Exposed of
+    BuiltinModule = buoy_heap:get(loader_exports(), <<"BuiltinModule">>),
+    %% An experimental module, such as sqlite, loads once pre-execution allowed it.
+    Allowed = is_public(Id) andalso call_method(BuiltinModule, <<"canBeRequiredByUsers">>, [Id]) =:= true,
+    case Allowed orelse Exposed of
         false ->
             error;
         true ->
-            Loader = loader_exports(),
-            Map = buoy_heap:get(buoy_heap:get(Loader, <<"BuiltinModule">>), <<"map">>),
-            Module = call_method(Map, <<"get">>, [Id]),
+            Module = call_method(buoy_heap:get(BuiltinModule, <<"map">>), <<"get">>, [Id]),
             {ok, call_method(Module, <<"compileForPublicLoader">>, [])}
     end.
 
@@ -123,7 +134,7 @@ boot() ->
     persistent_term:put({buoy_node, debug}, os:getenv("BUOY_NODE_DEBUG") =/= false),
     Primordials = buoy_heap:object(null, []),
     erlang:put(?PRIMORDIALS, Primordials),
-    Private = symbols(private_symbol_names()),
+    Private = buoy_heap:object(null, [{N, buoy_heap:private_symbol(D)} || {N, D} <- private_symbol_names()]),
     PerIsolate = symbols(per_isolate_symbol_names()),
     erlang:put(?SYMBOLS, {Private, PerIsolate}),
     Context = object([{<<"primordials">>, Primordials}]),
@@ -137,12 +148,68 @@ boot() ->
     GetInternal = fn(<<"getInternalBinding">>, 1, fun(_, Args) -> binding(buoy_ref_realm:arg(1, Args)) end),
     run(<<"internal/bootstrap/realm">>, [Process, GetLinked, GetInternal, Primordials]),
     {InternalBinding, Require} = erlang:get(?LOADERS),
-    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- ?BOOTSTRAP, is_compiled(Id)],
+    Bootstrap = case buoy_binding_worker:is_worker() of
+        true -> ?WORKER_BOOTSTRAP;
+        false -> ?BOOTSTRAP ++ repl_main()
+    end,
+    Replaced = replaced_globals(),
+    [run(Id, [Process, Require, InternalBinding, Primordials]) || Id <- Bootstrap, is_compiled(Id)],
+    [restore_global(Name, Property) || {Name, Property} <- Replaced],
+    %% A global that the bootstrap did not define, such as Storage under
+    %% --no-webstorage, is not defined, as in Node.
+    [buoy_heap:delete_property({'$o', 'globalThis'}, Name) || Name <- lazy_globals(), is_lazy(Name)],
     erlang:put(?STATE, ready),
+    keep_engine_timers(),
     debug("bootstrap done~n", []),
     ok.
 
+%% A timer that the program set before the bootstrap is the engine's, whose
+%% id Node's clearTimeout and clearInterval do not know: while one is live,
+%% the globals clear an engine id before they call Node's.
+%% shortcut: a Node timer's number that equals a live engine id clears both;
+%% move the engine timers into lib/timers if a program hits it.
+keep_engine_timers() ->
+    G = {'$o', 'globalThis'},
+    buoy_jobs:has_timers() andalso
+        lists:foreach(fun(Name) ->
+            Clear = buoy_heap:get(G, Name),
+            buoy_heap:set(G, Name, fn(Name, 1, fun(This, Args) ->
+                buoy_jobs:clear_timer(buoy_ref_realm:arg(1, Args)),
+                buoy_heap:call(Clear, This, Args)
+            end))
+        end, [<<"clearTimeout">>, <<"clearInterval">>]),
+    ok.
+
 is_compiled(Id) -> lists:member(Id, (index()):ids()).
+
+%% The CLI starts the REPL with -buoy_repl, where node.cc picks
+%% internal/main/repl as the main script.
+repl_main() ->
+    case init:get_argument(buoy_repl) of
+        error -> [];
+        _ -> [<<"internal/main/repl">>]
+    end.
+
+%% The engine's globals, such as console, that the program replaced or
+%% deleted before the bootstrap ran. Node defines its globals before the
+%% program runs, so the bootstrap must not overwrite them.
+replaced_globals() ->
+    G = buoy_ref_realm:global_object(),
+    [{Name, Property} || {Name, Initial} <- maps:to_list(persistent_term:get({buoy_ref_realm, globals}, #{})),
+                         Property <- [buoy_heap:get_own(G, Name)],
+                         not is_initial(Property, buoy_ref_realm:current(Initial))].
+
+is_initial({data, Value, _}, Value) -> true;
+is_initial(_, _) -> false.
+
+restore_global(Name, none) ->
+    buoy_heap:delete_property(buoy_ref_realm:global_object(), Name);
+restore_global(Name, {data, Value, Bits}) ->
+    buoy_heap:define(buoy_ref_realm:global_object(), Name,
+                     #{value => Value, writable => Bits band 1 =/= 0, enumerable => Bits band 2 =/= 0, configurable => Bits band 4 =/= 0});
+restore_global(Name, {accessor, Get, Set, Bits}) ->
+    buoy_heap:define(buoy_ref_realm:global_object(), Name,
+                     #{get => Get, set => Set, enumerable => Bits band 2 =/= 0, configurable => Bits band 4 =/= 0}).
 
 %% Calls the function around the code of the built-in Id with Args.
 run(Id, Args) ->
@@ -206,6 +273,12 @@ global_get(Name) ->
             buoy_heap:get(G, Name)
     end.
 
+is_lazy(Name) ->
+    case buoy_heap:get_own({'$o', 'globalThis'}, Name) of
+        {accessor, {'$f', {builtin, <<"node:", _/binary>>}, _}, _, _} -> true;
+        _ -> false
+    end.
+
 %% The setter of a lazy global: the program's value replaces it.
 -spec global_set(binary(), term()) -> undefined.
 global_set(Name, Value) ->
@@ -247,15 +320,21 @@ binding(Name) ->
 %% Gives Binding a stub for each function and class that src/ of Node sets on
 %% it and that Buoy lacks, and each class of Binding a stub for each method of
 %% its prototype that it lacks, so a call of missing native code names itself.
+%% A member that Node leaves out with the linked OpenSSL gets no stub.
 complete(Name, Binding) ->
-    [complete(Name, Binding, Key, Kind) || {Key, Kind} <- buoy_node_manifest:members(Name)],
+    [complete(Name, Binding, Key, Kind) || {Key, Kind} <- buoy_node_manifest:members(Name), is_built(Name, Key)],
     ok.
+
+is_built(<<"crypto">>, Key) -> buoy_crypto:is_built(Key);
+is_built(_, _) -> true.
 
 complete(Name, Binding, Key, Kind) ->
     case {buoy_heap:has_own(Binding, Key), Kind} of
         {false, function} -> stub(Binding, Key, not_implemented(Name, Key), true);
         {false, {class, _}} -> stub(Binding, Key, missing_constructor(Name, Key, 0), true);
-        {true, {class, Methods}} -> complete_prototype(Name, Key, buoy_heap:get(buoy_heap:get(Binding, Key), <<"prototype">>), Methods);
+        {true, {class, Methods}} ->
+            Built = [M || M <- Methods, is_built(Name, <<Key/binary, ".", M/binary>>)],
+            complete_prototype(Name, Key, buoy_heap:get(buoy_heap:get(Binding, Key), <<"prototype">>), Built);
         {true, function} -> ok
     end.
 
@@ -405,6 +484,13 @@ symbols(Names) -> buoy_heap:object(null, [{N, symbol(D)} || {N, D} <- Names]).
 per_isolate_symbols() ->
     {_, PerIsolate} = erlang:get(?SYMBOLS),
     [{D, buoy_heap:get(PerIsolate, N)} || {N, D} <- per_isolate_symbol_names()].
+
+%% The per-isolate symbols, keyed by their names, as the per-context scripts
+%% get them.
+-spec per_isolate_object() -> term().
+per_isolate_object() ->
+    {_, PerIsolate} = erlang:get(?SYMBOLS),
+    PerIsolate.
 
 %% The private symbols, keyed by their names, as the util binding has them.
 -spec private_symbols() -> term().

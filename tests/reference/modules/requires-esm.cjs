@@ -7,4 +7,5 @@ module.exports = {
   cached: again === require("./legacy-helper.cjs"),
   resolved: require.resolve("./data.json").endsWith("modules/data.json"),
   inCache: Object.keys(require.cache).some((key) => key.endsWith("legacy-helper.cjs")),
+  nested: require("./esm-imports-esm.mjs").nested,
 };

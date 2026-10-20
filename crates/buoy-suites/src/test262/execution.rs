@@ -112,6 +112,15 @@ pub(super) fn record(test: &Test, config: &Config, context: &Context) -> Record 
     let mut details = Vec::new();
     let mut blockers = BTreeSet::new();
     for mode in &test.modes {
+        if let Some(skip) = config
+            .skip
+            .iter()
+            .find(|skip| skip.applies_to(test, mode.name()))
+        {
+            outcomes.insert(mode.name().to_owned(), Outcome::Skip);
+            details.push(format!("{}: {}", mode.name(), skip.reason));
+            continue;
+        }
         let started = Instant::now();
         let execution = execute(test, *mode, context);
         let outcome = classify(&execution.facts);

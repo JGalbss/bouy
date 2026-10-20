@@ -181,3 +181,22 @@ collects_between_jobs_test() ->
             ?assert(Size < 1000)
     after 5000 -> erlang:error(timeout)
     end.
+
+%% A dropped ArrayBuffer is collected once the realm allocated enough buffer
+%% bytes, though it is one id: 8 buffers of 16 MiB pass ?EXTERNAL_GC, and
+%% the collection frees their data.
+collects_dropped_buffers_test() ->
+    Self = self(),
+    spawn(fun() ->
+                  buoy_jobs:run_main(fun() ->
+                                             [buoy_ref_buffer:allocate(16 bsl 20, none) || _ <- lists:seq(1, 8)],
+                                             timeout(fun() -> ok end, 1)
+                                     end),
+                  Self ! {done, buoy_heap:gc_stats(), buoy_heap:external()}
+          end),
+    receive
+        {done, #{runs := Runs}, External} ->
+            ?assert(Runs >= 1),
+            ?assertEqual(0, External)
+    after 5000 -> erlang:error(timeout)
+    end.

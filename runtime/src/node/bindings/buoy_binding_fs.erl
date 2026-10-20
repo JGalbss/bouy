@@ -10,10 +10,10 @@
 %% A file descriptor is the OS descriptor of a raw file that the realm owns;
 %% 0, 1, and 2 are the standard streams of the VM.
 %%
-%% shortcut: prim_file has no sub-second times, no statfs, and no call that
-%% changes a symlink itself, so stats carry whole seconds, and statfs and the
-%% calls on a symlink run a tool (df, chmod, chown, touch). A NIF of
-%% crates/buoy-nif removes these limits.
+%% prim_file has no sub-second times, no statfs, and no call that changes a
+%% symlink itself, so stat, statfs, access, and the calls that change modes,
+%% owners, and times run the NIFs of buoy_native, which make the system
+%% calls that libuv makes.
 -module(buoy_binding_fs).
 
 -include_lib("kernel/include/file.hrl").
@@ -21,12 +21,19 @@
 
 -compile({no_auto_import, [link/1, unlink/1]}).
 
--export([binding/0, uv_error/3, uv_error/4, uv_errno/1, errno_exception/4, strerror/1, request/2, path/1, encoded/2,
-         read_info/2, dirent_type/1, stat_array/3, stat_pair/3, int/1, inherited_file/1]).
+-export([binding/0, uv_error/3, uv_error/4, uv_error/5, uv_errno/1, errno_exception/4, strerror/1, request/2, path/1,
+         encoded/2, read_info/2, read_stats/2, read_dir/1, result/1, reason/1, stat_array/3, stat_pair/3, int/1,
+         inherited_file/1]).
+-export([put_bytes/2]).
+-export_type([stats/0]).
+
+%% Node's stat fields, as buoy_native:fs_stat/2 gives them.
+-type stats() :: [integer()].
 
 -define(FDS, '$buoy_node_fds').
 -define(STATE, {?MODULE, state}).
 -define(FD_SLOT, {'#', ?MODULE, <<"fd">>}).
+-define(READ_SLOT, {'#', ?MODULE, <<"read">>}).
 -define(STAT_FIELDS, 18).
 %% The open flags of this OS, as the constants binding reports them.
 -define(O_WRONLY, 1).
@@ -42,10 +49,12 @@
 -define(O_SYMLINK, flag(<<"O_SYMLINK">>)).
 -define(COPYFILE_EXCL, 1).
 -define(COPYFILE_FICLONE_FORCE, 4).
--define(S_IFMT, 8#170000).
 
 -spec binding() -> term().
 binding() ->
+    %% The NIF library ignores SIGXFSZ as it loads, as Node's PlatformInit
+    %% does, so it loads before the first write.
+    _ = code:ensure_loaded(buoy_native),
     Promises = buoy_node:symbol(<<"fs_use_promises_symbol">>),
     Stats = buoy_node:typed_array(<<"Float64Array">>, 2 * ?STAT_FIELDS),
     BigStats = buoy_node:typed_array(<<"BigInt64Array">>, 2 * ?STAT_FIELDS),
@@ -278,8 +287,14 @@ uv_error(Reason, Syscall, Path) -> uv_error(Reason, Syscall, Path, undefined).
 %% with errno, code, syscall, path, and dest.
 -spec uv_error(atom(), binary(), binary() | undefined, binary() | undefined) -> no_return().
 uv_error(Reason, Syscall, Path, Dest) ->
+    uv_error(Reason, Syscall, Path, Dest, fun(Message) -> Message end).
+
+%% A UVException whose message Detail makes from the message of libuv.
+-spec uv_error(atom(), binary(), binary() | undefined, binary() | undefined, fun((binary()) -> iodata())) ->
+    no_return().
+uv_error(Reason, Syscall, Path, Dest, Detail) ->
     {Errno, Code, Message} = errno(Reason),
-    Text = iolist_to_binary([Code, <<": ">>, Message, <<", ">>, Syscall,
+    Text = iolist_to_binary([Code, <<": ">>, Detail(Message), <<", ">>, Syscall,
                              case Path of undefined -> <<>>; _ -> [<<" '">>, Path, <<"'">>] end,
                              case Dest of undefined -> <<>>; _ -> [<<" -> '">>, Dest, <<"'">>] end]),
     Js = buoy_ref_string:from_utf8(Text),
@@ -374,6 +389,12 @@ open_path(Path, Flags, Mode) ->
         false -> {open_file(Path, Flags, Access, new_mode(Path, Create, Mode)), Access}
     end.
 
+is_symlink(Path) ->
+    case prim_file:read_link_info(Path) of
+        {ok, #file_info{type = symlink}} -> true;
+        _ -> false
+    end.
+
 %% The mode that an open which creates Path must set: keep when the file
 %% exists or prim_file creates it with that mode.
 new_mode(Path, true, Mode) ->
@@ -417,7 +438,7 @@ open_file(Path, Flags, Access, NewMode) ->
         {error, Reason} -> uv_error(Reason, <<"open">>, Path)
     end,
     Truncate andalso Access =/= read andalso Base =/= [write] andalso file:truncate(File),
-    NewMode =:= keep orelse change(Path, #file_info{mode = NewMode}),
+    NewMode =:= keep orelse buoy_native:fs_chmod(Path, NewMode, true),
     File.
 
 %% The reason that opening a missing path without O_CREAT fails.
@@ -433,7 +454,7 @@ check_missing(Path) ->
 created(Path, Mode, Default) ->
     case created_mode(Mode, Default) of
         keep -> true;
-        Wanted -> change(Path, #file_info{mode = Wanted}), true
+        Wanted -> buoy_native:fs_chmod(Path, Wanted, true), true
     end.
 
 %% The mode of a new file or directory after the umask of the realm, or keep
@@ -458,16 +479,23 @@ close(Args) ->
             check(file:close(File), <<"close">>, undefined),
             undefined;
         _ when Fd >= 0, Fd =< 2 ->
-            undefined;
+            case buoy_node_stdio:close(Fd) of
+                ok -> undefined;
+                error -> uv_error(ebadf, <<"close">>, undefined)
+            end;
         _ ->
             uv_error(ebadf, <<"close">>, undefined)
     end.
 
 %% A FileHandle wraps a descriptor of the realm. Its close() returns a
-%% promise; closeSync() and releaseFD() act now.
+%% promise; closeSync() and releaseFD() act now. It is a StreamBase that
+%% reads length bytes from offset, as new FileHandle(fd, offset, length)
+%% asks; -1 reads from the current position to the end.
 file_handle_class() ->
     Class = buoy_node:constructor(<<"FileHandle">>, 0, fun(This, Args) ->
         buoy_heap:private_put(This, ?FD_SLOT, int(buoy_node:arg(1, Args))),
+        Range = [case buoy_node:arg(I, Args) of N when is_number(N) -> int(N); _ -> -1 end || I <- [2, 3]],
+        buoy_heap:private_put(This, ?READ_SLOT, maps:from_list(lists:zip([offset, length], Range))),
         undefined
     end),
     Proto = buoy_heap:get(Class, <<"prototype">>),
@@ -478,9 +506,74 @@ file_handle_class() ->
                {<<"getAsyncId">>, fun(_, _) -> -1 end}],
     [buoy_heap:define(Proto, Name, #{value => buoy_node:fn(Name, 0, Fun), writable => true, enumerable => false,
                                      configurable => true}) || {Name, Fun} <- Methods],
-    buoy_heap:define(Proto, <<"fd">>, #{get => buoy_node:fn(<<"get fd">>, 0, fun(This, _) -> handle_fd(This, keep) end),
-                                       set => undefined, enumerable => false, configurable => true}),
+    buoy_stream_base:methods(Proto, #{
+        write => fun(_, _, _) -> uv_errno(enosys) end,
+        shutdown => fun(This, _) -> handle_close_sync(This), 1 end,
+        read_start => fun handle_read_start/1,
+        read_stop => fun(This) -> read_state(This, fun(S) -> S#{reading => false} end), 0 end,
+        fd => fun(This) -> handle_fd(This, keep) end}),
     Class.
+
+%% FileHandle::ReadStart: one read of at most 64 KiB in flight, which
+%% completes on a later turn of the loop as uv_fs_read calls back, and
+%% another after it while the handle is reading.
+handle_read_start(This) ->
+    handle_read_start(This, handle_fd(This, keep)).
+
+handle_read_start(_, -1) ->
+    -4095;
+handle_read_start(This, Fd) ->
+    case read_state(This, fun(S) -> S#{reading => true} end) of
+        #{busy := true} -> 0;
+        #{length := 0} -> buoy_stream_base:emit_read(This, eof), 0;
+        #{offset := At, length := Length} ->
+            read_state(This, fun(S) -> S#{busy => true} end),
+            Count = case Length of L when L >= 0, L < 65536 -> L; _ -> 65536 end,
+            buoy_node_loop:defer(fun() -> handle_read_done(This, handle_read(Fd, Count, At)) end),
+            0
+    end.
+
+handle_read(Fd, Count, At) ->
+    Result = case fds() of
+        #{Fd := {_, _, write}} -> {error, ebadf};
+        #{Fd := {File, _, _}} when At >= 0 -> file:pread(File, At, Count);
+        #{Fd := {File, _, _}} -> file:read(File, Count);
+        _ -> {error, ebadf}
+    end,
+    case Result of
+        {ok, Bytes} -> Bytes;
+        eof -> <<>>;
+        {error, Reason} -> uv_errno(Reason)
+    end.
+
+handle_read_done(This, Result) ->
+    Emit = case Result of
+        <<>> -> eof;
+        _ -> Result
+    end,
+    Size = case Emit of
+        Bytes when is_binary(Bytes) -> byte_size(Bytes);
+        _ -> 0
+    end,
+    read_state(This, fun(#{offset := At, length := Length} = S) ->
+        S#{busy => false, offset => if At >= 0 -> At + Size; true -> At end,
+           length => if Length >= 0 -> Length - Size; true -> Length end}
+    end),
+    buoy_stream_base:emit_read(This, Emit),
+    case read_state(This, fun(S) -> S end) of
+        #{reading := true} -> handle_read_start(This);
+        _ -> 0
+    end.
+
+%% The read state of a FileHandle after Update.
+read_state(This, Update) ->
+    Before = case buoy_heap:private_find(This, ?READ_SLOT) of
+        {ok, S} -> S;
+        error -> #{offset => -1, length => -1}
+    end,
+    After = Update(maps:merge(#{reading => false, busy => false}, Before)),
+    buoy_heap:private_put(This, ?READ_SLOT, After),
+    After.
 
 open_file_handle(Args) ->
     Fd = open(Args),
@@ -588,6 +681,26 @@ write_string(Args) ->
 write_bytes(1, Bytes, _) -> put_bytes(standard_io, Bytes);
 write_bytes(2, Bytes, _) -> put_bytes(buoy_ref:stderr(), Bytes);
 write_bytes(Fd, Bytes, Position) ->
+    case fds() of
+        #{Fd := _} -> write_file(Fd, Bytes, Position);
+        _ -> write_socket(Fd, Bytes)
+    end.
+
+%% A descriptor that a socket of the VM owns, such as the IPC channel's
+%% (process.channel.fd): write(2) on it sends, as it does in Node.
+write_socket(Fd, Bytes) ->
+    case [S || S <- socket:which_sockets(), socket:getopt(S, {otp, fd}) =:= {ok, Fd}] of
+        [Socket | _] ->
+            case socket:send(Socket, Bytes) of
+                ok -> byte_size(Bytes);
+                {error, {Reason, _}} -> uv_error(Reason, <<"write">>, undefined);
+                {error, Reason} -> uv_error(Reason, <<"write">>, undefined)
+            end;
+        [] ->
+            uv_error(ebadf, <<"write">>, undefined)
+    end.
+
+write_file(Fd, Bytes, Position) ->
     {File, _, Access} = file(Fd, <<"write">>),
     Access =:= read andalso uv_error(ebadf, <<"write">>, undefined),
     Result = case position(Position) of
@@ -598,14 +711,16 @@ write_bytes(Fd, Bytes, Position) ->
     byte_size(Bytes).
 
 %% The device is in unicode mode: valid UTF-8 goes through as text, and
-%% other bytes as latin1 characters in a latin1 window.
+%% other bytes as latin1 characters in a latin1 window. io:put_chars reads a
+%% binary as UTF-8, so the window writes with file:write, which sends latin1.
+-spec put_bytes(io:device(), binary()) -> non_neg_integer().
 put_bytes(Device, Bytes) ->
     case unicode:characters_to_list(Bytes, utf8) of
         L when is_list(L) ->
             io:put_chars(Device, Bytes);
         _ ->
             ok = io:setopts(Device, [{encoding, latin1}]),
-            io:put_chars(Device, Bytes),
+            ok = file:write(Device, Bytes),
             ok = io:setopts(Device, [{encoding, unicode}])
     end,
     byte_size(Bytes).
@@ -771,6 +886,20 @@ fdatasync(Args) ->
 read_info(Path, follow) -> prim_file:read_file_info(Path, [{time, posix}]);
 read_info(Path, nofollow) -> prim_file:read_link_info(Path, [{time, posix}]).
 
+%% The stat fields of Path, following symlinks or not.
+-spec read_stats(binary(), follow | nofollow) -> {ok, stats()} | {error, atom()}.
+read_stats(Path, Follow) -> result(buoy_native:fs_stat(Path, Follow =:= follow)).
+
+%% A result of buoy_native with the reason of prim_file for its errno.
+-spec result({ok, term()} | {error, integer()} | integer()) -> ok | {ok, term()} | {error, atom()}.
+result({ok, Value}) -> {ok, Value};
+result({error, Code}) -> {error, reason(Code)};
+result(0) -> ok;
+result(Code) -> {error, reason(Code)}.
+
+-spec reason(integer()) -> atom().
+reason(Code) -> binary_to_atom(string:lowercase(buoy_binding_uv:name(Code))).
+
 %% stat(path, bigint, req, throwIfNoEntry): a missing path gives undefined
 %% when throwIfNoEntry is false.
 stat(Args) -> stat_call(Args, <<"stat">>, follow, [enoent, enotdir]).
@@ -780,9 +909,9 @@ lstat(Args) -> stat_call(Args, <<"lstat">>, nofollow, [enoent]).
 stat_call(Args, Syscall, Follow, Missing) ->
     [Target, BigInt, _Req, ThrowIfNoEntry] = [buoy_node:arg(I, Args) || I <- lists:seq(1, 4)],
     Path = path(Target),
-    case read_info(Path, Follow) of
-        {ok, Info} ->
-            {stats, Info, buoy_ref:truthy(BigInt)};
+    case read_stats(Path, Follow) of
+        {ok, Stats} ->
+            {stats, Stats, buoy_ref:truthy(BigInt)};
         {error, Reason} ->
             case ThrowIfNoEntry =:= false andalso lists:member(Reason, Missing) of
                 true -> undefined;
@@ -793,47 +922,19 @@ stat_call(Args, Syscall, Follow, Missing) ->
 fstat(Args) ->
     Fd = fd(buoy_node:arg(1, Args)),
     BigInt = buoy_ref:truthy(buoy_node:arg(2, Args)),
-    Info = case fds() of
-        #{Fd := {_, Path, link}} ->
-            check(read_info(Path, nofollow), <<"fstat">>, undefined);
-        #{Fd := {File, _, _}} ->
-            check(prim_file:read_handle_info(File, [{time, posix}]), <<"fstat">>, undefined);
-        _ when Fd >= 0, Fd =< 2 ->
-            #file_info{type = other, mode = 8#10600, size = 0, links = 1, atime = 0, mtime = 0, ctime = 0,
-                       inode = 0, uid = 0, gid = 0, major_device = 0, minor_device = 0};
-        _ ->
-            uv_error(ebadf, <<"fstat">>, undefined)
+    Stats = case fds() of
+        #{Fd := {_, Path, link}} -> read_stats(Path, nofollow);
+        #{Fd := {File, _, _}} -> result(buoy_native:fs_fstat(os_fd(File)));
+        _ when Fd >= 0, Fd =< 2 -> result(buoy_native:fs_fstat(Fd));
+        _ -> {error, ebadf}
     end,
-    {stats, Info, BigInt}.
+    {stats, check(Stats, <<"fstat">>, undefined), BigInt}.
 
 %% statfs(path, bigint): type, bsize, blocks, bfree, bavail, files, and
 %% ffree of the file system that holds path.
 statfs(Args) ->
     Path = path(buoy_node:arg(1, Args)),
-    check(read_info(Path, follow), <<"statfs">>, Path),
-    {statfs, df(absolute(Path)), buoy_ref:truthy(buoy_node:arg(2, Args))}.
-
-%% shortcut: prim_file has no statfs(2), so this runs /bin/df, one process
-%% for each call, as disksup of os_mon reads the space of a disk. df gives
-%% no file system type, which stays 0, and counts 1024-byte blocks, which
-%% this gives in 4096-byte ones. A statfs NIF of crates/buoy-nif replaces it.
-df(Path) ->
-    case os:type() of
-        {unix, darwin} ->
-            [KBlocks, _Used, KAvail, _Capacity, IUsed, IFree | _] = df_row(["-k", "-i", Path]),
-            [0, 4096, KBlocks div 4, KAvail div 4, KAvail div 4, IUsed + IFree, IFree];
-        _ ->
-            [KBlocks, KUsed, KAvail | _] = df_row(["-P", "-k", Path]),
-            [Inodes, _, IFree | _] = df_row(["-P", "-i", Path]),
-            [0, 4096, KBlocks div 4, (KBlocks - KUsed) div 4, KAvail div 4, Inodes, IFree]
-    end.
-
-%% The numbers of the row of df for one path, from a directory that exists.
-df_row(Args) ->
-    {_, Output} = run_tool("df", Args),
-    [_Header, Row | _] = binary:split(Output, <<"\n">>, [global]),
-    [binary_to_integer(T) || T <- binary:split(Row, [<<" ">>, <<"\t">>, <<"%">>], [global, trim_all]),
-                             re:run(T, <<"^[0-9]+$">>) =/= nomatch].
+    {statfs, check(result(buoy_native:fs_statfs(Path)), <<"statfs">>, Path), buoy_ref:truthy(buoy_node:arg(2, Args))}.
 
 absolute(Path) ->
     case {filename:pathtype(Path), prim_file:get_cwd()} of
@@ -844,40 +945,33 @@ absolute(Path) ->
 
 %% Fills a stat array in Node's field order: the shared array of the
 %% binding, or a fresh one.
--spec stat_array(#file_info{}, boolean(), global | fresh) -> term().
-stat_array(Info, BigInt, Where) ->
+-spec stat_array(stats(), boolean(), global | fresh) -> term().
+stat_array(Stats, BigInt, Where) ->
     Array = case {Where, BigInt} of
         {global, true} -> maps:get(bigint_stats, erlang:get(?STATE));
         {global, false} -> maps:get(stats, erlang:get(?STATE));
         {fresh, true} -> buoy_node:typed_array(<<"BigInt64Array">>, 2 * ?STAT_FIELDS);
         {fresh, false} -> buoy_node:typed_array(<<"Float64Array">>, 2 * ?STAT_FIELDS)
     end,
-    fill_stats(Array, 0, Info, BigInt),
+    fill_stats(Array, 0, Stats, BigInt),
     Array.
 
 %% The shared stat array with Curr in its first half and Prev in its
 %% second, as a StatWatcher reports them.
--spec stat_pair(#file_info{}, #file_info{}, boolean()) -> term().
+-spec stat_pair(stats(), stats(), boolean()) -> term().
 stat_pair(Curr, Prev, BigInt) ->
     Array = stat_array(Curr, BigInt, global),
     fill_stats(Array, ?STAT_FIELDS, Prev, BigInt),
     Array.
 
-fill_stats(Array, Offset, Info, BigInt) ->
-    [buoy_heap:set(Array, Offset + I, field(V, BigInt)) || {I, V} <- lists:enumerate(0, stat_fields(Info))],
+%% An empty list stands for the zeros of a failed stat.
+fill_stats(Array, Offset, Stats, BigInt) ->
+    Fields = case Stats of
+        [] -> lists:duplicate(?STAT_FIELDS, 0);
+        _ -> Stats
+    end,
+    [buoy_heap:set(Array, Offset + I, field(V, BigInt)) || {I, V} <- lists:enumerate(0, Fields)],
     ok.
-
-%% dev, mode, nlink, uid, gid, rdev, blksize, ino, size, blocks, and the
-%% seconds and nanoseconds of atime, mtime, ctime, and birthtime. prim_file
-%% gives no blksize, blocks, or birthtime: blocks count the 4096-byte blocks
-%% of the size, and the birthtime is the earlier of mtime and ctime.
-stat_fields(#file_info{size = undefined}) ->
-    lists:duplicate(?STAT_FIELDS, 0);
-stat_fields(#file_info{} = I) ->
-    Birth = min(I#file_info.mtime, I#file_info.ctime),
-    [I#file_info.major_device, I#file_info.mode, I#file_info.links, I#file_info.uid, I#file_info.gid,
-     I#file_info.minor_device, 4096, I#file_info.inode, I#file_info.size, (I#file_info.size + 4095) div 4096 * 8,
-     I#file_info.atime, 0, I#file_info.mtime, 0, I#file_info.ctime, 0, Birth, 0].
 
 field(V, true) when is_integer(V) -> {'$bigint', V};
 field(_, true) -> {'$bigint', 0};
@@ -1092,34 +1186,16 @@ rename(Args) ->
 readdir(Args) ->
     [Target, Encoding, WithTypes] = [buoy_node:arg(I, Args) || I <- lists:seq(1, 3)],
     Path = path(Target),
-    Names = lists:sort([name(N) || N <- check(prim_file:list_dir_all(Path), <<"scandir">>, Path)]),
+    {Names, Types} = lists:unzip(lists:sort(check(read_dir(Path), <<"scandir">>, Path))),
     Js = [encoded(N, Encoding) || N <- Names],
     case buoy_ref:truthy(WithTypes) of
-        false ->
-            buoy_heap:new_array(Js);
-        true ->
-            Types = [dirent_type(filename:join(Path, N)) || N <- Names],
-            buoy_heap:new_array([buoy_heap:new_array(Js), buoy_heap:new_array(Types)])
+        false -> buoy_heap:new_array(Js);
+        true -> buoy_heap:new_array([buoy_heap:new_array(Js), buoy_heap:new_array(Types)])
     end.
 
-%% The UV_DIRENT_* type of a directory entry, from the type bits of its mode.
--spec dirent_type(binary()) -> 0..7.
-dirent_type(Path) ->
-    case prim_file:read_link_info(Path) of
-        {ok, #file_info{mode = Mode}} when is_integer(Mode) ->
-            case Mode band ?S_IFMT of
-                8#100000 -> 1;
-                8#040000 -> 2;
-                8#120000 -> 3;
-                8#010000 -> 4;
-                8#140000 -> 5;
-                8#020000 -> 6;
-                8#060000 -> 7;
-                _ -> 0
-            end;
-        _ ->
-            0
-    end.
+%% The entries of a directory with their UV_DIRENT_* types, in its order.
+-spec read_dir(binary()) -> {ok, [{binary(), 0..7}]} | {error, atom()}.
+read_dir(Path) -> result(buoy_native:fs_readdir(Path)).
 
 readlink(Args) ->
     Path = path(buoy_node:arg(1, Args)),
@@ -1199,7 +1275,7 @@ copy_to(Source, To, Exclusive) ->
             Copied = file:copy(Source, Dest),
             file:close(Dest),
             case Copied of
-                {ok, _} -> prim_file:write_file_info(To, #file_info{mode = Mode band 8#7777});
+                {ok, _} -> result(buoy_native:fs_chmod(To, Mode band 8#7777, true));
                 Error -> Error
             end;
         Error ->
@@ -1208,155 +1284,56 @@ copy_to(Source, To, Exclusive) ->
 
 chmod(Args) ->
     Path = path(buoy_node:arg(1, Args)),
-    check(change(Path, #file_info{mode = int(buoy_node:arg(2, Args))}), <<"chmod">>, Path),
+    check(result(buoy_native:fs_chmod(Path, int(buoy_node:arg(2, Args)), true)), <<"chmod">>, Path),
     undefined.
 
+%% A descriptor of O_SYMLINK acts on the symlink, as lchmod(3) does.
 fchmod(Args) ->
     Mode = int(buoy_node:arg(2, Args)),
-    case file(fd(buoy_node:arg(1, Args)), <<"fchmod">>) of
-        {_, Path, link} -> tool("chmod", ["-h", integer_to_list(Mode band 8#7777, 8), Path], <<"fchmod">>, undefined);
-        {_, Path, _} -> check(change(Path, #file_info{mode = Mode}), <<"fchmod">>, undefined)
+    Result = case file(fd(buoy_node:arg(1, Args)), <<"fchmod">>) of
+        {_, Path, link} -> buoy_native:fs_chmod(Path, Mode, false);
+        {File, _, _} -> buoy_native:fs_fchmod(os_fd(File), Mode)
     end,
+    check(result(Result), <<"fchmod">>, undefined),
     undefined.
 
-chown(Args) ->
+chown(Args) -> set_owner(Args, <<"chown">>, true).
+
+lchown(Args) -> set_owner(Args, <<"lchown">>, false).
+
+set_owner(Args, Syscall, Follow) ->
     Path = path(buoy_node:arg(1, Args)),
-    set_owner(Path, Args, <<"chown">>, Path).
+    [Uid, Gid] = [int(buoy_node:arg(I, Args)) || I <- [2, 3]],
+    check(result(buoy_native:fs_chown(Path, Uid, Gid, Follow)), Syscall, Path),
+    undefined.
 
 fchown(Args) ->
-    case file(fd(buoy_node:arg(1, Args)), <<"fchown">>) of
-        {_, Path, link} -> link_owner(Path, Args, <<"fchown">>, undefined);
-        {_, Path, _} -> set_owner(Path, Args, <<"fchown">>, undefined)
-    end.
-
-lchown(Args) ->
-    Path = path(buoy_node:arg(1, Args)),
-    case is_symlink(Path) of
-        true -> link_owner(Path, Args, <<"lchown">>, Path);
-        false -> set_owner(Path, Args, <<"lchown">>, Path)
-    end.
-
-%% chown -h, with -1 as the owner that the symlink has.
-link_owner(Path, Args, Syscall, ErrorPath) ->
-    #file_info{uid = OldUid, gid = OldGid} = check(prim_file:read_link_info(Path), Syscall, ErrorPath),
-    Id = fun(V, Old) ->
-        case owner_id(V) of
-            -1 -> integer_to_list(Old);
-            N -> integer_to_list(N)
-        end
+    [Uid, Gid] = [int(buoy_node:arg(I, Args)) || I <- [2, 3]],
+    Result = case file(fd(buoy_node:arg(1, Args)), <<"fchown">>) of
+        {_, Path, link} -> buoy_native:fs_chown(Path, Uid, Gid, false);
+        {File, _, _} -> buoy_native:fs_fchown(os_fd(File), Uid, Gid)
     end,
-    tool("chown", ["-h", Id(buoy_node:arg(2, Args), OldUid) ++ ":" ++ Id(buoy_node:arg(3, Args), OldGid), Path],
-         Syscall, ErrorPath),
+    check(result(Result), <<"fchown">>, undefined),
     undefined.
 
-set_owner(Path, Args, Syscall, ErrorPath) ->
-    Info = #file_info{uid = owner_id(buoy_node:arg(2, Args)), gid = owner_id(buoy_node:arg(3, Args))},
-    check(change(Path, Info), Syscall, ErrorPath),
-    undefined.
+%% The times are seconds, which libuv keeps to the microsecond.
+utimes(Args) -> set_times(Args, <<"utime">>, true).
 
-%% prim_file:write_file_info sets atime and mtime too, to now when the
-%% record leaves them undefined, so a change of mode or owner passes the
-%% current times back; they keep whole seconds.
--spec change(binary(), #file_info{}) -> ok | {error, atom()}.
-change(Path, Change) ->
-    case prim_file:read_file_info(Path, [{time, posix}]) of
-        {ok, #file_info{atime = A, mtime = M}} ->
-            prim_file:write_file_info(Path, Change#file_info{atime = A, mtime = M}, [{time, posix}]);
-        Error ->
-            Error
-    end.
+lutimes(Args) -> set_times(Args, <<"lutime">>, false).
 
-%% -1, or 2^32 - 1, keeps the owner, as chown(2) reads (uid_t)-1.
-owner_id(V) ->
-    case int(V) of
-        16#FFFFFFFF -> -1;
-        N -> N
-    end.
-
-is_symlink(Path) ->
-    case prim_file:read_link_info(Path) of
-        {ok, #file_info{type = symlink}} -> true;
-        _ -> false
-    end.
-
-utimes(Args) ->
+set_times(Args, Syscall, Follow) ->
     Path = path(buoy_node:arg(1, Args)),
-    set_times(Path, Args, <<"utime">>, Path).
+    [Atime, Mtime] = [buoy_ref:to_number(buoy_node:arg(I, Args)) || I <- [2, 3]],
+    check(result(buoy_native:fs_utimes(Path, Atime, Mtime, Follow)), Syscall, Path),
+    undefined.
 
 futimes(Args) ->
-    case file(fd(buoy_node:arg(1, Args)), <<"futime">>) of
-        {_, Path, link} -> link_times(Path, Args, <<"futime">>, undefined);
-        {_, Path, _} -> set_times(Path, Args, <<"futime">>, undefined)
-    end.
-
-lutimes(Args) ->
-    Path = path(buoy_node:arg(1, Args)),
-    case is_symlink(Path) of
-        true -> link_times(Path, Args, <<"lutime">>, Path);
-        false -> set_times(Path, Args, <<"lutime">>, Path)
-    end.
-
-%% touch -h, once for the access time and once for the modification time.
-link_times(Path, Args, Syscall, ErrorPath) ->
-    Stamp = fun(V) ->
-        Micros = case buoy_ref:to_number(V) of
-            N when is_number(N) -> round(N * 1000000);
-            _ -> 0
-        end,
-        calendar:system_time_to_rfc3339(Micros, [{unit, microsecond}, {offset, "Z"}])
+    [Atime, Mtime] = [buoy_ref:to_number(buoy_node:arg(I, Args)) || I <- [2, 3]],
+    Result = case file(fd(buoy_node:arg(1, Args)), <<"futime">>) of
+        {_, Path, link} -> buoy_native:fs_utimes(Path, Atime, Mtime, false);
+        {File, _, _} -> buoy_native:fs_futimes(os_fd(File), Atime, Mtime)
     end,
-    tool("touch", ["-h", "-a", "-d", Stamp(buoy_node:arg(2, Args)), Path], Syscall, ErrorPath),
-    tool("touch", ["-h", "-m", "-d", Stamp(buoy_node:arg(3, Args)), Path], Syscall, ErrorPath),
-    undefined.
-
-%% shortcut: prim_file cannot change a symlink itself, so lchmod, lchown,
-%% and lutimes run chmod, chown, and touch with -h, one process each. A NIF
-%% of crates/buoy-nif with lchmod, lchown, and lutimes replaces them.
-tool(Name, Args, Syscall, ErrorPath) ->
-    case run_tool(Name, Args) of
-        {0, _} -> ok;
-        {_, Output} -> uv_error(tool_reason(Output), Syscall, ErrorPath)
-    end.
-
-%% The exit status and the output of a tool of the system, run from "/" so
-%% that a working directory that was removed does not stop it.
-run_tool(Name, Args) ->
-    Exe = hd([P || Dir <- ["/bin", "/usr/bin", "/usr/sbin"], P <- [Dir ++ "/" ++ Name],
-                   element(1, prim_file:read_file_info(P)) =:= ok] ++ [Name]),
-    Port = open_port({spawn_executable, Exe},
-                     [{args, [absolute_arg(A) || A <- Args]}, {cd, "/"}, binary, exit_status, stderr_to_stdout,
-                      use_stdio]),
-    collect_status(Port, []).
-
-absolute_arg(Arg) when is_binary(Arg) -> absolute(Arg);
-absolute_arg(Arg) -> Arg.
-
-collect_status(Port, Acc) ->
-    receive
-        {Port, {data, Data}} -> collect_status(Port, [Data | Acc]);
-        {Port, {exit_status, Status}} -> {Status, iolist_to_binary(lists:reverse(Acc))}
-    end.
-
-%% The errno of the strerror text that a tool printed.
-tool_reason(Output) ->
-    Known = [{<<"Operation not permitted">>, eperm}, {<<"No such file or directory">>, enoent},
-             {<<"Permission denied">>, eacces}, {<<"Not a directory">>, enotdir},
-             {<<"Read-only file system">>, erofs}, {<<"Invalid argument">>, einval}],
-    case [Reason || {Text, Reason} <- Known, binary:match(Output, Text) =/= nomatch] of
-        [Reason | _] -> Reason;
-        [] -> eio
-    end.
-
-%% The times are seconds; prim_file keeps whole ones.
-set_times(Path, Args, Syscall, ErrorPath) ->
-    Seconds = fun(V) ->
-        case buoy_ref:to_number(V) of
-            N when is_number(N) -> floor(N);
-            _ -> 0
-        end
-    end,
-    Info = #file_info{atime = Seconds(buoy_node:arg(2, Args)), mtime = Seconds(buoy_node:arg(3, Args))},
-    check(prim_file:write_file_info(Path, Info, [{time, posix}]), Syscall, ErrorPath),
+    check(result(Result), <<"futime">>, undefined),
     undefined.
 
 %% mkdtemp(prefix, encoding): a new directory whose name is the prefix and
@@ -1375,40 +1352,8 @@ mkdtemp(Prefix, Tries) ->
         {error, Reason} -> uv_error(Reason, <<"mkdtemp">>, <<Prefix/binary, "XXXXXX">>)
     end.
 
-%% access(path, mode): an error unless the file exists and grants the mode.
-%% prim_file checks R_OK and W_OK with access(2); X_OK reads the mode bits
-%% of the class of the owner that the VM is in.
+%% access(path, mode): access(2).
 access(Args) ->
     Path = path(buoy_node:arg(1, Args)),
-    Mode = int(buoy_node:arg(2, Args)),
-    Info = check(prim_file:read_file_info(Path), <<"access">>, Path),
-    Granted = case Info#file_info.access of
-        read_write -> 6;
-        read -> 4;
-        write -> 2;
-        none -> 0
-    end,
-    case (Mode band 6) band (bnot Granted) =:= 0 andalso (Mode band 1 =:= 0 orelse executable(Info)) of
-        true -> undefined;
-        false -> uv_error(eacces, <<"access">>, Path)
-    end.
-
-executable(#file_info{mode = Mode, uid = Uid}) ->
-    case uid() of
-        0 -> Mode band 8#111 =/= 0;
-        Uid -> Mode band 8#100 =/= 0;
-        _ -> Mode band 8#011 =/= 0
-    end.
-
-uid() ->
-    case persistent_term:get({?MODULE, uid}, undefined) of
-        undefined ->
-            Uid = case run_tool("id", ["-u"]) of
-                {0, Output} -> binary_to_integer(string:trim(Output));
-                _ -> -1
-            end,
-            persistent_term:put({?MODULE, uid}, Uid),
-            Uid;
-        Uid ->
-            Uid
-    end.
+    check(result(buoy_native:fs_access(Path, int(buoy_node:arg(2, Args)))), <<"access">>, Path),
+    undefined.

@@ -180,9 +180,9 @@ proto(<<"toTimeString">>, T, _O, _) -> date_string(T, time);
 proto(<<"toUTCString">>, 'NaN', _O, _) -> <<"Invalid Date">>;
 proto(<<"toUTCString">>, T, _O, _) ->
     iolist_to_binary([weekday_name(T), ", ", pad(date(T), 2), " ", month_name(T), " ", year_text(year(T)), " ", clock(T), " GMT"]);
-proto(<<"toLocaleString">>, T, _O, _) -> locale(T, both);
-proto(<<"toLocaleDateString">>, T, _O, _) -> locale(T, date);
-proto(<<"toLocaleTimeString">>, T, _O, _) -> locale(T, time).
+proto(<<"toLocaleString">>, T, _O, Args) -> buoy_ref_intl_date_time_format:to_locale_string(T, arg(1, Args), arg(2, Args), any);
+proto(<<"toLocaleDateString">>, T, _O, Args) -> buoy_ref_intl_date_time_format:to_locale_string(T, arg(1, Args), arg(2, Args), date);
+proto(<<"toLocaleTimeString">>, T, _O, Args) -> buoy_ref_intl_date_time_format:to_locale_string(T, arg(1, Args), arg(2, Args), time).
 
 %% The arguments of a setter, by the names of its fields.
 fields(Names, Args) ->
@@ -400,275 +400,272 @@ iso(T) ->
     end,
     iolist_to_binary([Year, "-", pad(month(T) + 1, 2), "-", pad(date(T), 2), "T", clock(T), ".", pad(millisecond(T), 3), "Z"]).
 
-%% The en-US forms of toLocaleString, as Node prints them.
-locale('NaN', _Part) -> <<"Invalid Date">>;
-locale(T, Part) ->
-    L = local(T),
-    %% The year of the era, as ICU writes it: 1 BC is year 0 of the calendar.
-    EraYear = case year(L) of
-        Y when Y =< 0 -> 1 - Y;
-        Y -> Y
-    end,
-    Date = [integer_to_list(month(L) + 1), "/", integer_to_list(date(L)), "/", integer_to_list(EraYear)],
-    H = hour(L),
-    {H12, Suffix} = case H of
-        0 -> {12, "AM"};
-        _ when H < 12 -> {H, "AM"};
-        12 -> {12, "PM"};
-        _ -> {H - 12, "PM"}
-    end,
-    Time = [integer_to_list(H12), ":", pad(minute(L), 2), ":", pad(second(L), 2), <<" "/utf8>>, Suffix],
-    buoy_ref_string:from_utf8(iolist_to_binary(case Part of
-        both -> [Date, ", ", Time];
-        date -> Date;
-        time -> Time
-    end)).
-
 %%% Date.parse
 
-%% The time value of a date string: the ISO format of the specification,
-%% then the forms that toString and toUTCString write and the other forms
-%% that V8 accepts.
+%% The time value of a date string, as V8's DateParser reads it
+%% (src/date/dateparser-inl.h): the ISO format of the specification first,
+%% then, from the first token that format does not take, the legacy forms
+%% that browsers accept, such as "Tue Mar 01 2016 10:00:00 GMT+0100" and
+%% "1997-3-8 1:1:1".
 -spec parse(buoy_ref_string:js_string()) -> integer() | 'NaN'.
 parse(S) ->
-    Text = binary_to_list(buoy_ref_string:to_utf8(S)),
-    case iso_parse(Text) of
-        {ok, T} -> time_clip(T);
-        error ->
-            case legacy_parse(Text) of
-                {ok, T} -> time_clip(T);
-                error -> 'NaN'
-            end
-    end.
-
-iso_parse(Text) ->
-    case iso_date(Text) of
-        {ok, {Y, M, D}, ""} -> iso_value(Y, M, D, 0, 0, 0, 0, utc);
-        {ok, {Y, M, D}, "T" ++ Rest} ->
-            case iso_time(Rest) of
-                {ok, {H, Mi, S, Ms}, Zone} -> iso_value(Y, M, D, H, Mi, S, Ms, Zone);
-                error -> error
-            end;
-        _ -> error
-    end.
-
-iso_value(Y, M, D, H, Mi, S, Ms, Zone) ->
-    %% V8 checks the day against 31, not the month, so 2026-02-30 is March 2.
-    Valid = M >= 1 andalso M =< 12 andalso D >= 1 andalso D =< 31
-        andalso (H < 24 orelse (H =:= 24 andalso Mi =:= 0 andalso S =:= 0 andalso Ms =:= 0))
-        andalso Mi < 60 andalso S < 60,
-    case Valid of
-        false -> error;
-        true ->
-            Local = make_date(make_day(Y, M - 1, D), make_time(H, Mi, S, Ms)),
-            case Zone of
-                utc -> {ok, Local};
-                local -> {ok, utc(Local)};
-                {offset, Minutes} -> {ok, Local - Minutes * 60000}
-            end
-    end.
-
-iso_date([Sign, A, B, C, D, E, F | Rest]) when Sign =:= $+; Sign =:= $- ->
-    case digits([A, B, C, D, E, F]) of
-        {ok, 0} when Sign =:= $- -> error;
-        {ok, Y} -> iso_month(case Sign of $- -> -Y; $+ -> Y end, Rest);
-        error -> error
-    end;
-iso_date([A, B, C, D | Rest]) ->
-    case digits([A, B, C, D]) of
-        {ok, Y} -> iso_month(Y, Rest);
-        error -> error
-    end;
-iso_date(_) -> error.
-
-iso_month(Y, "-" ++ [A, B | Rest]) ->
-    case digits([A, B]) of
-        {ok, M} ->
-            case Rest of
-                "-" ++ [C, D | Rest1] ->
-                    case digits([C, D]) of
-                        {ok, Day} -> {ok, {Y, M, Day}, Rest1};
-                        error -> error
-                    end;
-                _ -> {ok, {Y, M, 1}, Rest}
-            end;
-        error -> error
-    end;
-iso_month(Y, Rest) -> {ok, {Y, 1, 1}, Rest}.
-
-iso_time([A, B, $:, C, D | Rest]) ->
-    case {digits([A, B]), digits([C, D])} of
-        {{ok, H}, {ok, M}} ->
-            {S, Ms, Rest1} = case Rest of
-                [$:, E, F | R1] ->
-                    case digits([E, F]) of
-                        {ok, Sec} ->
-                            case R1 of
-                                [$. | R2] ->
-                                    {Frac, R3} = lists:splitwith(fun(X) -> X >= $0 andalso X =< $9 end, R2),
-                                    case Frac of
-                                        [] -> {bad, 0, R1};
-                                        _ -> {Sec, list_to_integer(string:left(Frac ++ "00", 3)), R3}
-                                    end;
-                                _ -> {Sec, 0, R1}
-                            end;
-                        error -> {bad, 0, R1}
-                    end;
-                _ -> {0, 0, Rest}
-            end,
-            case {S, iso_zone(Rest1)} of
-                {bad, _} -> error;
-                {_, error} -> error;
-                {_, Zone} -> {ok, {H, M, S, Ms}, Zone}
-            end;
-        _ -> error
-    end;
-iso_time(_) -> error.
-
-iso_zone("") -> local;
-iso_zone("Z") -> utc;
-iso_zone([Sign, A, B, $:, C, D]) when Sign =:= $+; Sign =:= $- ->
-    case {digits([A, B]), digits([C, D])} of
-        {{ok, H}, {ok, M}} when H < 24, M < 60 ->
-            Minutes = H * 60 + M,
-            {offset, case Sign of $+ -> Minutes; $- -> -Minutes end};
-        _ -> error
-    end;
-iso_zone(_) -> error.
-
-digits(Chars) ->
-    case lists:all(fun(C) -> C >= $0 andalso C =< $9 end, Chars) of
-        true -> {ok, list_to_integer(Chars)};
-        false -> error
-    end.
-
-%% The other forms: words for months and weekdays, numbers for the day, the
-%% year, and the time, an AM or PM, and a zone of GMT, UTC, Z, or +hhmm.
-%% A text in parentheses is a comment.
-legacy_parse(Text) ->
-    Tokens = tokens(string:lowercase(Text), []),
+    Tokens = date_tokens(buoy_ref_string:code_points(S)),
     try
-        legacy(Tokens, #{numbers => []})
+        {Rest, State} = es5(Tokens, #{day => [], month => none, iso => false, time => [], meridiem => none,
+                                      sign => none, hour => none, minute => none, numbers => false}),
+        date_value(legacy(Rest, State#{numbers := maps:get(day, State) =/= []}))
     catch
-        throw:invalid -> error
+        throw:invalid -> 'NaN'
     end.
 
-tokens([], Acc) -> lists:reverse(Acc);
-tokens([$( | Rest], Acc) -> tokens(skip_comment(Rest, 1), Acc);
-tokens([C | Rest], Acc) when C >= $0, C =< $9 ->
-    {Digits, Tail} = lists:splitwith(fun(X) -> X >= $0 andalso X =< $9 end, [C | Rest]),
-    tokens(Tail, [{number, list_to_integer(Digits), length(Digits)} | Acc]);
-tokens([C | Rest], Acc) when C >= $a, C =< $z ->
-    {Word, Tail} = lists:splitwith(fun(X) -> X >= $a andalso X =< $z end, [C | Rest]),
-    tokens(Tail, [{word, Word} | Acc]);
-tokens([C | Rest], Acc) when C =:= $:; C =:= $+; C =:= $-; C =:= $/; C =:= $. ->
-    tokens(Rest, [{sym, C} | Acc]);
-tokens([_ | Rest], Acc) -> tokens(Rest, Acc).
+%% The tokens of DateStringTokenizer: {number, Value, Digits}, {symbol, C},
+%% {word, Type, Value, Length}, space, other, and eof.
+date_tokens([]) -> [eof];
+date_tokens([C | _] = Text) when C >= $0, C =< $9 ->
+    {Digits, Rest} = lists:splitwith(fun(X) -> X >= $0 andalso X =< $9 end, Text),
+    [{number, numeral(Digits), length(Digits)} | date_tokens(Rest)];
+date_tokens([C | Rest]) when C =:= $:; C =:= $-; C =:= $+; C =:= $.; C =:= $) ->
+    [{symbol, C} | date_tokens(Rest)];
+date_tokens([C | Rest] = Text) ->
+    case buoy_ref_string:is_whitespace(C) of
+        true -> [space | date_tokens(Rest)];
+        false when C >= $A ->
+            {Word, Tail} = lists:splitwith(fun(X) -> X >= $A andalso not buoy_ref_string:is_whitespace(X) end, Text),
+            [date_word(Word) | date_tokens(Tail)];
+        false when C =:= $( -> [other | date_tokens(skip_parentheses(Rest, 1))];
+        false -> [other | date_tokens(Rest)]
+    end.
 
-skip_comment([], _) -> [];
-skip_comment([$) | Rest], 1) -> Rest;
-skip_comment([$) | Rest], N) -> skip_comment(Rest, N - 1);
-skip_comment([$( | Rest], N) -> skip_comment(Rest, N + 1);
-skip_comment([_ | Rest], N) -> skip_comment(Rest, N).
+%% A numeral keeps its first nine significant digits.
+numeral(Digits) ->
+    case lists:sublist(lists:dropwhile(fun(X) -> X =:= $0 end, Digits), 9) of
+        [] -> 0;
+        Significant -> list_to_integer(Significant)
+    end.
 
-legacy([], State) -> legacy_value(State);
-legacy([{number, H, _}, {sym, $:}, {number, M, _} | Rest], State) ->
-    {S, Rest1} = case Rest of
-        [{sym, $:}, {number, Sec, _} | R] -> {Sec, R};
-        _ -> {0, Rest}
-    end,
-    {Ms, Rest2} = case Rest1 of
-        [{sym, $.}, {number, Frac, Width} | R2] -> {Frac * pow10(3 - Width), R2};
-        _ -> {0, Rest1}
-    end,
-    legacy(Rest2, State#{time => {H, M, S, Ms}});
-legacy([{word, W} | Rest], State) when W =:= "am"; W =:= "pm" ->
-    legacy(Rest, State#{meridiem => W});
-legacy([{word, W} | Rest], State) when W =:= "gmt"; W =:= "utc"; W =:= "ut"; W =:= "z" ->
+skip_parentheses([], _) -> [];
+skip_parentheses([0 | _] = Rest, _) -> Rest;
+skip_parentheses([$) | Rest], 1) -> Rest;
+skip_parentheses([$) | Rest], N) -> skip_parentheses(Rest, N - 1);
+skip_parentheses([$( | Rest], N) -> skip_parentheses(Rest, N + 1);
+skip_parentheses([_ | Rest], N) -> skip_parentheses(Rest, N).
+
+%% A word is a keyword by its first three letters; only a month name may be
+%% longer than its keyword.
+date_word(Word) ->
+    Prefix = [C bor 16#20 || C <- lists:sublist(Word, 3)],
+    Length = length(Word),
+    case lists:keyfind(Prefix, 1, date_keywords()) of
+        {_, month, Month} -> {word, month, Month, Length};
+        {_, Type, Value} when Length =< 3 -> {word, Type, Value, Length};
+        _ -> {word, none, 0, Length}
+    end.
+
+date_keywords() ->
+    [{Name, month, I} || {I, Name} <- lists:enumerate(1, ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])]
+        ++ [{"am", meridiem, 0}, {"pm", meridiem, 12}, {"ut", zone, 0}, {"utc", zone, 0}, {"z", zone, 0}, {"gmt", zone, 0},
+            {"cdt", zone, -5}, {"cst", zone, -6}, {"edt", zone, -4}, {"est", zone, -5}, {"mdt", zone, -6},
+            {"mst", zone, -7}, {"pdt", zone, -7}, {"pst", zone, -8}, {"t", separator, 0}].
+
+%% ParseES5DateTime: [+-yy]yyyy[-MM[-DD]][THH:mm[:ss[.sss]][Z|+-hh:mm]].
+%% Returns the tokens from the first one the format does not take.
+es5([{symbol, Sign} = SignToken | Rest], State) when Sign =:= $+; Sign =:= $- ->
     case Rest of
-        [{sym, Sign}, {number, N, Width} | R] when Sign =:= $+; Sign =:= $- ->
-            legacy(R, State#{zone => zone_minutes(Sign, N, Width)});
-        _ -> legacy(Rest, State#{zone => 0})
+        [{number, 0, 6} | Rest1] when Sign =:= $- -> {[SignToken | Rest1], State};
+        [{number, Y, 6} | Rest1] -> es5_month(Rest1, add_day(sign(Sign) * Y, State));
+        _ -> {[SignToken | Rest], State}
     end;
-legacy([{sym, Sign}, {number, N, Width} | Rest], #{time := _} = State) when Sign =:= $+; Sign =:= $-, not is_map_key(zone, State) ->
-    legacy(Rest, State#{zone => zone_minutes(Sign, N, Width)});
-legacy([{word, W} | Rest], State) ->
-    case month_number(W) of
-        {ok, M} -> legacy(Rest, State#{month => M});
-        error ->
-            case lists:member(string:sub_string(W, 1, 3), ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]) orelse W =:= "t" of
-                true -> legacy(Rest, State);
-                false ->
-                    case us_zone(W) of
-                        {ok, Z} -> legacy(Rest, State#{zone => Z});
-                        error -> throw(invalid)
-                    end
-            end
+es5([{number, Y, 4} | Rest], State) -> es5_month(Rest, add_day(Y, State));
+es5(Tokens, State) -> {Tokens, State}.
+
+es5_month([{symbol, $-} | Rest], State) ->
+    case Rest of
+        [{number, M, 2} | [{symbol, $-} | Rest2]] when M >= 1, M =< 12 ->
+            case Rest2 of
+                [{number, D, 2} | Rest3] when D >= 1, D =< 31 -> es5_time(Rest3, add_day(D, add_day(M, State)));
+                _ -> {Rest2, add_day(M, State)}
+            end;
+        [{number, M, 2} | Rest1] when M >= 1, M =< 12 -> es5_time(Rest1, add_day(M, State));
+        _ -> {Rest, State}
     end;
-legacy([{number, Y, 4}, {sym, Sep}, {number, M, _}, {sym, Sep}, {number, D, _} | Rest], State) when Sep =:= $/; Sep =:= $- ->
-    legacy(Rest, State#{month => M, day => D, year => Y});
-legacy([{number, N, _}, {sym, $/}, {number, D, _}, {sym, $/}, {number, Y, _} | Rest], State) ->
-    legacy(Rest, State#{month => N, day => D, year => Y});
-legacy([{sym, $-}, {number, N, _} | Rest], #{numbers := Numbers} = State) ->
-    legacy(Rest, State#{numbers => Numbers ++ [-N]});
-legacy([{number, N, _} | Rest], #{numbers := Numbers} = State) ->
-    legacy(Rest, State#{numbers => Numbers ++ [N]});
-legacy([{sym, _} | Rest], State) -> legacy(Rest, State).
+es5_month(Rest, State) -> es5_time(Rest, State).
 
-pow10(N) when N >= 0 -> trunc(math:pow(10, N));
-pow10(_) -> 1.
+es5_time([{word, separator, _, _} | Rest], State) ->
+    {Rest1, State1} = es5_clock(Rest, State),
+    es5_end(es5_zone(Rest1, State1));
+es5_time([eof], State) -> es5_end({[eof], State});
+es5_time(Rest, State) -> {Rest, State}.
 
-zone_minutes(Sign, N, Width) ->
-    Minutes = case Width =< 2 of
-        true -> N * 60;
-        false -> (N div 100) * 60 + N rem 100
+es5_clock([{number, H, 2}, {symbol, $:}, {number, Mi, 2} | Rest], State) when H =< 24, Mi =< 59, H < 24 orelse Mi =:= 0 ->
+    Clock = State#{time := [H, Mi]},
+    case Rest of
+        [{symbol, $:}, {number, S, 2} | Rest1] when S =< 59, H < 24 orelse S =:= 0 ->
+            case Rest1 of
+                [{symbol, $.}, {number, F, Digits} | Rest2] when H < 24 orelse F =:= 0 ->
+                    {Rest2, Clock#{time := [H, Mi, S, milliseconds(F, Digits)]}};
+                [{symbol, $.} | _] -> throw(invalid);
+                _ -> {Rest1, Clock#{time := [H, Mi, S]}}
+            end;
+        [{symbol, $:} | _] -> throw(invalid);
+        _ -> {Rest, Clock}
+    end;
+es5_clock(_, _) -> throw(invalid).
+
+es5_zone([{word, zone, 0, 1} | Rest], State) -> {Rest, set_zone(0, State)};
+es5_zone([{symbol, Sign} | Rest], State) when Sign =:= $+; Sign =:= $- ->
+    Signed = State#{sign := sign(Sign)},
+    case Rest of
+        [{number, HM, 4} | Rest1] when HM div 100 =< 23, HM rem 100 =< 59 ->
+            {Rest1, Signed#{hour := HM div 100, minute := HM rem 100}};
+        [{number, H, 2}, {symbol, $:}, {number, M, 2} | Rest1] when H =< 23, M =< 59 ->
+            {Rest1, Signed#{hour := H, minute := M}};
+        _ -> throw(invalid)
+    end;
+es5_zone(Rest, State) -> {Rest, State}.
+
+%% A date-only form is UTC, and a date-time form without a zone is local.
+es5_end({[eof], #{time := Time, hour := Hour} = State}) ->
+    Zoned = case Time =:= [] andalso Hour =:= none of
+        true -> set_zone(0, State);
+        false -> State
     end,
-    case Sign of
-        $+ -> Minutes;
-        $- -> -Minutes
+    {[eof], Zoned#{iso := true}};
+es5_end(_) -> throw(invalid).
+
+%% ReadMilliseconds: the first three significant digits of the fraction.
+milliseconds(F, 1) -> F * 100;
+milliseconds(F, 2) -> F * 10;
+milliseconds(F, Digits) when Digits =< 3 -> F;
+milliseconds(F, Digits) -> F div pow10(min(Digits, 9) - 3).
+
+pow10(N) -> trunc(math:pow(10, N)).
+
+sign($+) -> 1;
+sign($-) -> -1.
+
+%% TimeZoneComposer::Set.
+set_zone(Hours, State) when Hours < 0 -> State#{sign := -1, hour := -Hours, minute := 0};
+set_zone(Hours, State) -> State#{sign := 1, hour := Hours, minute := 0}.
+
+add_day(N, #{day := Day} = State) when length(Day) < 3 -> State#{day := Day ++ [N]};
+add_day(_, _) -> throw(invalid).
+
+add_time(N, #{time := Time} = State) when length(Time) < 4 -> State#{time := Time ++ [N]};
+add_time(_, _) -> throw(invalid).
+
+%% TimeComposer::AddFinal: the rest of the time is zero.
+add_final(N, State) ->
+    #{time := Time} = Filled = add_time(N, State),
+    Filled#{time := Time ++ lists:duplicate(4 - length(Time), 0)}.
+
+time_expects(N, #{time := Time}) ->
+    case length(Time) of
+        1 -> N =< 59;
+        2 -> N =< 59;
+        3 -> N =< 999;
+        _ -> false
     end.
 
-us_zone("est") -> {ok, -300};
-us_zone("edt") -> {ok, -240};
-us_zone("cst") -> {ok, -360};
-us_zone("cdt") -> {ok, -300};
-us_zone("mst") -> {ok, -420};
-us_zone("mdt") -> {ok, -360};
-us_zone("pst") -> {ok, -480};
-us_zone("pdt") -> {ok, -420};
-us_zone(_) -> error.
+zone_expects(N, #{hour := Hour, minute := Minute}) -> Hour =/= none andalso Minute =:= none andalso N =< 59.
 
-month_number(W) when length(W) >= 3 ->
-    Months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"],
-    Prefix = string:sub_string(W, 1, 3),
-    case [I || {I, M} <- lists:enumerate(1, Months), M =:= Prefix] of
-        [I] -> {ok, I};
-        [] -> error
+%% The legacy forms: numbers with ':' and '.' make the time, a sign after a
+%% time or UTC makes the offset, and other numbers make the day.
+legacy([eof | _], State) -> State;
+legacy([{number, N, _} | Rest], State0) ->
+    State = State0#{numbers := true},
+    case Rest of
+        [{symbol, $:}, {symbol, $:} | Rest1] ->
+            maps:get(time, State) =:= [] orelse throw(invalid),
+            legacy(Rest1, add_time(0, add_time(N, State)));
+        [{symbol, $:}, {symbol, $.} | Rest1] -> legacy(Rest1, add_time(N, State));
+        [{symbol, $:} | Rest1] -> legacy(Rest1, add_time(N, State));
+        [{symbol, $.} | Rest1] ->
+            case time_expects(N, State) of
+                true ->
+                    case Rest1 of
+                        [{number, F, Digits} | Rest2] -> legacy(Rest2, add_final(milliseconds(F, Digits), add_time(N, State)));
+                        _ -> throw(invalid)
+                    end;
+                false -> legacy_number(N, Rest1, State)
+            end;
+        _ -> legacy_number(N, Rest, State)
     end;
-month_number(_) -> error.
-
-legacy_value(State) ->
-    {Month, Day, Year} = case State of
-        #{year := Y, month := M, day := D} -> {M, D, Y};
-        #{month := M, numbers := [D, Y | _]} -> {M, D, Y};
-        #{month := M, numbers := [D]} -> {M, D, 2001};
+legacy([{word, meridiem, Offset, _} | Rest], #{time := [_ | _]} = State) ->
+    legacy(Rest, State#{meridiem := Offset});
+legacy([{word, month, Month, _} | Rest], State) ->
+    legacy(skip_dash(Rest), State#{month := Month});
+legacy([{word, zone, Hours, _} | Rest], #{numbers := true} = State) ->
+    legacy(Rest, set_zone(Hours, State));
+legacy([{word, _, _, _} | Rest], #{numbers := Numbers} = State) ->
+    %% Other words may only come before the first number, apart from it.
+    (Numbers orelse is_tuple(hd(Rest)) andalso element(1, hd(Rest)) =:= number) andalso throw(invalid),
+    legacy(Rest, State);
+legacy([{symbol, Sign} | Rest], #{hour := Hour, minute := Minute, time := Time} = State)
+  when (Sign =:= $+ orelse Sign =:= $-) andalso ((Hour =:= 0 andalso Minute =:= 0) orelse Time =/= []) ->
+    {N, Digits, Rest1} = case Rest of
+        [{number, N0, D0} | R] -> {N0, D0, R};
+        _ -> {0, 0, Rest}
+    end,
+    Signed = State#{sign := sign(Sign), numbers := true},
+    Offset = case {Rest1, Digits} of
+        {[{symbol, $:} | _], _} -> #{hour => N, minute => none};
+        {_, D} when D =:= 1; D =:= 2 -> #{hour => N, minute => 0};
+        {_, D} when D =:= 3; D =:= 4 -> #{hour => N div 100, minute => N rem 100};
         _ -> throw(invalid)
     end,
-    Year >= 0 orelse throw(invalid),
-    FullYear = case Year of
-        _ when Year >= 0, Year =< 49 -> 2000 + Year;
-        _ when Year >= 50, Year =< 99 -> 1900 + Year;
-        _ -> Year
-    end,
-    {H0, Mi, S, Ms} = maps:get(time, State, {0, 0, 0, 0}),
-    H = case maps:get(meridiem, State, none) of
-        "am" when H0 =:= 12 -> 0;
-        "pm" when H0 < 12 -> H0 + 12;
-        _ -> H0
-    end,
-    (Month >= 1 andalso Month =< 12 andalso Day >= 1 andalso Day =< 31 andalso H =< 24 andalso Mi < 60 andalso S < 60) orelse throw(invalid),
-    Local = make_date(make_day(FullYear, Month - 1, Day), make_time(H, Mi, S, Ms)),
-    case maps:get(zone, State, local) of
-        local -> {ok, utc(Local)};
-        Minutes -> {ok, Local - Minutes * 60000}
+    legacy(Rest1, maps:merge(Signed, Offset));
+legacy([{symbol, C} | _], #{numbers := true}) when C =:= $+; C =:= $-; C =:= $) -> throw(invalid);
+legacy([_ | Rest], State) -> legacy(Rest, State).
+
+legacy_number(N, Rest, State) ->
+    case {zone_expects(N, State), time_expects(N, State)} of
+        {true, _} -> legacy(Rest, State#{minute := N});
+        {false, true} ->
+            case hd(Rest) of
+                T when T =:= eof; T =:= space; T =:= {word, zone, 0, 1}; T =:= {symbol, $+}; T =:= {symbol, $-} ->
+                    legacy(Rest, add_final(N, State));
+                _ -> throw(invalid)
+            end;
+        {false, false} -> legacy(skip_dash(Rest), add_day(N, State))
     end.
+
+skip_dash([{symbol, $-} | Rest]) -> Rest;
+skip_dash(Rest) -> Rest.
+
+%% DayComposer::Write, TimeComposer::Write, and TimeZoneComposer::Write, then
+%% the time value as V8's ParseDateTimeString makes it.
+date_value(#{day := []}) -> throw(invalid);
+date_value(#{day := Day0, month := Named, iso := Iso, time := Time0, meridiem := Meridiem} = State) ->
+    [A, B, C] = Day0 ++ lists:duplicate(3 - length(Day0), 1),
+    {Year0, Month, Date} = case Named of
+        none when Iso; not (A >= 1 andalso A =< 31) -> {A, B, C};
+        none -> {C, A, B};
+        _ when not (A >= 1 andalso A =< 31) -> {A, Named, B};
+        _ -> {B, Named, A}
+    end,
+    Year = case Iso of
+        false when Year0 >= 0, Year0 =< 49 -> Year0 + 2000;
+        false when Year0 >= 50, Year0 =< 99 -> Year0 + 1900;
+        _ -> Year0
+    end,
+    (Month >= 1 andalso Month =< 12 andalso Date >= 1 andalso Date =< 31 andalso abs(Year) < 1 bsl 30) orelse throw(invalid),
+    [H0, Mi, S, Ms] = Time0 ++ lists:duplicate(4 - length(Time0), 0),
+    H = case Meridiem of
+        none -> H0;
+        _ when H0 =< 12 -> H0 rem 12 + Meridiem;
+        _ -> throw(invalid)
+    end,
+    ((H =< 23 andalso Mi =< 59 andalso S =< 59 andalso Ms =< 999) orelse {H, Mi, S, Ms} =:= {24, 0, 0, 0}) orelse throw(invalid),
+    Local = make_date(make_day(Year, Month - 1, Date), make_time(H, Mi, S, Ms)),
+    case State of
+        _ when Local =:= 'NaN' -> 'NaN';
+        #{sign := none} when abs(Local) > ?LIMIT + 864000000 -> 'NaN';
+        #{sign := none} -> time_clip(utc(Local));
+        #{sign := Sign, hour := Hour, minute := Minute} ->
+            Seconds = zero_if_none(Hour) * 3600 + zero_if_none(Minute) * 60,
+            Seconds =< 16#3FFFFFFF orelse throw(invalid),
+            time_clip(Local - Sign * Seconds * 1000)
+    end.
+
+zero_if_none(none) -> 0;
+zero_if_none(N) -> N.

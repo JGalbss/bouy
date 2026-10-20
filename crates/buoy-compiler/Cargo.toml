@@ -8,8 +8,11 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
+buoy-jit-ir = { path = "../buoy-jit-ir" }
 oxc = { version = "0.154", features = ["semantic", "ast_visit"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# The imports and exports of a WebAssembly module, which link it as an ES module.
+wasmparser = { version = "0.258.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 insta = { version = "1", features = ["glob"] }

@@ -23,3 +23,5 @@ meta dirname true
 meta resolve true
 meta main true
 builtin object true true [ '_makeLong', 'basename', 'default', 'delimiter' ] Module
+delete before init false
+delete export Cannot delete property 'count' of [object Module]

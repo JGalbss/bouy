@@ -19,8 +19,8 @@
 
 -export([intrinsics/0, globals/0, method/4, call_constructor/3, wrap/2, step/1]).
 -export([from_utf8/1, to_utf8/1, from_units/1, units/1, code_points/1, from_code_points/1]).
--export([length_of/1, unit_at/2, unit_string/2, slice/3, concat/1, concat/2, compare/2, get/2]).
--export([index_of/3, is_whitespace/1]).
+-export([length_of/1, unit_at/2, unit_string/2, slice/3, concat/1, concat/2, compare/2, get/2, wide/1]).
+-export([index_of/3, is_whitespace/1, narrow/1]).
 
 -export_type([js_string/0]).
 
@@ -253,10 +253,13 @@ code_units(C) -> [C].
 
 %% The code units of a two-byte string, or the bytes of a one-byte string
 %% widened to two.
+%% The code units of a string as a big-endian UTF-16 binary.
+-spec wide(js_string()) -> binary().
 wide(B) when is_binary(B) -> << <<C:16>> || <<C>> <= B >>;
 wide({'$u16', W}) -> W.
 
 %% The canonical form of a two-byte buffer.
+-spec narrow(binary()) -> js_string().
 narrow(W) ->
     case is_narrow(W) of
         true -> << <<C>> || <<0, C>> <= W >>;
@@ -287,11 +290,18 @@ slice(B, Start, End) when is_binary(B) -> binary:part(B, Start, End - Start);
 slice({'$u16', B}, Start, End) -> narrow(binary:part(B, 2 * Start, 2 * (End - Start))).
 
 -spec concat(js_string(), js_string()) -> js_string().
-concat(A, B) when is_binary(A), is_binary(B) -> <<A/binary, B/binary>>;
-concat(A, B) -> {'$u16', <<(wide(A))/binary, (wide(B))/binary>>}.
+concat(A, B) when is_binary(A), is_binary(B) ->
+    byte_size(A) + byte_size(B) > ?MAX_LENGTH andalso invalid_length(),
+    <<A/binary, B/binary>>;
+concat(A, B) ->
+    length_of(A) + length_of(B) > ?MAX_LENGTH andalso invalid_length(),
+    {'$u16', <<(wide(A))/binary, (wide(B))/binary>>}.
 
+%% A string longer than V8's String::kMaxLength is a RangeError before any
+%% copy, as in Node: a replacement can name a large capture many times.
 -spec concat([js_string()]) -> js_string().
 concat(Parts) ->
+    lists:foldl(fun(P, Sum) -> Sum + length_of(P) end, 0, Parts) > ?MAX_LENGTH andalso invalid_length(),
     case lists:all(fun erlang:is_binary/1, Parts) of
         true -> iolist_to_binary(Parts);
         false -> {'$u16', iolist_to_binary([wide(P) || P <- Parts])}
@@ -427,126 +437,18 @@ is_case_ignorable(C) ->
         _ -> false
     end.
 
-%% localeCompare in the root collation, approximated in three levels as
-%% ICU orders them: the base characters (punctuation and spaces in ICU's
-%% order, then digits, then letters without case or accents), then the
-%% accents in ICU's order of their weights, then lowercase before
-%% uppercase. Canonically equivalent strings compare equal.
-%% The options of Intl.Collator that localeCompare honors: sensitivity,
-%% numeric, and caseFirst.
-locale_compare(A, B, Options) ->
-    KeyA = collation_key(A, Options),
-    KeyB = collation_key(B, Options),
-    if
-        KeyA < KeyB -> -1;
-        KeyA > KeyB -> 1;
-        true -> 0
-    end.
-
-collation_options(O) when ?IS_OBJECT(O) ->
-    Sensitivity = case buoy_ref:get(O, <<"sensitivity">>) of
-        undefined -> variant;
-        V ->
-            case buoy_ref:to_string(V) of
-                <<"base">> -> base;
-                <<"accent">> -> accent;
-                <<"case">> -> 'case';
-                <<"variant">> -> variant;
-                _ -> buoy_heap:throw_error('RangeError', <<"Value of sensitivity is out of range">>)
-            end
+%% TransformCase of ECMA-402: the case mapping of the first requested locale,
+%% or the default one, when it is a language with its own tailoring of case;
+%% ICU4X maps those (buoy_native:intl_change_case/3).
+locale_case(S, Locales, Upper) ->
+    Locale = case buoy_ref_intl:canonicalize_locale_list(Locales) of
+        [First | _] -> First;
+        [] -> buoy_ref_intl:default_locale()
     end,
-    CaseFirst = case buoy_ref:get(O, <<"caseFirst">>) of
-        undefined -> lower;
-        F ->
-            case buoy_ref:to_string(F) of
-                <<"upper">> -> upper;
-                _ -> lower
-            end
-    end,
-    #{sensitivity => Sensitivity, numeric => buoy_ref:truthy(buoy_ref:get(O, <<"numeric">>)), case_first => CaseFirst};
-collation_options(_) -> #{sensitivity => variant, numeric => false, case_first => lower}.
-
-collation_key(S, #{sensitivity := Sensitivity, numeric := Numeric, case_first := CaseFirst}) ->
-    Decomposed = unicode:characters_to_nfd_list([scalar(C) || C <- code_points(S)]),
-    Elements = collation_elements(case Numeric of
-                                      true -> numbers(Decomposed);
-                                      false -> Decomposed
-                                  end),
-    Primary = [P || {P, _, _} <- Elements],
-    Secondary = [W || {_, W, _} <- Elements],
-    Tertiary = [case CaseFirst of upper -> 1 - T; lower -> T end || {_, _, T} <- Elements],
-    case Sensitivity of
-        base -> {Primary};
-        accent -> {Primary, Secondary};
-        'case' -> {Primary, Tertiary};
-        variant -> {Primary, Secondary, Tertiary}
-    end.
-
-%% For numeric collation, each run of ASCII digits becomes {number, Value}.
-numbers([]) -> [];
-numbers([C | _] = Chars) when C >= $0, C =< $9 ->
-    {Digits, Rest} = lists:splitwith(fun(D) -> D >= $0 andalso D =< $9 end, Chars),
-    [{number, list_to_integer(Digits)} | numbers(Rest)];
-numbers([C | Rest]) -> [C | numbers(Rest)].
-
-%% The {Primary, Secondary, Tertiary} weights of each base character, its
-%% accents folded into its secondary weight.
-collation_elements([]) -> [];
-collation_elements([{number, N} | Rest]) -> [{{2, N}, [], 0} | collation_elements(Rest)];
-collation_elements([C | Rest]) ->
-    {Marks, Rest1} = lists:splitwith(fun is_mark/1, Rest),
-    Accents = [mark_weight(M) || M <- Marks],
-    Case = case_weight(C),
-    Expanded = case expansion(C) of
-        {Letters, Extra} -> [{primary(L), Accents ++ Extra, Case} || L <- Letters];
-        none -> [{primary(C), Accents, Case}]
-    end,
-    Expanded ++ collation_elements(Rest1).
-
-%% The letters that the root collation spells as others with a secondary
-%% difference: ß as ss, æ as ae, ø as o, and so on.
-expansion(C) when C =:= 16#DF; C =:= 16#1E9E -> {"ss", [90]};
-expansion(C) when C =:= 16#E6; C =:= 16#C6 -> {"ae", [90]};
-expansion(C) when C =:= 16#153; C =:= 16#152 -> {"oe", [90]};
-expansion(C) when C =:= 16#F8; C =:= 16#D8 -> {"o", [90]};
-expansion(C) when C =:= 16#F0; C =:= 16#D0 -> {"d", [90]};
-expansion(C) when C =:= 16#FE; C =:= 16#DE -> {"th", [90]};
-expansion(_) -> none.
-
-%% Spaces and ASCII punctuation in ICU's order, then other symbols, then
-%% digits, then letters.
-primary(C) ->
-    case string:chr(" _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$", C) of
-        I when I > 0 -> {0, I};
-        0 when C >= $0, C =< $9 -> {2, C};
-        0 ->
-            case unicode_util:category(C) of
-                {letter, _} -> {3, hd(unicode:characters_to_list(string:casefold([C])) ++ [C])};
-                {number, _} -> {2, C};
-                _ when C < 128 -> {0, 100 + C};
-                _ -> {1, C}
-            end
-    end.
-
-%% The secondary weights of the common accents, in ICU's order.
-mark_weight(M) ->
-    case string:chr([16#301, 16#300, 16#306, 16#302, 16#30C, 16#30A, 16#308, 16#30B, 16#303, 16#307, 16#327, 16#328, 16#304, 16#323, 16#331], M) of
-        0 -> 100 + M;
-        I -> I
-    end.
-
-is_mark({number, _}) -> false;
-is_mark(C) ->
-    case unicode_util:category(C) of
-        {mark, _} -> true;
-        _ -> false
-    end.
-
-case_weight(C) ->
-    case unicode_util:category(C) of
-        {letter, uppercase} -> 1;
-        {letter, titlecase} -> 1;
-        _ -> 0
+    case buoy_ref_intl:lookup_matcher([<<"az">>, <<"el">>, <<"lt">>, <<"tr">>], [buoy_ref_intl:remove_extension(Locale)]) of
+        {Language, _} -> narrow(buoy_native:intl_change_case(Language, wide(S), Upper));
+        undefined when Upper -> uppercase(S);
+        undefined -> lowercase(S)
     end.
 
 last_at(_S, _Search, _Length, I) when I < 0 -> -1;
@@ -631,7 +533,17 @@ proto(<<"toWellFormed">>, S, _Args) ->
         true -> S;
         false -> from_code_points([scalar(C) || C <- code_points(S)])
     end;
-proto(<<"localeCompare">>, S, Args) -> locale_compare(S, buoy_ref:to_string(arg(1, Args)), collation_options(arg(3, Args)));
+%% ECMA-402 13.1.1: the compare of new Intl.Collator(locales, options), with
+%% the collator of the default locale kept for the calls without either.
+proto(<<"localeCompare">>, S, Args) ->
+    That = buoy_ref:to_string(arg(1, Args)),
+    case {arg(2, Args), arg(3, Args)} of
+        {undefined, undefined} ->
+            buoy_ref_intl_collator:compare_default(S, That);
+        {Locales, Options} ->
+            Constructor = buoy_ref_realm:current(buoy_ref_intl_collator:constructor()),
+            buoy_ref_intl_collator:compare_strings(buoy_heap:construct(Constructor, [Locales, Options], Constructor), S, That)
+    end;
 proto(<<"padEnd">>, S, Args) -> pad(S, arg(1, Args), arg(2, Args), trailing);
 proto(<<"padStart">>, S, Args) -> pad(S, arg(1, Args), arg(2, Args), leading);
 proto(<<"repeat">>, S, Args) ->
@@ -666,8 +578,10 @@ proto(<<"substr">>, S, Args) ->
         C -> clamp(C, 0, Length - Start)
     end,
     slice(S, Start, Start + Count);
-proto(Name, S, _Args) when Name =:= <<"toLowerCase">>; Name =:= <<"toLocaleLowerCase">> -> lowercase(S);
-proto(Name, S, _Args) when Name =:= <<"toUpperCase">>; Name =:= <<"toLocaleUpperCase">> -> uppercase(S);
+proto(<<"toLowerCase">>, S, _Args) -> lowercase(S);
+proto(<<"toUpperCase">>, S, _Args) -> uppercase(S);
+proto(<<"toLocaleLowerCase">>, S, Args) -> locale_case(S, arg(1, Args), false);
+proto(<<"toLocaleUpperCase">>, S, Args) -> locale_case(S, arg(1, Args), true);
 proto(<<"trim">>, S, _Args) -> trim(S, both);
 proto(<<"trimStart">>, S, _Args) -> trim(S, leading);
 proto(<<"trimEnd">>, S, _Args) -> trim(S, trailing);

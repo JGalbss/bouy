@@ -27,7 +27,7 @@
 intrinsics() ->
     Methods = [{<<"map">>, 1}, {<<"filter">>, 1}, {<<"take">>, 1}, {<<"drop">>, 1}, {<<"flatMap">>, 1},
                {<<"reduce">>, 1}, {<<"toArray">>, 0}, {<<"forEach">>, 1}, {<<"some">>, 1},
-               {<<"every">>, 1}, {<<"find">>, 1}, {<<"chunks">>, 1}, {<<"windows">>, 1}, {<<"includes">>, 1}],
+               {<<"every">>, 1}, {<<"find">>, 1}, {<<"chunks">>, 1}, {<<"windows">>, 1}, {<<"includes">>, 1}, {<<"join">>, 1}],
     Accessor = fun(Name) ->
         {'$accessor', builtin(<<"Iterator.prototype.get ", Name/binary>>, fun(This, _) -> getter(Name, This) end),
          builtin(<<"Iterator.prototype.set ", Name/binary>>, fun(This, Args) -> setter(Name, This, arg(1, Args)) end)}
@@ -120,7 +120,7 @@ method(<<"Iterator.prototype">>, Name, This, Args) ->
 %% any other iterator wrapped.
 from(O) ->
     {Iterator, Next} = flattenable(O, iterate_strings),
-    case buoy_ref:instance_of(Iterator, constructor()) of
+    case buoy_ref:instance_of(Iterator, buoy_ref_realm:current(constructor())) of
         true -> Iterator;
         false -> buoy_heap:new_exotic(wrap_for_valid_iterator, ?WRAP_PROTO, {Iterator, Next})
     end.
@@ -302,6 +302,16 @@ prototype_method(<<"includes">>, O, Args) ->
     Record = direct(O),
     %% An integer is less than the atom infinity in term order.
     each(Record, fun(V, I) -> stop_when(Record, I >= Skip andalso buoy_ref_number:same_value_zero(V, Search), true) end, 0, false);
+%% Iterator.prototype.join (stage 2.7): the separator first, which closes the
+%% iterator when it does not convert, then `next`. A value that does not
+%% convert closes the iterator too, and null and undefined join as "".
+prototype_method(<<"join">>, O, Args) ->
+    Separator = case arg(1, Args) of
+        undefined -> <<",">>;
+        S -> closing_on_error(O, fun() -> buoy_ref:to_string(S) end)
+    end,
+    Record = direct(O),
+    buoy_ref_string:concat(join(Record, Separator, []));
 prototype_method(<<"reduce">>, O, Args) ->
     Reducer = callback(O, arg(1, Args)),
     Record = direct(O),
@@ -389,6 +399,27 @@ skipped_elements(O, N) ->
 reject(O, Type, Message) ->
     close_quietly(O),
     buoy_heap:throw_error(Type, Message).
+
+join({Iterator, _} = Record, Separator, Acc) ->
+    case step_value(Record) of
+        done ->
+            lists:reverse(Acc);
+        {value, V} ->
+            Text = case V of
+                Nullish when Nullish =:= undefined; Nullish =:= null -> <<>>;
+                _ -> closing_on_error(Iterator, fun() -> buoy_ref:to_string(V) end)
+            end,
+            join(Record, Separator, [Text | separated(Separator, Acc)])
+    end.
+
+separated(_Separator, []) -> [];
+separated(Separator, Acc) -> [Separator | Acc].
+
+%% IfAbruptCloseIterator: when Fun throws, O closes, and the error stands.
+closing_on_error(O, Fun) ->
+    try Fun()
+    catch error:Reason:Stack -> close_quietly(O), erlang:raise(error, Reason, Stack)
+    end.
 
 close_quietly(O) ->
     try buoy_ref_iterator:close(O) of

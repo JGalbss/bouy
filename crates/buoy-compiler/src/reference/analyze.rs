@@ -122,12 +122,19 @@ impl<'a> Visit<'a> for WithVars {
 /// stay as they are, and those of `CommonJS` code and eval code are locals.
 fn eval_visible(scoping: &Scoping) -> Vec<SymbolId> {
     let mut found = Vec::new();
-    for reference in scoping
+    // A call of a parameter or a variable named `eval` that holds the intrinsic is a
+    // direct eval too (sloppy code only: strict code cannot bind the name).
+    let bound = scoping
+        .symbol_ids()
+        .filter(|symbol| scoping.symbol_name(*symbol) == "eval")
+        .flat_map(|symbol| scoping.get_resolved_reference_ids(symbol).iter().copied());
+    let unbound = scoping
         .root_unresolved_references()
         .get("eval")
         .into_iter()
         .flatten()
-    {
+        .copied();
+    for reference in &unbound.chain(bound).collect::<Vec<_>>() {
         let scope = scoping.get_reference(*reference).scope_id();
         for ancestor in scoping.scope_ancestors(scope) {
             found.extend(scoping.get_bindings(ancestor).values().copied());

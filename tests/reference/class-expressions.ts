@@ -176,3 +176,18 @@ class Even {
   }
 }
 console.log(2 instanceof (Even as any), 3 instanceof (Even as any));
+function classErrorName(source: string): string {
+  try {
+    Function(source)();
+    return "none";
+  } catch (error) {
+    return (error as Error).name;
+  }
+}
+console.log(
+  classErrorName("class Bar { [Bar]() {} }"),
+  classErrorName("(class Bar { static [Bar] = 1 })"),
+  classErrorName("class b { [Object.preventExtensions({}).prop = 4]() {} }"),
+  classErrorName("class b extends (Object.preventExtensions({}).prop = 4) {}"),
+  classErrorName("class K { static [String('k')]() { return K; } } if (K.k() !== K) throw 0;"),
+);

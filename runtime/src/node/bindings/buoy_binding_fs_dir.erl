@@ -1,7 +1,7 @@
 %% internalBinding('fs_dir') (src/node_dir.cc): opendir and DirHandle, the
-%% handle of fs.Dir. prim_file lists a directory in one call, so opendir
-%% reads the names, and each read hands out the next bufferSize of them in
-%% the order of the directory, as uv_fs_readdir does.
+%% handle of fs.Dir. opendir reads the entries and their types in one call,
+%% and each read hands out the next bufferSize of them in the order of the
+%% directory, as uv_fs_readdir does.
 -module(buoy_binding_fs_dir).
 
 -export([binding/0]).
@@ -31,10 +31,10 @@ binding() ->
 %% A DirHandle with the names of Path. opendirSync throws without the path,
 %% as OpenDirSync does.
 open(Path, ErrorPath) ->
-    case prim_file:list_dir_all(Path) of
-        {ok, Names} ->
+    case buoy_binding_fs:read_dir(Path) of
+        {ok, Entries} ->
             Handle = buoy_node:object(erlang:get({?MODULE, proto}), []),
-            buoy_heap:private_put(Handle, ?STATE, {Path, [name(N) || N <- Names]}),
+            buoy_heap:private_put(Handle, ?STATE, {Path, Entries}),
             Handle;
         {error, Reason} ->
             buoy_binding_fs:uv_error(Reason, <<"opendir">>, ErrorPath)
@@ -44,15 +44,14 @@ open(Path, ErrorPath) ->
 %% or null at the end.
 read(This, Encoding, Size, Req) ->
     buoy_binding_fs:request(Req, fun() ->
-        {ok, {Path, Names}} = buoy_heap:private_find(This, ?STATE),
-        case lists:split(min(max(1, buoy_binding_fs:int(Size)), length(Names)), Names) of
+        {ok, {Path, Entries}} = buoy_heap:private_find(This, ?STATE),
+        case lists:split(min(max(1, buoy_binding_fs:int(Size)), length(Entries)), Entries) of
             {[], _} ->
                 null;
             {Batch, Rest} ->
                 buoy_heap:private_put(This, ?STATE, {Path, Rest}),
-                buoy_heap:new_array(lists:append([[buoy_binding_fs:encoded(N, Encoding),
-                                                   buoy_binding_fs:dirent_type(filename:join(Path, N))]
-                                                  || N <- Batch]))
+                buoy_heap:new_array(lists:append([[buoy_binding_fs:encoded(N, Encoding), Type]
+                                                  || {N, Type} <- Batch]))
         end
     end).
 
@@ -62,6 +61,3 @@ close(This, Req) ->
         buoy_heap:private_put(This, ?STATE, {Path, []}),
         undefined
     end).
-
-name(Name) when is_binary(Name) -> Name;
-name(Name) -> unicode:characters_to_binary(Name).

@@ -12,8 +12,11 @@
 %%                        function gets a record only when it needs one, so
 %%                        an arrow function costs one id and no record.
 %%   {'$sym', Tag, Desc}  a symbol. Tag is an integer for Symbol(), the atom
-%%                        registered for Symbol.for(), or an atom such as
-%%                        iterator for a well-known symbol.
+%%                        registered for Symbol.for(), an atom such as
+%%                        iterator for a well-known symbol, or {private, N}
+%%                        for a private symbol of V8, which Node's bindings
+%%                        use: an own key only, no key of ownKeys, and
+%%                        writable on a frozen object, as a private name.
 %%   {'$c', Id}           a heap cell for a captured mutable variable. It is
 %%                        never a JavaScript value; it appears in fun envs.
 %%
@@ -32,6 +35,22 @@
 %% array, where Elements maps each index to its value and a missing index is
 %% a hole.
 %%
+%% An ordinary object whose own properties are all writable, enumerable, and
+%% configurable data properties with string keys, and that is extensible, may
+%% have a shaped record instead (a hidden class):
+%%
+%%   {Shape, Proto, V1, ..., Vn}
+%%
+%% Shape is {'$shape', ShapeId, Keys, Index, Filter}: Keys is the tuple of its
+%% keys in insertion order, Index maps each key to its position, and Filter
+%% has the bit of each key (key_bit/1). The value of the key at position I is
+%% element I + 2 of the record. Every object that gains the same keys in the
+%% same order shares one shape, through the transitions that the realm keeps
+%% under {'$shape', ShapeId, Key}. Any other change, such as a delete, an
+%% accessor, or an attribute, turns the record into the one above for good, as
+%% JavaScriptCore turns a structure into a dictionary. Only this module reads a
+%% record: raw/1 gives either form, record_of/1 the one above.
+%%
 %% The heap collects garbage with gc/1, a mark and sweep that the owner runs
 %% when its stack is empty, between jobs. Every pdict entry whose key is not
 %% an integer is a root, and so is each term that the caller passes.
@@ -39,20 +58,23 @@
 
 -include("buoy_ref.hrl").
 
--export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_items/1, array_length/1]).
--export([array_push/2, array_set_items/2]).
--export([function/1, function/4, call/3, construct/3, is_constructor/1]).
+-export([new_object/1, object/2, literal/3, new_array/1, new_array/2, array_with/3, array_items/1, array_length/1]).
+-export([array_push/2, array_shift/1, array_set_items/2]).
+-export([function/1, function/4, function/5, reflect_calls/1, call/3, construct/3, is_constructor/1]).
 -export([get/2, get/3, set/3, set/4, sloppy_set/3, has/2, has_own/2, delete/2, delete_property/2, own_keys/1, enumerable_keys/1, is_enumerable/1]).
+-export([own_named_keys/1]).
 -export([define/3, define_own_property/3, validate_and_apply/5, get_own/2, prototype_of/1, set_prototype_of/2, set_prototype/2]).
 -export([is_extensible/1, prevent_extensions/1, freeze/1, is_frozen/1, is_accessor_descriptor/1, is_data_descriptor/1]).
--export([class_of/1, slots/1, set_slots/2, new_exotic/3, proxy/2, is_object/1, is_callable/1]).
+-export([class_of/1, slots/1, set_slots/2, new_exotic/3, new_record/1, proxy/2, is_object/1, is_callable/1]).
 -export([cell/1, cell_get/1, cell_set/2]).
--export([symbol/1, symbol_for/1, well_known/1]).
+-export([symbol/1, symbol_for/1, well_known/1, private_symbol/1]).
 -export([to_key/1, key_to_value/1]).
--export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/3]).
--export([gc/1, gc_stats/0, heap_size/0, allocated/0]).
--export([clone_out/1, clone_in/1]).
+-export([install_intrinsic/2, intrinsic/1, intrinsic/2, function_prototype/0, realm/0, throw_error/2, error_object/2, error_object/3]).
+-export([gc/1, gc_stats/0, heap_size/0, allocated/0, first_free/0, adopt/3, safepoint/2, collect_young/2]).
+-export([add_external/1, external/0]).
+-export([clone_out/1, clone_in/1, clone_out/2, clone_in/2]).
 -export([private_find/2, private_put/3, set_failed/2]).
+-export([literal_shaped/2, add_field/3, get_slot/3, set_slot/4, method/2, inherited_method/3, record/1]).
 
 -export_type([value/0, key/0, property/0]).
 
@@ -63,7 +85,13 @@
 
 -define(NEXT, '$buoy_next').
 -define(STATS, '$buoy_gc').
+-define(EXTERNAL, '$buoy_external').
+-define(CLONE_HOOK, '$buoy_clone_hook').
 -define(WORDS_PER_ID, 16).
+%% The fewest ids a loop hands out before its safepoint collects, as ?GC_MIN of buoy_jobs.
+-define(YOUNG_MIN, 20000).
+%% The cache of collect_young/2.
+-define(YOUNG, '$buoy_young').
 -define(MIN_HEAP_WORDS, 4096).
 -define(WRITABLE, 1).
 -define(ENUMERABLE, 2).
@@ -73,6 +101,13 @@
 -define(EMPTY, {object, null, #{}, [], #{}, none}).
 -define(ARRAY_PROTO, {'$o', 'Array.prototype'}).
 -define(is_obj(V), (is_tuple(V) andalso (element(1, V) =:= '$o' orelse element(1, V) =:= '$f'))).
+%% A shaped record (see the top of this module); R is a record or undefined.
+-define(is_shaped(R), is_tuple(element(1, R))).
+-define(EMPTY_SHAPE, {'$shape', 0, {}, #{}, 0}).
+%% A shape has at most this many keys, and a realm at most this many shapes.
+-define(MAX_SHAPE_KEYS, 64).
+-define(MAX_SHAPES, 10000).
+-define(SHAPES, '$buoy_shapes').
 
 %%% Allocation
 
@@ -110,6 +145,31 @@ size_heap(Entries) ->
 bit_length(0, N) -> N;
 bit_length(W, N) -> bit_length(W bsr 1, N + 1).
 
+%% The id that next_id/0 hands out next.
+-spec first_free() -> pos_integer().
+first_free() ->
+    case erlang:get(?NEXT) of
+        undefined -> 1;
+        Id -> Id
+    end.
+
+%% Stores records that native code made (buoy_native) under the ids that it gave them, from
+%% first_free() up to Next - 1, and hands out ids from Next on.
+-spec adopt([pos_integer()], [tuple()], pos_integer()) -> ok.
+adopt(Ids, Records, Next) ->
+    First = first_free(),
+    put_records(Ids, Records),
+    erlang:put(?NEXT, Next),
+    case (First - 1) bsr 12 =:= (Next - 1) bsr 12 of
+        true -> ok;
+        false -> grow(Next)
+    end.
+
+put_records([Id | Ids], [Record | Records]) ->
+    erlang:put(Id, Record),
+    put_records(Ids, Records);
+put_records([], []) -> ok.
+
 %% How many ids the realm has handed out. The jobs loop compares it with the
 %% count at the last collection to decide when to collect.
 -spec allocated() -> non_neg_integer().
@@ -122,7 +182,7 @@ allocated() ->
 -spec new_object(value()) -> value().
 new_object(Proto) ->
     Id = next_id(),
-    erlang:put(Id, {object, Proto, #{}, [], #{}, none}),
+    erlang:put(Id, {?EMPTY_SHAPE, Proto}),
     {'$o', Id}.
 
 %% An object from {Key, Value} pairs in source order. A repeated key keeps its
@@ -142,6 +202,180 @@ literal(Proto, Props, Keys) ->
     erlang:put(Id, {object, Proto, Props, Keys, #{}, none}),
     {'$o', Id}.
 
+%% An object literal whose keys the compiler knows: Keys is the tuple of its
+%% keys in order, and Record is {_, Proto, V1, ..., Vn}, the shaped record but
+%% for its shape.
+-spec literal_shaped(tuple(), tuple()) -> value().
+literal_shaped(Keys, Record) ->
+    Id = next_id(),
+    case shape_of(Keys) of
+        none ->
+            [_, Proto | Values] = tuple_to_list(Record),
+            List = tuple_to_list(Keys),
+            erlang:put(Id, {object, Proto, maps:from_list(lists:zip(List, Values)), lists:reverse(List), #{}, none});
+        Shape ->
+            erlang:put(Id, setelement(1, Record, Shape))
+    end,
+    {'$o', Id}.
+
+%%% Shapes
+
+%% The shape with the keys Keys, from the empty shape, or none past the limits.
+shape_of(Keys) ->
+    case erlang:get({?SHAPES, Keys}) of
+        undefined ->
+            Shape = lists:foldl(fun(K, S) when is_tuple(S) -> next_shape(S, K); (_, none) -> none end,
+                                ?EMPTY_SHAPE, tuple_to_list(Keys)),
+            is_tuple(Shape) andalso erlang:put({?SHAPES, Keys}, Shape),
+            Shape;
+        Shape ->
+            Shape
+    end.
+
+%% The shape of Shape with the new key K appended, or none: K is not a string
+%% key, or the shape or the realm has no room.
+next_shape({'$shape', Id, Keys, Index, Filter}, K) when is_binary(K), tuple_size(Keys) < ?MAX_SHAPE_KEYS ->
+    case erlang:get({'$shape', Id, K}) of
+        undefined -> new_shape(Id, Keys, Index, Filter, K);
+        Shape -> Shape
+    end;
+next_shape(_Shape, _K) ->
+    none.
+
+new_shape(Parent, Keys, Index, Filter, K) ->
+    case erlang:get(?SHAPES) of
+        Count when is_integer(Count), Count >= ?MAX_SHAPES ->
+            none;
+        Count ->
+            Next = case Count of
+                undefined -> 1;
+                _ -> Count + 1
+            end,
+            erlang:put(?SHAPES, Next),
+            Shape = {'$shape', Next, erlang:append_element(Keys, K), Index#{K => tuple_size(Keys) + 1},
+                     Filter bor key_bit(K)},
+            erlang:put({'$shape', Parent, K}, Shape),
+            Shape
+    end.
+
+%% The position of the key K in Shape, or none. Most misses skip Index, whose
+%% binary keys a lookup compares by content one at a time: V8 and JSC look a
+%% key up in a hash table of the hidden class.
+position({'$shape', _, _, Index, Filter}, K) ->
+    case Filter band key_bit(K) of
+        0 ->
+            none;
+        _ ->
+            case Index of
+                #{K := I} -> I;
+                _ -> none
+            end
+    end.
+
+%% The bit of a key in the filter of a shape, from its size and first byte. A
+%% shape holds only binary keys, so any other key has no bit. The compiler
+%% computes the same bit for the method cache of a call (`shape_key_bit` in
+%% reference/call.rs).
+key_bit(<<C, _/binary>> = K) -> 1 bsl ((byte_size(K) * 7 + C) band 31);
+key_bit(<<>>) -> 1;
+key_bit(_) -> 0.
+
+%% The record of a shaped object in the form of every other object.
+expand(R) when ?is_shaped(R) ->
+    [{'$shape', _, Keys, _, _}, Proto | Values] = tuple_to_list(R),
+    List = tuple_to_list(Keys),
+    {object, Proto, maps:from_list(lists:zip(List, Values)), lists:reverse(List), #{}, none};
+expand(R) ->
+    R.
+
+%% The own property K of a shaped record: its value, or none.
+shaped_value(R, K) ->
+    case position(element(1, R), K) of
+        none -> none;
+        I -> {data, element(I + 2, R), ?ALL}
+    end.
+
+%% A read of `o.k`, where the compiler expects the key K at position I of a
+%% shaped object. Any other object or position takes the ordinary [[Get]].
+-spec get_slot(value(), key(), pos_integer()) -> value().
+get_slot({'$o', Id} = O, K, I) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R), element(I, element(3, element(1, R))) =:= K -> element(I + 2, R);
+        _ -> buoy_ref:get(O, K)
+    end;
+get_slot(O, K, _I) ->
+    buoy_ref:get(O, K).
+
+%% [[Get]] of the method K for a call `o.k(...)`. A class instance has the
+%% common chain in one step: an own shape that lacks K, then a prototype
+%% whose map holds K as a function. JSC's inline cache for a method call
+%% remembers the same two facts, the structure and the prototype's slot.
+-spec method(value(), key()) -> value().
+method({'$o', Id} = O, K) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R) ->
+            case position(element(1, R), K) of
+                none -> inherited_method(element(2, R), K, O);
+                I -> element(I + 2, R)
+            end;
+        _ ->
+            get(O, K, O)
+    end.
+
+%% The method K of an object whose own properties lack K, from its prototype P.
+%% An ordinary object record that lacks K passes the read on to its own
+%% prototype, so a method of a base class costs one map read per level.
+-spec inherited_method(value(), key(), value()) -> value().
+inherited_method({'$o', Id} = P, K, Receiver) when is_integer(Id) ->
+    case erlang:get(Id) of
+        {object, Next, Props, _, _, _} ->
+            case Props of
+                #{K := {'$f', _, _} = F} -> F;
+                #{K := _} -> get(P, K, Receiver);
+                _ -> inherited_method(Next, K, Receiver)
+            end;
+        _ -> get(P, K, Receiver)
+    end;
+inherited_method(P, K, Receiver) ->
+    inherited(P, K, Receiver).
+
+%% A write of `o.k = v`, with the same expectation as get_slot/3.
+-spec set_slot(value(), key(), value(), pos_integer()) -> value().
+set_slot({'$o', Id} = O, K, V, I) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R), element(I, element(3, element(1, R))) =:= K ->
+            erlang:put(Id, setelement(I + 2, R, V)),
+            V;
+        _ ->
+            buoy_ref:set(O, K, V)
+    end;
+set_slot(O, K, V, _I) ->
+    buoy_ref:set(O, K, V).
+
+%% CreateDataProperty of a class field or an object literal on a shaped object
+%% that lacks K or has it: true when done, false when the caller must take the
+%% ordinary path.
+-spec add_field(value(), key(), value()) -> boolean().
+add_field({'$o', Id}, K, V) ->
+    case erlang:get(Id) of
+        R when ?is_shaped(R) ->
+            Shape = element(1, R),
+            case position(Shape, K) of
+                none ->
+                    case next_shape(Shape, K) of
+                        none -> false;
+                        Next -> erlang:put(Id, erlang:append_element(setelement(1, R, Next), V)), true
+                    end;
+                I ->
+                    erlang:put(Id, setelement(I + 2, R, V)),
+                    true
+            end;
+        _ ->
+            false
+    end;
+add_field(_O, _K, _V) ->
+    false.
+
 -spec new_array([value()]) -> value().
 new_array(Items) -> new_array(Items, intrinsic('Array.prototype')).
 
@@ -150,6 +384,16 @@ new_array(Items, Proto) ->
     Elements = maps:from_list(lists:enumerate(0, Items)),
     Id = next_id(),
     erlang:put(Id, {array, Proto, #{}, [], #{}, {map_size(Elements), Elements}}),
+    {'$o', Id}.
+
+%% An array of Items with more data properties, each writable, enumerable, and
+%% configurable, as CreateDataPropertyOrThrow leaves them on a new array: Props maps each
+%% key to its value, and Keys holds the keys newest first.
+-spec array_with([value()], #{key() => value()}, [key()]) -> value().
+array_with(Items, Props, Keys) ->
+    Elements = maps:from_list(lists:enumerate(0, Items)),
+    Id = next_id(),
+    erlang:put(Id, {array, intrinsic('Array.prototype'), Props, Keys, #{}, {map_size(Elements), Elements}}),
     {'$o', Id}.
 
 %% A proxy (buoy_ref_proxy): a function value when Target is callable.
@@ -167,6 +411,14 @@ proxy(Target, Handler) ->
 new_exotic(Class, Proto, Slots) ->
     Id = next_id(),
     erlang:put(Id, {Class, Proto, #{}, [], #{}, Slots}),
+    {'$o', Id}.
+
+%% An object with a record that the caller built whole, such as a RegExp with its
+%% lastIndex in place.
+-spec new_record(tuple()) -> value().
+new_record(Record) ->
+    Id = next_id(),
+    erlang:put(Id, Record),
     {'$o', Id}.
 
 %% The items of an array, holes as undefined. Another object, such as a proxy
@@ -205,6 +457,36 @@ array_push({'$o', Id} = O, Items) ->
     end;
 array_push(O, Items) ->
     generic_push(O, Items).
+
+%% Array.prototype.shift on an array whose elements are plain data properties:
+%% one read and one write of the record, where the steps of the spec read and
+%% write the record for each index. Any other object gives none, for those
+%% steps. The intrinsic prototypes hold no index until a realm writes them, so
+%% a hole reads as absent, as HasProperty finds it.
+-spec array_shift(value()) -> {ok, value()} | none.
+array_shift({'$o', Id}) ->
+    case erlang:get(Id) of
+        {array, ?ARRAY_PROTO = P, Props, Keys, Attrs, {Length, Elements}}
+          when map_size(Attrs) =:= 0, Length > 0 ->
+            Plain = erlang:get('Array.prototype') =:= undefined
+                andalso erlang:get('Object.prototype') =:= undefined
+                andalso not lists:any(fun is_accessor/1, maps:values(Elements)),
+            case Plain of
+                true ->
+                    Shifted = maps:from_list([{I - 1, V} || I := V <- Elements, I > 0]),
+                    erlang:put(Id, {array, P, Props, Keys, Attrs, {Length - 1, Shifted}}),
+                    {ok, maps:get(0, Elements, undefined)};
+                false ->
+                    none
+            end;
+        _ ->
+            none
+    end;
+array_shift(_) ->
+    none.
+
+is_accessor({'$accessor', _, _}) -> true;
+is_accessor(_) -> false.
 
 %% Push on any object: Set of each index, then of length.
 generic_push(O, Items) ->
@@ -265,16 +547,54 @@ function(Fun) -> {'$f', next_id(), Fun}.
 %% A function with a record: a name, a length, and internal slots, such as the
 %% construct behaviour of a class.
 -spec function(fun((value(), list()) -> value()), binary(), value(), map()) -> value().
-function(Fun, Name, Length, Slots) ->
+function(Fun, Name, Length, Slots) -> function(Fun, Name, Length, Slots, []).
+
+%% function/4 with more own properties after name and length, each read-only
+%% and not configurable, such as the caller and arguments of a sloppy
+%% function. The slot `prototype => lazy` marks an ordinary function whose
+%% prototype object own_prototype/3 makes when code first uses a property of
+%% the function, as V8 makes it lazily: most functions are only called.
+-spec function(fun((value(), list()) -> value()), binary(), value(), map(), [{key(), value()}]) -> value().
+function(Fun, Name, Length, Slots, Fixed) ->
     Id = next_id(),
-    Props = #{<<"length">> => Length, <<"name">> => Name},
-    Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE},
+    Props = maps:merge(#{<<"length">> => Length, <<"name">> => Name}, maps:from_list(Fixed)),
+    Attrs = maps:merge(#{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE}, maps:from_list([{K, 0} || {K, _} <- Fixed])),
+    Keys = lists:reverse([K || {K, _} <- Fixed], [<<"name">>, <<"length">>]),
     {Fun1, Slots1} = case erlang:get(?REALM_KEY) of
         undefined -> {Fun, Slots};
         N -> {buoy_ref_realm:realm_fun(N, Fun), Slots#{realm => N}}
     end,
-    erlang:put(Id, {function, function_prototype(), Props, [<<"name">>, <<"length">>], Attrs, Slots1}),
+    erlang:put(Id, {function, function_prototype(), Props, Keys, Attrs, Slots1}),
     {'$f', Id, Fun1}.
+
+%% The caller and arguments properties of the sloppy function F read the calls
+%% that the program records (buoy_ref:legacy_caller/1), when it records them.
+-spec reflect_calls(value()) -> value().
+reflect_calls({'$f', Id, _} = F) ->
+    case erlang:get('$buoy_frames') of
+        undefined ->
+            F;
+        _ ->
+            {function, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+            Live = #{<<"caller">> => {'$live', fun() -> buoy_ref:legacy_caller(Id) end},
+                     <<"arguments">> => {'$live', fun() -> buoy_ref:legacy_arguments(Id) end}},
+            erlang:put(Id, {function, P, maps:merge(Props, Live), Keys, Attrs, Slots}),
+            F
+    end.
+
+%% The prototype property of an ordinary function F: an object of the realm of
+%% F whose constructor is F, writable, not enumerable, and not configurable. Its
+%% key goes after the keys that the function had when it was made.
+own_prototype(Id, F, {function, P, Props, Keys, Attrs, Slots}) ->
+    ProtoId = next_id(),
+    erlang:put(ProtoId, {object, intrinsic(maps:get(realm, Slots, 0), 'Object.prototype'), #{<<"constructor">> => F},
+                         [<<"constructor">>], #{<<"constructor">> => ?WRITABLE bor ?CONFIGURABLE}, none}),
+    Proto = {'$o', ProtoId},
+    {Added, Initial} = lists:splitwith(fun(K) -> not lists:member(K, [<<"caller">>, <<"arguments">>, <<"name">>, <<"length">>]) end, Keys),
+    R = {function, P, Props#{<<"prototype">> => Proto}, Added ++ [<<"prototype">> | Initial],
+         Attrs#{<<"prototype">> => ?WRITABLE}, maps:remove(prototype, Slots)},
+    erlang:put(Id, R),
+    R.
 
 -spec call(value(), value(), list()) -> value().
 call({'$f', _, Fun}, This, Args) -> Fun(This, Args);
@@ -347,9 +667,15 @@ get({'$o', Id} = O, K, Receiver) ->
 get({'$f', Id, _} = F, K, Receiver) ->
     case erlang:get(Id) of
         undefined -> from_record(fn_record(F), K, Receiver);
+        {function, _, _, _, _, #{prototype := lazy}} = R when K =:= <<"prototype">> -> from_record(own_prototype(Id, F, R), K, Receiver);
         R -> from_record(R, K, Receiver)
     end.
 
+from_record(R, K, Receiver) when ?is_shaped(R) ->
+    case position(element(1, R), K) of
+        none -> inherited(element(2, R), K, Receiver);
+        I -> element(I + 2, R)
+    end;
 from_record({array, Proto, _, _, _, {_, Elements}}, K, Receiver) when is_integer(K) ->
     case Elements of
         #{K := {'$accessor', _, _} = A} -> resolve(A, Receiver);
@@ -362,6 +688,10 @@ from_record({deferred_namespace, _, Props, _, _, M}, K, Receiver) ->
     deferred_get(M, Props, K, Receiver);
 from_record({proxy, _, Props, _, _, _}, {'#', _, _} = K, _Receiver) ->
     maps:get(K, Props, undefined);
+%% A private symbol of the host is the proxy's own, which no trap sees, as V8
+%% keeps it on the JSProxy.
+from_record({proxy, _, Props, _, _, _}, {'$sym', {private, _}, _} = K, _Receiver) ->
+    maps:get(K, Props, undefined);
 from_record({proxy, _, _, _, _, Handler}, K, Receiver) ->
     buoy_ref_proxy:get(Handler, K, Receiver);
 from_record({arguments, _, _, _, _, Map}, K, _Receiver) when is_map_key(K, Map) ->
@@ -373,6 +703,7 @@ from_record({_, Proto, Props, _, _, _}, K, Receiver) ->
     end.
 
 inherited(null, _K, _Receiver) -> undefined;
+inherited(_Proto, {'$sym', {private, _}, _}, _Receiver) -> undefined;
 inherited(Proto, K, Receiver) -> get(Proto, K, Receiver).
 
 %% [[Get]] of a typed array (ECMA-262 §10.4.5.4): a numeric key reads the
@@ -422,6 +753,15 @@ sloppy_set(O, K, V) -> assign(O, K, V, sloppy).
 
 assign({'$o', Id} = O, K, V, Mode) ->
     case erlang:get(Id) of
+        R when ?is_shaped(R) ->
+            Shape = element(1, R),
+            case position(Shape, K) of
+                none ->
+                    add_shaped(Id, R, Shape, K, V, O, Mode);
+                I ->
+                    erlang:put(Id, setelement(I + 2, R, V)),
+                    V
+            end;
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K), map_size(Attrs) =:= 0 ->
             case Elements of
                 #{K := {'$accessor', _, _}} ->
@@ -470,7 +810,13 @@ assign({'$o', Id} = O, K, V, Mode) ->
         _ ->
             strict_set(O, K, V, Mode)
     end;
+assign({'$f', Id, _} = F, <<"prototype">> = K, V, Mode) ->
+    _ = id_for_write(F),
+    assign_function(Id, F, K, V, Mode);
 assign({'$f', Id, _} = F, K, V, Mode) ->
+    assign_function(Id, F, K, V, Mode).
+
+assign_function(Id, F, K, V, Mode) ->
     case erlang:get(Id) of
         {function, P, Props, Keys, Attrs, Slots} = R ->
             case Props of
@@ -489,6 +835,25 @@ assign({'$f', Id, _} = F, K, V, Mode) ->
             end;
         _ ->
             strict_set(F, K, V, Mode)
+    end.
+
+%% A new own key K of a shaped object: as add/6, and the object keeps a shape
+%% when there is one for K.
+add_shaped(Id, R, Shape, K, V, O, Mode) ->
+    case inherited_setter(element(2, R), K) of
+        none ->
+            case next_shape(Shape, K) of
+                none ->
+                    {Class, P, Props, Keys, Attrs, Slots} = expand(R),
+                    erlang:put(Id, {Class, P, Props#{K => V}, add_key(K, Props, Keys), Attrs, Slots});
+                Next ->
+                    erlang:put(Id, erlang:append_element(setelement(1, R, Next), V))
+            end,
+            V;
+        {setter, Setter} ->
+            call_setter(Setter, O, K, V, Mode);
+        _ ->
+            strict_set(O, K, V, Mode)
     end.
 
 %% A new own key K: a setter or a read-only property up the prototype chain
@@ -520,15 +885,27 @@ call_setter(Setter, O, _K, V, _Mode) ->
 %% is in the way.
 inherited_setter(null, _K) ->
     none;
+%% The static Object.prototype, which this realm has not written: its only
+%% accessor is __proto__, and its data properties are writable.
+inherited_setter({'$o', 'Object.prototype'}, K) when K =/= <<"__proto__">> ->
+    case erlang:get('Object.prototype') of
+        undefined -> none;
+        R -> setter_in(R, K)
+    end;
 inherited_setter(P, K) ->
-    case record_of(P) of
-        {proxy, _, _, _, _, _} -> slow;
-        {typed_array, _, _, _, _, _} -> slow;
-        {array, _, _, _, _, _} when K =:= <<"length">> -> slow;
-        {array, Proto, _, _, Attrs, {_, Elements}} when is_integer(K) -> setter_from(maps:find(K, Elements), K, Attrs, Proto);
-        {arguments, _, _, _, _, Map} when is_map_key(K, Map) -> slow;
-        {_, Proto, Props, _, Attrs, _} -> setter_from(maps:find(K, Props), K, Attrs, Proto)
-    end.
+    setter_in(raw(P), K).
+
+setter_in(R, K) when ?is_shaped(R) ->
+    case position(element(1, R), K) of
+        none -> inherited_setter(element(2, R), K);
+        _ -> none
+    end;
+setter_in({proxy, _, _, _, _, _}, _K) -> slow;
+setter_in({typed_array, _, _, _, _, _}, _K) -> slow;
+setter_in({array, _, _, _, _, _}, <<"length">>) -> slow;
+setter_in({array, Proto, _, _, Attrs, {_, Elements}}, K) when is_integer(K) -> setter_from(maps:find(K, Elements), K, Attrs, Proto);
+setter_in({arguments, _, _, _, _, Map}, K) when is_map_key(K, Map) -> slow;
+setter_in({_, Proto, Props, _, Attrs, _}, K) -> setter_from(maps:find(K, Props), K, Attrs, Proto).
 
 setter_from({ok, {'$accessor', _, Setter}}, _K, _Attrs, _Proto) ->
     {setter, Setter};
@@ -551,7 +928,20 @@ failed(_O, _K, V, sloppy) -> V.
 
 -spec set_failed(value(), key()) -> no_return().
 set_failed(O, K) ->
-    Message = case find_property(O, K) of
+    Found = case record_of(O) of
+        %% A host proxy, such as the global proxy of a node:vm context, fails on a
+        %% read-only property of its target as an object does, and else on the
+        %% definition that its interceptor refused.
+        {proxy, _, _, _, _, {Target, {host, _, _}}} ->
+            case find_property(Target, K) of
+                {_, _, _} = P -> P;
+                {_, _, _, _} = P -> P;
+                _ -> host
+            end;
+        _ -> find_property(O, K)
+    end,
+    Message = case Found of
+        host -> text([<<"Cannot redefine property: ">>, key_text(K)]);
         proxy -> text([<<"'set' on proxy: trap returned falsish for property '">>, key_text(K), <<"'">>]);
         {accessor, _, _, _} -> text([<<"Cannot set property ">>, key_text(K), <<" of ">>, describe(O), <<" which has only a getter">>]);
         {data, _, _} -> text([<<"Cannot assign to read only property '">>, key_text(K), <<"' of object">>]);
@@ -575,7 +965,7 @@ find_property(O, K) ->
 %% [[Set]] (OrdinarySet, §10.1.9): true when the write happened.
 -spec set(value(), key(), value(), value()) -> boolean().
 set(O, K, V, Receiver) ->
-    case record_of(O) of
+    case raw(O) of
         {proxy, _, _, _, _, _} when element(1, K) =:= '#' ->
             put_own(O, K, V, ?ALL),
             true;
@@ -639,10 +1029,12 @@ set_on_receiver(_K, _V, _Receiver) ->
     false.
 
 writable({'#', _, _}, _Attrs) -> true;
+writable({'$sym', {private, _}, _}, _Attrs) -> true;
 writable(_K, #{'$frozen' := true}) -> false;
 writable(K, Attrs) -> maps:get(K, Attrs, ?ALL) band ?WRITABLE =/= 0.
 
 is_private({'#', _, _}) -> true;
+is_private({'$sym', {private, _}, _}) -> true;
 is_private(_) -> false.
 
 extensible(#{'$frozen' := true}) -> false;
@@ -651,6 +1043,7 @@ extensible(_) -> true.
 
 add_key(K, _Props, Keys) when is_integer(K) -> Keys;
 add_key({'#', _, _}, _Props, Keys) -> Keys;
+add_key({'$sym', {private, _}, _}, _Props, Keys) -> Keys;
 add_key(K, Props, Keys) ->
     case Props of
         #{K := _} -> Keys;
@@ -668,8 +1061,10 @@ resize(_, NewLength) ->
 
 %% [[HasProperty]]: the `in` operator.
 -spec has(value(), key()) -> boolean().
+has(O, {'$sym', {private, _}, _} = K) ->
+    get_own(O, K) =/= none;
 has(O, K) ->
-    case record_of(O) of
+    case raw(O) of
         {proxy, _, _, _, _, Handler} ->
             buoy_ref_proxy:has(Handler, K);
         %% [[HasProperty]] of a namespace does not read the binding.
@@ -714,9 +1109,17 @@ delete_property(O, K) ->
     case record_of(O) of
         {proxy, _, _, _, _, Handler} ->
             buoy_ref_proxy:delete_property(Handler, K);
-        {deferred_namespace, _, _, _, _, M} = R ->
-            deferred_key(M, K),
-            own_of(R, K) =:= none;
+        %% [[Delete]] of a namespace fails for an export and does not read its binding.
+        {namespace, _, Props, _, _, _} when not is_tuple(K); element(1, K) =/= '$sym' ->
+            not is_map_key(K, Props);
+        %% A deferred namespace has no own "then", and an export key evaluates
+        %% its module (GetModuleExportsList).
+        {deferred_namespace, _, Props, _, _, M} = R ->
+            case deferred_key(M, K) of
+                absent -> true;
+                ordinary -> ordinary_delete(O, R, K);
+                export -> not is_map_key(K, Props)
+            end;
         {typed_array, _, _, _, _, _} = R ->
             case typed_index(K) of
                 {index, N} -> buoy_ref_typed_array:element_delete(O, N);
@@ -736,7 +1139,7 @@ ordinary_delete(O, R, K) ->
 
 remove_own(O, K) ->
     Id = id_for_write(O),
-    case erlang:get(Id) of
+    case expand(erlang:get(Id)) of
         {array, P, Props, Keys, Attrs, {Length, Elements}} when is_integer(K) ->
             erlang:put(Id, {array, P, Props, Keys, maps:remove(K, Attrs), {Length, maps:remove(K, Elements)}});
         {arguments, P, Props, Keys, Attrs, Map} when is_map(Map) ->
@@ -747,13 +1150,15 @@ remove_own(O, K) ->
     ok.
 
 %% V8's message names the receiver: #<Class> for an object, [object Array]
-%% for an array.
+%% for an array, and [object Module] for a namespace, whose properties the
+%% message must not read.
 -spec cannot_delete(value(), key()) -> no_return().
 cannot_delete(O, K) ->
     Receiver = case O of
         {'$o', _} ->
             case class_of(O) of
                 array -> [<<" of [object Array]">>];
+                Namespace when Namespace =:= namespace; Namespace =:= deferred_namespace -> [<<" of [object Module]">>];
                 _ -> [<<" of #<">>, receiver_name(O, 0), <<">">>]
             end;
         _ -> []
@@ -781,11 +1186,25 @@ receiver_name(O, Depth) ->
 %% length is its first string key. Private names are not keys.
 -spec own_keys(value()) -> [key()].
 own_keys(O) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) -> tuple_to_list(element(3, element(1, R)));
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:own_keys(Handler);
         {deferred_namespace, _, _, _, _, M} = R -> ok = buoy_module:ensure_deferred(M), record_keys(R);
         {typed_array, _, _, _, _, _} = R -> buoy_ref_typed_array:index_keys(O) ++ record_keys(R);
         R -> record_keys(R)
+    end.
+
+%% The own keys of O without its integer indices, in the order of own_keys,
+%% as V8's KeyAccumulator collects them with SKIP_INDICES: the elements of an
+%% array or a typed array are never listed.
+-spec own_named_keys(value()) -> [key()].
+own_named_keys(O) ->
+    case record_of(O) of
+        {Class, _, _, Keys, _, _} when Class =/= proxy, Class =/= deferred_namespace ->
+            Ordered = lists:reverse(Keys),
+            [<<"length">> || Class =:= array] ++ [K || K <- Ordered, ?IS_STRING(K)] ++ [K || {'$sym', _, _} = K <- Ordered];
+        _ ->
+            [K || K <- own_keys(O), not is_integer(K)]
     end.
 
 record_keys({Class, _, Props, Keys, _, Slots}) ->
@@ -797,12 +1216,16 @@ record_keys({Class, _, Props, Keys, _, Slots}) ->
             {lists:sort([K || K <- maps:keys(Props), is_integer(K)]), []}
     end,
     Ordered = lists:reverse(Keys),
-    Indexes ++ First ++ [K || K <- Ordered, ?IS_STRING(K)] ++ [K || {'$sym', _, _} = K <- Ordered].
+    %% A private symbol of the host ({'$sym', {private, _}, _}), as V8's, is no key that
+    %% reflection lists.
+    Indexes ++ First ++ [K || K <- Ordered, ?IS_STRING(K)] ++ [K || {'$sym', Tag, _} = K <- Ordered, not is_tuple(Tag)].
 
 %% The enumerable own string keys, for Object.keys, for-in, spread, and JSON.
 -spec enumerable_keys(value()) -> [key()].
 enumerable_keys(O) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) ->
+            tuple_to_list(element(3, element(1, R)));
         {proxy, _, _, _, _, _} ->
             [K || K <- own_keys(O), is_integer(K) orelse ?IS_STRING(K), is_enumerable(get_own(O, K))];
         %% Each key of a namespace reads its binding, as [[GetOwnProperty]] does.
@@ -834,6 +1257,8 @@ define(O, K, Descriptor) ->
 -spec define_failed(value(), key()) -> no_return().
 define_failed(O, K) ->
     Message = case record_of(O) of
+        {proxy, _, _, _, _, {_, {host, _, _}}} ->
+            text([<<"Cannot redefine property: ">>, key_text(K)]);
         {proxy, _, _, _, _, _} ->
             text([<<"'defineProperty' on proxy: trap returned falsish for property '">>, key_text(K), <<"'">>]);
         R ->
@@ -844,16 +1269,21 @@ define_failed(O, K) ->
     end,
     throw_error('TypeError', Message).
 
-%% [[DefineOwnProperty]]: true when the property now matches the descriptor.
--spec define_own_property(value(), key(), map()) -> boolean().
-define_own_property(O, {'#', _, _} = K, Desc) ->
-    %% A private name is no property: it takes its value whatever the object's state.
+%% A private name is no property: it takes its value whatever the object's state.
+define_private(O, K, Desc) ->
     Slot = case is_accessor_descriptor(Desc) of
         true -> {'$accessor', maps:get(get, Desc, undefined), maps:get(set, Desc, undefined)};
         false -> maps:get(value, Desc, undefined)
     end,
     put_own(O, K, Slot, ?ALL),
-    true;
+    true.
+
+%% [[DefineOwnProperty]]: true when the property now matches the descriptor.
+-spec define_own_property(value(), key(), map()) -> boolean().
+define_own_property(O, {'#', _, _} = K, Desc) ->
+    define_private(O, K, Desc);
+define_own_property(O, {'$sym', {private, _}, _} = K, Desc) ->
+    define_private(O, K, Desc);
 define_own_property(O, K, Desc) ->
     case record_of(O) of
         {namespace, _, _, _, _, _} ->
@@ -958,9 +1388,17 @@ is_accessor_descriptor(Desc) -> is_map_key(get, Desc) orelse is_map_key(set, Des
 is_data_descriptor(Desc) -> is_map_key(value, Desc) orelse is_map_key(writable, Desc).
 
 %% Writes the own property K with its value or accessor and its bits.
+put_own(O, K, Slot, ?ALL) when is_binary(K), not (is_tuple(Slot) andalso tuple_size(Slot) =:= 3 andalso element(1, Slot) =:= '$accessor') ->
+    case add_field(O, K, Slot) of
+        true -> ok;
+        false -> put_classic(O, K, Slot, ?ALL)
+    end;
 put_own(O, K, Slot, Bits) ->
+    put_classic(O, K, Slot, Bits).
+
+put_classic(O, K, Slot, Bits) ->
     Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    {Class, P, Props, Keys, Attrs, Slots} = expand(erlang:get(Id)),
     case Class of
         array when is_integer(K) ->
             {Length, Elements} = Slots,
@@ -1059,7 +1497,9 @@ unmap(O, K) ->
 %% [[GetOwnProperty]]: {data, Value, Bits}, {accessor, Get, Set, Bits}, or none.
 -spec get_own(value(), key()) -> property().
 get_own(O, K) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) -> shaped_value(R, K);
+        {proxy, _, _, _, _, _} = R when element(1, K) =:= '$sym', is_tuple(element(2, K)) -> own_of(R, K);
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:get_own_property(Handler, K);
         {deferred_namespace, _, _, _, _, M} = R ->
             case deferred_key(M, K) of
@@ -1078,6 +1518,8 @@ get_own(O, K) ->
         R -> own_of(R, K)
     end.
 
+own_of(R, K) when ?is_shaped(R) ->
+    shaped_value(R, K);
 own_of({array, _, _, _, Attrs, {_, Elements}}, K) when is_integer(K) ->
     found(maps:find(K, Elements), own_bits(K, Attrs));
 own_of({array, _, _, _, Attrs, {Length, _}}, <<"length">>) ->
@@ -1088,6 +1530,7 @@ own_of({_, _, Props, _, Attrs, _}, K) ->
     found(maps:find(K, Props), own_bits(K, Attrs)).
 
 own_bits({'#', _, _}, _Attrs) -> ?ALL;
+own_bits({'$sym', {private, _}, _}, _Attrs) -> ?ALL;
 own_bits(K, #{'$frozen' := true} = Attrs) -> maps:get(K, Attrs, ?ALL) band ?ENUMERABLE;
 own_bits(K, Attrs) -> maps:get(K, Attrs, ?ALL).
 
@@ -1100,7 +1543,7 @@ found(error, _Bits) -> none.
 %% [[GetPrototypeOf]].
 -spec prototype_of(value()) -> value().
 prototype_of(O) ->
-    case record_of(O) of
+    case raw(O) of
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:get_prototype_of(Handler);
         R -> element(2, R)
     end.
@@ -1138,7 +1581,7 @@ immutable_prototype(_) -> false.
 in_chain(null, _O) -> false;
 in_chain(O, O) -> true;
 in_chain(P, O) ->
-    case record_of(P) of
+    case raw(P) of
         {proxy, _, _, _, _, _} -> false;
         R -> in_chain(element(2, R), O)
     end.
@@ -1146,7 +1589,8 @@ in_chain(P, O) ->
 %% [[IsExtensible]].
 -spec is_extensible(value()) -> boolean().
 is_extensible(O) ->
-    case record_of(O) of
+    case raw(O) of
+        R when ?is_shaped(R) -> true;
         {proxy, _, _, _, _, Handler} -> buoy_ref_proxy:is_extensible(Handler);
         {_, _, _, _, Attrs, _} -> extensible(Attrs)
     end.
@@ -1166,7 +1610,7 @@ prevent_extensions(O) ->
 
 ordinary_prevent_extensions(O) ->
     Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    {Class, P, Props, Keys, Attrs, Slots} = expand(erlang:get(Id)),
     erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$noext' => true}, Slots}),
     true.
 
@@ -1177,7 +1621,7 @@ freeze(O) ->
     class_of(O) =:= namespace andalso own_keys(O) =/= [] andalso
         throw_error('TypeError', <<"Cannot freeze a module namespace object">>),
     Id = id_for_write(O),
-    {Class, P, Props, Keys, Attrs, Slots} = erlang:get(Id),
+    {Class, P, Props, Keys, Attrs, Slots} = expand(erlang:get(Id)),
     erlang:put(Id, {Class, P, Props, Keys, Attrs#{'$frozen' => true}, Slots}),
     O.
 
@@ -1199,10 +1643,18 @@ private_put(O, P, Slot) ->
     ok.
 
 -spec class_of(value()) -> atom().
-class_of(O) -> element(1, record_of(O)).
+class_of(O) ->
+    case raw(O) of
+        R when ?is_shaped(R) -> object;
+        R -> element(1, R)
+    end.
 
 -spec slots(value()) -> term().
-slots(O) -> element(6, record_of(O)).
+slots(O) ->
+    case raw(O) of
+        R when ?is_shaped(R) -> none;
+        R -> element(6, R)
+    end.
 
 -spec set_slots(value(), term()) -> ok.
 set_slots(O, Slots) ->
@@ -1219,12 +1671,19 @@ is_object(_) -> false.
 is_callable({'$f', _, _}) -> true;
 is_callable(_) -> false.
 
-record_of({'$o', Id} = O) ->
+%% The record of an object, in the form of a record that has no shape.
+-spec record(value()) -> tuple().
+record(O) -> record_of(O).
+
+record_of(O) -> expand(raw(O)).
+
+%% The record of an object as it is: shaped or not.
+raw({'$o', Id} = O) ->
     case erlang:get(Id) of
         undefined -> intrinsic_record(Id, O);
         R -> R
     end;
-record_of({'$f', _, _} = F) ->
+raw({'$f', _, _} = F) ->
     fn_record(F).
 
 fn_record({'$f', Id, _} = F) ->
@@ -1232,6 +1691,7 @@ fn_record({'$f', Id, _} = F) ->
         undefined when is_atom(Id) -> intrinsic_record(Id, F);
         undefined when is_tuple(Id) -> static_function_record(F);
         undefined -> {function, ?FUNCTION_PROTO, #{}, [], #{}, #{}};
+        {function, _, _, _, _, #{prototype := lazy}} = R -> own_prototype(Id, F, R);
         R -> R
     end.
 
@@ -1250,17 +1710,17 @@ static_function_record({'$f', {builtin, Name} = Id, _}) ->
             R
     end;
 %% A module-level normal function of sloppy code is {'$f', {fn, Module, Name,
-%% Length, sloppy}, Fun}: it has the caller and arguments properties that V8
-%% gives it, both null.
+%% Length, sloppy}, Fun}: it has the caller and arguments properties of a
+%% sloppy function (buoy_ref:finish_fn/2).
 static_function_record({'$f', {fn, _Module, Name, Length, sloppy} = Id, _} = F) ->
     Proto = new_object(?OBJECT_PROTO),
-    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => null},
+    Props = #{<<"length">> => Length, <<"name">> => Name, <<"prototype">> => Proto, <<"arguments">> => null, <<"caller">> => undefined},
     Attrs = #{<<"length">> => ?CONFIGURABLE, <<"name">> => ?CONFIGURABLE, <<"prototype">> => ?WRITABLE, <<"arguments">> => 0, <<"caller">> => 0},
     Keys = [<<"prototype">>, <<"caller">>, <<"arguments">>, <<"name">>, <<"length">>],
-    Record = {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}},
-    erlang:put(Id, Record),
+    erlang:put(Id, {function, ?FUNCTION_PROTO, Props, Keys, Attrs, #{kind => normal}}),
+    reflect_calls(F),
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
-    Record;
+    erlang:get(Id);
 %% A module-level function declaration is {'$f', {fn, Module, Name, Length}, Fun}.
 %% Each realm makes its record, with a new prototype object, on first use.
 static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
@@ -1272,6 +1732,17 @@ static_function_record({'$f', {fn, _Module, Name, Length} = Id, _} = F) ->
     define(Proto, <<"constructor">>, #{value => F, writable => true, enumerable => false, configurable => true}),
     Record;
 %% A generator, an async function, or a function that reads new.target.
+%% A module-level sloppy function that reads new.target is
+%% {'$f', {fn_nt, Module, Name, Length, sloppy}, Fun}.
+static_function_record({'$f', {fn_nt, Module, Name, Length, sloppy} = Id, _} = F) ->
+    %% Keys are newest first: prototype, then caller and arguments, as for a
+    %% sloppy function without new.target.
+    {function, P, Props, [<<"prototype">> | Older], Attrs, Slots} = buoy_ref_generator:static_record(fn_nt, Module, Name, Length, F),
+    erlang:put(Id, {function, P, Props#{<<"arguments">> => null, <<"caller">> => undefined},
+                    [<<"prototype">>, <<"caller">>, <<"arguments">> | Older],
+                    Attrs#{<<"arguments">> => 0, <<"caller">> => 0}, Slots}),
+    reflect_calls(F),
+    erlang:get(Id);
 static_function_record({'$f', {Form, Module, Name, Length} = Id, _} = F) ->
     Record = buoy_ref_generator:static_record(Form, Module, Name, Length, F),
     erlang:put(Id, Record),
@@ -1313,6 +1784,7 @@ id_for_write({'$o', Id} = O) ->
 id_for_write({'$f', Id, _} = F) ->
     case erlang:get(Id) of
         undefined -> erlang:put(Id, fn_record(F));
+        {function, _, _, _, _, #{prototype := lazy}} = R -> own_prototype(Id, F, R);
         _ -> ok
     end,
     Id.
@@ -1372,6 +1844,9 @@ cell_set({'$c', Id}, V) ->
 
 -spec symbol(value()) -> {'$sym', integer(), value()}.
 symbol(Description) -> {'$sym', erlang:unique_integer(), Description}.
+
+-spec private_symbol(binary()) -> {'$sym', {private, integer()}, binary()}.
+private_symbol(Description) -> {'$sym', {private, erlang:unique_integer()}, Description}.
 
 %% Symbol.for: the key is the identity, so every realm agrees without a registry.
 -spec symbol_for(binary()) -> {'$sym', registered, binary()}.
@@ -1434,29 +1909,50 @@ error_object(Proto, Message, Stack) ->
     erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, none}),
     {'$o', Id}.
 
+%% An error object of the intrinsic class Name, or with the prototype Proto,
+%% whose stack formats on its first read (buoy_ref_error:lazy_stack/0).
+-spec error_object(atom() | value(), binary()) -> value().
+error_object(Name, Message) when is_atom(Name) ->
+    error_object(intrinsic(list_to_atom(atom_to_list(Name) ++ ".prototype")), Message);
+error_object(Proto, Message) ->
+    Props = #{<<"message">> => Message, <<"stack">> => buoy_ref_error:lazy_stack()},
+    Attrs = #{<<"message">> => ?WRITABLE bor ?CONFIGURABLE, <<"stack">> => ?CONFIGURABLE},
+    Id = next_id(),
+    erlang:put(Id, {error, Proto, Props, [<<"message">>, <<"stack">>], Attrs, none}),
+    {'$o', Id}.
+
 -spec throw_error(atom(), binary()) -> no_return().
 throw_error(Name, Message) ->
-    Stack = text([atom_to_binary(Name), <<": ">>, Message, <<"\n    at <buoy>">>]),
     %% BUOY_NODE_DEBUG keeps the Erlang stack of the last error (buoy_node).
     persistent_term:get({buoy_node, debug}, false) andalso
         erlang:put('$buoy_last_throw', {Message, element(2, process_info(self(), current_stacktrace))}),
-    erlang:error({'$throw', error_object(Name, Message, Stack)}).
+    erlang:error({'$throw', error_object(Name, Message)}).
 
 %%% Garbage collection
 
 %% Marks from every pdict entry whose key is not an integer and from Roots,
 %% then erases every integer key that marking did not reach. The caller's
 %% stack must hold no heap reference that Roots leaves out.
--spec gc([term()]) -> #{live := non_neg_integer(), freed := non_neg_integer(), us := non_neg_integer()}.
+-spec gc([term()]) -> #{live := non_neg_integer(), freed := non_neg_integer(), us := integer(), floor := pos_integer()}.
 gc(Roots) ->
     Start = erlang:monotonic_time(microsecond),
+    _ = erlang:erase(?YOUNG),
     {Ids, Others} = lists:partition(fun erlang:is_integer/1, erlang:get_keys()),
-    {Live0, Chunks0, Weak0} = mark([erlang:get(K) || K <- Others] ++ Roots, #{}, 0, []),
+    {Live0, Chunks0, Weak0} = mark([erlang:get(K) || K <- Others] ++ Roots, #{}, 0, [], 0),
     {Live, Chunks, Weak} = ephemerons(Live0, Chunks0, Weak0),
     clear_weak(Weak, Chunks),
     Freed = sweep(Ids, Chunks, 0),
+    %% The data of a dropped buffer is an atomics array that only BEAM's own
+    %% collection of this process frees.
+    external() >= 1048576 andalso erlang:garbage_collect(),
+    erlang:erase(?EXTERNAL),
+    collected(Start, Live, Freed, 1).
+
+%% Records a collection of the ids from Floor on that left Live entries, and
+%% sizes the process heap.
+collected(Start, Live, Freed, Floor) ->
     Us = erlang:monotonic_time(microsecond) - Start,
-    Stats = #{live => Live, freed => Freed, us => Us},
+    Stats = #{live => Live, freed => Freed, us => Us, floor => Floor},
     {Runs, Total, Max} = case erlang:get(?STATS) of
         undefined -> {0, 0, 0};
         #{runs := R, total_us := T, max_us := M} -> {R, T, M}
@@ -1464,6 +1960,136 @@ gc(Roots) ->
     erlang:put(?STATS, Stats#{runs => Runs + 1, total_us => Total + Us, max_us => max(Max, Us), at => allocated()}),
     size_heap(Live),
     Stats.
+
+%% A loop of a sync function calls this at the top of each iteration, with
+%% the id count at the loop's entry and the values that the iteration
+%% carries. A long job runs no collection between jobs, so without it a loop
+%% that makes garbage grows the heap until the job ends. The trigger is the
+%% one of the jobs loop: the ids handed out since the last collection reach
+%% twice the live count then, so the cost stays in proportion to allocation.
+%% The loop itself must have handed out as many: an inner loop that started
+%% late would keep the garbage of the outer loop as older ids. An outer loop
+%% also collects when the last collection, of an inner loop, kept that many
+%% of its ids as older ones.
+-spec safepoint(non_neg_integer(), [term()]) -> ok.
+safepoint(Entry, Roots) ->
+    case erlang:get(?NEXT) of
+        Next when is_integer(Next), Next - Entry > ?YOUNG_MIN -> safepoint(Entry, Next, Roots);
+        _ -> ok
+    end.
+
+safepoint(Entry, Next, Roots) ->
+    #{at := At, live := Live} = Stats = gc_stats(),
+    Threshold = max(?YOUNG_MIN, 2 * Live),
+    Kept = maps:get(floor, Stats, 1) - Entry - 1,
+    case Next - Entry > Threshold andalso (Next - At > Threshold orelse Kept > Threshold) of
+        true ->
+            _ = collect_young(Entry, Roots),
+            ok;
+        false ->
+            ok
+    end.
+
+%% Frees the ids above Entry, the id count at the entry of a loop, that
+%% nothing reaches. The back edge of a loop is a tail call, so at the top of
+%% an iteration no frame of an earlier iteration is left, and every frame
+%% below the loop was made before Entry. Erlang terms cannot change, so a
+%% term made before Entry cannot name a younger id: only Roots, the pdict
+%% entries that are not ids, and the records of older ids can. Every older id
+%% stays. Weak containers hold their contents strongly here, so a WeakRef
+%% target lives to the end of the job (ECMA-262 ClearKeptObjects), and the
+%% collection between jobs clears them.
+%%
+%% An older record is a root only when it names a young id. ?YOUNG keeps, for
+%% each older id, its record and the largest id that the record names, so a
+%% record that has not changed since the last collection costs one lookup.
+%% JSC and V8 remember the old objects that point into the young generation
+%% with a write barrier; a barrier would cost every write here, and a
+%% comparison with the remembered record finds the written ones instead.
+-spec collect_young(non_neg_integer(), [term()]) -> map().
+collect_young(Entry, Roots) ->
+    Start = erlang:monotonic_time(microsecond),
+    Floor = Entry + 1,
+    Known = case erlang:erase(?YOUNG) of
+        undefined -> #{};
+        K -> K
+    end,
+    {Young, Old, OldTerms, Others} = split_ids(erlang:get_keys(), Floor, Known, [], [], Roots, []),
+    Terms = [erlang:get(Key) || Key <- Others] ++ OldTerms,
+    {Live0, Chunks0, Weak} = mark(Terms, #{}, 0, [], Floor),
+    {Live, Chunks} = mark_weak_strongly(Weak, Live0, Chunks0, Floor),
+    Freed = sweep(Young, Chunks, 0),
+    erlang:put(?YOUNG, maps:from_list(Old)),
+    collected(Start, length(Old) + Live, Freed, Floor).
+
+%% {the young ids, {Id, {Record, the largest id it names}} for each older id,
+%% the terms of the older records that name a young id, the other keys}.
+split_ids([], _Floor, _Known, Young, Old, Terms, Others) ->
+    {Young, Old, Terms, Others};
+split_ids([Id | Rest], Floor, Known, Young, Old, Terms, Others) when is_integer(Id), Id >= Floor ->
+    split_ids(Rest, Floor, Known, [Id | Young], Old, Terms, Others);
+split_ids([Id | Rest], Floor, Known, Young, Old, Terms, Others) when is_integer(Id) ->
+    R = erlang:get(Id),
+    Max = case Known of
+        #{Id := {Known1, M}} when Known1 =:= R -> M;
+        _ -> largest_id(entry_terms(R), 0)
+    end,
+    Terms1 = case Max >= Floor of
+        true -> entry_terms(R) ++ Terms;
+        false -> Terms
+    end,
+    split_ids(Rest, Floor, Known, Young, [{Id, {R, Max}} | Old], Terms1, Others);
+split_ids([Key | Rest], Floor, Known, Young, Old, Terms, Others) ->
+    split_ids(Rest, Floor, Known, Young, Old, Terms, [Key | Others]).
+
+%% The terms of an entry that can name an id: a shaped record without its
+%% shape, which holds keys only, and any other entry, a record or the value
+%% of a cell, whole.
+entry_terms(R) when ?is_shaped(R) ->
+    [_ | Values] = tuple_to_list(R),
+    Values;
+entry_terms(R) ->
+    [R].
+
+%% The largest id that a term names, without entering the entries of ids.
+largest_id([], Max) ->
+    Max;
+largest_id([{Tag, Id} | Rest], Max) when (Tag =:= '$o' orelse Tag =:= '$c'), is_integer(Id) ->
+    largest_id(Rest, max(Id, Max));
+largest_id([{'$f', Id, Fun} | Rest], Max) when is_integer(Id) ->
+    largest_id([Fun | Rest], max(Id, Max));
+largest_id([T | Rest], Max) when is_tuple(T) ->
+    largest_id(tuple_to_list(T) ++ Rest, Max);
+largest_id([[H | T] | Rest], Max) ->
+    largest_id([H, T | Rest], Max);
+largest_id([M | Rest], Max) when is_map(M) ->
+    largest_id(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Max);
+largest_id([F | Rest], Max) when is_function(F) ->
+    {env, Env} = erlang:fun_info(F, env),
+    largest_id(Env ++ Rest, Max);
+largest_id([_ | Rest], Max) ->
+    largest_id(Rest, Max).
+
+mark_weak_strongly([], Live, Chunks, _Floor) ->
+    {Live, Chunks};
+mark_weak_strongly(Weak, Live, Chunks, Floor) ->
+    {Live1, Chunks1, Weak1} = mark([erlang:get(Id) || Id <- lists:usort(Weak)], Chunks, Live, [], Floor),
+    mark_weak_strongly(Weak1, Live1, Chunks1, Floor).
+
+%% Bytes that the realm allocated outside the heap since the last
+%% collection, such as the data of ArrayBuffers: V8's external memory, which
+%% paces collection next to the ids, since one id can hold a large buffer.
+-spec add_external(non_neg_integer()) -> ok.
+add_external(Bytes) ->
+    erlang:put(?EXTERNAL, external() + Bytes),
+    ok.
+
+-spec external() -> non_neg_integer().
+external() ->
+    case erlang:get(?EXTERNAL) of
+        undefined -> 0;
+        N -> N
+    end.
 
 -spec gc_stats() -> map().
 gc_stats() ->
@@ -1508,47 +2134,60 @@ is_marked(Id, Chunks) ->
     end.
 
 %% Weak collects the ids of the weak containers that marking reaches: their
-%% keys and targets are not marked through them (ephemerons/3).
-mark([], Chunks, Live, Weak) ->
+%% keys and targets are not marked through them (ephemerons/3). Ids below
+%% Floor are older than the loop that collects (collect_young/2): their
+%% records are roots already, so marking does not enter them, but it still
+%% enters the fun of an old function once.
+mark([], Chunks, Live, Weak, _Floor) ->
     {Live, Chunks, Weak};
-mark([{'$o', Id} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
+mark([{'$o', Id} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id), Id >= Floor ->
     case first_mark(Id, Chunks) of
         {true, Chunks1} ->
             {Terms, Weak1} = record_terms(erlang:get(Id), Id, Rest, Weak),
-            mark(Terms, Chunks1, Live + 1, Weak1);
+            mark(Terms, Chunks1, Live + 1, Weak1, Floor);
         {false, Chunks1} ->
-            mark(Rest, Chunks1, Live, Weak)
+            mark(Rest, Chunks1, Live, Weak, Floor)
     end;
-mark([{'$f', Id, Fun} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
+mark([{'$f', Id, Fun} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id), Id >= Floor ->
     case first_mark(Id, Chunks) of
         {true, Chunks1} ->
             {Terms, Weak1} = record_terms(erlang:get(Id), Id, [Fun | Rest], Weak),
-            mark(Terms, Chunks1, Live + 1, Weak1);
+            mark(Terms, Chunks1, Live + 1, Weak1, Floor);
         {false, Chunks1} ->
-            mark(Rest, Chunks1, Live, Weak)
+            mark(Rest, Chunks1, Live, Weak, Floor)
     end;
-mark([{'$f', _, Fun} | Rest], Chunks, Live, Weak) ->
-    mark([Fun | Rest], Chunks, Live, Weak);
-mark([{'$c', Id} | Rest], Chunks, Live, Weak) when is_integer(Id) ->
+mark([{'$f', Id, Fun} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id) ->
     case first_mark(Id, Chunks) of
-        {true, Chunks1} -> mark([erlang:get(Id) | Rest], Chunks1, Live + 1, Weak);
-        {false, Chunks1} -> mark(Rest, Chunks1, Live, Weak)
+        {true, Chunks1} -> mark([Fun | Rest], Chunks1, Live, Weak, Floor);
+        {false, Chunks1} -> mark(Rest, Chunks1, Live, Weak, Floor)
     end;
-mark([T | Rest], Chunks, Live, Weak) when is_tuple(T) ->
-    mark(tuple_to_list(T) ++ Rest, Chunks, Live, Weak);
-mark([[H | T] | Rest], Chunks, Live, Weak) ->
-    mark([H, T | Rest], Chunks, Live, Weak);
-mark([M | Rest], Chunks, Live, Weak) when is_map(M) ->
-    mark(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Chunks, Live, Weak);
-mark([F | Rest], Chunks, Live, Weak) when is_function(F) ->
+mark([{'$f', _, Fun} | Rest], Chunks, Live, Weak, Floor) ->
+    mark([Fun | Rest], Chunks, Live, Weak, Floor);
+mark([{'$c', Id} | Rest], Chunks, Live, Weak, Floor) when is_integer(Id), Id >= Floor ->
+    case first_mark(Id, Chunks) of
+        {true, Chunks1} -> mark([erlang:get(Id) | Rest], Chunks1, Live + 1, Weak, Floor);
+        {false, Chunks1} -> mark(Rest, Chunks1, Live, Weak, Floor)
+    end;
+mark([{Tag, Id} | Rest], Chunks, Live, Weak, Floor) when (Tag =:= '$o' orelse Tag =:= '$c'), is_integer(Id) ->
+    mark(Rest, Chunks, Live, Weak, Floor);
+mark([T | Rest], Chunks, Live, Weak, Floor) when is_tuple(T) ->
+    mark(tuple_to_list(T) ++ Rest, Chunks, Live, Weak, Floor);
+mark([[H | T] | Rest], Chunks, Live, Weak, Floor) ->
+    mark([H, T | Rest], Chunks, Live, Weak, Floor);
+mark([M | Rest], Chunks, Live, Weak, Floor) when is_map(M) ->
+    mark(maps:fold(fun(K, V, Acc) -> [K, V | Acc] end, Rest, M), Chunks, Live, Weak, Floor);
+mark([F | Rest], Chunks, Live, Weak, Floor) when is_function(F) ->
     {env, Env} = erlang:fun_info(F, env),
-    mark(Env ++ Rest, Chunks, Live, Weak);
-mark([_ | Rest], Chunks, Live, Weak) ->
-    mark(Rest, Chunks, Live, Weak).
+    mark(Env ++ Rest, Chunks, Live, Weak, Floor);
+mark([_ | Rest], Chunks, Live, Weak, Floor) ->
+    mark(Rest, Chunks, Live, Weak, Floor).
 
 %% The terms of a record that can hold references: the prototype, the
 %% values, and the slots. Keys and attributes hold none. A weak container
 %% gives only what it holds strongly: a registry's callback and held values.
+record_terms(R, _Id, Rest, Weak) when ?is_shaped(R) ->
+    [_ | Terms] = tuple_to_list(R),
+    {Terms ++ Rest, Weak};
 record_terms({Class, Proto, Props, _, _, Slots}, Id, Rest, Weak)
   when Class =:= weakmap; Class =:= weakset; Class =:= weak_ref; Class =:= finalization_registry ->
     Strong = case {Class, Slots} of
@@ -1566,7 +2205,7 @@ record_terms(_, _Id, Rest, Weak) ->
 ephemerons(Live, Chunks, Weak) ->
     Values = [V || Id <- Weak, {weakmap, _, _, _, _, Entries} <- [erlang:get(Id)],
                    K := V <- Entries, live_key(K, Chunks)],
-    case mark(Values, Chunks, Live, Weak) of
+    case mark(Values, Chunks, Live, Weak, 0) of
         {Live, Chunks1, Weak} -> {Live, Chunks1, Weak};
         {Live1, Chunks1, Weak1} -> ephemerons(Live1, Chunks1, Weak1)
     end.
@@ -1623,16 +2262,43 @@ clone_out(Value) ->
     {Term, _} = out(Value, #{}),
     Term.
 
+%% clone_out with the host objects of an embedder, such as the MessagePorts
+%% and the JS transferables of Node's postMessage: Hook(Object) returns none
+%% for an ordinary object, or {host, Tag, Data}, whose Data clones with the
+%% rest of the value and reaches the Hook of clone_in/2 as {Tag, Clone}.
+-spec clone_out(value(), fun((value()) -> none | {host, term(), value()})) -> term().
+clone_out(Value, Hook) ->
+    Old = erlang:put(?CLONE_HOOK, Hook),
+    try clone_out(Value)
+    after restore_hook(Old)
+    end.
+
+-spec clone_in(term(), fun(({term(), value()}) -> value())) -> value().
+clone_in(Term, Hook) ->
+    Old = erlang:put(?CLONE_HOOK, Hook),
+    try clone_in(Term)
+    after restore_hook(Old)
+    end.
+
+restore_hook(undefined) -> erlang:erase(?CLONE_HOOK);
+restore_hook(Old) -> erlang:put(?CLONE_HOOK, Old).
+
 out({'$o', Id} = O, Seen) ->
     case Seen of
         #{Id := N} ->
             {{'$back', N}, Seen};
         _ ->
             N = map_size(Seen),
-            out_record(record_of(O), O, N, Seen#{Id => N})
+            case host_out(O) of
+                none ->
+                    out_record(record_of(O), O, N, Seen#{Id => N});
+                {host, Tag, Data} ->
+                    {DataTerm, Seen1} = out(Data, Seen#{Id => N}),
+                    {{'$host', N, Tag, DataTerm}, Seen1}
+            end
     end;
-out({'$f', _, _}, _Seen) ->
-    throw_error('DataCloneError', <<"function could not be cloned.">>);
+out({'$f', _, _} = F, _Seen) ->
+    throw_error('DataCloneError', text([buoy_ref:to_string(F), <<" could not be cloned.">>]));
 out({'$sym', _, _} = S, _Seen) ->
     throw_error('DataCloneError', text([key_text(S), <<" could not be cloned.">>]));
 out(V, Seen) ->
@@ -1678,6 +2344,12 @@ out_record({object, _, _, _, _, _}, O, N, Seen) ->
 out_record({Class, _, _, _, _, _}, _O, _N, _Seen) ->
     throw_error('DataCloneError', <<"#<", (atom_to_binary(Class))/binary, "> could not be cloned.">>).
 
+host_out(O) ->
+    case erlang:get(?CLONE_HOOK) of
+        undefined -> none;
+        Hook -> Hook(O)
+    end.
+
 value_text(undefined) -> <<>>;
 value_text(V) -> buoy_ref:to_string(V).
 
@@ -1694,7 +2366,8 @@ out_entries(Entries, Seen) ->
 out_list(Items, Seen) ->
     lists:mapfoldl(fun out/2, Seen, Items).
 
-%% Builds the clone of Term in this realm.
+%% Builds the clone of Term in this realm, of the intrinsics of the current
+%% realm, as StructuredDeserialize makes it in the target realm.
 -spec clone_in(term()) -> value().
 clone_in(Term) ->
     {Value, _} = in(Term, #{}),
@@ -1702,21 +2375,25 @@ clone_in(Term) ->
 
 in({'$back', N}, Made) ->
     {maps:get(N, Made), Made};
+in({'$host', N, Tag, DataTerm}, Made) ->
+    {Data, Made1} = in(DataTerm, Made),
+    O = (erlang:get(?CLONE_HOOK))({Tag, Data}),
+    {O, Made1#{N => O}};
 in({'$object', N, Pairs}, Made) ->
-    O = new_object(?OBJECT_PROTO),
+    O = new_object(intrinsic('Object.prototype')),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) -> {V1, M1} = in(V, M), {{K, V1}, M1} end, Made#{N => O}, Pairs),
     {'$o', Id} = O,
     {Props, Keys} = lists:foldl(fun({K, V}, {Ps, Ks}) -> {Ps#{K => V}, add_key(K, Ps, Ks)} end, {#{}, []}, Values),
-    erlang:put(Id, {object, ?OBJECT_PROTO, Props, Keys, #{}, none}),
+    erlang:put(Id, {object, intrinsic('Object.prototype'), Props, Keys, #{}, none}),
     {O, Made1};
 in({'$array', N, Length, Pairs}, Made) ->
     O = new_array([]),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) -> {V1, M1} = in(V, M), {{K, V1}, M1} end, Made#{N => O}, Pairs),
     {'$o', Id} = O,
-    erlang:put(Id, {array, ?ARRAY_PROTO, #{}, [], #{}, {Length, maps:from_list(Values)}}),
+    erlang:put(Id, {array, intrinsic('Array.prototype'), #{}, [], #{}, {Length, maps:from_list(Values)}}),
     {O, Made1};
 in({'$map', N, Entries}, Made) ->
-    O = new_exotic(map, {'$o', 'Map.prototype'}, {#{}, 0}),
+    O = new_exotic(map, intrinsic('Map.prototype'), {#{}, 0}),
     {Values, Made1} = lists:mapfoldl(fun({K, V}, M) ->
                                              {K1, M1} = in(K, M),
                                              {V1, M2} = in(V, M1),
@@ -1726,16 +2403,16 @@ in({'$map', N, Entries}, Made) ->
     set_slots(O, {Index, length(Values)}),
     {O, Made1};
 in({'$set', N, Members}, Made) ->
-    O = new_exotic(set, {'$o', 'Set.prototype'}, {#{}, 0}),
+    O = new_exotic(set, intrinsic('Set.prototype'), {#{}, 0}),
     {Values, Made1} = lists:mapfoldl(fun in/2, Made#{N => O}, Members),
     set_slots(O, {maps:from_list([{K, Seq} || {Seq, K} <- lists:enumerate(0, Values)]), length(Values)}),
     {O, Made1};
 in({'$wrapper', N, Class, Primitive}, Made) ->
     Proto = case Class of
-        number -> {'$o', 'Number.prototype'};
-        string -> {'$o', 'String.prototype'};
-        boolean -> {'$o', 'Boolean.prototype'};
-        bigint -> {'$o', 'BigInt.prototype'}
+        number -> intrinsic('Number.prototype');
+        string -> intrinsic('String.prototype');
+        boolean -> intrinsic('Boolean.prototype');
+        bigint -> intrinsic('BigInt.prototype')
     end,
     O = case Class of
         string -> buoy_ref_string:wrap(Primitive, Proto);
@@ -1747,27 +2424,27 @@ in({'$array_buffer', N, Bytes, Max}, Made) ->
     buoy_ref_buffer:write(O, 0, Bytes),
     {O, Made#{N => O}};
 in({'$shared_array_buffer', N, Slots}, Made) ->
-    O = new_exotic(shared_array_buffer, {'$o', 'SharedArrayBuffer.prototype'}, Slots),
+    O = new_exotic(shared_array_buffer, intrinsic('SharedArrayBuffer.prototype'), Slots),
     {O, Made#{N => O}};
 in({'$typed_array', N, Kind, BufferTerm, Offset, Length}, Made) ->
     {Buffer, Made1} = in(BufferTerm, Made),
-    Proto = {'$o', binary_to_atom(<<(buoy_ref_buffer:kind_name(Kind))/binary, ".prototype">>)},
+    Proto = intrinsic(binary_to_atom(<<(buoy_ref_buffer:kind_name(Kind))/binary, ".prototype">>)),
     O = new_exotic(typed_array, Proto, {Kind, Buffer, Offset, Length}),
     {O, Made1#{N => O}};
 in({'$data_view', N, BufferTerm, Offset, Length}, Made) ->
     {Buffer, Made1} = in(BufferTerm, Made),
-    O = new_exotic(data_view, {'$o', 'DataView.prototype'}, {Buffer, Offset, Length}),
+    O = new_exotic(data_view, intrinsic('DataView.prototype'), {Buffer, Offset, Length}),
     {O, Made1#{N => O}};
 in({'$date', N, Ms}, Made) ->
-    O = new_exotic(date, {'$o', 'Date.prototype'}, Ms),
+    O = new_exotic(date, intrinsic('Date.prototype'), Ms),
     {O, Made#{N => O}};
 in({'$regexp', N, Source, Flags}, Made) ->
     O = buoy_ref_regexp:literal(Source, Flags),
     {O, Made#{N => O}};
 in({'$error', N, Name, Message, Stack}, Made) ->
     Proto = case lists:member(Name, [<<"Error">>, <<"TypeError">>, <<"RangeError">>, <<"SyntaxError">>, <<"ReferenceError">>]) of
-        true -> {'$o', binary_to_atom(<<Name/binary, ".prototype">>)};
-        false -> {'$o', 'Error.prototype'}
+        true -> intrinsic(binary_to_atom(<<Name/binary, ".prototype">>));
+        false -> intrinsic('Error.prototype')
     end,
     O = error_object(Proto, Message, Stack),
     {O, Made#{N => O}};

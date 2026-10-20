@@ -1,7 +1,8 @@
 //! Linking: what each import of a module refers to, and the exports of each namespace,
 //! by the `ResolveExport` and `GetExportedNames` algorithms of the spec over the graph. A
 //! `CommonJS` module exports `default`, `module.exports`, and the names that Node's
-//! cjs-module-lexer finds, and a JSON module exports `default`.
+//! cjs-module-lexer finds, a JSON module exports `default`, and a WebAssembly module
+//! exports the exports of its binary.
 //!
 //! An import that does not resolve is an error of the module that the runtime throws
 //! when it links the graph, as Node does, and not a compile error: a module that only a
@@ -26,6 +27,14 @@ pub enum Binding {
     Builtin { name: String, export: String },
     /// The namespace of a built-in module.
     BuiltinNamespace(String),
+    /// An export of a request that the host links at run time, or its namespace for
+    /// `None`: the runtime resolves it once the request is linked.
+    Hosted {
+        request: usize,
+        name: Option<String>,
+    },
+    /// The source object of a module of the graph (`import source`).
+    Source(usize),
 }
 
 /// An error that linking the module throws.
@@ -46,7 +55,13 @@ pub struct Linked {
     pub exported_locals: Vec<String>,
     /// The namespace: each export name, in code unit order, and what it reads.
     pub namespace: Vec<(String, Binding)>,
+    /// The hosted requests of `export * from`, whose names the runtime adds to the
+    /// namespace once they are linked.
+    pub hosted_stars: Vec<usize>,
     pub error: Option<LinkError>,
+    /// Whether `error` comes from loading, a request that did not resolve, which the
+    /// whole graph reports before any error of linking.
+    pub load_failed: bool,
 }
 
 enum Resolution {
@@ -128,6 +143,7 @@ impl Linker<'_> {
         if unit.kind == Kind::Esm {
             linked.exported_locals = dedupe(self.locals[index].iter().map(|(_, l)| l.clone()));
             linked.error = self.missing(index);
+            linked.load_failed = linked.error.is_some();
             for (local, specifier, imported) in unit.record.imports.clone() {
                 let found = self.import(index, &specifier, &imported);
                 match found {
@@ -153,6 +169,11 @@ impl Linker<'_> {
                     let _ = export;
                     linked.error.get_or_insert(error);
                 }
+            }
+        }
+        for specifier in &self.unit(index).record.stars {
+            if let Some(Resolved::Hosted(request)) = self.target(index, specifier) {
+                linked.hosted_stars.push(*request);
             }
         }
         let mut names = self.exported_names(index, &mut Vec::new());
@@ -196,6 +217,7 @@ impl Linker<'_> {
             (Resolved::Unit(unit, _), Imported::DeferredNamespace) => {
                 Ok(Some(Binding::DeferredNamespace(unit)))
             }
+            (Resolved::Unit(unit, _), Imported::Source) => Ok(Some(Binding::Source(unit))),
             (Resolved::Unit(unit, _), Imported::Name(name)) => {
                 match self.resolve_export(unit, name, &mut Vec::new()) {
                     Resolution::Found(binding) => Ok(Some(binding)),
@@ -220,6 +242,32 @@ impl Linker<'_> {
                 name: builtin,
                 export: name.clone(),
             })),
+            (Resolved::Hosted(request), Imported::Namespace | Imported::DeferredNamespace) => {
+                Ok(Some(Binding::Hosted {
+                    request,
+                    name: None,
+                }))
+            }
+            (Resolved::Hosted(request), Imported::Name(name)) => Ok(Some(Binding::Hosted {
+                request,
+                name: Some(name.clone()),
+            })),
+            (Resolved::Builtin(builtin), Imported::Source) => Err(LinkError {
+                kind: "SyntaxError",
+                code: None,
+                message: format!(
+                    "Source phase import object is not defined for module '{builtin}'"
+                ),
+            }),
+            // shortcut: a module that the host links gives no source object yet; give it one
+            // when node:vm links a WebAssembly module for `import source`.
+            (Resolved::Hosted(_), Imported::Source) => Err(LinkError {
+                kind: "SyntaxError",
+                code: None,
+                message: format!(
+                    "Source phase import object is not defined for module '{specifier}'"
+                ),
+            }),
             (Resolved::Missing(failure), _) => Err(LinkError {
                 kind: "Error",
                 code: Some(failure.code),
@@ -281,6 +329,9 @@ impl Linker<'_> {
                 (Some(Resolved::Unit(unit, _)), Imported::DeferredNamespace) => {
                     Resolution::Found(Binding::DeferredNamespace(unit))
                 }
+                (Some(Resolved::Unit(unit, _)), Imported::Source) => {
+                    Resolution::Found(Binding::Source(unit))
+                }
                 (Some(Resolved::Unit(unit, _)), Imported::Name(imported)) => {
                     self.resolve_export(unit, &imported, visited)
                 }
@@ -294,6 +345,16 @@ impl Linker<'_> {
                         export: imported,
                     })
                 }
+                (Some(Resolved::Hosted(request)), Imported::Name(imported)) => {
+                    Resolution::Found(Binding::Hosted {
+                        request,
+                        name: Some(imported),
+                    })
+                }
+                (Some(Resolved::Hosted(request)), _) => Resolution::Found(Binding::Hosted {
+                    request,
+                    name: None,
+                }),
                 _ => Resolution::NotFound,
             };
         }
@@ -349,10 +410,21 @@ impl Linker<'_> {
         names
     }
 
-    /// The export names of a `CommonJS` or JSON module.
+    /// The export names of a `CommonJS`, JSON, or WebAssembly module.
     fn cjs_exports(&mut self, index: usize) -> Vec<String> {
         if let Some(names) = self.cjs_names.get(&index) {
             return names.clone();
+        }
+        if self.unit(index).kind == Kind::Wasm {
+            let names = dedupe(
+                self.unit(index)
+                    .record
+                    .locals
+                    .iter()
+                    .map(|(export, _)| export.clone()),
+            );
+            self.cjs_names.insert(index, names.clone());
+            return names;
         }
         // A cycle of re-exports reads the names found so far.
         self.cjs_names.insert(index, Vec::new());

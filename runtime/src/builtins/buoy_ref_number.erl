@@ -110,7 +110,7 @@ proto(<<"toString">>, N, Args) ->
                 _ -> range_error(<<"toString() radix argument must be between 2 and 36">>)
             end
     end;
-proto(<<"toLocaleString">>, N, Args) -> to_locale_string(N, arg(2, Args));
+proto(<<"toLocaleString">>, N, Args) -> buoy_ref_intl_number_format:format_value(arg(1, Args), arg(2, Args), N);
 proto(<<"toFixed">>, N, Args) ->
     F = to_integer_or_infinity(buoy_ref:to_number(arg(1, Args))),
     is_integer(F) andalso F >= 0 andalso F =< 100 orelse range_error(<<"toFixed() digits argument must be between 0 and 100">>),
@@ -160,11 +160,14 @@ canonical(I) when is_integer(I) ->
     catch
         error:badarg -> infinity(I)
     end;
-canonical(F) when is_float(F), F == 0 -> zero(F);
-canonical(F) when is_float(F), abs(F) =< ?SAFE ->
-    case trunc(F) of
-        I when I == F -> I;
-        _ -> F
+%% A float compares only with floats here: a comparison of a float with an
+%% integer and abs/1, which boxes a new float, cost more than the rest.
+canonical(F) when is_float(F), F =< 9007199254740992.0, F >= -9007199254740992.0 ->
+    I = trunc(F),
+    case F - I == 0.0 of
+        false -> F;
+        true when I =:= 0 -> zero(F);
+        true -> I
     end;
 canonical(V) -> V.
 
@@ -205,10 +208,21 @@ add('Infinity', '-Infinity') -> 'NaN';
 add('-Infinity', 'Infinity') -> 'NaN';
 add(A, _) when is_atom(A) -> A;
 add(_, B) when is_atom(B) -> B;
-add(A, B) -> float_result(fun() -> float(A) + float(B) end, fun() -> infinity(A / 2 + B / 2) end).
+add(A, B) ->
+    try A + B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(A / 2 + B / 2)
+    end.
 
 -spec sub(term(), term()) -> term().
 sub(A, B) when is_integer(A), is_integer(B) -> canonical(A - B);
+sub(A, B) when is_number(A), is_number(B) ->
+    try A - B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(A / 2 - B / 2)
+    end;
 sub(A, B) -> add(A, negate(B)).
 
 -spec mul(term(), term()) -> term().
@@ -225,7 +239,12 @@ mul(A, B) when is_atom(A); is_atom(B) ->
         true -> 'NaN';
         false -> infinity(sign(A) * sign(B))
     end;
-mul(A, B) -> float_result(fun() -> float(A) * float(B) end, fun() -> infinity(sign(A) * sign(B)) end).
+mul(A, B) ->
+    try A * B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(sign(A) * sign(B))
+    end.
 
 -spec divide(term(), term()) -> term().
 divide('NaN', _) -> 'NaN';
@@ -237,7 +256,12 @@ divide(A, B) when B == 0, A == 0 -> 'NaN';
 divide(A, B) when B == 0 -> infinity(sign(A) * sign(B));
 divide(A, B) when A == 0 -> signed_zero(sign(A) * sign(B));
 divide(A, B) when is_integer(A), is_integer(B), A rem B =:= 0 -> A div B;
-divide(A, B) -> float_result(fun() -> A / B end, fun() -> infinity(sign(A) * sign(B)) end).
+divide(A, B) ->
+    try A / B of
+        F -> canonical(F)
+    catch
+        error:badarith -> infinity(sign(A) * sign(B))
+    end.
 
 %% The remainder has the sign of the dividend, as C's fmod.
 -spec remainder(term(), term()) -> term().
@@ -337,13 +361,6 @@ is_zero(N) -> is_number(N) andalso N == 0.
 signed_zero(-1) -> -0.0;
 signed_zero(_) -> 0.
 
-%% A float operation that raises badarith on overflow.
-float_result(Op, Overflow) ->
-    try Op() of
-        F -> canonical(F)
-    catch
-        error:badarith -> Overflow()
-    end.
 
 %%% 32-bit integer operations
 
@@ -405,6 +422,22 @@ to_string('-Infinity') -> <<"-Infinity">>;
 to_string(F) when F == 0 -> <<"0">>;
 to_string(F) when F < 0 -> <<"-", (to_string(-F))/binary>>;
 to_string(F) ->
+    %% OTP picks the shorter of the decimal and the exponent form of the
+    %% shortest digits; its decimal form only occurs for 1e-6 =< F < 1e21,
+    %% where Number::toString writes the same text without a ".0".
+    Short = float_to_binary(F, [short]),
+    case binary:match(Short, <<"e">>) of
+        nomatch -> binary:part(Short, 0, byte_size(Short) - point_zero(Short));
+        _ -> exponent_to_string(F)
+    end.
+
+point_zero(Short) ->
+    case binary:last(Short) =:= $0 andalso binary:at(Short, byte_size(Short) - 2) =:= $. of
+        true -> 2;
+        false -> 0
+    end.
+
+exponent_to_string(F) ->
     {Digits, N} = shortest(F),
     K = length(Digits),
     list_to_binary(if
@@ -617,165 +650,6 @@ to_precision(X, P) ->
         true -> "0." ++ lists:duplicate(-(E + 1), $0) ++ Digits
     end).
 
-%% Number.prototype.toLocaleString in the en-US locale, with the options of
-%% Intl.NumberFormat that it honors: style (decimal, percent, currency),
-%% currency, the fraction and integer digits, and useGrouping. As ICU does,
-%% it rounds the shortest decimal digits of the number half away from zero.
-to_locale_string(N, Options) ->
-    Get = fun(Key) ->
-                  case ?IS_OBJECT(Options) of
-                      true -> buoy_ref:get(Options, Key);
-                      false -> undefined
-                  end
-          end,
-    Style = case Get(<<"style">>) of
-        undefined -> decimal;
-        S0 ->
-            case buoy_ref:to_string(S0) of
-                <<"percent">> -> percent;
-                <<"currency">> -> currency;
-                <<"decimal">> -> decimal;
-                _ -> range_error(<<"Value of style is out of range">>)
-            end
-    end,
-    Currency = case Style of
-        currency ->
-            case Get(<<"currency">>) of
-                undefined -> buoy_ref:type_error(<<"Currency code is required with currency style.">>);
-                Code -> string:uppercase(buoy_ref:to_string(Code))
-            end;
-        _ -> none
-    end,
-    {DefaultMin, DefaultMax} = case Style of
-        percent -> {0, 0};
-        currency when Currency =:= <<"JPY">> -> {0, 0};
-        currency -> {2, 2};
-        decimal -> {0, 3}
-    end,
-    Digits = fun(Key) ->
-                     case Get(Key) of
-                         undefined -> undefined;
-                         V ->
-                             case to_integer_or_infinity(buoy_ref:to_number(V)) of
-                                 I when is_integer(I), I >= 0, I =< 100 -> I;
-                                 _ -> range_error(<<Key/binary, " value is out of range.">>)
-                             end
-                     end
-             end,
-    {Min, Max} = case {Digits(<<"minimumFractionDigits">>), Digits(<<"maximumFractionDigits">>)} of
-        {undefined, undefined} -> {DefaultMin, DefaultMax};
-        {Mn, undefined} -> {Mn, max(Mn, DefaultMax)};
-        {undefined, Mx} -> {min(DefaultMin, Mx), Mx};
-        {Mn, Mx} when Mn =< Mx -> {Mn, Mx};
-        _ -> range_error(<<"maximumFractionDigits value is out of range.">>)
-    end,
-    MinInteger = case Digits(<<"minimumIntegerDigits">>) of
-        undefined -> 1;
-        I0 -> max(1, I0)
-    end,
-    Grouping = case Get(<<"useGrouping">>) of
-        undefined -> true;
-        G -> buoy_ref:truthy(G)
-    end,
-    Text = case N of
-        'NaN' -> "NaN";
-        'Infinity' -> [<<"∞"/utf8>>];
-        '-Infinity' -> [<<"-∞"/utf8>>];
-        _ ->
-            Negative = N < 0 orelse N =:= -0.0,
-            Scale = case Style of
-                percent -> 2;
-                _ -> 0
-            end,
-            {Int, Frac} = locale_digits(abs(N), Scale, Min, Max),
-            IntText = lists:duplicate(max(0, MinInteger - length(Int)), $0) ++ Int,
-            Grouped = case Grouping of
-                true -> group(IntText);
-                false -> IntText
-            end,
-            Body = case Frac of
-                "" -> Grouped;
-                _ -> Grouped ++ "." ++ Frac
-            end,
-            Sign = case Negative of
-                true -> "-";
-                false -> ""
-            end,
-            case Style of
-                percent -> Sign ++ Body ++ "%";
-                currency -> [Sign, currency_symbol(Currency), Body];
-                decimal -> Sign ++ Body
-            end
-    end,
-    buoy_ref_string:from_utf8(iolist_to_binary(Text)).
-
-currency_symbol(<<"USD">>) -> "$";
-currency_symbol(<<"EUR">>) -> [<<"€"/utf8>>];
-currency_symbol(<<"GBP">>) -> [<<"£"/utf8>>];
-currency_symbol(<<"JPY">>) -> [<<"¥"/utf8>>];
-currency_symbol(<<"INR">>) -> [<<"₹"/utf8>>];
-currency_symbol(<<"CAD">>) -> "CA$";
-currency_symbol(<<"AUD">>) -> "A$";
-currency_symbol(Code) -> [Code, <<" "/utf8>>].
-
-%% The integer and fraction digits of a positive number times 10^Scale,
-%% rounded to at most Max fraction digits and padded to Min.
-locale_digits(X, Scale, Min, Max) ->
-    {Digits0, N0} = case X of
-        Z when Z == 0 -> {"", 1};
-        I when is_integer(I) ->
-            All = integer_to_list(I),
-            {string:trim(All, trailing, "0"), length(All)};
-        F -> shortest(F)
-    end,
-    N = N0 + Scale,
-    Keep = N + Max,
-    {Digits, N1} = round_digits(Digits0, N, Keep),
-    Padded = Digits ++ lists:duplicate(max(0, N1 + Max - length(Digits)), $0),
-    {IntDigits, FracDigits} = case N1 > 0 of
-        true -> lists:split(min(N1, length(Padded)), Padded);
-        false -> {"", lists:duplicate(-N1, $0) ++ Padded}
-    end,
-    Int = case string:trim(IntDigits, leading, "0") of
-        "" -> "0";
-        Trimmed -> Trimmed
-    end,
-    Frac0 = lists:sublist(FracDigits, Max),
-    Frac = trim_fraction(Frac0, Min),
-    {Int, Frac}.
-
-%% Rounds 0.Digits x 10^N to Keep significant digits, half away from zero:
-%% {Digits, N}.
-round_digits(Digits, N, Keep) when Keep >= length(Digits) -> {Digits, N};
-round_digits(_Digits, N, Keep) when Keep < 0 -> {"", N};
-round_digits(Digits, N, Keep) ->
-    {Kept, [First | _]} = lists:split(Keep, Digits),
-    case First >= $5 of
-        false -> {Kept, N};
-        true ->
-            case increment(lists:reverse(Kept)) of
-                {carry, Up} -> {[$1 | Up], N + 1};
-                Up -> {Up, N}
-            end
-    end.
-
-increment([]) -> {carry, []};
-increment([$9 | Rest]) ->
-    case increment(Rest) of
-        {carry, Up} -> {carry, Up ++ "0"};
-        Up -> Up ++ "0"
-    end;
-increment([D | Rest]) -> lists:reverse(Rest) ++ [D + 1].
-
-trim_fraction(Frac, Min) ->
-    {Required, Optional} = lists:split(min(Min, length(Frac)), Frac),
-    Required ++ lists:duplicate(Min - length(Required), $0) ++ string:trim(Optional, trailing, "0").
-
-group(Digits) when length(Digits) =< 3 -> Digits;
-group(Digits) ->
-    {Head, Tail} = lists:split(length(Digits) - 3, Digits),
-    group(Head) ++ "," ++ Tail.
-
 %%% Text to number
 
 %% StringToNumber: a string of the engine to a number.
@@ -877,7 +751,19 @@ parse_float(S) ->
     end.
 
 %% parseInt with the radix R of ToInt32.
-parse_int(S, R0) ->
+parse_int(S, R0) when is_binary(S), byte_size(S) > 0, byte_size(S) =< 15, (R0 =:= 0 orelse R0 =:= 10) ->
+    %% Up to 15 decimal digits are exact, so the common case is one BIF.
+    case is_decimal(S) of
+        true -> binary_to_integer(S);
+        false -> parse_int_units(S, R0)
+    end;
+parse_int(S, R0) -> parse_int_units(S, R0).
+
+is_decimal(<<C, Rest/binary>>) when C >= $0, C =< $9 -> is_decimal(Rest);
+is_decimal(<<>>) -> true;
+is_decimal(_) -> false.
+
+parse_int_units(S, R0) ->
     Units0 = lists:dropwhile(fun buoy_ref_string:is_whitespace/1, buoy_ref_string:units(S)),
     {Sign, Units1} = case Units0 of
         [$- | T] -> {-1, T};

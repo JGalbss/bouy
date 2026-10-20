@@ -104,7 +104,7 @@ length_of({Kind, Buffer, Offset, Length}) ->
 is_fixed_length(O) ->
     {_Kind, Buffer, _Offset, Length} = slots(O),
     Length =/= auto andalso
-        (buoy_heap:class_of(Buffer) =:= shared_array_buffer orelse element(3, buoy_heap:slots(Buffer)) =:= none).
+        (buoy_heap:class_of(Buffer) =:= shared_array_buffer orelse not buoy_ref_buffer:is_resizable(Buffer)).
 
 %% The length of an array iterator's typed array: a TypeError when it is
 %% out of bounds.
@@ -117,8 +117,13 @@ iterated_length(O) ->
 
 %% ValidateTypedArray: the slots and the length of a typed array that is
 %% in bounds.
-validate(O, Name) ->
+validate(O, Name) -> validate(O, Name, read).
+
+%% ValidateTypedArray with its access mode: a method that writes fails on an
+%% immutable buffer before it checks the bounds.
+validate(O, Name, Access) ->
     is_typed_array(O) orelse type_error(<<"this is not a typed array.">>),
+    Access =:= write andalso buoy_ref_buffer:require_mutable(element(2, slots(O))),
     Slots = slots(O),
     case length_of(Slots) of
         out_of_bounds -> type_error(<<"Cannot perform %TypedArray%.prototype.", Name/binary, " on a detached ArrayBuffer">>);
@@ -169,7 +174,14 @@ element_set(O, N, V) ->
     Slots = slots(O),
     case valid_index(Slots, N) of
         invalid -> ok;
-        I -> write_element(Slots, I, Value)
+        I -> write_unless_immutable(Slots, I, Value)
+    end.
+
+%% An element of an immutable buffer keeps its value.
+write_unless_immutable({_, Buffer, _, _} = Slots, I, Value) ->
+    case buoy_ref_buffer:is_immutable(Buffer) of
+        true -> ok;
+        false -> write_element(Slots, I, Value)
     end.
 
 to_element(Kind, V) ->
@@ -255,24 +267,9 @@ construct(Kind, NewTarget, Args) ->
                 _ ->
                     case iterator_method(First) of
                         undefined -> from_array_like(Kind, Proto, First);
-                        Method -> from_list(Kind, Proto, iterator_to_list(First, Method))
+                        Method -> from_list(Kind, Proto, buoy_ref_iterator:list_from_method(First, Method))
                     end
             end
-    end.
-
-%% IteratorToList of GetIteratorFromMethod.
-iterator_to_list(Source, Method) ->
-    Iterator = buoy_ref:call(Method, Source, []),
-    ?IS_OBJECT(Iterator) orelse type_error(<<"Result of the Symbol.iterator method is not an object">>),
-    Next = buoy_ref:get(Iterator, <<"next">>),
-    iterator_steps(Iterator, Next, []).
-
-iterator_steps(Iterator, Next, Acc) ->
-    Result = buoy_ref:call(Next, Iterator, []),
-    ?IS_OBJECT(Result) orelse type_error(buoy_ref_string:concat([<<"Iterator result ">>, buoy_ref:describe(Result), <<" is not an object">>])),
-    case buoy_ref:truthy(buoy_ref:get(Result, <<"done">>)) of
-        true -> lists:reverse(Acc);
-        false -> iterator_steps(Iterator, Next, [buoy_ref:get(Result, <<"value">>) | Acc])
     end.
 
 iterator_method(O) ->
@@ -321,7 +318,7 @@ from_buffer(Kind, Proto, Buffer, OffsetArg, LengthArg) ->
     end,
     buoy_ref_buffer:is_detached(Buffer) andalso type_error(<<"Cannot perform Construct on a detached ArrayBuffer">>),
     BufferLength = buoy_ref_buffer:byte_length(Buffer),
-    Fixed = element(3, buoy_heap:slots(Buffer)) =:= none,
+    Fixed = not buoy_ref_buffer:is_resizable(Buffer),
     Length = case NewLength of
         undefined when not Fixed ->
             Offset > BufferLength andalso buoy_heap:throw_error('RangeError', <<"Start offset is outside the bounds of the buffer">>),
@@ -358,30 +355,22 @@ up(From, To, F) ->
 %% TypedArraySpeciesCreate.
 species_create(Exemplar, Args, Name) ->
     {Kind, _, _, _} = slots(Exemplar),
-    C = buoy_ref_buffer_species(Exemplar, constructor(Kind)),
+    C = buoy_ref_buffer:species_constructor(Exemplar, constructor(Kind)),
     Result = create_from_constructor(C, Args, Name),
     {ResultKind, _, _, _} = slots(Result),
     buoy_ref_buffer:is_big_int_kind(ResultKind) =:= buoy_ref_buffer:is_big_int_kind(Kind) orelse
         type_error(<<"Content type of the new typed array does not match">>),
     Result.
 
-buoy_ref_buffer_species(O, Default) ->
-    case buoy_ref:get(O, <<"constructor">>) of
-        undefined -> Default;
-        C when ?IS_OBJECT(C) ->
-            case buoy_ref:get(C, ?SYM(species)) of
-                S when S =:= undefined; S =:= null -> Default;
-                S ->
-                    buoy_ref_array:is_constructor(S) orelse type_error(<<"object.constructor[Symbol.species] is not a constructor">>),
-                    S
-            end;
-        _ -> type_error(<<"The .constructor property is not an object">>)
-    end.
-
 %% TypedArrayCreateFromConstructor.
 create_from_constructor(C, Args, Name) ->
     New = buoy_ref:construct(C, Args),
-    {_, Length} = validate(New, Name),
+    %% Each caller but subarray writes into the new array.
+    Access = case Name of
+        <<"subarray">> -> read;
+        _ -> write
+    end,
+    {_, Length} = validate(New, Name, Access),
     case Args of
         [N] when is_integer(N) -> Length >= N orelse type_error(<<"The species constructor made a typed array that is too short">>);
         _ -> ok
@@ -416,6 +405,7 @@ base64(<<"toHex">>, This, _Args) ->
     list_to_binary([io_lib:format("~2.16.0b", [B]) || <<B>> <= array_bytes(This)]);
 base64(<<"setFromBase64">>, This, Args) ->
     uint8(This),
+    buoy_ref_buffer:require_mutable(element(2, slots(This))),
     S = string_arg(arg(1, Args)),
     Options = options(arg(2, Args)),
     Alphabet = alphabet(Options),
@@ -427,6 +417,7 @@ base64(<<"setFromBase64">>, This, Args) ->
     read_written(Read, length(Bytes));
 base64(<<"setFromHex">>, This, Args) ->
     uint8(This),
+    buoy_ref_buffer:require_mutable(element(2, slots(This))),
     S = string_arg(arg(1, Args)),
     Length = in_bounds_length(This),
     {Read, Bytes, Error} = from_hex(buoy_ref_string:units(S), Length),
@@ -616,7 +607,7 @@ method(<<"TypedArray">>, <<"from">>, C, Args) ->
             O = buoy_ref:to_object(Source),
             Length = buoy_ref_array:length_of(O),
             {array_like, O, Length};
-        Method -> {list, iterator_to_list(Source, Method)}
+        Method -> {list, buoy_ref_iterator:list_from_method(Source, Method)}
     end,
     Length1 = case Values of
         {list, List} -> length(List);
@@ -664,13 +655,19 @@ method(<<"TypedArray.prototype">>, <<"[Symbol.toStringTag]">>, This, _) ->
     end;
 method(<<"TypedArray.prototype">>, <<"set">>, This, Args) ->
     is_typed_array(This) orelse type_error(<<"this is not a typed array.">>),
+    buoy_ref_buffer:require_mutable(element(2, slots(This))),
     set(This, arg(1, Args), arg(2, Args));
 method(<<"TypedArray.prototype">>, <<"subarray">>, This, Args) ->
     is_typed_array(This) orelse type_error(<<"this is not a typed array.">>),
     subarray(This, arg(1, Args), arg(2, Args));
 method(<<"TypedArray.prototype">>, Name, This, Args) ->
-    {Slots, Length} = validate(This, Name),
+    {Slots, Length} = validate(This, Name, access(Name)),
     proto(Name, This, Slots, Length, Args).
+
+%% The access mode of ValidateTypedArray for a method: the methods that
+%% write into their receiver need a mutable buffer.
+access(Name) when Name =:= <<"copyWithin">>; Name =:= <<"fill">>; Name =:= <<"reverse">>; Name =:= <<"sort">> -> write;
+access(_Name) -> read.
 
 iterator_method_of(V) when ?IS_OBJECT(V) -> iterator_method(V);
 iterator_method_of(V) when ?IS_STRING(V) -> buoy_ref:get(V, ?SYM(iterator));
@@ -800,10 +797,10 @@ proto(<<"join">>, O, _, Len, Args) ->
         S -> buoy_ref:to_string(S)
     end,
     buoy_ref_string:concat(lists:join(Sep, [case get(O, K) of undefined -> <<>>; V -> buoy_ref:to_string(V) end || K <- seq(0, Len - 1)]));
-proto(<<"toLocaleString">>, O, _, Len, _Args) ->
+proto(<<"toLocaleString">>, O, _, Len, Args) ->
     buoy_ref_string:concat(lists:join(<<",">>, [case get(O, K) of
                                                      V when V =:= undefined; V =:= null -> <<>>;
-                                                     V -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, []))
+                                                     V -> buoy_ref:to_string(buoy_ref:call_method(V, <<"toLocaleString">>, [arg(1, Args), arg(2, Args)]))
                                                  end || K <- seq(0, Len - 1)]));
 proto(<<"map">>, O, _, Len, Args) ->
     F = callable(arg(1, Args)),

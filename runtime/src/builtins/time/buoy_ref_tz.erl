@@ -14,7 +14,7 @@
 -module(buoy_ref_tz).
 
 -export([offset/1, local_to_utc/1, name/1, zone/0, parse_posix/1, parse_tzif/1]).
--export([named/1, offset_in/2, system_id/0, civil_from_days/1]).
+-export([named/1, identifier/1, offset_in/2, info_in/2, system_id/0, civil_from_days/1, days_from_civil/3]).
 
 -define(DAY_MS, 86400000).
 
@@ -135,12 +135,33 @@ long_name(_) -> undefined.
 %% the zones of UTC to "UTC". An identifier is a file of the zoneinfo
 %% directory, so no other text reaches the file system.
 -spec named(binary()) -> {ok, binary()} | error.
-named(Name) -> maps:find(string:uppercase(Name), index()).
+named(Name) ->
+    case maps:find(string:uppercase(Name), index()) of
+        {ok, {_, Primary}} -> {ok, Primary};
+        error -> error
+    end.
+
+%% The identifier of the database that Name names, in its own case, as
+%% ECMA-402's GetAvailableNamedTimeZoneIdentifier returns it, and its
+%% primary identifier.
+-spec identifier(binary()) -> {ok, binary(), binary()} | error.
+identifier(Name) ->
+    case maps:find(string:uppercase(Name), index()) of
+        {ok, {Id, Primary}} -> {ok, Id, Primary};
+        error -> error
+    end.
 
 %% The offset from UTC, in milliseconds, of the zone with the primary
 %% identifier Id at the UTC time T in milliseconds.
 -spec offset_in(binary(), integer()) -> integer().
 offset_in(Id, T) ->
+    element(1, info_in(Id, T)).
+
+%% {Offset, Daylight} of the zone with the primary identifier Id at the UTC
+%% time T in milliseconds: the offset in milliseconds, and whether daylight
+%% saving time applies.
+-spec info_in(binary(), integer()) -> {integer(), boolean()}.
+info_in(Id, T) ->
     Key = {?MODULE, named, Id},
     Zone = case persistent_term:get(Key, undefined) of
         undefined ->
@@ -149,7 +170,8 @@ offset_in(Id, T) ->
             Z;
         Z -> Z
     end,
-    element(1, lookup(Zone, floor_div(T, 1000))).
+    {Offset, Dst, _} = lookup(Zone, floor_div(T, 1000)),
+    {Offset, Dst}.
 
 %% The primary identifier of the system zone: the zone of TZ, or the file
 %% that /etc/localtime links to.
@@ -171,8 +193,8 @@ system_id() ->
         error -> <<"UTC">>
     end.
 
-%% The identifiers of the database in upper case, each to its primary
-%% identifier, built once per VM from the zones and links of tzdata.zi in
+%% The identifiers of the database in upper case, each to {Identifier,
+%% Primary}, its case and its primary identifier, built once per VM from the zones and links of tzdata.zi in
 %% the zoneinfo directory, or from its TZif files when it has no tzdata.zi.
 index() ->
     case persistent_term:get({?MODULE, index}, undefined) of
@@ -182,7 +204,7 @@ index() ->
                 {ok, Data} -> zi_names(binary:split(Data, <<"\n">>, [global]), [], #{});
                 {error, _} -> {zone_files(Dir, <<>>), #{}}
             end,
-            Index = maps:from_list([{string:uppercase(Name), primary(maps:get(Name, Links, Name))} || Name <- Zones ++ maps:keys(Links)]),
+            Index = maps:from_list([{string:uppercase(Name), {Name, primary(maps:get(Name, Links, Name))}} || Name <- Zones ++ maps:keys(Links)]),
             persistent_term:put({?MODULE, index}, Index),
             Index;
         Index -> Index
@@ -411,6 +433,7 @@ days_in_month(_, M) when M =:= 4; M =:= 6; M =:= 9; M =:= 11 -> 30;
 days_in_month(_, _) -> 31.
 
 %% Days since 1970-01-01 of a proleptic Gregorian date (Howard Hinnant).
+-spec days_from_civil(integer(), 1..12, 1..31) -> integer().
 days_from_civil(Y0, M, D) ->
     Y = case M =< 2 of
         true -> Y0 - 1;

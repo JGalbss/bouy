@@ -26,5 +26,7 @@ const results: unknown[] = [
   eval("'a'; var y;"),
   eval("function f() {} 9; function g() {}"),
   eval("class C {}"),
+  eval("'\\x41'; 'a\\u0062'"),
 ];
 console.log(results);
+console.log([eval("'\\x31'"), eval("'a\\u0062'; 'c\\x64'")]);

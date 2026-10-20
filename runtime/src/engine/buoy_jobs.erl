@@ -14,10 +14,10 @@
 
 -export([new_promise/0, new_promise/1, capability/0, promise_resolve/1, perform_then/4, is_promise/1]).
 -export([resolve_promise/2, reject_promise/2, resolving_functions/1, js_function/1, invoke/2, fulfilled/1, rejected/1]).
--export([await/3, async_call/1, enqueue/1, drain/0]).
+-export([await/3, async_call/1, enqueue/1, drain/0, own_queue/1, checkpoint/1]).
 -export([context/0, set_context/1, promise_hooks/0, set_promise_hooks/1, capability/1, quiet_capability/0]).
--export([set_timer/4, clear_timer/1]).
--export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0]).
+-export([set_timer/4, clear_timer/1, has_timers/0]).
+-export([run_main/1, run_job/1, event_step/1, loop/0, has_work/0, set_main_result/1, is_main_unsettled/0, warn_unsettled/0]).
 -export([spawn_actor/2, actor_call/3, stop_actor/1]).
 -export([all/1]).
 
@@ -32,9 +32,11 @@
 -define(CALLS, '$buoy_calls').
 -define(LAST_GC, '$buoy_last_gc').
 -define(MAIN, '$buoy_main_result').
--define(PROMISE_PROTO, {'$o', 'Promise.prototype'}).
 -define(MAX_DELAY, 2147483647).
 -define(GC_MIN, 20000).
+-define(EXTERNAL_GC, 67108864).
+%% A full collection that gc() of --expose-gc asked for.
+-define(GC_REQUESTED, '$buoy_gc_requested').
 %% The continuation-preserved embedder data of V8: the value that each job
 %% restores from the moment it was queued, as AsyncLocalStorage needs.
 -define(CONTEXT, '$buoy_node_cped').
@@ -43,6 +45,10 @@
 -define(HOOKS, '$buoy_promise_hooks').
 %% The promise of the async function that runs, while promise hooks are set.
 -define(OUTER, '$buoy_async_outer').
+%% The microtask queue of a realm that has one of its own, and whether any
+%% realm has.
+-define(REALM_QUEUE(Realm), {'$buoy_realm_microtasks', Realm}).
+-define(OWN_QUEUES, '$buoy_own_microtask_queues').
 
 %%% Microtasks
 %%
@@ -59,6 +65,48 @@ push(Entry) ->
         {In, Out} -> erlang:put(?QUEUE, {[Entry | In], Out})
     end,
     ok.
+
+%% A context of node:vm with microtaskMode 'afterEvaluate' has a microtask
+%% queue of its own, which runs only at its checkpoints, after a script or
+%% a module of the context runs. A job goes to the queue of the realm of
+%% its function, as V8 queues it in the microtask queue of the function's
+%% context.
+-spec own_queue(pos_integer()) -> ok.
+own_queue(Realm) ->
+    erlang:put(?OWN_QUEUES, true),
+    erlang:put(?REALM_QUEUE(Realm), {[], []}),
+    ok.
+
+push(Realm, Entry) ->
+    case erlang:get(?REALM_QUEUE(Realm)) of
+        {In, Out} -> erlang:put(?REALM_QUEUE(Realm), {[Entry | In], Out}), ok;
+        undefined -> push(Entry)
+    end.
+
+%% The realm whose queue takes the job of a function: none unless some
+%% context has a queue of its own.
+job_realm(F) ->
+    case erlang:get(?OWN_QUEUES) of
+        true -> buoy_ref_realm:function_realm(F);
+        undefined -> 0
+    end.
+
+%% PerformCheckpoint of the queue of Realm: its jobs run until it is empty.
+-spec checkpoint(non_neg_integer()) -> ok.
+checkpoint(Realm) ->
+    case erlang:get(?REALM_QUEUE(Realm)) of
+        {In, [{Context, Job} | Out]} ->
+            erlang:put(?REALM_QUEUE(Realm), {In, Out}),
+            erlang:put(?CONTEXT, Context),
+            Job(),
+            erlang:put(?CONTEXT, undefined),
+            checkpoint(Realm);
+        {[_ | _] = In, []} ->
+            erlang:put(?REALM_QUEUE(Realm), {[], lists:reverse(In)}),
+            checkpoint(Realm);
+        _ ->
+            ok
+    end.
 
 %% Runs microtasks until the queue is empty. A job that a job queues runs in
 %% the same drain.
@@ -97,7 +145,9 @@ set_context(Value) ->
 %% is a JavaScript function or an Erlang fun of one argument.
 
 -spec new_promise() -> term().
-new_promise() -> new_promise(?PROMISE_PROTO).
+%% A promise of the current realm, as %Promise% of the running execution
+%% context makes it.
+new_promise() -> new_promise(buoy_heap:intrinsic('Promise.prototype')).
 
 %% A pending promise whose prototype is Proto, as for a subclass.
 -spec new_promise(term()) -> term().
@@ -120,7 +170,7 @@ capability() -> capability(undefined).
 %% The capability of the promise that `Parent.then` derives.
 -spec capability(term()) -> {term(), fun((term()) -> term()), fun((term()) -> term())}.
 capability(Parent) ->
-    P = new_promise(?PROMISE_PROTO, Parent),
+    P = new_promise(buoy_heap:intrinsic('Promise.prototype'), Parent),
     {Resolve, Reject} = resolving_functions(P),
     {P, Resolve, Reject}.
 
@@ -154,7 +204,7 @@ resolve_promise(P, V) ->
             try buoy_heap:get(V, <<"then">>) of
                 Then ->
                     case buoy_heap:is_callable(Then) of
-                        true -> enqueue(fun() -> thenable_job(P, V, Then) end);
+                        true -> push(job_realm(Then), {erlang:get(?CONTEXT), fun() -> thenable_job(P, V, Then) end});
                         false -> fulfill(P, V)
                     end
             catch
@@ -200,11 +250,35 @@ reject_promise(P, Reason) ->
     trigger(Reject, Reason).
 
 trigger(Reactions, Argument) ->
-    lists:foreach(fun(Reaction) -> push(reaction(Reaction, Argument)) end, lists:reverse(Reactions)).
+    lists:foreach(fun(Reaction) -> push_reaction(Reaction, Argument) end, lists:reverse(Reactions)).
+
+%% A reaction job goes to the queue of the realm of its handler, or of the
+%% realm that registered an Erlang handler (realm_context/1).
+push_reaction({_, _, {'$f', _, _} = Handler, _} = Reaction, Argument) ->
+    push(job_realm(Handler), reaction(Reaction, Argument));
+push_reaction({_, _, _, {'$realm', Realm, _}} = Reaction, Argument) ->
+    push(Realm, reaction(Reaction, Argument));
+push_reaction(Reaction, Argument) ->
+    push(reaction(Reaction, Argument)).
 
 %% The queue entry of a reaction: the job, with the context of its `then`.
+reaction({_, _, _, {'$realm', _, Context}} = Reaction, Argument) ->
+    {Context, fun() -> reaction_job(Reaction, Argument) end};
 reaction({_, _, _, Context} = Reaction, Argument) ->
     {Context, fun() -> reaction_job(Reaction, Argument) end}.
+
+%% The context of a reaction, with the realm that registers it when that
+%% realm has a queue of its own.
+realm_context() ->
+    Context = erlang:get(?CONTEXT),
+    case erlang:get(?OWN_QUEUES) =:= true andalso buoy_heap:realm() of
+        false -> Context;
+        Realm ->
+            case erlang:get(?REALM_QUEUE(Realm)) of
+                undefined -> Context;
+                _ -> {'$realm', Realm, Context}
+            end
+    end.
 
 %% PromiseReactionJob. An await that runs while promise hooks are set has a
 %% throwaway promise for the hooks, as V8 makes one.
@@ -246,7 +320,7 @@ invoke(F, Argument) -> buoy_heap:call(F, undefined, [Argument]).
 
 -spec perform_then(term(), term(), term(), undefined | tuple()) -> ok.
 perform_then(P, OnFulfilled, OnRejected, Capability) ->
-    Context = erlang:get(?CONTEXT),
+    Context = realm_context(),
     FulfillReaction = {fulfill, Capability, handler(OnFulfilled), Context},
     RejectReaction = {reject, Capability, handler(OnRejected), Context},
     case buoy_heap:slots(P) of
@@ -254,11 +328,11 @@ perform_then(P, OnFulfilled, OnRejected, Capability) ->
             buoy_heap:set_slots(P, {pending, [FulfillReaction | Fulfill], [RejectReaction | Reject], true});
         {fulfilled, V, _} ->
             buoy_heap:set_slots(P, {fulfilled, V, true}),
-            push(reaction(FulfillReaction, V));
+            push_reaction(FulfillReaction, V);
         {rejected, R, Handled} ->
             Handled orelse untrack(P),
             buoy_heap:set_slots(P, {rejected, R, true}),
-            push(reaction(RejectReaction, R))
+            push_reaction(RejectReaction, R)
     end,
     ok.
 
@@ -303,7 +377,7 @@ await(V, OnFulfilled, OnRejected) ->
             %% throwaway promise from the awaited one.
             Outer = erlang:get(?OUTER),
             Awaited = promise_resolve(V, Outer),
-            Throwaway = new_promise(?PROMISE_PROTO, Awaited),
+            Throwaway = new_promise(buoy_heap:intrinsic('Promise.prototype'), Awaited),
             buoy_heap:set_slots(Throwaway, {pending, [], [], true}),
             perform_then(Awaited, OnFulfilled, OnRejected, {await, Throwaway, Outer})
     end.
@@ -465,6 +539,9 @@ set_timer(Callback, Delay, Args, Repeat) ->
     erlang:put(?TIMERS, Timers#{Id => {Due, Callback, Args, case Repeat of true -> Ms; false -> none end}}),
     Id.
 
+-spec has_timers() -> boolean().
+has_timers() -> map_size(timers()) > 0.
+
 -spec clear_timer(term()) -> undefined.
 clear_timer(Id) ->
     erlang:put(?TIMERS, maps:remove(Id, timers())),
@@ -501,27 +578,90 @@ run_timer(Id) ->
 
 %%% The realm loop
 
+%% Node bootstraps before the code of -e and -p runs, and internal/main/buoy
+%% hands that code each built-in module as a global, as eval_string does. The
+%% modules of --require load in the bootstrap, before the main script.
+eval_bootstrap() ->
+    case init:get_argument(buoy_eval) =/= error orelse has_preload_modules() of
+        true -> buoy_node:ensure();
+        false -> ok
+    end.
+
+has_preload_modules() ->
+    lists:any(fun(<<"-r">>) -> true;
+                 (<<"--require">>) -> true;
+                 (<<"--require=", _/binary>>) -> true;
+                 (_) -> false
+              end, buoy_node_process:node_options() ++ buoy_node_process:exec_argv()).
+
 %% Runs the top-level code of the entry module as the first job, then serves
 %% timers and replies until no work is left, as Node does.
 -spec run_main(fun(() -> term())) -> ok.
 run_main(Body) ->
     buoy_ref:init_realm(),
+    expose_gc(),
     update_now(),
     %% The result lives under a pdict key, a root, so a collection keeps it.
-    run_job(fun() -> erlang:put(?MAIN, Body()) end),
+    run_job(fun() -> eval_bootstrap(), erlang:put(?MAIN, Body()) end),
     loop_until_exit(),
-    case erlang:get(?MAIN) of
-        {'$o', _} = P ->
-            case is_promise(P) andalso buoy_heap:slots(P) of
-                {pending, _, _, _} ->
-                    io:put_chars(buoy_ref:stderr(), "Warning: Detected unsettled top-level await\n"),
-                    buoy_ref:exit_program(13);
-                _ ->
-                    ok
-            end;
-        _ ->
+    case is_main_unsettled() of
+        true ->
+            warn_unsettled(),
+            buoy_ref:exit_program(13);
+        false ->
             ok
     end.
+
+%% The evaluation of the entry module, when it runs after the first job, as
+%% the script of a worker does.
+-spec set_main_result(term()) -> ok.
+set_main_result(Result) ->
+    erlang:put(?MAIN, Result),
+    ok.
+
+%% --expose-gc, a flag of V8, defines the global function gc. A collection
+%% while code runs would miss the values that only its Erlang frames hold, so
+%% gc() asks for a full collection at the end of the job, before WeakRef
+%% targets may die anyway (KeepDuringJob). gc({execution: 'async'}) returns a
+%% promise that a later macrotask fulfills, after the collection.
+expose_gc() ->
+    Flags = [<<"--expose-gc">>, <<"--expose_gc">>],
+    case lists:any(fun(Arg) -> lists:member(Arg, Flags) end, buoy_node_process:exec_argv()) of
+        true ->
+            Gc = buoy_heap:function(fun gc/2, <<"gc">>, 0, #{}),
+            Descriptor = #{value => Gc, writable => true, enumerable => false, configurable => true},
+            buoy_heap:define(buoy_ref_realm:global_object(), <<"gc">>, Descriptor),
+            ok;
+        false ->
+            ok
+    end.
+
+gc(_This, Args) ->
+    erlang:put(?GC_REQUESTED, true),
+    Options = case Args of [O | _] -> O; [] -> undefined end,
+    case buoy_heap:is_object(Options) andalso buoy_heap:get(Options, <<"execution">>) of
+        <<"async">> ->
+            {P, Resolve, _Reject} = capability(),
+            set_timer(buoy_heap:function(fun(_, _) -> Resolve(undefined) end), 0, [], false),
+            P;
+        _ ->
+            undefined
+    end.
+
+%% Whether the top-level await of the entry module has not settled.
+-spec is_main_unsettled() -> boolean().
+is_main_unsettled() ->
+    case erlang:get(?MAIN) of
+        {'$o', _} = P -> is_promise(P) andalso element(1, buoy_heap:slots(P)) =:= pending;
+        _ -> false
+    end.
+
+%% CheckUnsettledTopLevelAwait warns only without --no-warnings.
+-spec warn_unsettled() -> ok.
+warn_unsettled() ->
+    buoy_binding_options:value(<<"--warnings">>) andalso
+        io:put_chars(buoy_ref:stderr(), "Warning: Detected unsettled top-level await\n"),
+    ok.
 
 %% One macrotask: the job, every microtask it queues, and then a collection
 %% when the heap grew enough since the last one.
@@ -569,14 +709,16 @@ loop_until_exit() ->
 
 %% Collects when the realm allocated more ids since the last collection than
 %% twice the live count then, and at least ?GC_MIN, so the cost stays in
-%% proportion to the allocation.
+%% proportion to the allocation, or ?EXTERNAL_GC bytes of buffers, or when
+%% gc() asked for a collection.
 maybe_gc() ->
     {At, Live} = case erlang:get(?LAST_GC) of
         undefined -> {0, 0};
         L -> L
     end,
     Allocated = buoy_heap:allocated(),
-    case Allocated - At >= max(?GC_MIN, 2 * Live) of
+    case erlang:erase(?GC_REQUESTED) =:= true orelse Allocated - At >= max(?GC_MIN, 2 * Live)
+         orelse buoy_heap:external() >= ?EXTERNAL_GC of
         true ->
             #{live := Live1} = buoy_heap:gc([]),
             erlang:put(?LAST_GC, {Allocated, Live1});
@@ -631,6 +773,10 @@ event_step({'$buoy_node_deferred', _} = Message) ->
     _ = buoy_node_loop:event(Message),
     ok;
 event_step({'$buoy_node_call', _} = Message) ->
+    update_now(),
+    _ = buoy_node_loop:event(Message),
+    ok;
+event_step({'$socket', _, _, _} = Message) ->
     update_now(),
     _ = buoy_node_loop:event(Message),
     ok;

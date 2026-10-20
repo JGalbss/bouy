@@ -6,8 +6,9 @@
 //! `scripts/test262-dev.sh` fetches test262 at the pinned commit and runs this binary. It
 //! is the quick loop of engine work and does not depend on the `buoy-suites` crate.
 //!
-//! A test runs once: a `noStrict` test as sloppy code, and every other test in strict
-//! mode.
+//! A test runs in the modes of test262's INTERPRETING.md: a test without `onlyStrict`,
+//! `noStrict`, `module`, or `raw` runs as written and in strict mode, and passes when both
+//! runs pass. `--strict-only` runs such a test in strict mode alone, the quicker loop.
 
 #[path = "../runtime.rs"]
 mod runtime;
@@ -19,8 +20,8 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::thread;
 
 use buoy_compiler::{Code, Diagnostic, Semantics};
@@ -32,18 +33,53 @@ use clap::Parser;
 /// which the VM half of the runner defines on the global `$262` before the test starts.
 /// The VM gives the first realm `$262CreateRealm`, which makes a realm in the same process
 /// and returns its global object (`buoy_ref_realm:create/0`); the prelude takes it off the
-/// global object. Each realm has the hidden global `__buoyEvalScript`, which runs a script
-/// in that realm (`buoy_ref_eval:script/1`).
+/// global object, and gives each new realm its own `$262`. Each realm has the hidden
+/// global `__buoyEvalScript`, which runs a script in that realm (`buoy_ref_eval:script/1`),
+/// and `__buoyAbstractModuleSource`, the intrinsic `%AbstractModuleSource%` of that realm.
 const HOST: &str = "function print(message) { console.log(String(message)); }\n\
 var $262 = (function host(global, createRealm, agent) {\n\
   return { global: global, gc: function () {}, evalScript: function (source) { return global.__buoyEvalScript(source); },\n\
-    createRealm: function () { return host(createRealm(), createRealm); },\n\
+    AbstractModuleSource: global.__buoyAbstractModuleSource,\n\
+    createRealm: function () { var realm = createRealm(); return realm.$262 = host(realm, createRealm); },\n\
     detachArrayBuffer: function (buffer) { if (!buffer.detached) buffer.transfer(); }, agent: agent };\n\
 })(globalThis, globalThis.$262CreateRealm, globalThis.$262.agent);\n\
 delete globalThis.$262CreateRealm;\n";
 
 /// The VM half of the runner, which the VM compiles when it starts.
 const VM_RUNNER: &str = include_str!("../../../../runtime/test/engine/buoy_test262.erl");
+
+/// The config of the test262 suite: its skips are the reviewed list of the tests that never
+/// apply to Buoy, each with its reason code (testing.md section 3.5).
+const CONFIG: &str = include_str!("../../../../tests/test262/config.json");
+
+/// One skip of `CONFIG`: the tests whose id starts with `path`, or that name `feature` or
+/// `flag`, in every run or only in the runs of `mode` (`strict` or `nonstrict`). An id is
+/// the path under the `test` directory of the checkout.
+struct Skip {
+    path: Option<String>,
+    feature: Option<String>,
+    flag: Option<String>,
+    mode: Option<String>,
+    reason: String,
+}
+
+static SKIPS: LazyLock<Vec<Skip>> = LazyLock::new(|| {
+    let config: serde_json::Value =
+        serde_json::from_str(CONFIG).expect("tests/test262/config.json is JSON");
+    let text = |skip: &serde_json::Value, key: &str| skip[key].as_str().map(str::to_owned);
+    config["skip"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|skip| Skip {
+            path: text(skip, "path"),
+            feature: text(skip, "feature"),
+            flag: text(skip, "flag"),
+            mode: text(skip, "mode"),
+            reason: text(skip, "reason").unwrap_or_default(),
+        })
+        .collect()
+});
 
 /// The tests that one VM runs before the runner starts a new VM. The VM never frees an entry
 /// of its fun table, even when it purges the module of the fun, and the table holds 524288
@@ -73,6 +109,9 @@ struct Options {
     /// Writes the failures to this file instead of stdout.
     #[arg(long)]
     failures: Option<PathBuf>,
+    /// Runs a test that has both modes in strict mode only.
+    #[arg(long)]
+    strict_only: bool,
     /// Files or directories, relative to the checkout or absolute.
     #[arg(required = true)]
     paths: Vec<PathBuf>,
@@ -103,10 +142,48 @@ enum Outcome {
     Skip(&'static str),
 }
 
-/// One test: its path, and the directory it counts under.
+/// One run of a test file: its path, the directory it counts under, and its mode.
 struct Test {
     path: PathBuf,
     group: String,
+    mode: Mode,
+}
+
+/// The mode of a run: the code as written, or with the strict directive before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    AsWritten,
+    Strict,
+    /// The run as written of a test that also runs in strict mode.
+    AlsoAsWritten,
+}
+
+impl Mode {
+    /// The modes of a test file with these flags.
+    fn of(meta: &Frontmatter, strict_only: bool) -> &'static [Self] {
+        if meta.has_flag("onlyStrict") {
+            return &[Self::Strict];
+        }
+        if meta.has_flag("noStrict") || meta.has_flag("raw") || meta.has_flag("module") {
+            return &[Self::AsWritten];
+        }
+        if strict_only {
+            return &[Self::Strict];
+        }
+        &[Self::AlsoAsWritten, Self::Strict]
+    }
+
+    fn is_strict(self) -> bool {
+        self == Self::Strict
+    }
+
+    fn name(self) -> &'static str {
+        if self.is_strict() {
+            "strict"
+        } else {
+            "as written"
+        }
+    }
 }
 
 /// A test after compilation: decided already, or compiled into Erlang files to run, the
@@ -160,16 +237,10 @@ fn run_tests(options: &Options, scratch: &Path, tests: &[Test]) -> Result<Vec<Ou
         .max(1);
     // Every test is on disk before any compiles, since a test may import another.
     let written = parallel(jobs, tests, |_, test| {
-        write_program(&options.test262, scratch, &test.path)
+        write_program(&options.test262, scratch, test)
     });
     let prepared = parallel(jobs, tests, |index, test| {
-        prepare(
-            scratch,
-            index,
-            &options.test262,
-            &test.path,
-            &written[index],
-        )
+        prepare(scratch, index, &options.test262, test, &written[index])
     });
     let compiled: Vec<(usize, &[PathBuf], u64)> = prepared
         .iter()
@@ -230,10 +301,7 @@ fn collect(options: &Options) -> Result<Vec<Test>, String> {
         let absolute = options.test262.join(path);
         if absolute.is_file() {
             let group = relative(&options.test262, absolute.parent().unwrap_or(&absolute));
-            tests.push(Test {
-                path: absolute,
-                group,
-            });
+            push_runs(&mut tests, &absolute, &group, options.strict_only);
             continue;
         }
         let mut files = Vec::new();
@@ -247,11 +315,35 @@ fn collect(options: &Options) -> Result<Vec<Test>, String> {
                 }
                 _ => relative(&options.test262, &absolute),
             };
-            tests.push(Test { path: file, group });
+            push_runs(&mut tests, &file, &group, options.strict_only);
         }
     }
     tests.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(tests)
+}
+
+/// The runs of one test file, one for each of its modes, next to each other.
+fn push_runs(tests: &mut Vec<Test>, path: &Path, group: &str, strict_only: bool) {
+    let meta = fs::read_to_string(path)
+        .map(|source| frontmatter(&source))
+        .unwrap_or_default();
+    for &mode in Mode::of(&meta, strict_only) {
+        tests.push(Test {
+            path: path.to_owned(),
+            group: group.to_owned(),
+            mode,
+        });
+    }
+}
+
+/// Where a run's program is in the scratch tree: the test's own path, or a sibling for
+/// the run as written of a test that also runs in strict mode.
+fn program_path(test262: &Path, scratch: &Path, test: &Test) -> PathBuf {
+    let file = scratch.join("src").join(relative(test262, &test.path));
+    if test.mode == Mode::AlsoAsWritten {
+        return file.with_extension("sloppy.js");
+    }
+    file
 }
 
 fn walk(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
@@ -318,20 +410,21 @@ enum Written {
 }
 
 /// Reads a test and writes its program at its path in the scratch tree.
-fn write_program(test262: &Path, scratch: &Path, path: &Path) -> Written {
-    let source = match fs::read_to_string(path) {
+fn write_program(test262: &Path, scratch: &Path, test: &Test) -> Written {
+    let source = match fs::read_to_string(&test.path) {
         Ok(source) => source,
         Err(error) => return Written::Decided(Outcome::Fail(format!("cannot read: {error}"))),
     };
     let meta = frontmatter(&source);
-    if let Some(reason) = skip_reason(&meta) {
+    let id = relative(&test262.join("test"), &test.path);
+    if let Some(reason) = skip_reason(&id, &meta, test.mode) {
         return Written::Decided(Outcome::Skip(reason));
     }
-    let (program, prelude_lines) = match program(test262, &meta, &source) {
+    let (program, prelude_lines) = match program(test262, &meta, &source, test.mode) {
         Ok(program) => program,
         Err(error) => return Written::Decided(Outcome::Fail(error)),
     };
-    let file = scratch.join("src").join(relative(test262, path));
+    let file = program_path(test262, scratch, test);
     if let Err(error) = fs::write(&file, program) {
         return Written::Decided(Outcome::Fail(format!("cannot write the program: {error}")));
     }
@@ -346,7 +439,7 @@ fn prepare(
     scratch: &Path,
     index: usize,
     test262: &Path,
-    path: &Path,
+    test: &Test,
     written: &Written,
 ) -> Prepared {
     let (meta, prelude_lines) = match written {
@@ -356,7 +449,7 @@ fn prepare(
             prelude_lines,
         } => (meta.clone(), *prelude_lines),
     };
-    let file = scratch.join("src").join(relative(test262, path));
+    let file = program_path(test262, scratch, test);
     let compiled = if meta.has_flag("module") {
         buoy_compiler::compile_with(&file, Semantics::Reference)
     } else {
@@ -404,27 +497,45 @@ fn timeout_ms(options: &Options, meta: &Frontmatter) -> u64 {
     options.timeout_ms
 }
 
-fn skip_reason(meta: &Frontmatter) -> Option<&'static str> {
-    if meta.has_flag("CanBlockIsFalse") {
-        return Some("can-block");
-    }
-    if meta.features.iter().any(|feature| feature == "IsHTMLDDA") {
-        return Some("needs-dom");
-    }
-    None
+fn skip_reason(id: &str, meta: &Frontmatter, mode: Mode) -> Option<&'static str> {
+    let run = if mode.is_strict() {
+        "strict"
+    } else {
+        "nonstrict"
+    };
+    SKIPS
+        .iter()
+        .find(|skip| {
+            let selected = skip
+                .path
+                .as_ref()
+                .is_some_and(|path| id.starts_with(path.as_str()))
+                || skip
+                    .feature
+                    .as_ref()
+                    .is_some_and(|feature| meta.features.contains(feature))
+                || skip.flag.as_ref().is_some_and(|flag| meta.has_flag(flag));
+            selected && skip.mode.as_ref().is_none_or(|skipped| skipped == run)
+        })
+        .map(|skip| skip.reason.as_str())
 }
 
 /// The program that runs a test: the strict directive unless the test is `noStrict`, the
 /// host functions, the harness, then the test. A `raw` test runs as it is. Returns the program and the count of the
 /// lines before the test.
-fn program(test262: &Path, meta: &Frontmatter, source: &str) -> Result<(String, usize), String> {
+fn program(
+    test262: &Path,
+    meta: &Frontmatter,
+    source: &str,
+    mode: Mode,
+) -> Result<(String, usize), String> {
     if meta.has_flag("raw") {
         return Ok((source.to_owned(), 0));
     }
-    let mut prelude = if meta.has_flag("noStrict") {
-        String::new()
-    } else {
+    let mut prelude = if mode.is_strict() {
         String::from("\"use strict\";\n")
+    } else {
+        String::new()
     };
     prelude.push_str(HOST);
     let mut includes = vec!["assert.js".to_owned(), "sta.js".to_owned()];
@@ -790,12 +901,45 @@ impl Counts {
     }
 }
 
+/// The outcome of each test file: its first run that did not pass, named by its mode when
+/// the file has two runs, else its pass.
+fn files<'t>(
+    tests: &'t [Test],
+    outcomes: &'t [Outcome],
+) -> Vec<(&'t Test, &'t Outcome, Option<Mode>)> {
+    let mut files: Vec<(&Test, &Outcome, Option<Mode>)> = Vec::new();
+    for (test, outcome) in tests.iter().zip(outcomes) {
+        let second = test.mode == Mode::Strict
+            && files
+                .last()
+                .is_some_and(|(last, _, _)| last.path == test.path);
+        if !second {
+            let mode = (test.mode == Mode::AlsoAsWritten).then_some(test.mode);
+            files.push((test, outcome, mode));
+            continue;
+        }
+        if let Some(last) = files.last_mut()
+            && matches!(last.1, Outcome::Pass)
+        {
+            *last = (test, outcome, Some(test.mode));
+        }
+    }
+    files
+}
+
 fn report(options: &Options, tests: &[Test], outcomes: &[Outcome]) -> ExitCode {
     let mut failures = String::new();
     let mut groups: BTreeMap<&str, Counts> = BTreeMap::new();
-    for (test, outcome) in tests.iter().zip(outcomes) {
+    for (test, outcome, mode) in files(tests, outcomes) {
         groups.entry(&test.group).or_default().add(outcome);
-        let path = relative(&options.test262, &test.path);
+        let path = match mode {
+            Some(mode) => format!(
+                "{} ({})",
+                relative(&options.test262, &test.path),
+                mode.name()
+            ),
+            None => relative(&options.test262, &test.path),
+        };
         let _ = match outcome {
             Outcome::Fail(reason) => writeln!(failures, "FAIL {path}: {reason}"),
             Outcome::Compile(reason) => writeln!(failures, "COMPILE {path}: {reason}"),
@@ -870,6 +1014,7 @@ mod tests {
             jobs: None,
             timeout_ms: 10_000,
             failures: None,
+            strict_only: false,
             paths: Vec::new(),
         };
         let slow = frontmatter("/*---\nincludes: [regExpUtils.js]\n---*/");

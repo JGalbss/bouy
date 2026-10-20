@@ -11,6 +11,7 @@ import { fromA, viaB } from "./modules/cycle-a.ts";
 import { early } from "./modules/cycle-b.ts";
 import path, * as pathNamespace from "node:path";
 import { join } from "node:path";
+import { deleted } from "./modules/uninit-delete.ts";
 
 console.log("live", count, counter.count);
 increment();
@@ -53,3 +54,9 @@ console.log(
   Object.keys(pathNamespace).slice(0, 4),
   pathNamespace[Symbol.toStringTag],
 );
+console.log("delete before init", deleted);
+try {
+  delete (counter as { count?: number }).count;
+} catch (error) {
+  console.log("delete export", (error as Error).message);
+}

@@ -1,15 +1,15 @@
 {
   "suite": "node-surface",
   "version": "v25.9.0",
-  "updated": "04d10056cf0babbeb5284f85b5994292d6078fed",
+  "updated": "853b704b7528169fecfdb13bad534edfec838ef4",
   "total": 4460,
   "outcomes": {
-    "pass": 3461,
+    "pass": 4375,
     "rejected": 0,
     "late": 0,
     "skip": 0,
-    "never": 0,
-    "fail": 999,
+    "never": 80,
+    "fail": 5,
     "timeout": 0,
     "harness_error": 0,
     "crash": 0
@@ -17,12 +17,14 @@
   "groups": {
     "docs": {
       "deprecated": {
-        "pass": 98,
-        "fail": 31
+        "pass": 125,
+        "never": 2,
+        "fail": 2
       },
       "documented": {
-        "pass": 3363,
-        "fail": 968
+        "pass": 4250,
+        "never": 78,
+        "fail": 3
       }
     },
     "module": {
@@ -54,10 +56,10 @@
         "pass": 3
       },
       "Crypto": {
-        "fail": 4
+        "pass": 4
       },
       "CryptoKey": {
-        "fail": 5
+        "pass": 5
       },
       "CustomEvent": {
         "pass": 20
@@ -93,8 +95,7 @@
         "pass": 19
       },
       "MessagePort": {
-        "pass": 17,
-        "fail": 4
+        "pass": 21
       },
       "Navigator": {
         "pass": 1
@@ -145,10 +146,10 @@
         "pass": 1
       },
       "Storage": {
-        "fail": 1
+        "pass": 1
       },
       "SubtleCrypto": {
-        "fail": 19
+        "pass": 19
       },
       "TextDecoder": {
         "pass": 5
@@ -211,11 +212,10 @@
         "pass": 1
       },
       "console": {
-        "pass": 1,
-        "fail": 22
+        "pass": 23
       },
       "crypto": {
-        "fail": 4
+        "pass": 4
       },
       "exports": {
         "pass": 1
@@ -227,11 +227,10 @@
         "pass": 1
       },
       "localStorage": {
-        "fail": 1
+        "pass": 1
       },
       "module": {
-        "pass": 2,
-        "fail": 1
+        "pass": 3
       },
       "navigator": {
         "pass": 2
@@ -256,11 +255,10 @@
         "pass": 48
       },
       "node:console": {
-        "pass": 22,
-        "fail": 4
+        "pass": 26
       },
       "node:crypto": {
-        "fail": 401
+        "pass": 401
       },
       "node:dgram": {
         "pass": 43
@@ -269,10 +267,10 @@
         "pass": 13
       },
       "node:dns": {
-        "fail": 25
+        "pass": 25
       },
       "node:dns/promises": {
-        "fail": 25
+        "pass": 25
       },
       "node:domain": {
         "pass": 27
@@ -291,20 +289,19 @@
         "pass": 318
       },
       "node:http2": {
-        "fail": 112
+        "pass": 112
       },
       "node:https": {
-        "fail": 78
+        "pass": 78
       },
       "node:inspector": {
-        "fail": 40
+        "never": 40
       },
       "node:inspector/promises": {
-        "fail": 40
+        "never": 40
       },
       "node:module": {
-        "pass": 3,
-        "fail": 17
+        "pass": 20
       },
       "node:net": {
         "pass": 119
@@ -340,13 +337,13 @@
         "pass": 27
       },
       "node:repl": {
-        "fail": 28
+        "pass": 28
       },
       "node:sea": {
         "pass": 6
       },
       "node:sqlite": {
-        "fail": 32
+        "pass": 32
       },
       "node:stream": {
         "pass": 250
@@ -379,7 +376,7 @@
         "pass": 6
       },
       "node:tls": {
-        "fail": 126
+        "pass": 126
       },
       "node:trace_events": {
         "pass": 3
@@ -407,8 +404,7 @@
         "pass": 6
       },
       "node:worker_threads": {
-        "pass": 80,
-        "fail": 4
+        "pass": 84
       },
       "node:zlib": {
         "pass": 553
@@ -426,7 +422,7 @@
         "pass": 6
       },
       "sessionStorage": {
-        "fail": 1
+        "pass": 1
       },
       "setImmediate": {
         "pass": 1

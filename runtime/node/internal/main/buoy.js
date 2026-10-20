@@ -6,6 +6,7 @@
 // module loaders do not run.
 
 const {
+  ArrayPrototypeSlice,
   NumberParseInt,
   ObjectDefineProperty,
 } = primordials;
@@ -26,13 +27,19 @@ function patchProcessObject() {
   process._exiting = false;
   process.argv[0] = process.execPath;
 
-  if (process.argv[1] && process.argv[1][0] !== '-') {
+  // As expandArgv1 of run_main_module: the code of -e and -p has no script.
+  const expandArgv1 = !getOptionValue('[has_eval_string]') && !getOptionValue('--print');
+  if (expandArgv1 && process.argv[1] && process.argv[1][0] !== '-') {
     process.argv[1] = require('path').resolve(process.argv[1]);
   }
 
   const globalConsole = require('internal/console/global');
   const { initializeGlobalConsole } = require('internal/console/constructor');
   initializeGlobalConsole(globalConsole);
+  // The release builds of Node have the inspector, so createGlobalConsole of
+  // internal/bootstrap/web/exposed-wildcard wraps V8's console methods into
+  // the global console. Buoy reports no inspector, so it wraps them here.
+  require('internal/util/inspector').wrapConsole(globalConsole);
 
   addReadOnlyProcessAlias('_eval', '--eval');
   addReadOnlyProcessAlias('_print_eval', '--print');
@@ -145,6 +152,34 @@ function loadEnvFiles() {
   }
 }
 
+function setupWebStorage() {
+  const { getEmbedderOptions } = require('internal/options');
+  if (getEmbedderOptions().noBrowserGlobals ||
+      !getOptionValue('--experimental-webstorage')) {
+    return;
+  }
+
+  const {
+    exposeLazyInterfaces,
+    defineReplaceableLazyAttribute,
+  } = require('internal/util');
+
+  // https://html.spec.whatwg.org/multipage/webstorage.html#webstorage
+  exposeLazyInterfaces(globalThis, 'internal/webstorage', ['Storage']);
+  defineReplaceableLazyAttribute(globalThis, 'internal/webstorage', [
+    'localStorage', 'sessionStorage',
+  ]);
+}
+
+function setupSQLite() {
+  if (getOptionValue('--no-experimental-sqlite')) {
+    return;
+  }
+
+  const { BuiltinModule } = require('internal/bootstrap/realm');
+  BuiltinModule.allowRequireByUsers('sqlite');
+}
+
 // A child that child_process.fork started talks to its parent on the
 // descriptor of NODE_CHANNEL_FD, as setupChildProcessIpcChannel does.
 function setupChildProcessIpcChannel() {
@@ -157,6 +192,47 @@ function setupChildProcessIpcChannel() {
   }
 }
 
+// A worker of node:cluster starts its channel to the primary before any code
+// of the program runs, as initializeClusterIPC does.
+function initializeClusterIPC() {
+  if (process.argv[1] && process.env.NODE_UNIQUE_ID) {
+    const cluster = require('cluster');
+    cluster._setupWorker();
+    delete process.env.NODE_UNIQUE_ID;
+  }
+}
+
+// As setupVmModules of pre_execution.
+function setupVmModules() {
+  if (getOptionValue('--experimental-vm-modules')) {
+    const {
+      Module, SourceTextModule, SyntheticModule,
+    } = require('internal/vm/module');
+    const vm = require('vm');
+    vm.Module = Module;
+    vm.SourceTextModule = SourceTextModule;
+    vm.SyntheticModule = SyntheticModule;
+  }
+}
+
+// Node's module loaders, as initializeModuleLoaders sets them up: Buoy's
+// compiler links the program, but the REPL, the code of -e, and the programs
+// that require internal/modules/cjs/loader read Module.builtinModules and the
+// search paths of the CommonJS loader, and the ESM loader runs the modules
+// that node:vm, createRequire, and import() of a vm script hand it.
+function initializeModuleLoaders() {
+  require('internal/modules/cjs/loader').initializeCJS();
+  require('internal/modules/esm/utils').initializeESM();
+}
+
+// The code of -e and -p reads each built-in module as a global, as
+// internal/main/eval_string gives it.
+function setupEvalGlobals() {
+  if (getOptionValue('[has_eval_string]')) {
+    require('internal/modules/helpers').addBuiltinLibsToObject(globalThis, '<eval>');
+  }
+}
+
 // The tracing of async_hooks when --trace-event-categories enables it.
 function setupTraceCategoryState() {
   const { isTraceCategoryEnabled } = internalBinding('trace_events');
@@ -164,16 +240,77 @@ function setupTraceCategoryState() {
   toggleTraceCategoryState(isTraceCategoryEnabled('node.async_hooks'));
 }
 
-// Web Storage needs SQLite, which Buoy lacks, as a node built without it does.
+// As initializeHeapSnapshotSignalHandlers: the signal of --heapsnapshot-signal
+// writes a heap snapshot, which the binding names in --diagnostic-dir.
+function initializeHeapSnapshotSignalHandlers() {
+  const signal = getOptionValue('--heapsnapshot-signal');
+  if (!signal) return;
+  require('internal/validators').validateSignalName(signal);
+  const { writeHeapSnapshot } = require('v8');
+  process.on(signal, () => writeHeapSnapshot());
+}
+
+// --require: the modules that load before the main script, as
+// loadPreloadModules of pre_execution loads them. node --test with
+// --test-isolation=none loads them in the runner instead, in the scope of its
+// root test, as prepareTestRunnerMainExecution leaves them to it.
+function loadPreloadModules() {
+  if (getOptionValue('--test') &&
+      require('internal/test_runner/utils').parseCommandLine().isolation === 'none') {
+    return;
+  }
+  const preloadModules = getOptionValue('--require');
+  if (preloadModules.length > 0) {
+    require('internal/modules/cjs/loader').Module._preloadModules(preloadModules);
+  }
+}
+
+// node --test: the steps of internal/main/test_runner after the preparation
+// above. The arguments of the command line are the patterns of the files.
+function runTestRunner() {
+  const { run } = require('internal/test_runner/runner');
+  const { parseCommandLine } = require('internal/test_runner/utils');
+  const { exitCodes: { kGenericUserError } } = internalBinding('errors');
+  const options = parseCommandLine();
+  options.globPatterns = ArrayPrototypeSlice(process.argv, 1);
+  run(options).on('test:summary', (data) => {
+    if (!data.success) {
+      process.exitCode = kGenericUserError;
+    }
+  });
+}
+
+function setupStreamIter() {
+  if (!getOptionValue('--experimental-stream-iter')) {
+    return;
+  }
+  const { BuiltinModule } = require('internal/bootstrap/realm');
+  BuiltinModule.allowRequireByUsers('stream/iter');
+  BuiltinModule.allowRequireByUsers('zlib/iter');
+}
+
 patchProcessObject();
 setupTraceCategoryState();
 loadEnvFiles();
+setupSQLite();
+setupWebStorage();
 setupWebsocket();
 setupEventsource();
 initializeReport();
 initializeDeprecations();
 setupNavigator();
+setupStreamIter();
 setupWarningHandler();
 setupDebugEnv();
+require('internal/dns/utils').initializeDns();
 setupChildProcessIpcChannel();
+initializeClusterIPC();
+initializeHeapSnapshotSignalHandlers();
+setupVmModules();
+initializeModuleLoaders();
+setupEvalGlobals();
+loadPreloadModules();
 require('internal/process/pre_execution').markBootstrapComplete();
+if (getOptionValue('--test')) {
+  runTestRunner();
+}

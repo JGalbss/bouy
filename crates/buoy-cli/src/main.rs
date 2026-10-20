@@ -2,6 +2,8 @@
 
 mod node;
 mod runtime;
+#[cfg(unix)]
+mod spawn;
 
 use std::env;
 use std::ffi::OsString;
@@ -10,7 +12,7 @@ use std::io::{self, IsTerminal as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use buoy_compiler::{Diagnostic, EvalContext, EvalPlace, Project, Semantics};
+use buoy_compiler::{Diagnostic, EvalContext, EvalPlace, EvalSource, Project, Semantics};
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
@@ -63,6 +65,10 @@ enum Commands {
         /// Answer requests on stdin until it closes.
         #[arg(long)]
         serve: bool,
+        /// A condition of `--conditions` of the program, for the resolution of each module
+        /// that the server compiles.
+        #[arg(long = "condition")]
+        conditions: Vec<String>,
         #[command(flatten)]
         request: EvalRequest,
     },
@@ -75,12 +81,16 @@ struct EvalRequest {
     /// Compile the code as strict code.
     #[arg(long)]
     strict: bool,
-    /// The source is the function that the `Function` constructor builds.
+    /// The source is the function that the `Function` constructor builds, whose parameter
+    /// list ends at this byte offset, after its closing parenthesis.
     #[arg(long)]
-    function: bool,
-    /// The source is a classic script of its own, as a host's `evalScript` runs it.
+    function: Option<usize>,
+    /// The program records each call of a function, for the legacy `caller` and
+    /// `arguments` of a sloppy function.
     #[arg(long)]
-    script: bool,
+    frames: bool,
+    #[command(flatten)]
+    form: SourceForm,
     /// The bindings that sloppy direct eval code may not declare with `var`.
     #[arg(long, value_delimiter = ',')]
     lexical: Vec<String>,
@@ -103,6 +113,22 @@ struct EvalRequest {
     source: Option<PathBuf>,
 }
 
+/// What the source text is when it is no eval code: a script or a module of its own.
+#[derive(Debug, clap::Args)]
+struct SourceForm {
+    /// The source is a classic script of its own, as a host's `evalScript` runs it.
+    #[arg(long)]
+    script: bool,
+    /// The source is an ES module whose requests the host links at run time, as
+    /// `vm.SourceTextModule` compiles it, with this identifier.
+    #[arg(long)]
+    hosted_module: Option<String>,
+    /// The script or module checks the deadline of its run at each turn of a loop, for
+    /// the `timeout` of `vm.Script`.
+    #[arg(long)]
+    interruptible: bool,
+}
+
 fn parse_place(name: &str) -> Result<EvalPlace, String> {
     EvalPlace::from_name(name).ok_or_else(|| format!("no eval place `{name}`"))
 }
@@ -116,15 +142,24 @@ struct Served {
 }
 
 impl EvalRequest {
-    /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`.
-    fn compile(self, text: &str) -> Result<String, String> {
+    /// The Erlang module of the code, or its first diagnostic as `<ErrorName>\t<message>`,
+    /// and for a `SyntaxError` also `\t<line>\t<column>` of the error in the text. `source`
+    /// says where the module finds its source text.
+    fn compile(self, text: &str, source: EvalSource) -> Result<String, String> {
         let module = self.module.unwrap_or_default();
         let context = EvalContext {
             place: self.place,
             privates: self.private,
+            internal: false,
+            lexical: Vec::new(),
+            dynamic_function: false,
+            frames: self.frames,
+            source,
         };
-        let compiled = if self.script {
-            buoy_compiler::compile_eval_script(text, &module)
+        let compiled = if let Some(identifier) = &self.form.hosted_module {
+            buoy_compiler::compile_hosted_module(text, &module, identifier)
+        } else if self.form.script {
+            buoy_compiler::compile_eval_script(text, &module, self.form.interruptible)
         } else {
             buoy_compiler::compile_eval(
                 text,
@@ -145,11 +180,18 @@ impl EvalRequest {
             } else {
                 "TypeError"
             };
-            let message = diagnostics
+            let Some(first) = diagnostics
                 .iter()
                 .find(|d| name == "TypeError" || d.code == buoy_compiler::Code::Syntax)
-                .map_or_else(String::new, |d| d.message.replace('\n', " "));
-            format!("{name}\t{message}")
+            else {
+                return format!("{name}\t");
+            };
+            let message = first.message.replace(['\n', '\t'], " ");
+            if name == "SyntaxError" {
+                format!("{name}\t{message}\t{}\t{}", first.line, first.column)
+            } else {
+                format!("{name}\t{message}")
+            }
         })
     }
 }
@@ -175,6 +217,11 @@ const DIAGNOSTICS: u8 = 2;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = env::args_os().collect();
+    // The last step of a child process that the runtime starts (spawn.rs).
+    #[cfg(unix)]
+    if arguments.get(1).is_some_and(|first| first == "--buoy-exec") {
+        return spawn::exec(&arguments[2..]);
+    }
     // `buoy [node options] <script> [args...]`, `buoy -e <code>`, and `buoy -p <code>` run
     // as `node` does, on the reference engine, so a program that starts `process.execPath`
     // as node starts Buoy.
@@ -220,7 +267,14 @@ fn main() -> ExitCode {
             }
             Err(error) => fail(&error),
         },
-        Commands::CompileEval { serve: true, .. } => serve_eval(),
+        Commands::CompileEval {
+            serve: true,
+            conditions,
+            ..
+        } => {
+            buoy_compiler::set_user_conditions(conditions);
+            serve_eval()
+        }
         Commands::CompileEval { request, .. } => compile_eval(request),
     }
 }
@@ -235,7 +289,7 @@ fn compile_eval(mut request: EvalRequest) -> ExitCode {
         Ok(text) => text,
         Err(error) => return fail(&format!("cannot read {}: {error}", source.display())),
     };
-    match request.compile(&text) {
+    match request.compile(&text, EvalSource::Literal) {
         Ok(erlang) => {
             print!("{erlang}");
             ExitCode::SUCCESS
@@ -251,8 +305,8 @@ fn compile_eval(mut request: EvalRequest) -> ExitCode {
 /// and each answer is a frame: a 4-byte big-endian length, then the bytes, as Erlang's
 /// `{packet, 4}` port option writes and reads them. A request is the options of a
 /// compilation and the module name, one on each line, then an empty line and the source
-/// text. An answer is a status byte, 0 with the Erlang module or 2 with the diagnostic,
-/// then the text.
+/// text. An answer is a status byte, then 0 with the 4-byte big-endian size of the Erlang
+/// module, the module, and the source text that its spans index, or 2 with the diagnostic.
 fn serve_eval() -> ExitCode {
     use std::io::{Read, Write};
     let mut input = io::stdin().lock();
@@ -271,12 +325,35 @@ fn serve_eval() -> ExitCode {
         let arguments = std::iter::once("compile-eval").chain(header.split('\n'));
         let answer = if let Some(request) = header.strip_prefix("@load\n") {
             load_answer(request)
+        } else if let Some(path) = header.strip_prefix("@source\n") {
+            source_answer(path, text)
+        } else if header == "@cjs-lexer" {
+            cjs_lexer_answer(text)
+        } else if let Some(variables) = header.strip_prefix("@module-syntax") {
+            module_syntax_answer(text, variables != "\nno-cjs-variables")
         } else {
             match Served::try_parse_from(arguments) {
-                Ok(Served { request }) => match request.compile(text) {
-                    Ok(erlang) => [&[0], erlang.as_bytes()].concat(),
-                    Err(diagnostic) => [&[DIAGNOSTICS], diagnostic.as_bytes()].concat(),
-                },
+                Ok(Served { request }) => {
+                    // A script holds its source; other eval code gets it after the module.
+                    let source = if request.form.script || request.form.hosted_module.is_some() {
+                        String::new()
+                    } else {
+                        buoy_compiler::eval_text(text, request.strict)
+                    };
+                    match request.compile(text, EvalSource::Runtime) {
+                        Ok(erlang) => match u32::try_from(erlang.len()) {
+                            Ok(size) => [
+                                &[0][..],
+                                &size.to_be_bytes(),
+                                erlang.as_bytes(),
+                                source.as_bytes(),
+                            ]
+                            .concat(),
+                            Err(_) => [&[1][..], b"an eval module is larger than 4 GB"].concat(),
+                        },
+                        Err(diagnostic) => [&[DIAGNOSTICS], diagnostic.as_bytes()].concat(),
+                    }
+                }
                 Err(error) => [&[1], error.to_string().as_bytes()].concat(),
             }
         };
@@ -290,6 +367,28 @@ fn serve_eval() -> ExitCode {
             return ExitCode::SUCCESS;
         }
     }
+}
+
+/// The answer to `@module-syntax`, with the line `no-cjs-variables` for text without the
+/// variables of the `CommonJS` wrapper: status 0 and the byte 1 when the text is an ES
+/// module by its syntax (`containsModuleSyntax`), else 0.
+fn module_syntax_answer(text: &str, cjs_variables: bool) -> Vec<u8> {
+    vec![
+        0,
+        u8::from(buoy_compiler::contains_module_syntax(text, cjs_variables)),
+    ]
+}
+
+/// The answer to `@cjs-lexer`, the export names of `CommonJS` source text: status 0, the
+/// names one on each line, an empty line, and the re-exported specifiers one on each line.
+/// Text that does not parse has none.
+fn cjs_lexer_answer(text: &str) -> Vec<u8> {
+    let (names, reexports) = buoy_compiler::cjs_lexer(text).unwrap_or_default();
+    [
+        &[0],
+        format!("{}\n\n{}", names.join("\n"), reexports.join("\n")).as_bytes(),
+    ]
+    .concat()
 }
 
 /// The answer to `@load`, a module that a running program loads at run time. The request
@@ -314,25 +413,43 @@ fn load_answer(request: &str) -> Vec<u8> {
         Ok(buoy_compiler::Loaded::Builtin(name)) => {
             [&[0], format!("builtin\n{name}").as_bytes()].concat()
         }
-        Ok(buoy_compiler::Loaded::Program(path, project)) => {
-            let mut answer = vec![0];
-            answer.extend_from_slice(format!("program\n{}\n", path.display()).as_bytes());
-            for module in &project.modules {
-                answer.extend_from_slice(
-                    format!(
-                        "{}\n{}\n{}\n",
-                        module.name,
-                        module.path.display(),
-                        module.erlang.len()
-                    )
-                    .as_bytes(),
-                );
-                answer.extend_from_slice(module.erlang.as_bytes());
-            }
-            answer
-        }
+        Ok(buoy_compiler::Loaded::Program(path, project)) => program_answer(&path, &project),
         Err((code, message)) => [&[DIAGNOSTICS], format!("{code}\t{message}").as_bytes()].concat(),
     }
+}
+
+/// The answer to `@source`, the code that a running program hands over as the entry
+/// module at `path`, such as the code of a worker that `eval: true` starts. The answer
+/// is the one of `@load` for a program.
+fn source_answer(path: &str, text: &str) -> Vec<u8> {
+    let path = Path::new(path);
+    match buoy_compiler::compile_source(path, text.to_owned()) {
+        Ok(project) => program_answer(path, &project),
+        Err(diagnostics) => {
+            let (code, message) = buoy_compiler::load_error(&diagnostics);
+            [&[DIAGNOSTICS], format!("{code}\t{message}").as_bytes()].concat()
+        }
+    }
+}
+
+/// Status 0, `program` and the path of the entry, then each module as its name, its path,
+/// and the byte length of its Erlang source, one on each line, then the source.
+fn program_answer(path: &Path, project: &Project) -> Vec<u8> {
+    let mut answer = vec![0];
+    answer.extend_from_slice(format!("program\n{}\n", path.display()).as_bytes());
+    for module in &project.modules {
+        answer.extend_from_slice(
+            format!(
+                "{}\n{}\n{}\n",
+                module.name,
+                module.path.display(),
+                module.erlang.len()
+            )
+            .as_bytes(),
+        );
+        answer.extend_from_slice(module.erlang.as_bytes());
+    }
+    answer
 }
 
 fn run(entry: &Path, args: &[OsString], semantics: Semantics) -> ExitCode {
@@ -403,10 +520,20 @@ fn start_program(
     ])
     .arg(&runtime.ebin)
     .args(["-buoy_exec_argv", &options.exec_argv_json()])
+    // `process.argv0`: the argv[0] of this invocation, which spawn's `argv0` option sets.
+    .arg("-buoy_argv0")
+    .arg(&*env::args_os().next().unwrap_or_default().to_string_lossy())
     .args(
         options
             .eval
             .then_some(["-buoy_eval", "true"])
+            .into_iter()
+            .flatten(),
+    )
+    .args(
+        options
+            .repl
+            .then_some(["-buoy_repl", "true"])
             .into_iter()
             .flatten(),
     )
@@ -428,10 +555,18 @@ fn start_program(
 }
 
 /// Replaces this process with the VM, so that a signal to the CLI reaches the VM and the
-/// shell reports the status of the VM, or 128 plus the signal that ended it.
+/// shell reports the status of the VM, or 128 plus the signal that ended it. SIGTERM stays
+/// blocked until `buoy_main` sets its action: ERTS drops a SIGTERM that comes before its
+/// signal server starts, and a blocked one waits instead.
 #[cfg(unix)]
 fn start(mut vm: Command) -> ExitCode {
+    use nix::sys::signal::{SigSet, SigmaskHow, Signal, sigprocmask};
     use std::os::unix::process::CommandExt;
+    let _ = sigprocmask(
+        SigmaskHow::SIG_BLOCK,
+        Some(&SigSet::from(Signal::SIGTERM)),
+        None,
+    );
     let error = vm.exec();
     fail(&format!(
         "cannot start erl: {error}; install Erlang/OTP or set BUOY_ERL"
@@ -471,22 +606,37 @@ fn build(entry: &Path, semantics: Semantics) -> ExitCode {
 
 /// Compiles the program, printing diagnostics to stderr.
 fn compile(entry: &Path, semantics: Semantics) -> Result<Project, ExitCode> {
+    compile_reporting(entry, semantics, print_diagnostics)
+}
+
+/// Compiles the program; on diagnostics, `report` prints them and gives the exit status,
+/// which the result file records.
+fn compile_reporting(
+    entry: &Path,
+    semantics: Semantics,
+    report: impl FnOnce(&[Diagnostic]) -> u8,
+) -> Result<Project, ExitCode> {
     if !entry.is_file() {
         eprintln!("buoy: cannot find the file {}", entry.display());
         return Err(ExitCode::from(DIAGNOSTICS));
     }
     buoy_compiler::compile_with(entry, semantics).map_err(|diagnostics| {
-        for diagnostic in &diagnostics {
-            eprintln!("{}", relative(diagnostic));
-        }
-        write_result(&diagnostics);
-        ExitCode::from(DIAGNOSTICS)
+        let status = report(&diagnostics);
+        write_result(&diagnostics, status);
+        ExitCode::from(status)
     })
+}
+
+fn print_diagnostics(diagnostics: &[Diagnostic]) -> u8 {
+    for diagnostic in diagnostics {
+        eprintln!("{}", relative(diagnostic));
+    }
+    DIAGNOSTICS
 }
 
 /// Writes the facts of a run that stopped at its diagnostics to `BUOY_RESULT_FILE`, as
 /// the VM writes the facts of a run (section 1 of the contract).
-fn write_result(diagnostics: &[Diagnostic]) {
+fn write_result(diagnostics: &[Diagnostic], status: u8) {
     let Some(path) = env::var_os("BUOY_RESULT_FILE").filter(|path| !path.is_empty()) else {
         return;
     };
@@ -495,7 +645,7 @@ fn write_result(diagnostics: &[Diagnostic]) {
         .map(|diagnostic| format!("\"{}\"", diagnostic.code.as_str()))
         .collect();
     let facts = format!(
-        "{{\"status\":{DIAGNOSTICS},\"diagnostics\":[{}]}}",
+        "{{\"status\":{status},\"diagnostics\":[{}]}}",
         codes.join(",")
     );
     if let Err(error) = fs::write(&path, facts) {

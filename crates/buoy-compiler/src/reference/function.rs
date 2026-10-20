@@ -65,16 +65,9 @@ impl<'a> Lowerer<'a, '_> {
         let outer = std::mem::take(&mut self.frame);
         let outer_pre = std::mem::take(&mut self.pre);
         let own_arguments = !matches!(callee, Callee::Arrow);
-        let reads_new_target = match (&callee, body) {
-            (Callee::Function(_), FnBody::Block(block)) if kind == Kind::Sync => {
-                let mut uses = UsesNewTarget(false);
-                uses.visit_formal_parameters(params);
-                uses.visit_function_body(block);
-                uses.0
-            }
-            _ => false,
-        };
-        let new_target_param = reads_new_target.then(|| self.fresh("NewTarget"));
+        let new_target_param =
+            reads_new_target(&callee, body, kind, params).then(|| self.fresh("NewTarget"));
+        let names_itself = matches!(&callee, Callee::Function(Some(_)));
         let mut frame = Frame {
             env: outer.env.clone(),
             kind,
@@ -109,9 +102,13 @@ impl<'a> Lowerer<'a, '_> {
         let own = own.unwrap_or_else(Expr::undefined);
         let code = match kind {
             Kind::Sync => {
+                let jit = self.jit_entry(body, &args);
                 let mut code = self.entry(params, body, &args, own_arguments, scope);
                 code.extend(self.body(body));
-                code
+                match jit {
+                    Some(enter) => self.jit_switch(enter, code),
+                    None => code,
+                }
             }
             Kind::Async => {
                 let args_var = args.clone();
@@ -148,6 +145,11 @@ impl<'a> Lowerer<'a, '_> {
                 code
             }
         };
+        let code = if self.frames {
+            self.record_call(code, &args, kind == Kind::Sync && names_itself)
+        } else {
+            code
+        };
         self.frame = outer;
         self.pre = outer_pre;
         Code {
@@ -156,6 +158,35 @@ impl<'a> Lowerer<'a, '_> {
             new_target: new_target_param,
             body: code,
         }
+    }
+
+    /// The body of a function that records its call while it runs, for the legacy `caller`
+    /// and `arguments` of a sloppy function: `{Itself, Args}` for a sloppy function, which
+    /// another function may name as its caller, and `hidden` for any other one, whose
+    /// callees have the caller null.
+    fn record_call(&mut self, code: Vec<Expr>, args: &str, ordinary: bool) -> Vec<Expr> {
+        let entry = match &self.frame.callee {
+            Some(itself) if ordinary && self.frame.sloppy => {
+                Expr::Tuple(vec![itself.clone(), Expr::var(args.to_owned())])
+            }
+            _ => Expr::atom("hidden"),
+        };
+        let saved = self.fresh("Frames");
+        vec![
+            Expr::matches(
+                Expr::var(saved.clone()),
+                Expr::call("buoy_ref", "frame_enter", vec![entry]),
+            ),
+            Expr::Try {
+                body: code,
+                catches: vec![],
+                after: vec![Expr::call(
+                    "buoy_ref",
+                    "frame_leave",
+                    vec![Expr::var(saved)],
+                )],
+            },
+        ]
     }
 
     /// `buoy_ref_generator:start_async(Own, fun(Resolve, Reject, Yield) -> ... end)`: the
@@ -253,6 +284,21 @@ impl<'a> Lowerer<'a, '_> {
             code.extend(self.arguments_cell(scope));
         }
         let saved = std::mem::take(&mut self.pre);
+        if let FnBody::Block(block) = body {
+            let parameters: Vec<String> = params
+                .items
+                .iter()
+                .flat_map(|param| param.pattern.get_binding_identifiers())
+                .chain(
+                    params
+                        .rest
+                        .iter()
+                        .flat_map(|rest| rest.rest.argument.get_binding_identifiers()),
+                )
+                .map(|id| id.name.to_string())
+                .collect();
+            self.find_block_functions(&block.statements, &parameters);
+        }
         if self.frame.sloppy
             && let FnBody::Block(block) = body
         {
@@ -502,6 +548,7 @@ impl<'a> Lowerer<'a, '_> {
             home,
             class: None,
             init: None,
+            instance: None,
         });
         let fun = self.function_fun(function, Callee::Method(frame));
         let kind = match kind {
@@ -625,6 +672,7 @@ impl<'a> Lowerer<'a, '_> {
         let itself = cell.clone().filter(|_| callee).map(|cell| cell_get(&cell));
         let fun = self.function_fun(function, Callee::Function(itself));
         let kind = match method_kind(function.r#async, function.generator) {
+            "method" if reads_new_target && self.is_sloppy(function.scope_id.get()) => "sloppy_nt",
             "method" if reads_new_target => "normal_nt",
             "method" if self.is_sloppy(function.scope_id.get()) => "sloppy",
             "method" => "normal",
@@ -660,6 +708,11 @@ impl<'a> Lowerer<'a, '_> {
     pub fn needs_callee(&self, function: &'a Function<'a>) -> bool {
         if function.scope_id.get().is_none() || !self.is_sloppy(function.scope_id.get()) {
             return false;
+        }
+        // A sloppy function that records its calls names itself as the caller of the
+        // functions that it calls.
+        if self.frames && !function.r#async && !function.generator {
+            return true;
         }
         let mut uses = UsesArguments::default();
         if let Some(body) = &function.body {
@@ -761,4 +814,20 @@ impl<'a> Visit<'a> for UsesNewTarget {
     }
     fn visit_function(&mut self, _it: &Function<'a>, _flags: ScopeFlags) {}
     fn visit_class(&mut self, _it: &Class<'a>) {}
+}
+
+/// Whether a sync function reads `new.target` in its parameters or its body.
+fn reads_new_target(
+    callee: &Callee,
+    body: FnBody<'_>,
+    kind: Kind,
+    params: &FormalParameters<'_>,
+) -> bool {
+    let (Callee::Function(_), FnBody::Block(block)) = (callee, body) else {
+        return false;
+    };
+    let mut uses = UsesNewTarget(false);
+    uses.visit_formal_parameters(params);
+    uses.visit_function_body(block);
+    kind == Kind::Sync && uses.0
 }

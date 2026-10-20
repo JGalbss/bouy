@@ -1,0 +1,5 @@
+Error: after
+TypeError [ERR_INVALID_ARG_TYPE]: The "path" argument must be of type string or an instance of Buffer or URL. Received an instance of Object
+Error
+custom true
+"RangeError: no frames"

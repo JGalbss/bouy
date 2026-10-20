@@ -50,3 +50,91 @@ try {
 } catch (error) {
   console.log((error as Error).name);
 }
+// Each item of a replacer array converts before the next one is read.
+const growing: unknown[] = [0, , , ,];
+const zero = new Number(0);
+(zero as unknown as { toString: () => string }).toString = () => {
+  growing[1] = 1;
+  return "0";
+};
+growing[0] = zero;
+console.log(
+  JSON.stringify({ 0: "hi", 1: "n-nao", 2: "away", 3: "bye" }, growing as (string | number)[]),
+);
+// JSON.parse without a reviver: keys that are array indexes come first, a repeated key
+// keeps its first position and its last value, "__proto__" is an own property, and the
+// numbers take their exact double.
+const keyed = JSON.parse(
+  '{"b":1,"2":2,"a":3,"1":4,"01":5,"4294967295":6,"b":7,"__proto__":{"x":1}}',
+);
+console.log(
+  Object.keys(keyed),
+  keyed.b,
+  Object.getPrototypeOf(keyed) === Object.prototype,
+  keyed.__proto__.x,
+);
+const numbers = JSON.parse(
+  "[-0, 0, 1e2, 1E-2, 0.1, 12345678901234567890, 9007199254740993, 1e400, -1e400, -1.5e-7]",
+);
+console.log(numbers.map((n: number) => String(n)).join(" "), Object.is(numbers[0], -0));
+const strings = JSON.parse(
+  '["\\u00e9\\u20ac\\ud83d\\ude00\\ud800", "café", "中文", "\\"\\\\\\/\\b\\f\\n\\r\\t"]',
+);
+console.log(strings.map((s: string) => s.length).join(" "), JSON.stringify(strings));
+const wide = JSON.parse('{"€": ["é", 1, {"kéy": "中"}], "plain": "x"}');
+console.log(Object.keys(wide), JSON.stringify(wide));
+// A document large enough to take many time slices, and one nested 10000 deep.
+const records = Array.from({ length: 20000 }, (_, i) => ({
+  i,
+  s: "item " + i,
+  f: i / 8,
+  t: [i % 3 === 0, null, "é" + i],
+}));
+const text = JSON.stringify(records);
+const back = JSON.parse(text);
+console.log(
+  back.length,
+  back[19999].s,
+  back[12345].f,
+  back[777].t[2],
+  JSON.stringify(back) === text,
+);
+const deep = JSON.parse("[".repeat(10000) + "]".repeat(10000));
+let depth = 0;
+for (let level = deep; Array.isArray(level) && level.length > 0; level = level[0]) depth++;
+console.log(depth);
+for (const text of ["[1 2]", '{"a":1,}', "tru", "nul", "{} x", '"\\u12G4"', '"\u0001"', " "]) {
+  try {
+    JSON.parse(text);
+  } catch (error) {
+    console.log((error as Error).name + ": " + (error as Error).message);
+  }
+}
+// JSON.stringify of plain objects and arrays, next to values whose serialization runs
+// code: a getter that adds Object.prototype.toJSON in the middle, holes, class
+// instances, hidden and symbol keys, and strings that need escapes in both forms.
+const later = { a: { b: 1 }, c: { d: 2 } };
+Object.defineProperty(later.a, "x", {
+  get() {
+    (Object.prototype as unknown as { toJSON: () => string }).toJSON = () => "proto";
+    return 1;
+  },
+  enumerable: true,
+});
+console.log(JSON.stringify(later));
+delete (Object.prototype as unknown as { toJSON?: unknown }).toJSON;
+const hidden: Record<string | symbol, unknown> = { visible: 1, [Symbol("s")]: 2 };
+Object.defineProperty(hidden, "hidden", { value: 3, enumerable: false });
+class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+}
+console.log(
+  JSON.stringify([hidden, [, 1, , 2], new Point(1, 2), Object.freeze({ f: [new Date(0)] })]),
+);
+console.log(JSON.stringify(['tab\there \u0001 "q" \\', "€\ud800\n", { "é\u0007": "😀" }]));
+console.log(JSON.stringify({ wide: ["€", { x: 1 }] }, null, "→"));

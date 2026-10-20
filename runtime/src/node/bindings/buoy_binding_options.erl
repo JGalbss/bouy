@@ -1,9 +1,13 @@
 %% internalBinding('options') (src/node_options.cc): the values of Node's
 %% command-line options, which internal/options reads with getOptionValue.
-%% Buoy honors no option yet, so every value is Node 25.9.0's default.
+%% The values start at Node 25.9.0's defaults; the command line and the
+%% variables of env_args/0 change them.
 -module(buoy_binding_options).
 
 -export([binding/0, value/1]).
+
+%% The boolean options that node_options.cc stores in one field.
+-define(SHARED_FIELDS, [{<<"experimental-require-module">>, <<"require-module">>}]).
 
 -spec binding() -> term().
 binding() ->
@@ -11,7 +15,9 @@ binding() ->
     buoy_node:object([
         {<<"getCLIOptionsValues">>, F(<<"getCLIOptionsValues">>, 0, fun(_, _) -> cli_values() end)},
         {<<"getCLIOptionsInfo">>, F(<<"getCLIOptionsInfo">>, 0, fun(_, _) -> info() end)},
-        {<<"getOptionsAsFlags">>, F(<<"getOptionsAsFlags">>, 0, fun(_, _) -> buoy_heap:new_array([]) end)},
+        {<<"getOptionsAsFlags">>, F(<<"getOptionsAsFlags">>, 0, fun(_, _) ->
+            buoy_heap:new_array([buoy_node:string(Flag) || Flag <- options_as_flags()])
+        end)},
         {<<"getEmbedderOptions">>, F(<<"getEmbedderOptions">>, 0, fun(_, _) ->
             buoy_node:object([{<<"shouldNotRegisterESMLoader">>, false}, {<<"noGlobalSearchPaths">>, false},
                               {<<"noBrowserGlobals">>, false}, {<<"hasEmbedderPreload">>, false}])
@@ -46,10 +52,81 @@ values_map() ->
     #{<<"options">> := Options, <<"aliases">> := Aliases} = json:decode(info_json()),
     Types = maps:from_list([{Name, maps:get(<<"type">>, Info)} || [Name, Info] <- Options]),
     Expansions = maps:from_list([{Alias, Expansion} || [Alias, Expansion] <- Aliases]),
-    apply_args(expand(buoy_node_process:exec_argv(), Expansions), Types, json:decode(values())).
+    Args = buoy_node_process:node_options() ++ buoy_node_process:exec_argv(),
+    apply_args(env_args() ++ expand(Args, Expansions), Types, defaults()).
 
-expand(Args, Expansions) ->
-    lists:append([maps:get(normalize(A), Expansions, [A]) || A <- Args]).
+%% The variables that Node reads as options, before the command line.
+env_args() ->
+    [<<"--use-system-ca">> || os:getenv("NODE_USE_SYSTEM_CA") =:= "1"].
+
+%% The oracle recorded the defaults under -e, so its code is no default.
+defaults() ->
+    (json:decode(values()))#{<<"--eval">> => <<>>, <<"[has_eval_string]">> => false}.
+
+%% GetOptionsAsFlags: the node options that the command line set, as flags.
+%% A boolean that differs from its default is --name or --no-name, a number
+%% or string --name=value, and a list one --name=value for each value. The
+%% internal [entries], V8 options, and no-ops are left out.
+options_as_flags() ->
+    #{<<"options">> := Options} = json:decode(info_json()),
+    Defaults = defaults(),
+    Values = values_map(),
+    lists:append([flags(Name, maps:get(<<"type">>, Info), maps:get(Name, Values, none), maps:get(Name, Defaults, none))
+                  || [<<"--", _/binary>> = Name, Info] <- Options]).
+
+flags(_, _, Same, Same) -> [];
+flags(<<"--", Positive/binary>>, 2, Value, _) when is_boolean(Value) ->
+    case Value of
+        true -> [<<"--", Positive/binary>>];
+        false -> [<<"--no-", Positive/binary>>]
+    end;
+flags(Name, 7, Values, _) when is_list(Values) -> [<<Name/binary, "=", V/binary>> || V <- Values];
+flags(Name, Type, Value, _) when Type =:= 3; Type =:= 4 -> [<<Name/binary, "=", (integer_to_binary(Value))/binary>>];
+flags(Name, Type, Value, _) when (Type =:= 5 orelse Type =:= 6), is_binary(Value) -> [<<Name/binary, "=", Value/binary>>];
+flags(_, _, _, _) -> [].
+
+%% An alias of the name, or of `name <arg>` when an argument follows, so
+%% -p code reads as --print --eval code. The depth bounds a cycle of aliases.
+expand([], _Expansions) ->
+    [];
+expand([A | Rest], Expansions) ->
+    Next = case Rest of
+        [<<C, _/binary>> | _] when C =/= $- -> argument;
+        _ -> none
+    end,
+    alias(A, Next, Expansions, 3) ++ expand(Rest, Expansions).
+
+%% The expansion of one argument; only its last name takes the argument
+%% that follows.
+alias(A, _Next, _Expansions, 0) ->
+    [A];
+alias(A, Next, Expansions, Depth) ->
+    Name = normalize(A),
+    Found = case Next of
+        argument -> maps:find(<<Name/binary, " <arg>">>, Expansions);
+        none -> error
+    end,
+    case {Found, maps:find(Name, Expansions)} of
+        {{ok, Names}, _} -> aliases(Names, Next, Expansions, Depth - 1);
+        {error, {ok, Names}} -> aliases(Names, Next, Expansions, Depth - 1);
+        {error, error} -> negated_alias(A, Name, Next, Expansions, Depth)
+    end.
+
+%% The negation of an alias negates its option: --no-experimental-strip-types
+%% is --no-strip-types.
+negated_alias(A, <<"--no-", Positive/binary>>, Next, Expansions, Depth) ->
+    case maps:find(<<"--", Positive/binary>>, Expansions) of
+        {ok, [<<"--", Target/binary>>]} -> alias(<<"--no-", Target/binary>>, Next, Expansions, Depth - 1);
+        _ -> [A]
+    end;
+negated_alias(A, _Name, _Next, _Expansions, _Depth) ->
+    [A].
+
+aliases([], _Next, _Expansions, _Depth) ->
+    [];
+aliases(Names, Next, Expansions, Depth) ->
+    {Init, [Last]} = lists:split(length(Names) - 1, Names),
+    lists:append([alias(N, none, Expansions, Depth) || N <- Init]) ++ alias(Last, Next, Expansions, Depth).
 
 %% --expose_gc names --expose-gc: underscores of the name are dashes.
 normalize(<<"--", _/binary>> = Arg) ->
@@ -83,14 +160,23 @@ apply_args([Arg0 | Rest], Types, Values) ->
                 {none, []} -> {<<>>, []};
                 _ -> {Inline, Rest}
             end,
-            apply_args(Remaining, Types, Values#{Name => typed(Type, Value, maps:get(Name, Values, []))});
+            apply_args(Remaining, Types, implied(Name, Values#{Name => typed(Type, Value, maps:get(Name, Values, []))}));
         _ ->
             apply_args(Rest, Types, Values)
     end.
 
-%% A boolean option has a --no- twin that holds its negation.
+%% The implications of node_options.cc that a value of an option sets.
+implied(<<"--eval">>, Values) -> Values#{<<"[has_eval_string]">> => true};
+implied(_, Values) -> Values.
+
+%% A boolean option has a --no- twin that holds its negation. Two options of
+%% node_options.cc that store one field set each other.
 boolean(Name, Value, Values) ->
-    Values#{<<"--", Name/binary>> => Value, <<"--no-", Name/binary>> => not Value}.
+    Set = fun(N, Vs) -> Vs#{<<"--", N/binary>> => Value, <<"--no-", N/binary>> => not Value} end,
+    case lists:keyfind(Name, 1, ?SHARED_FIELDS ++ [{B, A} || {A, B} <- ?SHARED_FIELDS]) of
+        {_, Other} -> Set(Other, Set(Name, Values));
+        false -> Set(Name, Values)
+    end.
 
 typed(Type, Value, _Old) when Type =:= 3; Type =:= 4 ->
     try binary_to_integer(Value) catch _:_ -> 0 end;
@@ -146,26 +232,7 @@ values() ->
       "reporter\":[],\"--no-inspect-brk\":true,\"--inspect-brk\":false,\"--test-name-pattern\":[],\"--tes"/utf8,
       "t-isolation\":\"process\",\"--no-disable-sigusr1\":true,\"--disable-sigusr1\":false,\"--no-depreca"/utf8,
       "tion\":false,\"--deprecation\":true,\"--cpu-prof-interval\":1000,\"--test-coverage-functions\":0,"/utf8,
-      "\"--env-file-if-exists\":[],\"--eval\":\"\\nconst {internalBinding} = require('internal/test/bin"/utf8,
-      "ding');\\nconst fs = require('fs');\\nfs.writeFileSync('constants.json', JSON.stringify(inte"/utf8,
-      "rnalBinding('constants')));\\nconst o = internalBinding('options');\\nfs.writeFileSync('opti"/utf8,
-      "ons_values.json', JSON.stringify(o.getCLIOptionsValues()));\\nconst info = o.getCLIOptionsI"/utf8,
-      "nfo();\\nfs.writeFileSync('options_info.json', JSON.stringify({options: [...info.options.en"/utf8,
-      "tries()], aliases: [...info.aliases.entries()]}));\\nconsole.log(Object.keys(o));\\nconsole."/utf8,
-      "log(JSON.stringify(o.envSettings), JSON.stringify(o.types), JSON.stringify(o.getEmbedderOp"/utf8,
-      "tions()));\\nconsole.log(Object.keys(internalBinding('util')));\\nconsole.log(Object.keys(in"/utf8,
-      "ternalBinding('process_methods')));\\nconsole.log(Object.keys(internalBinding('async_wrap')"/utf8,
-      "), JSON.stringify(internalBinding('async_wrap').constants), JSON.stringify(internalBinding"/utf8,
-      "('async_wrap').Providers));\\nconsole.log(Object.keys(internalBinding('task_queue')), JSON."/utf8,
-      "stringify(internalBinding('task_queue').promiseRejectEvents));\\nconsole.log(Object.keys(in"/utf8,
-      "ternalBinding('trace_events')));\\nconsole.log(Object.keys(internalBinding('credentials')))"/utf8,
-      ";\\nconsole.log(Object.keys(internalBinding('messaging')));\\nconsole.log(Object.keys(intern"/utf8,
-      "alBinding('mksnapshot')));\\nconsole.log(Object.keys(internalBinding('worker')));\\nconsole."/utf8,
-      "log(Object.keys(internalBinding('performance')), JSON.stringify(internalBinding('performan"/utf8,
-      "ce').constants));\\nconsole.log(Object.keys(internalBinding('contextify')));\\nconsole.log(O"/utf8,
-      "bject.keys(internalBinding('buffer')));\\nconsole.log(Object.keys(internalBinding('os')));\\"/utf8,
-      "nconsole.log(Object.keys(internalBinding('types')));\\nconsole.log(Object.keys(internalBind"/utf8,
-      "ing('config')), JSON.stringify(internalBinding('config')));\\n\",\"--no-experimental-vm-modul"/utf8,
+      "\"--env-file-if-exists\":[],\"--eval\":\"\",\"--no-experimental-vm-modul"/utf8,
       "es\":true,\"--experimental-vm-modules\":false,\"--no-debug\":true,\"--debug\":false,\"--no-report-"/utf8,
       "compact\":true,\"--report-compact\":false,\"--cpu-prof-dir\":\"\",\"--no-experimental-storage-insp"/utf8,
       "ection\":true,\"--experimental-storage-inspection\":false,\"--no-trace-env-js-stack\":true,\"--t"/utf8,
@@ -175,7 +242,7 @@ values() ->
       "se,\"--cpu-prof-name\":\"\",\"--build-sea\":\"\",\"--test-timeout\":0,\"--no-cpu-prof\":true,\"--cpu-pr"/utf8,
       "of\":false,\"--no-experimental-test-module-mocks\":true,\"--experimental-test-module-mocks\":fa"/utf8,
       "lse,\"--no-insecure-http-parser\":true,\"--insecure-http-parser\":false,\"--nohas_eval_string]\""/utf8,
-      ":false,\"[has_eval_string]\":true,\"--require\":[],\"--no-experimental-test-coverage\":true,\"--e"/utf8,
+      ":false,\"[has_eval_string]\":false,\"--require\":[],\"--no-experimental-test-coverage\":true,\"--e"/utf8,
       "xperimental-test-coverage\":false,\"--no-network-family-autoselection\":false,\"--network-fami"/utf8,
       "ly-autoselection\":true,\"--no-experimental-transform-types\":true,\"--experimental-transform-"/utf8,
       "types\":false,\"--disable-warning\":[],\"--no-warnings\":false,\"--warnings\":true,\"--no-require-"/utf8,

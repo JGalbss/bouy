@@ -223,8 +223,9 @@ fn vendored_node_tests_match_their_upstream_hash() {
             path
         })
         .collect();
-    // Node's fixtures hold node_modules directories, so this walk skips only Finder files.
-    let vendored = files_except(&node, "test", &[".DS_Store"]);
+    // Node's fixtures hold node_modules directories, so this walk skips only Finder files and
+    // the `.buoy` build directory that a run of a fixture's package writes, which git ignores.
+    let vendored = files_except(&node, "test", &[".DS_Store", ".buoy"]);
     let mut wrong: Vec<String> = Vec::new();
     for file in &vendored {
         let path = file.strip_prefix("test/").unwrap_or(file);

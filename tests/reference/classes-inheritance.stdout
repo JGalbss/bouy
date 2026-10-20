@@ -2,3 +2,16 @@
 [Bit makes a sound and barks softly] [ 'sit' ]
 true true true false
 true true
+TypeError
+TypeError
+TypeError
+base true
+[ 5, 14, 32 ] [ 'x', 'y', 'z', 'label' ]
+61 Pair { y: 5, x: 7 }
+50 3 [ 'x', 'y', 'extra' ]
+81 [ 'x', 'y' ]
+proto
+own
+2 2 2
+42
+TypeError

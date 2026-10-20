@@ -7,8 +7,10 @@
 mod diagnostic;
 mod erlang;
 mod graph;
+mod jit;
 mod library;
 mod lower;
+mod oxc_gaps;
 mod parse;
 mod reference;
 mod resolve;
@@ -17,7 +19,8 @@ use std::path::{Path, PathBuf};
 
 pub use diagnostic::{Code, Diagnostic};
 use graph::{module_name, project_root};
-pub use reference::{EvalContext, EvalPlace};
+pub use reference::{EvalContext, EvalPlace, EvalSource};
+pub use resolve::set_user_conditions;
 
 /// The Erlang modules of a program.
 #[derive(Debug, Clone)]
@@ -134,6 +137,25 @@ pub fn compile_source(entry: &Path, text: String) -> Result<Project, Vec<Diagnos
     compile_reference_text(entry, &root, false, Some(text))
 }
 
+/// The file that `node <script>` runs: the script itself, or the file that `require` of its
+/// absolute path finds, with an extension or as a directory, as Node's `Module.runMain`
+/// resolves the main entry.
+#[must_use]
+pub fn resolve_main(script: &Path) -> Option<PathBuf> {
+    if script.is_file() {
+        return Some(script.to_path_buf());
+    }
+    let absolute = std::env::current_dir().ok()?.join(script);
+    match resolve::Resolver::default().resolve(
+        &absolute.to_string_lossy(),
+        &absolute,
+        resolve::Mode::Require,
+    ) {
+        Ok(resolve::Target::File(path)) => Some(path),
+        _ => None,
+    }
+}
+
 /// What a running program loads at run time: a specifier that its static graph did not
 /// reach, such as `require(path.join(dir, name))`.
 #[derive(Debug)]
@@ -161,24 +183,46 @@ pub fn compile_loaded(
     };
     match resolve::Resolver::default().resolve(specifier, importer, mode) {
         Ok(resolve::Target::Builtin(name)) => Ok(Loaded::Builtin(name)),
+        Ok(resolve::Target::Data(url)) => Err((
+            "ERR_UNSUPPORTED_ESM_URL_SCHEME".to_owned(),
+            format!("{url} loads through the ESM loader of the program"),
+        )),
         Ok(resolve::Target::File(path)) => {
             let root = project_root(main);
             let root = root.canonicalize().unwrap_or(root);
-            compile_reference(&path, &root, false)
+            // An import loads the file with the ESM loader, which reads an extensionless
+            // WebAssembly binary as WebAssembly.
+            compile_reference_entry(&path, &root, !require)
                 .map(|project| Loaded::Program(path, project))
-                .map_err(|diagnostics| {
-                    let message = diagnostics
-                        .first()
-                        .map_or_else(String::new, |d| d.message.clone());
-                    ("ERR_BUOY_COMPILE".to_owned(), message)
-                })
+                .map_err(|diagnostics| load_error(&diagnostics))
         }
         Err(failure) => Err((failure.code.to_owned(), failure.message)),
     }
 }
 
+/// The error that a running program throws for a module that does not compile: the
+/// name `SyntaxError` for a syntax error, as Node's loaders throw one, else the code
+/// `ERR_BUOY_COMPILE`, with the message of the first diagnostic.
+#[must_use]
+pub fn load_error(diagnostics: &[Diagnostic]) -> (String, String) {
+    match diagnostics.first() {
+        Some(d) if d.code == Code::Syntax => ("SyntaxError".to_owned(), d.message.clone()),
+        Some(d) => ("ERR_BUOY_COMPILE".to_owned(), d.message.clone()),
+        None => ("ERR_BUOY_COMPILE".to_owned(), String::new()),
+    }
+}
+
 fn compile_reference(entry: &Path, root: &Path, script: bool) -> Result<Project, Vec<Diagnostic>> {
     compile_reference_text(entry, root, script, None)
+}
+
+fn compile_reference_entry(
+    entry: &Path,
+    root: &Path,
+    imported: bool,
+) -> Result<Project, Vec<Diagnostic>> {
+    let graph = reference::graph::load_imported(entry, root, imported)?;
+    compile_graph(&graph, root)
 }
 
 fn compile_reference_text(
@@ -188,7 +232,11 @@ fn compile_reference_text(
     text: Option<String>,
 ) -> Result<Project, Vec<Diagnostic>> {
     let graph = reference::graph::load(entry, root, script, text)?;
-    let links = reference::link::link(&graph);
+    compile_graph(&graph, root)
+}
+
+fn compile_graph(graph: &reference::graph::Graph, root: &Path) -> Result<Project, Vec<Diagnostic>> {
+    let links = reference::link::link(graph);
     let mut modules = Vec::with_capacity(graph.units.len());
     let mut diagnostics = Vec::new();
     let mut deferred: Vec<Diagnostic> = graph
@@ -197,7 +245,7 @@ fn compile_reference_text(
         .flat_map(|unit| unit.broken.iter().cloned())
         .collect();
     for (index, unit) in graph.units.iter().enumerate() {
-        let erlang = match reference::lower_unit(&graph, index, &links[index], index == 0) {
+        let erlang = match reference::lower_unit(graph, index, &links[index], index == 0) {
             Ok(erlang) => erlang,
             Err(mut found) if index == 0 => {
                 diagnostics.append(&mut found);
@@ -207,7 +255,7 @@ fn compile_reference_text(
             Err(mut found) => {
                 let erlang = reference::broken_module(
                     reference::Linking {
-                        graph: &graph,
+                        graph,
                         unit: index,
                         link: &links[index],
                         entry: false,
@@ -257,7 +305,9 @@ fn finish(
 /// completion value. Strict code keeps its `var` names to
 /// itself; sloppy code makes them properties of the global object. With `function`, the
 /// source must be one parenthesized function expression, as the `Function` constructor
-/// builds it, so a body cannot close the function early. `lexical` names the bindings that
+/// builds it, whose parameter list ends at the byte offset `function` names (after its
+/// closing parenthesis), so neither the parameters nor the body can close the function
+/// early. `lexical` names the bindings that
 /// sloppy direct eval code may not declare with `var`. `scope` names the
 /// local bindings of the caller of a direct eval, which `'__eval__'/3` gets as cells, and
 /// `context` what the place of the call permits, such as `super.x` in a method.
@@ -265,25 +315,62 @@ pub fn compile_eval(
     source: &str,
     name: &str,
     strict: bool,
-    function: bool,
+    function: Option<usize>,
     lexical: &[String],
     scope: &[String],
     context: &EvalContext,
 ) -> Result<String, Vec<Diagnostic>> {
-    // The directive goes first, and a hashbang comment stays a comment after it.
-    let source = match (strict, source.strip_prefix("#!")) {
+    let directed = eval_text(source, strict);
+    let function = function.map(|end| end + directed.len() - source.len());
+    reference::lower_eval(directed, name, strict, function, lexical, scope, context)
+}
+
+/// The text that `compile_eval` compiles: strict code gets the directive first, and a
+/// hashbang comment stays a comment after it. The spans of the module index this text.
+#[must_use]
+pub fn eval_text(source: &str, strict: bool) -> String {
+    match (strict, source.strip_prefix("#!")) {
         (true, Some(rest)) => format!("\"use strict\";\n//{rest}"),
         (true, None) => format!("\"use strict\";\n{source}"),
         (false, _) => source.to_owned(),
-    };
-    reference::lower_eval(source, name, strict, function, lexical, scope, context)
+    }
 }
 
 /// Compiles a classic script at run time (reference semantics) into the Erlang module
 /// `name`, as a host's `evalScript` runs it: its `'$body'/0` declares the script's
 /// top-level names in the global environment of the current realm and runs its code.
-pub fn compile_eval_script(source: &str, name: &str) -> Result<String, Vec<Diagnostic>> {
-    reference::lower_script(source.to_owned(), name)
+pub fn compile_eval_script(
+    source: &str,
+    name: &str,
+    interruptible: bool,
+) -> Result<String, Vec<Diagnostic>> {
+    reference::lower_script(source.to_owned(), name, interruptible)
+}
+
+/// Compiles an ES module from source text at run time (reference semantics) into the
+/// Erlang module `name`, as `vm.SourceTextModule` and Node's ESM loader compile a
+/// `ModuleWrap`: the host links each request of `import` and `export ... from` at run time
+/// (`buoy_module:hosted_import/3`). `identifier` is the module's URL or name.
+pub fn compile_hosted_module(
+    source: &str,
+    name: &str,
+    identifier: &str,
+) -> Result<String, Vec<Diagnostic>> {
+    reference::lower_hosted_module(source.to_owned(), name, PathBuf::from(identifier))
+}
+
+/// The export names and the re-exported specifiers of `CommonJS` source text, as Node's
+/// cjs-module-lexer finds them: `None` for text that does not parse.
+#[must_use]
+pub fn cjs_lexer(source: &str) -> Option<(Vec<String>, Vec<String>)> {
+    reference::graph::cjs_lexer(source.to_owned()).ok()
+}
+
+/// Node's `containsModuleSyntax`: whether source text that does not compile as a `CommonJS`
+/// function body, with or without the wrapper's variables, is an ES module by its syntax.
+#[must_use]
+pub fn contains_module_syntax(source: &str, cjs_variables: bool) -> bool {
+    reference::graph::contains_module_syntax(source, cjs_variables)
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

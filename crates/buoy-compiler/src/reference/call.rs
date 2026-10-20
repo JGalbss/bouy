@@ -11,7 +11,7 @@ use oxc::span::GetSpan;
 use super::analyze::contains;
 use super::context::{Local, Lowerer, Top, binding_name, cell_get};
 use super::expr::strip;
-use super::member::{MemberKey, super_parts};
+use super::member::{MemberKey, element, super_parts};
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
@@ -34,7 +34,11 @@ impl<'a> Lowerer<'a, '_> {
             .map(|argument| match argument {
                 Argument::SpreadElement(spread) => {
                     let value = self.expr(&spread.argument);
-                    self.bind(Expr::call("buoy_ref_iterator", "to_list", vec![value]))
+                    self.bind(Expr::call(
+                        "buoy_ref_iterator",
+                        &self.iteration("to_list"),
+                        vec![value],
+                    ))
                 }
                 other => match other.as_expression() {
                     Some(expression) => Expr::List(vec![self.expr(expression)]),
@@ -55,11 +59,25 @@ impl<'a> Lowerer<'a, '_> {
         if let Some(member) = callee.as_member_expression() {
             return self.method_call(call, member);
         }
-        // A call of the name `eval` is a direct eval also through a `with` object.
+        if let Expression::ChainExpression(chain) = callee
+            && let Some(member) = chain.expression.as_member_expression()
+        {
+            let (function, this) = self.chain_reference(member);
+            if call.optional {
+                self.chain_guard(function.clone());
+            }
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, this, args],
+            ));
+        }
+        // A call of the name `eval` is a direct eval also through a `with` object, a
+        // parameter, or a variable, when the value is the intrinsic %eval%.
         if let Expression::Identifier(ident) = callee
             && ident.name == "eval"
             && !call.optional
-            && self.symbol_of(ident.reference_id.get()).is_none()
         {
             return self.direct_eval(ident, call);
         }
@@ -70,11 +88,17 @@ impl<'a> Lowerer<'a, '_> {
             let objects = self.with_objects(ident);
             let (function, this) = self.with_callee(ident, &objects);
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![function, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, this, args],
+            ));
         }
+        // A static call, unless the name is the cell of a block function in its block.
         if let Expression::Identifier(ident) = callee
             && let Some(symbol) = self.symbol_of(ident.reference_id.get())
             && !self.frame.env.contains_key(&symbol)
+            && self.block_cell(symbol, ident.span).is_none()
         {
             match self.tops.get(&symbol).cloned() {
                 Some(Top::Function { name, .. }) if !call.optional => {
@@ -101,7 +125,7 @@ impl<'a> Lowerer<'a, '_> {
         }
         let args = self.args(&call.arguments);
         self.bind(Expr::call(
-            "buoy_ref",
+            self.call_module(),
             "call",
             vec![function, Expr::undefined(), args],
         ))
@@ -114,12 +138,37 @@ impl<'a> Lowerer<'a, '_> {
         call: &'a CallExpression<'a>,
         member: &'a MemberExpression<'a>,
     ) -> Expr {
+        if let MemberExpression::StaticMemberExpression(static_member) = member
+            && !call.optional
+            && let Some((global, key)) = self.primordial(static_member)
+        {
+            let function = self.bind(Expr::call(
+                "buoy_ref_realm",
+                "primordial",
+                vec![Expr::js_string(global), key],
+            ));
+            let this = self.bind(Expr::call(
+                "buoy_ref",
+                "global",
+                vec![Expr::js_string(global)],
+            ));
+            let args = self.args(&call.arguments);
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![function, this, args],
+            ));
+        }
         if let Expression::Super(_) = member.object() {
             let (object, key) = self.member_parts(member);
             let method = self.get(object.clone(), key);
             let args = self.args(&call.arguments);
             let this = super_parts(&object).map_or_else(Expr::undefined, |(_, this)| this);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, this, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, this, args],
+            ));
         }
         let (object, key) = self.member_parts(member);
         // `o?.m()`: the chain ends when `o` is null or undefined.
@@ -133,40 +182,151 @@ impl<'a> Lowerer<'a, '_> {
                 self.chain_guard(method.clone());
             }
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, object, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, object, args],
+            ));
         }
         if call.optional {
             let key = self.fix_key(key);
             let method = self.get(object.clone(), key);
             self.chain_guard(method.clone());
             let args = self.args(&call.arguments);
-            return self.bind(Expr::call("buoy_ref", "call", vec![method, object, args]));
+            return self.bind(Expr::call(
+                self.call_module(),
+                "call",
+                vec![method, object, args],
+            ));
         }
         if !call.arguments.iter().all(is_pure) {
             // The method is read before the arguments run (ECMA-262 §13.3.6.1).
             let key = self.fix_key(key);
             let method = self.get(object.clone(), key.clone());
             let args = self.args(&call.arguments);
-            let MemberKey::Static(key) = key else {
+            let (MemberKey::Static(key) | MemberKey::Slot(key, _)) = key else {
                 return Expr::undefined();
             };
             return self.bind(Expr::call(
-                "buoy_ref",
+                self.call_module(),
                 "call_method_value",
                 vec![method, object, key, args],
             ));
         }
         let args = self.args(&call.arguments);
         let value = match key {
-            MemberKey::Static(key) => {
-                Expr::call("buoy_ref", "call_method", vec![object, key, args])
+            // A realm call must enter the callee's realm, which the inline read skips.
+            MemberKey::Static(key) | MemberKey::Slot(key, _)
+                if !self.realm_calls && self.is_class_instance(member.object()) =>
+            {
+                let args = self.bind(args);
+                self.cached_method_call(object, key, args)
             }
-            MemberKey::Dynamic(key) => {
-                Expr::call("buoy_ref", "call_method_computed", vec![object, key, args])
+            MemberKey::Static(key) | MemberKey::Slot(key, _) => {
+                Expr::call(self.call_module(), "call_method", vec![object, key, args])
             }
+            MemberKey::Dynamic(key) => Expr::call(
+                self.call_module(),
+                "call_method_computed",
+                vec![object, key, args],
+            ),
             MemberKey::Private(_) => Expr::undefined(),
         };
         self.bind(value)
+    }
+
+    /// `o.m(args)` where the annotations name the class of `o`: the method read of
+    /// `buoy_heap:method/2` inline. When the filter of the own shape of `o` lacks the bit
+    /// of `m`, a prototype whose map holds `m` as a function gives the method at once, and
+    /// any other prototype goes to `buoy_heap:inherited_method/3`; any other object calls
+    /// `buoy_ref:call_method/3`. Bun: `JavaScriptCore`'s `get_by_id` inline cache for a call
+    /// checks the structure and loads the prototype's slot without a call. BEAM code cannot
+    /// be patched, so the filter bit of the key comes from the compiler.
+    fn cached_method_call(&mut self, object: Expr, key: Expr, args: Expr) -> Expr {
+        let id = Expr::var(self.fresh("Id"));
+        let record = Expr::var(self.fresh("R"));
+        let proto = Expr::var(self.fresh("Proto"));
+        let proto_id = Expr::var(self.fresh("P"));
+        let fun = Expr::var(self.fresh("M"));
+        let bit = shape_key_bit(&key);
+        let method = Expr::Tuple(vec![Expr::atom("$f"), Expr::var("_"), fun.clone()]);
+        let proto_record = Expr::Tuple(vec![
+            Expr::atom("object"),
+            Expr::var("_"),
+            Expr::MapPattern(vec![(key.clone(), method)]),
+            Expr::var("_"),
+            Expr::var("_"),
+            Expr::var("_"),
+        ]);
+        let inherited = Expr::call(
+            "buoy_ref",
+            "call_method_value",
+            vec![
+                Expr::call(
+                    "buoy_heap",
+                    "inherited_method",
+                    vec![proto.clone(), key.clone(), object.clone()],
+                ),
+                object.clone(),
+                key.clone(),
+                args.clone(),
+            ],
+        );
+        let miss = Expr::call(
+            "buoy_ref",
+            "call_method",
+            vec![object.clone(), key, args.clone()],
+        );
+        let otherwise = |miss: &Expr| Clause::new(Expr::var("_"), vec![miss.clone()]);
+        let call = Expr::case(
+            Expr::call("erlang", "get", vec![proto_id.clone()]),
+            vec![
+                Clause::new(
+                    proto_record,
+                    vec![Expr::Apply(Box::new(fun), vec![object.clone(), args])],
+                ),
+                otherwise(&inherited),
+            ],
+        );
+        let prototype = Expr::case(
+            proto.clone(),
+            vec![
+                Clause::guarded(
+                    Expr::Tuple(vec![Expr::atom("$o"), proto_id.clone()]),
+                    vec![Expr::call("erlang", "is_integer", vec![proto_id])],
+                    vec![call],
+                ),
+                otherwise(&inherited),
+            ],
+        );
+        let shape = element(1, record.clone());
+        let lacks_key = Expr::op(
+            "=:=",
+            Expr::op("band", element(5, shape.clone()), Expr::Integer(bit)),
+            Expr::Integer(0),
+        );
+        let entry = Expr::case(
+            Expr::call("erlang", "get", vec![id.clone()]),
+            vec![
+                Clause::guarded(
+                    record.clone(),
+                    vec![Expr::op(
+                        "andalso",
+                        Expr::call("erlang", "is_tuple", vec![shape]),
+                        lacks_key,
+                    )],
+                    vec![Expr::matches(proto, element(2, record)), prototype],
+                ),
+                otherwise(&miss),
+            ],
+        );
+        Expr::case(
+            object,
+            vec![
+                Clause::new(Expr::Tuple(vec![Expr::atom("$o"), id]), vec![entry]),
+                otherwise(&miss),
+            ],
+        )
     }
 
     /// A direct eval. The runtime checks that `eval` is still the intrinsic.
@@ -176,10 +336,10 @@ impl<'a> Lowerer<'a, '_> {
         call: &'a CallExpression<'a>,
     ) -> Expr {
         let objects = self.with_objects(ident);
-        let eval = if objects.is_empty() {
-            self.identifier_read(ident)
-        } else {
-            self.with_read(ident, &objects)
+        let eval = match self.symbol_of(ident.reference_id.get()) {
+            _ if !objects.is_empty() => self.with_read(ident, &objects),
+            Some(symbol) => self.read_symbol(symbol, ident.span),
+            None => self.identifier_read(ident),
         };
         let args = self.args(&call.arguments);
         let mode = Expr::atom(if self.frame.sloppy {
@@ -241,6 +401,7 @@ impl<'a> Lowerer<'a, '_> {
         if !privates.is_empty() {
             entries.push(("privates", Expr::List(privates)));
         }
+        entries.push(("referrer", self.referrer()));
         Expr::Map(
             entries
                 .into_iter()
@@ -284,8 +445,17 @@ impl<'a> Lowerer<'a, '_> {
                     continue;
                 }
                 // An immutable binding, such as the name of a class or of a function
-                // expression, reaches the eval as a copy, marked with `!`.
+                // expression, reaches the eval as a copy, marked with `!`. A `const`
+                // reaches it as its cell, marked with `#`, which any write throws on.
+                // A catch parameter, marked with `?`, is no home for a `var` of the eval
+                // code, which goes to the function's variables (Annex B.3.4).
+                let flags = scoping.symbol_flags(*symbol);
+                let catch = flags.is_catch_variable();
                 let (entry, cell) = match self.frame.env.get(symbol).cloned() {
+                    Some(Local::Cell(cell)) if catch => (format!("?{name}"), Expr::var(cell)),
+                    Some(Local::Cell(cell)) if flags.is_const_variable() => {
+                        (format!("#{name}"), Expr::var(cell))
+                    }
                     Some(Local::Cell(cell)) if self.class_bindings.contains(symbol) => (
                         format!("!{name}"),
                         self.bind(Expr::call("buoy_heap", "cell", vec![cell_get(&cell)])),
@@ -419,6 +589,20 @@ impl<'a> Lowerer<'a, '_> {
         let constructor = self.expr(&new.callee);
         let args = self.args(&new.arguments);
         self.bind(Expr::call("buoy_ref", "construct", vec![constructor, args]))
+    }
+}
+
+/// The bit of a key in the filter of a shape, as `buoy_heap:key_bit/1` computes it: from
+/// the size and the first byte of a one-byte string, 1 for the empty string, and none for
+/// any other key, which no shape holds.
+fn shape_key_bit(key: &Expr) -> i64 {
+    match key {
+        Expr::JsString(units) if units.iter().all(|unit| *unit < 256) => {
+            units.first().map_or(1, |first| {
+                1_i64 << ((units.len() * 7 + usize::from(*first)) % 32)
+            })
+        }
+        _ => 0,
     }
 }
 

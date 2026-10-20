@@ -1,0 +1,69 @@
+object [object WebAssembly]
+true false
+[{"module":"js","name":"log","kind":"function"},{"module":"js","name":"pair","kind":"function"},{"module":"js","name":"mem","kind":"memory"},{"module":"js","name":"seed","kind":"global"}]
+[{"name":"g","kind":"global"},{"name":"tbl","kind":"table"},{"name":"add","kind":"function"},{"name":"callLog","kind":"function"},{"name":"load","kind":"function"},{"name":"store","kind":"function"},{"name":"trap","kind":"function"},{"name":"divide","kind":"function"},{"name":"big","kind":"function"},{"name":"half","kind":"function"},{"name":"sumPair","kind":"function"},{"name":"grow","kind":"function"},{"name":"spin","kind":"function"}]
+1
+g,tbl,add,callLog,load,store,trap,divide,big,half,sumPair,grow,spin
+null true
+5 2 2 true
+-2147483647 5
+[ 105 ]
+42n 1.5 15n
+big of a number threw TypeError true
+77 65536
+44 44
+1 0 131072 true
+2 196608
+grow past maximum threw RangeError true
+7 true
+9 9
+7n
+immutable global threw TypeError true
+2 true null
+true 2 4
+set a plain function threw TypeError true
+trap threw RuntimeError true
+true unreachable
+divide by zero
+missing import threw TypeError true
+bad import threw LinkError true
+bad bytes threw CompileError true
+CompileError true
+200000
+RangeError from js
+true 42
+true
+rejected CompileError
+80
+0 5 7 1 3 0
+WebAssembly compile:function1:ewc validate:function1:ewc instantiate:function1:ewc Module:function1:wc Instance:function1:wc Table:function1:wc Memory:function1:wc Global:function1:wc Tag:function1:wc JSTag:object:c Exception:function1:wc CompileError:function1:wc LinkError:function1:wc RuntimeError:function1:wc compileStreaming:function1:ewc instantiateStreaming:function1:ewc Suspending:function1:wc promising:function1:ewc SuspendError:function1:wc Symbol(Symbol.toStringTag):string:c
+compile length:number:c name:string:c
+validate length:number:c name:string:c
+instantiate length:number:c name:string:c
+Module length:number:c name:string:c prototype:object: imports:function1:ewc exports:function1:ewc customSections:function2:ewc
+Module.prototype constructor:function1:wc Symbol(Symbol.toStringTag):string:c
+Instance length:number:c name:string:c prototype:object:
+Instance.prototype constructor:function1:wc exports:get:ec Symbol(Symbol.toStringTag):string:c
+Table length:number:c name:string:c prototype:object:
+Table.prototype constructor:function1:wc length:get:ec grow:function1:ewc set:function1:ewc get:function1:ewc Symbol(Symbol.toStringTag):string:c
+Memory length:number:c name:string:c prototype:object:
+Memory.prototype constructor:function1:wc grow:function1:ewc buffer:get:ec Symbol(Symbol.toStringTag):string:c
+Global length:number:c name:string:c prototype:object:
+Global.prototype constructor:function1:wc valueOf:function0:ewc value:get:ec Symbol(Symbol.toStringTag):string:c
+Tag length:number:c name:string:c prototype:object:
+Tag.prototype constructor:function1:wc Symbol(Symbol.toStringTag):string:c
+Exception length:number:c name:string:c prototype:object:
+Exception.prototype constructor:function1:wc getArg:function2:ewc is:function1:ewc Symbol(Symbol.toStringTag):string:c
+CompileError length:number:c name:string:c prototype:object:
+CompileError.prototype constructor:function1:wc name:string:wc message:string:wc
+LinkError length:number:c name:string:c prototype:object:
+LinkError.prototype constructor:function1:wc name:string:wc message:string:wc
+RuntimeError length:number:c name:string:c prototype:object:
+RuntimeError.prototype constructor:function1:wc name:string:wc message:string:wc
+compileStreaming length:number:c name:string:c
+instantiateStreaming length:number:c name:string:c
+Suspending length:number:c name:string:c prototype:object:
+Suspending.prototype constructor:function1:wc Symbol(Symbol.toStringTag):string:c
+promising length:number:c name:string:c
+SuspendError length:number:c name:string:c prototype:object:
+SuspendError.prototype constructor:function1:wc name:string:wc message:string:wc

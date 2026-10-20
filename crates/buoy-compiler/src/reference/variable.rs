@@ -10,6 +10,16 @@ use crate::erlang::Expr;
 
 impl<'a> Lowerer<'a, '_> {
     pub fn identifier(&mut self, ident: &'a IdentifierReference<'a>) -> Expr {
+        if ident.name == crate::oxc_gaps::SENTINEL {
+            return self.bind(Expr::call(
+                "buoy_heap",
+                "throw_error",
+                vec![
+                    Expr::atom("ReferenceError"),
+                    Expr::js_string(crate::oxc_gaps::MESSAGE),
+                ],
+            ));
+        }
         let objects = self.with_objects(ident);
         if !objects.is_empty() {
             return self.with_read(ident, &objects);
@@ -46,6 +56,9 @@ impl<'a> Lowerer<'a, '_> {
     }
 
     pub fn read_symbol(&mut self, symbol: SymbolId, span: Span) -> Expr {
+        if let Some(cell) = self.block_cell(symbol, span) {
+            return self.bind(cell_get(&cell));
+        }
         if let Some(local) = self.frame.env.get(&symbol) {
             return match local.clone() {
                 Local::Var(name) => Expr::var(name),
@@ -156,7 +169,26 @@ impl<'a> Lowerer<'a, '_> {
         self.assign_initialized(symbol, value, span)
     }
 
+    /// Whether a write of `symbol` at `span` only binds a new version of an Erlang
+    /// variable: a mutable local that no closure, block function, or TDZ check sees.
+    pub fn is_versioned(&self, symbol: SymbolId, span: Span) -> bool {
+        matches!(self.frame.env.get(&symbol), Some(Local::Var(_)))
+            && !self.early.contains(&symbol)
+            && !self.class_bindings.contains(&symbol)
+            && !self
+                .semantic
+                .scoping()
+                .symbol_flags(symbol)
+                .is_const_variable()
+            && self.block_cell(symbol, span).is_none()
+    }
+
     fn assign_initialized(&mut self, symbol: SymbolId, value: Expr, span: Span) -> Expr {
+        if let Some(cell) = self.block_cell(symbol, span) {
+            let value = self.bind(value);
+            self.pre.push(cell_set(&cell, value.clone()));
+            return value;
+        }
         // The name of a function expression is immutable: sloppy code ignores a write to
         // it (ECMA-262 §9.1.1.1.5).
         if self.class_bindings.contains(&symbol) && self.frame.sloppy {
@@ -221,6 +253,15 @@ impl<'a> Lowerer<'a, '_> {
 
     /// Declares `symbol` with `value`: a version, a cell, or a module variable.
     pub fn declare_symbol(&mut self, symbol: SymbolId, value: Expr) {
+        // A catch parameter that shares the symbol of a global or module `var` shadows it
+        // inside its clause, also for the writes of a `var` there (Annex B.3.4).
+        if self.tops.contains_key(&symbol)
+            && let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
+        {
+            let value = self.bind(value);
+            self.pre.push(cell_set(&cell, value));
+            return;
+        }
         if self.early.contains(&symbol)
             && let Some(Local::Cell(cell)) = self.frame.env.get(&symbol).cloned()
         {

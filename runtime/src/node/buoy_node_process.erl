@@ -10,7 +10,8 @@
 -define(TITLE, '$buoy_process_title').
 
 -export([exec_argv/0, create/0, patch/1, exit_info/0, exec_path/0, version/0, arch/0, platform/0]).
--export([version_pairs/0, initial_title/0]).
+-export([getenv/1, environ/0, node_options/0]).
+-export([version_pairs/0, initial_title/0, preload/0]).
 
 -define(VERSION, <<"v25.9.0">>).
 %% The fields of Environment::ExitInfoField: kExiting, kExitCode, kHasExitCode.
@@ -51,7 +52,7 @@ exit_info() -> erlang:get(?EXIT_INFO).
 -spec patch(term()) -> undefined.
 patch(Process) ->
     %% The title starts as --title gives it, or node; the VM cannot rename its OS process.
-    erlang:put(?TITLE, title(exec_argv())),
+    erlang:put(?TITLE, title(node_options() ++ exec_argv())),
     Title = buoy_node:fn(<<"get title">>, 0, fun(_, _) -> erlang:get(?TITLE) end),
     SetTitle = buoy_node:fn(<<"set title">>, 1, fun(_, A) ->
         New = buoy_ref:to_string(buoy_node:arg(1, A)),
@@ -63,18 +64,33 @@ patch(Process) ->
     buoy_heap:define(Process, <<"title">>, #{get => Title, set => SetTitle, enumerable => true, configurable => true}),
     [_ | Argv0] = persistent_term:get({buoy, argv}, [<<"buoy">>]),
     %% The code of -e and -p is no script of process.argv.
-    Argv = case {init:get_argument(buoy_eval), Argv0} of
-        {{ok, _}, [_ | Args]} -> Args;
+    %% A worker realm starts with no script in its argv (Worker::New).
+    Argv = case {erlang:get('$buoy_argv'), init:get_argument(buoy_eval), Argv0} of
+        {Own, _, _} when is_list(Own) -> Own;
+        {_, {ok, _}, [_ | Args]} -> Args;
         _ -> Argv0
     end,
-    buoy_heap:set(Process, <<"argv">>, buoy_heap:new_array([exec_path() | [buoy_ref_string:from_utf8(A) || A <- Argv]])),
+    %% argv[0] as the program was started, which internal/main/buoy keeps as
+    %% process.argv0 before it puts execPath in its place.
+    First = case {erlang:get('$buoy_argv'), init:get_argument(buoy_argv0)} of
+        {undefined, {ok, [[Given]]}} -> buoy_ref_string:from_utf8(unicode:characters_to_binary(Given));
+        _ -> exec_path()
+    end,
+    buoy_heap:set(Process, <<"argv">>, buoy_heap:new_array([First | [buoy_ref_string:from_utf8(A) || A <- Argv]])),
     buoy_heap:set(Process, <<"execArgv">>, buoy_heap:new_array([buoy_ref_string:from_utf8(A) || A <- exec_argv()])),
     readonly(Process, <<"pid">>, list_to_integer(os:getpid())),
     Ppid = buoy_node:fn(<<"get ppid">>, 0, fun(_, _) -> parent_pid() end),
     buoy_heap:define(Process, <<"ppid">>, #{get => Ppid, enumerable => true, configurable => true}),
     buoy_heap:set(Process, <<"execPath">>, exec_path()),
-    Port = buoy_node:fn(<<"get debugPort">>, 0, fun(_, _) -> 9229 end),
-    buoy_heap:define(Process, <<"debugPort">>, #{get => Port, set => buoy_node:fn(<<"set debugPort">>, 1, fun(_, _) -> undefined end),
+    %% The port of the inspector, which Buoy does not have: a program may set it.
+    Port = buoy_node:fn(<<"get debugPort">>, 0, fun(_, _) ->
+        case erlang:get('$buoy_debug_port') of undefined -> 9229; P -> P end
+    end),
+    SetPort = buoy_node:fn(<<"set debugPort">>, 1, fun(_, A) ->
+        erlang:put('$buoy_debug_port', buoy_ref_number:to_uint32(buoy_ref:to_number(buoy_node:arg(1, A))) band 16#FFFF),
+        undefined
+    end),
+    buoy_heap:define(Process, <<"debugPort">>, #{get => Port, set => SetPort,
                                                  enumerable => true, configurable => true}),
     undefined.
 
@@ -87,6 +103,13 @@ title([]) -> <<"node">>.
 %% with -buoy_exec_argv.
 -spec exec_argv() -> [binary()].
 exec_argv() ->
+    case erlang:get('$buoy_exec_argv') of
+        undefined -> vm_exec_argv();
+        Worker -> Worker
+    end.
+
+%% A worker realm has the execArgv of its Worker options (buoy_binding_worker).
+vm_exec_argv() ->
     case init:get_argument(buoy_exec_argv) of
         {ok, [[Json | _] | _]} ->
             try json:decode(unicode:characters_to_binary(Json)) of
@@ -97,6 +120,67 @@ exec_argv() ->
         _ ->
             []
     end.
+
+%% loadPreloadModules: the modules of --require (-r) run before the main
+%% module, each required as a module of the working directory requires it.
+-spec preload() -> ok.
+preload() ->
+    case preload_requests(node_options() ++ exec_argv()) of
+        [] ->
+            ok;
+        Requests ->
+            {ok, Cwd} = file:get_cwd(),
+            Importer = unicode:characters_to_binary(filename:join(Cwd, "[preload]")),
+            lists:foreach(fun(Request) -> run_preload(Importer, Request) end, Requests)
+    end.
+
+preload_requests([Flag, Request | Rest]) when Flag =:= <<"-r">>; Flag =:= <<"--require">> ->
+    [Request | preload_requests(Rest)];
+preload_requests([<<"--require=", Request/binary>> | Rest]) ->
+    [Request | preload_requests(Rest)];
+preload_requests([_ | Rest]) ->
+    preload_requests(Rest);
+preload_requests([]) ->
+    [].
+
+run_preload(Importer, Request) ->
+    case buoy_ref_eval:load_module(Importer, Importer, Request, require) of
+        {program, _Path, Entry, _Graph} ->
+            P = buoy_module:run_worker(Entry, buoy_module:graph()),
+            case buoy_heap:slots(P) of
+                {rejected, Reason, _} -> erlang:error({'$throw', Reason});
+                _ -> ok
+            end;
+        {builtin, Name} ->
+            _ = buoy_node:require(Name),
+            ok;
+        {error, Code, Message} ->
+            buoy_module:throw_load(Code, buoy_ref_string:from_utf8(Message))
+    end.
+
+%% The options of NODE_OPTIONS, which apply as the options of the command
+%% line do but stay out of process.execArgv: words split at spaces, where a
+%% word may be "quoted", with \" and \\ inside, as ParseNodeOptionsEnvVar
+%% reads them.
+-spec node_options() -> [binary()].
+node_options() ->
+    case getenv("NODE_OPTIONS") of
+        false -> [];
+        Text -> [unicode:characters_to_binary(W) || W <- words(Text, none, [])]
+    end.
+
+words([], none, Acc) -> lists:reverse(Acc);
+words([], Word, Acc) -> lists:reverse([lists:reverse(Word) | Acc]);
+words([$\s | Rest], none, Acc) -> words(Rest, none, Acc);
+words([$\s | Rest], Word, Acc) -> words(Rest, none, [lists:reverse(Word) | Acc]);
+words([$" | Rest], Word, Acc) -> quoted(Rest, case Word of none -> []; _ -> Word end, Acc);
+words([C | Rest], none, Acc) -> words(Rest, [C], Acc);
+words([C | Rest], Word, Acc) -> words(Rest, [C | Word], Acc).
+
+quoted([$\\, C | Rest], Word, Acc) -> quoted(Rest, [C | Word], Acc);
+quoted([$" | Rest], Word, Acc) -> words(Rest, Word, Acc);
+quoted([C | Rest], Word, Acc) -> quoted(Rest, [C | Word], Acc);
+quoted([], Word, Acc) -> words([], Word, Acc).
 
 %% The path of the buoy binary, which Node's tests start as process.execPath.
 -spec exec_path() -> term().
@@ -151,8 +235,8 @@ platform() ->
         {unix, Other} -> atom_to_binary(Other)
     end.
 
-%% process.versions of Node 25.9.0, without the libraries that Buoy does not
-%% have: openssl, so that Node's tests skip the crypto cases, and sqlite.
+%% process.versions of Node 25.9.0, with the OpenSSL that OTP's crypto links
+%% and the SQLite of buoy_native.
 versions() -> buoy_node:object(version_pairs()).
 
 -spec version_pairs() -> [{binary(), binary()}].
@@ -162,10 +246,10 @@ version_pairs() ->
         {<<"ares">>, <<"1.34.6">>}, {<<"brotli">>, <<"1.2.0">>}, {<<"cldr">>, <<"48.0">>},
         {<<"icu">>, <<"78.3">>}, {<<"llhttp">>, <<"9.3.1">>}, {<<"modules">>, <<"141">>},
         {<<"napi">>, <<"10">>}, {<<"nghttp2">>, <<"1.68.1">>}, {<<"simdjson">>, <<"4.6.1">>},
-        {<<"simdutf">>, <<"7.3.3">>}, {<<"tz">>, <<"2026a">>}, {<<"undici">>, <<"7.24.4">>},
+        {<<"simdutf">>, <<"7.3.3">>}, {<<"sqlite">>, <<"3.53.2">>}, {<<"tz">>, <<"2026a">>}, {<<"undici">>, <<"7.24.4">>},
         {<<"unicode">>, <<"17.0">>}, {<<"uv">>, <<"1.52.1">>}, {<<"uvwasi">>, <<"0.0.23">>},
         {<<"v8">>, <<"14.1.146.11-node.25">>}, {<<"zlib">>, <<"1.2.12">>}, {<<"zstd">>, <<"1.5.7">>},
-        {<<"buoy">>, <<"0.1.0">>}].
+        {<<"buoy">>, <<"0.1.0">>}] ++ [{<<"openssl">>, V} || {ok, V} <- [buoy_crypto:openssl_version()]].
 
 %% The title that --title gives, or node, in UTF-8.
 -spec initial_title() -> binary().
@@ -207,7 +291,7 @@ env_name(_) -> error.
 env_get(Key) ->
     case env_name(Key) of
         {ok, Name} ->
-            case os:getenv(Name) of
+            case getenv(Name) of
                 false -> undefined;
                 Value -> buoy_node:string(Value)
             end;
@@ -222,7 +306,7 @@ env_set(Key, Value) ->
     warn_non_string(Value),
     Name = unicode:characters_to_list(buoy_ref_string:to_utf8(buoy_ref:to_string(Key))),
     Text = buoy_ref_string:to_utf8(buoy_ref:to_string(Value)),
-    try os:putenv(Name, unicode:characters_to_list(Text)) catch error:badarg -> true end,
+    putenv(Name, unicode:characters_to_list(Text)),
     true.
 
 %% DEP0104, once, with --pending-deprecation: a value that is no string,
@@ -245,7 +329,7 @@ warn_non_string(_Value) ->
 
 env_delete(Key) ->
     case env_name(Key) of
-        {ok, Name} -> _ = os:unsetenv(Name), true;
+        {ok, Name} -> unsetenv(Name), true;
         error -> true
     end.
 
@@ -261,7 +345,44 @@ env_define(Key, Desc) ->
     env_set(Key, buoy_heap:get(Desc, <<"value">>)).
 
 env_keys() ->
-    [buoy_node:string(Name) || Entry <- os:getenv(), [Name | _] <- [string:split(Entry, "=")], Name =/= ""].
+    [buoy_node:string(Name) || Entry <- environ(), [Name | _] <- [string:split(Entry, "=")], Name =/= ""].
+
+%% The environment of the realm: the OS process's, or the ETS table of a
+%% worker that has its own copy (buoy_binding_worker), as a Worker's env
+%% option gives it a KVStore of its own.
+store() -> erlang:get('$buoy_env').
+
+-spec getenv(string()) -> string() | false.
+getenv(Name) ->
+    case store() of
+        undefined ->
+            os:getenv(Name);
+        Table ->
+            case ets:lookup(Table, Name) of
+                [{_, Value}] -> Value;
+                [] -> false
+            end
+    end.
+
+putenv(Name, Value) ->
+    case store() of
+        undefined -> try os:putenv(Name, Value) catch error:badarg -> true end;
+        Table -> lists:member($=, Name) orelse Name =:= [] orelse ets:insert(Table, {Name, Value})
+    end.
+
+unsetenv(Name) ->
+    case store() of
+        undefined -> os:unsetenv(Name);
+        Table -> ets:delete(Table, Name)
+    end.
+
+%% The variables of the realm as "NAME=value" strings, as os:getenv/0 gives them.
+-spec environ() -> [string()].
+environ() ->
+    case store() of
+        undefined -> os:getenv();
+        Table -> [Name ++ "=" ++ Value || {Name, Value} <- lists:sort(ets:tab2list(Table))]
+    end.
 
 env_descriptor(Key) ->
     case env_get(Key) of

@@ -1,8 +1,9 @@
 #!/bin/sh
 # Vendors Node's own tests (section 5.7 of docs/design/testing.md). It fetches nodejs/node at
 # the tag of `.node-version` and copies `test/common`, `test/fixtures`, `test/parallel`,
-# `test/sequential`, and `test/es-module` into tests/node/test, with Node's LICENSE. It copies
-# every file of these directories, so the denominator is in the repository.
+# `test/sequential`, `test/es-module`, `test/wasi`, and `test/sqlite`, the helpers of the
+# node:sqlite tests, into tests/node/test, with Node's LICENSE. It copies every file of these
+# directories, so the denominator is in the repository.
 #
 # It writes tests/node/suite.sha256, one `shasum -a 256` line for each upstream file, and
 # records the tag and the commit in tests/node/config.json. The rule check of
@@ -23,7 +24,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 tag="v$(cat "$root/.node-version")"
 node_dir="$root/tests/node"
 suite="$node_dir/test"
-directories="common fixtures parallel sequential es-module"
+directories="common fixtures parallel sequential es-module wasi sqlite"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -32,7 +33,7 @@ echo "$0: fetching nodejs/node at $tag" >&2
 git -C "$work" init -q
 git -C "$work" remote add origin https://github.com/nodejs/node.git
 git -C "$work" sparse-checkout set --no-cone /LICENSE /test/common/ /test/fixtures/ \
-    /test/parallel/ /test/sequential/ /test/es-module/
+    /test/parallel/ /test/sequential/ /test/es-module/ /test/wasi/ /test/sqlite/
 git -C "$work" fetch -q --depth 1 --filter=blob:none origin "refs/tags/$tag:refs/tags/$tag"
 git -C "$work" -c advice.detachedHead=false checkout -q "$tag"
 commit=$(git -C "$work" rev-parse HEAD)

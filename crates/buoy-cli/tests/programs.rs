@@ -299,6 +299,52 @@ fn a_spinning_actor_does_not_delay_replies() {
     );
 }
 
+/// The kernel of the program is an island of the native tier, which runs it as machine
+/// code in slices of 200 us (contract section 17.11).
+#[test]
+fn a_native_kernel_does_not_delay_replies() {
+    let mut command = common::buoy();
+    command
+        .current_dir(common::repository())
+        .args(["run", "--semantics", "reference"])
+        .arg(Path::new("tests/programs").join("native-fairness.ts"))
+        .env("ERL_FLAGS", "+S 1")
+        .env("BUOY_JIT_TRACE", "1");
+    check_on_vm(
+        &mut command,
+        &Outcome {
+            stdout: "1596680831\n1141913883\nevery reply was fast\n\
+                     50 replies arrived during the kernel\n",
+            stderr: "buoy jit: kernel is an island\n\
+                     buoy jit: buoy@programs@native_fairness_ts 0 native\n\
+                     buoy jit: buoy@programs@native_fairness_ts 0 native\n",
+            status: 0,
+        },
+    );
+}
+
+/// The heaps of native runs count toward `BUOY_MAX_MEMORY`: 8 actors that hold about
+/// 60 MB each in runs of the native tier stop a VM with a limit of 256 MB (contract
+/// section 17.11).
+#[test]
+fn native_heaps_count_toward_the_memory_limit() {
+    let mut command = common::buoy();
+    command
+        .current_dir(common::repository())
+        .args(["run", "--semantics", "reference"])
+        .arg(Path::new("tests/programs").join("native-memory-limit.ts"))
+        .env("BUOY_MAX_MEMORY", "256M");
+    check_on_vm(
+        &mut command,
+        &Outcome {
+            stdout: "",
+            stderr: "buoy: the program used more than 256 MiB of memory and was stopped; \
+                     set BUOY_MAX_MEMORY to change the limit\n",
+            status: 1,
+        },
+    );
+}
+
 #[test]
 fn ten_thousand_actors_answer() {
     check_on_vm(
@@ -526,6 +572,59 @@ fn sigterm_ends_the_program() {
     assert_eq!(rest, "");
 }
 
+/// A SIGTERM that comes while the VM boots ends the program by the signal, as it ends Node.
+/// The shell sends it to itself with SIGTERM blocked before it execs the CLI, so it waits
+/// through the whole boot, where ERTS dropped one that came before its signal server ran.
+#[cfg(unix)]
+#[test]
+fn sigterm_during_the_boot_ends_the_program() {
+    use nix::sys::signal::{SigSet, SigmaskHow, Signal, pthread_sigmask};
+    use std::os::unix::process::ExitStatusExt;
+    if !common::vm_available() {
+        return;
+    }
+    let mut command = Command::new("/bin/sh");
+    common::buoy_env(&mut command)
+        .current_dir(common::repository())
+        .args(["-c", "kill -TERM $$ && exec \"$@\"", "sh"])
+        .arg(common::buoy_binary())
+        .args(["run", "tests/programs/sleeper.ts"]);
+    let mut mask = SigSet::empty();
+    pthread_sigmask(
+        SigmaskHow::SIG_BLOCK,
+        Some(&SigSet::from(Signal::SIGTERM)),
+        Some(&mut mask),
+    )
+    .expect("SIGTERM blocks");
+    let common::Run { output, timed_out } = common::run(&mut command, common::deadline());
+    pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&mask), None).expect("the mask restores");
+    assert!(!timed_out, "the program ignored the SIGTERM of its boot");
+    assert_eq!(output.status.signal(), Some(15), "{:?}", output.status);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+}
+
+/// A program sees the `PATH` of its caller, as a Node program does, also when the VM starts
+/// through erlexec, which puts the directories of the OTP release first on `PATH`.
+#[test]
+fn the_program_sees_the_path_of_its_caller() {
+    if !common::vm_available() {
+        return;
+    }
+    let mut command = common::buoy();
+    command
+        .args(["-p", "process.env.PATH"])
+        .env("ERL_AFLAGS", "+S 2:2");
+    let path = command
+        .get_envs()
+        .find_map(|(name, value)| (name == "PATH").then_some(value).flatten())
+        .map(|path| path.to_string_lossy().into_owned())
+        .expect("buoy_env sets PATH");
+    let common::Run { output, timed_out } = common::run(&mut command, common::deadline());
+    assert!(!timed_out);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), format!("{path}\n"));
+    assert!(output.status.success(), "{:?}", output.status);
+}
+
 /// A reader that closes stdout early ends the program, as `node app.ts | head -1` does.
 #[test]
 fn a_closed_stdout_ends_the_program() {
@@ -556,6 +655,28 @@ fn a_closed_stdout_ends_the_program() {
         std::thread::sleep(Duration::from_millis(100));
     };
     assert_eq!(status.code(), Some(0));
+}
+
+/// `ERL_AFLAGS` starts the VM through `erlexec`, which puts its directories first on `PATH`,
+/// so a child `buoy` found another `erl` and built a second runtime.
+#[test]
+fn the_program_sees_the_environment_of_the_cli() {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let mut command = buoy("host-environment.ts");
+    for name in ["ROOTDIR", "BINDIR", "EMU", "PROGNAME", "ERL_ROOTDIR"] {
+        command.env_remove(name);
+    }
+    check_on_vm(
+        command
+            .env("ERL_AFLAGS", "+S 2:2")
+            .env("PATH", &path)
+            .env("EXPECTED_PATH", &path),
+        &Outcome {
+            stdout: "0\ntrue\n",
+            stderr: "",
+            status: 0,
+        },
+    );
 }
 
 #[test]
@@ -655,7 +776,7 @@ fn diagnostics_stop_the_program_before_the_vm_starts() {
     let cases: [(&str, &[&str]); 7] = [
         (
             "buoy200-redeclared.ts",
-            &["1:7: BUOY200: Identifier `total` has already been declared"],
+            &["1:7: BUOY200: Identifier 'total' has already been declared"],
         ),
         (
             "buoy201-unknown-package.ts",
@@ -712,4 +833,30 @@ fn diagnostics_stop_the_program_before_the_vm_starts() {
             },
         );
     }
+}
+
+#[test]
+fn the_node_form_reports_code_that_does_not_parse_as_a_syntax_error() {
+    let path = "tests/programs/diagnostics/buoy200-redeclared.ts";
+    let mut command = common::buoy();
+    command.current_dir(common::repository()).arg(path);
+    let place = common::repository()
+        .join(path)
+        .canonicalize()
+        .expect("the program exists");
+    let version = include_str!("../../../.node-version").trim();
+    // Node's report of the SyntaxError that the loader throws: the place and line, the
+    // source line, a caret under the column, the error, and the version.
+    check(
+        &mut command,
+        &Outcome {
+            stdout: "",
+            stderr: &format!(
+                "{}:1\nconst total = 1;\n      ^\n\n\
+                 SyntaxError: Identifier 'total' has already been declared\n\nNode.js v{version}\n",
+                place.display()
+            ),
+            status: 1,
+        },
+    );
 }

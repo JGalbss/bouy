@@ -11,6 +11,8 @@ pub enum Expr {
     Float(f64),
     /// A UTF-8 binary literal.
     Binary(String),
+    /// A binary literal of raw bytes, such as a WebAssembly module.
+    Bytes(Vec<u8>),
     /// A JavaScript string of the reference engine, as UTF-16 code units. It prints as a
     /// one-byte binary when every unit is at most 0xFF, else as `{'$u16', Binary}` with two
     /// bytes per unit (contract, "Reference semantics").
@@ -20,6 +22,8 @@ pub enum Expr {
     /// `[A, B | Tail]`
     Cons(Vec<Expr>, Box<Expr>),
     Map(Vec<(Expr, Expr)>),
+    /// `#{K := V}`: a map pattern that matches a map holding each key.
+    MapPattern(Vec<(Expr, Expr)>),
     /// A call to a named function, local (`module` is `None`) or remote.
     Call {
         module: Option<String>,
@@ -165,6 +169,7 @@ impl Expr {
             | Self::Integer(_)
             | Self::Float(_)
             | Self::Binary(_)
+            | Self::Bytes(_)
             | Self::JsString(_)
             | Self::FunRef { .. } => true,
             Self::Tuple(items) | Self::List(items) => items.iter().all(Self::is_trivial),
@@ -317,6 +322,7 @@ impl Printer {
             }
             Expr::Float(value) => self.out.push_str(&float(*value)),
             Expr::Binary(text) => self.out.push_str(&binary(text)),
+            Expr::Bytes(bytes) => self.out.push_str(&raw_binary(bytes)),
             Expr::JsString(units) => self.out.push_str(&js_string(units)),
             Expr::Tuple(items) => self.elements("{", items, "}"),
             Expr::List(items) => self.elements("[", items, "]"),
@@ -327,7 +333,8 @@ impl Printer {
                 self.expr(tail);
                 self.out.push(']');
             }
-            Expr::Map(entries) => self.map(entries),
+            Expr::Map(entries) => self.map(entries, "=>"),
+            Expr::MapPattern(entries) => self.map(entries, ":="),
             Expr::Call {
                 module,
                 function,
@@ -402,10 +409,10 @@ impl Printer {
         }
     }
 
-    fn map(&mut self, entries: &[(Expr, Expr)]) {
+    fn map(&mut self, entries: &[(Expr, Expr)], operator: &'static str) {
         let pairs: Vec<Expr> = entries
             .iter()
-            .map(|(key, value)| Expr::Op("=>", Box::new(key.clone()), Box::new(value.clone())))
+            .map(|(key, value)| Expr::Op(operator, Box::new(key.clone()), Box::new(value.clone())))
             .collect();
         self.elements("#{", &pairs, "}");
     }
@@ -578,11 +585,16 @@ pub fn shorten(name: &str, limit: usize) -> String {
     if name.chars().count() <= limit {
         return name.to_owned();
     }
-    let hash = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-    });
+    let hash = fnv1a(name);
     let prefix: String = name.chars().take(limit - 17).collect();
     format!("{prefix}_{hash:016x}")
+}
+
+/// The 64-bit FNV-1a hash of `text`.
+pub fn fnv1a(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
 }
 
 /// An atom in source form, quoted when it needs quotes.
@@ -603,6 +615,27 @@ pub fn atom(name: &str) -> String {
     }
     quoted.push('\'');
     quoted
+}
+
+/// `<<"...">>` of raw bytes: a string literal reads each character as one byte, so the
+/// printable ASCII stays and every other byte is a three-digit octal escape.
+fn raw_binary(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2 + 6);
+    out.push_str("<<\"");
+    for &byte in bytes {
+        match byte {
+            b'"' | b'\\' => {
+                out.push('\\');
+                out.push(char::from(byte));
+            }
+            b' '..=b'~' => out.push(char::from(byte)),
+            _ => {
+                let _ = write!(out, "\\{byte:03o}");
+            }
+        }
+    }
+    out.push_str("\">>");
+    out
 }
 
 fn binary(text: &str) -> String {

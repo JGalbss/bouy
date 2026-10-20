@@ -75,25 +75,12 @@ each(State, Fun) ->
                 Fun(Item)
             catch
                 error:{'$throw', _} = Reason:Stack ->
-                    close(State1),
+                    buoy_ref_iterator:close_quietly(State1),
                     erlang:raise(error, Reason, Stack)
             end,
             each(State1, Fun)
     end.
 
-close({protocol, Iterator, _}) ->
-    case buoy_ref:get(Iterator, <<"return">>) of
-        {'$f', _, _} = Return ->
-            try buoy_ref:call(Return, Iterator, []) of
-                _ -> ok
-            catch
-                error:{'$throw', _} -> ok
-            end;
-        _ ->
-            ok
-    end;
-close(_State) ->
-    ok.
 
 weak_ref(NewTarget, Args) ->
     Target = arg(1, Args),

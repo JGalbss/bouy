@@ -7,6 +7,7 @@
 
 -export([parse/1, from_enum/1, encode/2, decode/2, decode_utf8/1, utf8_length/1]).
 -export([view_bytes/1, view_bytes/3, view_write/3, view_length/1, new_buffer/1]).
+-export([write_buffer_bytes/1]).
 
 -type encoding() :: utf8 | ucs2 | latin1 | ascii | hex | base64 | base64url | buffer.
 -export_type([encoding/0]).
@@ -194,6 +195,15 @@ view_bytes(View) ->
 view_bytes(View, Start, End) ->
     {Buffer, Offset, _} = view(View),
     buoy_ref_buffer:read(Buffer, Offset + Start, max(0, End - Start)).
+
+%% The bytes of the Uint8Array of a StreamBase writeBuffer, or the TypeError
+%% that StreamBase::WriteBuffer throws for any other value.
+-spec write_buffer_bytes(term()) -> binary().
+write_buffer_bytes(View) ->
+    IsUint8Array = buoy_heap:is_object(View) andalso buoy_heap:class_of(View) =:= typed_array
+        andalso element(1, buoy_heap:slots(View)) =:= uint8,
+    IsUint8Array orelse buoy_node:throw_code('TypeError', <<"ERR_INVALID_ARG_TYPE">>, <<"Second argument must be a buffer">>),
+    view_bytes(View).
 
 %% Writes Bytes into the view at the byte index At.
 -spec view_write(term(), non_neg_integer(), binary()) -> ok.

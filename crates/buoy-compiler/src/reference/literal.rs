@@ -58,10 +58,14 @@ impl<'a> Lowerer<'a, '_> {
                 )
             })
             .collect();
-        let site = Expr::Tuple(vec![
+        let mut site = vec![
             Expr::atom(self.module.clone()),
             Expr::Integer(i64::from(tagged.quasi.span.start)),
-        ]);
+        ];
+        if self.eval.is_some() {
+            site.push(Expr::var(super::module::EVAL_SITE));
+        }
+        let site = Expr::Tuple(site);
         let callee = strip(&tagged.tag);
         let member = callee
             .as_member_expression()
@@ -114,6 +118,9 @@ impl<'a> Lowerer<'a, '_> {
             .elements
             .iter()
             .any(|element| matches!(element, ArrayExpressionElement::Elision(_)));
+        if let Some(tree) = constant_tree(array) {
+            return self.bind(Expr::call("buoy_ref", "array_tree", vec![tree]));
+        }
         if !spread {
             // A long literal builds its list in chunks, each bound to a variable, so the
             // values of one chunk stay live at a time: BEAM has 1024 registers.
@@ -163,7 +170,7 @@ impl<'a> Lowerer<'a, '_> {
             .collect();
         self.bind(Expr::call(
             "buoy_ref",
-            "array_spread",
+            &self.iteration("array_spread"),
             vec![Expr::List(parts)],
         ))
     }
@@ -171,24 +178,7 @@ impl<'a> Lowerer<'a, '_> {
     pub fn object(&mut self, object: &'a ObjectExpression<'a>) -> Expr {
         let proto = intrinsic(OBJECT_PROTO);
         if let Some(keys) = literal_keys(object) {
-            let mut entries = Vec::new();
-            for (property, key) in object.properties.iter().zip(&keys) {
-                if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    let name = Expr::js_string(key);
-                    let value = if property.method {
-                        self.method_value(&property.value, name, "method", None, property.span)
-                    } else {
-                        self.named_expr(&property.value, Some(name))
-                    };
-                    entries.push((Expr::js_string(key), value));
-                }
-            }
-            let order = keys.iter().rev().map(|key| Expr::js_string(key)).collect();
-            return self.bind(Expr::call(
-                "buoy_heap",
-                "literal",
-                vec![proto, Expr::Map(entries), Expr::List(order)],
-            ));
+            return self.known_object(object, &keys);
         }
         let target = self.bind(Expr::call("buoy_heap", "new_object", vec![proto]));
         for property in &object.properties {
@@ -261,6 +251,43 @@ impl<'a> Lowerer<'a, '_> {
         }
         target
     }
+
+    /// An object literal whose keys `literal_keys` knows, built at once: a shaped object for
+    /// at most 64 one-byte keys (`buoy_heap`), else a record with a map.
+    fn known_object(&mut self, object: &'a ObjectExpression<'a>, keys: &[String]) -> Expr {
+        let proto = intrinsic(OBJECT_PROTO);
+        let mut entries = Vec::new();
+        for (property, key) in object.properties.iter().zip(keys) {
+            if let ObjectPropertyKind::ObjectProperty(property) = property {
+                let name = Expr::js_string(key);
+                let value = if property.method {
+                    self.method_value(&property.value, name, "method", None, property.span)
+                } else {
+                    self.named_expr(&property.value, Some(name))
+                };
+                entries.push((Expr::js_string(key), value));
+            }
+        }
+        let one_byte = keys
+            .iter()
+            .all(|key| key.chars().all(|c| u32::from(c) < 256));
+        if keys.len() <= 64 && one_byte {
+            let names = keys.iter().map(|key| Expr::js_string(key)).collect();
+            let mut record = vec![Expr::atom("_"), proto];
+            record.extend(entries.into_iter().map(|(_, value)| value));
+            return self.bind(Expr::call(
+                "buoy_heap",
+                "literal_shaped",
+                vec![Expr::Tuple(names), Expr::Tuple(record)],
+            ));
+        }
+        let order = keys.iter().rev().map(|key| Expr::js_string(key)).collect();
+        self.bind(Expr::call(
+            "buoy_heap",
+            "literal",
+            vec![proto, Expr::Map(entries), Expr::List(order)],
+        ))
+    }
 }
 
 /// `__proto__: value` in an object literal sets the prototype (ECMA-262 §13.2.5.5).
@@ -275,9 +302,10 @@ fn is_proto_setter(property: &oxc::ast::ast::ObjectProperty<'_>) -> bool {
             .is_some_and(|name| name == "__proto__")
 }
 
-/// `{'$o', Name}`: an intrinsic object.
+/// The intrinsic object `name` of the running realm, so that a literal in the code of a
+/// `vm` context gets the prototype of that context, as in V8.
 pub fn intrinsic(name: &str) -> Expr {
-    Expr::Tuple(vec![Expr::atom("$o"), Expr::atom(name)])
+    Expr::call("buoy_heap", "intrinsic", vec![Expr::atom(name)])
 }
 
 /// The keys of an object literal that `buoy_heap:literal/3` can build: every property a
@@ -342,6 +370,14 @@ pub fn js_string_literal(value: &str, lone_surrogates: bool) -> Expr {
     if !lone_surrogates {
         return Expr::js_string(value);
     }
+    Expr::JsString(string_units(value, lone_surrogates))
+}
+
+/// The UTF-16 code units of a literal, as [`js_string_literal`] reads them.
+pub fn string_units(value: &str, lone_surrogates: bool) -> Vec<u16> {
+    if !lone_surrogates {
+        return value.encode_utf16().collect();
+    }
     let mut units = Vec::new();
     let mut chars = value.chars();
     while let Some(c) = chars.next() {
@@ -353,7 +389,36 @@ pub fn js_string_literal(value: &str, lone_surrogates: bool) -> Expr {
         let mut buffer = [0; 2];
         units.extend_from_slice(c.encode_utf16(&mut buffer));
     }
-    Expr::JsString(units)
+    units
+}
+
+/// An array literal of literals that nests another, such as a table of pairs, as one
+/// Erlang term: `{'$array', Items}` for each array and `'$hole'` for each elision. The code
+/// then builds the arrays from the term in one call, as `JavaScriptCore`'s
+/// `op_new_array_buffer` does from a constant buffer, so a table of thousands of rows is
+/// not thousands of variables in one Erlang function.
+fn constant_tree(array: &ArrayExpression<'_>) -> Option<Expr> {
+    let nested = array
+        .elements
+        .iter()
+        .any(|element| matches!(element, ArrayExpressionElement::ArrayExpression(_)));
+    if !nested {
+        return None;
+    }
+    constant_array(array)
+}
+
+fn constant_array(array: &ArrayExpression<'_>) -> Option<Expr> {
+    let items = array
+        .elements
+        .iter()
+        .map(|element| match element {
+            ArrayExpressionElement::Elision(_) => Some(Expr::atom("$hole")),
+            ArrayExpressionElement::ArrayExpression(inner) => constant_array(inner),
+            other => other.as_expression().and_then(literal),
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(Expr::Tuple(vec![Expr::atom("$array"), Expr::List(items)]))
 }
 
 /// The value of a module-level `const` initializer that can be inlined.

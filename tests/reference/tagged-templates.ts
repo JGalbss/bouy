@@ -20,3 +20,14 @@ const greeter = {
   },
 };
 console.log(greeter.greet`, ${"Ada"}!`, String.raw`\u{61}${"b"}\t`);
+
+// Each eval is a new parse, so its tagged template is a new site; a loop inside
+// one eval reuses its site.
+const sites: TemplateStringsArray[] = [];
+const collect = (strings: TemplateStringsArray): void => {
+  sites.push(strings);
+};
+for (let outer = 0; outer < 2; outer++) {
+  (0, eval)("(function (tag) { for (let inner = 0; inner < 2; inner++) tag`${inner}`; })")(collect);
+}
+console.log(sites[0] === sites[1], sites[1] === sites[2], sites[2] === sites[3]);

@@ -1,5 +1,6 @@
 //! The NIFs of `buoy_native.erl`: one resource for each handle of
-//! `internalBinding('zlib')`, and the calls of Node's `CompressionStream` on it.
+//! `internalBinding('zlib')`, the calls of Node's `CompressionStream` on it, and the
+//! Argon2, Keccak sponge, and scrypt `ROMix` of `internalBinding('crypto')`.
 
 // rustler decodes each argument of a NIF by value.
 #![allow(clippy::needless_pass_by_value)]
@@ -8,7 +9,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use rustler::{Binary, Env, Error, NifResult, OwnedBinary, ResourceArc};
 
-use crate::{Failure, brotli, zlib, zstd};
+use crate::{Failure, argon2, brotli, intl, keccak, scrypt, zlib, zstd};
 
 /// The context of one handle of `internalBinding('zlib')`.
 #[derive(Debug)]
@@ -208,8 +209,293 @@ fn stream_close(stream: ResourceArc<Stream>) -> NifResult<bool> {
     Ok(true)
 }
 
+/// `Intl`: the canonical form of a locale tag, or `nil` for an invalid tag.
+#[rustler::nif]
+fn intl_canonicalize(tag: &str) -> Option<String> {
+    intl::canonicalize(tag)
+}
+
+/// `Intl.Locale.prototype.maximize` of a canonical tag.
+#[rustler::nif]
+fn intl_maximize(tag: &str) -> Option<String> {
+    intl::maximize(tag)
+}
+
+/// `Intl.Locale.prototype.minimize` of a canonical tag.
+#[rustler::nif]
+fn intl_minimize(tag: &str) -> Option<String> {
+    intl::minimize(tag)
+}
+
+/// Whether the locale writes right to left (`Intl.Locale.prototype.getTextInfo`), or `nil`
+/// when its script has no direction.
+#[rustler::nif]
+fn intl_is_right_to_left(tag: &str) -> Option<bool> {
+    intl::is_right_to_left(tag)
+}
+
+/// An `Intl.Collator`: ICU4X's collator with the resolved options of the object.
+struct IntlCollator(icu_collator::CollatorBorrowed<'static>);
+
+#[rustler::resource_impl]
+impl rustler::Resource for IntlCollator {}
+
+/// The collator of a locale tag with the keywords co, kf, and kn, and a sensitivity of
+/// ECMA-402, or `nil` when ICU4X cannot make one.
+#[rustler::nif]
+fn intl_collator_new(
+    tag: &str,
+    sensitivity: rustler::Atom,
+    ignore_punctuation: bool,
+) -> Option<ResourceArc<IntlCollator>> {
+    let sensitivity = match () {
+        () if sensitivity == atoms::base() => intl::collator::Sensitivity::Base,
+        () if sensitivity == atoms::accent() => intl::collator::Sensitivity::Accent,
+        () if sensitivity == atoms::case() => intl::collator::Sensitivity::Case,
+        () => intl::collator::Sensitivity::Variant,
+    };
+    intl::collator::new(tag, sensitivity, ignore_punctuation)
+        .map(|collator| ResourceArc::new(IntlCollator(collator)))
+}
+
+/// `CompareStrings` of two strings of big-endian UTF-16 code units: -1, 0, or 1.
+#[rustler::nif]
+fn intl_collator_compare(collator: ResourceArc<IntlCollator>, left: Binary, right: Binary) -> i32 {
+    let units = |bytes: &[u8]| -> Vec<u16> {
+        bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u16::from_be_bytes(*pair))
+            .collect()
+    };
+    match intl::collator::compare(&collator.0, &units(&left), &units(&right)) {
+        std::cmp::Ordering::Less => -1,
+        std::cmp::Ordering::Equal => 0,
+        std::cmp::Ordering::Greater => 1,
+    }
+}
+
+/// The collation types of a locale tag (`Intl.Locale.prototype.getCollations`).
+#[rustler::nif]
+fn intl_collation_types(tag: &str) -> Vec<&'static str> {
+    intl::collator::types(tag)
+}
+
+/// `toLocaleLowerCase` or `toLocaleUpperCase` of a big-endian UTF-16 binary in the
+/// language `tag`.
+#[rustler::nif]
+fn intl_change_case<'a>(env: Env<'a>, tag: &str, text: Binary, upper: bool) -> Binary<'a> {
+    let units: Vec<u16> = text
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_be_bytes(*pair))
+        .collect();
+    let changed = intl::casemap::change_case(tag, &units, upper);
+    let mut binary = OwnedBinary::new(changed.len() * 2);
+    for (slot, unit) in binary
+        .as_mut_slice()
+        .as_chunks_mut::<2>()
+        .0
+        .iter_mut()
+        .zip(changed)
+    {
+        *slot = unit.to_be_bytes();
+    }
+    binary.release(env)
+}
+
+/// The date in a calendar of a day after 1970-01-01: `{Year, Cyclic, OrdinalMonth,
+/// MonthNumber, Leap, Day}`, or `nil`.
+#[rustler::nif]
+fn intl_calendar_date(calendar: &str, epoch_days: i64) -> Option<(i32, u8, u8, u8, bool, u8)> {
+    intl::calendar::date(calendar, epoch_days).map(|date| {
+        (
+            date.year,
+            date.cyclic,
+            date.ordinal_month,
+            date.month_number,
+            date.leap,
+            date.day,
+        )
+    })
+}
+
+/// The locale data of `scripts/intl-icu.escript`, in the external term format, which
+/// `buoy_intl_cldr` decodes once per VM.
+#[rustler::nif]
+fn intl_cldr(env: Env<'_>) -> Binary<'_> {
+    let data = intl::CLDR;
+    let mut binary = OwnedBinary::new(data.len());
+    binary.as_mut_slice().copy_from_slice(data);
+    binary.release(env)
+}
+
+/// The boundaries of a big-endian UTF-16 binary for `Intl.Segmenter`: `grapheme`, `word`,
+/// or `sentence` in the locale `tag`, as `{Index, IsWordLike}` from 0 to its length.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn intl_segment(granularity: rustler::Atom, tag: &str, text: Binary) -> Vec<(usize, bool)> {
+    use intl::segmenter::Granularity;
+    let granularity = match () {
+        () if granularity == atoms::word() => Granularity::Word,
+        () if granularity == atoms::sentence() => Granularity::Sentence,
+        () => Granularity::Grapheme,
+    };
+    let units: Vec<u16> = text
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_be_bytes(*pair))
+        .collect();
+    intl::segmenter::boundaries(granularity, tag, &units)
+}
+
+/// The exponent by which compact notation scales a number of the magnitude in the locale
+/// `tag`, short or long (`ComputeExponentForMagnitude` of ECMA-402).
+#[rustler::nif]
+fn intl_compact_exponent(tag: &str, long: bool, magnitude: i16) -> u8 {
+    intl::number::compact_exponent(tag, long, magnitude)
+}
+
+mod atoms {
+    rustler::atoms! { base, accent, case, word, sentence }
+}
+
+/// Unblocks SIGTERM, which the CLI blocks before it execs the VM (`start` in
+/// crates/buoy-cli/src/main.rs), so that a SIGTERM that came while the VM booted arrives now,
+/// at the action that `buoy_main` set. Linux delivers such a signal to any thread that
+/// unblocks it. macOS posts it to the main thread when every thread blocks it, so the main
+/// thread of the VM unblocks it too, through the driver API that lends that thread.
+#[cfg(unix)]
+#[rustler::nif]
+fn unblock_sigterm() -> bool {
+    #[cfg(target_os = "macos")]
+    signals::unblock_on_main_thread();
+    signals::unblock(std::ptr::null_mut()).is_null()
+}
+
+#[cfg(unix)]
+#[allow(unsafe_code)]
+mod signals {
+    use std::ffi::c_void;
+    #[cfg(target_os = "macos")]
+    use std::ffi::{c_char, c_int};
+    use std::ptr;
+
+    /// Unblocks SIGTERM on the calling thread. The signature is a thread function's.
+    pub extern "C" fn unblock(_: *mut c_void) -> *mut c_void {
+        // SAFETY: the set lives on this stack frame, and the calls only read and write it.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_UNBLOCK, &raw const set, ptr::null_mut());
+        }
+        ptr::null_mut()
+    }
+
+    /// `erl_drv_steal_main_thread` of `erl_driver.h`, which ERTS defines on macOS only.
+    #[cfg(target_os = "macos")]
+    type StealMainThread = unsafe extern "C" fn(
+        *mut c_char,
+        *mut *mut c_void,
+        extern "C" fn(*mut c_void) -> *mut c_void,
+        *mut c_void,
+        *mut c_void,
+    ) -> c_int;
+
+    /// Runs `unblock` on the main thread of the VM, which waits for such calls.
+    #[cfg(target_os = "macos")]
+    pub fn unblock_on_main_thread() {
+        // SAFETY: beam.smp exports the symbol with the signature of StealMainThread. The
+        // main thread calls `unblock` with the null argument, and ignores the name, the
+        // options, and the thread id beyond writing it.
+        unsafe {
+            let symbol = libc::dlsym(libc::RTLD_DEFAULT, c"erl_drv_steal_main_thread".as_ptr());
+            if symbol.is_null() {
+                return;
+            }
+            let steal = std::mem::transmute::<*mut c_void, StealMainThread>(symbol);
+            let mut thread = ptr::null_mut();
+            steal(
+                c"buoy_sigterm".as_ptr().cast_mut(),
+                &raw mut thread,
+                unblock,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+        }
+    }
+}
+
+/// The tag of `Argon2Traits::DeriveBits`, or `error` for parameters that Argon2 rejects.
+/// The caller checks that the memory fits, because an allocation that fails aborts.
+#[rustler::nif(schedule = "DirtyCpu")]
+#[allow(clippy::too_many_arguments)]
+fn argon2<'a>(
+    env: Env<'a>,
+    variant: u32,
+    message: Binary,
+    nonce: Binary,
+    secret: Binary,
+    associated_data: Binary,
+    lanes: u32,
+    tag_length: u32,
+    memory: u32,
+    passes: u32,
+) -> NifResult<Binary<'a>> {
+    let tag = argon2::derive(&argon2::Params {
+        variant,
+        message: message.as_slice(),
+        nonce: nonce.as_slice(),
+        secret: secret.as_slice(),
+        associated_data: associated_data.as_slice(),
+        lanes,
+        tag_length,
+        memory,
+        passes,
+    })
+    .ok_or(Error::Atom("error"))?;
+    Ok(OwnedBinary::from_slice(&tag).release(env))
+}
+
+/// The Keccak sponge of `rounds` rounds and `rate` bytes, for `TurboSHAKE`,
+/// `KangarooTwelve`, `cSHAKE`, and KMAC. A large input runs for long, so it runs dirty.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn keccak<'a>(
+    env: Env<'a>,
+    rounds: usize,
+    rate: usize,
+    delimiter: u8,
+    input: Binary,
+    length: usize,
+) -> NifResult<Binary<'a>> {
+    if !(1..=24).contains(&rounds) || rate == 0 || !rate.is_multiple_of(8) || rate >= 200 {
+        return Err(Error::BadArg);
+    }
+    let output = keccak::sponge(rounds, rate, delimiter, input.as_slice(), length);
+    Ok(OwnedBinary::from_slice(&output).release(env))
+}
+
+/// `ROMix` of scrypt on one block of `128 * r` bytes with the cost `cost`, a power of 2.
+/// The caller checks that `cost` copies of the block fit, because an allocation that
+/// fails aborts.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn scrypt_romix<'a>(env: Env<'a>, block: Binary, cost: usize) -> NifResult<Binary<'a>> {
+    if block.is_empty() || !block.len().is_multiple_of(128) || cost < 2 || !cost.is_power_of_two() {
+        return Err(Error::BadArg);
+    }
+    Ok(OwnedBinary::from_slice(&scrypt::romix(block.as_slice(), cost)).release(env))
+}
+
 #[allow(unsafe_code)]
 mod entry {
     // The entry point that erlang:load_nif calls is a `#[no_mangle]` function.
-    rustler::init!("buoy_native");
+    rustler::init!("buoy_native", load = load);
+
+    fn load(_env: rustler::Env, _info: rustler::Term) -> bool {
+        crate::fs::ignore_file_size_signal();
+        true
+    }
 }

@@ -16,24 +16,103 @@
 %% in a loop over its positions rather than in nested calls.
 -module(buoy_regexp_match).
 
--export([compile/3, search/4, input/1]).
+-export([compile/3, search/4, search_all/3, input/1]).
 
 -export_type([program/0]).
 
 -record(c, {i :: boolean(), m :: boolean(), s :: boolean(), u :: boolean(), v :: boolean(),
             dir = forward :: forward | backward}).
 
--type program() :: #{matcher := fun(), groups := non_neg_integer(), unicode := boolean(), first := first()}.
+-type program() :: #{matcher := fun(), groups := non_neg_integer(), unicode := boolean(), first := first()}
+                 | #{native := reference(), groups := non_neg_integer(), unicode := boolean()}.
 %% What every match starts with: a literal run of code units, a character that
 %% passes a test, or anything.
 -type first() :: {literal, binary() | none, binary()} | {test, fun((non_neg_integer()) -> boolean())} | any.
 
-%% The Matcher of a pattern tree, for the flags i, m, s, u, and v.
+%% The Matcher of a pattern tree, for the flags i, m, s, u, and v: the program of the
+%% native matcher of buoy_native when it loads, else the closures of this module.
 -spec compile(term(), non_neg_integer(), map()) -> program().
 compile(Tree, Groups, #{i := I, m := M, s := S, u := U, v := V}) ->
     C = #c{i = I, m = M, s = S, u = U orelse V, v = V},
-    {cps, Matcher} = to_cps(node(Tree, C)),
-    #{matcher => Matcher, groups => Groups, unicode => U orelse V, first => first(Tree, C)}.
+    case native(Tree, Groups, C) of
+        {ok, Native} -> #{native => Native, groups => Groups, unicode => U orelse V};
+        error ->
+            {cps, Matcher} = to_cps(node(Tree, C)),
+            #{matcher => Matcher, groups => Groups, unicode => U orelse V, first => first(Tree, C)}
+    end.
+
+%%% The native matcher
+%%
+%% lower/2 turns the tree into the tree of crates/buoy-native/src/regexp.rs, with each
+%% character, class, and escape resolved to its CharSet by the functions of this module,
+%% so the sets keep one source:
+%%
+%%   empty | {set, Ranges} | {literal, Units} | {seq, [Node]} | {alt, [Node]}
+%%   {group, Index, Node} | {repeat, Min, Max | infinity, Greedy, Node, ParenIndex, ParenCount}
+%%   {bol, Multiline} | {eol, Multiline} | {boundary, Wanted, WordRanges}
+%%   {look, Ahead, Positive, Node} | {backref, [Index], none | [{Char, Canonical}]}
+%%
+%% A set holds code units without u or v, and code points with them. The native matcher
+%% runs the same algorithm as the closures, in time slices.
+
+native(Tree, Groups, C) ->
+    case buoy_native:available() of
+        true -> buoy_native:regexp_compile(lower(Tree, C), Groups, C#c.u);
+        false -> error
+    end.
+
+lower(empty, _C) -> empty;
+lower({char, Ch}, #c{i = false}) -> {set, [{Ch, Ch}]};
+lower({char, Ch}, C) -> {set, closure([{Ch, Ch}], C)};
+lower({literal, Chars}, #c{u = U} = C) ->
+    case U andalso lists:any(fun(X) -> X >= 16#D800 andalso X =< 16#DFFF end, Chars) of
+        true -> {seq, [lower({char, X}, C) || X <- Chars]};
+        false when U -> {literal, lists:flatmap(fun to_units/1, Chars)};
+        false -> {literal, Chars}
+    end;
+lower(dot, #c{s = true} = C) -> {set, [{0, max_char(C)}]};
+lower(dot, C) -> {set, buoy_regexp_charset:complement([{10, 10}, {13, 13}, {16#2028, 16#2029}], max_char(C))};
+lower({class, Negated, Items}, C) -> {set, lower_set(class_set(Items, C), Negated, C)};
+lower({vclass, Negated, Expr}, C) ->
+    {Ranges, Strings} = set_expression(Expr, C),
+    case Negated of
+        true -> lower_strings(complement(Ranges, C), [], C);
+        false -> lower_strings(Ranges, Strings, C)
+    end;
+lower({escape, Escape}, #c{v = true} = C) ->
+    {Ranges, Strings} = escape_set(Escape, C),
+    lower_strings(Ranges, Strings, C);
+lower({escape, Escape}, C) -> {set, lower_set(escape_ranges(Escape, C), false, C)};
+lower({seq, Nodes}, C) -> {seq, [lower(N, C) || N <- literals(Nodes, C)]};
+lower({alt, Nodes}, C) -> {alt, [lower(N, C) || N <- Nodes]};
+lower({group, Index, Node}, C) -> {group, Index, lower(Node, C)};
+lower({mods, Add, Remove, Node}, C) -> lower(Node, modify(C, Add, Remove));
+lower({repeat, Min, Max, Greedy, Node, ParenIndex, ParenCount}, C) ->
+    {repeat, Min, Max, Greedy, lower(Node, C), ParenIndex, ParenCount};
+lower(bol, C) -> {bol, C#c.m};
+lower(eol, C) -> {eol, C#c.m};
+lower(word_boundary, C) -> {boundary, true, word(C)};
+lower(not_word_boundary, C) -> {boundary, false, word(C)};
+lower({look, Direction, Positive, Node}, C) -> {look, Direction =:= ahead, Positive, lower(Node, C)};
+lower({backref, Indexes}, C) -> {backref, Indexes, canonical_table(C)}.
+
+%% The set of set_node/3.
+lower_set(Ranges, false, C) -> closure(Ranges, C);
+lower_set(Ranges, true, C) -> buoy_regexp_charset:complement(closure(Ranges, C), max_char(C)).
+
+%% The node of strings_node/3.
+lower_strings(Ranges, [], C) -> {set, closure(Ranges, C)};
+lower_strings(Ranges, Strings, C) ->
+    Sorted = lists:sort(fun(A, B) -> length(A) >= length(B) end, [S || S <- Strings, S =/= []]),
+    Literals = [{seq, [lower({char, X}, C) || X <- S]} || S <- Sorted],
+    Empty = [empty || lists:member([], Strings)],
+    {alt, Literals ++ [{set, closure(Ranges, C)}] ++ Empty}.
+
+%% The Canonicalize of a backreference with i, as the pairs of each character that
+%% another character shares its canonical value with.
+canonical_table(#c{i = false}) -> none;
+canonical_table(#c{u = true}) -> [{X, Canonical} || {Canonical, Members} <- buoy_regexp_unicode:scf_classes(), X <- Members];
+canonical_table(#c{u = false}) -> [{X, Canonical} || {Canonical, Members} <- buoy_regexp_unicode:upper_classes(), X <- Members].
 
 %% The input of a string of buoy_ref_string.
 -spec input(buoy_ref_string:js_string()) -> {binary(), 1 | 2, non_neg_integer()}.
@@ -47,12 +126,48 @@ input({'$u16', B}) -> {B, 2, byte_size(B) div 2}.
 %% skips the positions where the first character of a match cannot be.
 -spec search(program(), {binary(), 1 | 2, non_neg_integer()}, non_neg_integer(), boolean()) ->
           {match, non_neg_integer(), non_neg_integer(), tuple()} | nomatch.
+search(#{native := Native}, {B, W, _}, From, Sticky) ->
+    native_search(Native, B, W =:= 2, From, Sticky, start);
 search(#{matcher := F, groups := Groups, unicode := Unicode, first := First}, In, From, Sticky) ->
     Skip = case Sticky of
         true -> any;
         false -> First
     end,
     attempt(F, Skip, In, From, Sticky, Unicode, erlang:make_tuple(Groups, undefined)).
+
+%% Every match from index 0, as the loops of Symbol.match and Symbol.replace with g find
+%% them: after an empty match the next search starts one character on.
+-spec search_all(program(), {binary(), 1 | 2, non_neg_integer()}, boolean()) ->
+          [{match, non_neg_integer(), non_neg_integer(), tuple()}].
+search_all(#{native := Native}, {B, W, _}, Sticky) -> native_all(Native, B, W =:= 2, Sticky, start, []);
+search_all(#{unicode := Unicode} = Program, In, Sticky) -> all(Program, In, Unicode, Sticky, 0, []).
+
+all(Program, {_, _, L} = In, Unicode, Sticky, LastIndex, Acc) when LastIndex =< L ->
+    case search(Program, In, LastIndex, Sticky) of
+        nomatch -> lists:reverse(Acc);
+        {match, Index, End, _} = Match ->
+            Next = case End =< Index of
+                true -> advance(In, End, Unicode);
+                false -> End
+            end,
+            all(Program, In, Unicode, Sticky, Next, [Match | Acc])
+    end;
+all(_Program, _In, _Unicode, _Sticky, _LastIndex, Acc) -> lists:reverse(Acc).
+
+native_all(Native, B, Wide, Sticky, State, Acc) ->
+    case buoy_native:regexp_search_all(Native, B, Wide, Sticky, State) of
+        {done, Matches} -> lists:append(lists:reverse([Matches | Acc]));
+        {more, Paused, Matches} -> native_all(Native, B, Wide, Sticky, Paused, [Matches | Acc]);
+        overflow -> buoy_heap:throw_error('RangeError', <<"Maximum call stack size exceeded">>)
+    end.
+
+%% The native matcher runs in time slices and returns its state when a slice ends.
+native_search(Native, B, Wide, From, Sticky, State) ->
+    case buoy_native:regexp_search(Native, B, Wide, From, Sticky, State) of
+        {more, Paused} -> native_search(Native, B, Wide, From, Sticky, Paused);
+        overflow -> buoy_heap:throw_error('RangeError', <<"Maximum call stack size exceeded">>);
+        Found -> Found
+    end.
 
 attempt(F, First, {_, _, L} = In, I0, Sticky, Unicode, Caps0) when I0 =< L ->
     case candidate(First, In, I0, Unicode) of

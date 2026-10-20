@@ -52,14 +52,14 @@ method(<<"Atomics">>, <<"load">>, _This, Args) ->
     revalidate(TA, I),
     value_at(TA, I);
 method(<<"Atomics">>, <<"store">>, _This, Args) ->
-    {TA, {Kind, _, _, _}} = validate(arg(1, Args), false),
+    {TA, {Kind, _, _, _}} = validate(arg(1, Args), false, write),
     I = access(TA, arg(2, Args)),
     V = convert(Kind, arg(3, Args)),
     revalidate(TA, I),
     modify(TA, I, fun(_Old) -> V end),
     V;
 method(<<"Atomics">>, <<"compareExchange">>, _This, Args) ->
-    {TA, {Kind, _, _, _}} = validate(arg(1, Args), false),
+    {TA, {Kind, _, _, _}} = validate(arg(1, Args), false, write),
     I = access(TA, arg(2, Args)),
     Expected = convert(Kind, arg(3, Args)),
     Replacement = convert(Kind, arg(4, Args)),
@@ -73,7 +73,7 @@ method(<<"Atomics">>, <<"compareExchange">>, _This, Args) ->
                         end);
 method(<<"Atomics">>, Op, _This, Args) when Op =:= <<"add">>; Op =:= <<"sub">>; Op =:= <<"and">>; Op =:= <<"or">>;
                                             Op =:= <<"xor">>; Op =:= <<"exchange">> ->
-    {TA, {Kind, _, _, _}} = validate(arg(1, Args), false),
+    {TA, {Kind, _, _, _}} = validate(arg(1, Args), false, write),
     I = access(TA, arg(2, Args)),
     V = convert(Kind, arg(3, Args)),
     revalidate(TA, I),
@@ -194,8 +194,13 @@ cell(TA, I) ->
 async_result(Async, Value) -> buoy_heap:object(?OBJECT_PROTO, [{<<"async">>, Async}, {<<"value">>, Value}]).
 
 %% ValidateIntegerTypedArray.
-validate(TA, Waitable) ->
+validate(TA, Waitable) -> validate(TA, Waitable, read).
+
+%% ValidateIntegerTypedArray with its access mode: an operation that writes
+%% fails on an immutable buffer before the length or the type is checked.
+validate(TA, Waitable, Access) ->
     ?IS_OBJECT(TA) andalso buoy_heap:class_of(TA) =:= typed_array orelse buoy_ref:type_error(<<"Atomics operation requires an integer typed array">>),
+    Access =:= write andalso buoy_ref_buffer:require_mutable(element(2, buoy_heap:slots(TA))),
     {Slots, _Length} = buoy_ref_typed_array:validate(TA, <<"Atomics">>),
     {Kind, _, _, _} = Slots,
     Allowed = case Waitable of
@@ -239,9 +244,16 @@ modify_bytes(TA, I, F) ->
     Size = buoy_ref_buffer:element_size(Kind),
     {Ref, _, _} = buoy_heap:slots(Buffer),
     Byte = Offset + I * Size,
-    Word = Byte div 8 + 1,
-    Start = Byte rem 8,
-    cas(Ref, Word, Start, Size, Kind, F).
+    case Ref of
+        {'$wasm', _} ->
+            %% The memory of a WebAssembly store, which only the process of the store
+            %% writes, so a read and then a write is atomic.
+            OldBytes = buoy_ref_buffer:read(Buffer, Byte, Size),
+            buoy_ref_buffer:write(Buffer, Byte, F(OldBytes)),
+            buoy_ref_buffer:decode(Kind, OldBytes);
+        _ ->
+            cas(Ref, Byte div 8 + 1, Byte rem 8, Size, Kind, F)
+    end.
 
 cas(Ref, Word, Start, Size, Kind, F) ->
     Old = atomics:get(Ref, Word),

@@ -26,6 +26,10 @@ const scopes = {
   classCaptures: sloppy(
     "function (a) { return eval('class K { m() { return a; } } new K().m()'); }",
   ),
+  // A function of the eval code reads a `var` of the same code.
+  functionReadsVar: sloppy(
+    "function () { return eval('var c = 4; function readC() { return c; } readC()'); }",
+  ),
   earlyLexical: sloppy(
     "function () { eval('function early() { return late; } let late = 5;'); return early(); }",
   ),
@@ -34,6 +38,10 @@ const scopes = {
   ),
   lexicalStays: sloppy("function () { eval('let l = 1; var m = l + 1'); return [typeof l, m]; }"),
   withObject: sloppy("function () { var o = { p: 'from with' }; with (o) { return eval('p'); } }"),
+  // The update of a loop around a `with` is outside its object.
+  withInLoop: sloppy(
+    "function () { var env = { i: 'shadow' }; var seen = []; for (let i = 0; i < 2; i++) { with (env) { seen.push(i); } } return seen; }",
+  ),
   thisValue: sloppy("function () { return eval('this') === globalThis; }"),
   callThis: sloppy(
     "function () { eval('function me() { return this; }'); return me() === globalThis; }",
@@ -43,3 +51,15 @@ for (const [name, run] of Object.entries(scopes)) {
   console.log(name, run(21));
 }
 console.log(typeof (globalThis as Record<string, unknown>).x, outer);
+console.log((0, eval)("var g = 6; function readG() { return g; } readG()"));
+// A `var` of eval code in a catch clause of the same name is a variable of the function,
+// and its initializer writes the catch parameter. In a block of eval code, the block's
+// function is a lexical binding, which delete keeps.
+console.log(
+  Function(
+    "var log = []; try { throw 8; } catch (x) { eval('var x = 42;'); log.push(x); } x = 'g'; log.push(x, typeof globalThis.x); return log;",
+  )(),
+  Function(
+    "var log = []; eval('log.push(delete q); { function q() {} log.push(delete q); }'); return [log, typeof q];",
+  )(),
+);

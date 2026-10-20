@@ -6,7 +6,8 @@
 //! It also compiles the vendored Temporal polyfill into one more runtime source,
 //! `buoy_temporal.erl`, with the reference compiler (see `temporal_module`), each Node
 //! built-in of `runtime/node/builtins.txt` into a runtime source `buoy_node@<id>.erl` (see
-//! `node_modules`), and the NIF library of `crates/buoy-native` (see `native_library`).
+//! `node_modules`), and the NIF libraries of `crates/buoy-native` and `crates/buoy-jit`
+//! (see `native_library`).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -69,12 +70,24 @@ fn runtime_sources(directory: &Path) -> Vec<PathBuf> {
     sources
 }
 
-/// Builds `crates/buoy-native` for the target in release mode, with a cargo of its own in
-/// `target/native`, and returns the code that embeds the library as `NATIVE` and its
-/// hash as `NATIVE_HASH`. Cargo cannot hand one crate's cdylib to another crate's build.
+/// The NIF libraries that the CLI embeds: each crate, by its directory under `crates`,
+/// and the Erlang module that loads it. The crates that a library depends on follow.
+const NATIVE_LIBRARIES: [(&str, &str, &[&str]); 2] = [
+    ("buoy-native", "buoy_native", &[]),
+    ("buoy-jit", "buoy_jit", &["buoy-jit-ir"]),
+];
+
+/// Builds the crates of `NATIVE_LIBRARIES` for the target in release mode, with a cargo of
+/// its own in `target/native`, and returns the code that embeds each library as
+/// `<module>.so` in `NATIVE` and the hash of them all as `NATIVE_HASH`. Cargo cannot hand
+/// one crate's cdylib to another crate's build.
 fn native_library(workspace: &Path, out: &Path) -> String {
-    let crate_dir = workspace.join("crates/buoy-native");
-    println!("cargo:rerun-if-changed={}", crate_dir.display());
+    for (crate_name, _, dependencies) in NATIVE_LIBRARIES {
+        for name in dependencies.iter().chain([&crate_name]) {
+            let crate_dir = workspace.join("crates").join(name);
+            println!("cargo:rerun-if-changed={}", crate_dir.display());
+        }
+    }
     println!(
         "cargo:rerun-if-changed={}",
         workspace.join("Cargo.lock").display()
@@ -86,15 +99,13 @@ fn native_library(workspace: &Path, out: &Path) -> String {
         .nth(4)
         .expect("OUT_DIR lies in the target directory")
         .join("native");
-    let status = std::process::Command::new(env::var_os("CARGO").expect("cargo sets CARGO"))
-        .args([
-            "build",
-            "--release",
-            "--package",
-            "buoy-native",
-            "--target",
-            &target,
-        ])
+    let mut cargo = std::process::Command::new(env::var_os("CARGO").expect("cargo sets CARGO"));
+    // The outer build has resolved the workspace, so the lock file is complete.
+    cargo.args(["build", "--release", "--target", &target, "--locked"]);
+    for (crate_name, _, _) in NATIVE_LIBRARIES {
+        cargo.args(["--package", crate_name]);
+    }
+    let status = cargo
         .arg("--manifest-path")
         .arg(workspace.join("Cargo.toml"))
         .arg("--target-dir")
@@ -104,31 +115,45 @@ fn native_library(workspace: &Path, out: &Path) -> String {
         .env_remove("CLIPPY_ARGS")
         .status()
         .expect("cargo runs");
-    assert!(status.success(), "cargo could not build crates/buoy-native");
-    let file = if target.contains("apple") {
-        "libbuoy_native.dylib"
+    assert!(status.success(), "cargo could not build the NIF libraries");
+    let suffix = if target.contains("apple") {
+        "dylib"
     } else {
-        "libbuoy_native.so"
+        "so"
     };
-    let built = target_dir.join(&target).join("release").join(file);
-    let library = out.join("buoy_native.so");
-    let bytes = fs::read(&built).unwrap_or_else(|error| panic!("{}: {error}", built.display()));
-    fs::write(&library, &bytes).expect("OUT_DIR is writable");
-    let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
-    });
+    let mut table = String::from(
+        "/// The NIF libraries: the file name in `ebin`, where the module of the same name loads\n\
+         /// it, and the contents.\npub const NATIVE: &[(&str, &[u8])] = &[\n",
+    );
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for (_, module, _) in NATIVE_LIBRARIES {
+        let built = target_dir
+            .join(&target)
+            .join("release")
+            .join(format!("lib{module}.{suffix}"));
+        let library = out.join(format!("{module}.so"));
+        let bytes = fs::read(&built).unwrap_or_else(|error| panic!("{}: {error}", built.display()));
+        fs::write(&library, &bytes).expect("OUT_DIR is writable");
+        hash = bytes.iter().fold(hash, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+        let _ = writeln!(
+            table,
+            "    (\"{module}.so\", include_bytes!({:?})),",
+            library.display().to_string()
+        );
+    }
     let digits = format!("{hash:016x}");
-    format!(
-        "/// The NIF library `buoy_native.so` that `buoy_native.erl` loads.\n\
-         pub const NATIVE: &[u8] = include_bytes!({:?});\n\
-         /// The FNV-1a hash of `NATIVE`.\n\
+    let _ = write!(
+        table,
+        "];\n/// The FNV-1a hash of the libraries of `NATIVE`.\n\
          pub const NATIVE_HASH: u64 = 0x{}_{}_{}_{};\n",
-        library.display().to_string(),
         &digits[..4],
         &digits[4..8],
         &digits[8..12],
         &digits[12..]
-    )
+    );
+    table
 }
 
 /// `*.erl`, `*.hrl`, and `*.app.src`.
@@ -154,7 +179,7 @@ fn is_runtime_source(path: &Path) -> bool {
 const TEMPORAL_EDITS: &[(&str, &str)] = &[
     (
         "!function() {\n  \"use strict\";\n",
-        "\"use strict\";\nconst { Intl, nowNanoseconds } = this;\n",
+        "\"use strict\";\nconst { Intl, nowNanoseconds, exactDivide } = this;\n",
     ),
     // The namespace is a lazy global, so reading it here would load the polyfill again.
     (
@@ -165,10 +190,20 @@ const TEMPORAL_EDITS: &[(&str, &str)] = &[
         "return BigInt(Date.now()) * bigNanoInMilli;",
         "return nowNanoseconds();",
     ),
+    // Duration.prototype.total converts the exact quotient to a Number (TotalTimeDuration
+    // and NudgeToCalendarUnit); the polyfill divided in floating point.
+    (
+        "return days * (nanoInUtcDay / divisorNano) + (Math.trunc(timeNano / divisorNano) + timeNano % divisorNano / divisorNano);",
+        "return exactDivide(bigNano, BigInt(divisorNano));",
+    ),
+    (
+        "return interpolateRelativeUnitWindow(unitWindow, Number(endEpochNano - unitWindow.I) / Number(unitWindow.O - unitWindow.I));",
+        "return exactDivide(BigInt(unitWindow.ve) * (unitWindow.O - unitWindow.I) + (endEpochNano - unitWindow.I) * BigInt(unitWindow.qe - unitWindow.ve), unitWindow.O - unitWindow.I);",
+    ),
 ];
 
 /// The tail of the script, which installs the globals and closes the wrapper. The code ends
-/// with the namespace in its place.
+/// with the namespace in its place, after it hands the slot readers to its host object.
 const TEMPORAL_TAIL: &str = "  const DateTimeFormat = createDateTimeFormatClass(";
 
 /// Compiles the polyfill at `vendored` into `out/buoy_temporal.erl`, whose `'__eval__'/3`
@@ -189,15 +224,25 @@ fn temporal_module(vendored: &Path, out: &Path) -> PathBuf {
     let tail = edited
         .find(TEMPORAL_TAIL)
         .expect("the polyfill ends by installing its globals");
-    let source = format!("{}Temporal;\n", &edited[..tail]);
+    // The host object also receives the readers of the internal slots, which Intl's
+    // DurationFormat and DateTimeFormat use to read Temporal objects without their getters.
+    let source = format!(
+        "{}this.slotsOf = getTemporalBrandingAndSlots;\nthis.toDurationSlots = toDurationSlots;\nTemporal;\n",
+        &edited[..tail]
+    );
     let erlang = buoy_compiler::compile_eval(
         &source,
         "buoy_temporal",
         false,
-        false,
+        None,
         &[],
         &[],
-        &buoy_compiler::EvalContext::default(),
+        // The polyfill is part of the runtime: like a native Temporal, it must not observe
+        // a program that replaces `Math.sign` or the array iterator.
+        &buoy_compiler::EvalContext {
+            internal: true,
+            ..buoy_compiler::EvalContext::default()
+        },
     )
     .unwrap_or_else(|diagnostics| {
         panic!(
@@ -287,13 +332,14 @@ fn node_module(runtime: &Path, id: &str, out: &Path) -> PathBuf {
     let code = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("{} holds the built-in {id}: {error}", path.display()));
     // The code starts on the line of the wrapper, so its line numbers stay.
-    let source = format!("(function ({}) {{ {code}\n}})", node_parameters(id));
+    let parameters = format!("(function ({})", node_parameters(id));
+    let source = format!("{parameters} {{ {code}\n}})");
     let name = node_module_name(id);
     let erlang = buoy_compiler::compile_eval(
         &source,
         &name,
         false,
-        true,
+        Some(parameters.len()),
         &[],
         &[],
         &buoy_compiler::EvalContext::default(),

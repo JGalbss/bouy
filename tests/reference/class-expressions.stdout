@@ -12,3 +12,4 @@ set 3
 own > proto hi
 [ 'length', 'name', 'prototype', 'a', 'b' ]
 true false
+ReferenceError ReferenceError TypeError TypeError none

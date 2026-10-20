@@ -29,10 +29,7 @@ binding() ->
             undefined
         end)},
         {<<"hrtimeBuffer">>, Hr},
-        {<<"cwd">>, F(<<"cwd">>, 0, fun(_, _) ->
-            {ok, Dir} = file:get_cwd(),
-            buoy_node:string(Dir)
-        end)},
+        {<<"cwd">>, F(<<"cwd">>, 0, fun(_, _) -> cwd() end)},
         {<<"chdir">>, F(<<"chdir">>, 0, fun(_, Args) -> chdir(A(1, Args)) end)},
         {<<"umask">>, F(<<"umask">>, 0, fun(_, Args) -> umask(A(1, Args)) end)},
         {<<"memoryUsage">>, F(<<"memoryUsage">>, 0, fun(_, Args) -> memory_usage(A(1, Args)) end)},
@@ -43,7 +40,7 @@ binding() ->
         {<<"threadCpuUsage">>, F(<<"threadCpuUsage">>, 0, fun(_, Args) -> cpu_usage(A(1, Args)) end)},
         {<<"resourceUsage">>, F(<<"resourceUsage">>, 0, fun(_, Args) -> resource_usage(A(1, Args)) end)},
         {<<"_getActiveRequests">>, F(<<"_getActiveRequests">>, 0, fun(_, _) -> buoy_heap:new_array([]) end)},
-        {<<"_getActiveHandles">>, F(<<"_getActiveHandles">>, 0, fun(_, _) -> buoy_heap:new_array([]) end)},
+        {<<"_getActiveHandles">>, F(<<"_getActiveHandles">>, 0, fun(_, _) -> active_handles() end)},
         {<<"getActiveResourcesInfo">>, F(<<"getActiveResourcesInfo">>, 0, fun(_, _) -> active_resources() end)},
         {<<"_kill">>, F(<<"_kill">>, 0, fun(_, Args) -> kill(A(1, Args), A(2, Args)) end)},
         {<<"_rawDebug">>, F(<<"_rawDebug">>, 0, fun(_, Args) ->
@@ -68,6 +65,21 @@ binding() ->
         {<<"abort">>, F(<<"abort">>, 0, fun ?MODULE:abort/2)},
         {<<"causeSegfault">>, F(<<"causeSegfault">>, 0, fun ?MODULE:segfault/2)}
     ] ++ buoy_node:stubs(<<"process_methods">>, [<<"_debugProcess">>, <<"_debugEnd">>, <<"execve">>])).
+
+%% Cwd of src/node_process_methods.cc, with its hint for a removed working
+%% directory.
+cwd() ->
+    case file:get_cwd() of
+        {ok, Dir} ->
+            buoy_node:string(Dir);
+        {error, Reason} ->
+            Hint = case Reason of
+                enoent -> <<", the current working directory was likely removed without changing the working directory">>;
+                _ -> <<>>
+            end,
+            buoy_binding_fs:uv_error(Reason, <<"uv_cwd">>, undefined, undefined,
+                                     fun(Message) -> [<<"process.cwd failed with error ">>, Message, Hint] end)
+    end.
 
 chdir(Dir) ->
     Path = buoy_ref_string:to_utf8(buoy_ref:to_string(Dir)),
@@ -111,7 +123,8 @@ resource_usage(Array) ->
     buoy_heap:set(Array, 2, erlang:memory(total) div 1024),
     undefined.
 
-%% _kill(pid, signal): 0, EINVAL for a signal that the OS lacks, else ESRCH.
+%% _kill(pid, signal): 0, EINVAL for a signal that the OS lacks, else the
+%% negative errno of kill(2), such as ESRCH or EPERM.
 kill(Pid, Signal) ->
     case trunc(buoy_ref:to_number(Signal)) of
         Number when Number < 0; Number > 31 -> -22;
@@ -119,15 +132,8 @@ kill(Pid, Signal) ->
             Target = trunc(buoy_ref:to_number(Pid)),
             case Target =:= list_to_integer(os:getpid()) andalso buoy_binding_signal_wrap:emulate(Number) of
                 true -> 0;
-                false -> kill_os(Target, Number)
+                false -> buoy_native:os_kill(Target, Number)
             end
-    end.
-
-kill_os(Target, Number) ->
-    Command = io_lib:format("kill -~w ~w 2>/dev/null; echo $?", [Number, Target]),
-    case string:trim(os:cmd(lists:flatten(Command))) of
-        "0" -> 0;
-        _ -> -3
     end.
 
 load_env_file(Path) ->
@@ -161,18 +167,31 @@ abort(_This, _Args) -> erlang:halt(134).
 -spec segfault(term(), list()) -> no_return().
 segfault(_This, _Args) -> erlang:halt(139).
 
-%% process.dlopen: Buoy loads no native addon (goal.md, requirement 2).
+%% process.dlopen(module, filename, flags): Buoy loads no native addon
+%% (goal.md, requirement 2). The message names the file, as dlopen's does.
 -spec dlopen(term(), list()) -> no_return().
-dlopen(_This, _Args) ->
+dlopen(_This, Args) ->
+    File = buoy_ref_string:to_utf8(buoy_ref:to_string(buoy_node:arg(2, Args))),
     buoy_node:throw_code('Error', <<"ERR_DLOPEN_FAILED">>,
-                         <<"Buoy cannot load native addons (.node files); use the WebAssembly or pure-JavaScript build of the package">>).
+                         <<"Cannot load ", File/binary, ": Buoy cannot load native addons (.node files); "
+                           "use the WebAssembly or pure-JavaScript build of the package">>).
 
-%% GetActiveResourcesInfo: a Timeout for each active timer (timeoutInfo[0]
-%% of lib/internal/timers) and an Immediate for each ref'd immediate
-%% (immediateInfo[kRefCount]).
-%% shortcut: the requests and handles of the bindings are not named yet.
+%% GetActiveHandles: the owner of each ref'd handle wrap (GetOwner), or the
+%% handle itself.
+active_handles() ->
+    Owner = buoy_heap:get(buoy_node:binding(<<"symbols">>), <<"owner_symbol">>),
+    buoy_heap:new_array([case buoy_heap:get(Handle, Owner) of
+                             undefined -> Handle;
+                             Object -> Object
+                         end || {Handle, _} <- buoy_node_loop:handle_wraps()]).
+
+%% GetActiveResourcesInfo: the name of each ref'd handle wrap, a Timeout for
+%% each active timer (timeoutInfo[0] of lib/internal/timers), and an
+%% Immediate for each ref'd immediate (immediateInfo[kRefCount]).
+%% shortcut: the requests of the bindings are not named yet.
 active_resources() ->
     Timers = buoy_node:binding(<<"timers">>),
     Timeouts = buoy_heap:get(buoy_heap:get(Timers, <<"timeoutInfo">>), 0),
     Immediates = buoy_heap:get(buoy_heap:get(Timers, <<"immediateInfo">>), 1),
-    buoy_heap:new_array(lists:duplicate(max(0, Timeouts), <<"Timeout">>) ++ lists:duplicate(max(0, Immediates), <<"Immediate">>)).
+    buoy_heap:new_array([Name || {_, Name} <- buoy_node_loop:handle_wraps()] ++
+                        lists:duplicate(max(0, Timeouts), <<"Timeout">>) ++ lists:duplicate(max(0, Immediates), <<"Immediate">>)).

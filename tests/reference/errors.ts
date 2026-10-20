@@ -44,3 +44,16 @@ try {
 } catch (e) {
   console.log(e instanceof TypeError);
 }
+
+const late = new Error();
+late.name = "LateError";
+late.message = "set after construction";
+const captured: { name?: string; message?: string; stack?: string } = {};
+Error.captureStackTrace(captured);
+captured.name = "Captured";
+captured.message = "late";
+console.log(
+  late.stack?.split("\n")[0],
+  captured.stack?.split("\n")[0],
+  typeof Object.getOwnPropertyDescriptor(late, "stack")?.get,
+);

@@ -28,19 +28,28 @@
 -export([has_work/0, poll_timeout/0, event/1, check/0, after_callback/0, uncaught/2, finish/0, really_exit/1]).
 -export([schedule_timer/1, toggle_timer_ref/1, toggle_immediate_ref/1, now/0, set_callback/2, callback/1]).
 -export([ref_handle/0, unref_handle/0, reject_hook/3, set_process/1, process/0, defer/1]).
--export([enter/0, poll/0, polled/2, metrics/0, idle_time/0]).
+-export([set_immediate/1, closing/1]).
+-export([enter/0, poll/0, polled/2, metrics/0, idle_time/0, idle_time/1]).
+-export([add_handle_wrap/2, remove_handle_wrap/1, handle_wraps/0]).
+-export([add_cleanup_hook/1]).
 
 -define(TIMER, '$buoy_node_timer').
 %% {Ref, Deadline}: the time of now/0 at which the native timer Ref is due.
 -define(DEADLINE, '$buoy_node_timer_deadline').
 -define(IMMEDIATE_REF, '$buoy_node_immediate_ref').
 -define(HANDLES, '$buoy_node_handles').
+-define(HANDLE_WRAPS, '$buoy_node_handle_wraps').
 -define(BASE, '$buoy_node_timer_base').
 -define(PROCESS, '$buoy_node_process').
 -define(EXITING, '$buoy_node_exiting').
+-define(NATIVE_IMMEDIATES, '$buoy_node_native_immediates').
+-define(CLOSING, '$buoy_node_closing').
+-define(CLEANUP, '$buoy_node_cleanup_hooks').
 %% uv_metrics_info and uv_metrics_idle_time: {Iterations, Events,
 %% EventsWaiting, IdleNanoseconds}.
 -define(METRICS, '$buoy_node_metrics').
+%% The start of the poll that runs now, as provider_entry_time of libuv.
+-define(POLLING, '$buoy_node_polling').
 %% The fields of immediateInfo: kCount, kRefCount, kHasOutstanding.
 -define(K_COUNT, 0).
 -define(K_REF_COUNT, 1).
@@ -97,6 +106,31 @@ handles() ->
         N -> N
     end.
 
+%% Node's handle_wrap_queue: the open handle wraps of the realm, each with
+%% Info(Handle), which gives its MemoryInfoName and HandleWrap::HasRef.
+-spec add_handle_wrap(term(), fun((term()) -> {binary(), boolean()})) -> integer().
+add_handle_wrap(Handle, Info) ->
+    Id = erlang:unique_integer([monotonic]),
+    erlang:put(?HANDLE_WRAPS, maps:put(Id, {Handle, Info}, handle_wrap_map())),
+    Id.
+
+-spec remove_handle_wrap(integer()) -> ok.
+remove_handle_wrap(Id) ->
+    erlang:put(?HANDLE_WRAPS, maps:remove(Id, handle_wrap_map())),
+    ok.
+
+%% The ref'd handle wraps and their names, oldest first.
+-spec handle_wraps() -> [{term(), binary()}].
+handle_wraps() ->
+    [{Handle, Name} || {_, {Handle, Info}} <- lists:sort(maps:to_list(handle_wrap_map())),
+                       {Name, true} <- [Info(Handle)]].
+
+handle_wrap_map() ->
+    case erlang:get(?HANDLE_WRAPS) of
+        undefined -> #{};
+        Map -> Map
+    end.
+
 %% Runs Fun as a later macrotask, as a callback of libuv's thread pool, with
 %% the async context frame of now; the loop stays alive until it runs.
 -spec defer(fun(() -> term())) -> ok.
@@ -112,15 +146,67 @@ defer(Fun) ->
     self() ! {'$buoy_node_deferred', Ref},
     ok.
 
+%% Environment::SetImmediate: Fun runs at the start of the next check
+%% phase, before the immediates of JavaScript, and keeps the loop alive.
+-spec set_immediate(fun(() -> term())) -> ok.
+set_immediate(Fun) ->
+    erlang:put(?NATIVE_IMMEDIATES, [Fun | native_immediates()]),
+    ok.
+
+native_immediates() ->
+    case erlang:get(?NATIVE_IMMEDIATES) of
+        undefined -> [];
+        L -> L
+    end.
+
+%% uv_close: Fun, the close callback of a handle, runs in the closing phase
+%% of this turn of the loop, after its check phase and before the timers of
+%% the next turn, and keeps the loop alive until then.
+-spec closing(fun(() -> term())) -> ok.
+closing(Fun) ->
+    Frame = buoy_jobs:context(),
+    Closing = fun() ->
+        Prior = buoy_jobs:context(),
+        buoy_jobs:set_context(Frame),
+        try Fun() after buoy_jobs:set_context(Prior) end
+    end,
+    erlang:put(?CLOSING, [Closing | closings()]),
+    ok.
+
+closings() ->
+    case erlang:get(?CLOSING) of
+        undefined -> [];
+        L -> L
+    end.
+
+%% uv__run_closing_handles: the callbacks that this phase finds.
+run_closing() ->
+    case erlang:erase(?CLOSING) of
+        undefined -> ok;
+        Funs -> [buoy_jobs:run_job(F) || F <- lists:reverse(Funs)], ok
+    end.
+
+%% RunAndClearNativeImmediates: until the queue is empty, so an immediate
+%% that one of them queues runs in the same phase.
+run_native_immediates() ->
+    case erlang:erase(?NATIVE_IMMEDIATES) of
+        undefined -> ok;
+        Funs ->
+            [buoy_jobs:run_job(F) || F <- lists:reverse(Funs)],
+            run_native_immediates()
+    end.
+
 %%% Timers
 
 %% scheduleTimer(ms): the one native timer fires in Ms milliseconds.
 -spec schedule_timer(term()) -> undefined.
 schedule_timer(Ms) ->
     Delay = max(1, trunc(buoy_ref:to_number(Ms))),
+    %% The timer handle starts unref'd, as Environment::InitializeLibuv
+    %% leaves it; toggleTimerRef refs it for the first ref'd Timeout.
     Refed = case erlang:get(?TIMER) of
         {_, _, R} -> R;
-        undefined -> true
+        undefined -> false
     end,
     cancel_timer(),
     Ref = make_ref(),
@@ -165,7 +251,9 @@ poll() ->
     {Iterations, Events, _, Idle} = metrics_state(),
     {message_queue_len, Waiting} = erlang:process_info(self(), message_queue_len),
     erlang:put(?METRICS, {Iterations + 1, Events, Waiting, Idle}),
-    erlang:monotonic_time(nanosecond).
+    Started = erlang:monotonic_time(nanosecond),
+    erlang:put(?POLLING, Started),
+    Started.
 
 %% After the poll that started at Started, with Count events: the loop was
 %% idle while it waited.
@@ -173,6 +261,7 @@ poll() ->
 polled(Started, Count) ->
     {Iterations, Events, Waiting, Idle} = metrics_state(),
     erlang:put(?METRICS, {Iterations, Events + Count, Waiting, Idle + erlang:monotonic_time(nanosecond) - Started}),
+    erlang:erase(?POLLING),
     ok.
 
 %% uv_metrics_info: {loop_count, events, events_waiting}.
@@ -184,6 +273,21 @@ metrics() ->
 %% uv_metrics_idle_time in nanoseconds.
 -spec idle_time() -> non_neg_integer().
 idle_time() -> element(4, metrics_state()).
+
+%% The idle time of the loop of another realm, such as a worker's, which
+%% Worker::LoopIdleTime reads from the parent. A poll that waits now counts
+%% up to now, as uv_metrics_idle_time adds the time since provider_entry_time.
+-spec idle_time(pid()) -> non_neg_integer().
+idle_time(Pid) ->
+    %% The metrics first: a poll that ends between the reads counts later, never twice.
+    Idle = case erlang:process_info(Pid, {dictionary, ?METRICS}) of
+        {{dictionary, ?METRICS}, {_, _, _, I}} -> I;
+        _ -> 0
+    end,
+    case erlang:process_info(Pid, {dictionary, ?POLLING}) of
+        {{dictionary, ?POLLING}, Started} when is_integer(Started) -> Idle + erlang:monotonic_time(nanosecond) - Started;
+        _ -> Idle
+    end.
 
 metrics_state() ->
     case erlang:get(?METRICS) of
@@ -197,7 +301,8 @@ metrics_state() ->
 has_work() ->
     case buoy_node:ready() of
         false -> false;
-        true -> timer_alive() orelse immediates_alive() orelse handles() > 0
+        true -> timer_alive() orelse immediates_alive() orelse handles() > 0 orelse native_immediates() =/= []
+                    orelse closings() =/= []
     end.
 
 timer_alive() ->
@@ -212,7 +317,7 @@ immediates_alive() ->
 %% The time the poll of the mailbox may wait: none while immediates wait.
 -spec poll_timeout() -> infinity | 0.
 poll_timeout() ->
-    case buoy_node:ready() andalso immediate_field(?K_COUNT) > 0 of
+    case buoy_node:ready() andalso (immediate_field(?K_COUNT) > 0 orelse native_immediates() =/= [] orelse closings() =/= []) of
         true -> 0;
         false -> infinity
     end.
@@ -240,6 +345,11 @@ event({'$buoy_node_deferred', Ref}) ->
 %% A callback that a process of a binding sends, such as the data of a pipe.
 event({'$buoy_node_call', Fun}) when is_function(Fun, 0) ->
     buoy_jobs:run_job(Fun),
+    true;
+%% A select message of the socket module, for a socket of buoy_node_socket,
+%% which runs each JavaScript callback as a job of its own.
+event({'$socket', _, _, _} = Message) ->
+    buoy_node_socket:event(Message),
     true;
 event(_) ->
     false.
@@ -294,13 +404,20 @@ process_timers(Process, Now) ->
 -spec check() -> ok.
 check() ->
     case buoy_node:ready() of
-        true -> buoy_trace:scope(?ENVIRONMENT, <<"CheckImmediate">>, fun check_immediate/0);
-        false -> ok
+        true ->
+            _ = buoy_trace:scope(?ENVIRONMENT, <<"CheckImmediate">>, fun check_immediate/0),
+            run_closing();
+        false ->
+            ok
     end.
 
-%% The native immediates first: the destroy hooks of async_hooks.
+%% The native immediates first: the destroy hooks of async_hooks, then
+%% those of set_immediate/1.
 check_immediate() ->
-    _ = buoy_trace:scope(?ENVIRONMENT, <<"RunAndClearNativeImmediates">>, fun buoy_binding_async_wrap:destroy_queued/0),
+    _ = buoy_trace:scope(?ENVIRONMENT, <<"RunAndClearNativeImmediates">>, fun() ->
+        _ = buoy_binding_async_wrap:destroy_queued(),
+        run_native_immediates()
+    end),
     immediates().
 
 immediates() ->
@@ -388,12 +505,15 @@ uncaught(Error, FromPromise) ->
     %% A program that replaced process._fatalException with no function exits
     %% with kInvalidFatalExceptionMonkeyPatching, as TriggerUncaughtException does.
     buoy_heap:is_callable(Fatal) orelse begin print_fatal(Error), really_exit(6) end,
+    FromPromise orelse should_abort() andalso abort(Error),
     Handled = try buoy_heap:call(Fatal, Process, [Error, FromPromise])
               catch
                   error:Reason:Stack -> {thrown, buoy_ref:caught(Reason, Stack)}
               end,
     case Handled of
         {thrown, Thrown} ->
+            %% V8 would abort at the throw in the handler, where no catch waits.
+            is_abort_option() andalso abort(Thrown),
             print_fatal(Thrown),
             really_exit(7);
         H ->
@@ -405,6 +525,24 @@ uncaught(Error, FromPromise) ->
                     really_exit(exit_code(1))
             end
     end.
+
+%% ShouldAbortOnUncaughtException of src/api/environment.cc: with
+%% --abort-on-uncaught-exception, an exception that no capture callback,
+%% such as a domain, takes aborts the process. V8 aborts at the throw; Buoy
+%% learns of it only when the exception reaches the loop.
+should_abort() ->
+    is_abort_option() andalso
+        buoy_heap:get(buoy_heap:get(buoy_node:binding(<<"util">>), <<"shouldAbortOnUncaughtToggle">>), 0) =/= 0.
+
+is_abort_option() ->
+    lists:any(fun(Arg) -> binary:replace(Arg, <<"_">>, <<"-">>, [global]) =:= <<"--abort-on-uncaught-exception">> end,
+              buoy_node_process:exec_argv()).
+
+%% The abort of V8: the error, then the status of SIGABRT, as a shell reports it.
+-spec abort(term()) -> no_return().
+abort(Error) ->
+    print_fatal(Error),
+    really_exit(134).
 
 print_fatal(Error) ->
     Text = case buoy_heap:is_object(Error) andalso buoy_heap:class_of(Error) =:= error of
@@ -460,10 +598,29 @@ finish() ->
             really_exit(exit_code(0))
     end.
 
+%% Environment::AddCleanupHook: Fun runs when the environment is freed after
+%% the loop ends, the newest hook first, as the destructor of a native object
+%% does, such as a Storage that closes its database.
+-spec add_cleanup_hook(fun(() -> term())) -> ok.
+add_cleanup_hook(Fun) ->
+    Hooks = case erlang:get(?CLEANUP) of
+        undefined -> [];
+        H -> H
+    end,
+    erlang:put(?CLEANUP, [Fun | Hooks]),
+    ok.
+
+run_cleanup() ->
+    Hooks = case erlang:erase(?CLEANUP) of
+        undefined -> [];
+        H -> H
+    end,
+    lists:foreach(fun(Hook) -> try Hook() catch _:_ -> ok end end, Hooks).
+
 %% FreeEnvironment after the loop ends: the cleanup hooks, the AtExit
 %% callbacks, and the end of the Environment, which process.exit() skips.
 free_environment() ->
-    buoy_trace:complete(?ENVIRONMENT, <<"RunCleanup">>, fun() -> ok end),
+    buoy_trace:complete(?ENVIRONMENT, <<"RunCleanup">>, fun run_cleanup/0),
     buoy_trace:scope(?ENVIRONMENT, <<"AtExit">>, fun() -> ok end),
     buoy_trace:close_scope(?ENVIRONMENT, <<"Environment">>).
 
@@ -477,6 +634,16 @@ emit_exit(Process) ->
     buoy_binding_performance:mark(loop_exit),
     Fields = buoy_node_process:exit_info(),
     buoy_heap:set(Fields, 0, 1),
+    %% EmitProcessExitInternal: an exit with no code while the entry module
+    %% still awaits is kUnsettledTopLevelAwait.
+    case exit_code(0) =:= 0 andalso buoy_jobs:is_main_unsettled() of
+        true ->
+            buoy_jobs:warn_unsettled(),
+            buoy_heap:set(Fields, 1, 13),
+            buoy_heap:set(Fields, 2, 1);
+        false ->
+            ok
+    end,
     buoy_jobs:run_job(fun() -> emit(Process, <<"exit">>, exit_code(0)) end).
 
 emit(Process, Event, Code) ->

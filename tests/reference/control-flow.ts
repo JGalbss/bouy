@@ -50,3 +50,39 @@ for (const w of words) {
 }
 for (const key in { p: 1, q: 2 }) joined += key;
 console.log(joined);
+
+// for...in skips a key that the loop body deletes before the loop reaches it.
+const table: Record<string, number> = Object.create(null);
+table.aa = 1;
+table.ba = 2;
+table.ca = 3;
+let visited = "";
+for (const key in table) {
+  delete table.ba;
+  visited += key + table[key];
+}
+console.log(visited);
+
+// A parenthesized optional chain is still a reference: the call keeps its this.
+const holder = {
+  label: "holder",
+  read(this: { label: string }): string {
+    return this.label;
+  },
+};
+const maybe: typeof holder | undefined = holder;
+console.log((maybe?.read)(), holder.read?.(), maybe?.read?.());
+// The head of a for-in or for-of loop writes its target, which the code after the loop
+// reads.
+function lastKeys(): unknown[] {
+  let key = "";
+  for (key in "92") continue;
+  let item = 0;
+  for (item of [1, 2, 3]) {
+    if (item === 2) break;
+  }
+  const box = { p: "" };
+  for (box.p in { k: 1 });
+  return [key, item, box.p];
+}
+console.log(lastKeys());

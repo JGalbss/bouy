@@ -88,6 +88,8 @@ impl FakeSuite {
             fs::create_dir_all(path.parent().expect("a parent")).expect("writable");
             fs::write(path, text).expect("writable");
         }
+        // The runner reads each directory of Node's tree; this suite has no test of wasi.
+        fs::create_dir_all(root.join("tests/test/wasi")).expect("writable");
         fs::set_permissions(root.join("fake-buoy"), fs::Permissions::from_mode(0o755))
             .expect("the fake buoy becomes executable");
         Self { root }
@@ -241,7 +243,7 @@ fn the_committed_node_files_agree() {
     );
     assert_eq!(summary["version"], config["tag"]);
     let mut files = 0;
-    for name in ["parallel", "es-module", "sequential"] {
+    for name in ["parallel", "es-module", "sequential", "wasi"] {
         for entry in fs::read_dir(directory.join("test").join(name)).expect("vendored") {
             let file = entry.expect("an entry").file_name();
             let file = file.to_string_lossy();

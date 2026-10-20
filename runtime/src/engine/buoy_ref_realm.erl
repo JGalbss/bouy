@@ -24,11 +24,15 @@
 
 -include("buoy_ref.hrl").
 
+-define(GLOBAL_PROXY, '$buoy_global_proxy').
+
 -export([install/0, global/1, set_global/3, has_binding/1, set_resolved/3, not_defined/1, declare_globals/3, declare_script/4, delete_global/1, constructor/2]).
 -export([arg/2, rest/2, builtin/2, builtin/4, record/4, methods/3, ctor_record/5, not_constructible/2, callable/1]).
--export([function_record/2, proto_for/2]).
--export([create/0, function_realm/1, realm_fun/2, callee/1, localize/2, current/1, global_object/0]).
+-export([function_record/2, proto_for/2, primordial/2]).
+-export([declare_block_functions/3, set_block_function/3]).
+-export([create/0, script_function/1, global_object/1, set_global_proxy/2, function_realm/1, realm_fun/2, callee/1, localize/2, current/1, global_object/0]).
 -export([intrinsics/0, globals/0, method/4]).
+-export([call/3, call_method/3, call_method_computed/3, call_method_value/4]).
 
 families() ->
     [buoy_ref_object,
@@ -57,8 +61,22 @@ families() ->
      buoy_ref_reflect,
      buoy_ref_proxy,
      buoy_ref_weak,
+     buoy_ref_shadow_realm,
+     buoy_ref_module_source,
      buoy_ref_eval,
      buoy_ref_temporal,
+     buoy_ref_intl,
+     buoy_ref_intl_collator,
+     buoy_ref_intl_locale,
+     buoy_ref_intl_plural_rules,
+     buoy_ref_intl_number_format,
+     buoy_ref_intl_list_format,
+     buoy_ref_intl_date_time_format,
+     buoy_ref_intl_duration_format,
+     buoy_ref_intl_display_names,
+     buoy_ref_intl_relative_time_format,
+     buoy_ref_intl_segmenter,
+     buoy_ref_wasm,
      ?MODULE].
 
 %%% Installation
@@ -86,6 +104,22 @@ install() ->
 
 %%% Realms
 
+%% The function of a declaration of a script that a host evaluates, such as
+%% vm.Script: in another realm, a new function of that realm each time the
+%% script runs, as V8 makes one, and the module's own function in realm 0.
+-spec script_function(term()) -> term().
+script_function({'$f', Id, Fun} = F) ->
+    case {erlang:get(?REALM_KEY), Id} of
+        {undefined, _} -> F;
+        {_, {fn, _, Name, Length}} -> buoy_ref_class:method(Fun, Name, Length, normal);
+        {_, {fn, _, Name, Length, sloppy}} -> buoy_ref_class:method(Fun, Name, Length, sloppy);
+        {_, {async, _, Name, Length}} -> buoy_ref_class:method(Fun, Name, Length, async);
+        {_, {fn_nt, Module, Name, Length}} ->
+            Fun3 = erlang:make_fun(Module, binary_to_atom(buoy_ref_string:to_utf8(Name), utf8), 3),
+            buoy_ref_class:method(Fun3, Name, Length, normal_nt);
+        {N, _} -> {'$f', Id, realm_fun(N, Fun)}
+    end.
+
 %% A new realm in this process: its global object.
 -spec create() -> term().
 create() ->
@@ -94,11 +128,37 @@ create() ->
         Last -> Last + 1
     end,
     erlang:put('$buoy_realms', N),
-    buoy_heap:intrinsic(N, 'globalThis').
+    Global = buoy_heap:intrinsic(N, 'globalThis'),
+    %% A vm context has none of Node's globals, as in Node, and the accessors
+    %% of realm 0 would read and write the globals of realm 0.
+    [buoy_heap:delete_property(Global, Name) || Name <- buoy_node:lazy_globals()],
+    Global.
 
-%% The global object of the current realm.
+%% The global object of the current realm: the global proxy that
+%% set_global_proxy/2 gave the realm, such as a node:vm context's, else the
+%% realm's own global object.
 -spec global_object() -> term().
-global_object() -> buoy_heap:intrinsic('globalThis').
+global_object() ->
+    case erlang:get(?REALM_KEY) of
+        undefined -> {'$o', 'globalThis'};
+        N -> global_object(N)
+    end.
+
+%% The global object that the code of the realm N sees.
+-spec global_object(non_neg_integer()) -> term().
+global_object(0) -> {'$o', 'globalThis'};
+global_object(N) ->
+    case erlang:get({?GLOBAL_PROXY, N}) of
+        undefined -> {'$o', {N, 'globalThis'}};
+        Proxy -> Proxy
+    end.
+
+%% Makes Proxy the global object that the code of the realm N sees, as the
+%% global proxy of V8 stands in front of the global object of a context.
+-spec set_global_proxy(pos_integer(), term()) -> ok.
+set_global_proxy(N, Proxy) ->
+    erlang:put({?GLOBAL_PROXY, N}, Proxy),
+    ok.
 
 %% A record of realm 0 for the realm N: each intrinsic in it becomes its twin
 %% of realm N, and each builtin function and construct fun runs in realm N.
@@ -125,10 +185,11 @@ current(V) ->
 
 %% Fun as a function of the realm N: the current realm is N while it runs.
 %% Two wraps of one fun are equal terms, so a builtin keeps its identity.
-%% shortcut: a function of realm 0 that a builtin of another realm calls back
-%% runs in that realm, and so does the continuation of an async function of
-%% another realm after an await; a fix would set the realm in every call of
-%% compiled code and in every job.
+%% shortcut: a function of realm 0 that a builtin, a getter, or eval code of
+%% another realm calls runs in that realm, and so does the continuation of an
+%% async function of another realm after an await; only the direct calls of a
+%% classic script enter the callee's realm (call/3). A fix would set the realm
+%% in every call of compiled code and in every job.
 -spec realm_fun(non_neg_integer(), fun((term(), term()) -> term())) -> fun((term(), term()) -> term()).
 realm_fun(N, Fun) -> fun(A, B) -> in_realm(N, Fun, A, B) end.
 
@@ -151,6 +212,25 @@ callee({'$f', Id, Fun} = F) ->
         true -> {'$f', Id, realm_fun(0, Fun)};
         false -> F
     end.
+
+%% The calls of a classic script, which a node:vm context runs in its realm:
+%% a function of realm 0 that the script calls runs in realm 0, as V8 enters
+%% the context of the callee. The calls of other code skip the check.
+-spec call(term(), term(), list()) -> term().
+call(F, This, Args) -> buoy_ref:call(callee_of(F), This, Args).
+
+-spec call_method(term(), buoy_heap:key(), list()) -> term().
+call_method({'$actor', _} = R, K, Args) -> buoy_ref:call_method(R, K, Args);
+call_method(R, K, Args) -> buoy_ref:call_method_value(callee_of(buoy_ref:get(R, K)), R, K, Args).
+
+-spec call_method_computed(term(), term(), list()) -> term().
+call_method_computed(R, K, Args) -> call_method(R, buoy_ref:to_property_key(K), Args).
+
+-spec call_method_value(term(), term(), buoy_heap:key(), list()) -> term().
+call_method_value(F, This, K, Args) -> buoy_ref:call_method_value(callee_of(F), This, K, Args).
+
+callee_of({'$f', _, _} = F) -> callee(F);
+callee_of(V) -> V.
 
 %% GetFunctionRealm: the realm of a function. A proxy and a bound function
 %% take the realm of their target, and a revoked proxy has none.
@@ -228,7 +308,7 @@ not_defined(Name) ->
 has_binding(Name) ->
     case erlang:get(lexical_key()) of
         #{Name := _} -> true;
-        _ -> buoy_heap:has(global_object(), Name)
+        _ -> global_has(global_object(), Name)
     end.
 
 %% `name = value` in strict code for a name that no scope declares, which
@@ -238,12 +318,43 @@ has_binding(Name) ->
 set_resolved(Name, Value, true) -> set_global(Name, Value, strict);
 set_resolved(Name, _Value, false) -> not_defined(Name).
 
+%% Global.Key as the runtime installed it, whatever a program wrote since:
+%% the static record of the standard global Global holds the original data
+%% property, which internal code reads (EvalContext internal, such as
+%% Math.sign in the Temporal polyfill). An accessor, or a key that the record
+%% does not hold, reads the current value.
+-spec primordial(binary(), term()) -> term().
+primordial(Global, Key) ->
+    Static = case persistent_term:get({?MODULE, globals}) of
+        #{Global := V} -> static_props(V);
+        _ -> #{}
+    end,
+    case Static of
+        #{Key := {'$accessor', _, _}} -> buoy_heap:get(global(Global), Key);
+        #{Key := {'$live', _}} -> buoy_heap:get(global(Global), Key);
+        #{Key := Value} -> current(Value);
+        _ -> buoy_heap:get(global(Global), Key)
+    end.
+
+static_props({'$o', Id}) when is_atom(Id) -> record_props(persistent_term:get({buoy_heap, Id}, undefined));
+static_props({'$f', {builtin, _} = Id, _}) -> record_props(persistent_term:get({buoy_heap, Id}, undefined));
+static_props(_) -> #{}.
+
+record_props({_Class, _Proto, Props, _Keys, _Attrs, _Slots}) when is_map(Props) -> Props;
+record_props(_) -> #{}.
+
 global_slow(Name) ->
     G = global_object(),
-    case buoy_heap:has(G, Name) of
+    case global_has(G, Name) of
         true -> buoy_heap:get(G, Name);
         false -> not_defined(Name)
     end.
+
+%% HasBinding of the global object: a global proxy may find a name that its
+%% HasProperty does not, as a node:vm context finds the names up its sandbox's
+%% prototype chain.
+global_has({'$o', Id} = G, Name) when is_integer(Id) -> buoy_ref_proxy:has_binding(G, Name);
+global_has(G, Name) -> buoy_heap:has(G, Name).
 
 %% `name = value` for an identifier that no scope declares: a binding of the
 %% global declarative record, else the global object. Strict code throws a
@@ -258,7 +369,7 @@ set_global(Name, Value, Mode) ->
 
 set_global_object(Name, Value, Mode) ->
     G = global_object(),
-    case Mode =:= sloppy orelse buoy_heap:has(G, Name) of
+    case Mode =:= sloppy orelse global_has(G, Name) of
         true -> set_in_mode(G, Name, Value, Mode);
         false -> not_defined(Name)
     end.
@@ -350,6 +461,38 @@ declare_globals(Vars, Functions, Configurable) ->
                               false -> buoy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => Configurable})
                           end
                   end, Vars).
+
+%% Annex B.3.3.2 and B.3.3.3 for the block functions Names of the script or
+%% the eval code Module: a name that no global lexical binding has and that the
+%% global object can take becomes a property, undefined until its declaration
+%% runs, configurable only for eval code; the others stay as they are, and their
+%% declarations set nothing.
+-spec declare_block_functions(module(), [binary()], boolean()) -> ok.
+declare_block_functions(Module, Names, Configurable) ->
+    G = global_object(),
+    Lexical = lexical_record(),
+    Definable = [Name || Name <- Names,
+                         not is_map_key(Name, Lexical),
+                         buoy_heap:has_own(G, Name) orelse buoy_heap:is_extensible(G)],
+    lists:foreach(fun(Name) ->
+                          buoy_heap:has_own(G, Name) orelse
+                              buoy_heap:define(G, Name, #{value => undefined, writable => true, enumerable => true, configurable => Configurable})
+                  end, Definable),
+    erlang:put({'$buoy_block_functions', Module}, Definable),
+    ok.
+
+%% The declaration of a block function of the script Module runs: the global
+%% takes its value, when the script could declare it.
+-spec set_block_function(module(), binary(), term()) -> term().
+set_block_function(Module, Name, Value) ->
+    Definable = case erlang:get({'$buoy_block_functions', Module}) of
+        undefined -> [];
+        Names -> Names
+    end,
+    case lists:member(Name, Definable) of
+        true -> set_in_mode(global_object(), Name, Value, sloppy);
+        false -> Value
+    end.
 
 %% A function may replace a configurable global, or a writable and
 %% enumerable data property, or define a new one on an extensible global.

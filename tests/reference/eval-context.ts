@@ -102,3 +102,9 @@ console.log(
   pattern.flags,
   errorName(() => eval("/a/gg")),
 );
+// A call of a parameter or a variable named eval is a direct eval when it holds %eval%.
+console.log(
+  Function("eval", "s", "var a = 1; return eval(s);")(eval, "a + 1"),
+  Function("f", "s", "var eval = f; var a = 1; return eval(s);")(eval, "a + 1"),
+  Function("eval", "return eval(2);")((x: number) => x * 10),
+);

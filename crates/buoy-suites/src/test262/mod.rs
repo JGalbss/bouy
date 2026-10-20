@@ -74,18 +74,30 @@ struct Config {
     skip: Vec<Skip>,
 }
 
-/// One skip of section 3.5: the tests under `path`, with `feature`, or with `flag`.
+/// One skip of section 3.5: the tests under `path`, with `feature`, or with `flag`, in
+/// every mode or only in `mode`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Skip {
     path: Option<String>,
     feature: Option<String>,
     flag: Option<String>,
+    mode: Option<String>,
     reason: String,
 }
 
 impl Skip {
+    /// Whether the skip takes the whole test.
     fn applies(&self, test: &Test) -> bool {
+        self.mode.is_none() && self.selects(test)
+    }
+
+    /// Whether the skip takes the run of the test in `mode`.
+    fn applies_to(&self, test: &Test, mode: &str) -> bool {
+        self.mode.as_deref() == Some(mode) && self.selects(test)
+    }
+
+    fn selects(&self, test: &Test) -> bool {
         self.path
             .as_ref()
             .is_some_and(|path| test.id.starts_with(path.as_str()))
@@ -115,6 +127,15 @@ fn load_config(directory: &Path) -> Result<Config, String> {
         if selectors != 1 {
             return Err(failed(format!(
                 "the skip {skip:?} must name one of path, feature, and flag"
+            )));
+        }
+        if skip
+            .mode
+            .as_deref()
+            .is_some_and(|mode| mode != "strict" && mode != "nonstrict")
+        {
+            return Err(failed(format!(
+                "the skip {skip:?} must name the mode strict or nonstrict"
             )));
         }
         if !SKIP_REASONS.contains(&skip.reason.as_str()) {

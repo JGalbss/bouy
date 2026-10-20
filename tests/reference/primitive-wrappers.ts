@@ -31,3 +31,10 @@ try {
 } catch (error) {
   console.log((error as Error).name);
 }
+const sloppyDelete = Function("o", "return [delete o?.b, delete o?.missing, delete 'foo'.length]");
+console.log(sloppyDelete({ b: 1 }), sloppyDelete(undefined));
+try {
+  Function("'use strict'; return delete 'foo'.length")();
+} catch (error) {
+  console.log("strict delete of a string's length:", (error as Error).name);
+}

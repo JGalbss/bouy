@@ -123,3 +123,19 @@ console.log(
   Reflect.has([], "length"),
   Array.isArray(new Proxy([], {})),
 );
+const chainTrap = new Proxy(
+  {},
+  { get: (_target, key, receiver) => `${String(key)} of ${typeof receiver}` },
+);
+const savedProto = Object.getPrototypeOf(Number.prototype) as object;
+Object.setPrototypeOf(Number.prototype, chainTrap);
+const viaPrimitive = (5 as unknown as { found: string }).found;
+Object.setPrototypeOf(Number.prototype, savedProto);
+class ChainBase {}
+Object.setPrototypeOf(ChainBase.prototype, chainTrap);
+class ChainChild extends ChainBase {
+  read(): unknown {
+    return (super["found" as keyof object] as unknown) ?? "none";
+  }
+}
+console.log(viaPrimitive, new ChainChild().read());

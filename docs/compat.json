@@ -2972,40 +2972,45 @@
       "tier": "node",
       "suite": "node",
       "suite_version": "v25.9.0",
-      "updated": "4543f24",
+      "updated": "d4da6fd",
       "test": "tests/node/expectations.txt",
-      "total": 4419,
+      "total": 4445,
       "outcomes": {
-        "pass": 2296,
+        "pass": 3334,
         "rejected": 0,
         "late": 0,
-        "skip": 583,
+        "skip": 538,
         "never": 0,
-        "fail": 1473,
+        "fail": 500,
         "timeout": 55,
         "harness_error": 0,
-        "crash": 12
+        "crash": 18
       },
       "groups": {
         "directory": {
           "es-module": {
-            "pass": 66,
-            "skip": 16,
-            "fail": 139,
-            "timeout": 1
+            "pass": 137,
+            "skip": 15,
+            "fail": 67,
+            "timeout": 3
           },
           "parallel": {
-            "pass": 2187,
-            "skip": 545,
-            "fail": 1286,
-            "timeout": 49,
-            "crash": 12
+            "pass": 3106,
+            "skip": 504,
+            "fail": 406,
+            "timeout": 45,
+            "crash": 18
           },
           "sequential": {
-            "pass": 43,
-            "skip": 22,
-            "fail": 48,
-            "timeout": 5
+            "pass": 70,
+            "skip": 19,
+            "fail": 25,
+            "timeout": 4
+          },
+          "wasi": {
+            "pass": 21,
+            "fail": 2,
+            "timeout": 3
           }
         },
         "kind": {
@@ -3013,11 +3018,11 @@
             "skip": 343
           },
           "public": {
-            "pass": 2296,
-            "skip": 240,
-            "fail": 1473,
+            "pass": 3334,
+            "skip": 195,
+            "fail": 500,
             "timeout": 55,
-            "crash": 12
+            "crash": 18
           }
         },
         "module": {
@@ -3028,9 +3033,9 @@
             "crash": 2
           },
           "async_hooks": {
-            "pass": 30,
-            "skip": 11,
-            "fail": 15
+            "pass": 32,
+            "skip": 5,
+            "fail": 19
           },
           "buffer": {
             "pass": 58,
@@ -3038,114 +3043,118 @@
             "fail": 5
           },
           "child_process": {
-            "pass": 76,
+            "pass": 102,
             "skip": 7,
-            "fail": 24,
-            "timeout": 7
+            "fail": 2,
+            "timeout": 2,
+            "crash": 1
           },
           "cluster": {
-            "pass": 23,
+            "pass": 81,
             "skip": 2,
-            "fail": 52,
-            "timeout": 11
+            "fail": 2,
+            "timeout": 2,
+            "crash": 1
           },
           "console": {
-            "pass": 17,
+            "pass": 18,
             "skip": 1,
-            "fail": 1,
             "crash": 3
           },
           "constants": {
             "skip": 1
           },
           "crypto": {
-            "pass": 152,
-            "skip": 9
+            "pass": 149,
+            "skip": 9,
+            "fail": 2,
+            "timeout": 1
           },
           "dgram": {
-            "pass": 5,
-            "skip": 11,
-            "fail": 63
+            "pass": 68,
+            "skip": 11
           },
           "diagnostics_channel": {
-            "pass": 46,
-            "skip": 3,
-            "fail": 6,
+            "pass": 30,
+            "skip": 1,
+            "fail": 24,
             "timeout": 1
           },
           "dns": {
-            "skip": 10,
-            "fail": 19
+            "pass": 19,
+            "skip": 10
           },
           "domain": {
-            "pass": 30,
-            "skip": 2,
-            "fail": 18
+            "pass": 44,
+            "skip": 1,
+            "fail": 5
           },
           "events": {
             "pass": 34,
             "skip": 6
           },
           "fs": {
-            "pass": 306,
+            "pass": 309,
             "skip": 20,
-            "fail": 13,
-            "timeout": 4
+            "fail": 11,
+            "timeout": 3
           },
           "http": {
-            "pass": 37,
+            "pass": 375,
             "skip": 15,
-            "fail": 342
+            "fail": 3,
+            "timeout": 1
           },
           "http2": {
-            "pass": 242,
-            "skip": 32
+            "pass": 241,
+            "skip": 29,
+            "fail": 1,
+            "timeout": 3
           },
           "https": {
-            "pass": 63,
-            "skip": 2
+            "pass": 59,
+            "skip": 1,
+            "fail": 5
           },
           "inspector": {
             "skip": 114
           },
           "module": {
-            "pass": 86,
-            "skip": 17,
-            "fail": 175,
-            "timeout": 2
+            "pass": 179,
+            "skip": 16,
+            "fail": 81,
+            "timeout": 4
           },
           "net": {
-            "pass": 19,
+            "pass": 151,
             "skip": 10,
-            "fail": 131,
-            "timeout": 2
+            "fail": 1
           },
           "os": {
-            "pass": 2,
-            "skip": 2,
-            "fail": 4
+            "pass": 6,
+            "skip": 2
           },
           "other": {
-            "pass": 231,
-            "skip": 178,
-            "fail": 202,
-            "timeout": 3,
+            "pass": 243,
+            "skip": 163,
+            "fail": 199,
+            "timeout": 9,
             "crash": 2
           },
           "path": {
             "pass": 17
           },
           "perf_hooks": {
-            "pass": 20,
-            "skip": 3,
+            "pass": 21,
+            "skip": 2,
             "fail": 3,
             "crash": 1
           },
           "process": {
-            "pass": 94,
+            "pass": 99,
             "skip": 8,
-            "fail": 24,
-            "timeout": 5
+            "fail": 22,
+            "timeout": 2
           },
           "punycode": {
             "pass": 1
@@ -3158,28 +3167,28 @@
             "skip": 3
           },
           "readline": {
-            "pass": 13,
-            "skip": 7,
-            "fail": 2
+            "pass": 15,
+            "skip": 7
           },
           "repl": {
-            "pass": 4,
+            "pass": 75,
             "skip": 14,
-            "fail": 77,
-            "timeout": 9,
-            "crash": 2
+            "fail": 12,
+            "timeout": 2,
+            "crash": 3
           },
           "sea": {
-            "fail": 1
+            "pass": 1
           },
           "sqlite": {
-            "pass": 16,
-            "skip": 2
+            "pass": 14,
+            "skip": 2,
+            "fail": 2
           },
           "stream": {
-            "pass": 204,
+            "pass": 254,
             "skip": 8,
-            "fail": 51
+            "crash": 1
           },
           "string_decoder": {
             "pass": 3
@@ -3188,10 +3197,10 @@
             "pass": 1
           },
           "test": {
-            "pass": 27,
+            "pass": 43,
             "skip": 5,
-            "fail": 26,
-            "timeout": 7
+            "fail": 5,
+            "timeout": 12
           },
           "timers": {
             "pass": 46,
@@ -3199,9 +3208,10 @@
             "fail": 2
           },
           "tls": {
-            "pass": 204,
-            "skip": 15,
-            "timeout": 1
+            "pass": 155,
+            "skip": 13,
+            "fail": 43,
+            "timeout": 9
           },
           "trace_events": {
             "pass": 16,
@@ -3224,26 +3234,33 @@
             "crash": 1
           },
           "v8": {
-            "pass": 9,
-            "skip": 5,
-            "fail": 8
-          },
-          "vm": {
-            "pass": 23,
-            "skip": 9,
-            "fail": 64,
-            "timeout": 2,
+            "pass": 18,
+            "skip": 1,
+            "fail": 2,
             "crash": 1
           },
+          "vm": {
+            "pass": 87,
+            "skip": 1,
+            "fail": 10,
+            "crash": 1
+          },
+          "wasi": {
+            "pass": 21,
+            "fail": 2,
+            "timeout": 3
+          },
           "worker_threads": {
-            "pass": 11,
+            "pass": 119,
             "skip": 12,
-            "fail": 124,
-            "timeout": 1
+            "fail": 15,
+            "timeout": 1,
+            "crash": 1
           },
           "zlib": {
             "pass": 60,
-            "skip": 3
+            "skip": 2,
+            "fail": 1
           }
         },
         "skip reason": {
@@ -3251,7 +3268,7 @@
             "skip": 2
           },
           "node-inspector": {
-            "skip": 109
+            "skip": 110
           },
           "node-internals": {
             "skip": 342
@@ -3260,7 +3277,7 @@
             "skip": 46
           },
           "v8-flag": {
-            "skip": 84
+            "skip": 25
           }
         }
       },
@@ -3270,16 +3287,16 @@
       "tier": "node api surface",
       "suite": "node-surface",
       "suite_version": "v25.9.0",
-      "updated": "04d1005",
+      "updated": "853b704",
       "test": "tests/node/surface/expectations.txt",
       "total": 4460,
       "outcomes": {
-        "pass": 3461,
+        "pass": 4375,
         "rejected": 0,
         "late": 0,
         "skip": 0,
-        "never": 0,
-        "fail": 999,
+        "never": 80,
+        "fail": 5,
         "timeout": 0,
         "harness_error": 0,
         "crash": 0
@@ -3287,12 +3304,14 @@
       "groups": {
         "docs": {
           "deprecated": {
-            "pass": 98,
-            "fail": 31
+            "pass": 125,
+            "never": 2,
+            "fail": 2
           },
           "documented": {
-            "pass": 3363,
-            "fail": 968
+            "pass": 4250,
+            "never": 78,
+            "fail": 3
           }
         },
         "module": {
@@ -3324,10 +3343,10 @@
             "pass": 3
           },
           "Crypto": {
-            "fail": 4
+            "pass": 4
           },
           "CryptoKey": {
-            "fail": 5
+            "pass": 5
           },
           "CustomEvent": {
             "pass": 20
@@ -3363,8 +3382,7 @@
             "pass": 19
           },
           "MessagePort": {
-            "pass": 17,
-            "fail": 4
+            "pass": 21
           },
           "Navigator": {
             "pass": 1
@@ -3415,10 +3433,10 @@
             "pass": 1
           },
           "Storage": {
-            "fail": 1
+            "pass": 1
           },
           "SubtleCrypto": {
-            "fail": 19
+            "pass": 19
           },
           "TextDecoder": {
             "pass": 5
@@ -3481,11 +3499,10 @@
             "pass": 1
           },
           "console": {
-            "pass": 1,
-            "fail": 22
+            "pass": 23
           },
           "crypto": {
-            "fail": 4
+            "pass": 4
           },
           "exports": {
             "pass": 1
@@ -3497,11 +3514,10 @@
             "pass": 1
           },
           "localStorage": {
-            "fail": 1
+            "pass": 1
           },
           "module": {
-            "pass": 2,
-            "fail": 1
+            "pass": 3
           },
           "navigator": {
             "pass": 2
@@ -3526,11 +3542,10 @@
             "pass": 48
           },
           "node:console": {
-            "pass": 22,
-            "fail": 4
+            "pass": 26
           },
           "node:crypto": {
-            "fail": 401
+            "pass": 401
           },
           "node:dgram": {
             "pass": 43
@@ -3539,10 +3554,10 @@
             "pass": 13
           },
           "node:dns": {
-            "fail": 25
+            "pass": 25
           },
           "node:dns/promises": {
-            "fail": 25
+            "pass": 25
           },
           "node:domain": {
             "pass": 27
@@ -3561,20 +3576,19 @@
             "pass": 318
           },
           "node:http2": {
-            "fail": 112
+            "pass": 112
           },
           "node:https": {
-            "fail": 78
+            "pass": 78
           },
           "node:inspector": {
-            "fail": 40
+            "never": 40
           },
           "node:inspector/promises": {
-            "fail": 40
+            "never": 40
           },
           "node:module": {
-            "pass": 3,
-            "fail": 17
+            "pass": 20
           },
           "node:net": {
             "pass": 119
@@ -3610,13 +3624,13 @@
             "pass": 27
           },
           "node:repl": {
-            "fail": 28
+            "pass": 28
           },
           "node:sea": {
             "pass": 6
           },
           "node:sqlite": {
-            "fail": 32
+            "pass": 32
           },
           "node:stream": {
             "pass": 250
@@ -3649,7 +3663,7 @@
             "pass": 6
           },
           "node:tls": {
-            "fail": 126
+            "pass": 126
           },
           "node:trace_events": {
             "pass": 3
@@ -3677,8 +3691,7 @@
             "pass": 6
           },
           "node:worker_threads": {
-            "pass": 80,
-            "fail": 4
+            "pass": 84
           },
           "node:zlib": {
             "pass": 553
@@ -3696,7 +3709,7 @@
             "pass": 6
           },
           "sessionStorage": {
-            "fail": 1
+            "pass": 1
           },
           "setImmediate": {
             "pass": 1
@@ -3713,7 +3726,186 @@
         }
       },
       "blockers": [],
-      "never": {}
+      "never": {
+        "node:inspector": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.DOMStorage": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.DOMStorage.domStorageItemAdded": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.DOMStorage.domStorageItemRemoved": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.DOMStorage.domStorageItemUpdated": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.DOMStorage.domStorageItemsCleared": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.DOMStorage.registerStorage": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.dataReceived": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.dataSent": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.loadingFailed": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.loadingFinished": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.requestWillBeSent": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.responseReceived": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.webSocketClosed": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.webSocketCreated": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Network.webSocketHandshakeResponseReceived": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.NetworkResources": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.NetworkResources.put": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.EventEmitter": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.EventEmitterAsyncResource": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.addAbortListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.captureRejectionSymbol": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.captureRejections": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.defaultMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.errorMonitor": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.getEventListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.getMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.init": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.kMaxEventTargetListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.kMaxEventTargetListenersWarned": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.listenerCount": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.on": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.once": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype._events": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype._eventsCount": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype._maxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.addListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.connect": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.connectToMainThread": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.disconnect": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.emit": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.eventNames": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.getMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.listenerCount": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.listeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.off": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.on": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.once": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.post": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.prependListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.prependOnceListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.rawListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.removeAllListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.removeListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.prototype.setMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.setMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.Session.usingDomains": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.close": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.assert": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.clear": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.context": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.count": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.countReset": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.createTask": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.debug": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.dir": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.dirxml": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.error": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.group": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.groupCollapsed": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.groupEnd": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.info": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.log": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.profile": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.profileEnd": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.table": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.time": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.timeEnd": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.timeLog": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.timeStamp": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.trace": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console.warn": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.console[Symbol.toStringTag]": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.open": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.url": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector.waitForDebugger": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.DOMStorage": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.DOMStorage.domStorageItemAdded": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.DOMStorage.domStorageItemRemoved": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.DOMStorage.domStorageItemUpdated": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.DOMStorage.domStorageItemsCleared": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.DOMStorage.registerStorage": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.dataReceived": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.dataSent": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.loadingFailed": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.loadingFinished": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.requestWillBeSent": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.responseReceived": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.webSocketClosed": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.webSocketCreated": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Network.webSocketHandshakeResponseReceived": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.NetworkResources": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.NetworkResources.put": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.EventEmitter": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.EventEmitterAsyncResource": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.addAbortListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.captureRejectionSymbol": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.captureRejections": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.defaultMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.errorMonitor": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.getEventListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.getMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.init": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.kMaxEventTargetListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.kMaxEventTargetListenersWarned": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.listenerCount": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.on": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.once": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype._events": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype._eventsCount": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype._maxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.addListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.connect": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.connectToMainThread": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.disconnect": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.emit": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.eventNames": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.getMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.listenerCount": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.listeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.off": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.on": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.once": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.post": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.prependListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.prependOnceListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.rawListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.removeAllListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.removeListener": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.prototype.setMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.setMaxListeners": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.Session.usingDomains": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.close": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.assert": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.clear": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.context": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.count": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.countReset": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.createTask": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.debug": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.dir": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.dirxml": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.error": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.group": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.groupCollapsed": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.groupEnd": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.info": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.log": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.profile": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.profileEnd": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.table": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.time": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.timeEnd": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.timeLog": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.timeStamp": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.trace": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console.warn": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.console[Symbol.toStringTag]": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.open": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.url": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE",
+        "node:inspector/promises.waitForDebugger": "Buoy runs no V8 inspector: as with node --without-inspector, process.features.inspector is false and node:inspector throws ERR_INSPECTOR_NOT_AVAILABLE"
+      }
     },
     {
       "tier": "packages",
@@ -8274,9 +8466,9 @@
       "suite_version": null,
       "updated": null,
       "test": "crates/buoy-cli/tests/programs.rs",
-      "total": 35,
+      "total": 41,
       "outcomes": {
-        "pass": 35,
+        "pass": 41,
         "rejected": 0,
         "late": 0,
         "skip": 0,
@@ -8459,7 +8651,8 @@
     {
       "binding": "block_list",
       "members": 4,
-      "implemented": 0
+      "implemented": 4,
+      "module": "runtime/src/node/bindings/buoy_binding_block_list.erl"
     },
     {
       "binding": "buffer",
@@ -8476,12 +8669,14 @@
     {
       "binding": "cares_wrap",
       "members": 18,
-      "implemented": 0
+      "implemented": 18,
+      "module": "runtime/src/node/bindings/buoy_binding_cares_wrap.erl"
     },
     {
       "binding": "cjs_lexer",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/node/bindings/buoy_binding_cjs_lexer.erl"
     },
     {
       "binding": "config",
@@ -8498,7 +8693,7 @@
     {
       "binding": "contextify",
       "members": 10,
-      "implemented": 8,
+      "implemented": 10,
       "module": "runtime/src/node/bindings/buoy_binding_contextify.erl"
     },
     {
@@ -8511,7 +8706,8 @@
       "binding": "crypto",
       "condition": "HAVE_OPENSSL",
       "members": 144,
-      "implemented": 0
+      "implemented": 144,
+      "module": "runtime/src/node/bindings/buoy_binding_crypto.erl"
     },
     {
       "binding": "diagnostics_channel",
@@ -8552,17 +8748,20 @@
     {
       "binding": "heap_utils",
       "members": 3,
-      "implemented": 0
+      "implemented": 2,
+      "module": "runtime/src/node/bindings/buoy_binding_heap_utils.erl"
     },
     {
       "binding": "http2",
       "members": 24,
-      "implemented": 0
+      "implemented": 11,
+      "module": "runtime/src/node/bindings/buoy_binding_http2.erl"
     },
     {
       "binding": "http_parser",
       "members": 4,
-      "implemented": 0
+      "implemented": 4,
+      "module": "runtime/src/node/bindings/buoy_binding_http_parser.erl"
     },
     {
       "binding": "icu",
@@ -8573,7 +8772,8 @@
     {
       "binding": "inspector",
       "members": 16,
-      "implemented": 0
+      "implemented": 2,
+      "module": "runtime/src/node/bindings/buoy_binding_inspector.erl"
     },
     {
       "binding": "internal_only_v8",
@@ -8584,7 +8784,8 @@
     {
       "binding": "js_stream",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/node/bindings/buoy_binding_js_stream.erl"
     },
     {
       "binding": "js_udp_wrap",
@@ -8600,7 +8801,7 @@
     {
       "binding": "messaging",
       "members": 11,
-      "implemented": 6,
+      "implemented": 11,
       "module": "runtime/src/node/bindings/buoy_binding_messaging.erl"
     },
     {
@@ -8612,13 +8813,14 @@
     {
       "binding": "module_wrap",
       "members": 14,
-      "implemented": 12,
+      "implemented": 14,
       "module": "runtime/src/node/bindings/buoy_binding_module_wrap.erl"
     },
     {
       "binding": "modules",
       "members": 13,
-      "implemented": 0
+      "implemented": 13,
+      "module": "runtime/src/node/bindings/buoy_binding_modules.erl"
     },
     {
       "binding": "options",
@@ -8683,7 +8885,8 @@
     {
       "binding": "sea",
       "members": 4,
-      "implemented": 0
+      "implemented": 4,
+      "module": "runtime/src/node/bindings/buoy_binding_sea.erl"
     },
     {
       "binding": "serdes",
@@ -8707,12 +8910,14 @@
       "binding": "sqlite",
       "condition": "HAVE_SQLITE",
       "members": 5,
-      "implemented": 0
+      "implemented": 5,
+      "module": "runtime/src/node/bindings/buoy_binding_sqlite.erl"
     },
     {
       "binding": "stream_pipe",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/node/bindings/buoy_binding_stream_pipe.erl"
     },
     {
       "binding": "stream_wrap",
@@ -8741,7 +8946,8 @@
     {
       "binding": "tcp_wrap",
       "members": 3,
-      "implemented": 0
+      "implemented": 3,
+      "module": "runtime/src/node/bindings/buoy_binding_tcp_wrap.erl"
     },
     {
       "binding": "timers",
@@ -8753,7 +8959,8 @@
       "binding": "tls_wrap",
       "condition": "HAVE_OPENSSL",
       "members": 3,
-      "implemented": 0
+      "implemented": 3,
+      "module": "runtime/src/node/bindings/buoy_binding_tls_wrap.erl"
     },
     {
       "binding": "trace_events",
@@ -8764,7 +8971,7 @@
     {
       "binding": "tty_wrap",
       "members": 2,
-      "implemented": 1,
+      "implemented": 2,
       "module": "runtime/src/node/bindings/buoy_binding_tty_wrap.erl"
     },
     {
@@ -8776,7 +8983,8 @@
     {
       "binding": "udp_wrap",
       "members": 3,
-      "implemented": 0
+      "implemented": 3,
+      "module": "runtime/src/node/bindings/buoy_binding_udp_wrap.erl"
     },
     {
       "binding": "url",
@@ -8804,17 +9012,20 @@
     {
       "binding": "v8",
       "members": 40,
-      "implemented": 0
+      "implemented": 40,
+      "module": "runtime/src/node/bindings/buoy_binding_v8.erl"
     },
     {
       "binding": "wasi",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/node/bindings/buoy_binding_wasi.erl"
     },
     {
       "binding": "wasm_web_api",
       "members": 1,
-      "implemented": 0
+      "implemented": 1,
+      "module": "runtime/src/node/bindings/buoy_binding_wasm_web_api.erl"
     },
     {
       "binding": "watchdog",
@@ -8825,12 +9036,13 @@
       "binding": "webstorage",
       "condition": "HAVE_SQLITE",
       "members": 2,
-      "implemented": 0
+      "implemented": 2,
+      "module": "runtime/src/node/bindings/buoy_binding_webstorage.erl"
     },
     {
       "binding": "worker",
       "members": 13,
-      "implemented": 12,
+      "implemented": 13,
       "module": "runtime/src/node/bindings/buoy_binding_worker.erl"
     },
     {

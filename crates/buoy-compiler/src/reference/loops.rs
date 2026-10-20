@@ -10,13 +10,23 @@ use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
 use super::context::{
-    Cont, FinallyFrame, Lowerer, Target, TargetKind, block, boolean_case, throw_value,
+    Cont, FinallyFrame, Kind, Lowerer, Target, TargetKind, block, boolean_case, throw_value,
 };
 use crate::erlang::{Clause, Expr};
 
 impl<'a> Lowerer<'a, '_> {
-    /// `(fun Loop(Params) -> Body end)(Initial)`.
-    pub fn loop_call(name: String, params: Vec<Expr>, body: Vec<Expr>, initial: Vec<Expr>) -> Expr {
+    /// `(fun Loop(Params) -> Body end)(Initial)`. Interruptible code checks the deadline of
+    /// the run before each turn.
+    pub fn loop_call(
+        &self,
+        name: String,
+        params: Vec<Expr>,
+        mut body: Vec<Expr>,
+        initial: Vec<Expr>,
+    ) -> Expr {
+        if self.interruptible {
+            body.insert(0, Expr::call("buoy_ref_eval", "interrupt", vec![]));
+        }
         Expr::Apply(
             Box::new(Expr::Fun {
                 name: Some(name),
@@ -28,6 +38,31 @@ impl<'a> Lowerer<'a, '_> {
             }),
             initial,
         )
+    }
+
+    /// The loop call. In a sync function, each iteration starts at a safepoint that may
+    /// collect what the loop allocated (`buoy_heap:safepoint/2`): there the back edge is a
+    /// tail call and nothing suspends, so the carried values are the only young roots.
+    fn looped(
+        &mut self,
+        name: String,
+        params: Vec<Expr>,
+        mut body: Vec<Expr>,
+        initial: Vec<Expr>,
+    ) -> Vec<Expr> {
+        if !matches!(self.frame.kind, Kind::Sync) {
+            return vec![self.loop_call(name, params, body, initial)];
+        }
+        let entry = Expr::var(self.fresh("Entry"));
+        let roots = Expr::List(params.clone());
+        body.insert(
+            0,
+            Expr::call("buoy_heap", "safepoint", vec![entry.clone(), roots]),
+        );
+        vec![
+            Expr::matches(entry, Expr::call("buoy_heap", "allocated", vec![])),
+            self.loop_call(name, params, body, initial),
+        ]
     }
 
     pub fn while_statement(
@@ -64,7 +99,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.targets.pop();
         let body = self.seal(body);
         self.frame.env = saved_env;
-        vec![Self::loop_call(fun, params, body, initial)]
+        self.looped(fun, params, body, initial)
     }
 
     pub fn do_while_statement(
@@ -97,7 +132,7 @@ impl<'a> Lowerer<'a, '_> {
         let body = self.arm(&statement.body, &again);
         self.frame.targets.pop();
         self.frame.env = saved_env;
-        vec![Self::loop_call(fun, params, body, initial)]
+        self.looped(fun, params, body, initial)
     }
 
     pub fn for_statement(&mut self, statement: &'a ForStatement<'a>, k: &Cont<'a>) -> Vec<Expr> {
@@ -129,7 +164,11 @@ impl<'a> Lowerer<'a, '_> {
         let saved_env = self.frame.env.clone();
         match &statement.init {
             _ if !init => {}
-            Some(ForStatementInit::VariableDeclaration(declaration)) => self.variables(declaration),
+            Some(ForStatementInit::VariableDeclaration(declaration)) => {
+                let early = self.early_head(declaration);
+                self.pre.extend(early);
+                self.variables(declaration);
+            }
             Some(other) => {
                 if let Some(expression) = other.as_expression() {
                     self.effect(expression);
@@ -187,7 +226,7 @@ impl<'a> Lowerer<'a, '_> {
         self.frame.targets.pop();
         let body = self.seal(body);
         self.frame.env = saved_env;
-        code.push(Self::loop_call(fun, params, body, initial));
+        code.extend(self.looped(fun, params, body, initial));
         code
     }
 
@@ -210,7 +249,7 @@ impl<'a> Lowerer<'a, '_> {
                 k,
             );
         }
-        let state = Expr::call("buoy_ref_iterator", "iterate", vec![right]);
+        let state = Expr::call("buoy_ref_iterator", &self.iteration("iterate"), vec![right]);
         self.each(
             &statement.left,
             &statement.body,
@@ -226,13 +265,17 @@ impl<'a> Lowerer<'a, '_> {
         statement: &'a ForInStatement<'a>,
         k: &Cont<'a>,
     ) -> Vec<Expr> {
+        // `for (var a = init in o)` in sloppy code: the initializer runs once, before the
+        // object (Annex B.3.5).
+        if let ForStatementLeft::VariableDeclaration(declaration) = &statement.left
+            && declaration.kind.is_var()
+        {
+            self.variables(declaration);
+        }
         let head = self.head_bindings(&statement.left, statement.right.span());
         let right = self.expr(&statement.right);
         self.end_head_bindings(head);
-        let state = Expr::Tuple(vec![
-            Expr::atom("list"),
-            Expr::call("buoy_ref_iterator", "for_in_keys", vec![right]),
-        ]);
+        let state = Expr::call("buoy_ref_iterator", "for_in", vec![right]);
         self.each(
             &statement.left,
             &statement.body,
@@ -260,7 +303,12 @@ impl<'a> Lowerer<'a, '_> {
         let labels = std::mem::take(&mut self.frame.labels);
         let initial_state = self.bind_var("State", state);
         let mut code = std::mem::take(&mut self.pre);
-        let vars = self.assigned_in(span, |visitor| visitor.visit_statement(body));
+        // The head writes its target on each step, so the code after the loop sees the
+        // last value.
+        let vars = self.assigned_in(span, |visitor| {
+            visitor.visit_for_statement_left(left);
+            visitor.visit_statement(body);
+        });
         let initial: Vec<Expr> = std::iter::once(initial_state.clone())
             .chain(vars.iter().map(|v| self.carried(*v)))
             .collect();
@@ -346,7 +394,7 @@ impl<'a> Lowerer<'a, '_> {
             code.extend(self.close_funs(each, &initial_state, funs, dispatch));
         }
         self.frame.env = saved_env;
-        code.push(Self::loop_call(fun, params, body, initial));
+        code.extend(self.looped(fun, params, body, initial));
         code
     }
 
